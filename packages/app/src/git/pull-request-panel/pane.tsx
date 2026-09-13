@@ -1,14 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  Image,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-  type GestureResponderEvent,
-  type ViewStyle,
-} from "react-native";
+import { Image, Pressable, ScrollView, Text, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -70,11 +62,12 @@ import {
   buildPullRequestReviewContextAttachment,
   buildPullRequestThreadContextAttachment,
   canAddPullRequestActivityToChat,
-  canAddPullRequestCheckLogsToChat,
 } from "./context-attachment";
+import { ChecksSection, getCheckIdentity } from "./checks-section";
 import { getActivityVerb, getStateLabel } from "./data";
 import type { PrPaneActivity, PrPaneCheck, PrPaneData, PrState } from "./data";
 import type { ForgeSpecificStatusFacts } from "@/git/merge-capability";
+import { CheckPresentationIcon } from "@/git/check-presentation.view";
 import {
   buildPrTimeline,
   type PrTimelineDisplayOrder,
@@ -84,11 +77,7 @@ import {
 } from "./timeline";
 import { prPaneTimelineQueryKey } from "./query-keys";
 import {
-  CheckStatusIcon,
   Section,
-  SUMMARY_DANGER_ICON,
-  SUMMARY_SUCCESS_ICON,
-  SUMMARY_WARNING_ICON,
   SummaryPill,
   dangerColorMapping,
   foregroundMutedColorMapping,
@@ -143,6 +132,8 @@ const PR_STATE_PRESENTATION: Record<PrState, PrStatePresentation> = {
 const SUMMARY_COMMENT_ICON = (
   <ThemedMessageSquare size="xs" uniProps={foregroundMutedColorMapping} />
 );
+const SUMMARY_APPROVAL_ICON = <CheckPresentationIcon presentation="success" size="xs" />;
+const SUMMARY_CHANGES_REQUESTED_ICON = <CheckPresentationIcon presentation="failure" size="xs" />;
 const ADD_TO_CHAT_MENU_ICON = (
   <ThemedMessageSquarePlus size="sm" uniProps={foregroundMutedColorMapping} />
 );
@@ -152,10 +143,6 @@ const OPEN_MENU_ICON = <ThemedExternalLink size="sm" uniProps={foregroundMutedCo
 function handleMarkdownLinkPress(url: string): boolean {
   void openExternalUrl(url);
   return false;
-}
-
-function rowPressableStyle({ hovered }: { hovered?: boolean }) {
-  return [sectionKitStyles.checkRow, Boolean(hovered) && styles.hoverable];
 }
 
 function entryHeaderPressableStyle({ hovered }: { hovered?: boolean }) {
@@ -182,16 +169,6 @@ function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
       uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
     />
   );
-}
-
-function getCheckIdentity(check: PrPaneCheck): string {
-  if (check.detailRef?.checkRunId !== undefined) {
-    return `${check.provider}:check-run:${check.detailRef.checkRunId}`;
-  }
-  if (check.detailRef?.workflowRunId !== undefined) {
-    return `${check.provider}:workflow-run:${check.detailRef.workflowRunId}`;
-  }
-  return `${check.provider}:${check.name}:${check.url}`;
 }
 
 function addLoadingCheck(current: ReadonlySet<string>, checkKey: string): ReadonlySet<string> {
@@ -229,9 +206,10 @@ export function PullRequestPane({
   const toast = useToast();
   const daemonClient = useHostRuntimeClient(serverId);
   const queryClient = useQueryClient();
-  // COMPAT(githubCheckDetailsRpc): added in v0.1.106, remove after 2026-12-28 once
-  // all supported clients use checkout.forge.get_check_details.*.
-  const canFetchCheckDetails = useSessionStore(
+  // COMPAT(githubCheckDetailsRpc): recognize the legacy capability on daemons
+  // predating checkout.forge.get_check_details.*. Remove after 2027-01-17 once
+  // the supported daemon floor is >= v0.2.0.
+  const canFetchGitHubCheckDetails = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.githubCheckDetails === true,
   );
   const canFetchForgeCheckDetails = useSessionStore(
@@ -282,10 +260,6 @@ export function PullRequestPane({
   const handleToggleActivity = useCallback(() => {
     setActivityOpen((open) => !open);
   }, []);
-
-  const passed = data.checks.filter((check) => check.status === "success").length;
-  const failed = data.checks.filter((check) => check.status === "failure").length;
-  const pending = data.checks.filter((check) => check.status === "pending").length;
 
   const approvals = data.activity.filter(
     (item) => item.kind === "review" && item.reviewState === "approved",
@@ -451,7 +425,7 @@ export function PullRequestPane({
         // legacy github-only RPC only for GitHub against a daemon that predates
         // it. A non-GitHub forge therefore needs the neutral capability present.
         const canFetchDetail =
-          canFetchForgeCheckDetails || (check.provider === "github" && canFetchCheckDetails);
+          canFetchForgeCheckDetails || (check.provider === "github" && canFetchGitHubCheckDetails);
         if (
           canFetchDetail &&
           daemonClient &&
@@ -512,7 +486,7 @@ export function PullRequestPane({
     [
       addWorkspaceAttachment,
       canFetchForgeCheckDetails,
-      canFetchCheckDetails,
+      canFetchGitHubCheckDetails,
       cwd,
       daemonClient,
       data.forge,
@@ -633,50 +607,14 @@ export function PullRequestPane({
         </Pressable>
 
         {nativeChecksSection ?? (
-          <Section
-            title="Checks"
+          <ChecksSection
+            checks={data.checks}
             open={checksOpen}
             onToggle={handleToggleChecks}
-            summary={
-              <>
-                <SummaryPill
-                  count={passed}
-                  icon={SUMMARY_SUCCESS_ICON}
-                  variant="success"
-                  testID="pr-pane-check-passed"
-                />
-                <SummaryPill
-                  count={failed}
-                  icon={SUMMARY_DANGER_ICON}
-                  variant="danger"
-                  testID="pr-pane-check-failed"
-                />
-                <SummaryPill
-                  count={pending}
-                  icon={SUMMARY_WARNING_ICON}
-                  variant="warning"
-                  testID="pr-pane-check-pending"
-                />
-              </>
-            }
-          >
-            {data.checks.length === 0 ? (
-              <Text style={sectionKitStyles.emptyText}>No checks</Text>
-            ) : (
-              data.checks.map((check) => {
-                const checkKey = getCheckIdentity(check);
-                return (
-                  <CheckRow
-                    key={checkKey}
-                    check={check}
-                    attachEnabled={attachEnabled}
-                    isAddingLogsToChat={loadingCheckKeys.has(checkKey)}
-                    onAddLogsToChat={handleAddCheckLogsToChat}
-                  />
-                );
-              })
-            )}
-          </Section>
+            attachEnabled={attachEnabled}
+            loadingCheckKeys={loadingCheckKeys}
+            onAddLogsToChat={handleAddCheckLogsToChat}
+          />
         )}
 
         <View style={styles.divider} />
@@ -687,8 +625,12 @@ export function PullRequestPane({
           onToggle={handleToggleActivity}
           summary={
             <>
-              <SummaryPill count={approvals} icon={SUMMARY_SUCCESS_ICON} variant="success" />
-              <SummaryPill count={changesRequested} icon={SUMMARY_DANGER_ICON} variant="danger" />
+              <SummaryPill count={approvals} icon={SUMMARY_APPROVAL_ICON} variant="success" />
+              <SummaryPill
+                count={changesRequested}
+                icon={SUMMARY_CHANGES_REQUESTED_ICON}
+                variant="danger"
+              />
               <SummaryPill count={commentCount} icon={SUMMARY_COMMENT_ICON} variant="muted" />
             </>
           }
@@ -789,57 +731,6 @@ function activityOrderTriggerStyle({
   open = false,
 }: PressableStateCallbackType & { hovered?: boolean; open?: boolean }) {
   return [styles.activityOrderTrigger, (hovered || open) && styles.activityOrderTriggerActive];
-}
-
-function CheckRow({
-  check,
-  attachEnabled,
-  isAddingLogsToChat,
-  onAddLogsToChat,
-}: {
-  check: PrPaneCheck;
-  attachEnabled: boolean;
-  isAddingLogsToChat: boolean;
-  onAddLogsToChat: (check: PrPaneCheck) => void;
-}) {
-  const handlePress = useCallback(() => {
-    void openExternalUrl(check.url);
-  }, [check.url]);
-  const handleAddLogsToChat = useCallback(
-    (event: GestureResponderEvent) => {
-      event.stopPropagation();
-      void onAddLogsToChat(check);
-    },
-    [check, onAddLogsToChat],
-  );
-  return (
-    <Pressable onPress={handlePress} style={rowPressableStyle}>
-      <CheckStatusIcon status={check.status} />
-      <Text style={sectionKitStyles.checkName} numberOfLines={1}>
-        {check.name}
-      </Text>
-      {check.workflow && (
-        <Text style={sectionKitStyles.checkWorkflow} numberOfLines={1}>
-          {check.workflow}
-        </Text>
-      )}
-      <View style={sectionKitStyles.checkTrailing}>
-        {attachEnabled && canAddPullRequestCheckLogsToChat(check) ? (
-          <Button
-            variant="ghost"
-            size="xs"
-            leftIcon={MessageSquarePlus}
-            loading={isAddingLogsToChat}
-            onPress={handleAddLogsToChat}
-            style={styles.checkAddButton}
-          >
-            {isAddingLogsToChat ? "Adding..." : "Add to chat"}
-          </Button>
-        ) : null}
-        {check.timing && <Text style={sectionKitStyles.checkDuration}>{check.timing}</Text>}
-      </View>
-    </Pressable>
-  );
 }
 
 interface TimelineEntryCallbacks {

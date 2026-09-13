@@ -33,6 +33,30 @@ describe("settingsViewRoute", () => {
     expect(settingsViewRoute({ kind: "root" })).toBeNull();
     expect(settingsViewRoute({ kind: "host", serverId: "", section: "providers" })).toBeNull();
     expect(settingsViewRoute({ kind: "project", serverId: "", projectId: "" })).toBeNull();
+    expect(
+      settingsViewRoute({ kind: "plugin", serverId: "host", pluginId: "", screenId: "screen" }),
+    ).toBeNull();
+  });
+
+  it("remembers every plugin route id without flattening host scope", () => {
+    const view = {
+      kind: "plugin" as const,
+      serverId: "host a",
+      pluginId: "@scope/plugin",
+      screenId: "screen ?/#",
+    };
+    const expected = {
+      pathname: "/settings/hosts/[serverId]/plugins/[pluginId]/[screenId]",
+      params: { serverId: "host a", pluginId: "@scope/plugin", screenId: "screen ?/#" },
+    };
+    expect(settingsViewRoute(view)).toEqual(expected);
+    rememberLastSettingsView(view);
+    expect(getLastSettingsRoute()).toEqual(expected);
+    rememberLastSettingsView({ ...view, serverId: "host-b" });
+    expect(getLastSettingsRoute()).toEqual({
+      ...expected,
+      params: { ...expected.params, serverId: "host-b" },
+    });
   });
 });
 

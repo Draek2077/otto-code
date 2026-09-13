@@ -50,6 +50,36 @@ commit the prepared inputs locally and run the release command. Its branch and
 tag push is the one remote release batch and starts CI for the complete release
 commit.
 
+## Release branch discipline
+
+While you finalize a release on `main`, use a temporary `next` branch for work intended for the following
+release. This applies to both beta and stable releases.
+
+- Create each new `next` from freshly fetched `origin/main`. Reuse it while active.
+- "This goes to next" means create the PR against `next` or retarget an existing
+  PR, and keep that destination through delivery.
+- Keep `next` current by merging `origin/main` into it as release fixes land.
+  Avoid rebasing this shared branch because agents and open PRs depend on its history.
+- After the release ships, bring `next` up to date and open a `next` → `main` PR.
+  Pass CI and merge without squashing away the individual PR commits needed for
+  the changelog. Retarget remaining PRs based on `next` to `main` and delete the integrated
+  `next`. Create it fresh when needed again.
+
+**Setup still needed:** CI, Docker, and Nix PR checks currently target only `main`,
+and GitHub permits only squash merges. Enable checks and required-check protection
+for `next`, CI on its pushes, and merge commits for the integration PR. Handle PR
+base changes (`edited` events) so retargeting runs checks against the new base;
+GitHub's default PR events do not cover this. Deployment triggers stay unchanged.
+
+### Hotfix from a release tag
+
+If `main` contains changes you do not want to release, branch from the affected
+release tag and cherry-pick only the required fixes. Run CI on that branch, then
+use the normal release flow with it as the explicit source, choosing a new patch
+or beta version. Ensure the fixes and changelog also reach `main` and any active
+`next`, preserving newer development and version changes there. This is a
+short-lived hotfix branch, not another maintained release track.
+
 ## ACP catalog updates
 
 ACP catalog work enters a release through an explicit user request:
@@ -67,8 +97,11 @@ release push as the changelog and version commit.
 
 There are two supported release paths:
 
-1. **Direct stable release**: you are ready to ship the current `main` commit to everyone immediately.
-2. **Beta flow**: release candidates on the `beta` channel. Each beta refreshes the one in-flight changelog entry in place, publishes npm only on the explicit `beta` dist-tag, and stays behind the Stable/Beta switch on `/download`.
+1. **Direct stable release**: you are ready to ship the resolved release source to everyone immediately (default `origin/main`).
+2. **Beta flow**: release candidates on the `beta` channel. Each beta refreshes the in-flight changelog entry in place, publishes npm only on the explicit `beta` dist-tag, and stays behind the Stable/Beta switch on `/download`.
+
+Otto has one linear release track even though npm dist-tags are independent
+pointers. The npm invariant is:
 
 - A beta release moves only `beta`; `latest` remains on the newest stable.
 - A stable release moves both `latest` and `beta` to that stable version. This
@@ -166,7 +199,7 @@ npm run release:promote          # Promote X.Y.Z-beta.N to stable X.Y.Z
 - `release:promote` creates a fresh stable tag like `v0.1.41`; the final release never reuses the beta tag
 - Desktop assets now come from the Electron package at `packages/desktop`
 - Beta releases use Electron's `beta` update channel. Users on the stable channel only receive stable releases; users on the beta channel receive beta releases and the final stable release when it is published.
-- **Each beta carries its own changelog entry.** `Release Notes Sync` mirrors the matching `## X.Y.Z-beta.N` entry into that prerelease body. Promotion collapses every beta entry for the version into one final stable entry. See the Changelog policy section.
+- **Each beta refreshes the in-flight changelog entry in place.** `Release Notes Sync` mirrors the matching `## X.Y.Z-beta.N` entry into that prerelease body. Promotion refreshes that entry for the final stable version. See the Changelog policy section.
 
 Use the beta path when you need to:
 
@@ -204,10 +237,10 @@ The rollout is driven by a `rolloutHours` field stamped into the GitHub Release 
 
 Desktop release builds now publish in two phases:
 
-- Platform build jobs upload the installers/packages (`.dmg`, `.zip`, `.exe`, `.AppImage`, etc.) to a **draft** GitHub release.
-- The final job merges/stamps the manifests and uploads all `.yml` files only after they already contain the final `releaseDate` and `rolloutHours`, then publishes the release.
+- The GitHub Release stays a draft while platform build jobs upload the installers/packages (`.dmg`, `.zip`, `.exe`, `.AppImage`, etc.).
+- The final job merges and stamps every channel manifest, uploads them with the final `releaseDate` and `rolloutHours`, then publishes the GitHub Release.
 
-Updater clients only discover published releases through those `.yml` manifests, so they can never select a release before its installer and rollout metadata are present.
+Drafts do not appear in GitHub's releases feed. Updater clients continue to see the previous complete release until all manifests for the configured publishing platforms are available. If a desktop build or manifest upload fails, the new release stays a draft.
 
 ### Default behavior
 
@@ -276,6 +309,15 @@ This does **not** apply to fresh releases cut via `npm run release:patch` - that
 If you ship N+1 while N is still ramping, N+1 starts a fresh rollout from its own publish timestamp. N's rollout effectively ends - the newer manifest supersedes it.
 
 If N+1 is a hotfix for a bug in N, dispatch `desktop-rollout.yml -f tag=v0.1.<N+1> -f rollout_hours=0` after N+1 publishes so the users who already got N reach the fix fast.
+
+### macOS system floor
+
+The desktop app uses Electron 44 and requires macOS 13 or newer. Keep both release guards when the floor changes:
+
+- `packages/desktop/electron-builder.yml` writes the macOS version to `LSMinimumSystemVersion` for new installs.
+- `scripts/merge-mac-manifest.mjs` writes the matching Darwin kernel version to `minimumSystemVersion` in the update manifest. Existing clients check this before downloading an update.
+
+macOS 13 maps to Darwin 22. The two values use different version domains; do not copy the macOS version into the update manifest.
 
 ### Limitations
 
@@ -377,8 +419,9 @@ store submission passes the completion checklist.
 > `Deploy App`, `Release Notes Sync`) only - the APK now builds inside `Android APK Release`
 > itself, so there is no separate EAS build to watch for it. The `Release Mobile`
 > workflow and the store submit/review jobs below don't exist on this fork - don't wait for
-> them. `Desktop Release` shows red on `publish-macos` until Apple signing is configured;
-> Windows/Linux artifacts and the `finalize-rollout` manifests are the signal that matters.
+> them. `publish-macos` is skipped when Apple signing is not configured; unsigned macOS artifacts
+> remain separate. A failed requested desktop build keeps the release in draft. The finalizer
+> requires Windows/Linux manifests and the macOS manifest when the signing gate is enabled.
 
 The user rarely opens the Expo dashboard. A failed EAS build or submit/review job can sit silently until users complain about a stale version. After every stable release, set up a long-delay babysit that re-checks GitHub Actions, EAS builds, and the EAS `Release Mobile` workflow for the release tag. If any build is `ERRORED`/`CANCELED`, any workflow is `FAILURE`, or any required submit/review job fails, surface it immediately. If all builds are `FINISHED` and all required submit/review jobs are `SUCCESS`, confirm and stop.
 
@@ -411,7 +454,7 @@ Pattern:
   "timezone": "UTC",
   "maxRuns": 120,
   "expiresIn": "24h",
-  "prompt": "Resume the vX.Y.Z release babysit for commit <sha>. Check npm tags; every GitHub Actions run for the release branch and tag; the published GitHub Release body, expected desktop/APK assets, and channel manifests; the Docker image; and the matching EAS workflow. Completion requires every applicable checklist item. For stable, require build_ios, submit_ios, submit_ios_for_review, build_android, and submit_android to succeed. For beta, require the beta TestFlight distribution and Beta App Review path. If work is pending, wait for the next heartbeat. If a failure can be retried safely for the same version, follow the failed-release procedure; otherwise report the blocker. When every applicable completion-checklist item passes, delete THIS heartbeat, report shipped, and stop.",
+  "prompt": "Resume the vX.Y.Z release babysit for commit <sha>. Check npm tags; every GitHub Actions run for the release branch and tag; the published GitHub Release body, expected desktop/APK assets, and channel manifests; the Docker image; and the applicable app/website deployment workflows. Completion requires every applicable fork checklist item. Store submissions are outside the configured distribution paths. Signed macOS manifests are required only when Apple signing is configured; unsigned artifacts remain separate. If work is pending, wait for the next heartbeat. If a failure can be retried safely for the same version, follow the failed-release procedure; otherwise report the blocker. When every applicable completion-checklist item passes, delete THIS heartbeat, report shipped, and stop.",
 }
 ```
 
@@ -458,6 +501,13 @@ you want to build. Reusing the same tag name is expected: move it with
 `git tag -f ...` and push it with `--force` so the workflow rebuilds the commit
 you actually want.
 
+A failed desktop build leaves the GitHub Release as a draft. `finalize-rollout`
+uploads manifests from successful platforms before it fails. A later
+single-platform retry reuses those manifests, stamps the complete set with one
+release date, and publishes the draft. Use `desktop-vX.Y.Z` when more than one
+platform failed. A `workflow_dispatch` rebuild with publishing enabled follows
+the same path against the existing draft.
+
 Prefer a tag push over `workflow_dispatch` when rebuilding desktop or APK
 release assets. Prefer Docker workflow dispatch when rebuilding only the Docker
 image.
@@ -487,9 +537,26 @@ This ensures the checkout ref matches the actual code on `main` with the fix inc
 - `desktop-macos-vX.Y.Z`, `desktop-linux-vX.Y.Z`, and `desktop-windows-vX.Y.Z` rebuild only that desktop platform
 - `android-vX.Y.Z` rebuilds the Android APK release only
 
+If you decide to publish a release without working desktop builds, inspect its
+assets first, then publish it manually:
+
+```bash
+RELEASE_LOOKUP=$(node scripts/github-release.mjs --repo getpaseo/paseo --tag vX.Y.Z)
+gh release view "$RELEASE_LOOKUP" --json isDraft,isPrerelease,assets
+gh release edit "$RELEASE_LOOKUP" --tag vX.Y.Z --draft=false
+
+# Keep a beta marked as a prerelease:
+RELEASE_LOOKUP=$(node scripts/github-release.mjs --repo getpaseo/paseo --tag vX.Y.Z-beta.N)
+gh release edit "$RELEASE_LOOKUP" --tag vX.Y.Z-beta.N --draft=false --prerelease
+```
+
+This bypasses the updater-manifest guarantee. Use it only when the release is
+intentionally unavailable to desktop updater clients.
+
 ## Notes
 
 - `version:all:*` bumps root + syncs workspace versions and `@otto-code/*` dependency versions
+- The npm `version` lifecycle regenerates F-Droid changelog files from `CHANGELOG.md` for stable releases only (`npm run fdroid:changelogs`) and stages them, so the release tag carries them. Betas are a no-op. A stable run **aborts the release** if `CHANGELOG.md` has no entry for the version being cut — commit the changelog entry first. See [docs/android.md](android.md) for why these files are generated per ABI.
 - `release:prepare` refreshes workspace `node_modules` links to prevent stale types
 - `npm run dev:desktop` and `npm run build:desktop` target the Electron desktop package in `packages/desktop`
 - If `release:publish` partially fails, re-run it - npm skips already-published versions
@@ -506,6 +573,8 @@ Release notes depend on the changelog heading format. The heading **must** be st
 ```
 
 No prefix (`v`), no extra text. `Release Notes Sync` matches the `## X.Y.Z` (or `## X.Y.Z-beta.N`) line for the pushed tag to extract the version. A malformed heading breaks the release-notes sync for that tag.
+
+`CHANGELOG.md` on `main` is also what the app's **What's new** sheet fetches and renders, so the file is a shipped product surface, not just a release input. `##` starts a release and `###` starts a section; the app reads section titles from the document, so renaming or adding one needs no app change. Everything under a section is rendered as Markdown: prose, lists, links, inline code, fenced code, block quotes, tables, and images. Raw HTML does not render — the shared Markdown parser runs with `html: false`, so a `<video>`, `<iframe>` or `<embed>` tag reaches the reader as visible markup. Keep media out of the changelog, or link to it. A GitHub callout renders as a block quote with its `[!NOTE]` marker still in the text. A release entry is what a user reads on a phone the moment they are offered the update — write it for them.
 
 ## Changelog policy
 
@@ -623,17 +692,20 @@ The scope never narrows to the previous beta. A beta entry is an in-flight draft
 
 ### Beta release
 
-- [ ] Working tree is clean and the intended commit is on `main`
-- [ ] Update the in-place beta entry in `CHANGELOG.md` (heading `## X.Y.Z-beta.N - YYYY-MM-DD`), review it against the changelog policy, get approval, and commit it before cutting the release
-- [ ] `release:beta:*` completes successfully (includes `release:publish:beta` - be logged into npm as an `otto-code` org member first; see the npm note under "Standard release" if publish fails mid-chain)
-- [ ] npm shows the version under the `beta` dist-tag, not `latest` (`npm view @otto-code/cli dist-tags`)
-- [ ] GitHub `Desktop Release` workflow for the `v*-beta.N` tag is green (macOS jobs excepted until Apple signing is configured - Windows/Linux artifacts plus `finalize-rollout` manifests are what count)
-- [ ] The GitHub prerelease contains `beta-mac.yml`, `beta-linux.yml`, and `beta.yml`
-- [ ] GitHub `Android APK Release` workflow for the same tag is green
+- [ ] The resolved release source is the intended commit (default `origin/main`) and its existing CI is green
+- [ ] Every PR in the release range has been opened, and its full description and every linked issue have been read before drafting the changelog
+- [ ] Refresh the in-flight `CHANGELOG.md` entry for this beta (create it for the first beta) (heading `## X.Y.Z-beta.N - YYYY-MM-DD`), review it against the changelog policy, get approval, and commit it before cutting the release
+- [ ] The diff from the previous stable to the resolved release source is classified as patch or minor, with the target version and rationale approved
+- [ ] Release preparation stayed local until the approved release command pushed the complete branch and tag
+- [ ] `npm run release:beta:patch`, `npm run release:beta:minor`, or `npm run release:beta:next` completes successfully
+- [ ] Every GitHub Actions run for the complete release commit and tag is green
+- [ ] npm shows the version under the `beta` dist-tag, not `latest`
+- [ ] The GitHub prerelease was published only after the required beta manifests were uploaded, and it has the changelog body and every expected asset for the configured desktop platforms plus Android APK
+- [ ] GitHub `Desktop Release` workflow for the `v*-beta.N` tag is green
+- [ ] The GitHub prerelease contains `beta-linux.yml` and `beta.yml`, plus `beta-mac.yml` when Apple signing is configured
+- [ ] GitHub `Android APK Release` workflow for the same tag is green and the APK is attached
 - [ ] GitHub `Docker` workflow is green and the versioned beta image is published without moving `latest`
 - [ ] GitHub `Release Notes Sync` mirrored the beta entry into the prerelease body
-- [ ] EAS `Release iOS Beta` completed its build, TestFlight distribution, external beta group, and Beta App Review path
-- [ ] The release heartbeat was created after the tag push and deleted only after every item above passed
 
 ### Stable release (or promotion)
 
@@ -645,9 +717,12 @@ The scope never narrows to the previous beta. A beta entry is an in-flight draft
 - [ ] `release:patch`/`release:promote` completes successfully (includes `release:publish` - be logged into npm as an `otto-code` org member first; see the npm note under "Standard release" if publish fails mid-chain)
 - [ ] npm shows the new version on `latest` (`npm view @otto-code/cli version`)
 - [ ] Move npm's `beta` dist-tag to the new stable version for every published package and verify both `latest` and `beta` resolve to it
-- [ ] GitHub `Desktop Release` workflow for the `v*` tag is green (macOS jobs excepted until Apple signing is configured - Windows/Linux artifacts plus `finalize-rollout` manifests are what count)
-- [ ] GitHub `Android APK Release` workflow for the same tag is green and the APK is attached to the release
-- [ ] GitHub `Deploy App` workflow for the same tag is green (web app on Cloudflare Pages)
-- [ ] GitHub `Docker` workflow published `ghcr.io/draek2077/otto:X.Y.Z` + `:latest`
-- [ ] `Deploy Website` ran on the published release
-- [ ] ~~EAS `Release Mobile` workflow / `build_ios` / `submit_ios` / `submit_ios_for_review` / `build_android` / `submit_android`~~ - N/A on this fork; no store accounts exist yet (see "Mobile builds (EAS)" fork-reality note)
+- [ ] The GitHub Release was published only after the required stable manifests were uploaded, and it has the changelog body and every expected asset for the configured desktop platforms plus Android APK
+- [ ] GitHub `Desktop Release` workflow for the `v*` tag is green
+- [ ] The GitHub Release contains `latest-linux.yml` and `latest.yml`, plus `latest-mac.yml` when Apple signing is configured
+- [ ] Any published `latest-mac.yml` contains the current `minimumSystemVersion` guard
+- [ ] GitHub `Android APK Release` workflow for the same tag is green and the APK is attached
+- [ ] GitHub `Docker` workflow is green and both the versioned and `latest` images are published
+- [ ] GitHub `Release Notes Sync` is green and the release body matches the stable changelog entry
+- [ ] `Deploy App` and `Deploy Website` complete for the applicable release triggers
+- [ ] Store submissions are not required until this fork configures those distribution paths

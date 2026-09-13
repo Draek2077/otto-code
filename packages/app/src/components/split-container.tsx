@@ -43,6 +43,7 @@ import {
 } from "@/components/explorer-sidebar-layout";
 import { RetainedPanel } from "@/components/retained-panel";
 import {
+  hasMultipleVisiblePanes,
   resolveSplitContainerRoot,
   splitNodeContainsPane,
 } from "@/components/split-container-focus";
@@ -207,7 +208,7 @@ interface SplitNodeViewProps extends Omit<
   tabDropPreview: TabDropPreview | null;
   windowChromeCorners: WindowChromeCorners;
   maximizedPaneId: string | null;
-  workspaceHasSplits: boolean;
+  workspaceHasMultiplePanes: boolean;
   onTogglePaneMaximized: (paneId: string) => void;
 }
 
@@ -435,18 +436,18 @@ export function SplitContainer({
     () => removePaneFromSplitTree(layout.root, explorerSidebarPaneId),
     [layout.root, explorerSidebarPaneId],
   );
-  const workspaceHasSplits = mainRoot?.kind === "group";
+  const workspaceHasMultiplePanes = Boolean(mainRoot && hasMultipleVisiblePanes(mainRoot));
   useEffect(() => {
     if (
       maximizedPaneId &&
       (focusModeEnabled ||
-        !workspaceHasSplits ||
+        !workspaceHasMultiplePanes ||
         !mainRoot ||
         !splitNodeContainsPane(mainRoot, maximizedPaneId))
     ) {
       setMaximizedPane(null);
     }
-  }, [focusModeEnabled, mainRoot, maximizedPaneId, workspaceHasSplits]);
+  }, [focusModeEnabled, mainRoot, maximizedPaneId, workspaceHasMultiplePanes]);
   const handleTogglePaneMaximized = useCallback(
     (paneId: string) => {
       setMaximizedPane((current) =>
@@ -800,7 +801,7 @@ export function SplitContainer({
                   tabDropPreview={tabDropPreview}
                   windowChromeCorners={splitRoot.usesFallbackStrip ? "none" : windowChromeCorners}
                   maximizedPaneId={maximizedPaneId}
-                  workspaceHasSplits={workspaceHasSplits}
+                  workspaceHasMultiplePanes={workspaceHasMultiplePanes}
                   onTogglePaneMaximized={handleTogglePaneMaximized}
                   focusModeEnabled={focusModeEnabled}
                   onExitFocusMode={onExitFocusMode}
@@ -1071,7 +1072,7 @@ function SplitNodeView({
   tabDropPreview,
   windowChromeCorners,
   maximizedPaneId,
-  workspaceHasSplits,
+  workspaceHasMultiplePanes,
   onTogglePaneMaximized,
   focusModeEnabled,
   onExitFocusMode,
@@ -1164,7 +1165,7 @@ function SplitNodeView({
             dropPreview={dropPreview}
             tabDropPreview={tabDropPreview}
             maximizedPaneId={maximizedPaneId}
-            workspaceHasSplits={workspaceHasSplits}
+            workspaceHasMultiplePanes={workspaceHasMultiplePanes}
             onTogglePaneMaximized={onTogglePaneMaximized}
             focusModeEnabled={focusModeEnabled}
             onExitFocusMode={onExitFocusMode}
@@ -1224,7 +1225,7 @@ function SplitNodeView({
               tabDropPreview={tabDropPreview}
               windowChromeCorners={windowChromeCorners}
               maximizedPaneId={maximizedPaneId}
-              workspaceHasSplits={workspaceHasSplits}
+              workspaceHasMultiplePanes={workspaceHasMultiplePanes}
               onTogglePaneMaximized={onTogglePaneMaximized}
               focusModeEnabled={focusModeEnabled}
               onExitFocusMode={onExitFocusMode}
@@ -1288,7 +1289,7 @@ function SplitPaneView({
   dropPreview,
   tabDropPreview,
   maximizedPaneId,
-  workspaceHasSplits,
+  workspaceHasMultiplePanes,
   onTogglePaneMaximized,
   focusModeEnabled,
   onExitFocusMode,
@@ -1470,8 +1471,9 @@ function SplitPaneView({
             }
             tabOrientation={resolvedTabOrientation}
             onToggleTabOrientation={handleToggleTabOrientation}
-            showPaneMaximizeAction={workspaceHasSplits}
-            paneMaximized={pane.id === maximizedPaneId}
+            showPaneSplitActions={!focusModeEnabled}
+            showPaneMaximizeAction={workspaceHasMultiplePanes && !focusModeEnabled}
+            paneMaximized={paneId === maximizedPaneId}
             onTogglePaneMaximized={handleTogglePaneMaximized}
             focusModeEnabled={focusModeEnabled}
             onExitFocusMode={onExitFocusMode}
@@ -1514,7 +1516,8 @@ function SplitPaneView({
               }
               tabOrientation={resolvedTabOrientation}
               onToggleTabOrientation={handleToggleTabOrientation}
-              showPaneMaximizeAction={workspaceHasSplits}
+              showPaneSplitActions={!focusModeEnabled}
+              showPaneMaximizeAction={workspaceHasMultiplePanes && !focusModeEnabled}
               paneMaximized={pane.id === maximizedPaneId}
               onTogglePaneMaximized={handleTogglePaneMaximized}
               focusModeEnabled={focusModeEnabled}

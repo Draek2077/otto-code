@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useDesktopPermissions } from "@/desktop/permissions/use-desktop-permissions";
 import { useDesktopSettings } from "@/desktop/settings/desktop-settings";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 
 /**
@@ -51,7 +52,12 @@ export function DesktopNotificationsSection() {
       <View style={settingsStyles.card}>
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.notifications.playSound")}</Text>
+            <SettingsTargetText
+              settingId="app-permissions-notifications-notifications-play-sound"
+              style={settingsStyles.rowTitle}
+            >
+              {t("settings.notifications.playSound")}
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>{t("settings.notifications.playSoundHint")}</Text>
           </View>
           <Switch
@@ -64,7 +70,12 @@ export function DesktopNotificationsSection() {
         </View>
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.notifications.test")}</Text>
+            <SettingsTargetText
+              settingId="app-permissions-notifications-notifications-test-notification"
+              style={settingsStyles.rowTitle}
+            >
+              {t("settings.notifications.test")}
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               {notificationsGranted
                 ? t("settings.notifications.testHint")

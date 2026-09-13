@@ -11,6 +11,14 @@ function visibleMainPane(page: Page) {
   return page.getByTestId("workspace-pane-main").filter({ visible: true });
 }
 
+function composerChangesPill(page: Page) {
+  return page.getByTestId("composer-diff-stat-pill");
+}
+
+async function openComposerDiff(page: Page) {
+  await composerChangesPill(page).click();
+}
+
 async function seedChangedAgent(repoPrefix: string) {
   const workspace = await seedMockAgentWorkspace({
     repoPrefix,
@@ -39,7 +47,7 @@ async function seedChangedAgent(repoPrefix: string) {
   }
 }
 
-test("composer diff stat opens Changes in the configured side pane", async ({ page }) => {
+test("composer diff stat opens the diff in the configured side pane", async ({ page }) => {
   await page.addInitScript((settingsKey) => {
     localStorage.setItem(
       settingsKey,
@@ -58,11 +66,11 @@ test("composer diff stat opens Changes in the configured side pane", async ({ pa
       agentId: workspace.agentId,
     });
 
-    const pill = page.getByTestId("composer-diff-stat-pill");
+    const pill = composerChangesPill(page);
     await expect(pill).toBeVisible({ timeout: 30_000 });
     await expect(pill).toContainText("+2");
     await expect(pill).toContainText("-0");
-    await pill.click();
+    await openComposerDiff(page);
 
     const sidePane = page
       .locator('[data-testid^="workspace-pane-"]')
@@ -87,7 +95,9 @@ test("composer diff stat opens Changes in the configured side pane", async ({ pa
   }
 });
 
-test("composer diff stat opens the compact explorer instead of a Changes tab", async ({ page }) => {
+test("composer diff stat opens a Changes tab without splitting the compact pane", async ({
+  page,
+}) => {
   await page.addInitScript((settingsKey) => {
     localStorage.setItem(settingsKey, JSON.stringify({ subagentTrackPresentation: "pills" }));
   }, APP_SETTINGS_KEY);
@@ -100,18 +110,22 @@ test("composer diff stat opens the compact explorer instead of a Changes tab", a
       agentId: workspace.agentId,
     });
 
-    await page.getByTestId("composer-diff-stat-pill").click();
-
-    await expect(page.getByTestId("changes-header").filter({ visible: true }).first()).toBeVisible({
+    await openComposerDiff(page);
+    await expect(page.getByTestId("working-diff-panel").filter({ visible: true })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByTestId("workspace-tab-working_diff")).toHaveCount(0);
+    await expect(
+      page.getByTestId("workspace-tab-working_diff").filter({ visible: true }),
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-testid^="workspace-pane-"]').filter({ visible: true }),
+    ).toHaveCount(1);
   } finally {
     await workspace.cleanup();
   }
 });
 
-test("composer diff stat opens Changes in the focused pane by default", async ({ page }) => {
+test("composer diff stat opens the diff in the focused pane by default", async ({ page }) => {
   await page.addInitScript((settingsKey) => {
     localStorage.setItem(settingsKey, JSON.stringify({ subagentTrackPresentation: "pills" }));
   }, APP_SETTINGS_KEY);
@@ -124,7 +138,7 @@ test("composer diff stat opens Changes in the focused pane by default", async ({
       agentId: workspace.agentId,
     });
 
-    await page.getByTestId("composer-diff-stat-pill").click();
+    await openComposerDiff(page);
 
     const mainPane = visibleMainPane(page);
     await expect(mainPane.getByTestId("workspace-tab-working_diff")).toBeVisible({

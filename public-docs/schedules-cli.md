@@ -91,4 +91,4 @@ Use `--every <duration>` for intervals and `--cron "<expr>"` for 5-field cron. C
 
 Interval schedules run once immediately by default; pass `--no-run-now` to wait for the first interval. Cron schedules wait for the next matching time; pass `--run-now` to fire once immediately.
 
-When targeting a remote daemon with `--host`, pass `--cwd`; your local working directory may not exist on the remote machine.
+Start the command with `paseo --host <target> schedule create ...` when targeting a remote daemon. Pass `--cwd`; your local working directory may not exist on the remote machine.

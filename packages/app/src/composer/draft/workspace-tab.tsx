@@ -2,10 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { traceCaptureAsync } from "@/diagnostics/resource-report/capture-operations";
 import { Keyboard, ScrollView, StyleSheet as RNStyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import ReanimatedAnimated from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
+import { KeyboardTranslateView } from "@/components/keyboard-translate-view";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { useContainerHeight } from "@/hooks/use-container-height";
 import invariant from "tiny-invariant";
@@ -26,7 +25,7 @@ import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "@/composer/draft/create-flow";
 import { resolveTurnPresentation, TURN_LIVENESS_IDLE } from "@/timeline/turn-liveness";
-import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import type { SelectorProfile } from "@/components/combined-model-selector";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
@@ -36,7 +35,7 @@ import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
 import { useWakeWordAutoStartStore } from "@/stores/wake-word-auto-start-store";
 import { useAgentControlCommandCenterActions } from "@/command-center/agent-control-registration";
-import { encodeImages } from "@/utils/encode-images";
+import { requestWorkspaceDraftAgent } from "@/composer/draft/create-agent-request";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { shouldAutoFocusWorkspaceDraftComposer } from "@/screens/workspace/workspace-draft-pane-focus";
 import {
@@ -67,7 +66,6 @@ import { openPreferredWorkspaceTarget } from "@/workspace-tabs/open-beside";
 import { useSettings } from "@/hooks/use-settings";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
-const EMPTY_ONLINE_SERVER_IDS: string[] = [];
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
   supportsSessionPersistence: false,
@@ -195,20 +193,19 @@ async function submitDraftCreateRequest(input: {
     featureValues: autoSubmitConfig?.featureValues ?? composerState.featureValues,
   });
 
-  const imagesData = await encodeImages(images);
   const attachmentsArray = Array.isArray(attachments) ? attachments : undefined;
   const draftPersonality = resolveDraftPersonality({
     autoSubmitConfig,
     agentControls: composerState.agentControls,
   });
   const result = await traceCaptureAsync("chat.create", () =>
-    client.createAgent({
+    requestWorkspaceDraftAgent(client, {
       config,
       workspaceId,
       ...(draftPersonality ? { personality: draftPersonality.id } : {}),
-      ...(text ? { initialPrompt: text } : {}),
+      text,
       clientMessageId: attempt.clientMessageId,
-      ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
+      ...(images ? { images } : {}),
       ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
       ...authoringArchitecturalViewDraftOption(input.architecturalViewDraft),
     }),
@@ -267,6 +264,7 @@ function buildDraftAgentSnapshot(input: {
     provider,
     personalitySpinner: draftPersonality?.spinner ?? null,
     status: "running",
+    turn: { phase: "idle", cancellationRequestId: null },
     createdAt: now,
     updatedAt: now,
     lastUserMessageAt: now,
@@ -288,17 +286,10 @@ function buildDraftAgentSnapshot(input: {
 }
 
 function buildDraftInitialValues(input: {
-  workingDir: string | null;
   initialSetup: WorkspaceDraftTabSetup | null;
 }): CreateAgentInitialValues | undefined {
-  if (!input.workingDir) {
-    return undefined;
-  }
-  if (!input.initialSetup) {
-    return { workingDir: input.workingDir };
-  }
+  if (!input.initialSetup) return undefined;
   return {
-    workingDir: input.workingDir,
     provider: input.initialSetup.provider,
     modeId: input.initialSetup.modeId,
     model: input.initialSetup.model,
@@ -318,13 +309,6 @@ function resolveDraftWorkingDirectory(input: {
     return input.initialSetup.cwd;
   }
   return input.workspaceDirectory;
-}
-
-function resolveOnlineServerIds(input: { isConnected: boolean; serverId: string }): string[] {
-  if (!input.isConnected) {
-    return EMPTY_ONLINE_SERVER_IDS;
-  }
-  return [input.serverId];
 }
 
 function shouldEnableDraftCommandCenter(input: {
@@ -434,7 +418,6 @@ export function WorkspaceDraftAgentTab({
     setPendingWakeWordAutoStart(null);
   }, []);
   const client = useHostRuntimeClient(serverId);
-  const isConnected = useHostRuntimeIsConnected(serverId);
   const workspaceFields = useWorkspaceFields(serverId, workspaceId, (w) => ({
     workspaceDirectory: w.workspaceDirectory,
     id: w.id,
@@ -446,10 +429,8 @@ export function WorkspaceDraftAgentTab({
     initialSetup: draftSetup,
   });
   const draftInitialValues = buildDraftInitialValues({
-    workingDir: draftWorkingDirectory,
     initialSetup: draftSetup,
   });
-  const onlineServerIds = resolveOnlineServerIds({ isConnected, serverId });
   const draftStoreKey = useMemo(
     () =>
       buildDraftStoreKey({
@@ -466,7 +447,6 @@ export function WorkspaceDraftAgentTab({
       initialValues: draftInitialValues,
       initialFeatureValues: draftSetup?.featureValues,
       isVisible: true,
-      onlineServerIds,
       lockedWorkingDir: draftWorkingDirectory ?? undefined,
       initialPersonalityId: resolveDraftInitialPersonalityId(draftSetup),
     },
@@ -759,17 +739,9 @@ export function WorkspaceDraftAgentTab({
     focusInputRef.current = focus;
   }, []);
 
-  const { style: composerKeyboardStyle } = useKeyboardShiftStyle({
-    mode: "translate",
-  });
-
   const inputAreaWrapperStyle = useMemo(
-    () => [
-      animatedStaticStyles.inputAreaWrapper,
-      { paddingBottom: insets.bottom },
-      composerKeyboardStyle,
-    ],
-    [insets.bottom, composerKeyboardStyle],
+    () => [animatedStaticStyles.inputAreaWrapper, { paddingBottom: insets.bottom }],
+    [insets.bottom],
   );
 
   const handleDropdownCloseFocus = useCallback(() => {
@@ -785,7 +757,7 @@ export function WorkspaceDraftAgentTab({
     [composerState.agentControls, handleDropdownCloseFocus, isSubmitting],
   );
   const visualizerFooter = (
-    <ReanimatedAnimated.View style={inputAreaWrapperStyle} onLayout={onInputAreaLayout}>
+    <KeyboardTranslateView style={inputAreaWrapperStyle} onLayout={onInputAreaLayout}>
       {importPillPress ? (
         <View style={styles.importPillRow}>
           <ChatWidthBounds style={styles.importPillContent}>
@@ -806,7 +778,8 @@ export function WorkspaceDraftAgentTab({
         blurOnSubmit={true}
         value={draftInput.text}
         onChangeText={draftInput.editText}
-        textReplacementKey={draftInput.textReplacementKey}
+        replaceText={draftInput.replaceText}
+        textReplacement={draftInput.textReplacement}
         attachments={draftInput.attachments}
         attachmentScopeKeys={attachmentScopeKeys}
         attachmentWriteScopeKey={workspaceAttachmentScopeKey}
@@ -821,7 +794,7 @@ export function WorkspaceDraftAgentTab({
         agentControls={composerAgentControls}
         viewportHeight={tabHeight}
       />
-    </ReanimatedAnimated.View>
+    </KeyboardTranslateView>
   );
 
   const draftConfiguration = (
@@ -873,6 +846,7 @@ export function WorkspaceDraftAgentTab({
 
 const animatedStaticStyles = RNStyleSheet.create({
   inputAreaWrapper: {
+    flexShrink: 1,
     width: "100%",
   },
 });

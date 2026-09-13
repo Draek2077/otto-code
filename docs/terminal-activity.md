@@ -27,13 +27,13 @@ TerminalSession
 
 `TerminalActivityTracker` is the single stateful object per session. It holds `{ state, changedAt }`, starts at unknown (`null`), and fires `onChange` only when the state actually changes.
 
-Terminal directory snapshots (`terminalsChanged`) and workspace contribution changes are separate concerns. A title-only change produces a terminal list snapshot but never touches workspace descriptors. A transition that changes the derived workspace bucket (e.g. idle -> working, working -> idle, attention cleared) emits both a terminal list snapshot and a server-internal `TerminalWorkspaceContributionChanged` event, which Session consumes to invalidate every active workspace sharing the owning workspace's `cwd`.
+Terminal directory snapshots (`terminalsChanged`) and workspace contribution changes are separate concerns. A title-only change produces a terminal list snapshot but never touches workspace descriptors. A transition that changes the derived workspace bucket (e.g. idle -> working, working -> idle, attention cleared) emits both a terminal list snapshot and a server-internal `TerminalWorkspaceContributionChanged` event, which Session consumes for the terminal's explicit `workspaceId` only. A same-`cwd` sibling is unaffected.
 
 ### Transitions carry their own history
 
 Each `onChange` delivers both the new snapshot and the `previous` one (`{ state, changedAt }`). The transition flows unchanged up through `TerminalSession.onActivityChange` (as `{ activity, previous }`), the worker protocol's `terminalActivityChange` event, and the manager-level `subscribeTerminalActivity(listener)` stream (`{ terminalId, name, cwd, activity, previous }`).
 
-The daemon consumes these transitions, not snapshots. When a transition moves from `working` to `idle`, the tracker records finished attention, so the terminal shows the same green finished dot as an idle agent that needs review. The websocket layer also fires a "Terminal finished" attention notification. A terminal that exits while still working emits no turn-end notification.
+The daemon consumes these transitions, not snapshots. When a transition moves from `working` to `idle`, the tracker records finished attention, so its workspace contributes finished attention like an idle agent that needs review; the source terminal tab retains Otto's activity glyph until attention clears. The websocket layer also fires a "Terminal finished" attention notification. A terminal that exits while still working emits no turn-end notification.
 
 Terminal list visibility and status contribution are both `workspaceId`-scoped: a terminal belongs to the workspace that created it, same-`cwd` sibling workspaces do not see it in their terminal lists, and its activity drives the status bucket of that owning workspace only (`applyTerminalContributions` in `packages/server/src/server/workspace-directory.ts` - "a terminal contributes only to the workspace it carries; same-cwd siblings are untouched"). A live terminal with no `workspaceId` contributes to no workspace's status; there is no `cwd` fan-out and no path-prefix fallback for status.
 
@@ -66,12 +66,18 @@ Codex hook mapping:
 - `PermissionRequest` → `needs-input`
 - `Stop` → `idle`
 
-OpenCode uses a server plugin instead of command hooks. The plugin listens to OpenCode bus events and emits these Otto hook events:
+OpenCode uses a server plugin instead of command hooks. Both generations discover the same global plugin file. Their loaders select separate entrypoints: OpenCode 1 calls `server()` with `{ type, properties }` bus events; OpenCode 2 calls `setup()` and subscribes to decoded `{ type, data }` events. Do not share their status mapping: V1 publishes `session.status` snapshots, while V2 publishes `session.execution.*` transitions.
 
-- `session.status` with `busy` or `retry` → `running`
-- `session.status` with `idle` → `idle`
-- `permission.asked` → `needs-input`
-- `permission.replied` → `running`
+| OpenCode event                                              | Generation | Activity    |
+| ----------------------------------------------------------- | ---------- | ----------- |
+| `session.status` with `busy` or `retry`                     | 1          | running     |
+| `session.status` with `idle`                                | 1          | idle        |
+| `session.execution.started`                                 | 2          | running     |
+| `session.execution.succeeded`, `.failed`, or `.interrupted` | 2          | idle        |
+| `permission.asked`                                          | Both       | needs-input |
+| `permission.replied`                                        | Both       | running     |
+
+The plugin translates both event contracts into the existing Otto hook events. OpenCode 2 disposes its event subscription when the plugin unloads.
 
 The daemon maps hook states onto terminal activity like an agent lifecycle plus unread attention: `running` → `state: working`, `idle` → `state: idle`, and `needs-input` → `state: idle` with `attentionReason: needs_input`. A `working` → `idle` transition records `state: idle` with `attentionReason: finished` until the user focuses that terminal; plain idle terminals still contribute no workspace status.
 
@@ -97,7 +103,7 @@ When enabled, Otto installs provider hooks globally:
 - Codex hooks are written to `~/.codex/hooks.json` (or `CODEX_HOME/hooks.json` when that override is set). Codex supports a native `commandWindows`, so each Otto hook includes both POSIX and Windows commands. Non-managed Codex hooks are trust-gated by Codex; users may see Codex's hook review prompt before the hook runs.
 - OpenCode gets a self-contained plugin at `$XDG_CONFIG_HOME/opencode/plugins/otto-terminal-activity.js` (or `~/.config/opencode/plugins/otto-terminal-activity.js` when XDG is unset; `OPENCODE_CONFIG_DIR` still wins when set).
 
-Installation is marker-based/idempotent for config hooks and exact-file/idempotent for the OpenCode plugin. Otto preserves user hooks, removes only its own marker-matched command hooks, and leaves hooks installed across daemon shutdown. Outside a Otto terminal they are inert because the command or plugin is gated on `OTTO_TERMINAL_ID`.
+Installation is marker-based/idempotent for config hooks and exact-file/idempotent for the OpenCode plugin. Otto preserves user hooks, removes only its own marker-matched command hooks, and leaves hooks installed across daemon shutdown. Outside an Otto terminal they are inert because the command or plugin is gated on `OTTO_TERMINAL_ID`.
 
 Provider variation lives in `AGENT_HOOK_PROVIDERS`: provider id, installed events, config install metadata, and runtime event-to-activity resolution. The daemon calls `installRegisteredAgentHooks()` once; the CLI calls `resolveHookActivity(provider, event, input)`. Adding a provider should add one provider entry and register it in `AGENT_HOOK_PROVIDERS`, without editing the generic CLI command or daemon bootstrap.
 

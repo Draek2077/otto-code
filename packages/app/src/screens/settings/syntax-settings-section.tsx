@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
@@ -59,9 +60,12 @@ function SyntaxRow({
   return (
     <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>
+        <SettingsTargetText
+          settingId="app-editor-syntax-highlighting-highlight-theme"
+          style={settingsStyles.rowTitle}
+        >
           {t("settings.appearance.syntax.highlightTheme")}
-        </Text>
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           {t("settings.appearance.syntax.highlightThemeHint")}
         </Text>

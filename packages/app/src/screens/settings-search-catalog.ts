@@ -21,10 +21,12 @@ export interface SettingsSearchItem {
   persistence: string;
   advanced: boolean;
   developerOnly?: boolean;
+  /** A live SDK Settings screen; identity is scoped to its contributing host. */
+  pluginDestination?: { serverId: string; pluginId: string; screenId: string };
 }
 
 /**
- * The complete audited Settings inventory, including preferences, actions,
+ * The source-reconciled Settings inventory, including preferences, actions,
  * permissions, status rows, catalog choices, and conditionally visible rows.
  * Secrets are indexed by their user-facing labels and descriptions only.
  */
@@ -64,4 +66,18 @@ export function searchSettingsCatalog(query: string): SettingsSearchItem[] {
     return [];
   }
   return SETTINGS_SEARCH_ITEMS.filter((item) => matchesSettingsSearchTerms(item, terms));
+}
+
+const targetIdsByPersistence = new Map<string, readonly string[]>();
+for (const item of SETTINGS_SEARCH_ITEMS) {
+  const key = `${item.section}\0${item.persistence}`;
+  targetIdsByPersistence.set(key, [...(targetIdsByPersistence.get(key) ?? []), item.id]);
+}
+const NO_TARGET_IDS: readonly string[] = [];
+/** Descriptor-driven rows use their semantic storage key, independent of displayed language. */
+export function settingsTargetIdsForPersistence(
+  section: SettingsSearchItem["section"],
+  persistence: string,
+): readonly string[] {
+  return targetIdsByPersistence.get(`${section}\0${persistence}`) ?? NO_TARGET_IDS;
 }

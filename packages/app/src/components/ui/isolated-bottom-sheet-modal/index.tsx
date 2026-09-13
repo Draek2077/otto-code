@@ -5,12 +5,12 @@ import {
 import React from "react";
 import { forwardRef, useCallback, useEffect, useMemo, useRef } from "react";
 import { FLOATING_LAYER_NO_DRAG_STYLE } from "@/components/desktop/app-region";
-import { BottomSheetInputContext } from "@/components/ui/bottom-sheet-input-context";
 import type { ElementRef, ReactNode } from "react";
 import {
   type BottomSheetController,
   createBottomSheetVisibilityTracker,
 } from "./visibility-tracker";
+import { BottomSheetScope } from "@/components/ui/bottom-sheet-scope";
 
 type GorhomBottomSheetModalMethods = ElementRef<typeof GorhomBottomSheetModal>;
 
@@ -86,9 +86,7 @@ export const IsolatedBottomSheetModal = forwardRef<
       enableDismissOnClose
       stackBehavior={presentation}
     >
-      <BottomSheetInputContext.Provider value>
-        {contextBridge ? contextBridge(children) : children}
-      </BottomSheetInputContext.Provider>
+      <BottomSheetScope>{contextBridge ? contextBridge(children) : children}</BottomSheetScope>
     </GorhomBottomSheetModal>
   );
 

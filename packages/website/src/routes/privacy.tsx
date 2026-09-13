@@ -6,7 +6,7 @@ export const Route = createFileRoute("/privacy")({
   head: () =>
     pageMeta(
       "Privacy Policy - Otto",
-      "Privacy policy for Otto, the self-hosted coding agent manager. No tracking, no analytics, and no required cloud service.",
+      "Privacy information for the self-hosted Otto app, optional relay, website analytics, and voluntary feedback.",
       "/privacy",
     ),
   component: Privacy,
@@ -23,7 +23,7 @@ function Privacy() {
           environment you choose, with no required cloud service or account.
         </p>
         <p>
-          For our security policy and responsibility disclaimer, see the{" "}
+          For the security policy and responsibility disclaimer, see the{" "}
           <a href="/security" className="underline hover:text-white/90">
             Security Policy
           </a>
@@ -57,9 +57,20 @@ function Privacy() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-xl font-medium text-white">Analytics and tracking</h2>
+          <h2 className="text-xl font-medium text-white">App and website</h2>
           <p>
-            Otto uses no analytics, tracking pixels, cookies, or ads. The app does not phone home.
+            The Otto app does not collect app telemetry. The public website loads Plausible
+            analytics. Visiting the website is separate from running the self-hosted app and daemon.
+          </p>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-xl font-medium text-white">Voluntary feedback</h2>
+          <p>
+            Sending feedback submits your message and any contact, context, or source information
+            included in the report to the website&apos;s feedback endpoint. The endpoint forwards
+            accepted reports to the configured feedback channel. It uses IP-based rate-limit records
+            that expire after one hour to limit repeated submissions.
           </p>
         </section>
 
@@ -78,7 +89,7 @@ function Privacy() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-xl font-medium text-white">We don&apos;t sell your data</h2>
+          <h2 className="text-xl font-medium text-white">I don&apos;t sell your data</h2>
           <p>Otto does not sell your data. It is self-hosted and local-first.</p>
         </section>
 
@@ -98,7 +109,7 @@ function Privacy() {
           </p>
         </section>
 
-        <p className="text-sm text-white/50 pt-6">Last updated: February 2025</p>
+        <p className="text-sm text-white/50 pt-6">Last updated: September 13, 2026</p>
       </div>
     </SiteShell>
   );

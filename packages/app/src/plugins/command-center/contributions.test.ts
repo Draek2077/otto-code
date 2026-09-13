@@ -4,9 +4,9 @@ import { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import {
   defineRpc,
   type PluginAgentSnapshot,
-  type PluginCommandCenterItemContribution,
   type PluginWorkspaceSnapshot,
 } from "@otto-code/plugin";
+import { type PluginCommandCenterItemContribution } from "@otto-code/plugin/client";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { InstalledPlugin } from "../types";
@@ -15,9 +15,9 @@ import { buildPluginCommandCenterContributions } from "./contributions";
 const workspace: PluginWorkspaceSnapshot = {
   id: "workspace-1",
   projectId: "project-1",
-  projectDisplayName: "Otto",
-  projectRootPath: "/repo/otto",
-  directory: "/repo/otto/review",
+  projectDisplayName: "Paseo",
+  projectRootPath: "/repo/paseo",
+  directory: "/repo/paseo/review",
   projectKind: "git",
   kind: "worktree",
   name: "Review",
@@ -62,6 +62,7 @@ function plugin(onAgentSelect: AgentCommandItem["onSelect"]): InstalledPlugin {
     clientBundle: "bundle",
     queryClient: new QueryClient(),
     cleanup: () => {},
+    settingsScreens: [],
     surfaces: [{ id: "main", Component: () => null }],
     sidebarItems: [],
     workspacePanels: [
@@ -97,8 +98,11 @@ function plugin(onAgentSelect: AgentCommandItem["onSelect"]): InstalledPlugin {
         onSelect: onAgentSelect,
       },
     ],
+    clientSlashCommands: [],
     attachmentSources: [],
     themes: [],
+    timelineTransformers: [],
+    timelineRenderers: [],
   };
 }
 
@@ -140,6 +144,7 @@ describe("plugin Command Center contributions", () => {
       runtime: createRuntime,
       state: stateSource(),
       navigation: {
+        openSettings() {},
         openSurface() {},
         openWorkspacePanel() {},
         openAgentPanel() {},
@@ -178,6 +183,7 @@ describe("plugin Command Center contributions", () => {
       expect(context.workspace).toBe(workspace);
       expect(context.agent).toBe(agent);
       receivedOtto = context.otto;
+      expect(Reflect.get(context, "paseo")).toBe(context.otto);
       rpcValue = (await context.rpc(inspect, { value: 4 })).value;
       context.openSurface("main");
       context.openPanel("details", { location: "explorer" });
@@ -190,6 +196,7 @@ describe("plugin Command Center contributions", () => {
       workspaceId: workspace.id,
       agentId: agent.id,
       navigation: {
+        openSettings() {},
         openSurface(pluginId, surfaceId) {
           opened.push(`${pluginId}/surface/${surfaceId}`);
         },
@@ -221,6 +228,7 @@ describe("plugin Command Center contributions", () => {
         workspaceId: workspace.id,
         agentId: agent.id,
         navigation: {
+          openSettings() {},
           openSurface() {},
           openWorkspacePanel() {},
           openAgentPanel() {},

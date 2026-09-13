@@ -1,20 +1,15 @@
 import {
-  createContext,
   Fragment,
-  memo,
   type ReactElement,
   useCallback,
-  useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import {
   FlatList,
-  Keyboard,
+  Platform,
   View,
   type LayoutChangeEvent,
   type ListRenderItemInfo,
@@ -23,18 +18,23 @@ import {
   type ViewStyle,
 } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
+import { useRetainedPanelActive } from "@/components/retained-panel";
+import { ChatThemeScope } from "@/components/chat-theme-scope";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { StreamItem } from "@/types/stream";
 import type { Theme } from "@/styles/theme";
-import { useRetainedPanelActive } from "@/components/retained-panel";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { ChatThemeScope } from "@/components/chat-theme-scope";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { useSettledKeyboardShift } from "@/hooks/keyboard-shift-context";
+import { resolveStreamKeyboardInset } from "@/hooks/keyboard-shift-policy";
+import { useRevisedHistoryRows } from "./history-row-revision";
 import { useBottomAnchorController } from "./bottom-anchor-controller";
 import { useScrollKeyboardDismiss } from "./scroll-keyboard-dismiss/use-scroll-keyboard-dismiss";
 import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./strategy";
-import { createStreamStrategy, resolveBottomAnchorTransportBehavior } from "./strategy";
-import { isNativePassiveRestickEligible, isNativeReaderAtNewestEdge } from "./native-bottom-bands";
-import { deriveVisibilityScrollRestoration } from "./visibility-scroll-restoration";
+import {
+  createStreamStrategy,
+  isNearBottomForStreamRenderStrategy,
+  resolveBottomAnchorTransportBehavior,
+} from "./strategy";
 import {
   abandonHistoryStartPaginationRequest,
   createHistoryStartPaginationState,
@@ -55,10 +55,6 @@ const DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION = Object.freeze({
   autoscrollToTopThreshold: 0,
 });
 
-function keyExtractor(item: { id: string }): string {
-  return item.id;
-}
-
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
@@ -71,93 +67,16 @@ const historyStartSlotStyle: ViewStyle = {
 };
 const HISTORY_START_SETTLE_FRAMES = 2;
 
-/**
- * The live turn renders in the inverted list's header, so before this store it
- * was a fresh element on every ~48ms stream flush - which changed a FlatList
- * prop, re-rendered VirtualizedList, and walked every mounted cell in the
- * window. On a phone that is the whole per-chunk cost of a long chat, and it is
- * what makes typing stutter while the model streams (one JS thread, shared).
- *
- * Now the header node is published through an external store and read by a
- * component whose identity never changes, so a flush re-renders ONLY the live
- * turn. Everything the FlatList itself is handed stays referentially stable and
- * React bails out of the list subtree entirely (see the memoized element below).
- */
-interface LiveHeaderStore {
-  subscribe: (listener: () => void) => () => void;
-  getSnapshot: () => ReactElement | null;
+function keyExtractor(item: { id: string }): string {
+  return item.id;
 }
-
-const EMPTY_LIVE_HEADER_STORE: LiveHeaderStore = {
-  subscribe: () => () => {},
-  getSnapshot: () => null,
-};
-
-const LiveHeaderContext = createContext<LiveHeaderStore>(EMPTY_LIVE_HEADER_STORE);
-
-// One cached copy per (item, breakpoint), so flipping the breakpoint hands the
-// FlatList fresh identities exactly once instead of on every later render.
-const historyRowDisplayVariants = new WeakMap<
-  StreamItem,
-  { compact?: StreamItem; regular?: StreamItem }
->();
-
-function getHistoryRowDisplayVariant(item: StreamItem, compact: boolean): StreamItem {
-  let variants = historyRowDisplayVariants.get(item);
-  if (!variants) {
-    variants = {};
-    historyRowDisplayVariants.set(item, variants);
-  }
-  const key = compact ? "compact" : "regular";
-  variants[key] ??= { ...item };
-  return variants[key];
-}
-
-function useLiveHeaderStore(content: ReactElement | null): LiveHeaderStore {
-  const contentRef = useRef<ReactElement | null>(content);
-  const listenersRef = useRef(new Set<() => void>());
-
-  // Layout effect, not render: publishing during render would tear if React
-  // threw the render away. Committing before paint keeps the reveal frame-exact.
-  useLayoutEffect(() => {
-    if (contentRef.current === content) {
-      return;
-    }
-    contentRef.current = content;
-    for (const listener of listenersRef.current) {
-      listener();
-    }
-  }, [content]);
-
-  return useMemo(
-    () => ({
-      subscribe: (listener: () => void) => {
-        listenersRef.current.add(listener);
-        return () => {
-          listenersRef.current.delete(listener);
-        };
-      },
-      getSnapshot: () => contentRef.current,
-    }),
-    [],
-  );
-}
-
-// The live turn is delivered through a store so the list does not re-render on
-// every chunk - which also means these renders never pass through the pane's
-// `BlackChatScope` markers. `ChatThemeScope` re-asserts the scope inside this
-// component's own output, so the streaming turn keeps the black ramp.
-const LiveStreamHeader = memo(function LiveStreamHeader() {
-  const store = useContext(LiveHeaderContext);
-  const content = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  return <ChatThemeScope>{content}</ChatThemeScope>;
-});
 
 function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrategy }) {
   const {
     agentId,
     segments,
     historyRowRevision,
+    liveHeadRowRevision,
     boundary,
     renderers,
     listEmptyComponent,
@@ -175,11 +94,11 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     strategy,
   } = props;
   const { renderHistoryMountedRow, renderLiveHeadRow, renderLiveAuxiliary } = renderers;
-  const flatListRef = useRef<FlatList<StreamItem>>(null);
   const isPaneVisible = useRetainedPanelActive();
-  const isPaneVisibleRef = useRef(isPaneVisible);
   const wasPaneVisibleRef = useRef(isPaneVisible);
-  const lastVisibleScrollOffsetYRef = useRef(0);
+  const isPaneVisibleRef = useRef(isPaneVisible);
+  isPaneVisibleRef.current = isPaneVisible;
+  const flatListRef = useRef<FlatList<StreamItem>>(null);
   const streamViewportMetricsRef = useRef({
     containerKey: "native-virtualized",
     contentHeight: 0,
@@ -190,12 +109,11 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     contentMeasuredForKey: null as string | null,
   });
   const scrollOffsetYRef = useRef(0);
-  const programmaticScrollEventBudgetRef = useRef(0);
-  const isAnimatedProgrammaticScrollActiveRef = useRef(false);
-  const isNativeUserScrollActiveRef = useRef(false);
-  const isNativeMomentumScrollActiveRef = useRef(false);
+  const isUserScrollActiveRef = useRef(false);
   const scrollKeyboardDismiss = useScrollKeyboardDismiss();
-  const pendingNativeUserScrollEndFrameRef = useRef<number | null>(null);
+  const settledKeyboardShift = useSettledKeyboardShift();
+  const userScrollEndFrameIdRef = useRef<number | null>(null);
+  const programmaticScrollEventBudgetRef = useRef(0);
   const [isNativeViewportSettling, setIsNativeViewportSettling] = useState(false);
   const nativeViewportSettlingFrameIdRef = useRef<number | null>(null);
   const historyStartReadyRef = useRef(false);
@@ -205,37 +123,13 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   const historyStartPaginationStateRef = useRef(historyStartPaginationState);
   const historyStartSettleSchedulerRef = useRef<HistoryStartSettleScheduler | null>(null);
 
-  isPaneVisibleRef.current = isPaneVisible;
-
   const historyItems = useMemo(() => {
     if (segments.historyVirtualized.length === 0) {
       return segments.historyMounted;
     }
     return [...segments.historyVirtualized, ...segments.historyMounted];
   }, [segments.historyMounted, segments.historyVirtualized]);
-  // Keep unchanged item identities intact so live updates only rerender the rows
-  // whose projected content or local display state actually changed. Without
-  // this a collapsed tool-call run sitting in retained history would keep its
-  // stale counts (and its spinner) after the run finished. A breakpoint change
-  // is rare and intentionally refreshes the whole history window.
-  const globallyRevisedHistoryRows = useMemo(() => {
-    const globalDisplayState = historyRowRevision?.globalDisplayState ?? false;
-    return historyItems.map((item) => getHistoryRowDisplayVariant(item, globalDisplayState));
-  }, [historyItems, historyRowRevision?.globalDisplayState]);
-  const displayStateHistoryRows = useMemo(
-    () =>
-      globallyRevisedHistoryRows.map((item) =>
-        historyRowRevision?.displayStateById.has(item.id) ? { ...item } : item,
-      ),
-    [globallyRevisedHistoryRows, historyRowRevision?.displayStateById],
-  );
-  const historyRows = useMemo(
-    () =>
-      displayStateHistoryRows.map((item) =>
-        historyRowRevision?.contentById.has(item.id) ? { ...item } : item,
-      ),
-    [displayStateHistoryRows, historyRowRevision?.contentById],
-  );
+  const historyRows = useRevisedHistoryRows(historyItems, historyRowRevision);
   const getHistoryStartPaginationInput = useStableEvent((): HistoryStartPaginationInput => {
     const metrics = streamViewportMetricsRef.current;
     const hasMeasuredViewport =
@@ -313,6 +207,13 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     }
   }, []);
 
+  const clearPendingUserScrollEnd = useCallback(() => {
+    if (userScrollEndFrameIdRef.current !== null) {
+      cancelAnimationFrame(userScrollEndFrameIdRef.current);
+      userScrollEndFrameIdRef.current = null;
+    }
+  }, []);
+
   const markNativeViewportSettling = useCallback(() => {
     clearNativeViewportSettling();
     setIsNativeViewportSettling(true);
@@ -340,28 +241,13 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
 
   const scrollToBottom = useCallback(
     (animated: boolean) => {
-      if (!isPaneVisibleRef.current) {
-        return;
-      }
-      if (!animated && isAnimatedProgrammaticScrollActiveRef.current) {
-        return;
-      }
-      // At offset zero an inverted list already represents the newest edge.
-      // Reissuing this command for every stream flush interrupts native touch
-      // and momentum handling. Following mode disables native visible-content
-      // preservation below, so no later layout correction can move this edge.
-      if (!animated && scrollOffsetYRef.current <= 1) {
-        onNearBottomChange(true);
-        return;
-      }
-      isAnimatedProgrammaticScrollActiveRef.current = animated;
+      if (!isPaneVisibleRef.current) return;
       programmaticScrollEventBudgetRef.current = 3;
       flatListRef.current?.scrollToOffset({
         offset: 0,
         animated,
       });
       scrollOffsetYRef.current = 0;
-      lastVisibleScrollOffsetYRef.current = 0;
       streamViewportMetricsRef.current = {
         ...streamViewportMetricsRef.current,
         offsetY: 0,
@@ -380,111 +266,60 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     getMeasurementState: () => streamViewportMetricsRef.current,
     isNearBottom: () => {
       const metrics = streamViewportMetricsRef.current;
-      return isNativeReaderAtNewestEdge(metrics.offsetY);
+      return isNearBottomForStreamRenderStrategy({
+        strategy,
+        offsetY: metrics.offsetY,
+        threshold: 32,
+        contentHeight: metrics.contentHeight,
+        viewportHeight: metrics.viewportHeight,
+      });
     },
     scrollToBottom,
   });
-  const bottomAnchorControllerRef = useRef(bottomAnchorController);
-  bottomAnchorControllerRef.current = bottomAnchorController;
-
-  const finishNativeUserScroll = useStableEvent(() => {
-    if (!isNativeUserScrollActiveRef.current) {
-      return;
-    }
-    if (pendingNativeUserScrollEndFrameRef.current !== null) {
-      cancelAnimationFrame(pendingNativeUserScrollEndFrameRef.current);
-      pendingNativeUserScrollEndFrameRef.current = null;
-    }
-    isNativeUserScrollActiveRef.current = false;
-    isNativeMomentumScrollActiveRef.current = false;
-    const metrics = streamViewportMetricsRef.current;
-    const isNearBottom = isNativeReaderAtNewestEdge(metrics.offsetY);
-    bottomAnchorControllerRef.current.endUserScroll({ isNearBottom });
-    if (isNearBottom && metrics.offsetY > 0) {
-      scrollToBottom(false);
-    }
-  });
-
-  const handleScrollBeginDrag = useStableEvent((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (pendingNativeUserScrollEndFrameRef.current !== null) {
-      cancelAnimationFrame(pendingNativeUserScrollEndFrameRef.current);
-      pendingNativeUserScrollEndFrameRef.current = null;
-    }
-    isNativeUserScrollActiveRef.current = true;
-    isNativeMomentumScrollActiveRef.current = false;
-    isAnimatedProgrammaticScrollActiveRef.current = false;
-    programmaticScrollEventBudgetRef.current = 0;
-    scrollKeyboardDismiss.onScrollBeginDrag(event);
-    bottomAnchorControllerRef.current.beginUserScroll();
-    const rearmed = rearmHistoryStartPagination(historyStartPaginationStateRef.current);
-    if (rearmed !== historyStartPaginationStateRef.current) {
-      historyStartPaginationStateRef.current = rearmed;
-      setHistoryStartPaginationState(rearmed);
-      evaluateHistoryStart();
-    }
-  });
-
-  const handleScrollEndDrag = useStableEvent((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (!isNativeUserScrollActiveRef.current) {
-      return;
-    }
-    scrollKeyboardDismiss.onScrollEndDrag(event);
-    pendingNativeUserScrollEndFrameRef.current = requestAnimationFrame(() => {
-      pendingNativeUserScrollEndFrameRef.current = null;
-      if (!isNativeMomentumScrollActiveRef.current) {
-        finishNativeUserScroll();
-      }
-    });
-  });
-
-  const handleMomentumScrollBegin = useStableEvent(() => {
-    if (!isNativeUserScrollActiveRef.current) {
-      return;
-    }
-    isNativeMomentumScrollActiveRef.current = true;
-    if (pendingNativeUserScrollEndFrameRef.current !== null) {
-      cancelAnimationFrame(pendingNativeUserScrollEndFrameRef.current);
-      pendingNativeUserScrollEndFrameRef.current = null;
-    }
-  });
-
-  const handleMomentumScrollEnd = useStableEvent(() => {
-    if (isAnimatedProgrammaticScrollActiveRef.current) {
-      isAnimatedProgrammaticScrollActiveRef.current = false;
-      bottomAnchorControllerRef.current.reevaluate(false);
-      return;
-    }
-    if (isNativeUserScrollActiveRef.current) {
-      finishNativeUserScroll();
-    }
-  });
-
-  useLayoutEffect(() => {
-    const wasPaneVisible = wasPaneVisibleRef.current;
+  useEffect(() => {
+    const resumed = isPaneVisible && !wasPaneVisibleRef.current;
     wasPaneVisibleRef.current = isPaneVisible;
-    const restoration = deriveVisibilityScrollRestoration({
-      wasVisible: wasPaneVisible,
-      isVisible: isPaneVisible,
-      followsOutput: bottomAnchorControllerRef.current.mode === "sticky-bottom",
-    });
-    if (restoration === "none") {
-      return;
+    if (resumed && bottomAnchorController.mode === "sticky-bottom") {
+      bottomAnchorController.reevaluate(false);
     }
-    const frame = requestAnimationFrame(() => {
-      if (restoration === "stick-to-bottom") {
-        bottomAnchorControllerRef.current.requestLocalAnchor({ agentId, reason: "jump-to-bottom" });
-        return;
-      }
-      programmaticScrollEventBudgetRef.current = 3;
-      flatListRef.current?.scrollToOffset({
-        offset: lastVisibleScrollOffsetYRef.current,
-        animated: false,
-      });
-    });
-    return () => {
-      cancelAnimationFrame(frame);
-    };
-  }, [agentId, isPaneVisible]);
+    // A detached reader keeps FlatList's retained position; resuming does not
+    // write an old pixel offset into its potentially resized content.
+  }, [bottomAnchorController, isPaneVisible]);
+
+  // Android's maintainVisibleContentPosition ignores the list inversion transform and
+  // fights the controller's offset-zero correction while the live header grows.
+  const maintainVisibleContentPosition =
+    Platform.OS === "android" && bottomAnchorController.mode === "sticky-bottom"
+      ? undefined
+      : DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION;
+  const streamKeyboardInset = useMemo(
+    () =>
+      resolveStreamKeyboardInset({
+        platform: Platform.OS === "ios" ? "ios" : "android",
+        settledShift: settledKeyboardShift,
+      }),
+    [settledKeyboardShift],
+  );
+  const listContentContainerStyle = useMemo(
+    () => [
+      baseListContentContainerStyle,
+      { paddingBottom: streamKeyboardInset.contentContainerPaddingBottom },
+    ],
+    [baseListContentContainerStyle, streamKeyboardInset.contentContainerPaddingBottom],
+  );
+  const listInsetProps = useMemo(
+    () =>
+      streamKeyboardInset.contentInset
+        ? {
+            automaticallyAdjustContentInsets: false,
+            automaticallyAdjustsScrollIndicatorInsets: false,
+            contentInsetAdjustmentBehavior: "never" as const,
+            contentInset: streamKeyboardInset.contentInset,
+            scrollIndicatorInsets: streamKeyboardInset.contentInset,
+          }
+        : {},
+    [streamKeyboardInset.contentInset],
+  );
 
   useEffect(() => {
     streamViewportMetricsRef.current = {
@@ -497,13 +332,8 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       contentMeasuredForKey: null,
     };
     scrollOffsetYRef.current = 0;
-    isAnimatedProgrammaticScrollActiveRef.current = false;
-    isNativeUserScrollActiveRef.current = false;
-    isNativeMomentumScrollActiveRef.current = false;
-    if (pendingNativeUserScrollEndFrameRef.current !== null) {
-      cancelAnimationFrame(pendingNativeUserScrollEndFrameRef.current);
-      pendingNativeUserScrollEndFrameRef.current = null;
-    }
+    isUserScrollActiveRef.current = false;
+    clearPendingUserScrollEnd();
     clearNativeViewportSettling();
     setIsNativeViewportSettling(false);
     historyStartReadyRef.current = false;
@@ -512,39 +342,17 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     setHistoryStartPaginationState(initialHistoryStartState);
     const frame = requestAnimationFrame(() => {
       historyStartReadyRef.current = true;
+      evaluateHistoryStart();
     });
     return () => {
       cancelAnimationFrame(frame);
+      clearPendingUserScrollEnd();
       historyStartSettleSchedulerRef.current?.cancel();
       historyStartSettleSchedulerRef.current = null;
-      if (pendingNativeUserScrollEndFrameRef.current !== null) {
-        cancelAnimationFrame(pendingNativeUserScrollEndFrameRef.current);
-        pendingNativeUserScrollEndFrameRef.current = null;
-      }
     };
-  }, [agentId, clearNativeViewportSettling]);
+  }, [agentId, clearNativeViewportSettling, clearPendingUserScrollEnd, evaluateHistoryStart]);
 
-  useEffect(() => {
-    const keyboardEvents = [
-      "keyboardWillShow",
-      "keyboardWillHide",
-      "keyboardDidShow",
-      "keyboardDidHide",
-      "keyboardWillChangeFrame",
-      "keyboardDidChangeFrame",
-    ] as const;
-    const subscriptions = keyboardEvents.map((eventName) =>
-      Keyboard.addListener(eventName, () => {
-        markNativeViewportSettling();
-      }),
-    );
-    return () => {
-      for (const subscription of subscriptions) {
-        subscription.remove();
-      }
-      clearNativeViewportSettling();
-    };
-  }, [clearNativeViewportSettling, markNativeViewportSettling]);
+  useEffect(() => () => clearNativeViewportSettling(), [clearNativeViewportSettling]);
 
   useEffect(() => {
     bottomAnchorController.prepareForStickyContentChange();
@@ -571,14 +379,26 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     };
   }, [agentId, bottomAnchorController, markNativeViewportSettling, viewportRef]);
 
+  const isScrollEventNearBottom = useStableEvent(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      return isNearBottomForStreamRenderStrategy({
+        strategy,
+        offsetY: contentOffset.y,
+        threshold: 32,
+        contentHeight: contentSize.height,
+        viewportHeight: layoutMeasurement.height,
+      });
+    },
+  );
+
   const handleScroll = useStableEvent((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (!isPaneVisibleRef.current) {
-      return;
-    }
+    if (!isPaneVisibleRef.current) return;
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const previousOffsetY = scrollOffsetYRef.current;
     scrollOffsetYRef.current = contentOffset.y;
-    lastVisibleScrollOffsetYRef.current = contentOffset.y;
+    scrollKeyboardDismiss.onScroll(event);
+
     streamViewportMetricsRef.current = {
       contentHeight: Math.max(0, contentSize.height),
       viewportWidth: Math.max(0, layoutMeasurement.width),
@@ -589,53 +409,73 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       contentMeasuredForKey: "native-virtualized",
     };
 
-    const withinBottomRestickZone = isNativePassiveRestickEligible(contentOffset.y);
-    const atBottomForIndicator = isNativeReaderAtNewestEdge(contentOffset.y);
-    const isAnimatedProgrammaticScroll = isAnimatedProgrammaticScrollActiveRef.current;
-    if (isAnimatedProgrammaticScroll && atBottomForIndicator) {
-      isAnimatedProgrammaticScrollActiveRef.current = false;
-    }
-    onNearBottomChange(atBottomForIndicator);
+    const nearBottom = isScrollEventNearBottom(event);
+    onNearBottomChange(nearBottom);
 
     evaluateHistoryStart();
 
-    if (isAnimatedProgrammaticScroll) {
-      if (atBottomForIndicator) {
-        programmaticScrollEventBudgetRef.current = 0;
-        bottomAnchorController.handleScrollNearBottomChange({
-          nextIsNearBottom: true,
-          scrollDelta: 0,
-        });
-      }
-    } else if (programmaticScrollEventBudgetRef.current > 0 && contentOffset.y <= 8) {
+    if (
+      !isUserScrollActiveRef.current &&
+      programmaticScrollEventBudgetRef.current > 0 &&
+      contentOffset.y <= 8
+    ) {
       programmaticScrollEventBudgetRef.current -= 1;
     } else {
       programmaticScrollEventBudgetRef.current = 0;
       bottomAnchorController.handleScrollNearBottomChange({
-        nextIsNearBottom: atBottomForIndicator,
+        nextIsNearBottom: nearBottom,
         scrollDelta: contentOffset.y - previousOffsetY,
       });
     }
+  });
 
-    // Keep the indicator honest until this command completes, then immediately
-    // close a small gap while follow mode owns the transcript. This avoids a
-    // state where Android's delayed inverted-list preservation leaves the
-    // reader close to the end with a jump button they should not need.
-    if (
-      withinBottomRestickZone &&
-      !atBottomForIndicator &&
-      !isAnimatedProgrammaticScroll &&
-      !isNativeUserScrollActiveRef.current &&
-      bottomAnchorControllerRef.current.mode === "sticky-bottom"
-    ) {
-      scrollToBottom(false);
+  const handleScrollBeginDrag = useStableEvent((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    clearPendingUserScrollEnd();
+    isUserScrollActiveRef.current = true;
+    scrollKeyboardDismiss.onScrollBeginDrag(event);
+    bottomAnchorController.beginUserScroll();
+    const rearmed = rearmHistoryStartPagination(historyStartPaginationStateRef.current);
+    if (rearmed !== historyStartPaginationStateRef.current) {
+      historyStartPaginationStateRef.current = rearmed;
+      setHistoryStartPaginationState(rearmed);
+      evaluateHistoryStart();
     }
   });
 
+  // Defer drag end so momentum can take ownership, but capture the terminal
+  // gesture position now because layout may move the viewport in the meantime.
+  const handleScrollEndDrag = useStableEvent((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const isNearBottom = isScrollEventNearBottom(event);
+    scrollKeyboardDismiss.onScrollEndDrag(event);
+
+    clearPendingUserScrollEnd();
+    userScrollEndFrameIdRef.current = requestAnimationFrame(() => {
+      userScrollEndFrameIdRef.current = null;
+      isUserScrollActiveRef.current = false;
+      bottomAnchorController.endUserScroll({ isNearBottom });
+    });
+  });
+
+  const handleMomentumScrollBegin = useStableEvent(() => {
+    clearPendingUserScrollEnd();
+  });
+
+  const handleMomentumScrollEnd = useStableEvent(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      // Android can emit momentum-end after a programmatic anchor correction.
+      // Only momentum that still owns the user gesture may settle scroll intent.
+      if (!isUserScrollActiveRef.current) {
+        return;
+      }
+      const isNearBottom = isScrollEventNearBottom(event);
+      clearPendingUserScrollEnd();
+      isUserScrollActiveRef.current = false;
+      bottomAnchorController.endUserScroll({ isNearBottom });
+    },
+  );
+
   const handleListLayout = useStableEvent((event: LayoutChangeEvent) => {
-    if (!isPaneVisibleRef.current) {
-      return;
-    }
+    if (!isPaneVisibleRef.current) return;
     const previousViewportWidth = streamViewportMetricsRef.current.viewportWidth;
     const previousViewportHeight = streamViewportMetricsRef.current.viewportHeight;
     const viewportWidth = Math.max(0, event.nativeEvent.layout.width);
@@ -659,14 +499,13 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       previousViewportHeight,
       viewportHeight,
     });
+    evaluateHistoryStart();
   });
 
   const handleContentSizeChange = useStableEvent((_width: number, height: number) => {
-    if (!isPaneVisibleRef.current) {
-      return;
-    }
-    const nextContentHeight = Math.max(0, height);
+    if (!isPaneVisibleRef.current) return;
     const previousContentHeight = streamViewportMetricsRef.current.contentHeight;
+    const nextContentHeight = Math.max(0, height);
     streamViewportMetricsRef.current = {
       ...streamViewportMetricsRef.current,
       containerKey: "native-virtualized",
@@ -695,20 +534,18 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     olderHistoryProgressKey,
     scheduleHistoryStartSettle,
   ]);
-  // A virtualized cell mounts from FlatList's own render pass, never from the
-  // one that runs between the pane-level `BlackChatScope` markers, so every row
-  // has to carry the scope itself (see docs/unistyles.md).
+
   const renderItem = useStableEvent(
     ({ item, index }: ListRenderItemInfo<StreamItem>): ReactElement | null => {
-      const rendered = renderHistoryMountedRow(item, index, historyRows);
-      if (!rendered) {
-        return null;
-      }
-      return <ChatThemeScope>{rendered as ReactElement}</ChatThemeScope>;
+      const rendered = renderHistoryMountedRow(item, index, historyItems);
+      return rendered ? <ChatThemeScope>{rendered}</ChatThemeScope> : null;
     },
   );
 
   const liveHeaderContent = useMemo(() => {
+    // Stable render events read the latest expansion state; this revision makes
+    // the memo invoke them again when that state changes.
+    void liveHeadRowRevision;
     const liveHeadRows = segments.liveHead.map((item, index) => (
       <Fragment key={item.id}>{renderLiveHeadRow(item, index, segments.liveHead)}</Fragment>
     ));
@@ -727,7 +564,14 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         {liveAuxiliary}
       </Fragment>
     );
-  }, [boundary, listEmptyComponent, renderLiveAuxiliary, renderLiveHeadRow, segments.liveHead]);
+  }, [
+    boundary,
+    listEmptyComponent,
+    liveHeadRowRevision,
+    renderLiveAuxiliary,
+    renderLiveHeadRow,
+    segments.liveHead,
+  ]);
 
   const historyFooterContent = useMemo(() => {
     const isLoadingOperation = isHistoryStartLoadingOperation(historyStartPaginationState);
@@ -742,95 +586,44 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     );
   }, [historyStartPaginationState]);
 
-  const liveHeaderStore = useLiveHeaderStore(liveHeaderContent);
-
-  // History-row layout (the gap on the boundary row) depends on whether a live
-  // turn is present, but NOT on its text. Keying the list on the live head's ids
-  // re-renders the cells when the live turn appears, is promoted, or ends, while
-  // leaving per-chunk text growth invisible to the list.
-  const liveHeadSignature = useMemo(
-    () => segments.liveHead.map((item) => item.id).join("\0"),
-    [segments.liveHead],
+  const themedLiveHeader = useMemo(
+    () => (liveHeaderContent ? <ChatThemeScope>{liveHeaderContent}</ChatThemeScope> : undefined),
+    [liveHeaderContent],
   );
 
-  // Memoized so a stream flush, which re-renders this component, hands React the
-  // identical element and it skips the entire list subtree. Every dep here is
-  // either referentially stable (the useStableEvent handlers, keyExtractor) or
-  // genuinely requires the mounted cells to re-render.
-  const list = useMemo(
-    () => (
-      <FlatList
-        ref={flatListRef}
-        data={historyRows}
-        extraData={liveHeadSignature}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        testID="agent-chat-scroll"
-        nativeID="agent-chat-scroll-native-virtualized"
-        ListHeaderComponent={LiveStreamHeader}
-        ListFooterComponent={historyFooterContent ?? undefined}
-        contentContainerStyle={baseListContentContainerStyle}
-        style={listStyle}
-        onLayout={handleListLayout}
-        onScroll={handleScroll}
-        onScrollBeginDrag={handleScrollBeginDrag}
-        onScrollEndDrag={handleScrollEndDrag}
-        onMomentumScrollBegin={handleMomentumScrollBegin}
-        onMomentumScrollEnd={handleMomentumScrollEnd}
-        scrollEventThrottle={16}
-        onContentSizeChange={handleContentSizeChange}
-        // React Native applies maintainVisibleContentPosition after Android's
-        // layout pass. That is correct while a detached reader owns a visible
-        // row, but while following it can overwrite offset 0 after a large live
-        // header mutation. At the newest edge, offset 0 is the anchor.
-        maintainVisibleContentPosition={
-          bottomAnchorController.mode === "detached"
-            ? DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION
-            : undefined
-        }
-        // Sized for a phone, where every mounted cell is a markdown bubble that
-        // has to re-render whenever the list does. windowSize 21 kept ten
-        // viewports of chat alive above and below the screen; 7 keeps one on
-        // each side, which is all an inverted transcript needs to scroll
-        // smoothly. Batching the cell updates (was 0, i.e. commit each one
-        // immediately) lets a burst of stream flushes coalesce into one pass.
-        initialNumToRender={12}
-        maxToRenderPerBatch={10}
-        updateCellsBatchingPeriod={50}
-        windowSize={7}
-        // Left off deliberately: clipping subviews on an inverted Android list
-        // is a long-standing source of blank cells. Revisit only with on-device
-        // proof.
-        removeClippedSubviews={false}
-        scrollEnabled={scrollEnabled}
-        // The retained workspace deck owns native ScrollView ancestors. Tell
-        // Android to negotiate a vertical drag with them instead of leaving
-        // the inverted transcript stranded under the parent responder.
-        nestedScrollEnabled
-        showsVerticalScrollIndicator
-        inverted
-      />
-    ),
-    [
-      baseListContentContainerStyle,
-      bottomAnchorController.mode,
-      handleContentSizeChange,
-      handleListLayout,
-      handleMomentumScrollBegin,
-      handleMomentumScrollEnd,
-      handleScroll,
-      handleScrollBeginDrag,
-      handleScrollEndDrag,
-      historyFooterContent,
-      historyRows,
-      listStyle,
-      liveHeadSignature,
-      renderItem,
-      scrollEnabled,
-    ],
+  // RN's FlatList strictMode keeps its internal renderItem wrapper stable when
+  // data or the live header changes, preserving the row identities above.
+  return (
+    <FlatList
+      {...listInsetProps}
+      ref={flatListRef}
+      data={historyRows}
+      renderItem={renderItem}
+      keyExtractor={keyExtractor}
+      strictMode
+      testID="agent-chat-scroll"
+      nativeID="agent-chat-scroll-native-virtualized"
+      ListHeaderComponent={themedLiveHeader}
+      ListFooterComponent={historyFooterContent ?? undefined}
+      contentContainerStyle={listContentContainerStyle}
+      style={listStyle}
+      onLayout={handleListLayout}
+      onScroll={handleScroll}
+      onScrollBeginDrag={handleScrollBeginDrag}
+      onScrollEndDrag={handleScrollEndDrag}
+      onMomentumScrollBegin={handleMomentumScrollBegin}
+      onMomentumScrollEnd={handleMomentumScrollEnd}
+      scrollEventThrottle={16}
+      onContentSizeChange={handleContentSizeChange}
+      maintainVisibleContentPosition={maintainVisibleContentPosition}
+      initialNumToRender={12}
+      windowSize={10}
+      removeClippedSubviews={false}
+      scrollEnabled={scrollEnabled}
+      showsVerticalScrollIndicator
+      inverted
+    />
   );
-
-  return <LiveHeaderContext.Provider value={liveHeaderStore}>{list}</LiveHeaderContext.Provider>;
 }
 
 export function createNativeStreamStrategy(): StreamStrategy {

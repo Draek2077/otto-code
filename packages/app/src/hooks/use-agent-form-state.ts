@@ -6,10 +6,10 @@ import type {
   AgentProvider,
   ProviderSnapshotEntry,
 } from "@otto-code/protocol/agent-types";
-import { useHosts } from "@/runtime/host-runtime";
 import { buildProviderDefinitions } from "@/utils/provider-definitions";
 import { filterModesForModel, findModelDefinition } from "@/provider-selection/mode-support";
 import { filterSelectableModels } from "@/provider-selection/model-catalog";
+import { OptimisticFormPreferences } from "@/create-agent-preferences/optimistic-preferences";
 import { applyAgentProfilePreferences } from "@/create-agent-preferences/preferences";
 import type { MaterializedAgentProfile } from "@/agent-profiles";
 import {
@@ -28,7 +28,6 @@ import {
   normalizeSelectedModelId,
   resolveDefaultModelId,
   mergeSelectedComposerPreferences,
-  combineInitialValues,
   buildProviderDefinitionMap,
   buildProviderDefinitionMapForStatuses,
   INITIAL_AGENT_FORM_RESOLUTION,
@@ -43,22 +42,19 @@ import {
 export type { FormInitialValues } from "@/provider-selection/resolve-agent-form";
 
 export interface UseAgentFormStateOptions {
-  initialServerId?: string | null;
-  /** Canonical profile id inherited by a forked draft through the personality wire bridge. */
+  serverId: string | null;
+  workingDir: string;
+  /** Canonical profile id inherited by a forked draft. */
   initialAgentProfileId?: string | null;
   initialValues?: FormInitialValues;
   isVisible?: boolean;
   isCreateFlow?: boolean;
-  isTargetDaemonReady?: boolean;
-  onlineServerIds?: string[];
 }
 
 export interface UseAgentFormStateResult {
   selectedAgentProfileId: string | null;
   selectedAgentProfile: MaterializedAgentProfile | null;
   selectedServerId: string | null;
-  setSelectedServerId: (value: string | null) => void;
-  setSelectedServerIdFromUser: (value: string | null) => void;
   selectedProvider: AgentProvider | null;
   setProviderFromUser: (provider: AgentProvider) => void;
   selectedMode: string;
@@ -68,8 +64,6 @@ export interface UseAgentFormStateResult {
   selectedThinkingOptionId: string;
   setThinkingOptionFromUser: (thinkingOptionId: string) => void;
   workingDir: string;
-  setWorkingDir: (value: string) => void;
-  setWorkingDirFromUser: (value: string) => void;
   providerDefinitions: AgentProviderDefinition[];
   providerDefinitionMap: Map<AgentProvider, AgentProviderDefinition>;
   agentDefinition?: AgentProviderDefinition;
@@ -107,36 +101,6 @@ export interface UseAgentFormStateResult {
   persistFormPreferences: () => Promise<void>;
 }
 
-function shouldAutoSelectServerId(input: {
-  isVisible: boolean;
-  isCreateFlow: boolean;
-  isPreferencesLoading: boolean;
-  userModifiedServerId: boolean;
-  initialServerId: string | null | undefined;
-  currentServerId: string | null;
-}): boolean {
-  const {
-    isVisible,
-    isCreateFlow,
-    isPreferencesLoading,
-    userModifiedServerId,
-    initialServerId,
-    currentServerId,
-  } = input;
-  if (!isVisible || !isCreateFlow) return false;
-  if (isPreferencesLoading) return false;
-  if (userModifiedServerId) return false;
-  if (initialServerId !== undefined) return false;
-  if (currentServerId) return false;
-  return true;
-}
-
-function resolutionIntentKeyPart(value: string | null | undefined): string {
-  if (value === undefined) return "undefined";
-  if (value === null) return "null";
-  return value;
-}
-
 function normalizeAgentProfileId(value: string | null | undefined): string | null {
   const normalized = value?.trim() ?? "";
   return normalized.length > 0 ? normalized : null;
@@ -163,29 +127,6 @@ function resolveAgentDefinition(
   definitions: Map<AgentProvider, AgentProviderDefinition>,
 ): AgentProviderDefinition | undefined {
   return provider ? definitions.get(provider) : undefined;
-}
-
-function buildResolutionIntentKey(initialValues: FormInitialValues | undefined): string {
-  if (!initialValues) return "none";
-  // workingDir seeds the open request, but locked cwd updates must not re-run
-  // provider/model/mode resolution after the form has settled.
-  return [
-    resolutionIntentKeyPart(initialValues.serverId),
-    resolutionIntentKeyPart(initialValues.provider),
-    resolutionIntentKeyPart(initialValues.modeId),
-    resolutionIntentKeyPart(initialValues.model),
-    resolutionIntentKeyPart(initialValues.thinkingOptionId),
-  ].join("\n");
-}
-
-function hasSnapshotDataForResolution(input: {
-  serverId: string | null;
-  snapshotEntries: ProviderSnapshotEntry[] | undefined;
-}): boolean {
-  if (!input.serverId) {
-    return false;
-  }
-  return input.snapshotEntries !== undefined;
 }
 
 function resolveSelectedProviderModes(input: {
@@ -218,7 +159,10 @@ function buildProviderModelsByProvider(
 ): ProviderModelsByProvider {
   const map: ProviderModelsByProvider = new Map();
   for (const entry of snapshotEntries ?? []) {
-    map.set(entry.provider, filterSelectableModels(entry.models ?? null));
+    map.set(
+      entry.provider,
+      entry.status === "ready" ? filterSelectableModels(entry.models ?? null) : null,
+    );
   }
   return map;
 }
@@ -229,7 +173,7 @@ async function persistProviderPreferences(input: {
   availableModels: AgentModelDefinition[] | null;
   updatePreferences: (
     updates: Partial<FormPreferences> | ((current: FormPreferences) => FormPreferences),
-  ) => Promise<void>;
+  ) => Promise<FormPreferences>;
 }): Promise<void> {
   const { provider, formState, availableModels, updatePreferences } = input;
   const resolvedModel = resolveEffectiveModel(availableModels, formState.model);
@@ -249,15 +193,14 @@ async function persistProviderPreferences(input: {
   );
 }
 
-export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAgentFormStateResult {
+export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFormStateResult {
   const {
-    initialServerId = null,
+    serverId,
     initialAgentProfileId = null,
     initialValues,
+    workingDir,
     isVisible = true,
     isCreateFlow = true,
-    isTargetDaemonReady: _isTargetDaemonReady = true,
-    onlineServerIds = [],
   } = options;
 
   const [selectedAgentProfileId, setSelectedAgentProfileId] = useState<string | null>(
@@ -273,25 +216,35 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   }, []);
 
   const { preferences, isLoading: isPreferencesLoading, updatePreferences } = useFormPreferences();
+  const preferenceOverlayRef = useRef(new OptimisticFormPreferences(preferences));
 
-  const daemons = useHosts();
+  useEffect(() => {
+    preferenceOverlayRef.current.reconcile(preferences);
+  }, [preferences]);
 
-  const validServerIds = useMemo(() => new Set(daemons.map((d) => d.serverId)), [daemons]);
-
-  const [reducerState, dispatch] = useReducer(resolveAgentForm, initialServerId, (serverId) => ({
-    form: {
-      serverId,
-      provider: null,
-      modeId: "",
-      model: "",
-      thinkingOptionId: "",
-      workingDir: "",
+  const updateCurrentPreferences = useCallback(
+    async (
+      updates: Partial<FormPreferences> | ((current: FormPreferences) => FormPreferences),
+    ): Promise<FormPreferences> => {
+      const pendingId = preferenceOverlayRef.current.begin(updates);
+      try {
+        const persisted = await updatePreferences(updates);
+        preferenceOverlayRef.current.commit(pendingId, persisted);
+        return persisted;
+      } catch (error) {
+        preferenceOverlayRef.current.reject(pendingId);
+        throw error;
+      }
     },
+    [updatePreferences],
+  );
+
+  const [reducerState, dispatch] = useReducer(resolveAgentForm, {
+    form: { provider: null, modeId: "", model: "", thinkingOptionId: "" },
     userModified: INITIAL_USER_MODIFIED,
     resolution: INITIAL_AGENT_FORM_RESOLUTION,
-  }));
-  const { form: formState, userModified } = reducerState;
-
+  });
+  const { form: formState, resolution } = reducerState;
   // True while the form's model/mode/effort came from a personality or the
   // active team rather than from the user. Gates every preference write for the
   // same reason applyPersonalityValues doesn't persist - see there.
@@ -303,10 +256,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
   }, [reducerState]);
 
   useEffect(() => {
-    if (!isVisible) {
-      appliedFromPersonalityRef.current = false;
-      dispatch({ type: "RESET" });
-    }
+    if (!isVisible) appliedFromPersonalityRef.current = false;
   }, [isVisible]);
 
   const {
@@ -316,7 +266,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     error: snapshotError,
     refresh: refreshSnapshot,
     refetchIfStale: refetchSnapshotIfStale,
-  } = useProvidersSnapshot(formState.serverId, { cwd: formState.workingDir });
+  } = useProvidersSnapshot(serverId, { cwd: workingDir });
 
   const allProviderEntries = useMemo(() => snapshotEntries ?? [], [snapshotEntries]);
   const snapshotProviderDefinitions = useMemo(
@@ -383,99 +333,34 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     snapshotSelectedProviderModes,
     findModelDefinition(snapshotSelectedProviderModels, formState.model),
   );
-  const isAllModelsLoading = snapshotIsLoading || selectedProviderIsLoading;
-
-  const combinedInitialValues = useMemo(
-    () => combineInitialValues(initialValues, initialServerId),
-    [initialValues, initialServerId],
-  );
-  const resolutionIntentKey = useMemo(
-    () => buildResolutionIntentKey(combinedInitialValues),
-    [combinedInitialValues],
-  );
+  const isModelSelectionLoading =
+    resolution.status === "pending" || snapshotIsLoading || selectedProviderIsLoading;
+  const isAllModelsLoading = isModelSelectionLoading;
 
   useEffect(() => {
-    if (!isVisible || !isCreateFlow) {
-      return;
-    }
-
-    dispatch({ type: "REQUEST_RESOLUTION" });
-  }, [isVisible, isCreateFlow, resolutionIntentKey]);
-
-  // Dispatched on every provider-data or preference change while the form is
-  // open (not just once per open) so preselection can recover when a stale
-  // snapshot heals. completeResolution no-ops once a provider has settled and
-  // respects the userModified flags, so it never overrides a real selection.
-  useEffect(() => {
-    if (!isVisible || !isCreateFlow) {
-      return;
-    }
-    if (isPreferencesLoading) {
-      return;
-    }
-    if (
-      !hasSnapshotDataForResolution({
-        serverId: formState.serverId,
-        snapshotEntries,
-      })
-    ) {
-      return;
-    }
-
     dispatch({
-      type: "COMPLETE_RESOLUTION",
-      initialValues: combinedInitialValues,
+      type: "INPUTS_CHANGED",
+      serverId,
+      isVisible,
+      isCreateFlow,
+      isPreferencesLoading,
+      hasSnapshot: snapshotEntries !== undefined,
+      initialValues,
       preferences,
       providerModelsByProvider: snapshotProviderModelsByProvider,
       allowedProviderMap: snapshotResolvableProviderDefinitionMap,
     });
   }, [
-    combinedInitialValues,
-    formState.serverId,
+    serverId,
+    isVisible,
     isCreateFlow,
     isPreferencesLoading,
-    isVisible,
-    preferences,
     snapshotEntries,
+    initialValues,
+    preferences,
     snapshotProviderModelsByProvider,
     snapshotResolvableProviderDefinitionMap,
   ]);
-
-  const onlineServerIdsKey = onlineServerIds.join("|");
-  useEffect(() => {
-    const canAutoSelectServerId = shouldAutoSelectServerId({
-      isVisible,
-      isCreateFlow,
-      isPreferencesLoading,
-      userModifiedServerId: userModified.serverId,
-      initialServerId: combinedInitialValues?.serverId,
-      currentServerId: formState.serverId,
-    });
-    if (!canAutoSelectServerId) return;
-
-    const candidate = onlineServerIds.find((id) => validServerIds.has(id)) ?? null;
-    if (!candidate) return;
-
-    dispatch({ type: "AUTO_SELECT_SERVER", candidateServerId: candidate });
-  }, [
-    combinedInitialValues?.serverId,
-    isCreateFlow,
-    isPreferencesLoading,
-    isVisible,
-    onlineServerIds,
-    onlineServerIdsKey,
-    formState.serverId,
-    userModified.serverId,
-    validServerIds,
-  ]);
-
-  const setSelectedServerIdFromUser = useCallback(
-    (value: string | null) => {
-      clearAgentProfileSelection();
-      dispatch({ type: "SET_SERVER_ID_FROM_USER", value });
-    },
-    [clearAgentProfileSelection],
-  );
 
   const setProviderFromUser = useCallback(
     (provider: AgentProvider) => {
@@ -484,7 +369,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       }
       const providerModels = allProviderModels.get(provider) ?? null;
       const providerDef = selectableProviderDefinitionMap.get(provider);
-      const providerPrefs = preferences?.providerPreferences?.[provider];
+      const providerPrefs = preferenceOverlayRef.current.current().providerPreferences?.[provider];
 
       appliedFromPersonalityRef.current = false;
       clearAgentProfileSelection();
@@ -495,14 +380,13 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         providerDef,
         providerPrefs,
       });
-      void updatePreferences({ provider });
+      void updateCurrentPreferences({ provider });
     },
     [
       allProviderModels,
       clearAgentProfileSelection,
-      preferences?.providerPreferences,
       selectableProviderDefinitionMap,
-      updatePreferences,
+      updateCurrentPreferences,
     ],
   );
 
@@ -513,7 +397,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       }
       const providerDef = selectableProviderDefinitionMap.get(provider);
       const providerModels = allProviderModels.get(provider) ?? null;
-      const providerPrefs = preferences?.providerPreferences?.[provider];
+      const providerPrefs = preferenceOverlayRef.current.current().providerPreferences?.[provider];
       const normalizedModelId = normalizeSelectedModelId(modelId);
       const nextModelId = normalizedModelId || resolveDefaultModelId(providerModels);
 
@@ -527,7 +411,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         providerModels,
         providerPrefs,
       });
-      void updatePreferences((current) =>
+      void updateCurrentPreferences((current) =>
         mergeSelectedComposerPreferences({
           preferences: current,
           provider,
@@ -540,9 +424,8 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     [
       allProviderModels,
       clearAgentProfileSelection,
-      preferences?.providerPreferences,
       selectableProviderDefinitionMap,
-      updatePreferences,
+      updateCurrentPreferences,
     ],
   );
 
@@ -560,7 +443,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         modelId: values.model,
         providerDef: selectableProviderDefinitionMap.get(provider),
         providerModels: allProviderModels.get(provider) ?? null,
-        providerPrefs: preferences?.providerPreferences?.[provider],
+        providerPrefs: preferenceOverlayRef.current.current().providerPreferences?.[provider],
       });
       if (values.modeId !== undefined) {
         dispatch({ type: "SET_MODE_FROM_USER", modeId: values.modeId });
@@ -570,12 +453,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         thinkingOptionId: values.thinkingOptionId,
       });
     },
-    [
-      allProviderModels,
-      clearAgentProfileSelection,
-      preferences?.providerPreferences,
-      selectableProviderDefinitionMap,
-    ],
+    [allProviderModels, clearAgentProfileSelection, selectableProviderDefinitionMap],
   );
 
   const applyProfileFromUser = useCallback(
@@ -594,7 +472,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         thinkingOptionId: profile.thinkingOptionId,
         providerDef: selectableProviderDefinitionMap.get(provider),
         providerModels: allProviderModels.get(provider) ?? null,
-        providerPrefs: preferences?.providerPreferences?.[provider],
+        providerPrefs: preferenceOverlayRef.current.current().providerPreferences?.[provider],
       };
       const nextState = resolveAgentForm(reducerStateRef.current, action);
       const previousProviderModeIds = resolveProviderModeIds(
@@ -606,7 +484,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       setSelectedAgentProfileId(selectedProfile.id);
       setSelectedAgentProfile(selectedProfile.profile);
       dispatch(action);
-      void updatePreferences((current) =>
+      void updateCurrentPreferences((current) =>
         applyAgentProfilePreferences({
           preferences: current,
           previousProvider,
@@ -621,10 +499,9 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     },
     [
       allProviderModels,
-      preferences?.providerPreferences,
       providerDefinitionMap,
       selectableProviderDefinitionMap,
-      updatePreferences,
+      updateCurrentPreferences,
     ],
   );
 
@@ -640,7 +517,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       // Under a personality the model half isn't the user's to remember, and
       // mode/effort ride with it - see applyPersonalityValues.
       if (provider && !appliedFromPersonalityRef.current) {
-        void updatePreferences((current) =>
+        void updateCurrentPreferences((current) =>
           mergeSelectedComposerPreferences({
             preferences: current,
             provider,
@@ -651,7 +528,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         );
       }
     },
-    [updatePreferences],
+    [updateCurrentPreferences],
   );
 
   const setModelFromUser = useCallback(
@@ -660,18 +537,13 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       clearAgentProfileSelection();
       const provider = reducerStateRef.current.form.provider;
       const normalizedModelId = normalizeSelectedModelId(modelId);
-      const preferredThinkingOptionId = provider
-        ? (preferences?.providerPreferences?.[provider]?.thinkingByModel?.[normalizedModelId] ?? "")
-        : "";
-      dispatch({
-        type: "SET_MODEL_FROM_USER",
-        modelId,
-        availableModels,
-        preferredThinkingOptionId,
-      });
+      const providerPrefs = provider
+        ? preferenceOverlayRef.current.current().providerPreferences?.[provider]
+        : undefined;
+      dispatch({ type: "SET_MODEL_FROM_USER", modelId, availableModels, providerPrefs });
       if (provider) {
         const nextModelId = normalizedModelId || resolveDefaultModelId(availableModels);
-        void updatePreferences((current) =>
+        void updateCurrentPreferences((current) =>
           mergeSelectedComposerPreferences({
             preferences: current,
             provider,
@@ -682,12 +554,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         );
       }
     },
-    [
-      availableModels,
-      clearAgentProfileSelection,
-      preferences?.providerPreferences,
-      updatePreferences,
-    ],
+    [availableModels, clearAgentProfileSelection, updateCurrentPreferences],
   );
 
   const setThinkingOptionFromUser = useCallback(
@@ -696,7 +563,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       const { provider, model: modelId } = reducerStateRef.current.form;
       // See setModeFromUser.
       if (provider && modelId && !appliedFromPersonalityRef.current) {
-        void updatePreferences((current) =>
+        void updateCurrentPreferences((current) =>
           mergeSelectedComposerPreferences({
             preferences: current,
             provider,
@@ -709,20 +576,8 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
         );
       }
     },
-    [updatePreferences],
+    [updateCurrentPreferences],
   );
-
-  const setWorkingDir = useCallback((value: string) => {
-    dispatch({ type: "SET_WORKING_DIR", value });
-  }, []);
-
-  const setWorkingDirFromUser = useCallback((value: string) => {
-    dispatch({ type: "SET_WORKING_DIR_FROM_USER", value });
-  }, []);
-
-  const setSelectedServerId = useCallback((value: string | null) => {
-    dispatch({ type: "SET_SERVER_ID", value });
-  }, []);
 
   const refreshProviderModels = useCallback(
     (provider?: AgentProvider) => {
@@ -749,9 +604,9 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       provider: formState.provider,
       formState,
       availableModels,
-      updatePreferences,
+      updatePreferences: updateCurrentPreferences,
     });
-  }, [availableModels, formState, updatePreferences]);
+  }, [availableModels, formState, updateCurrentPreferences]);
 
   const agentDefinition = resolveAgentDefinition(formState.provider, providerDefinitionMap);
   const effectiveModel = resolveEffectiveModel(availableModels, formState.model);
@@ -760,18 +615,16 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     () => availableThinkingOptionsRaw ?? [],
     [availableThinkingOptionsRaw],
   );
-  const isModelLoading = snapshotIsLoading || selectedProviderIsLoading;
+  const isModelLoading = isModelSelectionLoading;
   const modelError = snapshotError;
 
-  const workingDirIsEmpty = !formState.workingDir.trim();
+  const workingDirIsEmpty = !workingDir.trim();
 
   return useMemo(
     () => ({
       selectedAgentProfileId,
       selectedAgentProfile,
-      selectedServerId: formState.serverId,
-      setSelectedServerId,
-      setSelectedServerIdFromUser,
+      selectedServerId: serverId,
       selectedProvider: formState.provider,
       setProviderFromUser,
       selectedMode: formState.modeId,
@@ -780,9 +633,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
       setModelFromUser,
       selectedThinkingOptionId: formState.thinkingOptionId,
       setThinkingOptionFromUser,
-      workingDir: formState.workingDir,
-      setWorkingDir,
-      setWorkingDirFromUser,
+      workingDir,
       providerDefinitions,
       providerDefinitionMap,
       agentDefinition,
@@ -808,20 +659,16 @@ export function useAgentFormState(options: UseAgentFormStateOptions = {}): UseAg
     [
       selectedAgentProfileId,
       selectedAgentProfile,
-      formState.serverId,
+      serverId,
       formState.provider,
       formState.modeId,
       formState.model,
       formState.thinkingOptionId,
-      formState.workingDir,
-      setSelectedServerId,
-      setSelectedServerIdFromUser,
+      workingDir,
       setProviderFromUser,
       setModeFromUser,
       setModelFromUser,
       setThinkingOptionFromUser,
-      setWorkingDir,
-      setWorkingDirFromUser,
       providerDefinitions,
       providerDefinitionMap,
       agentDefinition,

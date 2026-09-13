@@ -75,13 +75,15 @@ export function useComposerHeightMirror({
     const source = textareaRef.current;
     if (!mirror || !source || typeof window === "undefined") return;
     if (!(source instanceof HTMLElement)) return;
+    const sourceWidth = source.clientWidth;
+    if (sourceWidth <= 0) return;
 
     const cs = window.getComputedStyle(source);
     const ms = mirror.style;
     for (const prop of COPIED_STYLES) {
       ms[prop] = cs[prop];
     }
-    ms.width = `${source.clientWidth}px`;
+    ms.width = `${sourceWidth}px`;
 
     const {
       value: currentValue,

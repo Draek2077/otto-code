@@ -1,53 +1,61 @@
-import { ipcMain, shell } from "electron";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { isAllowedExternalUrl, registerOpenerHandlers } from "./opener";
-
-vi.mock("electron", () => ({
-  ipcMain: { handle: vi.fn() },
-  shell: { openExternal: vi.fn() },
-}));
-
-function getRegisteredOpenUrlHandler(): (_event: unknown, url: unknown) => Promise<void> {
-  registerOpenerHandlers();
-  const handler = vi.mocked(ipcMain.handle).mock.calls.find(([channel]) => {
-    return channel === "otto:opener:openUrl";
-  })?.[1];
-  if (typeof handler !== "function") {
-    throw new Error("open URL handler was not registered");
-  }
-  return handler as (_event: unknown, url: unknown) => Promise<void>;
-}
+import { createExternalUrlOpener } from "./opener";
 
 describe("desktop opener", () => {
-  beforeEach(() => {
-    vi.mocked(ipcMain.handle).mockReset();
-    vi.mocked(shell.openExternal).mockReset();
+  it("allows the existing HTTP(S) destinations and rejects Otto and unsafe schemes", async () => {
+    const opened: string[] = [];
+    const open = createExternalUrlOpener({
+      open: async (url) => {
+        opened.push(url);
+      },
+    });
+    await open("https://example.com/path");
+    await open("http://localhost:8081");
+    expect(opened).toEqual(["https://example.com/path", "http://localhost:8081/"]);
+    for (const candidate of [
+      "file:///etc/passwd",
+      "javascript:alert(1)",
+      "otto://settings",
+      "/relative/path",
+      null,
+    ]) {
+      await expect(open(candidate)).rejects.toThrow("Only HTTP(S) URLs can open externally.");
+    }
+    expect(opened).toHaveLength(2);
   });
 
-  it("allows only http and https external URLs", () => {
-    expect(isAllowedExternalUrl("https://example.com/path")).toBe(true);
-    expect(isAllowedExternalUrl("http://localhost:8081")).toBe(true);
-    expect(isAllowedExternalUrl("file:///etc/passwd")).toBe(false);
-    expect(isAllowedExternalUrl("javascript:alert(1)")).toBe(false);
-    expect(isAllowedExternalUrl("otto://settings")).toBe(false);
-    expect(isAllowedExternalUrl("/relative/path")).toBe(false);
-    expect(isAllowedExternalUrl(null)).toBe(false);
+  it("passes a canonical web URL to its external owner", async () => {
+    const opened: string[] = [];
+    const open = createExternalUrlOpener({
+      open: async (url) => {
+        opened.push(url);
+      },
+    });
+
+    await open("https://example.com/docs#install");
+
+    expect(opened).toEqual(["https://example.com/docs#install"]);
   });
 
-  it("opens allowed URLs through Electron shell", async () => {
-    const handler = getRegisteredOpenUrlHandler();
+  it("does not hand non-web or relative URLs to the external owner", async () => {
+    const opened: string[] = [];
+    const open = createExternalUrlOpener({
+      open: async (url) => {
+        opened.push(url);
+      },
+    });
 
-    await handler({}, "https://example.com");
+    for (const input of [
+      "file:///private/data",
+      "javascript:alert(1)",
+      "paseo://settings",
+      "/docs",
+      null,
+    ]) {
+      await expect(open(input)).rejects.toThrow("Only HTTP(S) URLs can open externally.");
+    }
 
-    expect(shell.openExternal).toHaveBeenCalledWith("https://example.com");
-  });
-
-  it("rejects blocked URLs before invoking Electron shell", async () => {
-    const handler = getRegisteredOpenUrlHandler();
-
-    await expect(handler({}, "file:///etc/passwd")).rejects.toThrow("Unsupported external URL");
-
-    expect(shell.openExternal).not.toHaveBeenCalled();
+    expect(opened).toEqual([]);
   });
 });

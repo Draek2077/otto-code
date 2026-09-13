@@ -10,9 +10,8 @@
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { JSDOM } from "jsdom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDraftStore } from "@/stores/draft-store";
 import type { AttachmentMetadata, ComposerAttachment } from "@/attachments/types";
 import { createWorkspaceFileAttachment } from "@/attachments/workspace-file";
@@ -44,8 +43,6 @@ vi.mock("@/attachments/service", () => ({
 vi.mock("@/hooks/use-agent-form-state", () => ({
   useAgentFormState: () => ({
     selectedServerId: "host-1",
-    setSelectedServerId: () => undefined,
-    setSelectedServerIdFromUser: () => undefined,
     selectedProvider: "codex",
     setProviderFromUser: () => undefined,
     selectedMode: "auto",
@@ -55,8 +52,6 @@ vi.mock("@/hooks/use-agent-form-state", () => ({
     selectedThinkingOptionId: "",
     setThinkingOptionFromUser: () => undefined,
     workingDir: "/repo",
-    setWorkingDir: () => undefined,
-    setWorkingDirFromUser: () => undefined,
     providerDefinitions: [{ id: "codex", label: "Codex", modes: [{ id: "auto", label: "Auto" }] }],
     providerDefinitionMap: new Map(),
     agentDefinition: undefined,
@@ -126,6 +121,20 @@ vi.mock("@/hooks/use-agent-form-state", () => ({
   }),
 }));
 
+const mountedRoots = new Set<Root>();
+function createTestRoot(container: HTMLElement): Root {
+  const root = createRoot(container);
+  mountedRoots.add(root);
+  return root;
+}
+
+afterEach(async () => {
+  await act(async () => {
+    for (const root of mountedRoots) root.unmount();
+    mountedRoots.clear();
+  });
+});
+
 let useAgentInputDraft: typeof import("./input-draft").useAgentInputDraft;
 type DraftRecordForTest = ReturnType<typeof useDraftStore.getState>["drafts"][string];
 
@@ -137,6 +146,7 @@ beforeAll(async () => {
   // import below so persisted-draft hydration reads the controlled map on first load.
   Object.defineProperty(globalThis.window, "localStorage", {
     value: {
+      clear: () => storage.clear(),
       getItem: (key: string) => storage.get(key) ?? null,
       setItem: (key: string, value: string) => {
         storage.set(key, value);
@@ -158,18 +168,8 @@ beforeAll(async () => {
 describe("useAgentInputDraft live contract", () => {
   beforeEach(() => {
     asyncStorage.clear();
-    const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", {
-      url: "http://localhost",
-    });
-
-    Object.defineProperty(globalThis, "document", {
-      value: dom.window.document,
-      configurable: true,
-    });
-    Object.defineProperty(globalThis, "navigator", {
-      value: dom.window.navigator,
-      configurable: true,
-    });
+    document.body.innerHTML = "<div id='root'></div>";
+    localStorage.clear();
 
     useDraftStore.setState({
       drafts: {},
@@ -202,9 +202,7 @@ describe("useAgentInputDraft live contract", () => {
         draftKey,
         composer: {
           initialServerId: "host-1",
-          initialValues: { workingDir: "/repo" },
           isVisible: true,
-          onlineServerIds: ["host-1"],
           lockedWorkingDir: "/repo",
         },
       });
@@ -217,7 +215,7 @@ describe("useAgentInputDraft live contract", () => {
       throw new Error("Missing root container");
     }
 
-    let root: Root | null = createRoot(container);
+    let root: Root | null = createTestRoot(container);
     await act(async () => {
       root!.render(
         <QueryClientProvider client={queryClient}>
@@ -235,16 +233,31 @@ describe("useAgentInputDraft live contract", () => {
       thinkingOptionId: "high",
     });
 
+    const hydratedTextReplacement = getLatest().textReplacement;
+
     await act(async () => {
       getLatest().setText("hello world");
       getLatest().setAttachments([{ kind: "image", metadata: image }]);
+    });
+
+    expect(getLatest().textReplacement).toBe(hydratedTextReplacement);
+
+    await act(async () => {
+      getLatest().replaceText("replacement text");
+    });
+
+    expect(getLatest().textReplacement).not.toBe(hydratedTextReplacement);
+    expect(getLatest().textReplacement.text).toBe("replacement text");
+
+    await act(async () => {
+      getLatest().editText("hello world");
     });
 
     await act(async () => {
       root!.unmount();
     });
 
-    root = createRoot(container);
+    root = createTestRoot(container);
     await act(async () => {
       root.render(
         <QueryClientProvider client={queryClient}>
@@ -302,7 +315,7 @@ describe("useAgentInputDraft live contract", () => {
       throw new Error("Missing root container");
     }
 
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(
         <QueryClientProvider client={queryClient}>
@@ -368,7 +381,7 @@ describe("useAgentInputDraft live contract", () => {
       throw new Error("Missing root container");
     }
 
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(
         <QueryClientProvider client={queryClient}>
@@ -419,7 +432,7 @@ describe("useAgentInputDraft live contract", () => {
       throw new Error("Missing root container");
     }
 
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(
         <QueryClientProvider client={queryClient}>
@@ -434,9 +447,16 @@ describe("useAgentInputDraft live contract", () => {
     });
 
     expect(getLatest().attachments).toEqual([{ kind: "image", metadata: image }]);
-    expect(useDraftStore.getState().drafts["draft:attachments"]?.input).toEqual({
-      text: "with attachment",
-      attachments: [{ kind: "image", metadata: image }],
+    const readPersistedInput = () => useDraftStore.getState().drafts["draft:attachments"]?.input;
+    await act(async () => {
+      // Web text publication occurs after paint; attachments save immediately.
+      await expect.poll(readPersistedInput).toEqual({
+        text: "with attachment",
+        attachments: [{ kind: "image", metadata: image }],
+      });
+    });
+    await act(async () => {
+      root.unmount();
     });
   });
 
@@ -473,6 +493,57 @@ describe("useAgentInputDraft live contract", () => {
     });
   });
 
+  it("a programmatic rewrite wins over a pending typing checkpoint", async () => {
+    let latest: ReturnType<typeof useAgentInputDraft> | null = null;
+    function Probe() {
+      latest = useAgentInputDraft({ draftKey: "draft:rewrite-race" });
+      return null;
+    }
+    function current() {
+      if (!latest) throw new Error("Expected draft");
+      return latest;
+    }
+    const container = document.getElementById("root");
+    if (!container) throw new Error("Missing root");
+    const root = createTestRoot(container);
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={new QueryClient()}>
+          <Probe />
+        </QueryClientProvider>,
+      );
+    });
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        current().editText("stale native typing");
+      });
+      await act(async () => {
+        current().replaceText("authoritative rewrite");
+      });
+      const replacement = current().textReplacement;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(current().text).toBe("authoritative rewrite");
+      expect(current().textReplacement).toBe(replacement);
+      expect(replacement.text).toBe("authoritative rewrite");
+      expect(useDraftStore.getState().getDraftInput("draft:rewrite-race")?.text).toBe(
+        "authoritative rewrite",
+      );
+      await act(async () => {
+        current().clear("sent");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(current().textReplacement.text).toBe("");
+      expect(useDraftStore.getState().getDraftInput("draft:rewrite-race")?.text ?? "").toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("clear resets text and attachments", async () => {
     let latest: ReturnType<typeof useAgentInputDraft> | null = null;
     const image: AttachmentMetadata = {
@@ -501,7 +572,7 @@ describe("useAgentInputDraft live contract", () => {
       throw new Error("Missing root container");
     }
 
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(
         <QueryClientProvider client={queryClient}>
@@ -515,14 +586,14 @@ describe("useAgentInputDraft live contract", () => {
       getLatest().setAttachments([{ kind: "image", metadata: image }]);
     });
 
-    const replacementKeyBeforeClear = getLatest().textReplacementKey;
+    const replacementKeyBeforeClear = getLatest().textReplacement.key;
 
     await act(async () => {
       getLatest().clear("sent");
     });
 
     expect(getLatest().text).toBe("");
-    expect(getLatest().textReplacementKey).not.toBe(replacementKeyBeforeClear);
+    expect(getLatest().textReplacement.key).not.toBe(replacementKeyBeforeClear);
     expect(getLatest().attachments).toEqual([]);
     expect(useDraftStore.getState().drafts["draft:clear"]?.input).toEqual({
       text: "",
@@ -558,7 +629,7 @@ describe("useAgentInputDraft live contract", () => {
       throw new Error("Missing root container");
     }
 
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(
         <QueryClientProvider client={queryClient}>

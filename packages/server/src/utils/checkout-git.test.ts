@@ -421,6 +421,66 @@ describe("checkout git utilities", () => {
     expect(message).toBe("update file");
   });
 
+  it("honors commit signing configuration", async () => {
+    execFileSync("git", ["config", "commit.gpgsign", "true"], { cwd: repoDir });
+    execFileSync("git", ["config", "gpg.program", process.execPath], { cwd: repoDir });
+    writeFileSync(join(repoDir, "file.txt"), "signed\n");
+
+    await expect(commitAll(repoDir, "signed update")).rejects.toThrow("failed to sign the data");
+  });
+
+  it("includes both paths for a staged rename in structured diffs", async () => {
+    execFileSync("git", ["mv", "file.txt", "renamed.txt"], { cwd: repoDir });
+
+    const diff = await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+
+    expect(diff.structured).toContainEqual(
+      expect.objectContaining({ path: "renamed.txt", oldPath: "file.txt" }),
+    );
+  });
+
+  it("reads the origin URL once when collecting facts for an origin-tracking branch", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+
+    startGitCommandMetrics();
+    const facts = await getCheckoutSnapshotFacts(repoDir, { ottoHome });
+    const metrics = stopGitCommandMetrics();
+    const originUrlCommands = metrics.commands.filter(
+      (command) => command.args.join(" ") === "config --get remote.origin.url",
+    );
+
+    expect(facts.isGit).toBe(true);
+    expect(originUrlCommands).toHaveLength(1);
+  });
+
+  it("reads a non-origin branch remote without replacing it with the origin URL", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    execFileSync("git", ["remote", "set-url", "origin", "git@github.com:upstream/repo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["remote", "add", "fork", "git@github.com:contributor/repo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "branch.main.remote", "fork"], { cwd: repoDir });
+    execFileSync("git", ["config", "branch.main.merge", "refs/heads/main"], { cwd: repoDir });
+
+    startGitCommandMetrics();
+    const facts = await getCheckoutSnapshotFacts(repoDir, { ottoHome });
+    const metrics = stopGitCommandMetrics();
+    const commands = metrics.commands.map((command) => command.args.join(" "));
+
+    expect(facts.isGit).toBe(true);
+    expect(commands.filter((command) => command === "config --get remote.origin.url")).toHaveLength(
+      1,
+    );
+    expect(commands.filter((command) => command === "config --get remote.fork.url")).toHaveLength(
+      1,
+    );
+  });
+
   it("reuses checkout snapshot facts across status, shortstat, and PR status reads", async () => {
     setupRemoteTrackingMain(repoDir, tempDir);
     execFileSync("git", ["checkout", "-b", "feature/facts"], { cwd: repoDir });
@@ -3353,6 +3413,21 @@ const x = 1;
 
     await expect(mergeToBase(repoDir, { baseRef: "main" })).rejects.toBeInstanceOf(
       MergeConflictError,
+    );
+  });
+
+  it("honors commit signing configuration for squash merges", async () => {
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    writeFileSync(join(repoDir, "feature.txt"), "feature\n");
+    execFileSync("git", ["add", "feature.txt"], { cwd: repoDir });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "feature commit"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "commit.gpgsign", "true"], { cwd: repoDir });
+    execFileSync("git", ["config", "gpg.program", process.execPath], { cwd: repoDir });
+
+    await expect(mergeToBase(repoDir, { baseRef: "main", mode: "squash" })).rejects.toThrow(
+      "failed to sign the data",
     );
   });
 

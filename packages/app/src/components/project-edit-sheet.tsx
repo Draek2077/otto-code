@@ -1,3 +1,6 @@
+import { SettingsTargetScope } from "@/screens/settings-search/target";
+import { SettingsField as Field } from "@/screens/settings-search/fields";
+import { SettingsAdaptiveModalSheet as AdaptiveModalSheet } from "@/screens/settings-search/sheets";
 import { Buffer } from "buffer";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
@@ -6,11 +9,11 @@ import { StyleSheet } from "react-native-unistyles";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import type { ProjectIconSource } from "@otto-code/protocol/messages";
-import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { Button } from "@/components/ui/button";
 import type { FieldControlSize } from "@/components/ui/control-geometry";
-import { Field, FormTextInput } from "@/components/ui/form-field";
+import { FormTextInput } from "@/components/ui/form-field";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { useFilePicker } from "@/hooks/use-file-picker";
@@ -131,74 +134,78 @@ export function ProjectEditSheet({
       sizeContentToCurrentSnapPoint
       testID="project-edit-sheet"
     >
-      <Field
-        label={t("settings.project.edit.name")}
-        error={state.error?.scope === "name" ? state.error.message : null}
-      >
-        <FormTextInput
-          size={size}
-          testID="project-edit-name"
-          accessibilityLabel={t("settings.project.edit.nameLabel")}
-          initialValue={state.name}
-          onChangeText={form.setName}
-          placeholder={snapshot.projectName}
-          editable={!isSaving}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-      </Field>
+      <SettingsTargetScope settingIds={["host-projects-project-settings-identity-name"]}>
+        <Field
+          label={t("settings.project.edit.name")}
+          error={state.error?.scope === "name" ? state.error.message : null}
+        >
+          <FormTextInput
+            size={size}
+            testID="project-edit-name"
+            accessibilityLabel={t("settings.project.edit.nameLabel")}
+            initialValue={state.name}
+            onChangeText={form.setName}
+            placeholder={snapshot.projectName}
+            editable={!isSaving}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </Field>
+      </SettingsTargetScope>
 
       {supportsCustomIcon ? (
-        <Field
-          label={t("settings.project.edit.icon")}
-          hint={state.pickedFileName ?? undefined}
-          error={state.error?.scope === "icon" ? state.error.message : null}
-        >
-          <View style={styles.iconField}>
-            <View style={styles.iconRow}>
-              <ProjectIconView
-                iconDataUri={state.previewDataUri}
-                initial={projectInitial(snapshot.projectName)}
-                projectViewKey={projectViewKey}
-                size={40}
-                textStyle={styles.previewText}
-              />
-              <Button
-                variant="outline"
-                size={size}
-                onPress={handleChooseImage}
-                disabled={isSaving}
-                testID="project-edit-choose-image"
-              >
-                {t("settings.project.edit.chooseImage")}
-              </Button>
-              {state.canUseAutomatic ? (
+        <SettingsTargetScope settingIds={["host-projects-project-settings-identity-appearance"]}>
+          <Field
+            label={t("settings.project.edit.icon")}
+            hint={state.pickedFileName ?? undefined}
+            error={state.error?.scope === "icon" ? state.error.message : null}
+          >
+            <View style={styles.iconField}>
+              <View style={styles.iconRow}>
+                <ProjectIconView
+                  iconDataUri={state.previewDataUri}
+                  initial={projectInitial(snapshot.projectName)}
+                  projectViewKey={projectViewKey}
+                  size={40}
+                  textStyle={styles.previewText}
+                />
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size={size}
-                  onPress={form.useAutomaticIcon}
+                  onPress={handleChooseImage}
                   disabled={isSaving}
-                  testID="project-edit-use-automatic"
+                  testID="project-edit-choose-image"
                 >
-                  {t("settings.project.edit.useAutomatic")}
+                  {t("settings.project.edit.chooseImage")}
                 </Button>
-              ) : null}
+                {state.canUseAutomatic ? (
+                  <Button
+                    variant="ghost"
+                    size={size}
+                    onPress={form.useAutomaticIcon}
+                    disabled={isSaving}
+                    testID="project-edit-use-automatic"
+                  >
+                    {t("settings.project.edit.useAutomatic")}
+                  </Button>
+                ) : null}
+              </View>
+              <FormTextInput
+                size={size}
+                testID="project-edit-image-url"
+                accessibilityLabel={t("settings.project.edit.imageUrl")}
+                initialValue=""
+                resetKey={state.urlResetKey}
+                onChangeText={form.setImageUrl}
+                placeholder={t("settings.project.edit.imageUrl")}
+                editable={!isSaving}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
             </View>
-            <FormTextInput
-              size={size}
-              testID="project-edit-image-url"
-              accessibilityLabel={t("settings.project.edit.imageUrl")}
-              initialValue=""
-              resetKey={state.urlResetKey}
-              onChangeText={form.setImageUrl}
-              placeholder={t("settings.project.edit.imageUrl")}
-              editable={!isSaving}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-            />
-          </View>
-        </Field>
+          </Field>
+        </SettingsTargetScope>
       ) : null}
     </AdaptiveModalSheet>
   );

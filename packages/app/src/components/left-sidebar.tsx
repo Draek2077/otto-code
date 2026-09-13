@@ -1,17 +1,7 @@
 import { router, usePathname } from "expo-router";
-import {
-  CalendarClock,
-  Columns2,
-  FileText,
-  FolderPlus,
-  History,
-  Network,
-  Search,
-  Server,
-  X,
-} from "@/components/icons/material-icons";
+import { FolderPlus, History, Import, Search, Server, X } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LayoutChangeEvent } from "react-native";
 import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
 import { useRevealActiveWorkspace } from "@/components/sidebar/use-reveal-active-workspace";
@@ -35,11 +25,7 @@ import {
   SIDEBAR_RESIZE_FAIL_OFFSET,
 } from "@/components/sidebar-resize-handle-layout";
 import { HostPicker } from "@/components/hosts/host-picker";
-import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
-import {
-  shouldUseSingleColumnNavigation,
-  sidebarNavigationLayoutStyles,
-} from "@/components/sidebar/sidebar-navigation-layout";
+import { shouldUseSingleColumnNavigation } from "@/components/sidebar/sidebar-navigation-layout";
 import {
   FooterIconButton,
   resolveSidebarFooterActiveItem,
@@ -62,20 +48,16 @@ import {
 import { useSidebarModel } from "@/components/sidebar/sidebar-model";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import type { PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
-import { type SidebarGroupMode } from "@/stores/sidebar-view-store";
+import { type SidebarGroupMode, useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
-import { useIsMobilePanelPresented } from "@/mobile-panels/provider";
+import { useIsMobilePanelActive } from "@/mobile-panels/provider";
 import {
   buildOpenProjectRoute,
-  buildArtifactsRoute,
-  buildRunsRoute,
-  buildKanbanRoute,
-  buildSchedulesRoute,
   buildSessionsRoute,
   buildSettingsAddHostRoute,
   buildSettingsHostSectionRoute,
@@ -91,7 +73,10 @@ import { SidebarSeamShadow } from "./sidebar-seam-shadow";
 import { SidebarResizeHandle } from "./sidebar-resize-handle";
 import { resolveDesktopSidebarWidth } from "./desktop-sidebar-layout";
 import { type SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
-import { PluginSidebarItems } from "@/plugins";
+import { SidebarNavRows } from "@/components/sidebar/sidebar-nav-rows";
+import { useSidebarNavItems } from "@/sidebar-nav/use-sidebar-nav-items";
+import { sidebarNavPlacement } from "@/sidebar-nav/otto-sidebar-nav";
+import { useImportSession } from "@/hooks/use-import-session";
 
 // How much to shave off the window-controls top spacer: the DESKTOP_* height
 // constants are one-size guesses that read as surplus space above the sidebar
@@ -116,6 +101,7 @@ interface SidebarSharedProps {
   toggleProjectCollapsed: (projectViewKey: string) => void;
   handleRefresh: () => void;
   handleOpenProject: () => void;
+  handleImportSession: () => void;
   handleHome: () => void;
   handleSettings: () => void;
   handleStats: () => void;
@@ -133,22 +119,15 @@ interface SidebarLabels {
   switchHost: string;
   searchHosts: string;
   sessions: string;
-  schedules: string;
-  artifacts: string;
-  runs: string;
-  kanban: string;
   closeSidebar: string;
 }
 
 interface MobileSidebarProps extends SidebarSharedProps {
+  active: boolean;
   insetsTop: number;
   insetsBottom: number;
   closeSidebar: () => void;
   handleViewMoreNavigate: () => void;
-  handleViewSchedulesNavigate: () => void;
-  handleViewArtifactsNavigate: () => void;
-  handleViewRunsNavigate: () => void;
-  handleViewKanbanNavigate: () => void;
 }
 
 interface DesktopSidebarProps extends SidebarSharedProps {
@@ -156,13 +135,9 @@ interface DesktopSidebarProps extends SidebarSharedProps {
   insetsBottom: number;
   isOpen: boolean;
   handleViewMore: () => void;
-  handleViewSchedules: () => void;
-  handleViewArtifacts: () => void;
-  handleViewRuns: () => void;
-  handleViewKanban: () => void;
 }
 
-export const LeftSidebar = memo(function LeftSidebar() {
+export const LeftSidebar = memo(function LeftSidebar({ active = true }: { active?: boolean }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -206,6 +181,11 @@ export const LeftSidebar = memo(function LeftSidebar() {
   }, [isRevalidating, isManualRefresh]);
 
   const openProjectPicker = useOpenProjectPicker();
+  const { open: openImportSession, sheet: importSessionSheet } = useImportSession();
+  const handleImportSessionMobile = useCallback(() => {
+    showMobileAgent();
+    openImportSession();
+  }, [showMobileAgent, openImportSession]);
 
   const handleOpenProjectMobile = useCallback(() => {
     showMobileAgent();
@@ -281,39 +261,16 @@ export const LeftSidebar = memo(function LeftSidebar() {
     router.push(buildSessionsRoute());
   }, []);
 
-  const handleViewSchedulesNavigate = useCallback(() => {
-    router.push(buildSchedulesRoute());
-  }, []);
-
-  const handleViewArtifactsNavigate = useCallback(() => {
-    router.push(buildArtifactsRoute());
-  }, []);
-
-  const handleViewRunsNavigate = useCallback(() => {
-    router.push(buildRunsRoute());
-  }, []);
-
-  const handleViewKanbanNavigate = useCallback(() => {
-    router.push(buildKanbanRoute());
-  }, []);
-
   const labels = useMemo(
     (): SidebarLabels => ({
       addProject: t("sidebar.actions.addProject"),
       home: t("sidebar.actions.home"),
       settings: t("sidebar.actions.settings"),
-      // Temporary label (English-only), same rationale as `runs` below.
+      // Existing Otto footer label; navigation labels live in sidebar-nav.
       stats: "Metrics",
       switchHost: t("sidebar.host.switchTitle"),
       searchHosts: t("sidebar.host.searchPlaceholder"),
       sessions: t("sidebar.sections.sessions"),
-      schedules: t("sidebar.sections.schedules"),
-      artifacts: t("sidebar.sections.artifacts"),
-      // Temporary label (English-only) until Workflows get a permanent
-      // home; avoids adding a locale key for a dev-facing entry.
-      runs: "Workflows",
-      // Temporary label (English-only), same rationale as `runs` above.
-      kanban: "Kanban",
       closeSidebar: t("sidebar.actions.closeSidebar"),
     }),
     [t],
@@ -333,55 +290,56 @@ export const LeftSidebar = memo(function LeftSidebar() {
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
     handleRefresh,
+    handleImportSession: openImportSession,
     labels,
   };
 
   if (isCompactLayout) {
     return (
-      <RetainedPanelActivity active={isOpen}>
-        <MobileSidebar
-          {...sharedProps}
-          insetsTop={insets.top}
-          insetsBottom={insets.bottom}
-          closeSidebar={showMobileAgent}
-          handleOpenProject={handleOpenProjectMobile}
-          handleHome={handleHomeMobile}
-          handleSettings={handleSettingsMobile}
-          handleStats={handleStatsMobile}
-          handleBrain={handleBrainMobile}
-          handleAddHost={handleAddHostMobile}
-          handleOpenHostSettings={handleOpenHostSettingsMobile}
-          handleViewMoreNavigate={handleViewMoreNavigate}
-          handleViewSchedulesNavigate={handleViewSchedulesNavigate}
-          handleViewArtifactsNavigate={handleViewArtifactsNavigate}
-          handleViewRunsNavigate={handleViewRunsNavigate}
-          handleViewKanbanNavigate={handleViewKanbanNavigate}
-        />
-      </RetainedPanelActivity>
+      <>
+        <RetainedPanelActivity active={active && isOpen}>
+          <MobileSidebar
+            {...sharedProps}
+            active={active}
+            handleImportSession={handleImportSessionMobile}
+            insetsTop={insets.top}
+            insetsBottom={insets.bottom}
+            closeSidebar={showMobileAgent}
+            handleOpenProject={handleOpenProjectMobile}
+            handleHome={handleHomeMobile}
+            handleSettings={handleSettingsMobile}
+            handleStats={handleStatsMobile}
+            handleBrain={handleBrainMobile}
+            handleAddHost={handleAddHostMobile}
+            handleOpenHostSettings={handleOpenHostSettingsMobile}
+            handleViewMoreNavigate={handleViewMoreNavigate}
+          />
+        </RetainedPanelActivity>
+        {importSessionSheet}
+      </>
     );
   }
 
   return (
-    <RetainedPanelActivity active={isOpen}>
-      <DesktopSidebar
-        {...sharedProps}
-        insetsTop={insets.top}
-        insetsBottom={insets.bottom}
-        isOpen={isOpen}
-        handleOpenProject={handleOpenProjectDesktop}
-        handleHome={handleHomeDesktop}
-        handleSettings={handleSettingsDesktop}
-        handleStats={handleStatsDesktop}
-        handleBrain={handleBrainDesktop}
-        handleAddHost={handleAddHostDesktop}
-        handleOpenHostSettings={handleOpenHostSettingsDesktop}
-        handleViewMore={handleViewMoreNavigate}
-        handleViewSchedules={handleViewSchedulesNavigate}
-        handleViewArtifacts={handleViewArtifactsNavigate}
-        handleViewRuns={handleViewRunsNavigate}
-        handleViewKanban={handleViewKanbanNavigate}
-      />
-    </RetainedPanelActivity>
+    <>
+      <RetainedPanelActivity active={active && isOpen}>
+        <DesktopSidebar
+          {...sharedProps}
+          insetsTop={insets.top}
+          insetsBottom={insets.bottom}
+          isOpen={isOpen}
+          handleOpenProject={handleOpenProjectDesktop}
+          handleHome={handleHomeDesktop}
+          handleSettings={handleSettingsDesktop}
+          handleStats={handleStatsDesktop}
+          handleBrain={handleBrainDesktop}
+          handleAddHost={handleAddHostDesktop}
+          handleOpenHostSettings={handleOpenHostSettingsDesktop}
+          handleViewMore={handleViewMoreNavigate}
+        />
+      </RetainedPanelActivity>
+      {importSessionSheet}
+    </>
   );
 });
 
@@ -482,120 +440,15 @@ function HeaderIconTooltipContent({
   );
 }
 
-interface SidebarNavigationGridProps {
-  labels: SidebarLabels;
-  isArtifactsActive: boolean;
-  isRunsActive: boolean;
-  isSchedulesActive: boolean;
-  isKanbanActive: boolean;
-  onViewArtifacts: () => void;
-  onViewRuns: () => void;
-  onViewSchedules: () => void;
-  onViewKanban: () => void;
-  isSingleColumn: boolean;
-}
-
-function SidebarNavigationHeader({
-  onBeforeNavigate,
-  ...navigationGridProps
-}: Omit<SidebarNavigationGridProps, "isSingleColumn"> & { onBeforeNavigate?: () => void }) {
+function SidebarNavigationHeader({ onBeforeNavigate }: { onBeforeNavigate?: () => void }) {
   const [isSingleColumn, setIsSingleColumn] = useState(false);
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
     setIsSingleColumn(shouldUseSingleColumnNavigation(event.nativeEvent.layout.width));
   }, []);
-
   return (
     <View onLayout={handleLayout} style={styles.sidebarNavigationHeader}>
       <SidebarActiveTeamSwitchers onBeforeNavigate={onBeforeNavigate} />
-      <SidebarNavigationGrid {...navigationGridProps} isSingleColumn={isSingleColumn} />
-    </View>
-  );
-}
-
-function SidebarNavigationGrid({
-  labels,
-  isArtifactsActive,
-  isRunsActive,
-  isSchedulesActive,
-  isKanbanActive,
-  onViewArtifacts,
-  onViewRuns,
-  onViewSchedules,
-  onViewKanban,
-  isSingleColumn,
-}: SidebarNavigationGridProps) {
-  return (
-    <View style={styles.sidebarNavigationGrid}>
-      <View
-        style={[
-          styles.sidebarNavigationGridRow,
-          isSingleColumn && styles.sidebarNavigationGridRowSingleColumn,
-        ]}
-      >
-        <SidebarHeaderRow
-          icon={FileText}
-          label={labels.artifacts}
-          onPress={onViewArtifacts}
-          isActive={isArtifactsActive}
-          testID="sidebar-artifacts"
-          variant="compact"
-          allowLabelWrap
-          containerStyle={[
-            sidebarNavigationLayoutStyles.itemTwoColumn,
-            isSingleColumn && sidebarNavigationLayoutStyles.itemSingleColumn,
-            styles.sidebarNavigationItem,
-          ]}
-        />
-        <SidebarHeaderRow
-          icon={Columns2}
-          label={labels.kanban}
-          onPress={onViewKanban}
-          isActive={isKanbanActive}
-          testID="sidebar-kanban"
-          variant="compact"
-          allowLabelWrap
-          containerStyle={[
-            sidebarNavigationLayoutStyles.itemTwoColumn,
-            isSingleColumn && sidebarNavigationLayoutStyles.itemSingleColumn,
-            styles.sidebarNavigationItem,
-          ]}
-        />
-      </View>
-      <View
-        style={[
-          styles.sidebarNavigationGridRow,
-          isSingleColumn && styles.sidebarNavigationGridRowSingleColumn,
-        ]}
-      >
-        <SidebarHeaderRow
-          icon={CalendarClock}
-          label={labels.schedules}
-          onPress={onViewSchedules}
-          isActive={isSchedulesActive}
-          testID="sidebar-schedules"
-          variant="compact"
-          allowLabelWrap
-          containerStyle={[
-            sidebarNavigationLayoutStyles.itemTwoColumn,
-            isSingleColumn && sidebarNavigationLayoutStyles.itemSingleColumn,
-            styles.sidebarNavigationItem,
-          ]}
-        />
-        <SidebarHeaderRow
-          icon={Network}
-          label={labels.runs}
-          onPress={onViewRuns}
-          isActive={isRunsActive}
-          testID="sidebar-runs"
-          variant="compact"
-          allowLabelWrap
-          containerStyle={[
-            sidebarNavigationLayoutStyles.itemTwoColumn,
-            isSingleColumn && sidebarNavigationLayoutStyles.itemSingleColumn,
-            styles.sidebarNavigationItem,
-          ]}
-        />
-      </View>
+      <SidebarNavRows isSingleColumn={isSingleColumn} onBeforeNavigate={onBeforeNavigate} />
     </View>
   );
 }
@@ -655,6 +508,7 @@ function SidebarFooter({
 }
 
 function MobileSidebar({
+  active,
   theme,
   workspaceGroups,
   pinnedGroups,
@@ -669,6 +523,7 @@ function MobileSidebar({
   toggleProjectCollapsed,
   handleRefresh,
   handleOpenProject,
+  handleImportSession,
   handleHome,
   handleSettings,
   handleStats,
@@ -680,44 +535,17 @@ function MobileSidebar({
   insetsBottom,
   closeSidebar,
   handleViewMoreNavigate,
-  handleViewSchedulesNavigate,
-  handleViewArtifactsNavigate,
-  handleViewRunsNavigate,
-  handleViewKanbanNavigate,
 }: MobileSidebarProps) {
   const pathname = usePathname();
+  const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
-  const isSchedulesActive = pathname.includes("/schedules");
-  const isArtifactsActive = pathname.includes("/artifacts");
-  const isRunsActive = pathname.includes("/runs");
-  const isKanbanActive = pathname.includes("/kanban");
   const { gesture: closeGesture, gestureRef: closeGestureRef } = useCloseAgentListGesture();
-  const dragGestureHostPresented = useIsMobilePanelPresented("agent-list");
+  const dragGestureHostSettled = useIsMobilePanelActive("agent-list");
 
   const handleViewMore = useCallback(() => {
     closeSidebar();
     handleViewMoreNavigate();
   }, [closeSidebar, handleViewMoreNavigate]);
-
-  const handleViewSchedules = useCallback(() => {
-    closeSidebar();
-    handleViewSchedulesNavigate();
-  }, [closeSidebar, handleViewSchedulesNavigate]);
-
-  const handleViewArtifacts = useCallback(() => {
-    closeSidebar();
-    handleViewArtifactsNavigate();
-  }, [closeSidebar, handleViewArtifactsNavigate]);
-
-  const handleViewRuns = useCallback(() => {
-    closeSidebar();
-    handleViewRunsNavigate();
-  }, [closeSidebar, handleViewRunsNavigate]);
-
-  const handleViewKanban = useCallback(() => {
-    closeSidebar();
-    handleViewKanbanNavigate();
-  }, [closeSidebar, handleViewKanbanNavigate]);
 
   const handleWorkspacePress = useCallback(() => {
     closeSidebar();
@@ -740,22 +568,11 @@ function MobileSidebar({
     >
       <View style={styles.sidebarContent} pointerEvents="auto">
         <View style={styles.sidebarHeaderGroup}>
-          <SidebarNavigationHeader
-            onBeforeNavigate={closeSidebar}
-            labels={labels}
-            isArtifactsActive={isArtifactsActive}
-            isRunsActive={isRunsActive}
-            isSchedulesActive={isSchedulesActive}
-            isKanbanActive={isKanbanActive}
-            onViewArtifacts={handleViewArtifacts}
-            onViewRuns={handleViewRuns}
-            onViewSchedules={handleViewSchedules}
-            onViewKanban={handleViewKanban}
-          />
-          <PluginSidebarItems onBeforeNavigate={closeSidebar} />
+          <SidebarNavigationHeader onBeforeNavigate={closeSidebar} />
         </View>
         <WorkspacesSectionHeader
           onAddProject={handleOpenProject}
+          onImportSession={handleImportSession}
           addProjectLabel={labels.addProject}
           onViewHistory={handleViewMore}
           historyLabel={labels.sessions}
@@ -779,7 +596,7 @@ function MobileSidebar({
           )}
         </Pressable>
 
-        {isInitialLoad ? (
+        {isInitialLoad && !hasActiveHostFilter ? (
           <SidebarAgentListSkeleton />
         ) : (
           <SidebarWorkspaceList
@@ -795,8 +612,9 @@ function MobileSidebar({
             onRefresh={handleRefresh}
             onWorkspacePress={handleWorkspacePress}
             onAddProject={handleOpenProject}
+            onImportSession={handleImportSession}
             parentGestureRef={closeGestureRef}
-            dragGestureHostPresented={dragGestureHostPresented}
+            dragGestureHostActive={active && dragGestureHostSettled}
           />
         )}
 
@@ -830,6 +648,7 @@ function DesktopSidebar({
   toggleProjectCollapsed,
   handleRefresh,
   handleOpenProject,
+  handleImportSession,
   handleHome,
   handleSettings,
   handleStats,
@@ -841,17 +660,10 @@ function DesktopSidebar({
   insetsBottom,
   isOpen,
   handleViewMore,
-  handleViewSchedules,
-  handleViewArtifacts,
-  handleViewRuns,
-  handleViewKanban,
 }: DesktopSidebarProps) {
   const pathname = usePathname();
+  const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
-  const isSchedulesActive = pathname.includes("/schedules");
-  const isArtifactsActive = pathname.includes("/artifacts");
-  const isRunsActive = pathname.includes("/runs");
-  const isKanbanActive = pathname.includes("/kanban");
   const padding = useWindowControlsPadding("sidebar");
   const { settings } = useAppSettings();
   const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
@@ -970,29 +782,19 @@ function DesktopSidebar({
           <TitlebarDragRegion />
           {showTopSpacer ? <View style={paddingTopSpacerStyle} /> : null}
           <View style={styles.sidebarHeaderGroup}>
-            <SidebarNavigationHeader
-              labels={labels}
-              isArtifactsActive={isArtifactsActive}
-              isRunsActive={isRunsActive}
-              isSchedulesActive={isSchedulesActive}
-              isKanbanActive={isKanbanActive}
-              onViewArtifacts={handleViewArtifacts}
-              onViewRuns={handleViewRuns}
-              onViewSchedules={handleViewSchedules}
-              onViewKanban={handleViewKanban}
-            />
-            <PluginSidebarItems />
+            <SidebarNavigationHeader />
           </View>
         </View>
         <WorkspacesSectionHeader
           onAddProject={handleOpenProject}
+          onImportSession={handleImportSession}
           addProjectLabel={labels.addProject}
           onViewHistory={handleViewMore}
           historyLabel={labels.sessions}
           isHistoryActive={isSessionsActive}
         />
 
-        {isInitialLoad ? (
+        {isInitialLoad && !hasActiveHostFilter ? (
           <SidebarAgentListSkeleton />
         ) : (
           <SidebarWorkspaceList
@@ -1007,6 +809,7 @@ function DesktopSidebar({
             isRefreshing={isManualRefresh && isRevalidating}
             onRefresh={handleRefresh}
             onAddProject={handleOpenProject}
+            onImportSession={handleImportSession}
           />
         )}
 
@@ -1040,18 +843,25 @@ function DesktopSidebar({
 
 function WorkspacesSectionHeader({
   onAddProject,
+  onImportSession,
   addProjectLabel,
   onViewHistory,
   historyLabel,
   isHistoryActive,
 }: {
   onAddProject: () => void;
+  onImportSession: () => void;
   addProjectLabel: string;
   onViewHistory: () => void;
   historyLabel: string;
   isHistoryActive: boolean;
 }) {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
+  const { items } = useSidebarNavItems();
+  const headerActions = items.filter(
+    (item) => item.visible && sidebarNavPlacement(item) === "workspace-header",
+  );
   const workspacesAnchorRef = useTutorialAnchor("workspaces");
   // useIconSize (not theme.iconSize props) - the runtime theme patch doesn't
   // reliably reach icon size props; the hook scales with the breakpoint.
@@ -1074,6 +884,65 @@ function WorkspacesSectionHeader({
       (hovered || pressed) && styles.workspacesHeaderIconButtonHovered,
     ],
     [isHistoryActive],
+  );
+
+  const historyAction = (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={historyLabel}
+          testID="sidebar-sessions"
+          style={historyIconButtonStyle}
+          onPress={onViewHistory}
+        >
+          {({ hovered, pressed }) => (
+            <View style={styles.workspacesHeaderShortcutAnchor}>
+              <History
+                size={iconSize.sm}
+                color={
+                  hovered || pressed || isHistoryActive
+                    ? theme.colors.foreground
+                    : theme.colors.foregroundMuted
+                }
+              />
+            </View>
+          )}
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent side="left" align="center" offset={8}>
+        <HeaderIconTooltipContent label={historyLabel} />
+      </TooltipContent>
+    </Tooltip>
+  );
+  const searchAction = (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open command center"
+          testID="sidebar-command-center-search"
+          style={headerIconButtonStyle}
+          onPress={handleSearchPress}
+        >
+          {({ hovered, pressed }) => (
+            <View style={styles.workspacesHeaderShortcutAnchor}>
+              <Search
+                size={iconSize.sm}
+                color={hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted}
+              />
+              <ShortcutDiscoveryHint
+                action="command-center.toggle"
+                style={styles.shortcutDiscoveryHint}
+              />
+            </View>
+          )}
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent side="left" align="center" offset={8}>
+        <HeaderIconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
+      </TooltipContent>
+    </Tooltip>
   );
 
   return (
@@ -1110,58 +979,31 @@ function WorkspacesSectionHeader({
           <TooltipTrigger asChild>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={historyLabel}
-              testID="sidebar-sessions"
-              style={historyIconButtonStyle}
-              onPress={onViewHistory}
-            >
-              {({ hovered, pressed }) => (
-                <View style={styles.workspacesHeaderShortcutAnchor}>
-                  <History
-                    size={iconSize.sm}
-                    color={
-                      hovered || pressed || isHistoryActive
-                        ? theme.colors.foreground
-                        : theme.colors.foregroundMuted
-                    }
-                  />
-                </View>
-              )}
-            </Pressable>
-          </TooltipTrigger>
-          <TooltipContent side="left" align="center" offset={8}>
-            <HeaderIconTooltipContent label={historyLabel} />
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open command center"
-              testID="sidebar-command-center-search"
+              accessibilityLabel={t("importSession.title")}
+              testID="sidebar-import-session"
               style={headerIconButtonStyle}
-              onPress={handleSearchPress}
+              onPress={onImportSession}
             >
               {({ hovered, pressed }) => (
-                <View style={styles.workspacesHeaderShortcutAnchor}>
-                  <Search
-                    size={iconSize.sm}
-                    color={
-                      hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                    }
-                  />
-                  <ShortcutDiscoveryHint
-                    action="command-center.toggle"
-                    style={styles.shortcutDiscoveryHint}
-                  />
-                </View>
+                <Import
+                  size={iconSize.sm}
+                  color={
+                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                  }
+                />
               )}
             </Pressable>
           </TooltipTrigger>
           <TooltipContent side="left" align="center" offset={8}>
-            <HeaderIconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
+            <HeaderIconTooltipContent label={t("importSession.title")} />
           </TooltipContent>
         </Tooltip>
+        {headerActions.map((item) => (
+          <Fragment key={item.key}>
+            {item.kind === "builtin" && item.id === "history" ? historyAction : searchAction}
+          </Fragment>
+        ))}
+
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <View>
@@ -1198,26 +1040,14 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  sidebarNavigationGrid: {
-    gap: theme.spacing[1],
-  },
   sidebarNavigationHeader: {
     gap: theme.spacing[1],
   },
-  sidebarNavigationGridRow: {
-    width: "100%",
-    flexDirection: "row",
-    paddingHorizontal: theme.spacing[2],
-    gap: theme.spacing[1],
-  },
-  sidebarNavigationGridRowSingleColumn: {
-    flexDirection: "column",
-  },
-  sidebarNavigationItem: {
-    paddingHorizontal: 0,
-  },
   workspacesSectionHeader: {
     flexDirection: "row",
+    // The additive Import action keeps full compact icon/button sizing. If the
+    // title and action group cannot fit together, give the group its own line.
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[2],

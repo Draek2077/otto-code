@@ -1,3 +1,4 @@
+import { resolveImportTarget } from "@/components/import-session-sheet-view-model";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -17,6 +18,7 @@ export function useImportSessionBatch({
   visible,
   globalScope,
   providerFilter,
+  searchQuery = "",
   entries,
   onClose,
   onImportedAgent,
@@ -30,6 +32,7 @@ export function useImportSessionBatch({
   visible: boolean;
   globalScope: boolean;
   providerFilter: string;
+  searchQuery?: string;
   entries: FetchRecentProviderSessionEntry[];
   onClose: () => void;
   onImportedAgent?: (id: string) => void;
@@ -48,7 +51,7 @@ export function useImportSessionBatch({
 
   useEffect(() => {
     setSelectedKeys(new Set());
-  }, [visible, serverId, cwd, globalScope, providerFilter]);
+  }, [visible, serverId, cwd, globalScope, providerFilter, searchQuery]);
   useEffect(() => {
     setCompletedKeys(new Set());
     setImportErrors({});
@@ -83,7 +86,12 @@ export function useImportSessionBatch({
           // Scoped discovery has already resolved filesystem aliases on the host.
           // Global discovery preserves a foreign session's cwd and lets the host
           // provision its workspace instead of binding it to the current one.
-          const targetWorkspace = !globalScope || entry.cwd === cwd ? workspaceId : undefined;
+          const { workspaceId: targetWorkspace } = resolveImportTarget({
+            entryCwd: entry.cwd,
+            workspaceCwd: cwd,
+            workspaceId,
+            isScopedListing: !globalScope && Boolean(cwd),
+          });
           const agent = await client.importAgent({
             providerId: entry.providerId,
             providerHandleId: entry.providerHandleId,

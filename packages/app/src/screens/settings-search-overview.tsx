@@ -2,6 +2,9 @@
 // and their stylesheet. Extracted from
 // settings-screen.tsx, which renders the overview from its desktop
 // content at one registration point.
+import { useInstalledPlugins } from "@/plugins/registry";
+import { useHostFeature } from "@/runtime/host-features";
+import { projectPluginSettingsSearchItems } from "./settings-search/plugin-projection";
 import { useCallback, useMemo, useState } from "react";
 import { ReactNode } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
@@ -35,10 +38,21 @@ const searchInputProps = (theme: { colors: { foregroundMuted: string } }) => ({
 export function SettingsSearchOverview({
   onSelectItem,
   isDeveloperMode,
+  serverId,
 }: {
   onSelectItem: (item: SettingsSearchItem) => void;
   isDeveloperMode: boolean;
+  serverId: string | null;
 }) {
+  const plugins = useInstalledPlugins();
+  const pluginSettingsSupported = useHostFeature(serverId, "pluginSettings");
+  const catalog = useMemo(
+    () => [
+      ...SETTINGS_SEARCH_CATALOG,
+      ...projectPluginSettingsSearchItems(plugins, serverId, pluginSettingsSupported),
+    ],
+    [plugins, serverId, pluginSettingsSupported],
+  );
   const [query, setQuery] = useState("");
   const clearQuery = useCallback(() => setQuery(""), []);
   const normalizedQuery = query.trim().toLowerCase();
@@ -46,8 +60,8 @@ export function SettingsSearchOverview({
   const results = useMemo(() => {
     // Every whitespace-separated term has to match, so "brain https" narrows
     // instead of looking for that literal string and finding nothing.
-    return SETTINGS_SEARCH_CATALOG.filter((item) => matchesSettingsSearchTerms(item, searchTerms));
-  }, [searchTerms]);
+    return catalog.filter((item) => matchesSettingsSearchTerms(item, searchTerms));
+  }, [catalog, searchTerms]);
   const groupedResults = useMemo(() => {
     const groups = new Map<string, SettingsSearchItem[]>();
     for (const item of results) {
@@ -132,6 +146,13 @@ function SettingsSearchResultRow({
     <Pressable
       onPress={handlePress}
       disabled={developerSettingUnavailable}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.title}, ${item.scope}, ${item.category}, ${item.group}`}
+      accessibilityHint={
+        developerSettingUnavailable
+          ? `${item.description} Enable Developer mode to edit this setting`
+          : item.description
+      }
       style={searchOverviewStyles.resultRow}
       testID={`settings-search-result-${item.id}`}
     >

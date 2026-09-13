@@ -1,3 +1,4 @@
+import { SettingsTargetText, SettingsTargetScope } from "@/screens/settings-search/target";
 // The "Voice cues" toggle + its volume, rendered inside the Agents section's
 // grouped card.
 //
@@ -82,7 +83,12 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
       {canSpeakCues && canPreviewVoice ? (
         <View style={settingsStyles.row} testID="host-page-agent-voice-cues">
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Voice cues</Text>
+            <SettingsTargetText
+              settingId="app-integrations-voice-dictation-on-this-device-voice-cues"
+              style={settingsStyles.rowTitle}
+            >
+              Voice cues
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Speak a short line in the agent&apos;s personality voice as it starts, thinks, waits
               on sub-agents, and finishes. Only personality-backed main agents speak; write their
@@ -98,18 +104,27 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
         </View>
       ) : null}
       {canSpeakCues && canPreviewVoice && settings.agentVoiceCues ? (
-        <SettingsVolumeRow
-          title="Voice cue volume"
-          hint="How loud cues are, on a separate channel from the Visualizer's sound effects."
-          value={settings.agentVoiceCuesVolume}
-          onCommit={onVolumeCommit}
-          accessibilityLabel="Agent voice cue volume"
-          testID="host-page-agent-voice-cues-volume"
-        />
+        <SettingsTargetScope
+          settingIds={["app-integrations-voice-dictation-on-this-device-voice-cue-volume"]}
+        >
+          <SettingsVolumeRow
+            title="Voice cue volume"
+            hint="How loud cues are, on a separate channel from the Visualizer's sound effects."
+            value={settings.agentVoiceCuesVolume}
+            onCommit={onVolumeCommit}
+            accessibilityLabel="Agent voice cue volume"
+            testID="host-page-agent-voice-cues-volume"
+          />
+        </SettingsTargetScope>
       ) : null}
       <View style={ROW_WITH_BORDER} testID="wake-word-settings">
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Hey Otto</Text>
+          <SettingsTargetText
+            settingId="app-integrations-voice-dictation-on-this-device-hey-otto"
+            style={settingsStyles.rowTitle}
+          >
+            Hey Otto
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             {wakeWordSupported
               ? "Off by default. When enabled, a local/native detector listens for the phrase; idle audio is never sent to Otto, the daemon, or any provider. When disabled, the detector is not started and the microphone is not opened. Use the workspace microphone button to pause listening without disabling Hey Otto."
@@ -129,7 +144,12 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
         <>
           <View style={ROW_WITH_BORDER}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Wake phrase</Text>
+              <SettingsTargetText
+                settingId="app-integrations-voice-dictation-on-this-device-wake-phrase"
+                style={settingsStyles.rowTitle}
+              >
+                Wake phrase
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 This model currently supports only the built-in Hey Otto phrase.
               </Text>
@@ -143,7 +163,12 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
           </View>
           <View style={ROW_WITH_BORDER}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Detector sensitivity</Text>
+              <SettingsTargetText
+                settingId="app-integrations-voice-dictation-on-this-device-detector-sensitivity"
+                style={settingsStyles.rowTitle}
+              >
+                Detector sensitivity
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 Higher values make detection easier but may increase false activations.
               </Text>
@@ -158,7 +183,12 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
           </View>
           <View style={ROW_WITH_BORDER}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Silence timeout (ms)</Text>
+              <SettingsTargetText
+                settingId="app-integrations-voice-dictation-on-this-device-silence-timeout"
+                style={settingsStyles.rowTitle}
+              >
+                Silence timeout (ms)
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 How long silence ends the one-utterance recording.
               </Text>
@@ -173,7 +203,12 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
           </View>
           <View style={ROW_WITH_BORDER}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>After dictation</Text>
+              <SettingsTargetText
+                settingId="app-integrations-voice-dictation-on-this-device-after-dictation"
+                style={settingsStyles.rowTitle}
+              >
+                After dictation
+              </SettingsTargetText>
             </View>
             <SegmentedControl
               value={settings.wakeWordAutoSend ? "send" : "insert"}

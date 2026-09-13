@@ -18,12 +18,20 @@ import {
   type ArchiveResult,
   resolveWorkspaceIdAtPath,
 } from "./workspace-archive-service.js";
+import {
+  assertWorkspaceAutomationAllowedForWorkspace,
+  clearWorkspaceAutomationBlock,
+} from "./workspace-automation-gate.js";
+import {
+  FileBackedWorkspaceRegistry,
+  createPersistedWorkspaceRecord,
+} from "./workspace-registry.js";
 
 const cleanupPaths: string[] = [];
 
 afterEach(() => {
   for (const target of cleanupPaths.splice(0)) {
-    rmSync(target, { recursive: true, force: true });
+    rmSync(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
 
@@ -332,6 +340,86 @@ describe("archiveByScope", () => {
     });
     expect(existsSync(worktree.worktreePath)).toBe(true);
     expect(readFileSync(path.join(repoDir, "shared-teardown.log"), "utf8")).toBe("ok");
+  });
+
+  async function assertPersistedArchiveAutomationPolicy(approved: boolean): Promise<void> {
+    const { tempDir, repoDir } = createGitRepo();
+    const marker = path.join(repoDir, "blocked-teardown.log");
+    const teardownScript = path.join(repoDir, "blocked-teardown.cjs");
+    writeFileSync(
+      teardownScript,
+      `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "unsafe");`,
+    );
+    // Negative control: the repository command is valid and would execute without the gate.
+    execFileSync(process.execPath, [teardownScript], { cwd: repoDir });
+    expect(existsSync(marker)).toBe(true);
+    rmSync(marker);
+    writeFileSync(
+      path.join(repoDir, "otto.json"),
+      JSON.stringify({ worktree: { teardown: ["node blocked-teardown.cjs"] } }),
+    );
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "blocked teardown"], {
+      cwd: repoDir,
+      stdio: "pipe",
+    });
+    const ottoHome = path.join(tempDir, ".otto");
+    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "blocked-teardown");
+    const workspaceId = "ws-blocked-teardown";
+    const deps = createArchiveDeps({
+      ottoHome,
+      activeWorkspaces: [
+        {
+          workspaceId,
+          cwd: worktree.worktreePath,
+          kind: "worktree",
+          worktreeRoot: worktree.worktreePath,
+          isOttoOwnedWorktree: true,
+          mainRepoRoot: repoDir,
+        },
+      ],
+    });
+    const registryPath = path.join(ottoHome, "workspace-approval.json");
+    const registry = new FileBackedWorkspaceRegistry(registryPath, pino({ enabled: false }));
+    await registry.upsert(
+      createPersistedWorkspaceRecord({
+        workspaceId,
+        projectId: "project",
+        cwd: worktree.worktreePath,
+        kind: "worktree",
+        displayName: "Fork PR",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        archivedAt: null,
+        untrustedSource: {
+          kind: "change_request",
+          forge: "github",
+          number: 42,
+          headRepository: "contributor/paseo",
+        },
+      }),
+    );
+    if (approved) expect(await clearWorkspaceAutomationBlock(registry, workspaceId)).toBe(true);
+    // Reopen from disk: archiving must honor persisted approval after daemon reload.
+    const reopened = new FileBackedWorkspaceRegistry(registryPath, pino({ enabled: false }));
+    deps.assertWorkspaceAutomationAllowed = (workspace) =>
+      assertWorkspaceAutomationAllowedForWorkspace(reopened, workspace);
+
+    const result = await archiveByScope(deps, {
+      scope: { kind: "workspace", workspaceId },
+      requestId: "req-blocked-teardown",
+    });
+
+    expect(result.archivedWorkspaceIds).toEqual([workspaceId]);
+    expect(existsSync(marker)).toBe(approved);
+  }
+
+  test("workspace scope skips teardown while repository automation is blocked", async () => {
+    await assertPersistedArchiveAutomationPolicy(false);
+  });
+
+  test("explicit persisted approval permits archive teardown after reload", async () => {
+    await assertPersistedArchiveAutomationPolicy(true);
   });
 
   // Otto puts a workspace at the package it was opened on, so a worktree commonly
@@ -836,11 +924,11 @@ describe("archiveByScope", () => {
 
   test("archives the durable snapshot when an observed live agent closes before teardown", async () => {
     const { tempDir, repoDir } = createGitRepo();
-    const paseoHome = path.join(tempDir, ".paseo");
+    const ottoHome = path.join(tempDir, ".otto");
     const workspaceId = "ws-live-teardown-race";
     const agentId = "agent-live-teardown-race";
     const deps = createArchiveDeps({
-      paseoHome,
+      ottoHome,
       activeWorkspaces: [{ workspaceId, cwd: repoDir, kind: "local_checkout" }],
     });
     deps.agentManager = {

@@ -181,34 +181,94 @@ test("re-opening refreshes mutable checkout metadata without renaming the worksp
   expect((await projectRegistry.get(first.projectId))?.kind).toBe("git");
 });
 
-test("persists manual worktree ownership separately from its workspace kind", async () => {
-  const cwd = path.join(tmpDir, "manual-worktree");
-  const mainRepoRoot = path.join(tmpDir, "main-repo");
-  const manualWorktreeProvisioning = createWorkspaceProvisioningService({
-    workspaceRegistry,
-    projectRegistry,
-    workspaceGitService: createNoopWorkspaceGitService({
-      peekSnapshot: () => null,
-      getCheckout: async () => ({
-        cwd,
-        isGit: true,
-        currentBranch: "feature/manual",
-        remoteUrl: null,
-        worktreeRoot: cwd,
-        isOttoOwnedWorktree: false,
-        mainRepoRoot,
+test.each([false, true])(
+  "opening a selected worktree keeps its exact-root project (Otto-owned: %s)",
+  async (isOttoOwnedWorktree) => {
+    const cwd = path.join(tmpDir, "manual-worktree");
+    const mainRepoRoot = path.join(tmpDir, "main-repo");
+    const sourceProject = await projectRegistry.getOrCreateActiveByRoot({
+      rootPath: mainRepoRoot,
+      kind: "git",
+      displayName: "Source project",
+      projectKey: "remote:github.com/acme/repo",
+      timestamp: ARCHIVED_AT,
+    });
+    const manualWorktreeProvisioning = createWorkspaceProvisioningService({
+      workspaceRegistry,
+      projectRegistry,
+      logger,
+      workspaceGitService: createNoopWorkspaceGitService({
+        peekSnapshot: () => null,
+        getCheckout: async () => ({
+          cwd,
+          isGit: true,
+          currentBranch: "feature/manual",
+          remoteUrl: "https://github.com/acme/repo.git",
+          worktreeRoot: cwd,
+          isOttoOwnedWorktree,
+          mainRepoRoot,
+        }),
       }),
-    }),
-  });
+    });
 
-  const workspace = await manualWorktreeProvisioning.findOrCreateWorkspaceForDirectory(cwd);
+    const workspace = await manualWorktreeProvisioning.findOrCreateWorkspaceForDirectory(cwd);
 
-  expect(workspace).toMatchObject({
-    kind: "worktree",
-    isOttoOwnedWorktree: false,
-    mainRepoRoot,
-  });
-});
+    expect(workspace).toMatchObject({
+      kind: "worktree",
+      isOttoOwnedWorktree,
+      mainRepoRoot,
+    });
+    expect(workspace.projectId).not.toBe(sourceProject.projectId);
+    expect(await projectRegistry.get(workspace.projectId)).toMatchObject({
+      projectId: expect.stringMatching(/^prj_[0-9a-f]{16}$/),
+      rootPath: cwd,
+      projectKey: sourceProject.projectKey,
+    });
+    expect(await projectRegistry.get(sourceProject.projectId)).toEqual(sourceProject);
+  },
+);
+
+test.each(["open", "reattach"] as const)(
+  "%s keeps orphan repair scoped to explicit Reattach",
+  async (operation) => {
+    const repoRoot = path.join(tmpDir, "source");
+    const cwd = path.join(tmpDir, "worktree");
+    gitRoots.add(repoRoot);
+    gitRoots.add(cwd);
+    const archived = createPersistedWorkspaceRecord({
+      workspaceId: "wks-orphan",
+      projectId: "prj-missing",
+      cwd,
+      kind: "worktree",
+      displayName: "Preserved work",
+      isOttoOwnedWorktree: true,
+      mainRepoRoot: repoRoot,
+      createdAt: ARCHIVED_AT,
+      updatedAt: ARCHIVED_AT,
+      archivedAt: ARCHIVED_AT,
+    });
+    await workspaceRegistry.upsert(archived);
+    const workspace =
+      operation === "open"
+        ? await provisioning.findOrCreateWorkspaceForDirectory(cwd)
+        : await provisioning.reattachOwnedWorktreeForDirectory({ cwd, repoRoot });
+    if (operation === "open") {
+      expect(workspace.workspaceId).not.toBe(archived.workspaceId);
+      expect(workspace.projectId).not.toBe(archived.projectId);
+      expect(await projectRegistry.get(workspace.projectId)).toMatchObject({ rootPath: cwd });
+      expect(await projectRegistry.get(archived.projectId)).toBeNull();
+      expect(await workspaceRegistry.get(archived.workspaceId)).toEqual(archived);
+    } else {
+      expect(workspace).toMatchObject({
+        workspaceId: archived.workspaceId,
+        projectId: archived.projectId,
+        archivedAt: null,
+      });
+      expect(await projectRegistry.get(archived.projectId)).toMatchObject({ rootPath: repoRoot });
+      expect(await workspaceRegistry.list()).toHaveLength(1);
+    }
+  },
+);
 
 test("re-opening an archived workspace by its exact path unarchives it and keeps the id", async () => {
   const repo = path.join(tmpDir, "repo");
@@ -597,6 +657,55 @@ test("runInImportWorkspace uses an active requested workspace without creating a
 
   expect(result).toEqual({ value: workspace.workspaceId, createdWorkspace: null });
   expect(await workspaceRegistry.list()).toEqual([workspace]);
+});
+
+test("runInImportWorkspace reuses an active workspace for an untargeted import", async () => {
+  const cwd = path.join(tmpDir, "active-import");
+  mkdirSync(cwd);
+  const workspace = await provisioning.createWorkspaceForDirectory(cwd);
+
+  const result = await provisioning.runInImportWorkspace(
+    { cwd },
+    async (target) => target.workspaceId,
+  );
+
+  expect(result).toEqual({ value: workspace.workspaceId, createdWorkspace: null });
+  expect(await workspaceRegistry.list()).toEqual([workspace]);
+});
+
+test("runInImportWorkspace unarchives a workspace for an untargeted import", async () => {
+  const cwd = path.join(tmpDir, "archived-import");
+  mkdirSync(cwd);
+  const workspace = await provisioning.createWorkspaceForDirectory(cwd);
+  await workspaceRegistry.archive(workspace.workspaceId, ARCHIVED_AT);
+
+  const result = await provisioning.runInImportWorkspace(
+    { cwd },
+    async (target) => target.workspaceId,
+  );
+
+  expect(result).toEqual({ value: workspace.workspaceId, createdWorkspace: null });
+  expect(await workspaceRegistry.get(workspace.workspaceId)).toMatchObject({
+    workspaceId: workspace.workspaceId,
+    archivedAt: null,
+  });
+  expect(await workspaceRegistry.list()).toHaveLength(1);
+});
+
+test("runInImportWorkspace leaves a reused workspace intact when import fails", async () => {
+  const cwd = path.join(tmpDir, "failed-active-import");
+  mkdirSync(cwd);
+  const workspace = await provisioning.createWorkspaceForDirectory(cwd);
+  const project = await projectRegistry.get(workspace.projectId);
+
+  await expect(
+    provisioning.runInImportWorkspace({ cwd }, async () => {
+      throw new Error("provider session is unavailable");
+    }),
+  ).rejects.toThrow("provider session is unavailable");
+
+  expect(await workspaceRegistry.list()).toEqual([workspace]);
+  expect(await projectRegistry.get(workspace.projectId)).toEqual(project);
 });
 
 test.each(["missing", "archived"] as const)(

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { availableStarterTriggerConnections } from "./starter-trigger.js";
 
 describe("starter trigger connections", () => {
-  it("returns only concrete connections that can back the generated workflow", () => {
+  it("returns only concrete connections that can back the generated trigger", () => {
     expect(
       availableStarterTriggerConnections(
         {
@@ -14,8 +14,10 @@ describe("starter trigger connections", () => {
               repositories: ["Draek2077/otto-code"],
             },
           ],
-          slack: [{ teamId: "T123", teamName: "Otto" }],
-          discord: [{ guildId: "456", guildName: "Otto Discord" }],
+          slack: [{ slug: "paseo", teamName: "Paseo" }],
+          discord: [{ slug: "paseo-discord", guildName: "Paseo Discord" }],
+          daemons: [],
+          linear: [],
         },
         "Draek2077/otto-code",
       ),
@@ -24,19 +26,19 @@ describe("starter trigger connections", () => {
         id: "github:Draek2077/otto-code",
         label: "GitHub — Draek2077/otto-code",
         provider: "github",
-        filters: { repo: "Draek2077/otto-code" },
+        filters: { connection: "github-Draek2077", repo: "Draek2077/otto-code" },
       },
       {
-        id: "slack:T123",
-        label: "Slack — Otto",
+        id: "slack:paseo",
+        label: "Slack — Paseo",
         provider: "slack",
-        filters: { workspace: "T123" },
+        filters: { connection: "paseo" },
       },
       {
-        id: "discord:456",
-        label: "Discord — Otto Discord",
+        id: "discord:paseo-discord",
+        label: "Discord — Paseo Discord",
         provider: "discord",
-        filters: { guild: "456" },
+        filters: { connection: "paseo-discord" },
       },
     ]);
   });
@@ -55,6 +57,8 @@ describe("starter trigger connections", () => {
           ],
           slack: [],
           discord: [],
+          daemons: [],
+          linear: [],
         },
         "Draek2077/otto-code",
       ),

@@ -1,12 +1,14 @@
 ---
 title: Slack for Hub
-description: Connect Slack over Socket Mode, or use webhooks from a public Hub.
+description: "Upstream Paseo Hub reference. Connect Slack over Socket Mode, or use webhooks from a public Hub."
 nav: Slack app
 order: 76
 category: Hub
 ---
 
 # Slack for Hub
+
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
 
 Slack can reach Hub in two ways:
 
@@ -30,7 +32,7 @@ Paste both tokens into Hub and choose **Connect Slack**. Hub verifies the instal
 Invite the bot to each channel it should watch:
 
 ```text
-/invite @Otto
+/invite @Paseo
 ```
 
 Now write a [Slack trigger](/docs/hub/triggers/slack).
@@ -45,10 +47,10 @@ The Apps guide gives you a webhook manifest and asks for the App ID, Client ID, 
 
 Slack calls:
 
-| Provider setting | Hub URL                                              |
-| ---------------- | ---------------------------------------------------- |
-| Redirect URL     | `<OTTO_HUB_APP_URL>/api/integrations/slack/callback` |
-| Request URL      | `<OTTO_HUB_APP_URL>/api/integrations/slack/events`   |
+| Provider setting | Hub URL                                               |
+| ---------------- | ----------------------------------------------------- |
+| Redirect URL     | `<PASEO_HUB_APP_URL>/api/integrations/slack/callback` |
+| Request URL      | `<PASEO_HUB_APP_URL>/api/integrations/slack/events`   |
 
 Start the installation from Hub. An installation started only from Slack is not bound to a Hub organization.
 

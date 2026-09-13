@@ -1,3 +1,9 @@
+import {
+  DEFAULT_OTTO_NAVIGATION_SETTINGS,
+  pickOttoNavigationSettings,
+  type OttoNavigationSettings,
+} from "./otto-navigation-settings";
+export type { PullRequestOpenLocation } from "./otto-navigation-settings";
 import { type SyntaxThemeId } from "@otto-code/highlight";
 import type { QueryClient } from "@tanstack/react-query";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
@@ -60,7 +66,7 @@ const SEND_BEHAVIOR_STEER_MIGRATION_VERSION = 1;
 
 export type SidebarWorkspaceTrailing = "diff" | "timestamp" | "none";
 
-export interface AppSettings extends OttoAppSettings {
+export interface AppSettings extends OttoAppSettings, OttoNavigationSettings {
   /** Paseo's provider-level source selection; Otto variants live in the spectrum fields. */
   theme: ThemePreference;
   language: AppLanguage;
@@ -97,6 +103,10 @@ export interface AppSettings extends OttoAppSettings {
   /** Constrained leader-only Otto action mappings for Vim keybindings. */
 }
 
+export type AppSettingsUpdate =
+  | Partial<AppSettings>
+  | ((current: AppSettings) => Partial<AppSettings>);
+
 export interface OpenInSidePanePreferences {
   explorerFiles: boolean;
   explorerChanges: boolean;
@@ -124,6 +134,7 @@ export interface Settings extends AppSettings {
 
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   ...DEFAULT_OTTO_SETTINGS,
+  ...DEFAULT_OTTO_NAVIGATION_SETTINGS,
   theme: "auto",
   language: "system",
   sendBehavior: "steer",
@@ -174,13 +185,14 @@ export interface SettingsDeps {
 
 export async function saveAppSettings(input: {
   queryClient: QueryClient;
-  updates: Partial<AppSettings>;
+  updates: AppSettingsUpdate;
   deps: SettingsDeps;
 }): Promise<void> {
   const current =
     input.queryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY) ??
     (await loadAppSettingsFromStorage(input.deps));
-  const next = { ...current, ...input.updates };
+  const updates = typeof input.updates === "function" ? input.updates(current) : input.updates;
+  const next = { ...current, ...updates };
   input.queryClient.setQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY, next);
   await input.deps.storage.setItem(APP_SETTINGS_KEY, JSON.stringify(next));
 }
@@ -310,6 +322,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     ...pickThemeAndBehaviorSettings(stored),
     ...pickFontSettings(stored),
     ...pickWorkspaceLayoutSettings(stored),
+    ...pickOttoNavigationSettings(stored),
     ...pickShortcutOverlaySettings(stored),
     ...pickTextEffectSettings(stored),
     ...pickChatCodeSettings(stored),

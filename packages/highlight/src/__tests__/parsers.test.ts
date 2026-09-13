@@ -26,6 +26,7 @@ describe("isLanguageSupported", () => {
     expect(isLanguageSupported("test.sh")).toBe(true);
     expect(isLanguageSupported("test.sql")).toBe(true);
     expect(isLanguageSupported("Counter.svelte")).toBe(true);
+    expect(isLanguageSupported("Page.astro")).toBe(true);
   });
 
   it("resolves shell fence aliases to the shell grammar", () => {
@@ -74,6 +75,7 @@ describe("getSupportedExtensions", () => {
     expect(extensions).toContain("nix");
     expect(extensions).toContain("json");
     expect(extensions).toContain("svelte");
+    expect(extensions).toContain("astro");
   });
 });
 

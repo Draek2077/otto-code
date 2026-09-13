@@ -1,9 +1,7 @@
 import {
   View,
   Text,
-  Image,
   Pressable,
-  useWindowDimensions,
   type GestureResponderEvent,
   type LayoutChangeEvent,
   type PressableStateCallbackType,
@@ -12,7 +10,7 @@ import {
   type TextStyle,
 } from "react-native";
 import { useTranslation } from "react-i18next";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { projectChecklistActivity } from "@/components/otto/checklist-activity";
 import { MarkdownParagraphView, MarkdownTextSpan } from "@/components/markdown-text";
 import { MarkdownTableCellText } from "@/components/markdown-text-selection";
 import * as React from "react";
@@ -28,16 +26,11 @@ import {
 } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { MarkdownIt, type ASTNode, type RenderRules } from "react-native-markdown-display";
-import { useQuery } from "@tanstack/react-query";
 import MaskedView from "@react-native-masked-view/masked-view";
 import {
-  Circle,
   Info,
-  CheckCircle,
   XCircle,
-  FileText,
   ChevronRight,
-  ChevronDown,
   Check,
   CheckSquare,
   Copy,
@@ -48,7 +41,7 @@ import {
 } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { compactUp, SPACING, type Theme } from "@/styles/theme";
-import { useIsCompactFormFactor, MAX_CONTENT_WIDTH } from "@/constants/layout";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import Animated, {
   Easing,
   cancelAnimation,
@@ -67,7 +60,6 @@ import {
 import { TextEffectRain } from "@/components/text-effect-rain";
 import { useTextEffectThemeId } from "@/hooks/use-text-effect-theme";
 import { textEffectActivityForToolName } from "@/agent-stream/action-grouping";
-import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { BubbleCornerSheen } from "@/components/bubble-corner-sheen";
 import { ChatThemeScope } from "@/components/chat-theme-scope";
 import {
@@ -80,7 +72,10 @@ import { collectRenderedTextRuns } from "@/components/markdown/find-text-runs";
 import { buildRenderedFindIndex, type PreviewFindQuery } from "@/components/file-preview-find";
 import { isLastMarkdownTableChild } from "@/components/markdown/table-layout";
 import { colorMarkdownLinkChildren } from "@/components/markdown/link-children";
-import { createAssistantMarkdownParser } from "@/components/markdown/assistant-parser";
+import { createMarkdownParser } from "@/utils/markdown-parser";
+import { createAssistantMarkdownParser } from "@/utils/assistant-markdown-parser";
+import { MarkdownListMarker } from "@/components/markdown/otto/task-marker";
+import { applyOttoAssistantMarkdownExtensions } from "@/components/markdown/otto/parser-extensions";
 import { applyMath, MATH_BLOCK_TOKEN, MATH_INLINE_TOKEN } from "@/components/markdown/math";
 import { MathFormula } from "@/components/markdown/math-formula";
 import type {
@@ -111,16 +106,11 @@ export { LiveElapsed } from "@/components/live-elapsed";
 import { formatTokenCount } from "@/components/context-window-meter.utils";
 import { useChatTimestampLabel } from "@/hooks/use-chat-timestamp";
 import { useChatRenderSettings } from "@/components/chat-render-settings-context";
-import { sliceAtSafeBoundary } from "@/agent-stream/turn-reveal";
+import { useRevealedText } from "@/hooks/use-revealed-text";
+import { isRenderProfileEnabled } from "@/utils/render-profiler";
 import { ExpandCollapseControls } from "@/components/expand-collapse-controls";
 import { writeMarkdownToRichClipboard } from "@/utils/rich-clipboard";
 import { getDefaultMarkdownClipboardEnvironment } from "@/utils/rich-clipboard-default-environment";
-import {
-  getAssistantImageLoadStateFromMetadata,
-  getAssistantImageMetadata,
-  setAssistantImageMetadata,
-  type AssistantImageLoadState,
-} from "@/utils/assistant-image-metadata";
 import {
   hasAssistantMarkdownBlockHeight,
   setAssistantMarkdownBlockHeight,
@@ -129,12 +119,6 @@ import {
   reportBubbleSegmentHeight,
   useBubbleGroupOffset,
 } from "@/agent-stream/bubble-group-offsets";
-import { resolveAssistantImageSource } from "@/utils/assistant-image-source";
-import {
-  createPreviewAttachmentId,
-  getFileNameFromPath,
-  parseImageDataUrl,
-} from "@/attachments/utils";
 import { getAgentAttachmentPillContent } from "@/attachments/attachment-pill-content";
 import { PlanCard } from "./plan-card";
 import { useToolCallSheet } from "./tool-call-sheet";
@@ -150,14 +134,18 @@ import {
 } from "@/assistant-file-links";
 import { getCompactionMarkerLabel } from "./message-compaction-label";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
-import { persistAttachmentFromBytes, persistAttachmentFromDataUrl } from "@/attachments/service";
 import {
   AttachmentFrame,
   AttachmentLabel,
   AttachmentThumbnail,
 } from "@/components/attachment-pill";
-import { AttachmentLightbox } from "@/components/attachment-lightbox";
-import { ChatImagePreview } from "@/components/chat-image-preview";
+import { AttachmentLightbox, type ImageLightboxSource } from "@/components/attachment-lightbox";
+import {
+  AssistantMarkdownImage,
+  AssistantImageWidthContext,
+} from "@/components/otto/assistant-markdown-image";
+const ASSISTANT_IMAGE_MEASURE_STYLE: ViewStyle = { alignSelf: "stretch" };
+const ASSISTANT_BUBBLE_HORIZONTAL_INSET = SPACING[3] * 2;
 import { ChatImageContextMenuTarget } from "@/chat/image-context-menu";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { isWeb, isNative } from "@/constants/platform";
@@ -180,6 +168,7 @@ import {
   type MarkdownCopyInlineTag,
 } from "@/assistant-selection-copy/markup";
 import type { IconSizeProp } from "@/components/icons/icon-size";
+import { capAssistantMessageForRender, getUtf8ByteLength } from "./assistant-message-render-limit";
 export type { InlinePathTarget } from "@/assistant-file-links";
 export type { AssistantForkTarget };
 
@@ -239,6 +228,9 @@ const ThemedTodoHeaderIcon = withUnistyles(CheckSquare);
 const ThemedFileSymlinkIcon = withUnistyles(FileSymlink);
 const ThemedTriangleAlertIcon = withUnistyles(TriangleAlertIcon);
 const ThemedChevronRightIcon = withUnistyles(ChevronRight);
+const ThemedNotificationInfo = withUnistyles(Info);
+const ThemedNotificationWarning = withUnistyles(TriangleAlertIcon);
+const ThemedNotificationError = withUnistyles(XCircle);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({
@@ -248,6 +240,7 @@ const mutedForegroundColorMapping = (theme: Theme) => ({
   color: theme.colors.mutedForeground,
 });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
+const infoColorMapping = (theme: Theme) => ({ color: theme.colors.palette.blue[300] });
 const warningColorMapping = (theme: Theme) => ({ color: theme.colors.statusWarning });
 const WEB_TOOLCALL_SHIMMER_KEYFRAME_CSS = `
   @keyframes ${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} {
@@ -551,7 +544,7 @@ function UserMessageImagePill({ image, onOpen, accessibilityLabel }: UserMessage
  * matter what this renders - a formula reaches the model as the TeX that was
  * typed.
  */
-const userMessageMarkdownParser = applyMath(MarkdownIt({ linkify: true }));
+const userMessageMarkdownParser = applyMath(createMarkdownParser({ linkify: true }));
 
 const userMessageMarkdownStylesheet = StyleSheet.create((theme) => ({
   // Every block owns its bottom margin, so the last one stacks on the bubble's
@@ -577,11 +570,12 @@ function useMessageFindRules(
   message: string,
   findQuery: PreviewFindQuery | null | undefined,
   activeMatchIndex: number | undefined,
+  markdownit: ReturnType<typeof createMarkdownParser>,
 ): RenderRules {
   return useMemo(() => {
     if (!findQuery?.search) return baseRules;
     const { byContent } = buildRenderedFindIndex(
-      collectRenderedTextRuns({ text: message, enableHtmlish: false }),
+      collectRenderedTextRuns({ text: message, enableHtmlish: false, markdownit }),
       findQuery,
       activeMatchIndex ?? -1,
     );
@@ -590,7 +584,7 @@ function useMessageFindRules(
     // but an assistant code span can be a file link. Keep that interaction and
     // apply Find only to the ordinary message text runs.
     return { ...createMarkdownFindRules(baseRules, byContent), code_inline: baseRules.code_inline };
-  }, [activeMatchIndex, baseRules, findQuery, message]);
+  }, [activeMatchIndex, baseRules, findQuery, message, markdownit]);
 }
 
 export const UserMessage = memo(function UserMessage({
@@ -616,6 +610,10 @@ export const UserMessage = memo(function UserMessage({
   const [isHovered, setIsHovered] = useState(false);
   const [lightboxMetadata, setLightboxMetadata] = useState<UserMessageImageAttachment | null>(null);
   const handleLightboxClose = useCallback(() => setLightboxMetadata(null), []);
+  const lightboxSource = useMemo<ImageLightboxSource | null>(
+    () => (lightboxMetadata ? { type: "attachment", metadata: lightboxMetadata } : null),
+    [lightboxMetadata],
+  );
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const hasText = message.trim().length > 0;
   const hasImages = images.length > 0;
@@ -646,6 +644,7 @@ export const UserMessage = memo(function UserMessage({
     message,
     findQuery,
     findActiveMatchIndex,
+    userMessageMarkdownParser,
   );
 
   const containerStyle = useMemo(
@@ -710,10 +709,11 @@ export const UserMessage = memo(function UserMessage({
             ) : null}
             {hasRemoteImages ? (
               <View style={imagePreviewContainerStyle}>
-                {remoteImages.map((image) => (
+                {remoteImages.map((image, index) => (
                   <AssistantMarkdownImage
                     key={image.path}
                     source={image.path}
+                    occurrenceKey={`${agentId}:${messageId ?? timestamp}:remote-image:${index}`}
                     alt={t("composer.attachments.openImage")}
                     hasLeadingContent={false}
                     client={client}
@@ -775,7 +775,7 @@ export const UserMessage = memo(function UserMessage({
             </View>
           ) : null}
         </View>
-        <AttachmentLightbox metadata={lightboxMetadata} onClose={handleLightboxClose} />
+        <AttachmentLightbox source={lightboxSource} onClose={handleLightboxClose} />
       </View>
     </ChatThemeScope>
   );
@@ -784,7 +784,7 @@ export const UserMessage = memo(function UserMessage({
 interface MessageFooterProps {
   getContent: () => string;
   completedAt?: Date;
-  durationMs?: number;
+  durationMs?: number | null;
   usage?: AgentUsage;
   /** Provider-neutral controls that sit between Copy and message details. */
   leadingActions?: ReactNode;
@@ -871,7 +871,8 @@ export const MessageFooter = memo(function MessageFooter({
 }: MessageFooterProps) {
   const timestampLabel = useChatTimestampLabel(completedAt?.getTime());
   const detailsLabel = useMemo(() => {
-    const durationLabel = durationMs !== undefined ? formatDuration(durationMs) : "";
+    const durationLabel =
+      durationMs !== undefined && durationMs !== null ? formatDuration(durationMs) : "";
     return [timestampLabel, durationLabel, formatTurnTokensLabel(usage)]
       .filter(Boolean)
       .join(" • ");
@@ -939,6 +940,8 @@ export const MessageFooterIconAction = memo(function MessageFooterIconAction({
 });
 
 interface AssistantMessageProps {
+  occurrenceKey: string;
+  revealActive?: boolean;
   message: string;
   timestamp: number;
   workspaceRoot?: string;
@@ -953,14 +956,6 @@ interface AssistantMessageProps {
   spacing?: "default" | "compactTop" | "compactBottom" | "compactBoth";
   /** Controls streaming-safe Markdown fence presentation. */
   phase: MarkdownPhase;
-  /**
-   * How many characters of the message the live-turn typewriter reveal has
-   * reached (see agent-stream/turn-reveal.ts). Undefined (or >= length)
-   * renders the full text; 0 renders nothing - the item appears once the
-   * reveal reaches it. Display-only: store text, copy content, and turn
-   * timing stay full-fidelity.
-   */
-  revealBudget?: number;
   /**
    * Identity of this segment within a split streamed reply (see
    * agent-stream/spacing.ts). Grouped segments report their bubble height and
@@ -1031,343 +1026,14 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[3],
     alignSelf: "stretch",
   },
-  imageFrame: {
-    width: "100%",
-    minHeight: 160,
-    marginHorizontal: -theme.spacing[1],
-  },
-  imageSurface: {
-    width: "100%",
-    overflow: "hidden",
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
-  imageState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: theme.spacing[4],
-    paddingVertical: theme.spacing[6],
-    gap: theme.spacing[2],
-  },
-  imageErrorText: {
-    color: theme.colors.foregroundMuted,
+  cappedNotice: {
+    marginTop: theme.spacing[3],
+    fontFamily: theme.fontFamily.ui,
     fontSize: theme.fontSize.base,
-    textAlign: "center",
+    fontStyle: "italic",
+    color: theme.colors.foregroundMuted,
   },
 }));
-
-const ASSISTANT_IMAGE_MIN_HEIGHT = 160;
-// Preview cap for block images in chat (e.g. browser_screenshot). A tall portrait shot scaled to
-// fit content width alone would still be enormous, so we also bound the height and let the user
-// open the attachment to see it full size.
-const ASSISTANT_IMAGE_MAX_HEIGHT = 400;
-
-// The live content width of the message bubble, measured by AssistantMessage and read by block
-// images. The message view width is variable (window size, split panes, sidebar, phone vs desktop),
-// so images size against this rather than any constant - they must never exceed the message view,
-// exactly like text. `null` until the first layout; images fall back to the content-width constant.
-const AssistantImageWidthContext = createContext<number | null>(null);
-const ASSISTANT_IMAGE_MEASURE_STYLE: ViewStyle = { alignSelf: "stretch" };
-// Mirrors assistantMessageStylesheet.bubble's `paddingHorizontal: theme.spacing[3]`, both sides.
-// The image width is measured on the container outside the bubble (see handleContentLayout), so
-// the padding has to come off by hand; keep these two in step.
-const ASSISTANT_BUBBLE_HORIZONTAL_INSET = SPACING[3] * 2;
-
-const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedImage({
-  uri,
-  alt,
-  containerStyle,
-  source,
-  workspaceRoot,
-  serverId,
-  attachment,
-}: {
-  uri: string;
-  alt?: string;
-  containerStyle?: StyleProp<ViewStyle>;
-  source: string;
-  workspaceRoot?: string;
-  serverId?: string;
-  attachment?: UserMessageImageAttachment | null;
-}) {
-  const cachedMetadata = useMemo(
-    () => getAssistantImageMetadata({ source, workspaceRoot, serverId }),
-    [serverId, source, workspaceRoot],
-  );
-  const [loadState, setLoadState] = useState<AssistantImageLoadState>(() =>
-    getAssistantImageLoadStateFromMetadata(cachedMetadata),
-  );
-
-  useEffect(() => {
-    if (cachedMetadata) {
-      setLoadState(getAssistantImageLoadStateFromMetadata(cachedMetadata));
-      return () => {};
-    }
-
-    setLoadState({ status: "loading" });
-    let cancelled = false;
-
-    Image.getSize(
-      uri,
-      (width, height) => {
-        if (cancelled) {
-          return;
-        }
-        if (width > 0 && height > 0) {
-          const metadata = setAssistantImageMetadata(
-            { source, workspaceRoot, serverId },
-            { width, height },
-          );
-          setLoadState({
-            status: "ready",
-            aspectRatio: metadata?.aspectRatio ?? width / height,
-            width,
-          });
-        }
-      },
-      () => {
-        if (cancelled) {
-          return;
-        }
-        setLoadState({ status: "error" });
-      },
-    );
-
-    return () => {
-      cancelled = true;
-    };
-  }, [cachedMetadata, serverId, source, uri, workspaceRoot]);
-
-  const handleImageError = useCallback(() => {
-    setLoadState({ status: "error" });
-  }, []);
-  const { t } = useTranslation();
-  const { width: windowWidth } = useWindowDimensions();
-  const measuredContentWidth = useContext(AssistantImageWidthContext);
-  // A markdown image has no intrinsic width, and `width:"100%"` never resolves through the
-  // content-sized flex ancestors of an image-only message - the whole column collapses to 0 and the
-  // image renders at 0×0 even though it loaded. So we give the frame an explicit pixel size, which
-  // both sizes the image and gives the collapsed ancestors an intrinsic width to grow to. Scale the
-  // natural size down to fit the box (real message content width × ASSISTANT_IMAGE_MAX_HEIGHT),
-  // never upscaling, so a screenshot is a preview that never exceeds the (variable) message view.
-  const displaySize = useMemo(() => {
-    if (loadState.status !== "ready") {
-      return null;
-    }
-    const naturalWidth = loadState.width;
-    const naturalHeight = loadState.width / loadState.aspectRatio;
-    const boxWidth =
-      measuredContentWidth && measuredContentWidth > 0
-        ? measuredContentWidth
-        : Math.min(MAX_CONTENT_WIDTH, windowWidth > 0 ? windowWidth - 24 : MAX_CONTENT_WIDTH);
-    const scale = Math.min(1, boxWidth / naturalWidth, ASSISTANT_IMAGE_MAX_HEIGHT / naturalHeight);
-    return { width: Math.round(naturalWidth * scale), height: Math.round(naturalHeight * scale) };
-  }, [loadState, measuredContentWidth, windowWidth]);
-  const surfaceStyle = useMemo<StyleProp<ViewStyle>>(() => {
-    if (displaySize === null) {
-      return [assistantMessageStylesheet.imageSurface, { height: ASSISTANT_IMAGE_MIN_HEIGHT }];
-    }
-    return [
-      assistantMessageStylesheet.imageSurface,
-      { width: displaySize.width, height: displaySize.height },
-    ];
-  }, [displaySize]);
-  const frameStyle = useMemo<StyleProp<ViewStyle>>(() => {
-    if (displaySize === null) {
-      return [assistantMessageStylesheet.imageFrame, containerStyle];
-    }
-    return [
-      assistantMessageStylesheet.imageFrame,
-      containerStyle,
-      { width: displaySize.width, alignSelf: "flex-start" as const },
-    ];
-  }, [containerStyle, displaySize]);
-  const stateSurfaceStyle = useMemo<StyleProp<ViewStyle>>(
-    () => [surfaceStyle, assistantMessageStylesheet.imageState],
-    [surfaceStyle],
-  );
-  const imageSource = useMemo(() => ({ uri }), [uri]);
-
-  if (loadState.status !== "ready") {
-    return (
-      <View style={frameStyle}>
-        <View style={stateSurfaceStyle}>
-          {loadState.status === "loading" ? <LoadingSpinner size="small" /> : null}
-          {loadState.status === "error" ? (
-            <Text style={assistantMessageStylesheet.imageErrorText}>
-              {t("message.attachments.imageUnavailable")}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-    );
-  }
-
-  const image = (
-    <View style={frameStyle}>
-      <ChatImagePreview uri={uri} style={surfaceStyle}>
-        <Image
-          source={imageSource}
-          style={assistantMessageStylesheet.image}
-          resizeMode="contain"
-          accessibilityLabel={alt}
-          onError={handleImageError}
-        />
-      </ChatImagePreview>
-    </View>
-  );
-  return attachment ? (
-    <ChatImageContextMenuTarget attachment={attachment} previewUrl={uri}>
-      {image}
-    </ChatImageContextMenuTarget>
-  ) : (
-    image
-  );
-});
-
-function AssistantMarkdownImage({
-  source,
-  alt,
-  hasLeadingContent,
-  client,
-  workspaceRoot,
-  serverId,
-}: {
-  source: string;
-  alt?: string;
-  hasLeadingContent: boolean;
-  client?: DaemonClient | null;
-  workspaceRoot?: string;
-  serverId?: string;
-}) {
-  const { t } = useTranslation();
-  const resolution = useMemo(
-    () => resolveAssistantImageSource({ source, workspaceRoot }),
-    [source, workspaceRoot],
-  );
-  const dataImage = useMemo(() => parseImageDataUrl(source), [source]);
-  const containerStyle = useMemo<StyleProp<ViewStyle>>(
-    () => ({
-      marginTop: hasLeadingContent ? 16 : 0,
-      marginBottom: 0,
-    }),
-    [hasLeadingContent],
-  );
-
-  const query = useQuery({
-    queryKey: [
-      "assistantMarkdownImage",
-      serverId ?? "unknown-server",
-      resolution?.kind === "file_rpc" ? resolution.cwd : null,
-      resolution?.kind === "file_rpc" ? resolution.path : null,
-    ],
-    enabled: Boolean(client && resolution?.kind === "file_rpc"),
-    staleTime: 30_000,
-    queryFn: async () => {
-      if (!client || !resolution || resolution.kind !== "file_rpc") {
-        return null;
-      }
-
-      const file = await client.readFile(resolution.cwd, resolution.path);
-      if (file.kind !== "image") {
-        throw new Error(t("message.attachments.imagePreviewUnavailable"));
-      }
-
-      return await persistAttachmentFromBytes({
-        id: createPreviewAttachmentId({
-          mimeType: file.mime,
-          path: file.path || resolution.path,
-          size: file.size,
-          modifiedAt: file.modifiedAt,
-          contentLength: file.bytes.byteLength,
-        }),
-        bytes: file.bytes,
-        mimeType: file.mime,
-        fileName: getFileNameFromPath(file.path || resolution.path),
-      });
-    },
-  });
-  const dataImageQuery = useQuery({
-    queryKey: ["assistantMarkdownDataImage", dataImage?.cacheKey ?? null],
-    enabled: dataImage !== null,
-    staleTime: 30_000,
-    queryFn: async () => {
-      if (!dataImage) {
-        return null;
-      }
-
-      return await persistAttachmentFromDataUrl({
-        id: createPreviewAttachmentId({
-          mimeType: dataImage.mimeType,
-          contentLength: dataImage.base64.length,
-        }),
-        dataUrl: source,
-        mimeType: dataImage.mimeType,
-      });
-    },
-  });
-
-  const fileAssetUri = useAttachmentPreviewUrl(query.data);
-  const dataImageAssetUri = useAttachmentPreviewUrl(dataImageQuery.data);
-  const directUri = resolution?.kind === "direct" && !dataImage ? resolution.uri : null;
-  const resolvedUri = directUri ?? dataImageAssetUri ?? fileAssetUri ?? null;
-
-  const stateFrameStyle = useMemo<StyleProp<ViewStyle>>(
-    () => [
-      assistantMessageStylesheet.imageFrame,
-      containerStyle,
-      { height: ASSISTANT_IMAGE_MIN_HEIGHT },
-      assistantMessageStylesheet.imageState,
-    ],
-    [containerStyle],
-  );
-
-  if (resolvedUri) {
-    return (
-      <AssistantMarkdownResolvedImage
-        uri={resolvedUri}
-        alt={alt}
-        containerStyle={containerStyle}
-        source={source}
-        workspaceRoot={workspaceRoot}
-        serverId={serverId}
-        attachment={query.data ?? dataImageQuery.data}
-      />
-    );
-  }
-
-  if (query.isLoading || dataImageQuery.isLoading) {
-    return (
-      <View style={stateFrameStyle}>
-        <LoadingSpinner size="small" />
-      </View>
-    );
-  }
-
-  const errorText = resolveAssistantImageErrorText(
-    query.error,
-    dataImageQuery.error,
-    t("message.attachments.imagePreviewLoadFailed"),
-  );
-
-  return (
-    <View style={stateFrameStyle}>
-      <Text style={assistantMessageStylesheet.imageErrorText}>{errorText}</Text>
-    </View>
-  );
-}
-
-function resolveAssistantImageErrorText(
-  fileError: unknown,
-  dataError: unknown,
-  fallbackText: string,
-): string {
-  if (fileError instanceof Error) return fileError.message;
-  if (dataError instanceof Error) return dataError.message;
-  return fallbackText;
-}
 
 function getInlineCodeAutoLinkUrl(
   markdownParser: ReturnType<typeof MarkdownIt>,
@@ -2019,6 +1685,8 @@ function MarkdownListView({
 }
 
 export const AssistantMessage = memo(function AssistantMessage({
+  occurrenceKey,
+  revealActive = true,
   message,
   timestamp: _timestamp,
   workspaceRoot,
@@ -2027,7 +1695,6 @@ export const AssistantMessage = memo(function AssistantMessage({
   id,
   spacing = "default",
   phase,
-  revealBudget,
   blockGroupId,
   blockIndex,
   agentId,
@@ -2036,11 +1703,19 @@ export const AssistantMessage = memo(function AssistantMessage({
   findActiveMatchIndex,
 }: AssistantMessageProps) {
   const { chatBubbleGradient: showBubbleGradient } = useChatRenderSettings();
-  const displayMessage =
-    revealBudget === undefined || revealBudget >= message.length
-      ? message
-      : sliceAtSafeBoundary(message, revealBudget);
-  const markdownParser = useMemo(() => createAssistantMarkdownParser(), []);
+  const { t } = useTranslation();
+  const markdownParser = useMemo(
+    () => applyOttoAssistantMarkdownExtensions(createAssistantMarkdownParser()),
+    [],
+  );
+  const renderedMessage = useMemo(() => capAssistantMessageForRender(message), [message]);
+  // Paint a paced prefix while the turn is streaming so text arrives at a steady
+  // rate instead of in whatever lumps the daemon's coalescing window produced.
+  const displayMessage = useRevealedText(renderedMessage.text, phase, revealActive);
+  const fullMessageByteLength = useMemo(
+    () => (renderedMessage.capped && phase === "complete" ? getUtf8ByteLength(message) : null),
+    [message, phase, renderedMessage.capped],
+  );
 
   const fileLinkActions = useAssistantFileLinkActions();
   const handleMarkdownLinkPress = useStableEvent((url: string) => {
@@ -2397,9 +2072,14 @@ export const AssistantMessage = memo(function AssistantMessage({
 
         return (
           <View key={node.key} style={styles.list_item} dataSet={markdownCopyDataSet.li}>
-            <Text style={iconStyle} dataSet={markdownCopyDataSet.listMarker}>
-              {marker}
-            </Text>
+            <MarkdownListMarker
+              attributes={node.attributes}
+              ordered={isOrdered}
+              marker={marker}
+              style={iconStyle}
+              dataSet={markdownCopyDataSet.listMarker}
+              readOnly
+            />
             <MarkdownListItemContent contentStyle={contentStyle}>
               {children}
             </MarkdownListItemContent>
@@ -2497,6 +2177,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           <AssistantMarkdownImage
             key={node.key}
             source={String(node.attributes?.src ?? "")}
+            occurrenceKey={`${occurrenceKey}:${node.key}`}
             alt={typeof node.attributes?.alt === "string" ? node.attributes.alt : undefined}
             hasLeadingContent={hasLeadingContent}
             client={client}
@@ -2506,12 +2187,13 @@ export const AssistantMessage = memo(function AssistantMessage({
         );
       },
     };
-  }, [client, fileLinkActions, markdownParser, phase, serverId, workspaceRoot]);
+  }, [client, fileLinkActions, markdownParser, occurrenceKey, phase, serverId, workspaceRoot]);
   const markdownRules = useMessageFindRules(
     baseMarkdownRules,
     displayMessage,
     findQuery,
     findActiveMatchIndex,
+    markdownParser,
   );
 
   const blocks = useMemo(() => splitMarkdownBlocks(displayMessage), [displayMessage]);
@@ -2543,6 +2225,13 @@ export const AssistantMessage = memo(function AssistantMessage({
         assistantMessageStylesheet.bubbleCompactBottom,
     ],
     [spacing],
+  );
+  const revealDataSet = useMemo(
+    () =>
+      isRenderProfileEnabled()
+        ? { revealKey: occurrenceKey, revealLength: String(displayMessage.length) }
+        : undefined,
+    [occurrenceKey, displayMessage.length],
   );
 
   // Every grouped segment paints its slice of one sheen anchored at the
@@ -2647,6 +2336,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       <View
         testID="assistant-message"
         style={assistantContainerStyle}
+        dataSet={revealDataSet}
         onLayout={handleContentLayout}
         onPointerEnter={isWeb ? handlePointerEnter : undefined}
         onPointerLeave={isWeb ? handlePointerLeave : undefined}
@@ -2683,6 +2373,14 @@ export const AssistantMessage = memo(function AssistantMessage({
               />
             ) : null}
           </View>
+        ) : null}
+        {fullMessageByteLength !== null ? (
+          <Text
+            testID="assistant-message-capped-notice"
+            style={assistantMessageStylesheet.cappedNotice}
+          >
+            {t("agentStream.messageCapped", { bytes: fullMessageByteLength })}
+          </Text>
         ) : null}
       </View>
     </ChatThemeScope>
@@ -2936,40 +2634,28 @@ export const SpeakMessage = memo(function SpeakMessage({
   );
 });
 
-interface ActivityLogProps {
-  type: "system" | "info" | "success" | "error" | "artifact";
+interface NotificationProps {
+  level: "info" | "warning" | "error";
   message: string;
   details?: readonly string[];
-  timestamp: number;
-  metadata?: Record<string, unknown>;
-  artifactId?: string;
-  artifactType?: string;
-  title?: string;
-  onArtifactClick?: (artifactId: string) => void;
   disableOuterSpacing?: boolean;
 }
 
-const activityLogStylesheet = StyleSheet.create((theme) => ({
-  pressable: {
+const notificationStylesheet = StyleSheet.create((theme) => ({
+  container: {
     borderRadius: theme.borderRadius.md,
     overflow: "hidden",
   },
-  pressableSpacing: {
+  containerSpacing: {
     marginBottom: theme.spacing[1],
   },
-  pressableActive: {
-    opacity: 0.7,
-  },
-  systemBg: {
-    backgroundColor: "rgba(39, 39, 42, 0.5)",
-  },
   infoBg: {
-    backgroundColor: "rgba(30, 58, 138, 0.3)",
+    backgroundColor: "rgba(147, 197, 253, 0.1)",
   },
-  successBg: {
-    backgroundColor: "rgba(20, 83, 45, 0.3)",
+  warningBg: {
+    backgroundColor: "rgba(245, 158, 11, 0.1)",
   },
-  // Provider errors are rendered as activity logs rather than assistant text.
+  // Provider error notifications retain the assistant response bubble geometry.
   // They are nevertheless the agent's response in the transcript, so retain
   // the assistant bubble's left-hand speech-corner rather than stretching a
   // rectangular status panel across the chat column.
@@ -2980,9 +2666,6 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
     borderTopLeftRadius: theme.borderRadius.sm,
     maxWidth: "100%",
     minWidth: 0,
-  },
-  artifactBg: {
-    backgroundColor: "rgba(30, 58, 138, 0.4)",
   },
   content: {
     paddingHorizontal: theme.spacing[3],
@@ -3004,6 +2687,7 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
     flex: 1,
   },
   messageText: {
+    color: theme.colors.foreground,
     // Matches assistant prose (theme.fontSize.sm) - chat is a working surface,
     // not a document. See createMarkdownStyles' `body`/`text`, and `detailsText`
     // below, which sits directly under this line on the same card.
@@ -3029,136 +2713,94 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     marginRight: theme.spacing[1],
   },
-  metadataContainer: {
-    marginTop: theme.spacing[2],
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    borderRadius: theme.borderRadius.base,
-    padding: theme.spacing[2],
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-  },
-  metadataText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.code,
-    fontFamily: theme.fontFamily.mono,
-    lineHeight: 16,
-  },
 }));
 
-export const ActivityLog = memo(function ActivityLog({
-  type,
+export const Notification = memo(function Notification({
+  level,
   message,
   details,
-  timestamp: _timestamp,
-  metadata,
-  artifactId,
-  artifactType,
-  title,
-  onArtifactClick,
   disableOuterSpacing,
-}: ActivityLogProps) {
+}: NotificationProps) {
   const { t } = useTranslation();
-  const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const [isExpanded, setIsExpanded] = useState(false);
+  const toggleExpanded = useCallback(() => setIsExpanded((expanded) => !expanded), []);
+  const accessibilityState = useMemo(() => ({ expanded: isExpanded }), [isExpanded]);
+  const diagnosticEntries = useMemo(() => {
+    const occurrences = new Map<string, number>();
+    return (details ?? []).map((text) => {
+      const occurrence = occurrences.get(text) ?? 0;
+      occurrences.set(text, occurrence + 1);
+      return { text, key: JSON.stringify([text, occurrence]) };
+    });
+  }, [details]);
+  const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
 
   const typeConfig = {
-    system: {
-      bg: activityLogStylesheet.systemBg,
-      color: "#a1a1aa",
-      Icon: Circle,
+    info: {
+      bg: notificationStylesheet.infoBg,
+      iconColorMapping: infoColorMapping,
+      Icon: ThemedNotificationInfo,
     },
-    info: { bg: activityLogStylesheet.infoBg, color: "#60a5fa", Icon: Info },
-    success: {
-      bg: activityLogStylesheet.successBg,
-      color: "#4ade80",
-      Icon: CheckCircle,
+    warning: {
+      bg: notificationStylesheet.warningBg,
+      iconColorMapping: warningColorMapping,
+      Icon: ThemedNotificationWarning,
     },
     error: {
-      bg: activityLogStylesheet.errorBg,
-      color: "#f87171",
-      Icon: XCircle,
-    },
-    artifact: {
-      bg: activityLogStylesheet.artifactBg,
-      color: "#93c5fd",
-      Icon: FileText,
+      bg: notificationStylesheet.errorBg,
+      iconColorMapping: destructiveColorMapping,
+      Icon: ThemedNotificationError,
     },
   };
 
-  const config = typeConfig[type];
+  const config = typeConfig[level];
   const IconComponent = config.Icon;
 
-  const hasDetails = (details?.length ?? 0) > 0;
-
-  const handlePress = useCallback(() => {
-    if (type === "artifact" && artifactId && onArtifactClick) {
-      onArtifactClick(artifactId);
-    } else if (metadata || hasDetails) {
-      setIsExpanded((prev) => !prev);
-    }
-  }, [type, artifactId, onArtifactClick, metadata, hasDetails]);
-
-  const displayMessage =
-    type === "artifact" && artifactType && title ? `${artifactType}: ${title}` : message;
-
-  const isInteractive = type === "artifact" || metadata || hasDetails;
-  const pressableStyle = useMemo(
+  const containerStyle = useMemo(
     () => [
-      activityLogStylesheet.pressable,
-      !resolvedDisableOuterSpacing && activityLogStylesheet.pressableSpacing,
+      notificationStylesheet.container,
+      !resolvedDisableOuterSpacing && notificationStylesheet.containerSpacing,
       config.bg,
-      isInteractive && activityLogStylesheet.pressableActive,
     ],
-    [resolvedDisableOuterSpacing, config.bg, isInteractive],
+    [resolvedDisableOuterSpacing, config.bg],
   );
-  const messageTextStyle = useMemo(
-    () => [activityLogStylesheet.messageText, { color: config.color }],
-    [config.color],
-  );
-
   return (
-    <Pressable onPress={handlePress} disabled={!isInteractive} style={pressableStyle}>
-      <View style={activityLogStylesheet.content}>
-        <View style={activityLogStylesheet.row}>
-          <View style={activityLogStylesheet.iconContainer}>
-            <IconComponent size="chromeMd" color={config.color} />
+    <View style={containerStyle}>
+      <View style={notificationStylesheet.content}>
+        <View style={notificationStylesheet.row}>
+          <View style={notificationStylesheet.iconContainer}>
+            <IconComponent size="chromeMd" uniProps={config.iconColorMapping} />
           </View>
-          <View style={activityLogStylesheet.textContainer}>
-            <Text style={messageTextStyle} selectable>
-              {displayMessage}
+          <View style={notificationStylesheet.textContainer}>
+            <Text style={notificationStylesheet.messageText} selectable>
+              {message}
             </Text>
-            {(metadata || hasDetails) && (
-              <View style={activityLogStylesheet.detailsRow}>
-                <Text style={activityLogStylesheet.detailsText}>
+            {details?.length ? (
+              <Pressable
+                onPress={toggleExpanded}
+                accessibilityRole="button"
+                accessibilityState={accessibilityState}
+                style={notificationStylesheet.detailsRow}
+              >
+                <Text style={notificationStylesheet.detailsText}>
                   {t("message.activity.details")}
                 </Text>
-                {isExpanded ? (
-                  <ChevronDown size="chromeXs" color="#71717a" />
-                ) : (
-                  <ChevronRight size="chromeXs" color="#71717a" />
-                )}
+                <ChevronRight size="chromeXs" />
+              </Pressable>
+            ) : null}
+            {isExpanded && details?.length ? (
+              <View style={notificationStylesheet.diagnosticList}>
+                {diagnosticEntries.map((detail) => (
+                  <Text key={detail.key} selectable style={notificationStylesheet.diagnosticText}>
+                    {detail.text}
+                  </Text>
+                ))}
               </View>
-            )}
+            ) : null}
           </View>
         </View>
-        {isExpanded && metadata && (
-          <View style={activityLogStylesheet.metadataContainer} dataSet={CODE_SURFACE_DATASET}>
-            <Text style={activityLogStylesheet.metadataText}>
-              {JSON.stringify(metadata, null, 2)}
-            </Text>
-          </View>
-        )}
-        {isExpanded && hasDetails && (
-          <View style={activityLogStylesheet.diagnosticList}>
-            {details?.map((detail) => (
-              <Text key={detail} selectable style={activityLogStylesheet.diagnosticText}>
-                {detail}
-              </Text>
-            ))}
-          </View>
-        )}
       </View>
-    </Pressable>
+    </View>
   );
 });
 
@@ -3220,9 +2862,8 @@ interface TodoListCardProps {
 
 /**
  * Prominent, always-open task list - the chat-native counterpart to the Claude
- * terminal's todo list. It checks itself off in place as the agent works (one
- * evolving card, not a snapshot per update; see appendTodoList), highlights the
- * task in flight, and shows a running done/total with a progress bar. The
+ * terminal's todo list. It renders the timeline's explicit task activity,
+ * highlights the task in flight, and shows done/total with a progress bar. The
  * checkable body is shared with the pinned overlay (components/todo-task-list).
  * Motion is gated by the Appearance → Animations switch.
  */
@@ -3235,13 +2876,15 @@ export const TodoListCard = memo(function TodoListCard({
   const { animationsEnabled } = useChatRenderSettings();
   const { completedCount, total } = useTodoCounts(items);
   const activityLabel = useMemo(() => {
-    if (activity.type === "created") {
-      return t("message.todo.activity.created", { count: activity.count });
+    const visible = projectChecklistActivity(activity, items);
+    if (!visible) return null;
+    if (visible.type === "created") {
+      return t("message.todo.activity.created", { count: visible.count });
     }
-    return activity.task
-      ? `${t(`message.todo.activity.${activity.type}`)}: ${activity.task}`
-      : t(`message.todo.activity.${activity.type}`);
-  }, [activity, t]);
+    return visible.task
+      ? `${t(`message.todo.activity.${visible.type}`)}: ${visible.task}`
+      : t(`message.todo.activity.${visible.type}`);
+  }, [activity, items, t]);
 
   const cardStyle = useMemo(
     () => [
@@ -3258,9 +2901,11 @@ export const TodoListCard = memo(function TodoListCard({
         <Text style={todoListCardStylesheet.headerTitle} numberOfLines={1}>
           {t("message.todo.title")}
         </Text>
-        <Text style={todoListCardStylesheet.headerActivity} numberOfLines={1}>
-          {activityLabel}
-        </Text>
+        {activityLabel ? (
+          <Text style={todoListCardStylesheet.headerActivity} numberOfLines={1}>
+            {activityLabel}
+          </Text>
+        ) : null}
         {total > 0 ? (
           <Text style={todoListCardStylesheet.headerCount}>
             {t("message.todo.progress", { completed: completedCount, total })}
@@ -4358,6 +4003,7 @@ export const ToolCall = memo(function ToolCall({
   const handleToggle = useCallback(() => {
     if (!shouldRenderInline) {
       openToolCall({
+        toolName,
         displayName: presentation.displayName,
         summary: presentation.summary,
         detail: effectiveDetail,
@@ -4371,6 +4017,7 @@ export const ToolCall = memo(function ToolCall({
   }, [
     shouldRenderInline,
     openToolCall,
+    toolName,
     presentation.displayName,
     presentation.summary,
     presentation.errorText,
@@ -4411,6 +4058,7 @@ export const ToolCall = memo(function ToolCall({
     if (!shouldRenderInline) return null;
     return (
       <ToolCallDetailsContent
+        toolName={toolName}
         detail={effectiveDetail}
         errorText={presentation.errorText}
         maxHeight={maxDetailHeight}
@@ -4419,6 +4067,7 @@ export const ToolCall = memo(function ToolCall({
     );
   }, [
     shouldRenderInline,
+    toolName,
     effectiveDetail,
     presentation.errorText,
     presentation.isLoadingDetails,

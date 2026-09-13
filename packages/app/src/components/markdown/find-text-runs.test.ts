@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { createMarkdownParser } from "@/utils/markdown-parser";
+import { createAssistantMarkdownParser } from "@/utils/assistant-markdown-parser";
+import { applyMath } from "./math";
+import { applyOttoAssistantMarkdownExtensions } from "./otto/parser-extensions";
 import { collectRenderedTextRuns } from "./find-text-runs";
 
 function runs(text: string, enableHtmlish = true): string[] {
@@ -61,4 +65,30 @@ describe("collectRenderedTextRuns", () => {
   it("reads a mermaid document, which arrives as a single fence, as no prose", () => {
     expect(runs("```mermaid\ngraph TD;\nA-->B;\n```\n", false)).toEqual([]);
   });
+});
+
+it("indexes each chat profile's visible task/footnote text instead of applying document rules", () => {
+  const text = "- [x] done\n\nClaim[^a].\n\n[^a]: Source.\n\n> [!WARNING]\n> Careful.";
+  const user = collectRenderedTextRuns({
+    text,
+    enableHtmlish: false,
+    markdownit: applyMath(createMarkdownParser({ linkify: true })),
+  });
+  const assistant = collectRenderedTextRuns({
+    text,
+    enableHtmlish: false,
+    markdownit: applyOttoAssistantMarkdownExtensions(createAssistantMarkdownParser()),
+  });
+  const document = collectRenderedTextRuns({ text, enableHtmlish: false });
+  expect(user).toContain("[x] done");
+  expect(assistant).toContain("done");
+  expect(assistant).toContain("Claim¹.");
+  expect(user).not.toContain("Claim¹.");
+  expect(user.join(" ")).toContain("[!WARNING]");
+  expect(assistant.join(" ")).toContain("[!WARNING]");
+  expect(document.join(" ")).not.toContain("[!WARNING]");
+});
+
+it("keeps authored punctuation searchable in the document profile", () => {
+  expect(runs('(c) a -- b "hello"...')).toEqual(['(c) a -- b "hello"...']);
 });

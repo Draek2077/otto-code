@@ -39,6 +39,7 @@ function agent(archivedAt: Date | null): Agent {
     id: AGENT_ID,
     provider: "codex",
     status: "idle",
+    turn: { phase: "idle", cancellationRequestId: null },
     createdAt,
     updatedAt: createdAt,
     lastUserMessageAt: null,

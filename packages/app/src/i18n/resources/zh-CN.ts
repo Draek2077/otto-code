@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const zhCN: TranslationResources = {
@@ -20,6 +20,10 @@ export const zhCN: TranslationResources = {
       retry: "重试",
       search: "搜索",
       select: "选择",
+
+      selectAll: "全选",
+
+      copyLine: "复制行",
     },
     placeholders: {
       search: "搜索...",
@@ -45,6 +49,8 @@ export const zhCN: TranslationResources = {
       daemonClientDisconnected: "Daemon client 已断开连接",
       noFileFound: "未找到 {{token}} 对应的文件",
       unexpectedDictationError: "处理听写时发生意外错误。",
+
+      unableToCopy: "无法复制",
     },
     connectionStatus: {
       online: "在线",
@@ -468,6 +474,8 @@ export const zhCN: TranslationResources = {
       question: "你想如何继续？",
       proposedPlan: "建议计划",
     },
+
+    messageCapped: "此消息已被截断（{{bytes}} 字节）。",
   },
   agentPanel: {
     states: {
@@ -608,6 +616,8 @@ export const zhCN: TranslationResources = {
       resetZoom: "重置视图",
       viewSource: "查看源码",
       viewDiagram: "查看图表",
+
+      fullscreen: "全屏",
     },
     actions: {
       copyCode: "复制代码",
@@ -710,6 +720,8 @@ export const zhCN: TranslationResources = {
       failedAll: "无法加载最近会话。",
       failedProviders: "无法加载 {{providers}} 的会话。",
       failedImport: "无法导入所选会话。",
+
+      failedProvider: "无法加载 {{provider}} 的会话",
     },
     actions: {
       selectAll: "选择所有显示的会话",
@@ -718,6 +730,8 @@ export const zhCN: TranslationResources = {
       loadMore: "加载更多",
 
       refresh: "刷新会话",
+
+      showAll: "显示全部",
     },
     preview: {
       untitledSession: "未命名会话",
@@ -727,10 +741,21 @@ export const zhCN: TranslationResources = {
       noRecent: "没有可导入的最近会话。",
       alreadyImported: "所有最近会话都已导入。",
       noProviderSessions: "没有找到 {{provider}} 会话。",
+
+      noMatches: "没有与搜索匹配的会话。",
     },
     row: {
       importing: "正在导入...",
     },
+
+    scope: {
+      host: "{{host}} 上的会话",
+      workspace: "此 workspace",
+    },
+
+    searchPlaceholder: "搜索会话...",
+
+    chooseHostTitle: en.importSession.chooseHostTitle,
   },
   workspace: {
     moveChat: {
@@ -874,12 +899,16 @@ export const zhCN: TranslationResources = {
         completed: "Setup 已完成",
         failed: "Setup 失败",
         workspace: "Workspace 设置",
+
+        blocked: "设置已阻止",
       },
       status: {
         running: "正在运行",
         completed: "已完成",
         failed: "失败",
         waiting: "正在等待 setup 输出",
+
+        blocked: "已阻止",
       },
       waiting: "正在 setup workspace...",
       empty: {
@@ -891,6 +920,14 @@ export const zhCN: TranslationResources = {
       },
       log: {
         noOutput: "没有输出",
+      },
+
+      blocked: {
+        title: "未运行设置",
+        description:
+          "此 PR 来自另一个仓库 {{repository}}。其设置和脚本可能会运行你尚未审查的代码。",
+        run: "运行设置",
+        runFailed: "运行工作区设置失败",
       },
     },
     browser: {
@@ -913,6 +950,10 @@ export const zhCN: TranslationResources = {
         screenshotCopied: "已将截图复制到剪贴板",
         elementCopied: "已将元素复制到剪贴板",
         screenshotFailed: "无法复制截图",
+
+        selectorFailed: "无法启动元素选择器",
+
+        selectorLoading: "请等待页面加载完成",
       },
       annotate: {
         title: "标注元素",
@@ -1185,6 +1226,8 @@ export const zhCN: TranslationResources = {
         public: "反向代理",
         otto: "Memorable",
         direct: "直接地址",
+
+        paseo: "Memorable",
       },
     },
     git: {
@@ -1430,6 +1473,8 @@ export const zhCN: TranslationResources = {
         expandAllFiles: "展开所有文件",
         seeUncommittedChanges: "查看未 commit 的变更",
         seeCommittedChanges: "查看已 commit 的变更",
+
+        modifiedFile: "已修改",
       },
       commit: {
         type: {
@@ -1530,6 +1575,17 @@ export const zhCN: TranslationResources = {
         accessibility: {
           pullRequest: "Pull request #{{number}}",
           pullRequest_mr: "合并请求 !{{number}}",
+
+          checkStatus: {
+            passed: "成功",
+            failed: "失败",
+            warning: "警告",
+            actionRequired: "需要操作",
+            manual: "手动",
+            pending: "等待中",
+            skipped: "已跳过",
+            cancelled: "已取消",
+          },
         },
         states: {
           draft: "草稿",
@@ -1600,6 +1656,8 @@ export const zhCN: TranslationResources = {
         cancel: "取消",
         failed: "放弃更改失败",
       },
+
+      openIn: "在 {{target}} 中打开",
     },
     tree: {
       showFolderTree: "显示文件夹树",
@@ -1664,6 +1722,10 @@ export const zhCN: TranslationResources = {
       sessions: "历史",
       schedules: "计划",
       artifacts: "产物",
+
+      search: "搜索",
+      kanban: "看板",
+      runs: "工作流",
     },
     worktreeSetup: {
       title: "设置 worktree scripts",
@@ -1749,6 +1811,15 @@ export const zhCN: TranslationResources = {
         hostDisconnected: "Host 未连接",
         hideFailed: "隐藏 workspace 失败",
         archiveFailed: "归档工作区失败",
+      },
+
+      checks: {
+        passed: "成功: {{count}}",
+        failed: "失败: {{count}}",
+        warning: "警告: {{count}}",
+        actionRequired: "需要操作: {{count}}",
+        manual: "手动: {{count}}",
+        pending: "等待中: {{count}}",
       },
     },
     pinned: {
@@ -2357,6 +2428,8 @@ export const zhCN: TranslationResources = {
     stashRestored: "Stashed 变更已恢复",
     switchInProgress: "正在切换分支",
     checkedOutElsewhere: "已在另一个 Workspace 中检出",
+
+    triggerTooltip: "切换工作区分支",
   },
   agentAutocomplete: {
     searchingWorkspace: "正在搜索 workspace...",
@@ -2536,6 +2609,14 @@ export const zhCN: TranslationResources = {
     searchAllPlaceholder: "搜索所有模型...",
     searchPlaceholder: "搜索模型...",
     openProviderSettings: "打开 {{provider}} 设置",
+
+    editProfilesCount: "编辑配置文件 ({{count}})",
+
+    editProfileLabel: "编辑 {{name}}",
+
+    createProfileFromModel: "从此模型创建配置文件",
+
+    model: "模型",
   },
   providerCatalog: {
     title: "添加 provider",
@@ -2583,6 +2664,11 @@ export const zhCN: TranslationResources = {
       pasteLink: {
         title: "粘贴配对链接",
         description: "加密 relay 连接。",
+      },
+
+      remoteSsh: {
+        title: "远程 SSH",
+        description: "通过桌面 SSH 客户端连接。",
       },
     },
     direct: {
@@ -2681,6 +2767,24 @@ export const zhCN: TranslationResources = {
       copied: "已复制",
       securityWarning: "请像保管密码一样保管此配对链接。任何获得此链接的人都可以访问此守护进程。",
     },
+
+    remoteSsh: {
+      title: "远程 SSH",
+      helper: "连接到远程主机上运行的 Otto 守护进程。",
+      fields: {
+        target: "SSH 主机",
+      },
+      actions: {
+        cancel: "取消",
+        connect: "连接",
+        connecting: "正在连接...",
+      },
+      errors: {
+        targetRequired: "SSH 主机为必填项",
+        invalidTarget: "请输入有效的 ssh:// 主机",
+        failedToConnect: "无法通过 SSH 连接。{{detail}}",
+      },
+    },
   },
   realtimeVoice: {
     actions: {
@@ -2710,6 +2814,8 @@ export const zhCN: TranslationResources = {
     inOtto: "在 Otto 中",
     externalBrowser: "外部浏览器",
     dontAskAgain: "不再询问",
+
+    inPaseo: "在 Otto 中",
   },
   downloads: {
     requestTokenFailed: "请求下载 token 失败。",
@@ -2773,6 +2879,8 @@ export const zhCN: TranslationResources = {
     },
     archiveFinishedAction: "归档已完成的 subagent",
     archiveFinishedTooltip: "归档已完成项",
+
+    archiveFinishedRetry: "重试 ({{failed}}/{{total}})",
   },
   observedSubagents: {
     readOnlyTitle: "受观察的子智能体 · 只读",
@@ -3163,6 +3271,8 @@ export const zhCN: TranslationResources = {
       label: "文件",
       subtitle: "工作区文件",
       tooltip: "浏览工作区文件",
+
+      chooseFile: "选择文件",
     },
     search: {
       label: "搜索",
@@ -3209,6 +3319,11 @@ export const zhCN: TranslationResources = {
       other: "called Otto {{count}} times",
     },
     and: "and",
+
+    paseoCalls: {
+      one: "调用了 Otto {{count}} 次",
+      other: "调用了 Otto {{count}} 次",
+    },
   },
   renameModal: {
     rename: "重命名",
@@ -3322,6 +3437,8 @@ export const zhCN: TranslationResources = {
       storage: "存储",
       terminals: "终端",
       host: "概览",
+
+      plugins: "插件",
     },
     plugins: pluginSettings["zh-CN"],
     metadataGeneration: {
@@ -3533,6 +3650,8 @@ export const zhCN: TranslationResources = {
         alertTitle: "错误",
         alertMessage: "无法打开更新确认对话框。",
       },
+
+      whatsNewHint: "每个版本的发布说明",
     },
     appearance: {
       theme: {
@@ -3700,6 +3819,16 @@ export const zhCN: TranslationResources = {
         codeSizeAccessibility: "代码字号",
         terminalSize: "终端字号",
         terminalSizeAccessibility: "终端字体大小",
+
+        codeSizeHint: "用于代码、差异和终端输出",
+
+        contentSizeAccessibility: "内容字体大小",
+
+        contentSizeHint: "用于聊天文本和渲染后的 Markdown",
+
+        contentSize: "内容字号",
+
+        interfaceSizeHint: "用于导航、控件和标签",
       },
       syntax: {
         title: "语法",
@@ -3711,6 +3840,14 @@ export const zhCN: TranslationResources = {
       },
       detailLevel: {
         title: "详细程度",
+      },
+
+      sidebar: {
+        title: "侧边栏",
+        description: "选择侧边栏顶部显示的项目及其顺序",
+        moveUp: "上移",
+        moveDown: "下移",
+        workspaceActions: "工作区标题操作",
       },
     },
     shortcuts: {
@@ -3908,6 +4045,8 @@ export const zhCN: TranslationResources = {
       badges: {
         relay: "中继",
         local: "本地",
+
+        remoteSsh: "远程 SSH",
       },
       connections: {
         title: "连接",
@@ -4568,6 +4707,7 @@ export const zhCN: TranslationResources = {
         destinations: {
           main: "Main panel",
           side: "On the side",
+          explorer: "资源管理器侧栏",
         },
         sources: {
           explorerFiles: {
@@ -4598,6 +4738,7 @@ export const zhCN: TranslationResources = {
             label: "Opening Changes from an agent",
             description: "Open diff stats and review attachments beside the conversation",
           },
+          diffs: { label: "打开差异", description: "在工作旁打开资源管理器和智能体对话中的差异" },
         },
       },
     },
@@ -4714,6 +4855,17 @@ export const zhCN: TranslationResources = {
       deleteMessage_other: "这会从此主机的{{count}}个工作区中移除该标签。",
       offline: "此主机离线。",
       updateHost: "请更新此主机以管理标签。",
+    },
+  },
+
+  changelog: {
+    title: "新功能",
+    installed: "已安装",
+    showMore: "显示更多",
+    openWebsite: "完整更新日志",
+    error: {
+      title: "无法加载更新日志",
+      description: "请检查网络连接后重试。",
     },
   },
 };

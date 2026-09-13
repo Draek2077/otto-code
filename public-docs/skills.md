@@ -2,17 +2,15 @@
 title: Orchestration skills
 description: "Otto orchestration skills: teach coding agents to spawn, coordinate, and manage other agents using slash commands."
 nav: Skills
-order: 32
+order: 33
 category: Orchestration
 ---
 
 # Orchestration skills
 
-Otto ships orchestration skills that teach coding agents (Claude Code, Codex) how to use the Otto CLI to spawn, coordinate, and manage other agents. Skills are slash commands your agent can invoke, they provide the prompts, context, and workflows so agents know how to orchestrate without you writing boilerplate. Install them from the desktop app's Integrations settings or via the CLI.
+Otto ships orchestration skills that teach coding agents (Claude Code, Codex) how to use the Otto CLI to spawn, coordinate, and manage other agents. Skills are slash commands your agent can invoke, they provide the prompts, context, and workflows so agents know how to orchestrate without you writing boilerplate. Install them from host Settings or with the command below.
 
 ## Installation
-
-Two ways to install:
 
 - **Otto app:** Connect to the host, then open Settings → Host → Agents → Orchestration skills. The selected host installs the skills on its own machine.
 - **Manual:** `npx skills add Draek2077/otto-code`, this installs to `~/.agents/skills/` and sets up symlinks for each agent.
@@ -30,7 +28,7 @@ When a daemon finds installed Otto skills, it keeps the selected bundled skills 
 - `/otto-ingest-project-knowledge` captures a conversation, document, test, or research result as
   reviewable proposals.
 
-Every chat receives a compact catalog of confirmed pages. Full page content is read only when it is
+Every chat receives a compact Knowledge catalog. Full page content is read only when it is
 relevant. Proposals remain review-only until a user confirms them in Manage knowledge.
 
 ```
@@ -39,7 +37,6 @@ relevant. Proposals remain review-only until a user confirms them in Manage know
 
 ## `/otto`, Otto Reference
 
-The foundational skill. Otto reference for managing agents and worktrees. Load it when an agent needs to create agents, send them prompts, or manage worktrees.
 The foundational skill. Otto reference for managing projects, workspaces, and agents. Load it when an agent needs to register a project, create agents, send them prompts, or manage workspace isolation.
 
 Not typically invoked directly by users, it's a reference that other skills depend on.
@@ -50,33 +47,33 @@ Not typically invoked directly by users, it's a reference that other skills depe
 
 ## `/otto-handoff`, Task Handoff
 
-Hands off the current task to another agent with full context. Use it when you say "handoff", "hand off", "hand this to", or want to pass work to another agent.
-
-The receiving agent gets a self-contained briefing with the task, context, relevant files, current state, what's been tried, decisions, acceptance criteria, and constraints. Provider comes from orchestration preferences unless you name one. Supports worktrees when you ask for one.
+Transfer the current task with a briefing: relevant files, progress, decisions, constraints, and acceptance criteria. The skill checks profiles before choosing the receiving agent; you can name the profile you want.
 
 ```
 /otto-handoff hand off the auth fix to codex in a worktree
 /otto-handoff hand this to claude opus for review
 ```
 
+The receiving agent gets the context it needs to continue. Ask for a separate worktree when it should edit independently.
+
 ## `/otto-committee`, Committee Planning
 
-Forms a committee of two high-reasoning agents to step back, do root cause analysis, and produce a plan. Use it when stuck, looping, tunnel-visioning, or facing a hard planning problem.
-
-Committee members do analysis only. They do not edit, create, or delete files. The orchestrating agent synthesizes their plans, implements, then sends the diff back for review.
+Get two agents to analyze a difficult problem independently. The skill checks profile notes for planning and analysis, preferring different provider families when possible.
 
 ```
 /otto-committee why are the websocket connections dropping under load?
 /otto-committee plan the auth system migration
 ```
 
+Committee members return analyses without editing files. The main agent synthesizes their plans, implements the solution, and sends the diff back for review.
+
 ## `/otto-advisor`, Advisor
 
-Spins up a single agent as an advisor, a second opinion on the current task. Use it when you say "advisor", "second opinion", "what does X think", or want an outside take without delegating the work itself.
-
-The advisor gives a judgment. You decide what to do. The advisor prompt is analysis-only and ends with a no-edits instruction.
+Get another agent's judgment on a design, diff, or question. The skill chooses a profile whose notes fit the work, or uses the profile you name.
 
 ```
 /otto-advisor did I miss anything in this migration plan?
-/otto-advisor --provider claude/opus what is the UX risk in this flow?
+/otto-advisor --profile "UI Work" what is the UX risk in this flow?
 ```
+
+The advisor returns a second opinion without editing files.

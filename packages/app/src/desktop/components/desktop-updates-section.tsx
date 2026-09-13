@@ -1,10 +1,11 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import React, { type ReactElement, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { settingsStyles } from "@/styles/settings";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { ArrowUpRight, Copy, FileText, Activity } from "@/components/icons/material-icons";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
@@ -245,7 +246,12 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
     <View style={settingsStyles.card}>
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.status.title")}</Text>
+          <SettingsTargetText
+            settingId="host-host-local-daemon-status"
+            style={settingsStyles.rowTitle}
+          >
+            {t("desktop.daemon.status.title")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>{t("desktop.daemon.status.builtInOnly")}</Text>
         </View>
         <View style={styles.statusValueGroup}>
@@ -255,7 +261,12 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
       </View>
       <View style={ROW_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.management.title")}</Text>
+          <SettingsTargetText
+            settingId="host-host-local-daemon-manage-built-in-daemon"
+            style={settingsStyles.rowTitle}
+          >
+            {t("desktop.daemon.management.title")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>{t("desktop.daemon.management.hint")}</Text>
         </View>
         <Switch
@@ -267,7 +278,12 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
       </View>
       <View style={ROW_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.keepRunning.title")}</Text>
+          <SettingsTargetText
+            settingId="host-host-local-daemon-keep-daemon-running-after-quit"
+            style={settingsStyles.rowTitle}
+          >
+            {t("desktop.daemon.keepRunning.title")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>{t("desktop.daemon.keepRunning.hint")}</Text>
         </View>
         <Switch
@@ -279,7 +295,12 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
       </View>
       <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.logs.title")}</Text>
+          <SettingsTargetText
+            settingId="host-host-local-daemon-log-file"
+            style={settingsStyles.rowTitle}
+          >
+            {t("desktop.daemon.logs.title")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             {daemonLogs?.logPath ?? t("desktop.daemon.logs.unavailable")}
           </Text>
@@ -303,7 +324,12 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
       </View>
       <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.fullStatus.title")}</Text>
+          <SettingsTargetText
+            settingId="host-host-local-daemon-full-status"
+            style={settingsStyles.rowTitle}
+          >
+            {t("desktop.daemon.fullStatus.title")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>{t("desktop.daemon.fullStatus.hint")}</Text>
         </View>
         <Button

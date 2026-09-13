@@ -1,38 +1,33 @@
+// Shared SDK entry. Keep runtime-specific imports and re-exports on /client or /server.
 export {
-  PluginAttachmentItemSchema,
-  PluginAttachmentSearchPayloadSchema,
-  defineAttachmentSource,
-  defineRpc,
-  type PluginAttachmentItem,
-  type PluginAttachmentSearchPayload,
-  type PluginRpcContract,
-} from "./server.js";
+  PLUGIN_SDK_NAMESPACES,
+  PLUGIN_SDK_SPECIFIERS,
+  PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS,
+  resolvePluginSdkSpecifier,
+  isPluginSdkSpecifier,
+  isPluginHostSdkSpecifier,
+  isPluginClientOnlySdkSpecifier,
+  isPluginServerOnlySdkSpecifier,
+  type PluginSdkNamespace,
+} from "./runtime-specifiers.js";
 export type {
-  PluginAttachmentSourceContribution,
-  PluginAgentCommandContext,
-  PluginAgentPanelProps,
-  PluginAgentSnapshot,
-  PluginCleanup,
-  PluginCommandCapabilities,
-  PluginCommandCenterItemContribution,
-  PluginContribution,
-  PluginContext,
-  PluginGlobalCommandContext,
-  PluginHandlerContext,
-  PluginHostProps,
-  PluginOpenPanelOptions,
-  PluginPanelLocation,
   PluginTheme,
-  PluginSidebarContribution,
-  PluginSurfaceContribution,
-  PluginSurfaceProps,
+  PluginWorkspaceSnapshot,
+  PluginAgentSnapshot,
   PluginThemeColors,
   PluginThemeContribution,
-  PluginWorkspaceCommandContext,
-  PluginWorkspacePanelContribution,
-  PluginWorkspacePanelProps,
-  PluginWorkspaceSnapshot,
+  PluginAttachmentSourceContribution,
+  PluginTimelineData,
+  PluginTimelineItem,
+  PluginTimelineTransformResult,
+  PluginCleanup,
 } from "./contracts.js";
-export { useOtto } from "./otto-context.js";
-export { useAgent, useWorkspace } from "./client-state.js";
-export { useRpc } from "./rpc-context.js";
+export { defineSettings, settingsRpc, type SettingsDefinition } from "./settings.js";
+export {
+  defineAttachmentSource,
+  PluginAttachmentItemSchema,
+  PluginAttachmentSearchPayloadSchema,
+  type PluginAttachmentItem,
+  type PluginAttachmentSearchPayload,
+} from "./attachments.js";
+export { defineRpc, type PluginRpcContract, type RpcInput, type RpcOutput } from "./rpc.js";

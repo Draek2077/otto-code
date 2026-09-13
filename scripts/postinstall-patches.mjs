@@ -13,16 +13,22 @@ const patchedPackages = [
     patchPrefix: "react-native-markdown-display+",
   },
   {
+    nodeModulesPath: "node_modules/react-native",
+    patchPrefix: "react-native+",
+  },
+  // Remove after react-native-unistyles ships
+  // https://github.com/jpudysz/react-native-unistyles/pull/1203.
+  {
+    nodeModulesPath: "node_modules/react-native-unistyles",
+    patchPrefix: "react-native-unistyles+",
+  },
+  {
     nodeModulesPath: "node_modules/react-native-draggable-flatlist",
     patchPrefix: "react-native-draggable-flatlist+",
   },
   {
     nodeModulesPath: "node_modules/react-native-gesture-handler",
     patchPrefix: "react-native-gesture-handler+",
-  },
-  {
-    nodeModulesPath: "node_modules/react-native-unistyles",
-    patchPrefix: "react-native-unistyles+",
   },
   {
     nodeModulesPath: "node_modules/react-native-svg",
@@ -80,7 +86,7 @@ for (const [cwd, files] of patchFilesByCwd) {
 
   let result;
   try {
-    result = spawnSync(cmd, ["--patch-dir", relative(cwd, tempPatchDir)], {
+    result = spawnSync(cmd, ["--error-on-fail", "--patch-dir", relative(cwd, tempPatchDir)], {
       cwd,
       shell: isWindows,
       stdio: "inherit",

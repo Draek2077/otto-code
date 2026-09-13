@@ -60,6 +60,7 @@ import {
   checkForAppUpdate,
   downloadAndInstallUpdate,
   isLinuxDebUpdateInstalling,
+  createAppUpdateLifecycleLogger,
   resolveStagingUserId,
   rolloutManifestSchema,
   shouldAdmitToRollout,
@@ -207,6 +208,50 @@ describe("downloadAndInstallUpdate", () => {
       releaseChannel: "stable",
     });
     expect(retry.outcome).toBe("installed");
+  });
+
+  it("logs the update handoff with current and selected target versions", () => {
+    const info = vi.fn();
+    const lifecycleLog = createAppUpdateLifecycleLogger({ info });
+
+    lifecycleLog.checkStarted({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+    lifecycleLog.checkCompleted({
+      currentVersion: "1.2.3",
+      targetVersion: "1.2.5",
+      releaseChannel: "stable",
+      intent: "manual",
+      hasUpdate: true,
+      readyToInstall: true,
+      errorMessage: null,
+    });
+    lifecycleLog.updateDownloaded("1.2.4");
+    lifecycleLog.downloadRequested("1.2.5");
+    lifecycleLog.quitAndInstallRequested({
+      targetVersion: "1.2.5",
+      isSilent: false,
+      isForceRunAfter: true,
+    });
+
+    expect(info).toHaveBeenCalledWith("[auto-updater] check started", {
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+    expect(info).toHaveBeenCalledWith("[auto-updater] update downloaded", {
+      targetVersion: "1.2.4",
+    });
+    expect(info).toHaveBeenCalledWith("[auto-updater] download requested", {
+      targetVersion: "1.2.5",
+    });
+    expect(info).toHaveBeenCalledWith("[auto-updater] quitAndInstall requested", {
+      targetVersion: "1.2.5",
+      isSilent: false,
+      isForceRunAfter: true,
+    });
   });
 });
 

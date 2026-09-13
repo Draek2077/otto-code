@@ -1,6 +1,6 @@
 ---
 title: Hub configuration reference
-description: Canonical Hub resource, workflow, agent, expression, and prompt fields.
+description: "Upstream Paseo Hub reference. Canonical Hub resource, workflow, agent, expression, and prompt fields."
 nav: Configuration reference
 order: 71
 category: Hub
@@ -8,10 +8,14 @@ category: Hub
 
 # Hub configuration reference
 
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
+
+> **Legacy project bundles.** The examples on this page use `.paseo/hub.yml` and `.paseo/workflows/`. New organization triggers use `.paseo/triggers/`; see [Configuration](/docs/hub/configuration). The formats are separate.
+
 Hub accepts YAML in this layout:
 
 ```text
-.otto/
+.paseo/
 ├── hub.yml
 └── workflows/
     ├── <workflow>.yml
@@ -19,18 +23,18 @@ Hub accepts YAML in this layout:
         └── <partial>.md
 ```
 
-Only direct `.yml` children of `.otto/workflows/` are workflows. Each file contains one trigger and its ordered steps. There is no manifest, `includes`, `uses`, reusable step, workflow call, or inheritance.
+Only direct `.yml` children of `.paseo/workflows/` are workflows. Each file contains one trigger and its ordered steps. There is no manifest, `includes`, `uses`, reusable step, workflow call, or inheritance.
 
 ## `hub.yml`
 
-`.otto/hub.yml` contains named project resources. Names are map keys and are not repeated inside each object.
+`.paseo/hub.yml` contains named project resources. Names are map keys and are not repeated inside each object.
 
 ```yaml
 environments:
-  otto:
+  paseo:
     kind: daemon
     daemon: laptop
-    cwd: /Users/you/code/otto
+    cwd: /Users/you/code/paseo
   hub:
     kind: daemon
     daemon: devbox
@@ -72,17 +76,17 @@ environments:
     cwd: /workspace/project
     worktree:
       mode: branch-off
-      newBranch: trigger-${{ otto.execution.id }}
+      newBranch: trigger-${{ paseo.execution.id }}
       base: origin/main
 ```
 
-`newBranch` is a branch-name string. Embed `${{ otto.execution.id }}`, which renders the execution's UUID, so every execution branches off `base` on its own branch and keeps it when Hub retries or recovers that execution.
+`newBranch` is a branch-name string. Embed `${{ paseo.execution.id }}`, which renders the execution's UUID, so every execution branches off `base` on its own branch and keeps it when Hub retries or recovers that execution.
 
 One execution is one step run, so two steps selecting the same environment get separate branches.
 
-`${{ otto.execution.id }}` is the only expression `newBranch` accepts. `otto.prompt`, `otto.context`, `otto.inputs.*`, `values.*`, `steps.<id>.outputs.*`, and provider event fields are unavailable here, and each one fails bundle activation at the authored field, such as `.otto/hub.yml.environments.review.worktree.newBranch`.
+`${{ paseo.execution.id }}` is the only expression `newBranch` accepts. `paseo.prompt`, `paseo.context`, `paseo.inputs.*`, `values.*`, `steps.<id>.outputs.*`, and provider event fields are unavailable here, and each one fails bundle activation at the authored field, such as `.paseo/hub.yml.environments.review.worktree.newBranch`.
 
-`${{ otto.execution.id }}` fails activation the same way anywhere else in a bundle. `branch` and `prNumber` take literal values.
+`${{ paseo.execution.id }}` fails activation the same way anywhere else in a bundle. `branch` and `prNumber` take literal values.
 
 An environment is a complete named object. A step selects its name; objects are not inherited, merged, or partially overridden.
 
@@ -94,17 +98,17 @@ Each agent is one complete provider configuration:
 | ------------------ | -------- | ---------------------------------------------------------------- |
 | `provider`         | yes      | Provider ID.                                                     |
 | `model`            | no       | Provider model ID.                                               |
-| `mode`             | no       | Otto mode ID.                                                    |
+| `mode`             | no       | Paseo mode ID.                                                   |
 | `thinkingOptionId` | no       | Provider thinking option.                                        |
 | `options`          | no       | JSON-safe provider-native options, preserving names and nesting. |
 
 A named selection preserves the complete object, including structured options. Named agents have no parent, patch, or per-step override.
 
-Hub passes `model`, `mode`, `thinkingOptionId`, and `options` to the Otto daemon without renaming or flattening provider fields. The selected daemon validates them against its current provider schema; Hub does not translate provider-native options.
+Hub passes `model`, `mode`, `thinkingOptionId`, and `options` to the Paseo daemon without renaming or flattening provider fields. The selected daemon validates them against its current provider schema; Hub does not translate provider-native options.
 
 ## Workflow files
 
-`.otto/workflows/review.yml`:
+`.paseo/workflows/review.yml`:
 
 ```yaml
 name: review
@@ -116,15 +120,15 @@ inputs:
   repo:
     type: string
     required: true
-    choices: [otto, hub]
+    choices: [paseo, hub]
 steps:
   - id: inspect
-    environment: ${{ otto.inputs.repo }}
+    environment: ${{ paseo.inputs.repo }}
     max_runtime: 30m
     idle_timeout: 5m
     agent: codex-safe
     prompt:
-      - text: ${{ otto.prompt }}
+      - text: ${{ paseo.prompt }}
 ```
 
 | Field         | Required | Notes                                                     |
@@ -182,26 +186,27 @@ values:
   selected_agent: ${{ steps.classify.outputs.agent }}
 ```
 
-Expressions may read declared `otto.inputs`, earlier `steps.<id>.outputs`, and `values`. The grammar supports paths, JSON literals, parentheses, `!`, `==`, `!=`, `&&`, `||`, and `??`.
+Expressions may read declared `paseo.inputs`, earlier `steps.<id>.outputs`, and `values`. The grammar supports paths, JSON literals, parentheses, `!`, `==`, `!=`, `&&`, `||`, and `??`.
 
 An environment or dynamic named-agent expression must have a finite set of possible string results at activation. Every result must name a configured resource. Runtime selection never falls back to another environment or agent.
 
 ### Steps
 
-| Field           | Required | Notes                                                                                    |
-| --------------- | -------- | ---------------------------------------------------------------------------------------- |
-| `id`            | yes      | Unique within the workflow.                                                              |
-| `environment`   | yes      | Literal environment name or finite expression resolving to one.                          |
-| `max_runtime`   | yes      | Step hard limit.                                                                         |
-| `idle_timeout`  | yes      | Idle limit no longer than `max_runtime`.                                                 |
-| `agent`         | yes      | Named agent, finite expression selecting a named agent, or complete static inline agent. |
-| `prompt`        | yes      | Ordered `text` and `include` blocks.                                                     |
-| `if`            | no       | Expression deciding whether the step runs.                                               |
-| `env`           | no       | Environment variables from connection values.                                            |
-| `output.schema` | no       | JSON Schema for structured step output.                                                  |
-| `allow_outputs` | no       | Provider output capabilities with optional `max` and `required`.                         |
-| `auto_archive`  | no       | Archive the agent after the step ends.                                                   |
-| `github`        | no       | Explicit GitHub authority for this step.                                                 |
+| Field             | Required | Notes                                                                                                                |
+| ----------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
+| `id`              | yes      | Unique within the workflow.                                                                                          |
+| `environment`     | yes      | Literal environment name or finite expression resolving to one.                                                      |
+| `max_runtime`     | yes      | Step hard limit.                                                                                                     |
+| `idle_timeout`    | yes      | Idle limit no longer than `max_runtime`.                                                                             |
+| `startup_timeout` | no       | Step startup waiting budget. See [startup timeout](/docs/hub/configuration#startup-timeout) for defaults and limits. |
+| `agent`           | yes      | Named agent, finite expression selecting a named agent, or complete static inline agent.                             |
+| `prompt`          | yes      | Ordered `text` and `include` blocks.                                                                                 |
+| `if`              | no       | Expression deciding whether the step runs.                                                                           |
+| `env`             | no       | Environment variables from connection values.                                                                        |
+| `output.schema`   | no       | JSON Schema for structured step output.                                                                              |
+| `allow_outputs`   | no       | Provider output capabilities with optional `max` and `required`.                                                     |
+| `auto_archive`    | no       | Archive the agent after the step ends.                                                                               |
+| `github`          | no       | Explicit GitHub authority for this step.                                                                             |
 
 An inline agent is static and complete:
 
@@ -223,15 +228,15 @@ prompt:
   - include: partials/review.md
   - text: |
       <user-prompt>
-      ${{ otto.prompt }}
+      ${{ paseo.prompt }}
       </user-prompt>
 ```
 
-`${{ otto.prompt }}` is the normalized request after the provider marker and declared leading `key=value` inputs are removed. It is not rewritten or augmented with event context.
+`${{ paseo.prompt }}` is the normalized request after the provider marker and declared leading `key=value` inputs are removed. It is not rewritten or augmented with event context.
 
-`${{ otto.context }}` opts that step into provider context materialization and renders the result as JSON in the prompt. It is available only in prompt text. Hub does not inject it unless the workflow authors that expression.
+`${{ paseo.context }}` opts that step into provider context materialization and renders the result as JSON in the prompt. It is available only in prompt text. Hub does not inject it unless the workflow authors that expression.
 
-Includes resolve relative to `.otto/workflows/`, so shared partials use `partials/<name>.md`. Missing files, absolute or traversing paths, symlinks, content mismatches, and files outside the partial tree are rejected.
+Includes resolve relative to `.paseo/workflows/`, so shared partials use `partials/<name>.md`. Missing files, absolute or traversing paths, symlinks, content mismatches, and files outside the partial tree are rejected.
 
 ### Output capabilities
 
@@ -250,8 +255,32 @@ Every step receives `hub.finish_execution`. The prompt must tell the agent when 
 
 ## Migrating a monolithic file
 
-Keep `environments` in `hub.yml`, convert the environment list to a named map, and move each former trigger into its own `.otto/workflows/<name>.yml` file. Move shared prompt files to `.otto/workflows/partials/`. Define complete named agent configurations under `agents` and replace dynamic provider fields with finite named-agent selection.
+Keep `environments` in `hub.yml`, convert the environment list to a named map, and move each former trigger into its own `.paseo/workflows/<name>.yml` file. Move shared prompt files to `.paseo/workflows/partials/`. Define complete named agent configurations under `agents` and replace dynamic provider fields with finite named-agent selection.
 
 Hub does not read TOML or a monolithic `triggers` section, and the CLI does not rewrite either format.
 
 See [Workflows](/docs/hub/workflows) for complete routing examples.
+
+## Agent continuation
+
+Self-contained dashboard trigger documents accept `run.continuation`:
+
+| Value                                                    | Behavior                                                                                                                |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `{mode: conversation}`                                   | Default. Reuse the project's agent for the event's conversation; create a new agent when the event has no conversation. |
+| `{mode: key, key: "support-${{ paseo.inputs.ticket }}"}` | Reuse the project's agent for the evaluated custom key.                                                                 |
+| `{mode: new}`                                            | Create a new agent for each arrival.                                                                                    |
+
+Keys use the existing expression syntax and must resolve to a non-empty string of at most 512 characters. Custom keys and provider conversation identities occupy separate namespaces. The same key in different projects does not share an agent.
+
+An existing session keeps its daemon, agent configuration, target, environment, and tool contracts. Changing those settings for the same key fails with an explanation; choose a different key or **New agent**. Prompts and output destinations belong to each arrival and may change. A worktree branch is chosen when the session is first created and reused on later arrivals.
+
+A follow-up steers the active agent without extending its runtime deadline or credential expiry. With a `run.github` grant or connection token in `run.env`, follow-ups share the active agent’s credentials. Once all requests finish, Hub revokes leased tokens; the next arrival starts a new agent with fresh credentials. Agents without temporary credentials can be reused after completion.
+
+### Upgrading
+
+Upgrade the connected Paseo daemons before enabling the new Hub version. Hub requires the daemon's ordinary agent RPC and request receipt capabilities; an older host produces an actionable dispatch error.
+
+Hub's database migration adds sessions and nullable execution associations. Existing executions retain their saved launch contract and execution-specific MCP endpoint until they finish. New arrivals for existing self-contained trigger documents use the conversation default. Historical agents are not backfilled into sessions.
+
+Legacy multi-step workflow bundles keep their existing behavior. Converting one to a self-contained trigger writes `mode: new` explicitly; change it in the editor when ready to reuse agents.

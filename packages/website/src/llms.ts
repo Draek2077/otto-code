@@ -10,9 +10,9 @@ const PRODUCT_PREAMBLE = `# Otto
 
 Otto is an open source application that runs AI coding agents in your own environment inside a rich, familiar setup: browser-verified previews, AI-generated artifacts, split panes with terminals and diffs, rich permission modes, and MCP integration. The tooling a frontier harness gives its own model works the same in Otto whether the agent is Claude Code, Codex, or a local model served from LM Studio or Ollama. Otto connects directly to your real development environment and has no required cloud service or account.
 
-A self-hosted daemon manages agent lifecycle, exposes a WebSocket API, and ships with an MCP server so other agents can talk to it. Native apps for Android, Windows, and Linux, plus a web app that covers iPhone and Mac, let you launch sessions, watch them work, review diffs, and ship from anywhere. A Docker-style CLI ("otto run", "otto ls", "otto logs", "otto wait") gives you scripting access. An end-to-end encrypted relay lets the mobile app reach your daemon over the public internet without exposing it.
+A self-hosted daemon manages agent lifecycle, exposes a WebSocket API, and ships with an MCP server so other agents can talk to it. Native apps for macOS, Windows, Linux, and Android, plus a web app that covers iPhone, let you launch sessions, watch them work, review diffs, and ship from anywhere. A Docker-style CLI ("otto run", "otto ls", "otto logs", "otto wait") gives you scripting access. An end-to-end encrypted relay lets the mobile app reach your daemon over the public internet without exposing it.
 
-Otto supports every major coding agent: Claude Code, Codex, GitHub Copilot, OpenCode, Cursor, Gemini, Cline, Goose, Amp, Aider, and 30+ others. Each agent runs as its own process; Otto handles I/O, persistence, git worktree isolation, schedules, and skills.
+Otto supports built-in coding providers, an ACP catalog, configured OpenAI-compatible endpoints, and plugin providers. The selected adapter owns provider execution; Otto supplies I/O, agent persistence, git worktree isolation, schedules, skills, and shared tooling. Plugins can also add commands, settings, workspace panels, and chat components.
 
 Distribution: native apps for macOS, Windows, Linux, and Android (APK); web app for everything else, including iPhone. macOS builds are unsigned (no Apple Developer account) so they need a Gatekeeper bypass on first launch and do not auto-update. No native iOS build for the same reason. Source: AGPL-3.0 at https://github.com/Draek2077/otto-code. Marketing site: https://otto-code.me.
 `;
@@ -59,8 +59,8 @@ ${agents}
 ## Optional
 
 - [Changelog](${SITE_URL}/changelog): Release notes for the Otto daemon, CLI, desktop, and mobile apps.
-- [Download](${SITE_URL}/download): Install Otto on Mac, Windows, Linux, iOS, Android, or run the web app.
-- [Blog](${SITE_URL}/blog): Updates and technical posts from the Otto team.
+- [Download](${SITE_URL}/download): Install Otto on Mac, Windows, Linux, or Android; use the web app on iOS.
+- [Blog](${SITE_URL}/blog): Updates and technical posts from Philippe.
 - [Privacy](${SITE_URL}/privacy): Privacy policy.
 - [Security](${SITE_URL}/security): Security policy and responsibility disclaimer.
 - [GitHub](https://github.com/Draek2077/otto-code): Source code, issues, and releases.

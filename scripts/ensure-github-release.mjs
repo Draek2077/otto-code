@@ -1,4 +1,6 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync as nodeExecFileSync } from "node:child_process";
+import { getGitHubRelease } from "./github-release.mjs";
+import { isMainModule } from "./is-main-module.mjs";
 
 /**
  * Makes sure a GitHub Release object exists for a tag, in one of two roles.
@@ -96,76 +98,56 @@ function parseArgs(argv) {
   return args;
 }
 
-function releaseExists(tag, repo) {
-  try {
-    execFileSync("gh", ["release", "view", tag, "--repo", repo], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
+function createRelease(tag, repo, { draft, prerelease }, execFileSync) {
+  const args = ["release", "create", tag, "--repo", repo, "--title", `Otto ${tag}`, "--notes", ""];
+  if (prerelease) args.push("--prerelease");
+  if (draft) args.push("--draft");
+  execFileSync("gh", args, { stdio: "inherit" });
 }
 
-function createRelease(tag, repo, { draft, prerelease }) {
-  const createArgs = [
-    "release",
-    "create",
-    tag,
-    "--repo",
-    repo,
-    "--title",
-    `Otto ${tag}`,
-    "--notes",
-    "",
-  ];
-  if (prerelease) {
-    createArgs.push("--prerelease");
-  }
-  if (draft) {
-    createArgs.push("--draft");
-  }
-  execFileSync("gh", createArgs, { stdio: "inherit" });
-}
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const args = parseArgs(process.argv.slice(2));
-
-if (args.mode === "create") {
-  if (releaseExists(args.tag, args.repo)) {
-    console.log(`Release ${args.tag} already exists, nothing to create`);
-    process.exit(0);
-  }
-
-  try {
-    createRelease(args.tag, args.repo, args);
-    console.log(`Created release ${args.tag}`);
-  } catch (error) {
-    // Only one workflow is supposed to create a given tag, so a failure here is
-    // real. Re-check anyway: if the release turned up, whatever went wrong did
-    // not cost us the release, and failing the job would strand the build.
-    if (releaseExists(args.tag, args.repo)) {
-      console.log(`Release ${args.tag} exists despite a failed create, continuing`);
-      process.exit(0);
+export async function ensureGitHubRelease(
+  args,
+  {
+    execFileSync = nodeExecFileSync,
+    now = Date.now,
+    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    log = console.log,
+  } = {},
+) {
+  const exists = () => getGitHubRelease(args.repo, args.tag, execFileSync) !== null;
+  if (args.mode === "create") {
+    if (exists()) {
+      log(`Release ${args.tag} already exists, nothing to create`);
+      return;
     }
-    throw error;
+    try {
+      createRelease(args.tag, args.repo, args, execFileSync);
+      log(`Created release ${args.tag}`);
+    } catch (error) {
+      if (exists()) {
+        log(`Release ${args.tag} exists despite a failed create, continuing`);
+        return;
+      }
+      throw error;
+    }
+    return;
   }
-  process.exit(0);
+  const deadline = now() + args.timeoutSeconds * 1000;
+  let attempts = 0;
+  while (now() < deadline) {
+    attempts += 1;
+    if (exists()) {
+      log(`Release ${args.tag} is present after ${attempts} check(s)`);
+      return;
+    }
+    await sleep(POLL_INTERVAL_MS);
+  }
+  throw new Error(
+    `Release ${args.tag} did not appear within ${args.timeoutSeconds}s. ` +
+      "The workflow that creates it (Desktop Release for a v* tag) either failed or never ran.",
+  );
 }
 
-const deadline = Date.now() + args.timeoutSeconds * 1000;
-let attempts = 0;
-
-while (Date.now() < deadline) {
-  attempts += 1;
-  if (releaseExists(args.tag, args.repo)) {
-    console.log(`Release ${args.tag} is present after ${attempts} check(s)`);
-    process.exit(0);
-  }
-  await sleep(POLL_INTERVAL_MS);
+if (isMainModule(import.meta.url)) {
+  await ensureGitHubRelease(parseArgs(process.argv.slice(2)));
 }
-
-process.stderr.write(
-  `Release ${args.tag} did not appear within ${args.timeoutSeconds}s. ` +
-    "The workflow that creates it (Desktop Release for a v* tag) either failed or never ran.\n",
-);
-process.exit(1);

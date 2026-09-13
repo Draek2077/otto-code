@@ -197,8 +197,11 @@ vi.mock("@/components/ui/loading-spinner", () => ({
 }));
 
 vi.mock("@/components/provider-icons", () => ({
-  getProviderIcon: (provider: string) => () =>
-    React.createElement("span", { "data-icon": `provider-${provider}` }),
+  getProviderIcon: (provider: string, serverId: string) => () =>
+    React.createElement("span", {
+      "data-icon": `provider-${provider}`,
+      "data-server-id": serverId,
+    }),
 }));
 
 vi.mock("@/stores/provider-settings-store", () => ({
@@ -423,6 +426,7 @@ describe("ProvidersSection", () => {
 
     expect(chevron).toBeGreaterThanOrEqual(0);
     expect(icon).toBeGreaterThan(chevron);
+    expect(nodes[icon].getAttribute("data-server-id")).toBe("server-1");
     expect(label).toBeGreaterThan(icon);
     expect(status).toBeGreaterThan(label);
     expect(modelCount).toBeGreaterThan(status);

@@ -1,3 +1,4 @@
+import { SettingsTargetScope } from "@/screens/settings-search/target";
 // The "Voice volume" slider - how loud the agent is when it SPEAKS TO YOU:
 // voice mode, auto-speech, and the per-message play button (plus voice mode's
 // thinking tone, which is part of the same conversation).
@@ -38,14 +39,18 @@ export function VoicePlaybackVolumeRow({ serverId }: { serverId: string }) {
   }
 
   return (
-    <SettingsVolumeRow
-      title="Voice volume"
-      hint="How loud the agent is when it reads a reply aloud, on its own channel from voice cues and the Visualizer."
-      value={settings.voicePlaybackVolume}
-      onCommit={onCommit}
-      accessibilityLabel="Voice volume"
-      testID="host-page-voice-playback-volume"
-      rowTestID="host-page-voice-playback-volume-row"
-    />
+    <SettingsTargetScope
+      settingIds={["app-integrations-voice-dictation-on-this-device-voice-volume"]}
+    >
+      <SettingsVolumeRow
+        title="Voice volume"
+        hint="How loud the agent is when it reads a reply aloud, on its own channel from voice cues and the Visualizer."
+        value={settings.voicePlaybackVolume}
+        onCommit={onCommit}
+        accessibilityLabel="Voice volume"
+        testID="host-page-voice-playback-volume"
+        rowTestID="host-page-voice-playback-volume-row"
+      />
+    </SettingsTargetScope>
   );
 }

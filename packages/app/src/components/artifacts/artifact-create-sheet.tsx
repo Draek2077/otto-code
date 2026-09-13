@@ -1,3 +1,4 @@
+import { resolveOttoFormHost } from "@/provider-selection/otto-form-target";
 import {
   useCallback,
   useEffect,
@@ -143,16 +144,12 @@ function resolveProjectTargetForCwd(input: {
 }
 
 function buildArtifactFormInitialValues(input: {
-  cwd: string;
   isEdit: boolean;
   provider: string | null | undefined;
   model: string | null | undefined;
   thinkingOptionId: string | null | undefined;
 }): FormInitialValues | undefined {
   const values: FormInitialValues = {};
-  if (input.cwd) {
-    values.workingDir = input.cwd;
-  }
   if (input.isEdit && input.provider) {
     values.provider = input.provider as FormInitialValues["provider"];
     values.model = input.model ?? undefined;
@@ -409,41 +406,54 @@ function OpenArtifactCreateSheet({
   const initialFormValues = useMemo<FormInitialValues | undefined>(
     () =>
       buildArtifactFormInitialValues({
-        cwd: resolvedInitialCwd,
         isEdit,
         provider: artifact?.provider,
         model: artifact?.model,
         thinkingOptionId: artifact?.thinkingOptionId,
       }),
-    [resolvedInitialCwd, isEdit, artifact?.provider, artifact?.model, artifact?.thinkingOptionId],
+    [isEdit, artifact?.provider, artifact?.model, artifact?.thinkingOptionId],
   );
 
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(() =>
+    resolveOttoFormHost({
+      selectedServerId: null,
+      seedServerId: resolvedInitialServerId,
+      onlineServerIds,
+    }),
+  );
+  const [workingDir, setWorkingDir] = useState(resolvedInitialCwd);
+  // Unseeded global opens choose an online host once; later discovery never
+  // replaces a seeded host or a host chosen through the project picker.
+  useEffect(() => {
+    setSelectedServerId((current) =>
+      resolveOttoFormHost({
+        selectedServerId: current,
+        seedServerId: resolvedInitialServerId,
+        onlineServerIds,
+      }),
+    );
+  }, [selectedServerId, resolvedInitialServerId, onlineServerIds]);
+
   const form = useAgentFormState({
-    initialServerId: resolvedInitialServerId,
+    serverId: selectedServerId,
+    workingDir,
     initialValues: initialFormValues,
     isVisible: visible,
     isCreateFlow: true,
-    onlineServerIds,
   });
 
   // No mode field: artifact generation always runs unattended (the service
   // only honors unattended modes and otherwise resolves the provider's
   // unattended default), so offering a mode picker here would be a no-op.
   const {
-    selectedServerId,
     selectedProvider,
     selectedModel,
     selectedThinkingOptionId,
     setThinkingOptionFromUser,
     availableThinkingOptions,
-    workingDir,
     setProviderAndModelFromUser,
     applyPersonalityValues,
     clearProviderSelectionFromUser,
-    setSelectedServerId,
-    setSelectedServerIdFromUser,
-    setWorkingDir,
-    setWorkingDirFromUser,
     modelSelectorProviders,
     allProviderEntries,
     isAllModelsLoading,
@@ -510,15 +520,10 @@ function OpenArtifactCreateSheet({
       if (selectedServerId && selectedServerId !== target.serverId) {
         clearProviderSelectionFromUser();
       }
-      setSelectedServerIdFromUser(target.serverId);
-      setWorkingDirFromUser(target.cwd);
+      setSelectedServerId(target.serverId);
+      setWorkingDir(target.cwd);
     },
-    [
-      clearProviderSelectionFromUser,
-      selectedServerId,
-      setSelectedServerIdFromUser,
-      setWorkingDirFromUser,
-    ],
+    [clearProviderSelectionFromUser, selectedServerId, setSelectedServerId, setWorkingDir],
   );
 
   const renderModelTrigger = useCallback(
@@ -537,6 +542,7 @@ function OpenArtifactCreateSheet({
       pressed: boolean;
     }): ReactNode => (
       <ModelTrigger
+        serverId={selectedServerId}
         label={selectedPersonalityName ?? selectedModelLabel}
         provider={selectedProvider}
         hasPersonality={Boolean(selectedPersonalityName)}
@@ -548,6 +554,7 @@ function OpenArtifactCreateSheet({
       />
     ),
     [
+      selectedServerId,
       selectedModel,
       selectedProvider,
       selectedPersonalityName,
@@ -574,13 +581,13 @@ function OpenArtifactCreateSheet({
       setDescription(initialDescription);
       setSubmitError(null);
       setFieldResetKey((key) => key + 1);
-      // Models and personalities are host-scoped, not project-scoped. On a
-      // blank open (no seed) the form hook auto-selects the first online host
-      // so the pickers populate before any project is chosen - forcing null
-      // here would stomp that auto-selection in the same commit.
-      if (resolvedInitialServerId) {
-        setSelectedServerId(resolvedInitialServerId);
-      }
+      setSelectedServerId(
+        resolveOttoFormHost({
+          selectedServerId: null,
+          seedServerId: resolvedInitialServerId,
+          onlineServerIds,
+        }),
+      );
       setWorkingDir(resolvedInitialCwd);
     }
     wasVisibleRef.current = visible;
@@ -588,6 +595,7 @@ function OpenArtifactCreateSheet({
     visible,
     initialName,
     initialDescription,
+    onlineServerIds,
     resolvedInitialServerId,
     resolvedInitialCwd,
     setSelectedServerId,
@@ -1036,15 +1044,22 @@ function ProjectOptionItem({
   );
 }
 
-function ProviderGlyph({ provider }: { provider: string | null }): ReactElement | null {
+function ProviderGlyph({
+  provider,
+  serverId,
+}: {
+  provider: string | null;
+  serverId: string | null;
+}): ReactElement | null {
   if (!provider) {
     return null;
   }
-  const Icon = getProviderIcon(provider);
+  const Icon = getProviderIcon(provider, serverId);
   return <Icon size="md" color={styles.providerIcon.color} />;
 }
 
 function ModelTrigger({
+  serverId,
   label,
   provider,
   hasPersonality,
@@ -1054,6 +1069,7 @@ function ModelTrigger({
   active,
   isPlaceholder,
 }: {
+  serverId: string | null;
   label: string;
   provider: string | null;
   hasPersonality: boolean;
@@ -1080,6 +1096,7 @@ function ModelTrigger({
   } else if (hasPersonality && provider) {
     leadingIcon = (
       <PersonalityProviderIcon
+        serverId={serverId}
         provider={provider}
         size="md"
         glowA={personalitySpinner?.glowA}
@@ -1087,7 +1104,7 @@ function ModelTrigger({
       />
     );
   } else {
-    leadingIcon = <ProviderGlyph provider={provider} />;
+    leadingIcon = <ProviderGlyph provider={provider} serverId={serverId} />;
   }
   return (
     <View pointerEvents="none" style={containerStyle} testID="artifact-model-trigger">

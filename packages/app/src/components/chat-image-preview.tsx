@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Pressable, type StyleProp, type ViewStyle } from "react-native";
 import { useTranslation } from "react-i18next";
 import { AttachmentLightbox } from "@/components/attachment-lightbox";
@@ -18,6 +18,8 @@ export function ChatImagePreview({
   const handleOpen = useCallback(() => setOpen(true), []);
   const handleClose = useCallback(() => setOpen(false), []);
 
+  const source = useMemo(() => ({ type: "uri" as const, uri }), [uri]);
+
   return (
     <>
       <Pressable
@@ -28,7 +30,7 @@ export function ChatImagePreview({
       >
         {children}
       </Pressable>
-      {open ? <AttachmentLightbox metadata={null} uri={uri} onClose={handleClose} /> : null}
+      {open ? <AttachmentLightbox source={source} onClose={handleClose} /> : null}
     </>
   );
 }

@@ -1,6 +1,6 @@
 ---
 title: Hub public API
-description: Use organization credentials to list projects, validate or install configuration, dispatch runs, and enroll daemons.
+description: "Upstream Paseo Hub reference. Use organization credentials to install triggers, manage legacy configuration, dispatch runs, and enroll daemons."
 nav: Public API
 order: 79
 category: Hub
@@ -8,25 +8,27 @@ category: Hub
 
 # Hub public API
 
-The Hub public API lets automation operate on projects and daemons in one
-organization. Set the Hub origin in `OTTO_HUB_URL` below, for example
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
+
+The Hub public API lets automation operate on triggers, projects, and daemons in one
+organization. Set the Hub origin in `PASEO_HUB_URL` below, for example
 `https://hub.example.com`.
 
 ## API reference
 
-- [Interactive API reference](https://hub.otto-code.me/api/reference)
-- [OpenAPI 3.1 document](https://hub.otto-code.me/api/openapi.json)
+- [Interactive API reference](https://hub.paseo.sh/api/reference)
+- [OpenAPI 3.1 document](https://hub.paseo.sh/api/openapi.json)
 
-These are the canonical reference endpoints for the hosted Otto Hub. A self-hosted Hub exposes the same `/api/reference` and `/api/openapi.json` paths on its own origin.
+These are the endpoints named by the upstream v0.8.0 documentation, not an Otto API or a current availability guarantee. A self-hosted Hub exposes the same `/api/reference` and `/api/openapi.json` paths on its own origin.
 
 ## Authentication
 
-Run `otto hub login [origin]` for interactive CLI access. After browser approval, Otto stores a durable, revocable organization credential under `OTTO_HOME` for that exact origin. Without an explicit origin, the CLI uses `OTTO_HUB_URL`, then the active stored login, then `https://hub.otto-code.me`.
+Run `paseo hub login [origin]` for interactive CLI access. After browser approval, Paseo stores a durable, revocable organization credential under `PASEO_HOME` for that exact origin. Without an explicit origin, the CLI uses `PASEO_HUB_URL`, then the active stored login, then `https://hub.paseo.sh`.
 
 For automation, create an organization API key from the Hub dashboard under **API keys**. Both credential types are bearer tokens:
 
 ```http
-Authorization: Bearer otto_pk_...
+Authorization: Bearer paseo_pk_...
 Content-Type: application/json
 ```
 
@@ -37,27 +39,27 @@ organization is not accessible through the key.
 
 Each key has one or more selectable scopes:
 
-| Scope                    | Operation                                           |
-| ------------------------ | --------------------------------------------------- |
-| `projects:read`          | List active projects in the organization.           |
-| `configuration:validate` | Validate configuration without changing Hub state.  |
-| `configuration:install`  | Replace and activate a project's configuration.     |
-| `runs:dispatch`          | Dispatch a configured manual trigger for a project. |
-| `daemons:enroll`         | Issue a short-lived daemon enrollment token.        |
+| Scope                    | Operation                                                             |
+| ------------------------ | --------------------------------------------------------------------- |
+| `projects:read`          | List active projects in the organization.                             |
+| `configuration:validate` | Validate triggers or legacy configuration without changing Hub state. |
+| `configuration:install`  | Install triggers or replace a legacy project's configuration.         |
+| `runs:dispatch`          | Dispatch a configured manual trigger for a project.                   |
+| `daemons:enroll`         | Issue a short-lived daemon enrollment token.                          |
 
 API keys do not grant dashboard access. They cannot manage connections,
 projects, or organization members.
 
-CLI credentials have the current CLI operation scopes and remain revocable independently of daemon relationships. `otto hub logout` deletes the active local CLI credential; it does not revoke or disconnect the daemon identity.
+CLI credentials have the current CLI operation scopes and remain revocable independently of daemon relationships. `paseo hub logout` deletes the active local CLI credential; it does not revoke or disconnect the daemon identity.
 
 API failures use RFC 9457 problem details. Missing, invalid, or revoked credentials return `401` with `application/problem+json`:
 
 ```json
 {
-  "type": "https://otto-code.me/problems/unauthorized",
+  "type": "https://paseo.sh/problems/unauthorized",
   "title": "Authentication required",
   "status": 401,
-  "detail": "Provide an active Otto organization credential in the Authorization: Bearer header.",
+  "detail": "Provide an active Paseo organization credential in the Authorization: Bearer header.",
   "code": "unauthorized",
   "requestId": "5e967c44-fc22-4f6d-8fc5-1bbff33121af"
 }
@@ -65,9 +67,37 @@ API failures use RFC 9457 problem details. Missing, invalid, or revoked credenti
 
 A valid key without the scope required by an endpoint returns `403` in the same format.
 
+## Trigger validation and installation
+
+`paseo hub deploy --dry-run` validates each `.paseo/triggers/*.yml` file through `POST /api/v1/triggers/validate`. `paseo hub deploy` validates all files first, then installs each through `POST /api/v1/triggers/install`.
+
+Both endpoints accept one self-contained document:
+
+```json
+{
+  "yaml": "name: manual-task\nenabled: true\non:\n  manual.run: {}\nrun:\n  target: { daemon: my-macbook, cwd: /workspace }\n  agent: { provider: codex, model: gpt-5, mode: full-access }\n  prompt: Complete the task and call hub.finish_execution.\n  max_runtime: 1h\n  idle_timeout: 5m\n"
+}
+```
+
+Use a daemon slug and agent runtime available in your organization. Validation requires `configuration:validate` and returns `200` with `{ "name": "manual-task", "valid": true }`.
+
+Installation requires `configuration:install`. It creates or updates the organization's trigger by the YAML `name` and returns `201`:
+
+```json
+{
+  "triggerId": "00000000-0000-4000-8000-000000000001",
+  "name": "manual-task",
+  "revisionId": "00000000-0000-4000-8000-000000000002",
+  "version": 1,
+  "active": true
+}
+```
+
+Invalid YAML or an unknown organization resource returns `422` with field issues. Each installation is a separate request; a later failure does not undo earlier successful installs. See [Deploy from the CLI](/docs/hub/configuration#deploy-from-the-cli).
+
 ## Project list
 
-`GET /api/v1/projects` returns active projects in the bearer credential's organization. `otto hub projects` renders the projects as a table. With `--json`, it returns `{ "origin": "...", "projects": [...] }` so even an empty result records the resolved Hub.
+`GET /api/v1/projects` returns active projects in the bearer credential's organization. `paseo hub projects` renders the projects as a table. With `--json`, it returns `{ "origin": "...", "projects": [...] }` so even an empty result records the resolved Hub.
 
 ```json
 {
@@ -81,7 +111,7 @@ A valid key without the scope required by an endpoint returns `403` in the same 
 }
 ```
 
-## Configuration validation
+## Legacy configuration validation
 
 `POST /api/v1/configurations/validate` accepts the same `projectSlug` and complete `files` bundle as configuration install. It performs the same compilation and resource resolution without recording a revision or changing the active configuration.
 
@@ -94,9 +124,9 @@ On success, Hub returns `200`:
 }
 ```
 
-`otto hub deploy --dry-run` calls this endpoint with the identical locally resolved payload that a deployment would send.
+`paseo hub deploy --project <slug> --dry-run` calls this endpoint with the identical locally resolved payload that a deployment would send.
 
-## Configuration install
+## Legacy configuration install
 
 `configuration:install` validates the supplied canonical bundle, stores the exact authored files, and activates a new revision.
 
@@ -111,22 +141,22 @@ Request body:
   "projectSlug": "my-project",
   "files": [
     {
-      "path": ".otto/hub.yml",
+      "path": ".paseo/hub.yml",
       "content": "environments:\n  production:\n    kind: daemon\n    daemon: build-server\n    cwd: /workspace\nagents:\n  codex:\n    provider: codex\n"
     },
     {
-      "path": ".otto/workflows/deploy.yml",
+      "path": ".paseo/workflows/deploy.yml",
       "content": "name: deploy\non: manual.run\nmax_runtime: 2h\nfilters:\n  from_users: [automation]\nsteps:\n  - id: deploy\n    environment: production\n    max_runtime: 90m\n    idle_timeout: 10m\n    agent: codex\n    prompt:\n      - include: partials/safety.md\n"
     },
     {
-      "path": ".otto/workflows/partials/safety.md",
+      "path": ".paseo/workflows/partials/safety.md",
       "content": "Follow the safety checklist."
     }
   ]
 }
 ```
 
-`projectSlug` picks the target project; the bearer credential fixes the organization. `files` contains `.otto/hub.yml`, every direct workflow `.yml`, and each referenced workflow partial. Hub rejects missing, extra, duplicate, unsafe, or noncanonical paths.
+`projectSlug` picks the target project; the bearer credential fixes the organization. `files` contains `.paseo/hub.yml`, every direct workflow `.yml`, and each referenced workflow partial. Hub rejects missing, extra, duplicate, unsafe, or noncanonical paths.
 
 Limits:
 
@@ -151,13 +181,13 @@ Common responses are `400` for a missing or malformed body, `404` for an inactiv
 Example:
 
 ```bash
-curl --fail-with-body -sS -X POST "$OTTO_HUB_URL/api/v1/configurations/install" \
-  -H "Authorization: Bearer $OTTO_HUB_API_KEY" \
+curl --fail-with-body -sS -X POST "$PASEO_HUB_URL/api/v1/configurations/install" \
+  -H "Authorization: Bearer $PASEO_HUB_API_KEY" \
   -H "Content-Type: application/json" \
   --data @configuration-install.json
 ```
 
-`otto hub deploy -p <project>` calls this endpoint with the discovered local bundle. The command uses an exact-origin stored login when flags and environment credentials are absent. See [Deploy from the CLI](/docs/hub/configuration#deploy-from-the-cli).
+`paseo hub deploy -p <project>` selects this legacy endpoint with the discovered local bundle. The command uses an exact-origin stored login when flags and environment credentials are absent. See [Deploy from the CLI](/docs/hub/configuration#deploy-from-the-cli).
 
 ## Manual run dispatch
 
@@ -183,7 +213,7 @@ Request body:
 ```
 
 - `expectedVersionId` is optional. When supplied, Hub rejects the dispatch if that revision is no longer active.
-- `input` is the same string a provider message uses: leading `key=value` tokens are parsed as declared inputs, and the remainder becomes `${{ otto.prompt }}`.
+- `input` is the same string a provider message uses: leading `key=value` tokens are parsed as declared inputs, and the remainder becomes `${{ paseo.prompt }}`.
 - `deliveryKey` should be unique and stable per dispatch. Hub uses it for durable deduplication, but does not promise exactly-once dispatch or replay of an earlier response.
 
 On success, Hub returns `200`:
@@ -203,8 +233,8 @@ Common responses are `400` for an invalid request, `403` when the actor is not a
 Example:
 
 ```bash
-curl --fail-with-body -sS -X POST "$OTTO_HUB_URL/api/v1/manual-runs" \
-  -H "Authorization: Bearer $OTTO_HUB_API_KEY" \
+curl --fail-with-body -sS -X POST "$PASEO_HUB_URL/api/v1/manual-runs" \
+  -H "Authorization: Bearer $PASEO_HUB_API_KEY" \
   -H "Content-Type: application/json" \
   --data '{
     "projectSlug": "my-project",
@@ -239,15 +269,15 @@ No request body is required. On success, Hub returns `201`:
 
 The token expires after 10 minutes and is consumed when the daemon enrolls.
 
-`otto hub connect [origin]` performs this request with `--api-key`, `OTTO_HUB_API_KEY`, or the matching stored login, then passes the one-time token to the daemon's enrollment operation. The daemon generates and keeps its own relationship credential.
+`paseo hub connect [origin]` performs this request with `--api-key`, `PASEO_HUB_API_KEY`, or the matching stored login, then passes the one-time token to the daemon's enrollment operation. The daemon generates and keeps its own relationship credential.
 
 ```bash
 curl --fail-with-body -sS -X POST \
-  "$OTTO_HUB_URL/api/v1/daemons/enrollment-tokens" \
-  -H "Authorization: Bearer $OTTO_HUB_API_KEY"
+  "$PASEO_HUB_URL/api/v1/daemons/enrollment-tokens" \
+  -H "Authorization: Bearer $PASEO_HUB_API_KEY"
 ```
 
-Direct API consumers can pass the returned token to the daemon enrollment protocol. The Otto CLI intentionally does not accept raw enrollment tokens; `connect` owns the authenticated single-flow exchange.
+Direct API consumers can pass the returned token to the daemon enrollment protocol. The Paseo CLI intentionally does not accept raw enrollment tokens; `connect` owns the authenticated single-flow exchange.
 
 An enrollment token cannot be reused. Revoking the API key immediately rejects
 future API requests and expires any unconsumed enrollment tokens that key

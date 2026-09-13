@@ -71,9 +71,19 @@ describe("getTransformOrigin", () => {
   // RCTView without a ClassCastException; see getTransformOrigin.
   it.each([
     ["bottom", "start", [0, 0, 0]],
+    ["bottom", "center", ["50%", 0, 0]],
+    ["bottom", "end", ["100%", 0, 0]],
+    ["top", "start", [0, "100%", 0]],
+    ["top", "center", ["50%", "100%", 0]],
     ["top", "end", ["100%", "100%", 0]],
+    ["left", "start", [0, "50%", 0]],
+    ["left", "center", ["50%", "50%", 0]],
+    ["left", "end", ["100%", "50%", 0]],
+    ["right", "start", [0, "50%", 0]],
     ["right", "center", ["50%", "50%", 0]],
-  ] as const)("maps %s/%s to %s", (placement, alignment, expected) => {
+    ["right", "end", ["100%", "50%", 0]],
+  ] as const)("emits a native-ready origin for %s/%s", (placement, alignment, expected) => {
+    // Theme updates may reach Fabric without React Native's JS string preprocessing.
     expect(getTransformOrigin(placement, alignment)).toEqual(expected);
   });
 });

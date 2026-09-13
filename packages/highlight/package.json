@@ -4,7 +4,8 @@
   "license": "AGPL-3.0-or-later",
   "files": [
     "dist",
-    "!dist/**/*.map"
+    "!dist/**/*.map",
+    "src/astro/LICENSE"
   ],
   "type": "module",
   "main": "./dist/index.js",

@@ -6,15 +6,17 @@ This product is a modified fork of the Paseo project.
   Paseo
   Copyright (c) 2025-present Mohamed Boudra
   Source: https://github.com/getpaseo
-  License: GNU Affero General Public License, version 3 (AGPL-3.0)
+  Historical fork base: GNU Affero General Public License, version 3 (AGPL-3.0)
+  Paseo v0.8.0 intake: Apache License, Version 2.0 (LICENSE-Paseo-0.8.0)
 
 ================================================================================
 Attribution and license
 ================================================================================
 
-Otto is derived from Paseo and is distributed under the same license, the GNU
-Affero General Public License version 3 (AGPL-3.0), in accordance with the
-copyleft terms of the original work. The original copyright notice is preserved
+Otto retains its GNU Affero General Public License version 3 (AGPL-3.0)
+distribution metadata and LICENSE. This fork includes historical AGPL Paseo
+code and changes from Paseo v0.8.0, whose Apache License, Version 2.0 text is
+preserved in LICENSE-Paseo-0.8.0. The original copyright notice is preserved
 verbatim in this file (above), and the full, unmodified text of the license is
 preserved verbatim in the LICENSE file at the root of this repository. Neither
 is removed or altered by this fork.

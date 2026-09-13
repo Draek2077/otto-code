@@ -8,14 +8,19 @@ Chat delivery has two paths:
 The daemon keeps canonical rows only for its runtime. Provider history is the durable transcript
 authority and repopulates those rows when an agent resumes.
 
+Custom plugin rows appended through `agents.ref(agentId).timeline.append` join that canonical runtime
+timeline. They survive scrolling, refetch and client reconnect, but not daemon restart. The daemon
+stamps `pluginId`; reusing an item ID replaces the same plugin's row. Missing renderers display an
+unavailable placeholder. The 64 KiB serialized JSON data limit is enforced before append.
+
 The invariants are:
 
 > A continuously subscribed client applies every committed row in order. Opening or resuming a
 > chat establishes the daemon's current tail in one bounded request, with older history reachable
 > through backward pagination.
 
-Tool output is bounded before it enters either delivery path. Canonical shell tool output is sliced
-to 64 KiB, and the same bounded item is used for runtime timeline rows and live stream events.
+Tool output is bounded before it enters either delivery path. Canonical shell tool output is bounded
+to 64 × 1024 JavaScript string units, and the same bounded item is used for runtime timeline rows and live stream events.
 Provider history hydration applies the same rule so reopening an agent cannot restore an oversized
 tool payload.
 
@@ -90,26 +95,28 @@ history start; a response requested from a pre-replacement range is stale and is
 
 ## Client replica lifetime
 
-The host runtime owns each session replica for as long as the host remains registered. React
-providers attach message handlers and UI integrations to that replica, but mounting or unmounting a
-provider must not create or clear it. A provider can remount during Fast Refresh or ordinary UI
-recomposition while the runtime still owns the same directory snapshot and timeline cursors.
+The session projection remains host-scoped for as long as the host is registered. The viewed-timeline
+owner wraps cached preparation, network catch-up, accepted timeline application, and persistence
+behind one interface. React supplies transport and projection operations without selecting a cache
+path or issuing a separate persistence notification.
 
 Removing the host from the registry is the destructive boundary: it stops the runtime and clears the
 session and host-scoped setup state together.
 
-The durable replica cache persists synchronization authority only when it can store the complete
-current canonical window losslessly. The stored range describes those exact items: `startSeq` drives
-older pagination and `endSeq` drives forward catch-up. Restore paints the items immediately, requests
-`after endSeq`, and requests `before startSeq` when the user loads older history.
+The timeline owner asks durable replica storage for an agent when that agent becomes visible. An
+accepted row paints immediately before subscription acknowledgement or timeline fetch. The stored
+range describes those exact items: `startSeq` drives older pagination and `endSeq` drives forward
+catch-up. The owner requests `after endSeq`, and requests `before startSeq` when the user loads older
+history. Code outside the owner does not distinguish cached and network timelines.
 
 The first resume request is bounded. If it reports more newer history, fetch one latest bounded tail
 instead of replaying every missed page. Live gap recovery still pages forward until current.
 
 If the canonical window exceeds the cache item limit, contains a discontiguous retained range, has a
 live head, or includes presentation data the cache cannot encode losslessly, persistence drops the
-range and keeps a display-only tail. Restore then uses the ordinary bounded `tail` bootstrap. Never
-slice items while retaining the pre-slice range; that falsely certifies discarded source rows.
+range and keeps a display-only tail. Never slice items while retaining the pre-slice range; that
+falsely certifies discarded source rows. A display-only row paints without granting synchronization
+authority, so the owner uses the ordinary bounded `tail` bootstrap.
 
 Live rows received between cache paint and catch-up stay in the separate live head and reconcile with
 the authoritative range through the existing forward-page path. The cache does not persist sync
@@ -149,8 +156,8 @@ its completion advances `seqEnd`, followed by a merged assistant message. The ap
 remaining page through the existing stream reducer. It must not append full projected text to a
 live prefix.
 
-Every path that sends a message to an agent (composer send, dictation accept-and-send, queued
-send-now, and the automatic queue drain in `HostRuntime`) goes through
+Every path that sends a message to an agent — composer send, dictation accept-and-send, queued
+send-now, and the host runtime's automatic queue drain — goes through
 `dispatchComposerAgentMessage` with a submission writer. There is no second transport for the same
 product action: calling `client.sendAgentMessage` directly skips the submitted row and the pending
 footer, and permanently drops attachments because the daemon does not echo them back.
@@ -177,6 +184,7 @@ row is recorded before handler output. The app tracks submission transactions on
 capability. Older hosts keep the shipped untracked optimistic-row behavior and roll that row back on RPC
 rejection.
 
+Turn activity lives on each canonical `Agent.turn` in the directory/session projection. There is no separate session-wide turn map.
 Turn activity has one client-side replica. Lifecycle events can attach `turnId`, and agent snapshots can
 expose `activeTurn: { turnId, startedAt } | null`. An identified terminal cannot close a different
 identified turn; an unnamed legacy terminal can close the current turn. Snapshots, stream events,
@@ -194,9 +202,9 @@ fork positions retain the canonical `turnId` boundaries.
 The compatibility boundary for older daemons is snapshot normalization: running/idle status becomes an
 anonymous active turn or idle state once, and downstream code consumes the same activity shape. The app
 does not combine anonymous lifecycle events, timestamps, timeline rows, and resume coverage to infer a
-second running state. Disconnect and replica removal remain destructive close boundaries. Elapsed time
-comes only from turn liveness, never from submission records or whichever timeline rows happen to be
-mounted.
+second running state. Disconnect preserves the last replicated turn until cache or network hydration
+advances it; replica removal remains the destructive close boundary. Elapsed time comes only from turn
+liveness, never from submission records or whichever timeline rows happen to be mounted.
 
 The daemon records one canonical submitted user row at acceptance. Its wire `messageId` is the
 submission's `clientMessageId`, so the row is born with its final identity and remains immutable on
@@ -223,6 +231,11 @@ arrive, while a destructive replacement retains only active submission transacti
 Canonical replacement owns both timeline lanes. A matching local row keeps its presentation ID and
 payload while taking the canonical row's ordered position. If a live assistant head is the
 canonical assistant prefix, it stays in the head lane. No row may be returned in both lanes.
+
+The viewed owner applies Otto's prompt index only after accepting a canonical page. Epoch and
+sequence checks keep stale or discarded responses from replacing a newer outline index. Otto sideband
+events (suggested and background tasks, prompt suggestions, rate limits and scoped Git logs) are wired
+through `contexts/otto-session-events.ts`; they do not own timeline hydration or reducer scheduling.
 
 ## Relevant code
 

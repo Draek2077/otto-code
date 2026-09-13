@@ -1,28 +1,47 @@
+import { resolveOttoProfileIdentity } from "./otto-agent-snapshot-policy";
 import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
 import type { AgentPermissionRequest } from "@otto-code/protocol/agent-types";
 import { getParentAgentIdFromLabels } from "@otto-code/protocol/agent-labels";
-import type { ActiveTurnIdentity } from "@/timeline/turn-liveness";
-import { type Agent } from "@/stores/session-store";
+import {
+  TURN_LIVENESS_IDLE,
+  type ActiveTurnIdentity,
+  type TurnLiveness,
+} from "@/timeline/turn-liveness";
+import type { Agent } from "@/stores/session-store";
 
-export function normalizeAgentActiveTurn(
+function normalizeActiveTurn(
   snapshot: AgentSnapshotPayload,
   lastUserMessageAt: Date | null,
 ): ActiveTurnIdentity | null {
   if (snapshot.activeTurn === null) return null;
-  // Older daemons can leave a settled turn's identity on an idle/error
-  // snapshot. Status and activeTurn are emitted atomically, so a non-running
-  // status means whatever turn the snapshot still names is already over.
-  if (snapshot.status !== "running") return null;
   if (snapshot.activeTurn) {
     return {
       turnId: snapshot.activeTurn.turnId,
       startedAt: snapshot.activeTurn.startedAt ? new Date(snapshot.activeTurn.startedAt) : null,
     };
   }
-  // COMPAT(agentTurnIdentity): added in v0.2.6, remove after 2027-01-31 once daemon floor >= v0.2.6.
-  // Old daemons expose only status. Normalize that legacy signal once at the
-  // snapshot boundary; the Agent replica itself never owns turn liveness.
   return snapshot.status === "running" ? { turnId: null, startedAt: lastUserMessageAt } : null;
+}
+
+function normalizeTurn(
+  snapshot: AgentSnapshotPayload,
+  lastUserMessageAt: Date | null,
+): TurnLiveness {
+  const activeTurn = normalizeActiveTurn(snapshot, lastUserMessageAt);
+  return activeTurn
+    ? { phase: "open", ...activeTurn, cancellationRequestId: null }
+    : TURN_LIVENESS_IDLE;
+}
+
+function projectActiveTurn(agent: Agent): Pick<AgentSnapshotPayload, "activeTurn"> {
+  if (agent.turn.phase === "idle") return { activeTurn: null };
+  if (agent.turn.turnId === null) return {};
+  return {
+    activeTurn: {
+      turnId: agent.turn.turnId,
+      startedAt: agent.turn.startedAt?.toISOString() ?? null,
+    },
+  };
 }
 
 export function derivePendingPermissionKey(
@@ -39,21 +58,6 @@ export function derivePendingPermissionKey(
   return `${agentId}:${fallbackId}`;
 }
 
-/**
- * COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22. The
- * daemon emits the bound Agent Profile's identity under both spellings.
- * Preferring the current one here, at the single ingestion point, is what lets
- * every reader downstream keep one field name; a daemon older than the rename
- * sends only the legacy trio, which is what the fallback covers.
- */
-function resolveProfileIdentity(snapshot: AgentSnapshotPayload) {
-  return {
-    personalitySpinner: snapshot.agentProfileSpinner ?? snapshot.personalitySpinner ?? null,
-    personalityName: snapshot.agentProfileName ?? snapshot.personalityName ?? null,
-    personalityId: snapshot.agentProfileId ?? snapshot.personalityId ?? null,
-  };
-}
-
 export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId: string) {
   const createdAt = new Date(snapshot.createdAt);
   const updatedAt = new Date(snapshot.updatedAt);
@@ -65,11 +69,17 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     : null;
   const archivedAt = snapshot.archivedAt ? new Date(snapshot.archivedAt) : null;
   const parentAgentId = getParentAgentIdFromLabels(snapshot.labels);
+  // COMPAT(agentTurnIdentity): added in v0.2.6, remove after 2027-01-31 once daemon floor >= v0.2.6.
+  // Old daemons expose only status. Normalize that legacy signal once so the rest
+  // of the app consumes one activity shape.
+  const turn = normalizeTurn(snapshot, lastUserMessageAt);
+
   return {
     serverId,
     id: snapshot.id,
     provider: snapshot.provider,
     status: snapshot.status,
+    turn,
     createdAt,
     updatedAt,
     lastUserMessageAt,
@@ -102,7 +112,7 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     labels: snapshot.labels,
     attend: snapshot.attend ?? "attended",
     backgrounded: snapshot.backgrounded ?? false,
-    ...resolveProfileIdentity(snapshot),
+    ...resolveOttoProfileIdentity(snapshot),
   };
 }
 
@@ -134,19 +144,5 @@ export function projectAgentSnapshot(agent: Agent): AgentSnapshotPayload {
     attentionReason: agent.attentionReason ?? null,
     attentionTimestamp: agent.attentionTimestamp?.toISOString() ?? null,
     archivedAt: agent.archivedAt?.toISOString() ?? null,
-  };
-}
-
-function projectActiveTurn(agent: Agent): Pick<AgentSnapshotPayload, "activeTurn"> {
-  // Absent on a daemon that does not report turn identity: leave the field off
-  // the payload rather than asserting the agent is between turns.
-  if (agent.activeTurn === undefined) return {};
-  if (agent.activeTurn === null) return { activeTurn: null };
-  if (agent.activeTurn.turnId === null) return {};
-  return {
-    activeTurn: {
-      turnId: agent.activeTurn.turnId,
-      startedAt: agent.activeTurn.startedAt?.toISOString() ?? null,
-    },
   };
 }

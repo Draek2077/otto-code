@@ -61,7 +61,8 @@ daemon port and the same `OTTO_HOME` - see below.
 
 **The installed Otto, the dev Otto, an agent's own instance, a test run, and a
 demo run are all expected to be up at the same time.** Each owns its own ports
-and its own running space, and nothing in one lane can reach into another:
+and its own running space. These defaults separate lanes, but they do not allocate a new set of
+ports for each checkout:
 
 | Lane              | Daemon port | `OTTO_HOME`                        | Metro         | Other fixed ports |
 | ----------------- | ----------- | ---------------------------------- | ------------- | ----------------- |
@@ -71,7 +72,10 @@ and its own running space, and nothing in one lane can reach into another:
 | **Tests** (e2e)   | dynamic     | `$TMP/otto-e2e-home-*`             | dynamic       | relay dynamic     |
 | **Demos**         | dynamic     | `$TMP/otto-e2e-home-*`             | dynamic       | relay dynamic     |
 
-(The heading deliberately does not count them - this table has grown twice.)
+Before starting services in another worktree, inspect existing service ownership and allocate free
+daemon, Metro, and CDP ports plus a worktree-specific `OTTO_HOME`. Never restart another worktree's
+service or assume its default port is available. A timeout does not establish that a service needs
+restarting.
 
 The fixed lanes get fixed ports because you need to _find_ them - you type
 `localhost:6788` into a client, you attach a debugger to `9223`. Override the dev
@@ -770,8 +774,6 @@ install.
 
 Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's dev home (`packages/desktop/.dev/otto-home`) and the dev daemon on `6788` unless you pass an explicit override. The globally installed `otto` binary is a shim into the installed Otto desktop app, not this checkout - use it to drive the installed app's daemon on `6868`, and `npm run cli` when you want to talk to the CLI you are editing.
 
-Canonical automation uses `otto workspace create/ls/rename/archive`, `otto heartbeat create/update/delete`, and the full `otto schedule` group. MCP heartbeat automation is intentionally smaller: create and delete only. Detach remains an explicit user lifecycle action rather than an agent tool. `otto run --new-workspace local|worktree` composes workspace creation with agent creation. The old `otto worktree` and `otto run --worktree` forms are hidden compatibility aliases.
-
 Saved Graph Workflows are available headlessly through `otto workflow graph`: `ls`, `inspect`,
 `validate <file>`, and `run <graph-id>`. Validation reads a local JSON document but never
 imports or executes it. Graph file import and `run --file` wait on the Graph trust boundary and
@@ -788,11 +790,22 @@ npm run cli -- logs <id>             # View agent timeline
 npm run cli -- daemon status         # Check daemon status
 ```
 
-Use `--host <host:port>` to point the CLI at a different daemon:
+Use the global `--host` option to point the CLI at a different daemon:
 
 ```bash
 npm run cli -- --host localhost:7777 ls -a
+npm run cli -- --host ssh://user@host ls -a
 ```
+
+Set `OTTO_HOST` to use the same target across invocations. An explicit
+`--host` overrides the environment variable.
+
+In an SSH URI, the URL port is the SSH server port. The remote daemon defaults to `127.0.0.1:6868`; use `?daemonPort=7777` to override it. The transport runs non-interactively through the local OpenSSH client and never installs, starts, or configures the remote daemon. User-facing setup and troubleshooting live in [public-docs/connectivity.md](../public-docs/connectivity.md#ssh).
+
+Desktop integrations can focus an existing agent without creating one or
+sending a message. Use `otto://h/<server-id>/agent/<agent-id>`, or run
+`otto agent open <agent-id>`. The CLI reads the local daemon's server ID by
+default; pass `--server <server-id>` when targeting another server.
 
 ## Agent state
 

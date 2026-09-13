@@ -31,14 +31,8 @@ const PHONE_PERSPECTIVE_STYLE = { minHeight: 480, perspective: 1200 };
 import { CursorFieldProvider } from "~/components/butterfly";
 import { CommandDialog } from "~/components/command-dialog";
 import { AGENT_PAGES } from "~/data/agent-pages";
-import {
-  webAppUrl,
-  getDownloadOptions,
-  useDetectedPlatform,
-  TerminalIcon,
-  GlobeIcon,
-} from "~/downloads";
-import { useRelease } from "~/routes/__root";
+import { webAppUrl, getPrimaryDownload, TerminalIcon, GlobeIcon } from "~/downloads";
+import { useRelease, useVisitorPlatform } from "~/routes/__root";
 import { HeroMockup } from "~/components/hero-mockup";
 import {
   ClaudeCodeIcon,
@@ -291,6 +285,17 @@ function FoundationCapabilitiesSection() {
         <ServiceProxyBlock />
         <ShortcutsBlock />
         <CLIBlock />
+        <SubFeature
+          title="Extend your workspace"
+          description="Plugins add providers, commands, settings, workspace panels, and chat components through shared client and server APIs."
+        >
+          <a
+            href="/docs/plugins"
+            className="text-sm underline text-muted-foreground hover:text-foreground"
+          >
+            Explore the plugin API
+          </a>
+        </SubFeature>
       </div>
     </FeatureSection>
   );
@@ -1453,21 +1458,8 @@ function GetStarted() {
 
 function DownloadButton() {
   const release = useRelease();
-  const detectedPlatform = useDetectedPlatform();
-  // Falls back to the download page when the detected platform has no artifact
-  // on this release. Mac builds can be absent if their job failed.
-  const primary = getDownloadOptions(release).find((o) => o.platform === detectedPlatform);
-
-  if (!primary) {
-    return (
-      <a
-        href="/download"
-        className="inline-flex items-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-foreground/90 transition-colors"
-      >
-        Download
-      </a>
-    );
-  }
+  const platform = useVisitorPlatform();
+  const primary = getPrimaryDownload(release, platform);
 
   const PrimaryIcon = primary.icon;
 
@@ -1478,13 +1470,16 @@ function DownloadButton() {
       className="inline-flex items-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-foreground/90 transition-colors"
     >
       <PrimaryIcon className="h-4 w-4" />
-      Download for {primary.label}
+      {platform === "ios" ? "Open the web app" : `Download for ${primary.label}`}
     </a>
   );
 }
 
 const SERVER_INSTALL_TRIGGER = (
-  <span className="inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors">
+  <span
+    aria-label="Install the daemon on a remote machine"
+    className="inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors"
+  >
     <TerminalIcon className="h-5 w-5" />
   </span>
 );
@@ -1752,7 +1747,7 @@ function PhoneShowcase() {
           <br className="md:hidden" /> you can.
         </p>
         <p className="text-sm text-white/50 text-center">
-          The native mobile app has full feature parity with desktop.
+          Android and the web app keep your agents close. Desktop-only tools stay on desktop.
         </p>
       </motion.div>
 
@@ -1933,9 +1928,9 @@ function FAQ() {
           doesn&apos;t endorse Otto, and its name and logos are its own. Go star it.
         </FAQItem>
         <FAQItem question="Is this free?">
-          Yes. Otto is free and open source. You need Claude Code, Codex, Cursor, OpenCode, or Pi
-          installed with your own credentials. Voice is local-first by default and can optionally
-          use OpenAI speech providers if you configure them.
+          Yes. Otto is free and open source. Use an installed provider or configure an
+          OpenAI-compatible endpoint with your own credentials. Voice is local-first by default and
+          can optionally use OpenAI speech providers if you configure them.
         </FAQItem>
         <FAQItem question="Does my code leave my machine?">
           Otto runs agents on the host you choose. Cloud provider APIs, Git remotes, MCP servers,
@@ -1948,8 +1943,12 @@ function FAQ() {
           , connect directly over your local network, or use your own tunnel.
         </FAQItem>
         <FAQItem question="What agents does it support?">
-          Claude Code, Codex, Cursor, OpenCode, and Pi. Each agent runs as its own process using its
-          own CLI or local integration. Otto doesn&apos;t modify or wrap their behavior.
+          Claude Code, Codex, OpenCode, Pi, OMP, and ACP providers, plus configured
+          OpenAI-compatible endpoints and plugin providers. See{" "}
+          <a href="/agents" className="underline">
+            supported providers
+          </a>
+          .
         </FAQItem>
         <FAQItem question="Do I need the desktop app?">
           No. You can run the daemon headless with{" "}
@@ -1984,10 +1983,9 @@ function FAQ() {
         <FAQItem question="Can I get banned for using Otto?">
           <p>I can&apos;t make promises on behalf of providers.</p>
           <p>
-            That said, Otto launches each provider&apos;s local CLI or integration (Claude Code,
-            Codex, Cursor, OpenCode, Pi) as a subprocess. It doesn&apos;t extract tokens or call
-            inference APIs directly. From the provider&apos;s perspective, usage through Otto is
-            indistinguishable from running the provider yourself.
+            Otto uses each provider&apos;s configured integration. Hosted harnesses keep their own
+            authentication; custom OpenAI-compatible providers call the endpoint you configure.
+            Provider terms still apply to that usage.
           </p>
         </FAQItem>
         <FAQItem question="How do worktrees work?">

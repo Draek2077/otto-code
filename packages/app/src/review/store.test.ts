@@ -7,7 +7,6 @@ import {
   buildReviewAttachmentSnapshot,
   buildReviewDraftBranchKeyPrefix,
   buildReviewDraftKey,
-  buildReviewDraftScopeKey,
   buildSearchNoteAttachmentSnapshot,
   buildSearchNoteDraftKey,
   prunePreBranchDraftKeys,
@@ -17,27 +16,17 @@ import {
   clearReviewInState,
   clearReviewScopeInState,
   deleteCommentFromState,
-  type DiffModeOverride,
-  expireStaleDiffModeOverridesInState,
   normalizePersistedState,
-  resolveDiffMode,
   type ReviewDraftComment,
   type ReviewDraftStoreState,
   serializeReviewDraftState,
   SerializedReviewDraftStateSchema,
-  setDiffModeOverrideInState,
   summarizeReviewDraftsForPrefix,
   updateCommentInState,
 } from "./state";
 
 function emptyState(): ReviewDraftStoreState {
-  return { drafts: {}, diffModeOverrides: {} };
-}
-
-function makeOverride(
-  input: Pick<DiffModeOverride, "mode" | "isDirtyAtSelection">,
-): DiffModeOverride {
-  return { serverId: "server-1", cwd: "/repo", ...input };
+  return { drafts: {} };
 }
 
 function makeComment(overrides: Partial<ReviewDraftComment> = {}): ReviewDraftComment {
@@ -149,21 +138,6 @@ describe("buildReviewDraftKey", () => {
     expect(build(null)).toBe(build(null));
     expect(build(null)).not.toBe(build("feature/a"));
   });
-
-  it("builds a mode-free scope key for diff mode override sharing", () => {
-    const scope = buildReviewDraftScopeKey({
-      serverId: "local",
-      workspaceId: "workspace-1",
-      cwd: "/repo",
-      baseRef: "main",
-      ignoreWhitespace: false,
-    });
-
-    expect(scope).toBe(
-      "review:server=local:workspace=workspace-1:base=main:ignoreWhitespace=false",
-    );
-    expect(scope).not.toContain("mode=");
-  });
 });
 
 describe("normalizePersistedState", () => {
@@ -183,7 +157,7 @@ describe("normalizePersistedState", () => {
     const normalized = normalizePersistedState(stored?.state);
 
     expect(normalized.drafts["review:key"]).toEqual([makeComment()]);
-    expect(normalized.diffModeOverrides).toEqual({});
+    expect(normalized).toEqual({ drafts: { "review:key": [makeComment()] } });
     expect(backing.values.has("@otto:review-draft-store")).toBe(true);
   });
 
@@ -210,17 +184,13 @@ describe("normalizePersistedState", () => {
       },
     });
 
-    expect(normalized.diffModeOverrides).toEqual({});
     expect(normalized.drafts).toEqual({});
   });
 
   it("returns empty state for null, non-object, or malformed inputs", () => {
-    expect(normalizePersistedState(null)).toEqual({ drafts: {}, diffModeOverrides: {} });
-    expect(normalizePersistedState("nope")).toEqual({ drafts: {}, diffModeOverrides: {} });
-    expect(normalizePersistedState({ drafts: [] })).toEqual({
-      drafts: {},
-      diffModeOverrides: {},
-    });
+    expect(normalizePersistedState(null)).toEqual({ drafts: {} });
+    expect(normalizePersistedState("nope")).toEqual({ drafts: {} });
+    expect(normalizePersistedState({ drafts: [] })).toEqual({ drafts: {} });
   });
 });
 
@@ -235,7 +205,6 @@ describe("prunePreBranchDraftKeys", () => {
         [branchedKey]: [makeComment()],
         [preBranchKey]: [makeComment({ id: "comment-2" })],
       },
-      diffModeOverrides: {},
     };
 
     const pruned = prunePreBranchDraftKeys(state);
@@ -250,7 +219,6 @@ describe("prunePreBranchDraftKeys", () => {
           makeComment(),
         ],
       },
-      diffModeOverrides: {},
     };
 
     expect(prunePreBranchDraftKeys(state)).toBe(state);
@@ -258,130 +226,14 @@ describe("prunePreBranchDraftKeys", () => {
 });
 
 describe("serializeReviewDraftState", () => {
-  it("serialized output does not contain activeModesByScope or diffModeOverrides", () => {
-    const state = setDiffModeOverrideInState(
-      addCommentToState(emptyState(), { key: "review:key", comment: makeComment() }),
-      {
-        scopeKey: "review:scope",
-        override: makeOverride({ mode: "uncommitted", isDirtyAtSelection: true }),
-      },
-    );
+  it("serialized output does not contain the legacy activeModesByScope field", () => {
+    const state = addCommentToState(emptyState(), { key: "review:key", comment: makeComment() });
 
     const serialized = serializeReviewDraftState(state);
 
     expect(Object.keys(serialized)).toEqual(["drafts"]);
     expect("activeModesByScope" in serialized).toBe(false);
-    expect("diffModeOverrides" in serialized).toBe(false);
     expect(serialized.drafts["review:key"]).toHaveLength(1);
-  });
-});
-
-describe("diff mode override", () => {
-  it("resolves to auto mode from the dirty state when no override exists", () => {
-    expect(resolveDiffMode({ override: undefined, hasUncommittedChanges: true })).toBe(
-      "uncommitted",
-    );
-    expect(resolveDiffMode({ override: undefined, hasUncommittedChanges: false })).toBe("base");
-  });
-
-  it("honors the override across remounts", () => {
-    const state = setDiffModeOverrideInState(emptyState(), {
-      scopeKey: "review:scope",
-      override: makeOverride({ mode: "base", isDirtyAtSelection: true }),
-    });
-
-    // Resolution is a plain store read, so it gives the same answer on every (re)mount.
-    const override = state.diffModeOverrides["review:scope"];
-    expect(resolveDiffMode({ override, hasUncommittedChanges: true })).toBe("base");
-  });
-
-  it("keeps an Uncommitted selection after a commit", () => {
-    const state = setDiffModeOverrideInState(emptyState(), {
-      scopeKey: "review:scope",
-      override: makeOverride({ mode: "uncommitted", isDirtyAtSelection: true }),
-    });
-
-    const override = state.diffModeOverrides["review:scope"];
-    expect(resolveDiffMode({ override, hasUncommittedChanges: false })).toBe("uncommitted");
-  });
-
-  it("keeps overrides when checkout dirty state changes", () => {
-    let state = setDiffModeOverrideInState(emptyState(), {
-      scopeKey: "review:scope-a",
-      override: makeOverride({ mode: "base", isDirtyAtSelection: true }),
-    });
-    state = setDiffModeOverrideInState(state, {
-      scopeKey: "review:scope-b",
-      override: makeOverride({ mode: "uncommitted", isDirtyAtSelection: false }),
-    });
-    state = setDiffModeOverrideInState(state, {
-      scopeKey: "review:scope-other",
-      override: {
-        serverId: "server-2",
-        cwd: "/other",
-        mode: "base",
-        isDirtyAtSelection: true,
-      },
-    });
-
-    const next = expireStaleDiffModeOverridesInState(state, {
-      serverId: "server-1",
-      cwd: "/repo",
-      isDirty: false,
-    });
-
-    expect(next.diffModeOverrides["review:scope-a"]).toBeDefined();
-    expect(next.diffModeOverrides["review:scope-b"]).toBeDefined();
-    expect(next.diffModeOverrides["review:scope-other"]).toBeDefined();
-  });
-
-  it("keeps a committed selection when new uncommitted changes arrive", () => {
-    let state = setDiffModeOverrideInState(emptyState(), {
-      scopeKey: "review:scope",
-      override: makeOverride({ mode: "base", isDirtyAtSelection: true }),
-    });
-
-    // The checkout goes clean (e.g. agent commits), then dirty again.
-    state = expireStaleDiffModeOverridesInState(state, {
-      serverId: "server-1",
-      cwd: "/repo",
-      isDirty: false,
-    });
-    state = expireStaleDiffModeOverridesInState(state, {
-      serverId: "server-1",
-      cwd: "/repo",
-      isDirty: true,
-    });
-
-    expect(state.diffModeOverrides["review:scope"]).toBeDefined();
-    expect(
-      resolveDiffMode({
-        override: state.diffModeOverrides["review:scope"],
-        hasUncommittedChanges: true,
-      }),
-    ).toBe("base");
-  });
-
-  it("keeps state identity across status updates", () => {
-    const state = setDiffModeOverrideInState(emptyState(), {
-      scopeKey: "review:scope",
-      override: makeOverride({ mode: "base", isDirtyAtSelection: true }),
-    });
-
-    expect(
-      expireStaleDiffModeOverridesInState(state, {
-        serverId: "server-1",
-        cwd: "/repo",
-        isDirty: true,
-      }),
-    ).toBe(state);
-    expect(
-      expireStaleDiffModeOverridesInState(emptyState(), {
-        serverId: "server-1",
-        cwd: "/repo",
-        isDirty: false,
-      }),
-    ).toEqual(emptyState());
   });
 });
 
@@ -710,7 +562,6 @@ describe("buildSearchNoteDraftKey", () => {
     const key = buildSearchNoteDraftKey({ ...input, branch: null });
     const pruned = prunePreBranchDraftKeys({
       drafts: { [key]: [] },
-      diffModeOverrides: {},
     });
     expect(Object.keys(pruned.drafts)).toEqual([key]);
   });

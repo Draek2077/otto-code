@@ -38,6 +38,17 @@ describe("cli-install-path", () => {
     ).toBe("/opt/Otto/resources/bin/otto");
   });
 
+  it("uses the bundled shim for packaged linux installs outside an AppImage", () => {
+    expect(
+      resolveCliInstallSourcePath({
+        platform: "linux",
+        isPackaged: true,
+        executablePath: "/opt/Paseo/Paseo",
+        shimPath: "/opt/Paseo/resources/bin/paseo",
+      }),
+    ).toBe("/opt/Paseo/resources/bin/paseo");
+  });
+
   it("falls back to the shim on windows and in development", () => {
     expect(
       resolveCliInstallSourcePath({

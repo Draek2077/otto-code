@@ -1,3 +1,5 @@
+import { settingsTargetIdsForPersistence } from "@/screens/settings-search-catalog";
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, type PressableStateCallbackType } from "react-native";
@@ -56,7 +58,12 @@ function ShortcutOverlayModeRow({
   return (
     <View style={settingsStyles.rowResponsive}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Shortcut overlays</Text>
+        <SettingsTargetText
+          settingId="app-shortcuts-shortcut-overlays-shortcut-overlays"
+          style={settingsStyles.rowTitle}
+        >
+          Shortcut overlays
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           Choose what appears while holding shortcut keys. Full adds unanchored commands in the
           center of the view.
@@ -315,7 +322,12 @@ function ShortcutRow({
 
   return (
     <View style={rowStyle}>
-      <Text style={styles.rowLabel}>{t(row.labelKey)}</Text>
+      <SettingsTargetText
+        settingId={settingsTargetIdsForPersistence("shortcuts", `keyboard override: ${row.id}`)}
+        style={styles.rowLabel}
+      >
+        {t(row.labelKey)}
+      </SettingsTargetText>
       <View style={styles.rowActions}>
         <View style={styles.rowKeys}>
           <ShortcutRowKeys

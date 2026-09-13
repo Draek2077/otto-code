@@ -11,12 +11,13 @@ import {
 } from "@/stores/workspace-layout-store";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/workspace-tabs/model";
 
-export type ExplorerSidebarView = "changes" | "files";
+export type ExplorerSidebarView = "changes" | "files" | "pr";
 export type ExplorerSidebarPresentation = "overlay" | "dock" | "pane";
 
 const VIEW_TARGETS: Record<ExplorerSidebarView, WorkspaceTabTarget> = {
   changes: { kind: "changes_tree" },
   files: { kind: "files" },
+  pr: { kind: "pull_request" },
 };
 
 const TAB_TARGETS: Record<ExplorerTab, WorkspaceTabTarget> = {
@@ -127,12 +128,15 @@ export function hideExplorerSidebar(input: ExplorerSidebarInput): void {
 }
 
 export function toggleExplorerSidebar(input: ExplorerSidebarInput): void {
-  const view: ExplorerSidebarView =
-    input.isDeveloperMode !== false && input.checkout?.isGit ? "changes" : "files";
+  if (usesCompactExplorerSidebar(input)) {
+    if (input.checkout) usePanelStore.getState().toggleCompactFileExplorer(input.checkout);
+    return;
+  }
+  if (!input.workspaceKey) return;
   if (isExplorerSidebarOpen(input)) {
     hideExplorerSidebar(input);
   } else {
-    openExplorerSidebarView({ ...input, view });
+    showExplorerSidebar(input);
   }
 }
 

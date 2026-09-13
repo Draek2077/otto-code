@@ -1,4 +1,5 @@
 import mermaid from "mermaid";
+import { applyMindmapTheme } from "../otto/mindmap-theme";
 import {
   parseMermaidRuntimeRenderMessage,
   type MermaidRuntimeMessage,
@@ -64,81 +65,45 @@ function setViewport(interactive: boolean): void {
     );
 }
 
-/**
- * Mindmap derives its section fills with fixed HSL lightness offsets from the
- * primary palette. On Otto's warm themes several offsets become almost black,
- * while the label stays foreground-dark. Unlike flowcharts, its generated CSS
- * does not consistently honour the ordinary node/text variables. Override the
- * family once with the concrete app palette so every branch stays readable.
- */
-function applyMindmapTheme(host: HTMLElement, themeVariables: Record<string, string>): void {
-  const svg = host.querySelector("svg.mindmapDiagram");
-  if (!svg) {
-    return;
-  }
-  const surface = themeVariables.primaryColor;
-  const border = themeVariables.primaryBorderColor;
-  const foreground = themeVariables.primaryTextColor;
-  const edge = themeVariables.lineColor;
-  if (!surface || !border || !foreground || !edge) {
-    return;
-  }
-  const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
-  style.textContent = `
-    .mindmap-node rect, .mindmap-node path, .mindmap-node circle, .mindmap-node polygon {
-      fill: ${surface} !important;
-      stroke: ${border} !important;
-    }
-    .mindmap-node text, .mindmap-node .label, .mindmap-node .label *,
-    .mindmap-node foreignObject, .mindmap-node foreignObject * {
-      fill: ${foreground} !important;
-      color: ${foreground} !important;
-    }
-    .edge { stroke: ${edge} !important; }
-  `;
-  svg.append(style);
-}
-
-/**
- * Mermaid occasionally emits `height: 100vh` and `overflow: auto` on its root
- * SVG. In an embedded Electron guest that turns the SVG itself into a tall,
- * scrollable viewport, while the host correctly reserves only the diagram's
- * natural height. Let the viewBox determine the SVG's aspect ratio and leave
- * clipping to Otto's pan/zoom viewport.
- */
-function normalizeSvgViewport(host: HTMLElement): void {
-  const svg = host.querySelector("svg");
-  if (!svg) {
-    return;
-  }
-  svg.style.removeProperty("height");
-  svg.style.removeProperty("overflow");
-}
-
-/**
- * An Electron webview reports the dimensions of its own viewport, not the
- * rendered SVG, while the host is still measuring it. Derive the height from
- * the fitted viewBox and displayed width instead, so the host can grow the
- * webview to the diagram's full natural size on the first render.
- */
-function measureDiagram(host: HTMLElement): { height: number; width: number } {
-  const svg = host.querySelector("svg");
-  const rect = svg?.getBoundingClientRect();
-  const viewBox = svg?.viewBox.baseVal;
-  const width = Math.ceil(
-    rect?.width || host.clientWidth || host.scrollWidth || viewBox?.width || 1,
-  );
-  const height =
-    viewBox && viewBox.width > 0 && viewBox.height > 0
-      ? Math.ceil((width * viewBox.height) / viewBox.width)
-      : Math.ceil(rect?.height || host.scrollHeight || 1);
-  return { height, width };
-}
-
 let latestRevision = 0;
 let pendingRender: MermaidRuntimeRenderMessage | null = null;
 let isRendering = false;
 let isDrainScheduled = false;
+
+interface DiagramSize {
+  height: number;
+  width: number;
+}
+
+/**
+ * Mermaid emits `width="100%"` with an inline `max-width` in pixels, so the diagram renders at
+ * its natural width and never fills a larger box. The host sizes this frame, so let the diagram
+ * follow the frame in both directions instead.
+ */
+function stretchToFrame(svg: SVGSVGElement): void {
+  svg.style.maxWidth = "100%";
+  svg.style.maxHeight = "100%";
+  svg.style.width = "100%";
+  svg.style.height = "100%";
+}
+
+/**
+ * The reported size is the host's content size, and the host feeds it back as this frame's size.
+ * Measuring the rendered box would make that a loop: every re-render lands in a frame the last
+ * measurement shrank by the container's padding, so a streaming diagram ratchets down to nothing.
+ * The viewBox is the diagram's own size and doesn't move.
+ */
+function measureDiagram(host: HTMLElement, svg: SVGSVGElement | null): DiagramSize {
+  const viewBox = svg?.viewBox.baseVal;
+  if (viewBox && viewBox.width > 0 && viewBox.height > 0) {
+    return { height: Math.ceil(viewBox.height), width: Math.ceil(viewBox.width) };
+  }
+  const rect = svg?.getBoundingClientRect();
+  return {
+    height: Math.ceil(rect?.height ?? host.scrollHeight),
+    width: Math.ceil(rect?.width ?? host.scrollWidth),
+  };
+}
 
 async function render(message: MermaidRuntimeRenderMessage): Promise<void> {
   try {
@@ -154,15 +119,18 @@ async function render(message: MermaidRuntimeRenderMessage): Promise<void> {
     }
     host.innerHTML = svg;
     applyMindmapTheme(host, message.themeVariables);
-    normalizeSvgViewport(host);
-    const dimensions = measureDiagram(host);
-    const renderedSvg = host.querySelector("svg")?.outerHTML;
+    const element = host.querySelector("svg");
+    if (element) {
+      stretchToFrame(element);
+    }
+    const size = measureDiagram(host, element);
+    const renderedSvg = element?.outerHTML;
     sendToHost({
       type: "rendered",
       revision: message.revision,
       source: message.source,
       themeKey: message.themeKey,
-      ...dimensions,
+      ...size,
       ...(renderedSvg ? { svg: renderedSvg } : {}),
     });
   } catch {

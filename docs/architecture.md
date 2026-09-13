@@ -71,21 +71,9 @@ All paths are under `packages/server/src/`.
 | `server/preview/`               | Preview dev-server supervision: launch.json config, spawn/readiness/tree-kill, `preview_*` agent tools - see [preview.md](preview.md)    |
 | `server/browser-tools/`         | Agent-facing `browser_*` tools against real Otto browser tabs: snapshot, inspect, click/fill, eval, console/network capture, tab control |
 | `server/artifact/`              | Agent-generated HTML artifacts: per-project store, service, file watcher, HTML validation - see [data-model.md](data-model.md)           |
-| Module                          | Responsibility                                                                                                                           |
-| ------------------------------- | ------------------------------------------------------------------------------                                                           |
-| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay                                                             |
-| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing                                                                   |
-| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations                                                                    |
 | `server/directory-sync/`        | Daemon-global latest-state sequences for projects, workspaces, and agents                                                                |
 | `server/workspace-labels/`      | Host-local label catalog, assignment mutations, and explicit subscriptions                                                               |
-| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management                                                                  |
-| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$OTTO_HOME/agents/`                                                                                     |
-| `server/agent/tools/`           | Transport-neutral catalog for workspaces, agents, permissions, and automation                                                            |
-| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Otto tool catalog with the MCP SDK                                                                   |
-| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                                                                                          |
 | `server/orchestration-skills/`  | Bundled catalog, host selection, convergence, and skill-directory transactions                                                           |
-| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                                                                            |
-| `server/schedule/`              | Cron-based scheduled agents                                                                                                              |
 
 ### `packages/protocol` - Wire schemas and shared protocol types
 
@@ -101,37 +89,43 @@ facade. App and CLI may import the low-level driver from
 `@otto-code/client/internal/daemon-client` during migration, while new SDK-shaped
 code imports from `@otto-code/client`.
 
-### `packages/app` - Mobile + web client (Expo)
-
-`OttoApi` is the capability-only boundary over workspaces, agents, providers, and config.
+`OttoApi` is the capability-only boundary over workspaces, agents, terminals, providers, and config.
 `OttoClient` adds connection lifecycle. App plugin surfaces borrow an API over their selected
-host's client; plugin subprocesses use the same facade over a host-owned IPC transport.
+host's client; plugin subprocesses use the same facade over a host-owned IPC transport. Protocol capability ownership and subscription lifetimes follow
+[the client contract](protocol-compatibility.md#client-capability-ownership).
 
 ### `packages/app` — Mobile + web client (Expo)
 
 Cross-platform React Native app that connects to one or more daemons.
 
-- Expo Router navigation (`/h/[serverId]/workspace/[workspaceId]`, `/h/[serverId]/agent/[agentId]`, etc.). The `workspaceId` URL segment is an opaque workspace id (path-shaped today and opaque-encoded for routing), not a directly meaningful filesystem path.
-- `HostRuntimeController` manages saved host connections, reconnection, and per-host runtime state
-- `runtime/replica-cache` keeps the complete project, workspace, and active-agent directory plus one short focused timeline tail in AsyncStorage. It restores before navigation becomes ready and leaves remote hydration flags false.
-- `runtime/directory-sync` owns directory reconciliation. On reconnect it passes the persisted per-entity cursor through `project.list`, `fetch_workspaces`, and `fetch_agents`; the daemon returns each entity's latest projection when its sequence is newer, plus tombstones.
+- Expo Router navigation (`/h/[serverId]/workspace/[workspaceId]`, `/h/[serverId]/agent/[agentId]`, etc.). The `workspaceId` URL segment is an opaque workspace id, not a directly meaningful filesystem path.
+- `HostRuntimeController` manages saved host connections, reconnection, and per-host runtime state. Direct TCP and relay connections use the ordinary client transport; desktop socket, pipe, and SSH connections cross one Electron-owned transport boundary. SSH only tunnels to an already-running daemon.
+- `runtime/replica-cache` is typed storage behind the directory and timeline owners. It never observes or mutates `SessionStore`.
+- `runtime/directory-sync` owns directory cache selection and network reconciliation. On demand it paints accepted rows for one host, then passes the persisted per-entity cursor through `project.list`, `fetch_workspaces`, and `fetch_agents`; the daemon returns each entity's latest projection when its sequence is newer, plus tombstones.
 - `workspace-labels` owns one sequenced catalog replica per connected host, the deterministic cross-host projection that surfaces spanning hosts use (the filter page, the manager), and the per-host resolution a workspace row's chips use. Two hosts may give one name different colors, so a row resolves against its own host's catalog and a merged answer would be wrong there. Catalogs never synchronize between hosts; assignment creates a missing definition only on the target host. On the daemon, catalog and assignment rewrites share a journaled commit boundary. Startup recovery completes that commit before workspace or catalog publication.
-- `SessionContext` wraps the daemon client for the active session
+- `SessionContext` binds the selected host to the stable viewed-timeline owner. Otto-specific
+  notifications and stream sidebands live in `contexts/otto-session-events.ts`; accepted timeline
+  pages apply the prompt-index projection through the same canonical commit boundary.
 - Composer UI and submit/draft behavior live in `packages/app/src/composer/`; screens and panels should integrate it from there instead of dropping composer internals into `components/`, `hooks/`, or `screens/workspace/`
 - Timeline reducers in `timeline/session-stream-reducers.ts` handle compaction, gap detection, sequence-based deduplication
 - Timeline sync correctness is documented in [docs/timeline-sync.md](timeline-sync.md): live streams are for immediacy, `fetch_agent_timeline_request` is authoritative, and catch-up is paged but complete.
 - Voice features: dictation (STT) and voice agent (realtime)
 
-### `packages/cli` - Command-line client
-
-The replica cache paints stale data immediately while the host connects. Directory cursors are
-reconciliation checkpoints; cached entities remain non-authoritative until the daemon answers.
-Pending permission requests are not restored from it. AsyncStorage is not encrypted, so the cached
-timeline tail may contain source code, prompts, and tool output; encrypted-at-rest storage is a
-separate product/security decision. Its serialized payload has a 32 MiB byte budget and evicts whole
-host snapshots in least-recently-written order; a single oversized host is omitted rather than
-partially restored. Browser and Electron builds store it in IndexedDB. Native builds use
-AsyncStorage, and Android reserves 64 MiB for that database.
+Consumers request directory or timeline data without choosing memory, cache, or network. The owner
+publishes an accepted cache hit and then reconciles it over the existing network path. A miss or an
+invalid row uses that same path. Offline demand still publishes an accepted cache hit and defers
+network reconciliation. Cache loading is demand-driven: opening a chat reads its agent row and
+focused timeline row, plus the workspace and project rows needed by the route; opening a directory
+reads directory rows for that host and establishes its live subscription when connected. Accepted
+cached rows satisfy the same consumer-readiness projection as network rows. Host registry startup and
+host connection do not create directory demand or install replicas. The directory owner retains
+declared surface demand and re-establishes network reconciliation after reconnect; React does not
+track connection generations. Late cache reads cannot replace state already advanced by live or
+authoritative network data. Owners explicitly persist accepted commits; directory rows and their
+checkpoint share one storage transaction. See
+[data-model.md](data-model.md#replica-row-store)
+for the storage shape and [timeline-sync.md](timeline-sync.md#client-replica-lifetime) for timeline
+resume behavior.
 
 The three directory entity types have independent monotonic sequences and share one daemon
 generation. The daemon retains only the latest projection per entity and bounded tombstones, not an
@@ -143,20 +137,9 @@ fetches and grants live updates for that session. A current cursor receives an e
 catch-up response when nothing changed; idle sessions and unsubscribed sessions receive no label
 traffic. Workspace assignments stay on the workspace directory sequence.
 
-Commander.js CLI with Docker-style commands. Common agent operations are also exposed at the top level (e.g. `otto ls`, `otto run`).
+### `packages/cli` - Command-line client
 
-- `otto agent ls/run/import/attach/logs/stop/delete/send/inspect/wait/archive/reload/update/mode`
-- `otto daemon start/stop/restart/status/pair/set-password`
-- `otto terminal ls/create/capture/send-keys/kill`
-- `otto script ls/start/stop`
-- `otto schedule create/ls/inspect/update/pause/resume/run-once/logs/delete`
-- `otto heartbeat create/update/delete`
-- `otto workspace create/ls/rename/archive`
-- `otto permit allow/deny/ls`
-- `otto provider ls/models`
-- `otto worktree create/ls/archive`
-- `otto speech …`
-  Commander.js CLI with Docker-style commands. Common agent operations are also exposed at the top level (e.g. `otto ls`, `otto run`).
+Commander.js CLI with Docker-style commands. Common agent operations are also exposed at the top level (e.g. `otto ls`, `otto run`).
 
 - `otto agent ls/run/import/attach/logs/stop/delete/send/inspect/wait/archive/reload/update/mode`
 - `otto daemon start/stop/restart/status/pair/set-password`
@@ -168,6 +151,7 @@ Commander.js CLI with Docker-style commands. Common agent operations are also ex
 - `otto workspace create/ls/rename/archive`
 - `otto permit allow/deny/ls`
 - `otto provider ls/models`
+- `otto plugin init/ls/logs/install/update/remove/enable/disable/reload` (see [plugins.md](plugins.md))
 - hidden legacy `otto worktree create/ls/archive` compatibility alias
 - `otto speech …`
 
@@ -177,8 +161,8 @@ Communicates with the daemon via the same WebSocket protocol as the app.
 
 Enables remote access when the daemon is behind a firewall.
 
-- Curve25519 ECDH key exchange + XSalsa20-Poly1305 (NaCl `box`) encryption
-- Relay server is zero-knowledge - it routes encrypted bytes, cannot read content
+- Curve25519 establishes the relay-session secret; NaCl `box` protects each payload with XSalsa20-Poly1305
+- The relay is zero-knowledge — it routes encrypted bytes and cannot read content
 - Client and daemon channels with identical API (`createClientChannel`, `createDaemonChannel`)
 - Pairing via QR code transfers the daemon's public key to the client
 - New homes keep relay disabled until pairing consent. `DaemonConfigStore` persists the desired state, while the relay runtime starts or stops the outbound transport live; pairing reads that current state instead of a startup snapshot.
@@ -195,7 +179,6 @@ Electron wrapper for macOS, Linux, and Windows.
 - Native file access for workspace integration
 - Same WebSocket client as mobile app
 
-**Multi-window (hybrid land-on model).** `createWindow()` in `main.ts` is reusable: `⌘⇧N`/File→New Window, relaunching the app (`second-instance`), and the sidebar "Open in new window" action each open a fresh `BrowserWindow`. Every window shows the full sidebar - there is no per-window project ownership or filtering. "Land on a project" is delivered by a per-`webContents` `PendingOpenProjectStore`: each window pulls its own pending project path on mount (`otto:get-pending-open-project`) and runs the normal open-project flow, identical to a CLI `otto <path>` launch.
 The desktop does not manage agent skills. It retains one compatibility reader for the old
 `skill-selection.json`, imports that preference into its managed local daemon, then deletes the old
 file after the daemon confirms persistence.
@@ -204,7 +187,12 @@ file after the daemon confirms persistence.
 
 > **Window-state v1 limitation:** only the _first_ window of a session restores and persists saved geometry (size/position/maximized). Windows opened via ⌘⇧N / second-instance / "Open in new window" open at the default size, OS-cascaded, and do not persist - this avoids every window stacking on the same restored bounds and fighting over the single window-state store. Lifting this needs per-window state keys.
 >
-> **In-app browser panes are not yet per-window.** Browser webviews are tracked by one process-global registry that keeps a single current `WebContents` per browser id. Human focus still records the workspace-active browser for UI state and `list_tabs` reporting, but agent automation targets only explicit browser ids returned by `browser_new_tab` or `browser_list_tabs`. The webview registration queue (`pendingBrowserWebviewIds` in `main.ts`) is still process-global. With browser panes open in two windows, a menu Reload can target the other window's webview, and near-simultaneous webview attach across windows can register under the wrong browser id. Multi-window v1 ships windows; making the browser-webview subsystem window-scoped is a follow-up.
+> **Browser registrations are scoped to the host window and browser ID.**
+> `features/browser-webviews/registry.ts` maps each guest to its host `webContents`, keeps the active
+> browser per host window and workspace, and supports the same browser in multiple host windows.
+> The renderer completes attachment registration with the actual guest ID. Agent automation still
+> uses explicit browser IDs and daemon-enforced workspace binding; see [preview.md](preview.md).
+> This ownership contract does not itself establish packaged multi-window runtime validation.
 
 ### `packages/website` - Marketing site
 
@@ -313,10 +301,11 @@ initializing → idle ⇄ running
 `ManagedAgent` is a discriminated union over those lifecycle tags. Notes:
 
 - **AgentManager** is the source of truth for agent state and broadcasts updates to all subscribers
-- Timeline sequence allocation is append-only with epochs (each run starts a new epoch). The one
-  permitted in-place enrichment adds a provider message id to the manager-owned row for an accepted
-  prompt; it preserves the row's sequence, content, and timestamp. Storage uses sequence numbers for
-  client-side dedup; the default fetch page is 200 items.
+- Timeline positions use an epoch and monotonic sequence numbers. A prompt does not itself reset
+  the epoch. Provider-message-ID enrichment preserves the accepted prompt row's position, content,
+  and timestamp; a plugin append with the same plugin-local ID replaces that projected row at a newer
+  sequence. See [timeline-sync.md](timeline-sync.md) for replacement and resume rules. The default
+  fetch page is 200 items.
 - Timeline row `timestamp` values are canonical daemon-owned timestamps. Providers may supply original replay timestamps, but clients must not guess timestamp trust or hide time UI based on local clock heuristics.
 - Events stream to connected clients in real time; correctness is backed by authoritative timeline fetches and paged-to-completion catch-up.
 - Agent state persists to `$OTTO_HOME/agents/{cwd-with-dashes}/{agent-id}.json`. Timeline rows are runtime memory; provider history is the durable transcript authority and resumed agents rebuild from it. That storage path is derived from `cwd`, not from workspace id.
@@ -340,13 +329,13 @@ Two workspaces can share the same `cwd` (e.g. a `directory` workspace and a `loc
 
 | State                        | Key builder / store                                | Source                                                        |
 | ---------------------------- | -------------------------------------------------- | ------------------------------------------------------------- |
-| Review draft comments        | `buildReviewDraftKey` / `buildReviewDraftScopeKey` | `packages/app/src/review/store.ts`                            |
-| Diff mode override           | review-draft scope key (in-memory)                 | `packages/app/src/review/state.ts`                            |
+| Review draft comments        | `buildReviewDraftKey`                              | `packages/app/src/review/store.ts`                            |
+| Working diff comparison      | `workingDiffComparisonKey` (in-memory)             | `packages/app/src/git/working-diff-comparison/state.ts`       |
 | Composer attachments         | `buildWorkspaceAttachmentScopeKey`                 | `packages/app/src/attachments/workspace-attachments-store.ts` |
 | File explorer nav/open state | `fileExplorer` map keyed `workspace:{workspaceId}` | `packages/app/src/hooks/use-file-explorer-actions.ts`         |
 | File explorer expanded paths | `expandedPathsByWorkspace[workspaceStateKey]`      | `packages/app/src/stores/panel-store/state.ts`                |
 
-`diff-pane.tsx` is the canonical wiring site: it passes `{ serverId, cwd }` to the git queries and `{ serverId, workspaceId, cwd }` to the draft/override/attachment scope keys.
+`diff-pane.tsx` is the canonical wiring site: it passes `{ serverId, cwd }` to the git queries and `{ serverId, workspaceId, cwd }` to the draft/comparison/attachment scope keys.
 
 **Do not "fix" the sharing away.** Re-keying a directory-backed query by `workspaceId` makes same-`cwd` workspaces diverge (two windows onto the same git tree showing different diffs). Re-keying owned state (drafts, expanded paths) by `cwd` makes them leak between distinct workspaces on the same folder. The `workspaceId`-keyed builders carry a `// workspaceId is opaque; do not parse this key back into a path.` comment - the opaque-id fallback to `cwd` exists only for old payloads without a `workspaceId`, not as a content-sharing mechanism.
 
@@ -356,7 +345,9 @@ One deliberate non-violation: `AgentFileExplorerState.directories`/`files` cache
 
 Each provider implements the `AgentClient` interface in `agent/agent-sdk-types.ts`. Provider implementations live in `agent/providers/`.
 
-The built-in, user-facing providers are Claude Code, Codex, Copilot, OpenCode, Pi, and OMP. Additional adapters exist in the same directory for ACP-compatible agents and internal use:
+The built-in, user-facing providers are Claude Code, Codex, Copilot, OpenCode, Pi, and OMP. Additional adapters exist in the same directory for ACP-compatible agents and internal use. Plugin
+providers register through the shared provider registry; Otto's owned provider factories add Brain
+and configured OpenAI-compatible endpoints. See [providers.md](providers.md) and [plugins.md](plugins.md).
 
 | Provider           | Wraps                                                                                                                                           | Session format                                     |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -371,12 +362,13 @@ The built-in, user-facing providers are Claude Code, Codex, Copilot, OpenCode, P
 | Generic ACP        | ACP wrapper for the one-click catalog and custom ACP providers                                                                                  | Provider-managed                                   |
 | Mock load test     | In-process fake                                                                                                                                 | In-memory                                          |
 
-All providers:
+The provider contract covers:
 
-- Handle their own authentication (Otto does not manage API keys)
-- Support session resume via persistence handles
-- Map tool calls to a normalized `ToolCallDetail` type
-- Expose provider-specific modes (plan, default, full-access)
+- Resolve authentication through their provider adapter and host configuration; custom
+  OpenAI-compatible endpoints can keep host-owned credentials
+- Session resume through provider persistence handles where supported
+- Tool calls normalized to `ToolCallDetail`
+- Provider-specific modes and permission capabilities
 
 Providers that can accept native tool definitions should set `supportsNativeOttoTools` and read `launchContext.ottoTools`. The daemon then passes the shared Otto tool catalog directly and removes the internal Otto MCP server from that provider launch config. Providers that only support MCP continue to receive the same tools through the MCP fallback at `/mcp/agents`.
 

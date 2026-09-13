@@ -157,6 +157,9 @@ const webExtensions = [
 ];
 
 export default defineConfig({
+  // Expo's tsconfig preserves JSX for Babel, whose preset uses the automatic
+  // runtime. Vitest uses esbuild instead, so select the same runtime explicitly.
+  esbuild: { jsx: "automatic" },
   test: {
     environment: "node",
     exclude: [...configDefaults.exclude, "e2e/**", "**/.tmp/**"],

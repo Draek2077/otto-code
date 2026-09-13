@@ -46,7 +46,7 @@ Superset's desktop is the host. Agents run inside it.
 
 ## Providers
 
-Both tools support many agents. Superset is a terminal multiplexer where each agent runs inside a terminal pane. Otto runs Claude Code, Codex, OpenCode, and Pi natively with a per-agent UI (modes, slash commands, file picker, diff viewer), plus 30+ more agents through the in-app catalog via ACP, plus any custom CLI agent. See [Supported providers](/docs/supported-providers).
+Both tools support many agents. Superset is a terminal multiplexer where each agent runs inside a terminal pane. Otto runs Claude Code, Codex, OpenCode, and Pi natively with a per-agent UI (modes, slash commands, file picker, diff viewer), plus additional agents through the catalog through the in-app catalog via ACP, plus any custom CLI agent. See [Supported providers](/agents).
 
 ## Panes
 
@@ -82,7 +82,7 @@ Otto also gives each worktree its own dev server URL like `web.fix-auth.my-app.l
 
 ## Mobile
 
-Otto ships native iOS and Android apps with the same feature set as the desktop. Superset does not have a mobile app.
+Otto ships Android and web access from mobile devices for checking and continuing agent work from a phone. Superset does not have a mobile app.
 
 ## Voice
 
@@ -100,7 +100,7 @@ Superset is free for one seat with local workspaces only. Team features and sync
 | ---------------------------- | ----------------------------------------------------- | -------------------------------------- |
 | License                      | Open source (AGPL-3.0)                                | Source-available (Elastic License 2.0) |
 | Platforms                    | macOS, Linux, Windows                                 | macOS only                             |
-| Native mobile                | iOS, Android                                          | No                                     |
+| Native mobile                | Android; web app on iOS                               | No                                     |
 | Login required               | No                                                    | Yes (Superset account)                 |
 | Pricing                      | Free                                                  | Free 1 seat, $20/seat/mo Pro           |
 | Per-agent native UI          | Yes (modes, slash commands, file picker, diff viewer) | Terminal output                        |
@@ -114,3 +114,10 @@ Superset is free for one seat with local workspaces only. Team features and sync
 | Self-hosted daemon           | Yes                                                   | No                                     |
 
 See also: [Otto vs Conductor](/alternatives/conductor), [Otto vs OpenChamber](/alternatives/openchamber), [Otto vs Happy Coder](/alternatives/happy-coder).
+
+## Application extensions
+
+[Otto plugins](/docs/plugins) extend the application through client and server APIs: providers,
+workspace panels, commands, settings, and chat components. Otto also retains its shared tools for
+cloud and local providers. Android builds and the web app are available from [Downloads](/download);
+this fork does not currently publish an iOS App Store build.

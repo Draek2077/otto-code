@@ -29,6 +29,11 @@ function row(overrides: Partial<OttoSubagentRow> & Pick<OttoSubagentRow, "id">):
     description: null,
     subtitle: null,
     status: overrides.status ?? "idle",
+    turn:
+      overrides.turn ??
+      (overrides.status === "running"
+        ? { phase: "open", turnId: null, startedAt: null, cancellationRequestId: null }
+        : { phase: "idle", cancellationRequestId: null }),
     requiresAttention: overrides.requiresAttention ?? false,
     createdAt: overrides.createdAt ?? new Date("2026-04-20T00:00:00.000Z"),
     updatedAt: overrides.updatedAt ?? new Date("2026-04-20T00:00:00.000Z"),
@@ -328,27 +333,27 @@ describe("selectSubagentsToAutoClear", () => {
 
 describe("resolveSubagentRowAction", () => {
   it("offers Stop while initializing or running", () => {
-    expect(resolveSubagentRowAction("initializing")).toBe("stop");
-    expect(resolveSubagentRowAction("running")).toBe("stop");
+    expect(resolveSubagentRowAction(row({ id: "child", status: "initializing" }))).toBe("stop");
+    expect(resolveSubagentRowAction(row({ id: "child", status: "running" }))).toBe("stop");
   });
 
   it("offers Archive once the subagent reaches a terminal state", () => {
-    expect(resolveSubagentRowAction("idle")).toBe("archive");
-    expect(resolveSubagentRowAction("error")).toBe("archive");
-    expect(resolveSubagentRowAction("closed")).toBe("archive");
+    expect(resolveSubagentRowAction(row({ id: "child", status: "idle" }))).toBe("archive");
+    expect(resolveSubagentRowAction(row({ id: "child", status: "error" }))).toBe("archive");
+    expect(resolveSubagentRowAction(row({ id: "child", status: "closed" }))).toBe("archive");
   });
 });
 
 describe("isSubagentRowRunning", () => {
   it("is true while initializing or running", () => {
-    expect(isSubagentRowRunning("initializing")).toBe(true);
-    expect(isSubagentRowRunning("running")).toBe(true);
+    expect(isSubagentRowRunning(row({ id: "child", status: "initializing" }))).toBe(true);
+    expect(isSubagentRowRunning(row({ id: "child", status: "running" }))).toBe(true);
   });
 
   it("is false for terminal states", () => {
-    expect(isSubagentRowRunning("idle")).toBe(false);
-    expect(isSubagentRowRunning("error")).toBe(false);
-    expect(isSubagentRowRunning("closed")).toBe(false);
+    expect(isSubagentRowRunning(row({ id: "child", status: "idle" }))).toBe(false);
+    expect(isSubagentRowRunning(row({ id: "child", status: "error" }))).toBe(false);
+    expect(isSubagentRowRunning(row({ id: "child", status: "closed" }))).toBe(false);
   });
 });
 
@@ -619,5 +624,34 @@ describe("provider-owned row subtitles", () => {
         providerRow({ description: null, subtitle: null, title: "general-purpose" }),
       ).subtitle,
     ).toBe("");
+  });
+});
+
+describe("explicit managed turn authority", () => {
+  it("uses idle authority despite stale running status for glyph, action, elapsed and tidy", () => {
+    const child = row({
+      id: "child",
+      status: "running",
+      attend: "observed",
+      turn: { phase: "idle", cancellationRequestId: null },
+    });
+    expect(buildSubagentRowPresentationData(child).statusBucket).toBe("done");
+    expect(resolveSubagentRowAction(child)).toBe("archive");
+    expect(isSubagentRowRunning(child)).toBe(false);
+    expect(isSubagentRowTidyEligible(child)).toBe(true);
+    expect(formatSubagentElapsed(child)).not.toBeNull();
+  });
+  it("never tidies or archives an open turn even if its lifecycle status still says idle", () => {
+    const child = row({
+      id: "child",
+      status: "idle",
+      attend: "observed",
+      turn: { phase: "open", turnId: "live", startedAt: null, cancellationRequestId: null },
+    });
+    expect(buildSubagentRowPresentationData(child).statusBucket).toBe("running");
+    expect(resolveSubagentRowAction(child)).toBe("stop");
+    expect(isSubagentRowRunning(child)).toBe(true);
+    expect(isSubagentRowTidyEligible(child)).toBe(false);
+    expect(formatSubagentElapsed(child)).toBeNull();
   });
 });

@@ -1,351 +1,21 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ComponentType,
-} from "react";
-import { Pressable, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { Pressable, View, type TextStyle, type ViewStyle } from "react-native";
+import { Code, Maximize as Maximize2, Workflow } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
-import { Code, Scan, Workflow, ZoomIn, ZoomOut } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
-import { getIsElectron } from "@/constants/platform";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import { ZoomableViewport } from "@/components/zoomable-viewport";
 import type { Theme } from "@/styles/theme";
 import type { MarkdownFenceRendererProps } from "../types";
-import type { MermaidRenderRequest } from "./render-model";
-import {
-  parseMermaidRuntimeMessage,
-  serializeMermaidRuntimeRenderMessage,
-  type MermaidRuntimeRenderMessage,
-} from "./runtime/messages";
-import { MermaidRuntimeRequestDriver } from "./runtime/request-driver";
-import { buildMermaidDiagramTheme, type MermaidDiagramTheme } from "./theme";
+import { MermaidFullscreenViewer } from "./fullscreen-viewer.web";
+import { MermaidIframeRuntime, type MermaidRenderedMessage } from "./iframe-runtime.web";
 import { useMermaidRenderModel } from "./use-render-model";
 import { getDiagramBoxStyle } from "./presentation";
-import type { IconSizeProp } from "@/components/icons/icon-size";
+import { buildMermaidDiagramTheme, type MermaidDiagramTheme } from "./theme";
 
 interface MermaidFenceHostImplProps extends MarkdownFenceRendererProps {
   diagramTheme: MermaidDiagramTheme;
 }
-
-interface MermaidIframeRuntimeProps {
-  request: MermaidRenderRequest | null;
-  height: number;
-  onRendered: (message: {
-    revision: number;
-    source: string;
-    themeKey: string;
-    height: number;
-    width: number;
-    svg?: string;
-  }) => void;
-  onRenderFailed: (revision: number) => void;
-}
-
-interface LoadedMermaidRuntimeProps extends MermaidIframeRuntimeProps {
-  runtimeHtml: string;
-}
-
-let mermaidRuntimeHtmlPromise: Promise<string> | null = null;
-
-function loadMermaidRuntimeHtml(): Promise<string> {
-  mermaidRuntimeHtmlPromise ??= import("./runtime/html.gen").then(
-    (module) => module.mermaidRuntimeHtml,
-  );
-  return mermaidRuntimeHtmlPromise;
-}
-
-type MermaidWebview = HTMLElement & {
-  src: string;
-  isConnected: boolean;
-  executeJavaScript?: (code: string) => Promise<unknown>;
-};
-
-interface WebviewConsoleMessageEvent extends Event {
-  message?: string;
-}
-
-// Must match MERMAID_WEBVIEW_PARTITION in
-// packages/desktop/src/features/mermaid-webview.ts.
-const MERMAID_WEBVIEW_PARTITION = "otto-mermaid-runtime";
-const MERMAID_WEBVIEW_MESSAGE_PREFIX = "__OTTO_MERMAID__";
-
-// Electron leaves a guest with an oversized data: URL on about:blank. Mermaid's
-// encoded runtime is roughly 9 MB, so load this small, static bootstrap URL and
-// deliver the real document through executeJavaScript after the guest is ready.
-const MERMAID_WEBVIEW_BOOTSTRAP_HTML = `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'"><script>window.__OTTO_MERMAID_RUNTIME_LOAD__ = (html) => { document.open(); document.write(html); document.close(); };</script>`;
-
-function toDataUrl(html: string): string {
-  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-}
-
-/**
- * The Electron shell injects `script-src 'self'` into its default session.
- * A srcDoc iframe inherits that policy, blocking Mermaid's self-contained
- * inline runtime before it can send bridgeReady. An isolated guest session is
- * the established desktop escape hatch for script-owning content.
- */
-function ElectronMermaidRuntime({
-  request,
-  height,
-  onRendered,
-  onRenderFailed,
-  runtimeHtml,
-}: LoadedMermaidRuntimeProps) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const webviewRef = useRef<MermaidWebview | null>(null);
-  const driverRef = useRef<MermaidRuntimeRequestDriver | null>(null);
-  const onRenderedRef = useRef(onRendered);
-  const onRenderFailedRef = useRef(onRenderFailed);
-  const requestRef = useRef(request);
-  const [artifact, setArtifact] = useState<string | null>(null);
-  const [artifactUrl, setArtifactUrl] = useState<string | null>(null);
-  onRenderedRef.current = onRendered;
-  onRenderFailedRef.current = onRenderFailed;
-  requestRef.current = request;
-  driverRef.current ??= new MermaidRuntimeRequestDriver();
-
-  const sendRequest = useCallback((current: MermaidRenderRequest | null) => {
-    const webview = webviewRef.current;
-    if (!current || !webview?.isConnected) {
-      return;
-    }
-    const message: MermaidRuntimeRenderMessage = {
-      type: "render",
-      revision: current.revision,
-      source: current.source,
-      colorScheme: current.colorScheme,
-      themeVariables: current.themeVariables,
-      themeKey: current.themeKey,
-      interactive: false,
-    };
-    const payload = serializeMermaidRuntimeRenderMessage(message);
-    void webview.executeJavaScript?.(
-      `window.__OTTO_MERMAID_RUNTIME_RECEIVE__ && window.__OTTO_MERMAID_RUNTIME_RECEIVE__(${payload}); true;`,
-    );
-  }, []);
-
-  useEffect(() => {
-    sendRequest(driverRef.current?.update(request) ?? null);
-  }, [request, sendRequest]);
-
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) {
-      return;
-    }
-    const webview = document.createElement("webview") as MermaidWebview;
-    webview.setAttribute("partition", MERMAID_WEBVIEW_PARTITION);
-    webview.style.display = "block";
-    webview.style.width = "100%";
-    webview.style.border = "0";
-    webview.style.background = "transparent";
-    webview.src = toDataUrl(MERMAID_WEBVIEW_BOOTSTRAP_HTML);
-
-    const handleDomReady = () => {
-      // The actual runtime writes a replacement document and triggers another
-      // dom-ready. Only the bootstrap pass installs the host bridge and loads
-      // that document; the runtime's own bridgeReady then drives the queue.
-      if (webview.dataset.mermaidRuntimeLoaded === "true") {
-        return;
-      }
-      webview.dataset.mermaidRuntimeLoaded = "true";
-      const installBridge = webview.executeJavaScript?.(
-        `window.ReactNativeWebView = { postMessage: function (payload) { console.log(${JSON.stringify(MERMAID_WEBVIEW_MESSAGE_PREFIX)} + payload); } }; true;`,
-      );
-      if (!installBridge) {
-        return;
-      }
-      void installBridge
-        .then(() =>
-          webview.executeJavaScript?.(
-            `window.__OTTO_MERMAID_RUNTIME_LOAD__(${JSON.stringify(runtimeHtml)}); true;`,
-          ),
-        )
-        .catch(() => onRenderFailedRef.current(requestRef.current?.revision ?? 0));
-    };
-    const handleConsoleMessage = (event: Event) => {
-      const raw = (event as WebviewConsoleMessageEvent).message;
-      if (!raw?.startsWith(MERMAID_WEBVIEW_MESSAGE_PREFIX)) {
-        return;
-      }
-      let message: ReturnType<typeof parseMermaidRuntimeMessage>;
-      try {
-        message = parseMermaidRuntimeMessage(
-          JSON.parse(raw.slice(MERMAID_WEBVIEW_MESSAGE_PREFIX.length)),
-        );
-      } catch {
-        return;
-      }
-      if (!message) {
-        return;
-      }
-      if (message.type === "bridgeReady") {
-        sendRequest(driverRef.current?.ready() ?? null);
-        return;
-      }
-      if (message.type === "renderError") {
-        onRenderFailedRef.current(message.revision);
-        sendRequest(driverRef.current?.settled(message.revision, false) ?? null);
-        return;
-      }
-      if (message.svg) {
-        setArtifact(message.svg);
-      }
-      onRenderedRef.current(message);
-      sendRequest(driverRef.current?.settled(message.revision, true) ?? null);
-    };
-
-    webview.addEventListener("dom-ready", handleDomReady);
-    webview.addEventListener("console-message", handleConsoleMessage);
-    webviewRef.current = webview;
-    host.appendChild(webview);
-    return () => {
-      webview.removeEventListener("dom-ready", handleDomReady);
-      webview.removeEventListener("console-message", handleConsoleMessage);
-      webview.remove();
-      webviewRef.current = null;
-    };
-  }, [runtimeHtml, sendRequest]);
-
-  useEffect(() => {
-    const webview = webviewRef.current;
-    if (webview) {
-      webview.style.height = `${height}px`;
-    }
-  }, [height]);
-
-  useEffect(() => {
-    if (!artifact) {
-      setArtifactUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(new Blob([artifact], { type: "image/svg+xml" }));
-    setArtifactUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [artifact]);
-  const artifactStyle = useMemo<React.CSSProperties>(
-    () => ({ display: "block", width: "100%", height, pointerEvents: "none" }),
-    [height],
-  );
-  return (
-    <>
-      <div ref={hostRef} style={electronRuntimeStyle} />
-      {artifactUrl ? <img src={artifactUrl} alt="" aria-hidden style={artifactStyle} /> : null}
-    </>
-  );
-}
-
-function BrowserMermaidRuntime({
-  request,
-  height,
-  onRendered,
-  onRenderFailed,
-  runtimeHtml,
-}: LoadedMermaidRuntimeProps) {
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const driverRef = useRef<MermaidRuntimeRequestDriver | null>(null);
-  driverRef.current ??= new MermaidRuntimeRequestDriver();
-  const iframeStyle = useMemo<React.CSSProperties>(
-    () => ({
-      display: "block",
-      width: "100%",
-      height,
-      border: 0,
-      pointerEvents: "none",
-      background: "transparent",
-    }),
-    [height],
-  );
-
-  const sendRequest = useCallback((current: MermaidRenderRequest | null) => {
-    const target = iframeRef.current?.contentWindow;
-    if (!current || !target) {
-      return;
-    }
-    const message: MermaidRuntimeRenderMessage = {
-      type: "render",
-      revision: current.revision,
-      source: current.source,
-      colorScheme: current.colorScheme,
-      themeVariables: current.themeVariables,
-      themeKey: current.themeKey,
-      interactive: false,
-    };
-    target.postMessage(message, "*");
-  }, []);
-
-  useEffect(() => {
-    sendRequest(driverRef.current?.update(request) ?? null);
-  }, [request, sendRequest]);
-
-  useEffect(() => {
-    function receiveMessage(event: MessageEvent): void {
-      if (event.source !== iframeRef.current?.contentWindow) {
-        return;
-      }
-      const message = parseMermaidRuntimeMessage(event.data);
-      if (!message) {
-        return;
-      }
-      if (message.type === "bridgeReady") {
-        sendRequest(driverRef.current?.ready() ?? null);
-        return;
-      }
-      if (message.type === "renderError") {
-        onRenderFailed(message.revision);
-        sendRequest(driverRef.current?.settled(message.revision, false) ?? null);
-        return;
-      }
-      onRendered(message);
-      sendRequest(driverRef.current?.settled(message.revision, true) ?? null);
-    }
-    window.addEventListener("message", receiveMessage);
-    return () => window.removeEventListener("message", receiveMessage);
-  }, [onRenderFailed, onRendered, sendRequest]);
-
-  return (
-    <iframe
-      ref={iframeRef}
-      title=""
-      aria-hidden
-      sandbox="allow-scripts"
-      srcDoc={runtimeHtml}
-      tabIndex={-1}
-      style={iframeStyle}
-    />
-  );
-}
-
-function MermaidIframeRuntime(props: MermaidIframeRuntimeProps) {
-  const [runtimeHtml, setRuntimeHtml] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void loadMermaidRuntimeHtml().then((html) => {
-      if (!cancelled) {
-        setRuntimeHtml(html);
-      }
-      return null;
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  if (!runtimeHtml) {
-    return null;
-  }
-  return getIsElectron() ? (
-    <ElectronMermaidRuntime {...props} runtimeHtml={runtimeHtml} />
-  ) : (
-    <BrowserMermaidRuntime {...props} runtimeHtml={runtimeHtml} />
-  );
-}
-
-const MIN_SCALE = 0.25;
-const MAX_SCALE = 8;
 
 function MermaidFenceHostImpl({
   code,
@@ -361,14 +31,14 @@ function MermaidFenceHostImpl({
     diagramTheme,
   });
   const [hasRuntimeContent, setHasRuntimeContent] = useState(false);
+  const [showSource, setShowSource] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const showSourcePress = useCallback(() => setShowSource(true), []);
+  const showDiagramPress = useCallback(() => setShowSource(false), []);
+  const openFullscreen = useCallback(() => setIsFullscreen(true), []);
+  const closeFullscreen = useCallback(() => setIsFullscreen(false), []);
   const handleRendered = useCallback(
-    (message: {
-      revision: number;
-      source: string;
-      themeKey: string;
-      height: number;
-      width: number;
-    }) => {
+    (message: MermaidRenderedMessage) => {
       setHasRuntimeContent(true);
       rendered({
         revision: message.revision,
@@ -381,152 +51,24 @@ function MermaidFenceHostImpl({
   );
   const visible = state.visible;
   const canShowDiagram = visible !== null && hasRuntimeContent;
+  const diagramVisible = canShowDiagram && !showSource;
   const runtimeHeight = Math.max(visible?.height ?? 240, 1);
-
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const controlsRegionRef = useRef<HTMLDivElement | null>(null);
-  const transformRef = useRef({ x: 0, y: 0, scale: 1 });
-  const dragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    originX: number;
-    originY: number;
-  } | null>(null);
-
-  const applyTransformToElement = useCallback(
-    (element: HTMLDivElement, transform: { x: number; y: number; scale: number }) => {
-      const { x, y, scale } = transform;
-      element.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
-    },
-    [],
+  const actions = useMemo(
+    () => [
+      {
+        icon: Code,
+        label: t("message.diagram.viewSource"),
+        onPress: showSourcePress,
+      },
+      {
+        icon: Maximize2,
+        label: t("message.diagram.fullscreen"),
+        onPress: openFullscreen,
+        testID: "mermaid-fullscreen",
+      },
+    ],
+    [openFullscreen, showSourcePress, t],
   );
-  const applyTransform = useCallback(() => {
-    if (contentRef.current) {
-      applyTransformToElement(contentRef.current, transformRef.current);
-    }
-  }, [applyTransformToElement]);
-  const setContentRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      contentRef.current = node;
-      if (node) {
-        applyTransformToElement(node, transformRef.current);
-      }
-    },
-    [applyTransformToElement],
-  );
-  const setControlsRegionRef = useCallback((node: unknown) => {
-    controlsRegionRef.current = node instanceof HTMLDivElement ? node : null;
-  }, []);
-  const hasFocusedControls = useCallback(() => {
-    const region = controlsRegionRef.current;
-    const active = document.activeElement;
-    return Boolean(region && active instanceof Node && region.contains(active));
-  }, []);
-  const [isFocusWithin, setIsFocusWithin] = useState(false);
-  const handleFocusWithin = useCallback(() => setIsFocusWithin(true), []);
-  const handleBlurWithin = useCallback(() => {
-    window.requestAnimationFrame(() => setIsFocusWithin(hasFocusedControls()));
-  }, [hasFocusedControls]);
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport || !visible) {
-      return;
-    }
-    const activeViewport = viewport;
-    function zoomWithWheel(event: WheelEvent): void {
-      if (!event.ctrlKey && !event.metaKey) {
-        return;
-      }
-      event.preventDefault();
-      const transform = transformRef.current;
-      const factor = Math.min(1.25, Math.max(0.8, Math.exp(-event.deltaY * 0.01)));
-      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, transform.scale * factor));
-      const rect = activeViewport.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      transform.x = x - ((x - transform.x) / transform.scale) * scale;
-      transform.y = y - ((y - transform.y) / transform.scale) * scale;
-      transform.scale = scale;
-      applyTransform();
-    }
-    viewport.addEventListener("wheel", zoomWithWheel, { passive: false });
-    return () => viewport.removeEventListener("wheel", zoomWithWheel);
-  }, [applyTransform, visible]);
-
-  const onPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || event.pointerType !== "mouse") {
-      return;
-    }
-    const transform = transformRef.current;
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: transform.x,
-      originY: transform.y,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }, []);
-  const onPointerMove = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      const drag = dragRef.current;
-      if (!drag || event.pointerId !== drag.pointerId) {
-        return;
-      }
-      transformRef.current.x = drag.originX + event.clientX - drag.startX;
-      transformRef.current.y = drag.originY + event.clientY - drag.startY;
-      applyTransform();
-    },
-    [applyTransform],
-  );
-  const onPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (dragRef.current?.pointerId === event.pointerId) {
-      dragRef.current = null;
-    }
-  }, []);
-  const resetTransform = useCallback(() => {
-    transformRef.current = { x: 0, y: 0, scale: 1 };
-    applyTransform();
-  }, [applyTransform]);
-  const zoomBy = useCallback(
-    (factor: number) => {
-      const viewport = viewportRef.current;
-      if (!viewport) {
-        return;
-      }
-      const rect = viewport.getBoundingClientRect();
-      const x = rect.width / 2;
-      const y = rect.height / 2;
-      const transform = transformRef.current;
-      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, transform.scale * factor));
-      transform.x = x - ((x - transform.x) / transform.scale) * scale;
-      transform.y = y - ((y - transform.y) / transform.scale) * scale;
-      transform.scale = scale;
-      applyTransform();
-    },
-    [applyTransform],
-  );
-  const zoomInPress = useCallback(() => zoomBy(1.25), [zoomBy]);
-  const zoomOutPress = useCallback(() => zoomBy(0.8), [zoomBy]);
-
-  const [showSource, setShowSource] = useState(false);
-  const showSourcePress = useCallback(() => setShowSource(true), []);
-  const showDiagramPress = useCallback(() => setShowSource(false), []);
-  const [isHovered, setIsHovered] = useState(false);
-  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
-  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
-  const isCompact = useIsCompactFormFactor();
-  const controlsVisible = isHovered || isCompact || isFocusWithin;
-
-  useEffect(() => {
-    if (!showSource && contentRef.current) {
-      applyTransformToElement(contentRef.current, transformRef.current);
-    }
-  }, [applyTransformToElement, showSource]);
-
   const sourceView = useMemo(() => {
     const { marginTop, marginBottom, marginVertical, ...sourceTextStyle } = textStyle;
     const margins: ViewStyle = {
@@ -534,189 +76,116 @@ function MermaidFenceHostImpl({
       marginBottom: marginBottom ?? marginVertical,
     };
     const text: TextStyle = sourceTextStyle;
-    return {
-      container: [margins, sourceContainerStyle],
-      text,
-    };
+    return { container: [margins, sourceContainerStyle], text };
   }, [textStyle]);
-  const diagramBoxStyle = getDiagramBoxStyle(textStyle);
-
-  const diagramVisible = canShowDiagram && !showSource;
-  const sourceVisible = !canShowDiagram || showSource;
-  let rootStyle: StyleProp<ViewStyle> = sourceContainerStyle;
-  if (diagramVisible) {
-    rootStyle = [diagramBoxStyle, containerStyle];
-  } else if (showSource) {
-    rootStyle = sourceView.container;
-  }
+  const diagramStyle = useMemo(
+    () => [
+      getDiagramBoxStyle(textStyle),
+      containerStyle,
+      { height: runtimeHeight, minHeight: MIN_DIAGRAM_BOX_HEIGHT },
+    ],
+    [runtimeHeight, textStyle],
+  );
+  const diagramSize = useMemo(
+    () => (visible ? { width: visible.width, height: visible.height } : MEASURING_SIZE),
+    [visible],
+  );
+  const sourceVisible = !diagramVisible;
+  const sourceContainer = showSource ? sourceView.container : sourceContainerStyle;
   const sourceTextStyle = showSource ? sourceView.text : textStyle;
+  const viewportStyle = diagramVisible ? diagramStyle : measuringStyle;
 
-  const runtime = (
-    <MermaidIframeRuntime
-      request={request}
-      height={runtimeHeight}
-      onRendered={handleRendered}
-      onRenderFailed={renderFailed}
-    />
-  );
   return (
-    <View
-      ref={setControlsRegionRef}
-      style={rootStyle}
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
-      onFocus={handleFocusWithin}
-      onBlur={handleBlurWithin}
-    >
+    <>
       {sourceVisible ? (
-        <HighlightedCodeBlock
-          code={code}
-          language="mermaid"
-          inheritedStyles={inheritedStyles}
-          textStyle={sourceTextStyle}
-        />
+        <View style={sourceContainer}>
+          <HighlightedCodeBlock
+            code={code}
+            language="mermaid"
+            inheritedStyles={inheritedStyles}
+            textStyle={sourceTextStyle}
+          />
+          {showSource && canShowDiagram ? (
+            <Pressable
+              accessibilityLabel={t("message.diagram.viewDiagram")}
+              accessibilityRole="button"
+              hitSlop={4}
+              onPress={showDiagramPress}
+              style={controlStyles.sourceButton}
+            >
+              {({ hovered }) => (
+                <Workflow
+                  size="sm"
+                  color={hovered ? controlStyles.iconHovered.color : controlStyles.icon.color}
+                />
+              )}
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
-      <div
-        ref={viewportRef}
-        role={diagramVisible ? "img" : undefined}
-        aria-label={diagramVisible ? t("message.diagram.diagram") : undefined}
-        aria-hidden={!diagramVisible}
-        style={diagramVisible ? viewportDomStyle : measuringRuntimeStyle}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onDoubleClick={resetTransform}
+      <ZoomableViewport
+        accessibilityLabel={t("message.diagram.diagram")}
+        actions={actions}
+        contentSize={diagramSize}
+        style={viewportStyle}
+        testID="mermaid-viewport"
+        wheelActivation="modifier"
       >
-        <div ref={setContentRef} style={contentDomStyle}>
-          {runtime}
-        </div>
-      </div>
-      {diagramVisible ? (
-        <View style={controlStyles.cluster}>
-          <DiagramControlButton
-            icon={ZoomIn}
-            label={t("message.diagram.zoomIn")}
-            onPress={zoomInPress}
-            visible={controlsVisible}
-          />
-          <DiagramControlButton
-            icon={ZoomOut}
-            label={t("message.diagram.zoomOut")}
-            onPress={zoomOutPress}
-            visible={controlsVisible}
-          />
-          <DiagramControlButton
-            icon={Scan}
-            label={t("message.diagram.resetZoom")}
-            onPress={resetTransform}
-            visible={controlsVisible}
-          />
-          <DiagramControlButton
-            icon={Code}
-            label={t("message.diagram.viewSource")}
-            onPress={showSourcePress}
-            visible={controlsVisible}
-          />
-        </View>
-      ) : null}
-      {showSource && canShowDiagram ? (
-        <View style={[controlStyles.cluster, controlStyles.clusterSourceOffset]}>
-          <DiagramControlButton
-            icon={Workflow}
-            label={t("message.diagram.viewDiagram")}
-            onPress={showDiagramPress}
-            visible={controlsVisible}
-            plain
-          />
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-interface DiagramControlButtonProps {
-  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
-  label: string;
-  onPress: () => void;
-  visible: boolean;
-  plain?: boolean;
-}
-
-const DiagramControlButton = React.memo(function DiagramControlButton({
-  icon: Icon,
-  label,
-  onPress,
-  visible,
-  plain = false,
-}: DiagramControlButtonProps) {
-  const pillStyle = visible ? controlStyles.button : controlStyles.buttonHidden;
-  const plainStyle = visible ? controlStyles.plainButton : controlStyles.plainButtonHidden;
-  return (
-    <Pressable
-      onPress={onPress}
-      style={plain ? plainStyle : pillStyle}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      hitSlop={4}
-    >
-      {({ hovered }) => (
-        <Icon
-          size="sm"
-          color={hovered ? controlStyles.iconHovered.color : controlStyles.icon.color}
+        <MermaidIframeRuntime
+          request={request}
+          onRendered={handleRendered}
+          onRenderFailed={renderFailed}
         />
-      )}
-    </Pressable>
+      </ZoomableViewport>
+      {isFullscreen && visible ? (
+        <MermaidFullscreenViewer
+          source={visible.source}
+          diagramTheme={diagramTheme}
+          onClose={closeFullscreen}
+        />
+      ) : null}
+    </>
   );
-});
+}
 
+const MEASURING_SIZE = { width: 240, height: 240 };
+/**
+ * The toolbar overlays the top of the box (8px offset + 32px compact buttons) and the box clips
+ * with `overflow: hidden`, so a shorter box leaves the buttons half-clipped and unclickable.
+ */
+const MIN_DIAGRAM_BOX_HEIGHT = 56;
+const sourceContainerStyle: ViewStyle = { position: "relative" };
+/**
+ * The viewport's own root is `flex: 1`, so as a flex item it has `flex-basis: 0%` and that basis
+ * replaces the height below. In the markdown column there is no free space to grow into, so the
+ * box collapses and the diagram is scaled down to fit a couple of pixels. Size it from the height.
+ */
+const containerStyle: ViewStyle = {
+  flexBasis: "auto",
+  flexGrow: 0,
+  flexShrink: 0,
+  overflow: "hidden",
+  position: "relative",
+};
+const measuringStyle: ViewStyle = {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  top: 0,
+  height: 240,
+  opacity: 0,
+  pointerEvents: "none",
+};
 const controlStyles = StyleSheet.create((theme) => ({
-  cluster: {
+  sourceButton: {
     position: "absolute",
     top: theme.spacing[2],
     right: theme.spacing[2],
-    flexDirection: "row",
-    gap: theme.spacing[1],
-  },
-  clusterSourceOffset: { right: 40 },
-  button: {
     padding: theme.spacing[1],
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.surface2,
-    opacity: 1,
-    pointerEvents: "auto",
   },
-  buttonHidden: {
-    padding: theme.spacing[1],
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.surface2,
-    opacity: 0,
-    pointerEvents: "none",
-  },
-  plainButton: { padding: theme.spacing[1], opacity: 1, pointerEvents: "auto" },
-  plainButtonHidden: { padding: theme.spacing[1], opacity: 0, pointerEvents: "none" },
   icon: { color: theme.colors.foregroundMuted },
   iconHovered: { color: theme.colors.foreground },
 }));
-
-const sourceContainerStyle: ViewStyle = { position: "relative" };
-const containerStyle: ViewStyle = { overflow: "hidden", position: "relative" };
-const viewportDomStyle: React.CSSProperties = { cursor: "grab", userSelect: "none" };
-const contentDomStyle: React.CSSProperties = { transformOrigin: "0 0" };
-const measuringRuntimeStyle: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  opacity: 0,
-  pointerEvents: "none",
-  overflow: "hidden",
-};
-const electronRuntimeStyle: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  opacity: 0,
-  overflow: "hidden",
-  pointerEvents: "none",
-};
 const mapDiagramTheme = (theme: Theme) => ({ diagramTheme: buildMermaidDiagramTheme(theme) });
 const ThemedMermaidFenceHost = withUnistyles(MermaidFenceHostImpl);
 

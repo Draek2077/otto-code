@@ -51,7 +51,7 @@ function collectBareSpecifiers(entry: string): string[] {
 
 describe("@otto-code/plugin/server", () => {
   it("does not load react or the client hook graph", () => {
-    const specifiers = collectBareSpecifiers(path.join(srcDir, "server.ts"));
+    const specifiers = collectBareSpecifiers(path.join(srcDir, "server/index.ts"));
     expect(specifiers.filter((specifier) => forbiddenSpecifiers.has(specifier))).toEqual([]);
   });
 });

@@ -34,11 +34,13 @@ export function shouldShowWorkspaceSetup(snapshot: WorkspaceSetupSnapshot | null
   if (!snapshot) {
     return false;
   }
-  return snapshot.error !== null || snapshot.detail.commands.length > 0;
+  return (
+    snapshot.status === "blocked" || snapshot.error !== null || snapshot.detail.commands.length > 0
+  );
 }
 
 export function shouldSeedWorkspaceSetupTab(snapshot: WorkspaceSetupSnapshot | null): boolean {
-  return snapshot?.status === "failed";
+  return snapshot?.status === "failed" || snapshot?.status === "blocked";
 }
 
 interface WorkspaceSetupStoreState {
@@ -114,7 +116,9 @@ export const useWorkspaceSetupStore = create<WorkspaceSetupStoreState>()((set, g
       // this the set only ever grows and a workspace announces its first
       // failure and never another.
       const surfacedFailedSetupKeys =
-        payload.status !== "failed" && state.surfacedFailedSetupKeys.has(key)
+        payload.status !== "failed" &&
+        payload.status !== "blocked" &&
+        state.surfacedFailedSetupKeys.has(key)
           ? new Set([...state.surfacedFailedSetupKeys].filter((candidate) => candidate !== key))
           : state.surfacedFailedSetupKeys;
       return {
@@ -193,7 +197,10 @@ export const useWorkspaceSetupStore = create<WorkspaceSetupStoreState>()((set, g
 
     let claimed = false;
     set((state) => {
-      if (state.snapshots[key]?.status !== "failed" || state.surfacedFailedSetupKeys.has(key)) {
+      if (
+        !["failed", "blocked"].includes(state.snapshots[key]?.status ?? "") ||
+        state.surfacedFailedSetupKeys.has(key)
+      ) {
         return state;
       }
       claimed = true;
@@ -210,14 +217,17 @@ export const useWorkspaceSetupStore = create<WorkspaceSetupStoreState>()((set, g
     set((state) => {
       const hasSnapshot = key in state.snapshots;
       const hasEmptyKey = state.emptyKeys.has(key);
-      if (!hasSnapshot && !hasEmptyKey) {
+      const hasSurfacedFailure = state.surfacedFailedSetupKeys.has(key);
+      if (!hasSnapshot && !hasEmptyKey && !hasSurfacedFailure) {
         return state;
       }
       const nextSnapshots = { ...state.snapshots };
       delete nextSnapshots[key];
       const nextEmptyKeys = new Set(state.emptyKeys);
       nextEmptyKeys.delete(key);
-      return { snapshots: nextSnapshots, emptyKeys: nextEmptyKeys };
+      const surfacedFailedSetupKeys = new Set(state.surfacedFailedSetupKeys);
+      surfacedFailedSetupKeys.delete(key);
+      return { snapshots: nextSnapshots, emptyKeys: nextEmptyKeys, surfacedFailedSetupKeys };
     });
   },
   clearServer: (serverId) => {
@@ -226,12 +236,18 @@ export const useWorkspaceSetupStore = create<WorkspaceSetupStoreState>()((set, g
         ([key]) => !key.startsWith(`${serverId}:`),
       );
       const emptyKeys = withoutServerKeys(state.emptyKeys, serverId);
-      if (nextEntries.length === Object.keys(state.snapshots).length && !emptyKeys) {
+      const surfacedFailedSetupKeys = withoutServerKeys(state.surfacedFailedSetupKeys, serverId);
+      if (
+        nextEntries.length === Object.keys(state.snapshots).length &&
+        !emptyKeys &&
+        !surfacedFailedSetupKeys
+      ) {
         return state;
       }
       return {
         snapshots: Object.fromEntries(nextEntries),
         ...(emptyKeys ? { emptyKeys } : {}),
+        ...(surfacedFailedSetupKeys ? { surfacedFailedSetupKeys } : {}),
       };
     });
   },

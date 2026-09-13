@@ -58,7 +58,7 @@ vi.mock("@gorhom/bottom-sheet", async () => {
 });
 
 import { IsolatedBottomSheetModal, type ContextBridge } from ".";
-import { useBottomSheetInput } from "@/components/ui/bottom-sheet-input-context";
+import { useIsInsideBottomSheet } from "@/components/ui/bottom-sheet-scope";
 
 /** Renders whatever the portal is currently holding, from its own place in the tree. */
 function PortalHostProbe() {
@@ -72,8 +72,8 @@ function Label() {
   return <div data-label={useContext(LabelContext)} />;
 }
 
-function BottomSheetInputLabel() {
-  return <div data-bottom-sheet-input={String(useBottomSheetInput())} />;
+function BottomSheetScopeProbe() {
+  return <div data-inside-bottom-sheet={useIsInsideBottomSheet().toString()} />;
 }
 
 describe("IsolatedBottomSheetModal presentation", () => {
@@ -180,12 +180,13 @@ describe("IsolatedBottomSheetModal context bridging", () => {
     expect(renderSheet(bridge)).toBe("from callsite");
   });
 
-  it("marks portal content as bottom-sheet-owned", () => {
+  it("marks content rendered through the modal as inside a bottom sheet", () => {
     act(() => {
       root.render(
         <>
+          <BottomSheetScopeProbe />
           <IsolatedBottomSheetModal contextBridge={null}>
-            <BottomSheetInputLabel />
+            <BottomSheetScopeProbe />
           </IsolatedBottomSheetModal>
           <PortalHostProbe />
         </>,
@@ -193,7 +194,9 @@ describe("IsolatedBottomSheetModal context bridging", () => {
     });
 
     expect(
-      container.querySelector("[data-bottom-sheet-input]")?.getAttribute("data-bottom-sheet-input"),
-    ).toBe("true");
+      Array.from(container.querySelectorAll("[data-inside-bottom-sheet]")).map((node) =>
+        node.getAttribute("data-inside-bottom-sheet"),
+      ),
+    ).toEqual(["false", "true"]);
   });
 });

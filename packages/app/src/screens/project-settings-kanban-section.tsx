@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 /**
  * The Kanban board-target section of Project Settings (phase 4).
  *
@@ -155,7 +156,12 @@ export function ProjectKanbanSection({
       <View style={settingsStyles.card}>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.project.kanban.adapter")}</Text>
+            <SettingsTargetText
+              settingId="host-projects-project-settings-kanban-board-provider"
+              style={settingsStyles.rowTitle}
+            >
+              {t("settings.project.kanban.adapter")}
+            </SettingsTargetText>
           </View>
           <View style={settingsStyles.rowControlGroup}>
             <SegmentedControl<KanbanAdapterChoice>
@@ -170,7 +176,12 @@ export function ProjectKanbanSection({
         {adapter !== "none" ? (
           <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>{boardLabel}</Text>
+              <SettingsTargetText
+                settingId="host-projects-project-settings-kanban-board-target"
+                style={settingsStyles.rowTitle}
+              >
+                {boardLabel}
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>{boardHint}</Text>
               {draft.kind === "blocked" ? (
                 <Text style={settingsStyles.rowError} testID="project-kanban-board-error">

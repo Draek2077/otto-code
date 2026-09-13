@@ -1,23 +1,8 @@
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
-import MarkdownIt from "markdown-it";
-import { applyTaskListMarkers } from "./task-lists";
-import { applyGithubAlerts } from "./github-alerts";
-import { applyFootnotes } from "./footnotes";
-import { applyMath } from "./math";
+import { defaultMarkdownParser } from "./parser";
 
 const nodeRequire = createRequire(import.meta.url);
-
-// The chain the renderer builds, on whatever `markdown-it` resolves to here.
-// The resolution test below is what makes "here" and "inside
-// react-native-markdown-display" the same module.
-function buildRendererParser() {
-  return applyMath(
-    applyFootnotes(
-      applyGithubAlerts(applyTaskListMarkers(new MarkdownIt({ typographer: true, linkify: true }))),
-    ),
-  );
-}
 
 describe("markdown-it resolution", () => {
   // The root package.json overrides markdown-it to ^15 because the ^10 copy
@@ -61,7 +46,7 @@ describe("markdown-it resolution", () => {
       "> An alert",
     ].join("\n");
 
-    const tokens = stringToTokens(document, buildRendererParser());
+    const tokens = stringToTokens(document, defaultMarkdownParser);
     // stringToTokens swallows parser throws and returns [], so emptiness is
     // the failure signal for an API break, not an exception.
     expect(tokens.length).toBeGreaterThan(0);
@@ -80,7 +65,8 @@ describe("markdown-it resolution", () => {
     const all = flatten(ast);
     // linkify turned the bare URL into a link node…
     expect(all.some((node) => node.type === "link")).toBe(true);
-    // …and typographer curled the quotes.
-    expect(all.some((node) => node.content?.includes("“hello”"))).toBe(true);
+    // The actual document profile preserves authored punctuation.
+    expect(all.some((node) => node.content?.includes('"hello"'))).toBe(true);
+    expect(all.some((node) => node.content?.includes("“hello”"))).toBe(false);
   });
 });

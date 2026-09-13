@@ -8,18 +8,15 @@ import React, {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { DaemonClient, FileReadResult } from "@otto-code/client/internal/daemon-client";
-import { Image as RNImage, ScrollView as RNScrollView, Text, View } from "react-native";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import { ScrollView as RNScrollView, Text, View } from "react-native";
 import { StyleSheet, UnistylesRuntime, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import { filePreviewRenderKind } from "@/components/file-pane-render-mode";
-import type { AttachmentMetadata } from "@/attachments/types";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
-import { persistAttachmentFromBytes } from "@/attachments/service";
-import { createPreviewAttachmentId, getFileNameFromPath } from "@/attachments/utils";
-import { explorerFileFromReadResult } from "@/file-explorer/read-result";
+import { getFileNameFromPath } from "@/attachments/utils";
 import { resolveFilePreviewReadTarget } from "@/file-explorer/preview-target";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -28,6 +25,8 @@ import { isFileQueryEnabled } from "@/components/file-pane-enabled";
 import { isWeb } from "@/constants/platform";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useLiveFile } from "./live-file/hook";
+import { useFilePreview } from "./preview-lifecycle/hook";
+import { resolveFilePreviewLifecycle } from "./preview-lifecycle/model";
 import { FilePanelBar } from "./bar";
 import { FileHtmlPreview } from "./html-preview";
 import { FileMarkdownPreview } from "./markdown-preview";
@@ -40,6 +39,7 @@ import type { LiveFileModel } from "./live-file/model";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { usePublishPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import type { Theme } from "@/styles/theme";
+import { ZoomableImage } from "@/components/zoomable-viewport/image";
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const foregroundMutedColorMapping = (theme: Theme) => ({
@@ -76,59 +76,20 @@ function formatFileSize({ size }: { size: number }): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-async function createFilePanePreview(file: FileReadResult | null): Promise<{
-  file: ExplorerFile | null;
-  imageAttachment: AttachmentMetadata | null;
-}> {
-  if (!file) {
-    return { file: null, imageAttachment: null };
-  }
-
-  const explorerFile = explorerFileFromReadResult(file);
-  if (file.kind !== "image") {
-    return { file: explorerFile, imageAttachment: null };
-  }
-
-  const imageAttachment = await persistAttachmentFromBytes({
-    id: createPreviewAttachmentId({
-      mimeType: file.mime,
-      path: file.path,
-      size: file.size,
-      modifiedAt: file.modifiedAt,
-      contentLength: file.bytes.byteLength,
-    }),
-    bytes: file.bytes,
-    mimeType: file.mime,
-    fileName: getFileNameFromPath(file.path),
-  });
-
-  return {
-    file: explorerFile,
-    imageAttachment,
-  };
-}
-
-function FilePreviewBody({
+function ReadonlySource({
   preview,
-  mode,
-  isLoading,
-  isMobile: _isMobile,
+  filename,
   location,
   navigationRevision,
-  imagePreviewUri,
-}: FilePreviewBodyProps) {
+}: {
+  preview: ExplorerFile;
+  filename: string;
+  location: WorkspaceFileLocation;
+  navigationRevision: number;
+}) {
   const theme = UnistylesRuntime.getTheme();
   const { t } = useTranslation();
-  const filePath = location.path;
-  // A line target means the caller wants to land on that line, so fall back to
-  // the highlighted source view even for renderable files.
-  const renderKind =
-    preview?.kind === "text" && !location.lineStart && mode !== "source"
-      ? filePreviewRenderKind(filePath)
-      : null;
-
-  const previewScrollRef = useRef<RNScrollView>(null);
-  const sourceTheme = useMemo(
+  const visualTheme = useMemo(
     () => ({
       colorScheme: theme.colorScheme,
       background: theme.colors.surfaceCode,
@@ -141,28 +102,54 @@ function FilePreviewBody({
       codeFontSize: theme.fontSize.code,
       syntax: theme.colors.syntax,
     }),
-    [
-      theme.colorScheme,
-      theme.colors.border,
-      theme.colors.foreground,
-      theme.colors.foregroundMuted,
-      theme.colors.surfaceCode,
-      theme.colors.syntax,
-      theme.colors.terminal.cursor,
-      theme.colors.terminal.selectionBackground,
-      theme.fontFamily.mono,
-      theme.fontSize.code,
-    ],
+    [theme],
   );
+  return (
+    <FileSourceView
+      content={preview.content ?? ""}
+      filename={filename}
+      location={location}
+      navigationRevision={navigationRevision}
+      size={preview.size}
+      theme={visualTheme}
+      tooLargeMessage={t("panels.file.tooLargeToDisplay")}
+    />
+  );
+}
 
-  const imageSource = useMemo(
-    () => (imagePreviewUri ? { uri: imagePreviewUri } : null),
-    [imagePreviewUri],
+function TooLargeSource({ size }: { size?: number }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.centerState} testID="file-source-too-large">
+      <Text style={styles.emptyText}>{t("panels.file.tooLargeToDisplay")}</Text>
+      {size ? <Text style={styles.binaryMetaText}>{formatFileSize({ size })}</Text> : null}
+    </View>
   );
+}
+
+function FilePreviewBody({
+  preview,
+  mode,
+  isLoading,
+  isMobile: _isMobile,
+  location,
+  navigationRevision,
+  imagePreviewUri,
+}: FilePreviewBodyProps) {
+  const { t } = useTranslation();
+  const filePath = location.path;
+  // A line target means the caller wants to land on that line, so fall back to
+  // the highlighted source view even for renderable files.
+  const renderKind =
+    preview?.kind === "text" && !location.lineStart && mode !== "source"
+      ? filePreviewRenderKind(filePath)
+      : null;
+
+  const previewScrollRef = useRef<RNScrollView>(null);
 
   if (isLoading && !preview) {
     return (
-      <View style={styles.centerState}>
+      <View style={styles.centerState} testID="file-preview-loading">
         <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />
         <Text style={styles.loadingText}>{t("panels.file.loading")}</Text>
       </View>
@@ -171,7 +158,7 @@ function FilePreviewBody({
 
   if (!preview) {
     return (
-      <View style={styles.centerState}>
+      <View style={styles.centerState} testID="file-preview-unsupported">
         <Text style={styles.emptyText}>{t("panels.file.noPreview")}</Text>
       </View>
     );
@@ -202,17 +189,12 @@ function FilePreviewBody({
     }
 
     return (
-      <View style={styles.previewScrollContainer}>
-        <FileSourceView
-          content={preview.content ?? ""}
-          filename={filePath}
-          location={location}
-          navigationRevision={navigationRevision}
-          size={preview.size}
-          theme={sourceTheme}
-          tooLargeMessage={t("panels.file.tooLargeToDisplay")}
-        />
-      </View>
+      <ReadonlySource
+        preview={preview}
+        filename={filePath}
+        location={location}
+        navigationRevision={navigationRevision}
+      />
     );
   }
 
@@ -226,22 +208,7 @@ function FilePreviewBody({
       );
     }
 
-    return (
-      <View style={styles.previewScrollContainer}>
-        <RNScrollView
-          ref={previewScrollRef}
-          style={styles.previewContent}
-          contentContainerStyle={styles.previewImageScrollContent}
-          showsVerticalScrollIndicator
-        >
-          <RNImage
-            source={imageSource ?? undefined}
-            style={styles.previewImage}
-            resizeMode="contain"
-          />
-        </RNScrollView>
-      </View>
-    );
+    return <ZoomableImage uri={imagePreviewUri} testID="image-file-preview" />;
   }
 
   return (
@@ -266,11 +233,6 @@ export function FilePane({
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
   const [previewMode, setPreviewMode] = useState<"preview" | "source">("preview");
-  const [resolvedPreview, setResolvedPreview] = useState<{
-    key: string | null;
-    file: ExplorerFile | null;
-    imageAttachment: AttachmentMetadata | null;
-  }>({ key: null, file: null, imageAttachment: null });
 
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   // COMPAT(workspaceFileEditing): added in v0.2.0, remove after 2027-01-18 once daemon floor >= v0.2.0.
@@ -308,26 +270,16 @@ export function FilePane({
     liveUpdates: supportsEditing,
   });
 
-  useEffect(() => {
-    if (!liveFile.file) return;
-    let active = true;
-    const key = readTarget ? `${readTarget.cwd}:${readTarget.path}` : null;
-    void (async () => {
-      const nextPreview = await createFilePanePreview(liveFile.file);
-      if (active) setResolvedPreview({ key, ...nextPreview });
-    })();
-    return () => {
-      active = false;
-    };
-  }, [liveFile.file, readTarget]);
+  const targetKey = readTarget ? `${readTarget.cwd}:${readTarget.path}` : null;
+  const previewLifecycle = useFilePreview({
+    targetKey,
+    liveFileSnapshot: liveFile.snapshot,
+  });
 
-  const previewKey = readTarget ? `${readTarget.cwd}:${readTarget.path}` : null;
-  useEffect(() => setPreviewMode("preview"), [previewKey]);
+  useEffect(() => setPreviewMode("preview"), [targetKey]);
 
-  const preview = resolvedPreview.key === previewKey ? resolvedPreview.file : null;
-  const imagePreviewUri = useAttachmentPreviewUrl(
-    resolvedPreview.key === previewKey ? resolvedPreview.imageAttachment : null,
-  );
+  const { file: preview, imageAttachment } = resolveFilePreviewLifecycle(previewLifecycle);
+  const imagePreviewUri = useAttachmentPreviewUrl(imageAttachment);
   const isRenderable = isRenderablePreview(preview, location.path);
   const editable = isEditableTextFile({
     preview,
@@ -336,12 +288,11 @@ export function FilePane({
   const canTogglePreviewMode = isRenderable && !location.lineStart;
   const lineCount =
     preview?.kind === "text" ? (preview.content ?? "").split("\n").length : undefined;
-  const rawErrorMessage = getFileErrorMessage(liveFile.error, t("panels.file.failedToLoad"));
-  // The daemon refuses reads above the display budget with this fixed wire
-  // string; surface it as the dedicated too-large state rather than a generic
-  // read failure, because there is nothing a retry can do about the size.
-  const errorIsTooLarge = rawErrorMessage?.includes("too large to display") ?? false;
-  const errorMessage = errorIsTooLarge ? t("panels.file.tooLargeToDisplay") : rawErrorMessage;
+  const errorMessage = previewLifecycle.status === "error" ? previewLifecycle.message : null;
+  const isLoading =
+    previewLifecycle.status === "initial" ||
+    previewLifecycle.status === "read_pending" ||
+    previewLifecycle.status === "preparing";
 
   return (
     <FilePanePresentation
@@ -360,8 +311,7 @@ export function FilePane({
       editable={editable}
       disconnectedMessage={t("workspace.terminal.hostDisconnected")}
       errorMessage={errorMessage}
-      errorIsTooLarge={errorIsTooLarge}
-      isLoading={liveFile.isFetching}
+      isLoading={isLoading}
       isMobile={isMobile}
       location={location}
       navigationRevision={navigationRevision}
@@ -372,12 +322,6 @@ export function FilePane({
 
 function isRenderablePreview(preview: ExplorerFile | null, path: string): boolean {
   return preview?.kind === "text" && filePreviewRenderKind(path) !== null;
-}
-
-function getFileErrorMessage(error: unknown, fallback: string): string | null {
-  if (!error) return null;
-  if (typeof error === "string") return error;
-  return error instanceof Error ? error.message : fallback;
 }
 
 function isEditableTextFile(input: {
@@ -408,7 +352,6 @@ function FilePanePresentation({
   editable,
   disconnectedMessage,
   errorMessage,
-  errorIsTooLarge,
   isLoading,
   isMobile,
   location,
@@ -430,7 +373,6 @@ function FilePanePresentation({
   editable: boolean;
   disconnectedMessage: string;
   errorMessage: string | null;
-  errorIsTooLarge: boolean;
   isLoading: boolean;
   isMobile: boolean;
   location: WorkspaceFileLocation;
@@ -469,17 +411,14 @@ function FilePanePresentation({
     );
   }
 
-  if (errorMessage && errorIsTooLarge) {
-    return (
-      <View style={styles.container} testID="workspace-file-pane">
-        <View style={styles.centerState} testID="file-source-too-large">
-          <Text style={styles.errorText}>{errorMessage}</Text>
-        </View>
-      </View>
-    );
-  }
-
   if (errorMessage) {
+    if (errorMessage === "File is too large to display") {
+      return (
+        <View style={styles.container} testID="workspace-file-pane">
+          <TooLargeSource />
+        </View>
+      );
+    }
     return (
       <View style={styles.container} testID="workspace-file-pane">
         <View style={styles.centerState}>
@@ -750,14 +689,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minHeight: 0,
   },
-  previewImageScrollContent: {
-    flexGrow: 1,
+  previewCodeScrollContent: {
     padding: theme.spacing[4],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  previewImage: {
-    width: "100%",
-    height: 420,
   },
 }));

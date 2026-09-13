@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ru: TranslationResources = {
@@ -20,6 +20,10 @@ export const ru: TranslationResources = {
       retry: "Повторить",
       search: "Поиск",
       select: "Выбирать",
+
+      selectAll: "Выбрать все",
+
+      copyLine: "Копировать строку",
     },
     placeholders: {
       search: "Поиск...",
@@ -45,6 +49,8 @@ export const ru: TranslationResources = {
       daemonClientDisconnected: "Клиент Daemon отключен",
       noFileFound: "Файл для{{token}}не найден",
       unexpectedDictationError: "При обработке диктовки произошла непредвиденная ошибка.",
+
+      unableToCopy: "Не удалось скопировать",
     },
     connectionStatus: {
       online: "Онлайн",
@@ -474,6 +480,8 @@ export const ru: TranslationResources = {
       question: "Как бы вы хотели продолжить?",
       proposedPlan: "Предлагаемый план",
     },
+
+    messageCapped: "Это сообщение было обрезано ({{bytes}} байт).",
   },
   agentPanel: {
     states: {
@@ -620,6 +628,8 @@ export const ru: TranslationResources = {
       resetZoom: "Сбросить вид",
       viewSource: "Показать код",
       viewDiagram: "Показать диаграмму",
+
+      fullscreen: "Полноэкранный режим",
     },
     actions: {
       copyCode: "Скопировать код",
@@ -723,6 +733,8 @@ export const ru: TranslationResources = {
       failedAll: "Не удалось загрузить последние сеансы.",
       failedProviders: "Не удалось загрузить сеансы для{{providers}}.",
       failedImport: "Не удалось импортировать выбранный сеанс.",
+
+      failedProvider: "Не удалось загрузить сессии провайдера {{provider}}",
     },
     actions: {
       selectAll: "Выбрать все показанные",
@@ -731,6 +743,8 @@ export const ru: TranslationResources = {
       loadMore: "Загрузить ещё",
 
       refresh: "Обновить сеансы",
+
+      showAll: "Показать все",
     },
     preview: {
       untitledSession: "Сессия без названия",
@@ -740,10 +754,21 @@ export const ru: TranslationResources = {
       noRecent: "Нет последних сеансов для импорта.",
       alreadyImported: "Все последние сеансы уже импортированы.",
       noProviderSessions: "Сеансы{{provider}}не найдены.",
+
+      noMatches: "Нет сессий, соответствующих запросу.",
     },
     row: {
       importing: "Импорт...",
     },
+
+    scope: {
+      host: "Сессии на {{host}}",
+      workspace: "Это рабочее пространство",
+    },
+
+    searchPlaceholder: "Поиск сессий...",
+
+    chooseHostTitle: en.importSession.chooseHostTitle,
   },
   workspace: {
     moveChat: {
@@ -890,12 +915,16 @@ export const ru: TranslationResources = {
         completed: "Настройка завершена",
         failed: "Установка не удалась",
         workspace: "Настройка Workspace",
+
+        blocked: "Настройка заблокирована",
       },
       status: {
         running: "Бег",
         completed: "Завершенный",
         failed: "Неуспешный",
         waiting: "Ожидание вывода настройки",
+
+        blocked: "Заблокировано",
       },
       waiting: "Настройка рабочего места...",
       empty: {
@@ -907,6 +936,14 @@ export const ru: TranslationResources = {
       },
       log: {
         noOutput: "Нет вывода",
+      },
+
+      blocked: {
+        title: "Настройка не запускалась",
+        description:
+          "Этот PR поступил из другого репозитория — {{repository}}. Его настройка и скрипты могут выполнить код, который вы не проверяли.",
+        run: "Запустить настройку",
+        runFailed: "Не удалось запустить настройку рабочего пространства",
       },
     },
     browser: {
@@ -930,6 +967,10 @@ export const ru: TranslationResources = {
         screenshotCopied: "Снимок скопирован в буфер обмена",
         elementCopied: "Элемент скопирован в буфер обмена",
         screenshotFailed: "Не удалось скопировать снимок",
+
+        selectorFailed: "Не удалось включить режим выбора элемента",
+
+        selectorLoading: "Дождитесь окончания загрузки страницы",
       },
       annotate: {
         title: "Аннотировать элемент",
@@ -1086,7 +1127,7 @@ export const ru: TranslationResources = {
       toasts: {
         copyFailed: "Не удалось скопировать",
         agentIdCopiedLabel: "ID чата",
-        resumeCommandCopiedLabel: "команда возобновления",
+        resumeCommandCopiedLabel: "команда продолжения",
         filePathCopiedLabel: "Путь к файлу",
         filenameCopiedLabel: "Имя файла",
         workspacePathCopiedLabel: "Путь рабочего пространства",
@@ -1207,6 +1248,8 @@ export const ru: TranslationResources = {
         public: "Обратный прокси",
         otto: "Memorable",
         direct: "Прямой адрес",
+
+        paseo: "Запоминающийся адрес",
       },
     },
     git: {
@@ -1478,6 +1521,8 @@ export const ru: TranslationResources = {
         expandAllFiles: "Развернуть все файлы",
         seeUncommittedChanges: "Показать незафиксированные изменения",
         seeCommittedChanges: "Показать зафиксированные изменения",
+
+        modifiedFile: "Файл изменён",
       },
       commit: {
         type: {
@@ -1581,6 +1626,17 @@ export const ru: TranslationResources = {
         accessibility: {
           pullRequest: "Запрос на извлечение №{{number}}",
           pullRequest_mr: "Запрос на слияние !{{number}}",
+
+          checkStatus: {
+            passed: "Успешно",
+            failed: "Ошибка",
+            warning: "Предупреждение",
+            actionRequired: "Требуется действие",
+            manual: "Вручную",
+            pending: "Ожидание",
+            skipped: "Пропущено",
+            cancelled: "Отменено",
+          },
         },
         states: {
           draft: "Черновик",
@@ -1651,6 +1707,8 @@ export const ru: TranslationResources = {
         cancel: "Отмена",
         failed: "Не удалось отменить изменения",
       },
+
+      openIn: "Открыть в {{target}}",
     },
     tree: {
       showFolderTree: "Показать дерево папок",
@@ -1715,6 +1773,10 @@ export const ru: TranslationResources = {
       sessions: "История",
       schedules: "Расписания",
       artifacts: "Артефакты",
+
+      search: "Поиск",
+      kanban: "Канбан",
+      runs: "Рабочие процессы",
     },
     worktreeSetup: {
       title: "Настройка сценариев рабочего дерева",
@@ -1803,6 +1865,15 @@ export const ru: TranslationResources = {
         hostDisconnected: "Host не подключен",
         hideFailed: "Не удалось скрыть рабочую область.",
         archiveFailed: "Не удалось заархивировать рабочее пространство.",
+      },
+
+      checks: {
+        passed: "Успешные: {{count}}",
+        failed: "Ошибки: {{count}}",
+        warning: "Предупреждения: {{count}}",
+        actionRequired: "Требуется действие: {{count}}",
+        manual: "Вручную: {{count}}",
+        pending: "Ожидают: {{count}}",
       },
     },
     pinned: {
@@ -2427,6 +2498,8 @@ export const ru: TranslationResources = {
     stashRestored: "Спрятанные изменения восстановлены.",
     switchInProgress: "Идёт переключение ветки",
     checkedOutElsewhere: "Уже используется в другом Workspace",
+
+    triggerTooltip: "Переключить ветку рабочего пространства",
   },
   agentAutocomplete: {
     searchingWorkspace: "Ищем рабочее место...",
@@ -2611,6 +2684,14 @@ export const ru: TranslationResources = {
     searchAllPlaceholder: "Поиск по всем моделям...",
     searchPlaceholder: "Поиск моделей...",
     openProviderSettings: "Открыть настройки{{provider}}",
+
+    editProfilesCount: "Изменить профили ({{count}})",
+
+    editProfileLabel: "Изменить {{name}}",
+
+    createProfileFromModel: "Создать профиль из этой модели",
+
+    model: "Модель",
   },
   providerCatalog: {
     title: "Добавить провайдера",
@@ -2658,6 +2739,11 @@ export const ru: TranslationResources = {
       pasteLink: {
         title: "Вставьте ссылку на сопряжение",
         description: "Зашифрованное релейное соединение.",
+      },
+
+      remoteSsh: {
+        title: "Удалённый SSH",
+        description: "Подключение через SSH-клиент настольного приложения.",
       },
     },
     direct: {
@@ -2762,6 +2848,24 @@ export const ru: TranslationResources = {
       securityWarning:
         "Обращайтесь с этой ссылкой для сопряжения как с паролем. Любой, у кого она есть, может получить доступ к этому демону.",
     },
+
+    remoteSsh: {
+      title: "Удалённый SSH",
+      helper: "Подключитесь к демону Otto на удалённом хосте.",
+      fields: {
+        target: "Хост SSH",
+      },
+      actions: {
+        cancel: "Отмена",
+        connect: "Подключить",
+        connecting: "Подключение...",
+      },
+      errors: {
+        targetRequired: "Укажите хост SSH",
+        invalidTarget: "Укажите корректный хост ssh://",
+        failedToConnect: "Не удалось подключиться по SSH. {{detail}}",
+      },
+    },
   },
   realtimeVoice: {
     actions: {
@@ -2791,6 +2895,8 @@ export const ru: TranslationResources = {
     inOtto: "В Otto",
     externalBrowser: "Внешний браузер",
     dontAskAgain: "Не спрашивай больше",
+
+    inPaseo: "В Otto",
   },
   downloads: {
     requestTokenFailed: "Не удалось запросить токен загрузки.",
@@ -2856,6 +2962,8 @@ export const ru: TranslationResources = {
     },
     archiveFinishedAction: "Архивировать завершенные субагенты",
     archiveFinishedTooltip: "Архивировать завершенные",
+
+    archiveFinishedRetry: "Повторить ({{failed}}/{{total}})",
   },
   observedSubagents: {
     readOnlyTitle: "Наблюдаемый субагент · только чтение",
@@ -3254,6 +3362,8 @@ export const ru: TranslationResources = {
       label: "Файлы",
       subtitle: "Файлы рабочего пространства",
       tooltip: "Просмотр файлов рабочего пространства",
+
+      chooseFile: "Выберите файл",
     },
     search: {
       label: "Поиск",
@@ -3300,6 +3410,11 @@ export const ru: TranslationResources = {
       other: "called Otto {{count}} times",
     },
     and: "and",
+
+    paseoCalls: {
+      one: "выполнен {{count}} вызов Otto",
+      other: "выполнены вызовы Otto ({{count}})",
+    },
   },
   renameModal: {
     rename: "Переименовать",
@@ -3413,6 +3528,8 @@ export const ru: TranslationResources = {
       storage: "Хранилище",
       terminals: "Терминалы",
       host: "Обзор",
+
+      plugins: "Плагины",
     },
     plugins: pluginSettings.ru,
     metadataGeneration: {
@@ -3630,6 +3747,8 @@ export const ru: TranslationResources = {
         alertTitle: "Ошибка",
         alertMessage: "Невозможно открыть диалоговое окно подтверждения обновления.",
       },
+
+      whatsNewHint: "Заметки о выпуске для каждой версии",
     },
     appearance: {
       theme: {
@@ -3799,6 +3918,16 @@ export const ru: TranslationResources = {
         codeSizeAccessibility: "Размер шрифта кода",
         terminalSize: "Размер терминала",
         terminalSizeAccessibility: "Размер шрифта терминала",
+
+        codeSizeHint: "Используется для кода, диффов и вывода терминала",
+
+        contentSizeAccessibility: "Размер шрифта содержимого",
+
+        contentSizeHint: "Используется для текста чата и отображаемого Markdown",
+
+        contentSize: "Размер содержимого",
+
+        interfaceSizeHint: "Используется для навигации, элементов управления и подписей",
       },
       syntax: {
         title: "Синтаксис",
@@ -3811,6 +3940,15 @@ export const ru: TranslationResources = {
       },
       detailLevel: {
         title: "Уровень детализации",
+      },
+
+      sidebar: {
+        title: "Боковая панель",
+        description:
+          "Выберите, какие элементы отображаются вверху боковой панели и в каком порядке",
+        moveUp: "Переместить вверх",
+        moveDown: "Переместить вниз",
+        workspaceActions: "Действия заголовка рабочих пространств",
       },
     },
     shortcuts: {
@@ -4008,6 +4146,8 @@ export const ru: TranslationResources = {
       badges: {
         relay: "Реле",
         local: "Местный",
+
+        remoteSsh: "Удалённый SSH",
       },
       connections: {
         title: "Соединения",
@@ -4695,6 +4835,7 @@ export const ru: TranslationResources = {
         destinations: {
           main: "Main panel",
           side: "On the side",
+          explorer: "Боковая панель Проводника",
         },
         sources: {
           explorerFiles: {
@@ -4724,6 +4865,10 @@ export const ru: TranslationResources = {
           changesLinks: {
             label: "Opening Changes from an agent",
             description: "Open diff stats and review attachments beside the conversation",
+          },
+          diffs: {
+            label: "Открытие различий",
+            description: "Открывать различия из Проводника и бесед с агентами рядом с работой",
           },
         },
       },
@@ -4841,6 +4986,17 @@ export const ru: TranslationResources = {
       deleteMessage_other: "Метка будет снята с {{count}} рабочих пространств на этом хосте.",
       offline: "Этот хост не в сети.",
       updateHost: "Обновите этот хост для управления метками.",
+    },
+  },
+
+  changelog: {
+    title: "Что нового",
+    installed: "Установлена",
+    showMore: "Показать ещё",
+    openWebsite: "Полный список изменений",
+    error: {
+      title: "Не удалось загрузить список изменений",
+      description: "Проверьте подключение и попробуйте снова.",
     },
   },
 };

@@ -34,7 +34,7 @@ describe("shared tool-call display mapping", () => {
     });
 
     expect(display).toEqual({
-      displayName: "Exec Command",
+      displayName: "Exec command",
     });
   });
 
@@ -81,7 +81,7 @@ describe("shared tool-call display mapping", () => {
     });
 
     expect(display).toEqual({
-      displayName: "Worktree Setup",
+      displayName: "Worktree setup",
       summary: "feature-branch",
     });
   });

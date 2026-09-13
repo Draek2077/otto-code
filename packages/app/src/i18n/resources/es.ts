@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const es: TranslationResources = {
@@ -12,7 +12,7 @@ export const es: TranslationResources = {
       back: "Atrás",
       cancel: "Cancelar",
       confirm: "Confirmar",
-      close: "Cerca",
+      close: "Cerrar",
       copy: "Copiar",
       create: "Crear",
       dismiss: "Descartar",
@@ -20,6 +20,10 @@ export const es: TranslationResources = {
       retry: "Reintentar",
       search: "Buscar",
       select: "Seleccionar",
+
+      selectAll: "Seleccionar todo",
+
+      copyLine: "Copiar línea",
     },
     placeholders: {
       search: "Buscar...",
@@ -45,6 +49,8 @@ export const es: TranslationResources = {
       daemonClientDisconnected: "El cliente Daemon está desconectado",
       noFileFound: "No se encontró ningún archivo para{{token}}",
       unexpectedDictationError: "Se produjo un error inesperado al manejar el dictado.",
+
+      unableToCopy: "No se pudo copiar",
     },
     connectionStatus: {
       online: "En línea",
@@ -475,6 +481,8 @@ export const es: TranslationResources = {
       question: "¿Cómo le gustaría proceder?",
       proposedPlan: "Plan propuesto",
     },
+
+    messageCapped: "Este mensaje fue truncado ({{bytes}} bytes).",
   },
   agentPanel: {
     states: {
@@ -622,6 +630,8 @@ export const es: TranslationResources = {
       resetZoom: "Restablecer vista",
       viewSource: "Ver fuente",
       viewDiagram: "Ver diagrama",
+
+      fullscreen: "Pantalla completa",
     },
     actions: {
       copyCode: "Copiar código",
@@ -725,6 +735,8 @@ export const es: TranslationResources = {
       failedAll: "No se pudieron cargar las sesiones recientes.",
       failedProviders: "No se pudieron cargar sesiones para{{providers}}.",
       failedImport: "No se pudo importar la sesión seleccionada.",
+
+      failedProvider: "No se pudieron cargar las sesiones de {{provider}}",
     },
     actions: {
       selectAll: "Seleccionar todas las mostradas",
@@ -733,6 +745,8 @@ export const es: TranslationResources = {
       loadMore: "Cargar más",
 
       refresh: "Actualizar sesiones",
+
+      showAll: "Mostrar todo",
     },
     preview: {
       untitledSession: "Sesión sin título",
@@ -742,10 +756,21 @@ export const es: TranslationResources = {
       noRecent: "No hay sesiones recientes para importar.",
       alreadyImported: "Todas las sesiones recientes ya están importadas.",
       noProviderSessions: "No se encontraron sesiones{{provider}}.",
+
+      noMatches: "Ninguna sesión coincide con tu búsqueda.",
     },
     row: {
       importing: "Importador...",
     },
+
+    scope: {
+      host: "Sesiones en {{host}}",
+      workspace: "Este espacio de trabajo",
+    },
+
+    searchPlaceholder: "Buscar sesiones...",
+
+    chooseHostTitle: en.importSession.chooseHostTitle,
   },
   workspace: {
     moveChat: {
@@ -892,12 +917,16 @@ export const es: TranslationResources = {
         completed: "Configuración completada",
         failed: "Error de configuración",
         workspace: "Configuración del Workspace",
+
+        blocked: "Configuración bloqueada",
       },
       status: {
         running: "Correr",
         completed: "Terminado",
         failed: "Fallido",
         waiting: "Esperando el resultado de la configuración",
+
+        blocked: "Bloqueado",
       },
       waiting: "Configurando el espacio de trabajo...",
       empty: {
@@ -909,6 +938,14 @@ export const es: TranslationResources = {
       },
       log: {
         noOutput: "Sin salida",
+      },
+
+      blocked: {
+        title: "No se ejecutó la configuración",
+        description:
+          "Este PR proviene de {{repository}}, un repositorio diferente. Su configuración y scripts podrían ejecutar código que no has revisado.",
+        run: "Ejecutar configuración",
+        runFailed: "No se pudo ejecutar la configuración",
       },
     },
     browser: {
@@ -931,6 +968,10 @@ export const es: TranslationResources = {
         screenshotCopied: "Captura copiada al portapapeles",
         elementCopied: "Elemento copiado al portapapeles",
         screenshotFailed: "No se pudo copiar la captura",
+
+        selectorFailed: "No se pudo iniciar el selector de elementos",
+
+        selectorLoading: "Espera a que la página termine de cargar",
       },
       annotate: {
         title: "Anotar elemento",
@@ -1035,15 +1076,15 @@ export const es: TranslationResources = {
         moveToWorkspace: "Mover al espacio de trabajo…",
         closeAbove: "Cerrar pestañas arriba",
         closeBelow: "Cerrar pestañas a continuación",
-        closeLeft: "Cerca de la izquierda",
-        closeRight: "Cerca de la derecha",
+        closeLeft: "Cerrar pestañas a la izquierda",
+        closeRight: "Cerrar pestañas a la derecha",
         closeUp: "Cerrar hacia arriba",
         closeDown: "Cerrar hacia abajo",
         closeOthers: "Cerrar otras pestañas",
         reloadAgent: "Recargar agente",
         reloadAgentTooltip:
           "Vuelva a cargar el agente para actualizar habilidades, MCP o estado de inicio de sesión.",
-        close: "Cerca",
+        close: "Cerrar",
         renameTerminal: "Cambiar nombre de terminal",
         renameAgent: "Renombrar chat",
         copyTerminalId: "Copiar ID del terminal",
@@ -1101,7 +1142,7 @@ export const es: TranslationResources = {
         failedToCloseAgent: "No se pudo cerrar el agente",
       },
       confirmations: {
-        close: "Cerca",
+        close: "Cerrar",
         cancel: "Cancelar",
         archive: "Archivo",
         delete: "Eliminar",
@@ -1210,6 +1251,8 @@ export const es: TranslationResources = {
         public: "Proxy inverso",
         otto: "Memorable",
         direct: "Directa",
+
+        paseo: "Memorable",
       },
     },
     git: {
@@ -1493,6 +1536,8 @@ export const es: TranslationResources = {
         expandAllFiles: "Expandir todos los archivos",
         seeUncommittedChanges: "Ver cambios no confirmados",
         seeCommittedChanges: "Ver cambios confirmados",
+
+        modifiedFile: "Modificado",
       },
       commit: {
         type: {
@@ -1596,6 +1641,17 @@ export const es: TranslationResources = {
         accessibility: {
           pullRequest: "Solicitud de extracción n.°{{number}}",
           pullRequest_mr: "Solicitud de fusión !{{number}}",
+
+          checkStatus: {
+            passed: "Superado",
+            failed: "Fallido",
+            warning: "Advertencia",
+            actionRequired: "Acción requerida",
+            manual: "Manual",
+            pending: "Pendiente",
+            skipped: "Omitido",
+            cancelled: "Cancelado",
+          },
         },
         states: {
           draft: "Borrador",
@@ -1666,6 +1722,8 @@ export const es: TranslationResources = {
         cancel: "Cancelar",
         failed: "No se pudieron descartar los cambios",
       },
+
+      openIn: "Abrir en {{target}}",
     },
     tree: {
       showFolderTree: "Mostrar árbol de carpetas",
@@ -1730,6 +1788,10 @@ export const es: TranslationResources = {
       sessions: "Historial",
       schedules: "Horarios",
       artifacts: "Artefactos",
+
+      search: "Buscar",
+      kanban: "Kanban",
+      runs: "Flujos de trabajo",
     },
     worktreeSetup: {
       title: "Configurar secuencias de comandos del árbol de trabajo",
@@ -1818,6 +1880,15 @@ export const es: TranslationResources = {
         hostDisconnected: "Hostno está conectado",
         hideFailed: "No se pudo ocultar el espacio de trabajo",
         archiveFailed: "No se pudo archivar el espacio de trabajo",
+      },
+
+      checks: {
+        passed: "Superados: {{count}}",
+        failed: "Fallidos: {{count}}",
+        warning: "Advertencias: {{count}}",
+        actionRequired: "Acción requerida: {{count}}",
+        manual: "Manuales: {{count}}",
+        pending: "Pendientes: {{count}}",
       },
     },
     pinned: {
@@ -2443,6 +2514,8 @@ export const es: TranslationResources = {
     stashRestored: "Se restauraron los cambios ocultos",
     switchInProgress: "Cambio de rama en curso",
     checkedOutElsewhere: "Ya está en otro Workspace",
+
+    triggerTooltip: "Cambiar rama del espacio de trabajo",
   },
   agentAutocomplete: {
     searchingWorkspace: "Buscando espacio de trabajo...",
@@ -2629,6 +2702,14 @@ export const es: TranslationResources = {
     searchAllPlaceholder: "Buscar en todos los modelos...",
     searchPlaceholder: "Buscar modelos...",
     openProviderSettings: "Abrir configuración de{{provider}}",
+
+    editProfilesCount: "Editar perfiles ({{count}})",
+
+    editProfileLabel: "Editar {{name}}",
+
+    createProfileFromModel: "Crear perfil desde este modelo",
+
+    model: "Modelo",
   },
   providerCatalog: {
     title: "Agregar proveedor",
@@ -2676,6 +2757,11 @@ export const es: TranslationResources = {
       pasteLink: {
         title: "Pegar enlace de emparejamiento",
         description: "Conexión de retransmisión cifrada.",
+      },
+
+      remoteSsh: {
+        title: "SSH remoto",
+        description: "Conéctate mediante el cliente SSH de escritorio.",
       },
     },
     direct: {
@@ -2780,6 +2866,24 @@ export const es: TranslationResources = {
       securityWarning:
         "Trata este enlace de emparejamiento como una contraseña. Cualquiera que lo tenga puede acceder a este daemon.",
     },
+
+    remoteSsh: {
+      title: "SSH remoto",
+      helper: "Conéctate a un daemon de Otto en el host remoto.",
+      fields: {
+        target: "Host SSH",
+      },
+      actions: {
+        cancel: "Cancelar",
+        connect: "Conectar",
+        connecting: "Conectando...",
+      },
+      errors: {
+        targetRequired: "El host SSH es obligatorio",
+        invalidTarget: "Introduce un host ssh:// válido",
+        failedToConnect: "No se pudo conectar por SSH. {{detail}}",
+      },
+    },
   },
   realtimeVoice: {
     actions: {
@@ -2809,6 +2913,8 @@ export const es: TranslationResources = {
     inOtto: "En Otto",
     externalBrowser: "Navegador externo",
     dontAskAgain: "no vuelvas a preguntar",
+
+    inPaseo: "EnOtto",
   },
   downloads: {
     requestTokenFailed: "No se pudo solicitar el token de descarga.",
@@ -2874,6 +2980,8 @@ export const es: TranslationResources = {
     },
     archiveFinishedAction: "Archivar subagentes finalizados",
     archiveFinishedTooltip: "Archivar finalizados",
+
+    archiveFinishedRetry: "Reintentar ({{failed}}/{{total}})",
   },
   observedSubagents: {
     readOnlyTitle: "Subagente observado · solo lectura",
@@ -3277,6 +3385,8 @@ export const es: TranslationResources = {
       label: "Archivos",
       subtitle: "Archivos del espacio de trabajo",
       tooltip: "Explorar archivos del espacio de trabajo",
+
+      chooseFile: "Elige un archivo",
     },
     search: {
       label: "Buscar",
@@ -3323,6 +3433,11 @@ export const es: TranslationResources = {
       other: "called Otto {{count}} times",
     },
     and: "and",
+
+    paseoCalls: {
+      one: "llamó a Otto {{count}} vez",
+      other: "llamó a Otto {{count}} veces",
+    },
   },
   renameModal: {
     rename: "Rebautizar",
@@ -3436,6 +3551,8 @@ export const es: TranslationResources = {
       storage: "Almacenamiento",
       terminals: "Terminales",
       host: "Resumen",
+
+      plugins: "Plugins",
     },
     plugins: pluginSettings.es,
     metadataGeneration: {
@@ -3657,6 +3774,8 @@ export const es: TranslationResources = {
         alertTitle: "Error",
         alertMessage: "No se puede abrir el cuadro de diálogo de confirmación de actualización.",
       },
+
+      whatsNewHint: "Notas de versión de cada release",
     },
     appearance: {
       theme: {
@@ -3826,6 +3945,16 @@ export const es: TranslationResources = {
         codeSizeAccessibility: "Tamaño de fuente del código",
         terminalSize: "Tamaño del terminal",
         terminalSizeAccessibility: "Tamaño de fuente del terminal",
+
+        codeSizeHint: "Se usa en código, diferencias y la salida del terminal",
+
+        contentSizeAccessibility: "Tamaño de fuente de contenido",
+
+        contentSizeHint: "Se usa en el texto del chat y el Markdown renderizado",
+
+        contentSize: "Tamaño de contenido",
+
+        interfaceSizeHint: "Se usa en la navegación, los controles y las etiquetas",
       },
       syntax: {
         title: "Sintaxis",
@@ -3837,6 +3966,15 @@ export const es: TranslationResources = {
       },
       detailLevel: {
         title: "Nivel de detalle",
+      },
+
+      sidebar: {
+        title: "Barra lateral",
+        description:
+          "Elige qué elementos aparecen en la parte superior de la barra lateral y en qué orden",
+        moveUp: "Mover hacia arriba",
+        moveDown: "Mover hacia abajo",
+        workspaceActions: "Acciones de la cabecera de espacios de trabajo",
       },
     },
     shortcuts: {
@@ -4036,6 +4174,8 @@ export const es: TranslationResources = {
       badges: {
         relay: "Relé",
         local: "Local",
+
+        remoteSsh: "SSH remoto",
       },
       connections: {
         title: "Conexiones",
@@ -4726,6 +4866,7 @@ export const es: TranslationResources = {
         destinations: {
           main: "Main panel",
           side: "On the side",
+          explorer: "Barra lateral del Explorador",
         },
         sources: {
           explorerFiles: {
@@ -4755,6 +4896,11 @@ export const es: TranslationResources = {
           changesLinks: {
             label: "Opening Changes from an agent",
             description: "Open diff stats and review attachments beside the conversation",
+          },
+          diffs: {
+            label: "Abrir una diferencia",
+            description:
+              "Abre diferencias del Explorador y conversaciones de agentes junto a tu trabajo",
           },
         },
       },
@@ -4872,6 +5018,17 @@ export const es: TranslationResources = {
       deleteMessage_other: "Esto quita la etiqueta de {{count}} espacios de trabajo en este host.",
       offline: "Este host está desconectado.",
       updateHost: "Actualiza este host para gestionar etiquetas.",
+    },
+  },
+
+  changelog: {
+    title: "Novedades",
+    installed: "Instalada",
+    showMore: "Mostrar más",
+    openWebsite: "Registro de cambios completo",
+    error: {
+      title: "No se pudo cargar el registro de cambios",
+      description: "Comprueba tu conexión e inténtalo de nuevo.",
     },
   },
 };

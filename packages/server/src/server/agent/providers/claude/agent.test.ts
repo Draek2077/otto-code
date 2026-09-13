@@ -5,9 +5,12 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import type { PermissionResult, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
+import * as spawnUtils from "../../../../utils/spawn.js";
+import * as providerLaunch from "../../provider-launch-config.js";
 import * as executableUtils from "../../../../executable-resolution/executable-resolution.js";
 import {
   ClaudeAgentClient,
+  resolveClaudeCodeVersion,
   convertClaudeHistoryEntry,
   isExpectedTransportTeardownError,
   normalizeClaudeAskUserQuestionRequestInput,
@@ -85,6 +88,18 @@ function createPromptDrivenQueryFactory() {
 interface TestClaudeSession {
   translateMessageToEvents(message: SDKMessage): AgentStreamEvent[];
   close(): Promise<void>;
+}
+
+function isLoadingCompactionEvent(event: AgentStreamEvent): boolean {
+  return (
+    event.type === "timeline" && event.item.type === "compaction" && event.item.status === "loading"
+  );
+}
+
+function isPermissionResolvedEvent(
+  event: AgentStreamEvent,
+): event is Extract<AgentStreamEvent, { type: "permission_resolved" }> {
+  return event.type === "permission_resolved";
 }
 
 afterEach(() => {
@@ -592,10 +607,28 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
 describe("ClaudeAgentClient binary resolution", () => {
   const logger = createTestLogger();
 
-  // No "resolves the installed Claude Code version" case: Otto's model catalog is
-  // hardcoded rather than derived from the installed CLI (getClaudeModels takes
-  // `_claudeCodeVersion` and ignores it), so there is no version-resolution entry
-  // point to cover. Upstream needs one because its catalog is version-derived.
+  test("resolves version through the configured launch without invoking a real provider", async () => {
+    vi.spyOn(providerLaunch, "resolveProviderLaunch").mockResolvedValue({
+      command: "claude-wrapper",
+      args: ["--isolated"],
+      source: "override",
+    });
+    vi.spyOn(providerLaunch, "checkProviderLaunchAvailable").mockResolvedValue({
+      available: true,
+      resolvedPath: "/fake/claude-wrapper",
+    });
+    const exec = vi.spyOn(spawnUtils, "execCommand").mockResolvedValue({
+      stdout: "wrapper 1.0.0",
+      stderr: "2.1.219 (Claude Code)",
+    });
+    const signal = new AbortController().signal;
+    await expect(resolveClaudeCodeVersion(undefined, signal)).resolves.toBe("2.1.219");
+    expect(exec).toHaveBeenCalledWith(
+      "/fake/claude-wrapper",
+      ["--isolated", "--version"],
+      expect.objectContaining({ timeout: 5_000, signal }),
+    );
+  });
 
   test("loads user, project, and local Claude settings", async () => {
     const queryReturn = vi.fn();
@@ -715,6 +748,80 @@ describe("ClaudeAgentSession features", () => {
     });
     return { queryFactory, queryMock, launches };
   }
+
+  test("publishes a resolution when the SDK aborts a permission callback", async () => {
+    const { queryFactory } = createQueryMock();
+    const session = await new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({ provider: "claude", cwd: process.cwd(), modeId: "default" });
+    const events: AgentStreamEvent[] = [];
+    const unsubscribe = session.subscribe((event) => events.push(event));
+
+    try {
+      await session.startTurn("run the tool");
+      const canUseTool = queryFactory.mock.calls[0]?.[0].options.canUseTool;
+      if (!canUseTool) throw new Error("Expected canUseTool callback");
+      const abort = new AbortController();
+      const permission = canUseTool(
+        "Bash",
+        { command: "printf test" },
+        { signal: abort.signal, toolUseID: "tool-aborted" },
+      );
+      abort.abort();
+
+      await expect(permission).rejects.toThrow("Permission request aborted");
+      expect(events.find(isPermissionResolvedEvent)).toMatchObject({
+        type: "permission_resolved",
+        provider: "claude",
+        requestId: expect.any(String),
+        resolution: { behavior: "deny", message: "Permission request canceled" },
+      });
+      expect(session.getPendingPermissions()).toEqual([]);
+    } finally {
+      unsubscribe();
+      await session.close();
+    }
+  });
+
+  test("does not duplicate a resolution when interruption later aborts the SDK callback", async () => {
+    const { queryFactory } = createQueryMock();
+    const session = await new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({ provider: "claude", cwd: process.cwd(), modeId: "default" });
+    const events: AgentStreamEvent[] = [];
+    const unsubscribe = session.subscribe((event) => events.push(event));
+
+    try {
+      await session.startTurn("run the tool");
+      const canUseTool = queryFactory.mock.calls[0]?.[0].options.canUseTool;
+      if (!canUseTool) throw new Error("Expected canUseTool callback");
+      const abort = new AbortController();
+      const permission = canUseTool(
+        "Bash",
+        { command: "printf test" },
+        { signal: abort.signal, toolUseID: "tool-interrupted" },
+      );
+
+      await session.interrupt();
+      abort.abort();
+
+      await expect(permission).rejects.toThrow("Permission request canceled");
+      expect(events.filter(isPermissionResolvedEvent)).toEqual([
+        expect.objectContaining({
+          provider: "claude",
+          resolution: { behavior: "deny", message: "Permission request canceled" },
+        }),
+      ]);
+      expect(session.getPendingPermissions()).toEqual([]);
+    } finally {
+      unsubscribe();
+      await session.close();
+    }
+  });
 
   test("passes exact configured Fable 5 IDs through to Claude Code", async () => {
     const { queryFactory, queryMock } = createQueryMock();
@@ -1590,6 +1697,62 @@ describe("normalizeClaudeAskUserQuestionUpdatedInput", () => {
 });
 
 describe("ClaudeAgentClient.listImportableSessions", () => {
+  test("uses the latest native custom title and leaves fixture mtimes unchanged", async () => {
+    const tmpConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), "paseo-claude-import-"));
+    const previousConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    process.env.CLAUDE_CONFIG_DIR = tmpConfigDir;
+
+    try {
+      const projectDir = path.join(tmpConfigDir, "projects", "native-title-fixture");
+      await fs.mkdir(projectDir, { recursive: true });
+      const sessionFile = path.join(projectDir, "native-title-session.jsonl");
+      await fs.copyFile(
+        new URL("./test-fixtures/import-session-native-titles.jsonl", import.meta.url),
+        sessionFile,
+      );
+      const olderSessionFile = path.join(projectDir, "older-native-title-session.jsonl");
+      await fs.copyFile(
+        new URL("./test-fixtures/import-session-native-titles.jsonl", import.meta.url),
+        olderSessionFile,
+      );
+      const timestamp = new Date("2026-08-13T01:53:11.000Z");
+      await fs.utimes(sessionFile, timestamp, timestamp);
+      const olderTimestamp = new Date("2026-08-12T01:53:11.000Z");
+      await fs.utimes(olderSessionFile, olderTimestamp, olderTimestamp);
+      const fixtureFiles = [sessionFile, olderSessionFile];
+      const mtimesBefore = await Promise.all(
+        fixtureFiles.map(async (file) => (await fs.stat(file)).mtimeMs),
+      );
+
+      const client = new ClaudeAgentClient({
+        logger: createTestLogger(),
+        resolveBinary: async () => "/test/claude/bin",
+      });
+
+      await expect(client.listImportableSessions({ limit: 1 })).resolves.toEqual([
+        {
+          providerHandleId: "native-title-session",
+          cwd: "/tmp/paseo-claude-native-title",
+          title: "My research session",
+          firstPromptPreview: "Review this project",
+          lastPromptPreview: "Focus on the import flow",
+          lastActivityAt: timestamp,
+        },
+      ]);
+      const mtimesAfter = await Promise.all(
+        fixtureFiles.map(async (file) => (await fs.stat(file)).mtimeMs),
+      );
+      expect(mtimesAfter).toEqual(mtimesBefore);
+    } finally {
+      if (previousConfigDir === undefined) {
+        delete process.env.CLAUDE_CONFIG_DIR;
+      } else {
+        process.env.CLAUDE_CONFIG_DIR = previousConfigDir;
+      }
+      await fs.rm(tmpConfigDir, { recursive: true, force: true });
+    }
+  });
+
   test("scopes candidates to the requested cwd before applying the limit", async () => {
     const tmpConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), "otto-claude-import-"));
     const previousConfigDir = process.env.CLAUDE_CONFIG_DIR;
@@ -1980,6 +2143,31 @@ describe("ClaudeAgentSession context window usage", () => {
       ...overrides,
     };
   }
+
+  function createCompactingStatus(): Record<string, unknown> {
+    return {
+      type: "system",
+      subtype: "status",
+      status: "compacting",
+      session_id: "session-1",
+    };
+  }
+
+  test("emits turn_started before the submitted user message", async () => {
+    const session = await createSessionForTurns([[]]);
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+
+    await session.startTurn("turn", { clientMessageId: "client-message-1" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(events.slice(0, 2).map((event) => event.type)).toEqual(["turn_started", "timeline"]);
+    expect(events[1]).toMatchObject({
+      type: "timeline",
+      item: { type: "user_message", clientMessageId: "client-message-1" },
+    });
+    await session.close();
+  });
 
   test("passes persistSession through to the Claude SDK query options", async () => {
     const createResultTurn = (sessionId: string) => [
@@ -2915,6 +3103,110 @@ describe("ClaudeAgentSession context window usage", () => {
             event.type === "turn_completed" && event.usage.contextWindowUsedTokens !== undefined,
         ),
       ).toBe(false);
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("repeated compacting statuses open a single compaction marker", async () => {
+    const session = await createSessionForTurns([
+      [
+        createCompactingStatus(),
+        createCompactingStatus(),
+        createCompactingStatus(),
+        createCompactBoundary(),
+        createCompactingStatus(),
+        createCompactingStatus(),
+        createCompactBoundary(),
+        createSuccessResult(),
+      ],
+    ]);
+
+    try {
+      const events = await collectStreamEvents(session, "compact twice");
+      const compactions = events.flatMap((event) =>
+        event.type === "timeline" && event.item.type === "compaction" ? [event.item.status] : [],
+      );
+      expect(compactions).toEqual(["loading", "completed", "loading", "completed"]);
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("a compaction abandoned mid-turn does not suppress the next compaction marker", async () => {
+    // The first turn starts compacting and then ends without ever reaching a
+    // compact_boundary, so the marker it opened is never resolved.
+    const session = await createSessionForTurns([
+      [createCompactingStatus(), createSuccessResult()],
+      [createCompactingStatus(), createSuccessResult()],
+    ]);
+
+    try {
+      const abandonedTurn = await collectStreamEvents(session, "abandoned compaction");
+      expect(abandonedTurn.filter(isLoadingCompactionEvent)).toHaveLength(1);
+
+      const nextTurn = await collectStreamEvents(session, "next compaction");
+      expect(nextTurn.filter(isLoadingCompactionEvent)).toHaveLength(1);
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("an interrupted compaction does not suppress the next compaction marker", async () => {
+    // The first turn starts compacting and is then interrupted, so it never reaches a
+    // compact_boundary and the marker it opened is never resolved.
+    const session = await createSessionForTurns([
+      [createCompactingStatus()],
+      [createCompactingStatus(), createSuccessResult()],
+    ]);
+
+    try {
+      const interruptedTurn: AgentStreamEvent[] = [];
+      const streaming = (async () => {
+        for await (const event of streamSession(session, "interrupted compaction")) {
+          interruptedTurn.push(event);
+        }
+      })();
+
+      await vi.waitFor(() => {
+        expect(interruptedTurn.filter(isLoadingCompactionEvent)).toHaveLength(1);
+      });
+      await session.interrupt();
+      await streaming;
+
+      expect(interruptedTurn).toContainEqual(
+        expect.objectContaining({ type: "turn_canceled", provider: "claude" }),
+      );
+
+      const nextTurn = await collectStreamEvents(session, "next compaction");
+      expect(nextTurn.filter(isLoadingCompactionEvent)).toHaveLength(1);
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("a compaction abandoned in an autonomous turn does not suppress the next marker", async () => {
+    // Trailing output after the foreground result opens an autonomous turn, which starts
+    // compacting and is then ended by the next foreground turn, never reaching a boundary.
+    const session = await createSessionForTurns([
+      [createSuccessResult(), createMessageStartEvent(), createCompactingStatus()],
+      [createCompactingStatus(), createSuccessResult()],
+    ]);
+
+    try {
+      const observed: AgentStreamEvent[] = [];
+      const unsubscribe = session.subscribe((event) => {
+        observed.push(event);
+      });
+
+      await collectStreamEvents(session, "foreground turn");
+      await vi.waitFor(() => {
+        expect(observed.filter(isLoadingCompactionEvent)).toHaveLength(1);
+      });
+      unsubscribe();
+
+      const nextTurn = await collectStreamEvents(session, "next compaction");
+      expect(nextTurn.filter(isLoadingCompactionEvent)).toHaveLength(1);
     } finally {
       await session.close();
     }

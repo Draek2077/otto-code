@@ -19,6 +19,37 @@ test("shows Obsidian in the dark appearance picker", async ({ page }, testInfo) 
   });
 });
 
+test("keeps the selected workspace visible in Daylight", async ({ page }, testInfo) => {
+  const workspace = await seedWorkspace({
+    repoPrefix: "light-selected-workspace-",
+    title: "Selected workspace",
+  });
+
+  try {
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "@otto:app-settings",
+        JSON.stringify({ colorSchemeMode: "light", lightTheme: "daylight" }),
+      );
+    });
+    await gotoAppShell(page);
+
+    const row = page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`);
+    await expect(row).toBeVisible({ timeout: 30_000 });
+    await row.click();
+    await page.mouse.move(0, 0);
+
+    await expect(row).toHaveAttribute("aria-selected", "true");
+    await expect(row).toHaveCSS("background-color", "rgba(198, 151, 0, 0.06)");
+    await page.screenshot({
+      path: testInfo.outputPath("light-selected-workspace.png"),
+      fullPage: true,
+    });
+  } finally {
+    await workspace.cleanup();
+  }
+});
+
 test("keeps the selected workspace visible in Obsidian", async ({ page }, testInfo) => {
   const workspace = await seedWorkspace({
     repoPrefix: "pure-black-selected-workspace-",

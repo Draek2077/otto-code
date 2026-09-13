@@ -5,13 +5,14 @@ import { RenderProfile } from "@/utils/render-profiler";
 import { createDiffPalette, retainDiffPalette } from "./palette";
 import { DiffSurface } from "./surface";
 import { StructuralDiffDocument } from "./structural-document";
-import type { DiffDocumentProps, DiffPalette } from "./types";
+import type { DiffDocumentProps, DiffHeaderTypography, DiffPalette } from "./types";
 
 export type { DiffDocumentProps, WorkingDiffMode } from "./types";
 
 type ThemedDiffDocumentProps = DiffDocumentProps & {
   palette: DiffPalette;
   surfaces: { workspace: string; explorer: string };
+  headerTypography: DiffHeaderTypography;
 };
 
 const EMPTY_PATHS: string[] = [];
@@ -62,6 +63,11 @@ const StyledDiffDocument = withUnistyles(ThemedDiffDocument, (theme) => ({
   surfaces: {
     workspace: theme.colors.surfaceWorkspace,
     explorer: theme.colors.surfaceSidebarPanel,
+  },
+  headerTypography: {
+    family: theme.fontFamily.ui,
+    size: theme.fontSize.base,
+    statSize: theme.fontSize.sm,
   },
 }));
 

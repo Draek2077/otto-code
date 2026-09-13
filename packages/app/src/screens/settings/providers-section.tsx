@@ -1,3 +1,9 @@
+import {
+  SettingsTargetText,
+  SettingsTargetLabel,
+  SettingsTargetScope,
+  useSettingsSearchRequest,
+} from "@/screens/settings-search/target";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -80,6 +86,7 @@ function getProviderStatus(
 }
 
 interface ProviderRowProps {
+  serverId: string;
   def: ProviderDefinition;
   entry: ProviderEntry;
   enabled: boolean;
@@ -170,6 +177,7 @@ function ProviderActionsMenu({
 }
 
 function ProviderRow({
+  serverId,
   def,
   entry,
   enabled,
@@ -184,7 +192,7 @@ function ProviderRow({
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const isCompact = useIsCompactFormFactor();
-  const ProviderIcon = getProviderIcon(def.id);
+  const ProviderIcon = getProviderIcon(def.id, serverId);
   const providerError =
     enabled &&
     entry.status === "error" &&
@@ -232,9 +240,13 @@ function ProviderRow({
             <ProviderIcon size={theme.iconSize.md} color={theme.colors.foreground} />
             <View style={styles.textColumn}>
               <View style={styles.titleRow}>
-                <Text style={settingsStyles.rowTitle} numberOfLines={1}>
+                <SettingsTargetText
+                  settingId="host-providers-providers-provider"
+                  style={settingsStyles.rowTitle}
+                  numberOfLines={1}
+                >
                   {def.label}
-                </Text>
+                </SettingsTargetText>
                 {!isCompact ? <Text style={styles.separator}>·</Text> : null}
                 <StatusIndicator status={providerStatus} compact={isCompact} />
               </View>
@@ -325,6 +337,7 @@ export interface ProvidersSectionProps {
 }
 
 export function ProvidersSection({ serverId }: ProvidersSectionProps) {
+  const settingId = useSettingsSearchRequest();
   const { t } = useTranslation();
   const isConnected = useHostRuntimeIsConnected(serverId);
   const supportsProviderRemoval = useHostFeature(serverId, "providerRemoval");
@@ -341,9 +354,9 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
 
   const handleOpenProviderSettings = useCallback(
     (providerId: string) => {
-      openProviderSettings({ serverId, provider: providerId });
+      openProviderSettings({ serverId, provider: providerId, settingId });
     },
-    [openProviderSettings, serverId],
+    [openProviderSettings, serverId, settingId],
   );
 
   const handleToggleEnabled = useCallback(
@@ -439,6 +452,7 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
               return (
                 <ProviderRow
                   key={def.id}
+                  serverId={serverId}
                   def={def}
                   entry={entry}
                   enabled={entry.enabled ?? true}
@@ -457,17 +471,20 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
       </SettingsSection>
 
       {hasServer && isConnected ? (
-        <SettingsSection
-          title={t("settings.providers.addProvider")}
-          testID="host-page-add-provider-card"
-          style={styles.addProviderSection}
-        >
-          <ProviderCatalogList
-            serverId={serverId}
-            installingProviderId={installingProviderId}
-            onInstall={handleInstall}
-          />
-        </SettingsSection>
+        <SettingsTargetScope settingIds={["host-providers-providers-add-provider"]}>
+          <SettingsSection
+            Label={SettingsTargetLabel}
+            title={t("settings.providers.addProvider")}
+            testID="host-page-add-provider-card"
+            style={styles.addProviderSection}
+          >
+            <ProviderCatalogList
+              serverId={serverId}
+              installingProviderId={installingProviderId}
+              onInstall={handleInstall}
+            />
+          </SettingsSection>
+        </SettingsTargetScope>
       ) : null}
     </>
   );

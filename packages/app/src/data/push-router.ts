@@ -6,7 +6,7 @@ import type {
   SessionOutboundMessage,
 } from "@otto-code/protocol/messages";
 import { agentCommandsQueryRoot } from "@/hooks/agent-commands-query";
-import { reconcileCheckoutStatusWithUncommittedDiff } from "@/git/checkout-status-cache";
+import { shareCheckoutDiff } from "@/git/diff-sharing";
 import { orderCheckoutDiffFiles } from "@/git/diff-order";
 import { applyBrainStatusChanged, invalidateBrainStatusAfterReconnect } from "@/data/brain-status";
 import { applyBrainLogLineAdded, invalidateBrainLogsAfterReconnect } from "@/data/brain-logs";
@@ -17,9 +17,10 @@ import { applyPromptTemplatesChanged } from "@/data/prompt-templates";
 import { useLspActivityStore } from "@/stores/lsp-activity-store";
 import { useLspDiagnosticsStore } from "@/stores/lsp-diagnostics-store";
 import { daemonPairingOfferQueryKey } from "@/data/daemon-pairing";
-import { providerSnapshotCache, type ProviderSnapshotCache } from "@/data/provider-snapshot-cache";
+import { type ProviderSnapshotCache } from "@/data/provider-snapshot-cache";
 import {
   normalizeProvidersSnapshotCwd,
+  fetchProvidersSnapshot,
   providersSnapshotQueryKey,
   providersSnapshotQueryRoot,
 } from "@/data/providers-snapshot";
@@ -81,6 +82,7 @@ export interface ServerDataQueryMeta extends Record<string, unknown> {
 export type ProvidersSnapshotUpdate = ProvidersSnapshotUpdateMessage;
 
 interface ServerDataPushClient {
+  getProvidersSnapshot: import("@otto-code/client/internal/daemon-client").DaemonClient["getProvidersSnapshot"];
   on<TType extends ServerDataEventType>(
     type: TType,
     handler: (message: Extract<SessionOutboundMessage, { type: TType }>) => void,
@@ -251,35 +253,41 @@ export function invalidateServerDataQueriesAfterReconnect(input: {
   }
 }
 
-export function applyProvidersSnapshotUpdate(input: {
+export async function applyProvidersSnapshotUpdate(input: {
   serverId: string;
   queryClient: QueryClient;
   message: ProvidersSnapshotUpdate;
+  client: Pick<ServerDataPushClient, "getProvidersSnapshot">;
   cache?: ProviderSnapshotCache;
-}): void {
-  if (input.message.type !== "providers_snapshot_update") {
-    return;
-  }
-  const queryKey = providersSnapshotQueryKey(input.serverId, input.message.payload.cwd);
-  input.queryClient.setQueryData(queryKey, {
-    entries: input.message.payload.entries,
-    generatedAt: input.message.payload.generatedAt,
-    requestId: "providers_snapshot_update",
+}): Promise<void> {
+  const snapshot = { ...input.message.payload, requestId: "providers_snapshot_update" };
+  const cwd = normalizeProvidersSnapshotCwd(snapshot.cwd);
+  const queryKey = providersSnapshotQueryKey(input.serverId, cwd);
+  const previous = input.queryClient.getQueryData<{ snapshotHash?: string }>(queryKey);
+  let announcement: typeof snapshot | undefined = snapshot;
+  void input.queryClient.cancelQueries({ queryKey, exact: true });
+  await input.queryClient.fetchQuery({
+    queryKey,
+    staleTime: 0,
+    structuralSharing: false,
+    retry: false,
+    queryFn: ({ signal }) => {
+      const incoming = announcement;
+      announcement = undefined;
+      return fetchProvidersSnapshot({
+        ...input,
+        cwd,
+        snapshot: incoming,
+        signal,
+      });
+    },
   });
-  const { compactSnapshot, snapshotHash } = input.message.payload;
-  if (compactSnapshot && snapshotHash) {
-    void (input.cache ?? providerSnapshotCache).write({
-      serverId: input.serverId,
-      cwd: normalizeProvidersSnapshotCwd(input.message.payload.cwd),
-      hash: snapshotHash,
-      generatedAt: input.message.payload.generatedAt,
-      compactSnapshot,
+  if (!snapshot.snapshotHash || previous?.snapshotHash !== snapshot.snapshotHash) {
+    void input.queryClient.invalidateQueries({
+      queryKey: agentCommandsQueryRoot(input.serverId),
+      exact: false,
     });
   }
-  void input.queryClient.invalidateQueries({
-    queryKey: agentCommandsQueryRoot(input.serverId),
-    exact: false,
-  });
 }
 
 export function mountServerDataPushRouter(input: PushRouterInput): () => void {
@@ -429,10 +437,13 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
     reconcileSubscriptions();
   });
   const unsubscribeProviders = input.client.on("providers_snapshot_update", (message) => {
-    applyProvidersSnapshotUpdate({
+    void applyProvidersSnapshotUpdate({
+      client: input.client,
       queryClient: input.queryClient,
       serverId: input.serverId,
       message,
+    }).catch(() => {
+      /* Query state owns fetch failures; reconnect/refetch repairs them. */
     });
   });
   const unsubscribeDaemonConfig = input.client.on("status", (message) => {
@@ -663,15 +674,6 @@ function applyCheckoutDiffUpdate(input: {
       requestId: `subscription:${input.message.payload.subscriptionId}`,
     },
   });
-  reconcileStatusFromCheckoutDiff({
-    activeCheckoutDiffSubscriptions: input.activeCheckoutDiffSubscriptions,
-    queryClient: input.queryClient,
-    serverId: input.serverId,
-    subscriptionId: input.message.payload.subscriptionId,
-    cwd: input.message.payload.cwd,
-    files: input.message.payload.files,
-    error: input.message.payload.error,
-  });
 }
 
 function applyCheckoutDiffSubscribeResponse(input: {
@@ -694,43 +696,6 @@ function applyCheckoutDiffSubscribeResponse(input: {
         : {}),
       requestId: input.message.payload.requestId,
     },
-  });
-  reconcileStatusFromCheckoutDiff({
-    activeCheckoutDiffSubscriptions: input.activeCheckoutDiffSubscriptions,
-    queryClient: input.queryClient,
-    serverId: input.serverId,
-    subscriptionId: input.message.payload.subscriptionId,
-    cwd: input.message.payload.cwd,
-    files: input.message.payload.files,
-    error: input.message.payload.error,
-  });
-}
-
-// The uncommitted-mode diff subscription is authoritative and live; checkout status is
-// push-only and can freeze stale (see reconcileCheckoutStatusWithUncommittedDiff). When a
-// diff payload for that subscription lands, use it to heal a stale-clean status so the
-// git-actions CTA doesn't vanish while real uncommitted changes exist.
-function reconcileStatusFromCheckoutDiff(input: {
-  activeCheckoutDiffSubscriptions: Map<string, CheckoutDiffRoute>;
-  queryClient: QueryClient;
-  serverId: string;
-  subscriptionId: string;
-  cwd: string;
-  files: CheckoutDiffResponsePayload["files"];
-  error: CheckoutDiffResponsePayload["error"];
-}): void {
-  if (input.error) {
-    return;
-  }
-  const route = input.activeCheckoutDiffSubscriptions.get(input.subscriptionId);
-  if (!route || route.compare.mode !== "uncommitted") {
-    return;
-  }
-  reconcileCheckoutStatusWithUncommittedDiff({
-    queryClient: input.queryClient,
-    serverId: input.serverId,
-    cwd: input.cwd,
-    diffHasUncommittedFiles: input.files.length > 0,
   });
 }
 
@@ -757,6 +722,7 @@ function setCheckoutDiffPayload(input: {
     ) {
       continue;
     }
+    query.setOptions({ ...query.options, structuralSharing: shareCheckoutDiff });
     input.queryClient.setQueryData<CheckoutDiffCachePayload>(query.queryKey, input.payload);
   }
 }

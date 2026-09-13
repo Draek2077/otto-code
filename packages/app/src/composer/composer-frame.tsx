@@ -1,10 +1,9 @@
 import type { ReactElement, ReactNode } from "react";
 import { View } from "react-native";
-import Animated from "react-native-reanimated";
+import { KeyboardTranslateView } from "@/components/keyboard-translate-view";
 import { StyleSheet } from "react-native-unistyles";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { FOOTER_HEIGHT } from "@/constants/layout";
-import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import type { Theme } from "@/styles/theme";
 
 interface ComposerFrameProps {
@@ -30,28 +29,25 @@ export function ComposerFrame({
   isLocked = false,
   externalKeyboardShift = false,
 }: ComposerFrameProps): ReactElement {
-  const { style: keyboardAnimatedStyle } = useKeyboardShiftStyle({
-    mode: "translate",
-    enabled: !externalKeyboardShift,
-  });
-
   return (
-    <Animated.View style={[styles.container, keyboardAnimatedStyle]}>
+    <KeyboardTranslateView style={styles.container} enabled={!externalKeyboardShift}>
       {renderOverlay?.()}
       <View style={[styles.inputAreaContainer, isLocked && styles.inputAreaLocked]}>
         <ChatWidthBounds style={styles.inputAreaContent}>{children}</ChatWidthBounds>
       </View>
       {footer}
-    </Animated.View>
+    </KeyboardTranslateView>
   );
 }
 
 const styles = StyleSheet.create((theme: Theme) => ({
   container: {
+    flexShrink: 1,
     flexDirection: "column",
     position: "relative",
   },
   inputAreaContainer: {
+    flexShrink: 1,
     alignItems: "center",
     marginHorizontal: "auto",
     minHeight: FOOTER_HEIGHT,
@@ -65,6 +61,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     opacity: 0.6,
   },
   inputAreaContent: {
+    flexShrink: 1,
     gap: theme.spacing[3],
     width: "100%",
   },

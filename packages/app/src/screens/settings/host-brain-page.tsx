@@ -1,3 +1,8 @@
+import {
+  SettingsTargetText,
+  SettingsTargetScope,
+  SettingsTargetLabel,
+} from "@/screens/settings-search/target";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -14,7 +19,8 @@ import { Button } from "@/components/ui/button";
 import { NumberStepperField } from "@/components/ui/number-stepper-field";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
+import { SettingsSelectField as SelectField } from "@/screens/settings-search/fields";
+import { type SelectFieldOption } from "@/components/ui/select-field";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SettingsSection } from "@/screens/settings/settings-section";
@@ -112,11 +118,16 @@ const CONNECTION_PRESENTATION: Record<
   unreachable: { label: "Unreachable", variant: "error" },
 };
 
-function BrainStatusDetailRow({ title, value }: { title: string; value: string }) {
+function BrainStatusDetailRow({ id, title, value }: { id: string; title: string; value: string }) {
   return (
     <View style={ROW_WITH_BORDER_STYLE}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetText
+          settingId={`host-brain-detected-brain-${id}`}
+          style={settingsStyles.rowTitle}
+        >
+          {title}
+        </SettingsTargetText>
       </View>
       <Text style={styles.detailValue} numberOfLines={1} selectable>
         {value}
@@ -156,7 +167,12 @@ function BrainConnectionStatusSection({ serverId }: { serverId: string }) {
       <View style={settingsStyles.card} testID="host-brain-detected-status-card">
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Connection</Text>
+            <SettingsTargetText
+              settingId="host-brain-detected-brain-connection"
+              style={settingsStyles.rowTitle}
+            >
+              Connection
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Confirms whether these settings reach the intended Brain server.
             </Text>
@@ -164,12 +180,22 @@ function BrainConnectionStatusSection({ serverId }: { serverId: string }) {
           <StatusBadge label={presentation.label} variant={presentation.variant} />
         </View>
         {details.map((detail) => (
-          <BrainStatusDetailRow key={detail.title} title={detail.title} value={detail.value} />
+          <BrainStatusDetailRow
+            key={detail.id}
+            id={detail.id}
+            title={detail.title}
+            value={detail.value}
+          />
         ))}
         {error ? (
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Last error</Text>
+              <SettingsTargetText
+                settingId="host-brain-detected-brain-last-error"
+                style={settingsStyles.rowTitle}
+              >
+                Last error
+              </SettingsTargetText>
               <Text style={styles.errorText}>{error}</Text>
             </View>
           </View>
@@ -223,7 +249,7 @@ function BrainTextRow({
   return (
     <View style={rowStyle}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
         {hint ? <Text style={settingsStyles.rowHint}>{hint}</Text> : null}
       </View>
       <ThemedTextInput
@@ -326,7 +352,7 @@ function ModelPickerRow({
     <View style={[rowStyle, styles.modelPickerRow]}>
       <View style={[settingsStyles.rowContent, styles.modelPickerCopy]}>
         <View style={styles.modelPickerTitleRow}>
-          <Text style={settingsStyles.rowTitle}>{title}</Text>
+          <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
           {tooltip ? (
             <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile>
               <TooltipTrigger asChild>
@@ -417,7 +443,12 @@ function ModelProcessLimitRow({
   return (
     <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Model processes</Text>
+        <SettingsTargetText
+          settingId="host-brain-server-model-processes"
+          style={settingsStyles.rowTitle}
+        >
+          Model processes
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
       <NumberStepperField
@@ -530,7 +561,12 @@ function TailscaleDiscoverRow({
   return (
     <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Auto-detect</Text>
+        <SettingsTargetText
+          settingId="host-brain-configuration-auto-detect"
+          style={settingsStyles.rowTitle}
+        >
+          Auto-detect
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           Discover this host&apos;s Tailscale name and certificate directory for you.
         </Text>
@@ -694,7 +730,12 @@ function BrainServerSection({ serverId }: { serverId: string }) {
         {remoteSupported ? (
           <View style={settingsStyles.rowResponsive}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Mode</Text>
+              <SettingsTargetText
+                settingId="host-brain-server-mode"
+                style={settingsStyles.rowTitle}
+              >
+                Mode
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 Run the brain on this host, or connect to one running on another Otto host.
               </Text>
@@ -711,7 +752,12 @@ function BrainServerSection({ serverId }: { serverId: string }) {
 
         <View style={remoteSupported ? ROW_WITH_BORDER_STYLE : settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Enable</Text>
+            <SettingsTargetText
+              settingId="host-brain-server-enable"
+              style={settingsStyles.rowTitle}
+            >
+              Enable
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               {isRemote
                 ? "Connect this host to a brain running on another Otto host. Its status, benchmarks, and models appear here."
@@ -737,18 +783,25 @@ function BrainServerSection({ serverId }: { serverId: string }) {
               onCommit={handleRemoteHost}
               testID="host-brain-remote-host-input"
             />
-            <BrainTextRow
-              title="Port"
-              value={String(brain.remote.port)}
-              placeholder="1234"
-              showBorder
-              numeric
-              onCommit={handleRemotePort}
-              testID="host-brain-remote-port-input"
-            />
+            <SettingsTargetScope settingIds={["host-brain-server-port"]}>
+              <BrainTextRow
+                title="Port"
+                value={String(brain.remote.port)}
+                placeholder="1234"
+                showBorder
+                numeric
+                onCommit={handleRemotePort}
+                testID="host-brain-remote-port-input"
+              />
+            </SettingsTargetScope>
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Use HTTPS</Text>
+                <SettingsTargetText
+                  settingId="host-brain-server-use-https"
+                  style={settingsStyles.rowTitle}
+                >
+                  Use HTTPS
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   Connect over TLS. Turn on if the remote brain serves HTTPS.
                 </Text>
@@ -761,32 +814,41 @@ function BrainServerSection({ serverId }: { serverId: string }) {
               />
             </View>
             {brain.remote.secure ? (
-              <BrainTextRow
-                title="Certificate fingerprint"
-                hint="SHA-256 fingerprint that pins the remote brain's self-signed certificate. Leave empty when the certificate is already trusted."
-                value={brain.remote.certFingerprint ?? ""}
-                placeholder="AB:12:CD:34:..."
-                showBorder
-                onCommit={handleRemoteFingerprint}
-                testID="host-brain-remote-fingerprint-input"
-              />
+              <SettingsTargetScope settingIds={["host-brain-server-certificate-fingerprint"]}>
+                <BrainTextRow
+                  title="Certificate fingerprint"
+                  hint="SHA-256 fingerprint that pins the remote brain's self-signed certificate. Leave empty when the certificate is already trusted."
+                  value={brain.remote.certFingerprint ?? ""}
+                  placeholder="AB:12:CD:34:..."
+                  showBorder
+                  onCommit={handleRemoteFingerprint}
+                  testID="host-brain-remote-fingerprint-input"
+                />
+              </SettingsTargetScope>
             ) : null}
-            <BrainTextRow
-              title="Auth token"
-              hint="Bearer token the remote brain requires, if any."
-              value={brain.remote.authToken ?? ""}
-              placeholder="Secret token"
-              showBorder
-              secure
-              onCommit={handleRemoteToken}
-              testID="host-brain-remote-token-input"
-            />
+            <SettingsTargetScope settingIds={["host-brain-server-auth-token"]}>
+              <BrainTextRow
+                title="Auth token"
+                hint="Bearer token the remote brain requires, if any."
+                value={brain.remote.authToken ?? ""}
+                placeholder="Secret token"
+                showBorder
+                secure
+                onCommit={handleRemoteToken}
+                testID="host-brain-remote-token-input"
+              />
+            </SettingsTargetScope>
           </>
         ) : (
           <>
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Start automatically</Text>
+                <SettingsTargetText
+                  settingId="host-brain-server-start-automatically"
+                  style={settingsStyles.rowTitle}
+                >
+                  Start automatically
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   Start the brain when the host daemon starts.
                 </Text>
@@ -801,48 +863,59 @@ function BrainServerSection({ serverId }: { serverId: string }) {
             {runtimeLogVerbositySupported ? (
               <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
                 <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>Runtime log verbosity</Text>
+                  <SettingsTargetText
+                    settingId="host-brain-server-runtime-log-verbosity"
+                    style={settingsStyles.rowTitle}
+                  >
+                    Runtime log verbosity
+                  </SettingsTargetText>
                   <Text style={settingsStyles.rowHint}>
                     Controls llama.cpp output in Brain Logs. Changing it restarts the loaded model.
                   </Text>
                 </View>
-                <SelectField<RuntimeLogVerbosity>
-                  field={false}
-                  size="sm"
-                  label="Runtime log verbosity"
-                  value={brain.runtime.logVerbosity}
-                  selectedDisplay={
-                    RUNTIME_LOG_VERBOSITY_SELECTED_DISPLAYS[brain.runtime.logVerbosity]
-                  }
-                  options={RUNTIME_LOG_VERBOSITY_OPTIONS}
-                  onChange={handleRuntimeLogVerbosity}
-                  placeholder="Info (3, default)"
-                  emptyText="No verbosity levels available"
-                  triggerStyle={styles.pickerTrigger}
-                  triggerTestID="host-brain-runtime-log-verbosity"
-                />
+                <SettingsTargetScope settingIds={["host-brain-server-runtime-log-verbosity"]}>
+                  <SelectField<RuntimeLogVerbosity>
+                    field={false}
+                    size="sm"
+                    label="Runtime log verbosity"
+                    value={brain.runtime.logVerbosity}
+                    selectedDisplay={
+                      RUNTIME_LOG_VERBOSITY_SELECTED_DISPLAYS[brain.runtime.logVerbosity]
+                    }
+                    options={RUNTIME_LOG_VERBOSITY_OPTIONS}
+                    onChange={handleRuntimeLogVerbosity}
+                    placeholder="Info (3, default)"
+                    emptyText="No verbosity levels available"
+                    triggerStyle={styles.pickerTrigger}
+                    triggerTestID="host-brain-runtime-log-verbosity"
+                  />
+                </SettingsTargetScope>
               </View>
             ) : null}
-            <BrainTextRow
-              title="Listen port"
-              hint="The port the brain serves on."
-              value={String(brain.listen.port)}
-              placeholder="1234"
-              showBorder
-              numeric
-              onCommit={handlePort}
-              testID="host-brain-listen-port-input"
-            />
-            <ModelPickerRow
-              serverId={serverId}
-              title="Default model"
-              tooltip="Choose a model to preload when Brain starts. Choose None to start with no model loaded; Brain loads a model when a request needs one."
-              value={brain.defaultModel}
-              onChange={handleDefaultModel}
-              includeNone
-              showBorder
-              triggerTestID="host-brain-default-model-picker"
-            />
+            <SettingsTargetScope settingIds={["host-brain-server-listen-port"]}>
+              <BrainTextRow
+                title="Listen port"
+                hint="The port the brain serves on."
+                value={String(brain.listen.port)}
+                placeholder="1234"
+                showBorder
+                numeric
+                onCommit={handlePort}
+                testID="host-brain-listen-port-input"
+              />
+            </SettingsTargetScope>
+            <SettingsTargetScope settingIds={["host-brain-server-default-model"]}>
+              <ModelPickerRow
+                serverId={serverId}
+                title="Default model"
+                tooltip="Choose a model to preload when Brain starts. Choose None to start with no model loaded; Brain loads a model when a request needs one."
+                value={brain.defaultModel}
+                onChange={handleDefaultModel}
+                includeNone
+                showBorder
+                triggerTestID="host-brain-default-model-picker"
+              />
+            </SettingsTargetScope>
             <ModelProcessLimitRow
               supported={processPoolSupported}
               value={brain.maxLoadedModels}
@@ -852,7 +925,12 @@ function BrainServerSection({ serverId }: { serverId: string }) {
             />
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Lock model</Text>
+                <SettingsTargetText
+                  settingId="host-brain-server-lock-model"
+                  style={settingsStyles.rowTitle}
+                >
+                  Lock model
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   Keep the selected model set resident. Requests for a different model are refused
                   instead of evicting one of the locked processes.
@@ -865,16 +943,18 @@ function BrainServerSection({ serverId }: { serverId: string }) {
                 testID="host-brain-lock-model-switch"
               />
             </View>
-            <LockedModelRows
-              supported={processPoolSupported}
-              locked={lockModel.value}
-              serverId={serverId}
-              maxLoadedModels={brain.maxLoadedModels}
-              lockedModels={brain.lockedModels}
-              defaultModel={brain.defaultModel}
-              onChange={handleLockedModel}
-              testIDPrefix="host-brain"
-            />
+            <SettingsTargetScope settingIds={["host-brain-server-locked-model"]}>
+              <LockedModelRows
+                supported={processPoolSupported}
+                locked={lockModel.value}
+                serverId={serverId}
+                maxLoadedModels={brain.maxLoadedModels}
+                lockedModels={brain.lockedModels}
+                defaultModel={brain.defaultModel}
+                onChange={handleLockedModel}
+                testIDPrefix="host-brain"
+              />
+            </SettingsTargetScope>
           </>
         )}
       </View>
@@ -968,7 +1048,12 @@ function HostBindPicker({
     <>
       <View style={settingsStyles.rowResponsive}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Listen host</Text>
+          <SettingsTargetText
+            settingId="host-brain-server-listen-host"
+            style={settingsStyles.rowTitle}
+          >
+            Listen host
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             Which network the brain accepts connections on: Local only keeps it on this machine,
             anything else exposes it to your network.
@@ -984,15 +1069,17 @@ function HostBindPicker({
         />
       </View>
       {selected === CUSTOM_BIND ? (
-        <BrainTextRow
-          title="Custom host"
-          hint="Interface or IP address to bind to."
-          value={value}
-          placeholder="127.0.0.1"
-          showBorder
-          onCommit={onChange}
-          testID="host-brain-listen-host-input"
-        />
+        <SettingsTargetScope settingIds={["host-brain-server-custom-host"]}>
+          <BrainTextRow
+            title="Custom host"
+            hint="Interface or IP address to bind to."
+            value={value}
+            placeholder="127.0.0.1"
+            showBorder
+            onCommit={onChange}
+            testID="host-brain-listen-host-input"
+          />
+        </SettingsTargetScope>
       ) : null}
     </>
   );
@@ -1085,7 +1172,12 @@ function BrainConfigSection({ serverId }: { serverId: string }) {
       <View style={settingsStyles.card} testID="host-brain-tls-card">
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>HTTPS</Text>
+            <SettingsTargetText
+              settingId="host-brain-security-https"
+              style={settingsStyles.rowTitle}
+            >
+              HTTPS
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Serve HTTPS on the port above instead of plain HTTP, using certificate files, a
               self-signed certificate, or a Tailscale certificate.
@@ -1102,22 +1194,26 @@ function BrainConfigSection({ serverId }: { serverId: string }) {
         </View>
         {tlsMode === "files" ? (
           <>
-            <BrainTextRow
-              title="Certificate file"
-              value={brain.tls.certFile ?? ""}
-              placeholder="/path/to/cert.pem"
-              showBorder
-              onCommit={handleCertFile}
-              testID="host-brain-tls-cert-file-input"
-            />
-            <BrainTextRow
-              title="Key file"
-              value={brain.tls.keyFile ?? ""}
-              placeholder="/path/to/key.pem"
-              showBorder
-              onCommit={handleKeyFile}
-              testID="host-brain-tls-key-file-input"
-            />
+            <SettingsTargetScope settingIds={["host-brain-security-certificate-file"]}>
+              <BrainTextRow
+                title="Certificate file"
+                value={brain.tls.certFile ?? ""}
+                placeholder="/path/to/cert.pem"
+                showBorder
+                onCommit={handleCertFile}
+                testID="host-brain-tls-cert-file-input"
+              />
+            </SettingsTargetScope>
+            <SettingsTargetScope settingIds={["host-brain-security-key-file"]}>
+              <BrainTextRow
+                title="Key file"
+                value={brain.tls.keyFile ?? ""}
+                placeholder="/path/to/key.pem"
+                showBorder
+                onCommit={handleKeyFile}
+                testID="host-brain-tls-key-file-input"
+              />
+            </SettingsTargetScope>
           </>
         ) : null}
         {tlsMode === "tailscale" ? (
@@ -1125,34 +1221,40 @@ function BrainConfigSection({ serverId }: { serverId: string }) {
         ) : null}
         {tlsMode === "self-signed" || tlsMode === "tailscale" ? (
           <>
-            <BrainTextRow
-              title="Hostname"
-              hint="Name the certificate is issued for."
-              value={brain.tls.hostname ?? ""}
-              placeholder="host.local"
-              showBorder
-              onCommit={handleHostname}
-              testID="host-brain-tls-hostname-input"
-            />
-            <BrainTextRow
-              title="Certificate directory"
-              hint="Where generated certificates are stored."
-              value={brain.tls.certDir ?? ""}
-              placeholder="/path/to/certs"
-              showBorder
-              onCommit={handleCertDir}
-              testID="host-brain-tls-cert-dir-input"
-            />
-            <BrainTextRow
-              title="Renew before (days)"
-              hint="Renew the certificate this many days before it expires."
-              value={String(brain.tls.renewBeforeDays)}
-              placeholder="30"
-              showBorder
-              numeric
-              onCommit={handleRenewBeforeDays}
-              testID="host-brain-tls-renew-input"
-            />
+            <SettingsTargetScope settingIds={["host-brain-security-hostname"]}>
+              <BrainTextRow
+                title="Hostname"
+                hint="Name the certificate is issued for."
+                value={brain.tls.hostname ?? ""}
+                placeholder="host.local"
+                showBorder
+                onCommit={handleHostname}
+                testID="host-brain-tls-hostname-input"
+              />
+            </SettingsTargetScope>
+            <SettingsTargetScope settingIds={["host-brain-security-certificate-directory"]}>
+              <BrainTextRow
+                title="Certificate directory"
+                hint="Where generated certificates are stored."
+                value={brain.tls.certDir ?? ""}
+                placeholder="/path/to/certs"
+                showBorder
+                onCommit={handleCertDir}
+                testID="host-brain-tls-cert-dir-input"
+              />
+            </SettingsTargetScope>
+            <SettingsTargetScope settingIds={["host-brain-security-renew-before-days"]}>
+              <BrainTextRow
+                title="Renew before (days)"
+                hint="Renew the certificate this many days before it expires."
+                value={String(brain.tls.renewBeforeDays)}
+                placeholder="30"
+                showBorder
+                numeric
+                onCommit={handleRenewBeforeDays}
+                testID="host-brain-tls-renew-input"
+              />
+            </SettingsTargetScope>
           </>
         ) : null}
       </View>
@@ -1263,7 +1365,12 @@ function BrainSharingSection({ serverId }: { serverId: string }) {
       <View style={settingsStyles.card} testID="host-brain-sharing-card">
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Share with other hosts</Text>
+            <SettingsTargetText
+              settingId="host-brain-sharing-share-with-other-hosts"
+              style={settingsStyles.rowTitle}
+            >
+              Share with other hosts
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Off keeps the brain on this machine only. On lets other Otto hosts reach it.
             </Text>
@@ -1281,7 +1388,12 @@ function BrainSharingSection({ serverId }: { serverId: string }) {
             <HostBindPicker serverId={serverId} value={brain.listen.host} onChange={handleHost} />
             <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Access</Text>
+                <SettingsTargetText
+                  settingId="host-brain-sharing-access"
+                  style={settingsStyles.rowTitle}
+                >
+                  Access
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   {access === "key"
                     ? "A key is required to connect."
@@ -1301,7 +1413,12 @@ function BrainSharingSection({ serverId }: { serverId: string }) {
               <>
                 <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
                   <View style={settingsStyles.rowContent}>
-                    <Text style={settingsStyles.rowTitle}>Access key</Text>
+                    <SettingsTargetText
+                      settingId="host-brain-sharing-access-key"
+                      style={settingsStyles.rowTitle}
+                    >
+                      Access key
+                    </SettingsTargetText>
                     <Text style={settingsStyles.rowHint}>
                       {brain.authToken ? "A key is set." : "No key yet - generate one."}
                     </Text>
@@ -1343,7 +1460,12 @@ function BrainSharingSection({ serverId }: { serverId: string }) {
 
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Allow reconfigure</Text>
+                <SettingsTargetText
+                  settingId="host-brain-sharing-allow-reconfigure"
+                  style={settingsStyles.rowTitle}
+                >
+                  Allow reconfigure
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   Let key holders change the model and lock over the network. Off means they can use
                   it but not reconfigure it.
@@ -1465,7 +1587,7 @@ function BrainRemoteConfigSection({ serverId }: { serverId: string }) {
   const messageRow = (title: string, hint: string) => (
     <View style={settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
     </View>
@@ -1485,16 +1607,18 @@ function BrainRemoteConfigSection({ serverId }: { serverId: string }) {
   } else {
     body = (
       <>
-        <ModelPickerRow
-          serverId={serverId}
-          title="Default model"
-          tooltip="Choose a model to preload when the remote Brain starts. Choose None to leave it unloaded until a request needs a model."
-          value={defaultModel}
-          onChange={handleDefaultModel}
-          includeNone
-          showBorder={false}
-          triggerTestID="host-brain-remote-default-model-picker"
-        />
+        <SettingsTargetScope settingIds={["host-brain-remote-configuration-default-model"]}>
+          <ModelPickerRow
+            serverId={serverId}
+            title="Default model"
+            tooltip="Choose a model to preload when the remote Brain starts. Choose None to leave it unloaded until a request needs a model."
+            value={defaultModel}
+            onChange={handleDefaultModel}
+            includeNone
+            showBorder={false}
+            triggerTestID="host-brain-remote-default-model-picker"
+          />
+        </SettingsTargetScope>
         <ModelProcessLimitRow
           supported={processPoolSupported}
           value={maxLoadedModels}
@@ -1504,7 +1628,12 @@ function BrainRemoteConfigSection({ serverId }: { serverId: string }) {
         />
         <View style={ROW_WITH_BORDER_STYLE}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Lock model</Text>
+            <SettingsTargetText
+              settingId="host-brain-remote-configuration-lock-model"
+              style={settingsStyles.rowTitle}
+            >
+              Lock model
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Serve only this model; refuse requests for a different one.
             </Text>
@@ -1516,16 +1645,18 @@ function BrainRemoteConfigSection({ serverId }: { serverId: string }) {
             testID="host-brain-remote-lock-model-switch"
           />
         </View>
-        <LockedModelRows
-          supported={processPoolSupported}
-          locked={lock.value}
-          serverId={serverId}
-          maxLoadedModels={maxLoadedModels}
-          lockedModels={lockedModels}
-          defaultModel={defaultModel}
-          onChange={handleLockedModel}
-          testIDPrefix="host-brain-remote"
-        />
+        <SettingsTargetScope settingIds={["host-brain-remote-configuration-locked-model"]}>
+          <LockedModelRows
+            supported={processPoolSupported}
+            locked={lock.value}
+            serverId={serverId}
+            maxLoadedModels={maxLoadedModels}
+            lockedModels={lockedModels}
+            defaultModel={defaultModel}
+            onChange={handleLockedModel}
+            testIDPrefix="host-brain-remote"
+          />
+        </SettingsTargetScope>
       </>
     );
   }

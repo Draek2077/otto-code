@@ -2,7 +2,7 @@ import { useMemo, useRef } from "react";
 import { useCheckoutDiffQuery } from "@/git/use-diff-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
-import { buildReviewDraftScopeKey, useResolvedDiffMode } from "@/review";
+import { useWorkingDiffComparison } from "@/git/working-diff-comparison";
 import { usePanelStore } from "@/stores/panel-store";
 
 const EMPTY_CHANGED_PATHS: ReadonlySet<string> = new Set<string>();
@@ -96,18 +96,12 @@ export function useChangedFilePaths({
   const hasUncommittedChanges = Boolean(gitStatus?.isDirty);
   const ignoreWhitespace = changesPreferences.hideWhitespace;
 
-  const scopeKey = useMemo(
-    () =>
-      buildReviewDraftScopeKey({
-        serverId,
-        workspaceId,
-        cwd,
-        baseRef,
-        ignoreWhitespace,
-      }),
-    [baseRef, cwd, ignoreWhitespace, serverId, workspaceId],
-  );
-  const diffMode = useResolvedDiffMode({ scopeKey, hasUncommittedChanges });
+  const { comparison: diffMode } = useWorkingDiffComparison({
+    serverId,
+    workspaceId,
+    cwd,
+    isDirty: hasUncommittedChanges,
+  });
 
   const { files } = useCheckoutDiffQuery({
     serverId,

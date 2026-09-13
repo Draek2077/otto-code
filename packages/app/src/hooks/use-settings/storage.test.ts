@@ -1647,3 +1647,93 @@ describe("parseClampedFontSize", () => {
     expect(parseClampedFontSize("abc", { min: 11, max: 24 })).toBeNull();
   });
 });
+
+describe("Paseo navigation intake with Otto preferences", () => {
+  it("retains independent diff destinations and the legacy PR side choice", async () => {
+    const result = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({
+            openInSidePane: { explorerChanges: true, changesLinks: false, pullRequests: true },
+          }),
+        }),
+      }),
+    );
+    expect(result.openInSidePane.explorerChanges).toBe(true);
+    expect(result.openInSidePane.changesLinks).toBe(false);
+    expect(result.openInSidePane.pullRequests).toBe(true);
+    expect(result.pullRequestOpenLocation).toBe("side");
+  });
+
+  it("keeps Otto defaults while accepting explicit Explorer placement", async () => {
+    const initial = await loadAppSettingsFromStorage(makeDeps());
+    expect(initial.pullRequestOpenLocation).toBe("main");
+    expect(initial.sidebarNavItems).toEqual([]);
+    expect(initial.uiFontSize).toBe(16);
+    expect(initial.contentFontSize).toBe(17);
+    expect(initial.sendBehavior).toBe("steer");
+    const saved = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({
+            pullRequestOpenLocation: "explorer",
+            contentFontSize: 15,
+          }),
+        }),
+      }),
+    );
+    expect(saved.pullRequestOpenLocation).toBe("explorer");
+    expect(saved.contentFontSize).toBe(15);
+  });
+
+  it("retains sidebar navigation order and visibility", async () => {
+    const sidebarNavItems = [
+      { key: "history", visible: false },
+      { key: "new-workspace", visible: true },
+    ];
+    const result = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ sidebarNavItems }),
+        }),
+      }),
+    );
+    expect(result.sidebarNavItems).toEqual(sidebarNavItems);
+    const malformed = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ sidebarNavItems: [{ key: 3 }] }),
+        }),
+      }),
+    );
+    expect(malformed.sidebarNavItems).toEqual([]);
+  });
+
+  it("applies consecutive functional updates against the current cached settings", async () => {
+    const deps = makeDeps();
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["app-settings"], DEFAULT_CLIENT_SETTINGS);
+    await Promise.all([
+      saveAppSettings({
+        queryClient,
+        deps,
+        updates: (current) => ({
+          sidebarNavItems: [...current.sidebarNavItems, { key: "history", visible: false }],
+        }),
+      }),
+      saveAppSettings({
+        queryClient,
+        deps,
+        updates: (current) => ({
+          sidebarNavItems: [...current.sidebarNavItems, { key: "search", visible: true }],
+        }),
+      }),
+    ]);
+    expect(queryClient.getQueryData(["app-settings"])).toMatchObject({
+      sidebarNavItems: [
+        { key: "history", visible: false },
+        { key: "search", visible: true },
+      ],
+    });
+  });
+});

@@ -178,6 +178,9 @@ function createFakeClient(config: { rejectCheckoutDiffSubscribe?: boolean } = {}
 
   return {
     client: {
+      async getProvidersSnapshot() {
+        throw new Error("Unexpected snapshot pull");
+      },
       on,
       async subscribeCheckoutDiff(cwd, compare, requestOptions) {
         subscribeCheckoutDiffCalls.push({
@@ -239,7 +242,78 @@ describe("server data push router", () => {
     vi.useRealTimers();
   });
 
-  it("routes provider snapshot and daemon config payloads until detached", () => {
+  it("retains equal diff files without reconstructing changed file bodies", () => {
+    const queryClient = new QueryClient();
+    const fake = createFakeClient();
+    const serverId = "diff-sharing";
+    const cwd = "/repo";
+    const queryKey = checkoutDiffQueryKey(serverId, cwd, "uncommitted", undefined, false);
+    const subscriptionId = "diff-sharing";
+    queryClient.getQueryCache().build(queryClient, {
+      queryKey,
+      queryFn: skipToken,
+      meta: checkoutDiffPushRoute({
+        enabled: false,
+        serverId,
+        cwd,
+        subscriptionId,
+        compare: { mode: "uncommitted" },
+      }),
+    });
+    const unmount = mountServerDataPushRouter({ queryClient, client: fake.client, serverId });
+    type Payload = SubscribeCheckoutDiffResponseMessage["payload"];
+    const files: Payload["files"] = ["a.ts", "b.ts"].map((path) => ({
+      path,
+      isNew: true,
+      isDeleted: false,
+      additions: 2,
+      deletions: 0,
+      hunks: [
+        {
+          oldStart: 0,
+          oldCount: 0,
+          newStart: 1,
+          newCount: 2,
+          lines: [
+            {
+              type: "add",
+              content: "const answer = 42",
+              tokens: [
+                { text: "const", style: "keyword" },
+                { text: " answer = 42", style: null },
+              ],
+            },
+            { type: "add", content: "answer", tokens: [{ text: "answer", style: null }] },
+          ],
+        },
+      ],
+    }));
+    const publish = (incomingFiles: Payload["files"], requestId: string) => {
+      fake.emit({
+        type: "subscribe_checkout_diff_response",
+        payload: { subscriptionId, cwd, files: incomingFiles, requestId, error: null },
+      });
+      return queryClient.getQueryData<Payload>(queryKey)!;
+    };
+    try {
+      const first = publish(files, "first");
+      const same = publish(structuredClone(files), "reopen");
+      expect(same.files).toBe(first.files);
+      expect(same.requestId).toBe("reopen");
+      const changed = structuredClone(files);
+      changed[0]!.hunks[0]!.lines[0]!.tokens![0]!.style = "variable";
+      const next = publish(changed, "edit");
+      expect(next.files[1]).toBe(first.files[1]);
+      expect(next.files[0]).toBe(changed[0]);
+      expect(next.files[0]!.hunks[0]!.lines[0]!.tokens![0]!.style).toBe("variable");
+      expect(publish([], "deleted").files).toEqual([]);
+    } finally {
+      unmount();
+      queryClient.clear();
+    }
+  });
+
+  it("routes provider snapshot and daemon config payloads until detached", async () => {
     const queryClient = new QueryClient();
     const fake = createFakeClient();
     const serverId = "server-1";
@@ -253,22 +327,26 @@ describe("server data push router", () => {
       payload: { status: "daemon_config_changed", config: daemonConfig },
     });
 
-    expect(queryClient.getQueryData(providersSnapshotQueryKey(serverId))).toEqual({
-      entries: [{ provider: "codex", status: "ready", enabled: true, models: [] }],
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      requestId: "providers_snapshot_update",
-    });
+    await expect
+      .poll(() => queryClient.getQueryData(providersSnapshotQueryKey(serverId)))
+      .toEqual({
+        entries: [{ provider: "codex", status: "ready", enabled: true, models: [] }],
+        generatedAt: "2026-01-01T00:00:00.000Z",
+        requestId: "providers_snapshot_update",
+      });
     expect(queryClient.getQueryData(daemonConfigQueryKey(serverId))).toEqual(daemonConfig);
     expect(queryClient.getQueryState(pairingOfferKey)?.isInvalidated).toBe(true);
 
     unmount();
     fake.emit(providerUpdate("2026-01-01T00:00:01.000Z"));
 
-    expect(queryClient.getQueryData(providersSnapshotQueryKey(serverId))).toEqual({
-      entries: [{ provider: "codex", status: "ready", enabled: true, models: [] }],
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      requestId: "providers_snapshot_update",
-    });
+    await expect
+      .poll(() => queryClient.getQueryData(providersSnapshotQueryKey(serverId)))
+      .toEqual({
+        entries: [{ provider: "codex", status: "ready", enabled: true, models: [] }],
+        generatedAt: "2026-01-01T00:00:00.000Z",
+        requestId: "providers_snapshot_update",
+      });
   });
 
   it("subscribes active checkout diff queries and writes matching diff events", () => {
@@ -394,7 +472,7 @@ describe("server data push router", () => {
     unmount();
   });
 
-  it("heals a stale-clean checkout status when an uncommitted diff push shows files", () => {
+  it("publishes uncommitted diff data without taking over checkout status ownership", () => {
     const queryClient = new QueryClient();
     const fake = createFakeClient();
     const serverId = "server-1";
@@ -433,7 +511,15 @@ describe("server data push router", () => {
       },
     });
 
-    expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryData(queryKey)).toMatchObject({
+      cwd,
+      files: [expect.objectContaining({ path: "a.ts", additions: 1 })],
+      error: null,
+    });
+    // Checkout status is published by its own subscription. The retired diff
+    // self-heal path must not add a second invalidation/request loop here.
+    expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(false);
+    expect(queryClient.getQueryData(statusKey)).toEqual({ cwd, isGit: true, isDirty: false });
 
     unsubscribeObserver();
     unmount();

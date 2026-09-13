@@ -37,10 +37,9 @@ export { buildDarkSemanticColors, buildLightSemanticColors } from "./theme-palet
 // conflicts in this file in favor of the Otto side - do not pull theme changes
 // from Paseo.
 //
-// Resolving THIS file to ours is only half the job. Anything that styles
-// against these tokens (control-geometry.ts, the ui/ components) has to be
-// resolved the same way, or upstream geometry ends up driving Otto's palette.
-// That is exactly what v0.2.5 did to the segmented control.
+// Otto palettes and control geometry define the product appearance.
+// Adopt upstream theme contracts here while keeping palette policy in its
+// owned module; compare visible behavior instead of preserving old workarounds.
 
 export const SPACING = {
   0: 0,

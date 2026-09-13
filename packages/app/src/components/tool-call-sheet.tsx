@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import { View } from "react-native";
-import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { BottomSheetScrollView, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import { SheetSurfaceModal } from "@/components/ui/sheet-chrome";
 import { SheetHeaderView } from "@/components/adaptive-modal-sheet";
@@ -17,6 +17,7 @@ import { ToolCallDetailsContent } from "./tool-call-details";
 // ----- Types -----
 
 export interface ToolCallSheetData {
+  toolName: string;
   displayName: string;
   summary?: string;
   detail?: ToolCallDetail;
@@ -117,16 +118,26 @@ interface ToolCallSheetContentProps {
 }
 
 function ToolCallSheetContent({ data, onClose }: ToolCallSheetContentProps) {
-  const { theme } = useUnistyles();
-  const { displayName, detail, errorText, icon: IconComponent, showLoadingSkeleton } = data;
+  const {
+    toolName,
+    displayName,
+    detail,
+    errorText,
+    icon: IconComponent,
+    showLoadingSkeleton,
+  } = data;
   // The shared sheet header, not a hand-built one. This sheet used to carry its own title size,
   // weight, indent and close button, which is most of what made it read as a different app.
+  const ThemedIcon = useMemo(
+    () => withUnistyles(IconComponent, (theme) => ({ color: theme.colors.foreground })),
+    [IconComponent],
+  );
   const header = useMemo(
     () => ({
       title: displayName,
-      leading: <IconComponent size={theme.iconSize.md} color={theme.colors.foreground} />,
+      leading: <ThemedIcon size="md" />,
     }),
-    [IconComponent, displayName, theme.colors.foreground, theme.iconSize.md],
+    [ThemedIcon, displayName],
   );
 
   return (
@@ -136,6 +147,7 @@ function ToolCallSheetContent({ data, onClose }: ToolCallSheetContentProps) {
       {/* Content */}
       <BottomSheetScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         <ToolCallDetailsContent
+          toolName={toolName}
           detail={detail}
           errorText={errorText}
           fillAvailableHeight

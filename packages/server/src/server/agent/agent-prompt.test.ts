@@ -14,7 +14,10 @@ import {
   sendPromptToAgent,
   setupFinishNotification,
   waitForAgentRunStartWithTimeout,
+  startAgentRun,
+  type AgentRunController,
 } from "./agent-prompt.js";
+import { StaleProviderSessionError } from "./stale-provider-session-error.js";
 import type { AgentManagerEvent, ManagedAgent } from "./agent-manager.js";
 import type {
   AgentClient,
@@ -59,16 +62,7 @@ function createFinishNotificationScenario(
   Reflect.set(callerAgent, "lifecycle", "idle");
   Reflect.set(callerAgent, "config", { title: "Caller Agent" });
 
-  const agentManager: AgentManager = Object.create(AgentManager.prototype);
-  // A prototype-only stub has no instance fields, so the real
-  // waitForAgentClose reads an undefined map. Agent loading awaits any
-  // in-flight close before touching an agent, so every path through here
-  // reaches it.
-  Reflect.set(
-    agentManager,
-    "waitForAgentClose",
-    vi.fn(async () => {}),
-  );
+  const agentManager = new AgentManager({ clients: {}, logger: createTestLogger() });
   Reflect.set(agentManager, "getAgent", (agentId: string) => {
     if (agentId === "child-agent") {
       return childAgent;
@@ -173,6 +167,66 @@ function createFinishNotificationScenario(
 test("isSystemInjectedEnvelope matches the envelope formatSystemNotificationPrompt produces", () => {
   expect(isSystemInjectedEnvelope(formatSystemNotificationPrompt("child finished"))).toBe(true);
   expect(isSystemInjectedEnvelope("hello world")).toBe(false);
+});
+
+test("one prompt shares a single stale-session recovery across dispatch and iterator failures", async () => {
+  const logger = createTestLogger();
+  let finishError!: () => void;
+  const loggedError = new Promise<void>((resolve) => {
+    finishError = resolve;
+  });
+  const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {
+    finishError();
+  });
+  const firstFailure = new StaleProviderSessionError("old-session");
+  const secondFailure = new StaleProviderSessionError("replacement-session");
+  let steerCalls = 0;
+  const reload = vi.fn(async () => undefined);
+  const stream = vi.fn(() =>
+    (async function* (): AsyncGenerator<AgentStreamEvent> {
+      yield await Promise.reject<AgentStreamEvent>(secondFailure);
+    })(),
+  );
+  const controller: AgentRunController = {
+    getAgent: () => null,
+    tryRunOutOfBand: () => false,
+    hasInFlightRun: () => false,
+    isBusyOnlyWithOutOfBandRun: () => false,
+    enqueueSteerMessage: () => ({ queued: false }),
+    replaceAgentRun: async () => {
+      throw new Error("No active run to replace");
+    },
+    steerOrReplaceActiveTurn: async () => {
+      steerCalls += 1;
+      if (steerCalls === 1) throw firstFailure;
+      return { status: "inactive" };
+    },
+    streamAgent: stream,
+    reloadAgentSession: reload,
+  };
+
+  try {
+    await expect(
+      startAgentRun(controller, "agent-1", "one prompt", logger, {
+        activeTurnBehavior: "steer",
+        runOptions: { clientMessageId: "message-once" },
+      }),
+    ).resolves.toEqual({ disposition: "turn_started" });
+    await loggedError;
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledWith("agent-1");
+    expect(steerCalls).toBe(2);
+    expect(stream).toHaveBeenCalledTimes(1);
+    expect(stream).toHaveBeenCalledWith("agent-1", "one prompt", {
+      clientMessageId: "message-once",
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      { err: secondFailure, agentId: "agent-1" },
+      "Agent stream failed",
+    );
+  } finally {
+    errorSpy.mockRestore();
+  }
 });
 
 test("sendPromptToAgent forwards the client message id as run options", async () => {
@@ -338,16 +392,7 @@ it("does not notify archived callers", async () => {
   const streamAgentSpy = vi.fn(() => (async function* noop() {})());
   const replaceAgentRunSpy = vi.fn(() => (async function* noop() {})());
 
-  const agentManager: AgentManager = Object.create(AgentManager.prototype);
-  // A prototype-only stub has no instance fields, so the real
-  // waitForAgentClose reads an undefined map. Agent loading awaits any
-  // in-flight close before touching an agent, so every path through here
-  // reaches it.
-  Reflect.set(
-    agentManager,
-    "waitForAgentClose",
-    vi.fn(async () => {}),
-  );
+  const agentManager = new AgentManager({ clients: {}, logger: createTestLogger() });
   Reflect.set(
     agentManager,
     "getAgent",

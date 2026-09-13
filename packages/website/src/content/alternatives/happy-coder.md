@@ -1,6 +1,6 @@
 ---
 title: Happy Coder Alternative With a Desktop App and Git Worktrees
-description: Otto ships a native desktop app, runs agents in isolated git worktrees, and supports 30+ agents. Happy Coder is mobile and web only, wraps the agent CLI, and supports Claude Code and Codex.
+description: Otto ships a native desktop app, runs agents in isolated git worktrees, and supports built-in and catalog providers. Happy Coder is mobile and web only, wraps the agent CLI, and supports Claude Code and Codex.
 nav: Happy Coder
 order: 53
 ---
@@ -48,7 +48,7 @@ Both tools ship a native Android app.
 
 ## Providers
 
-Otto runs Claude Code, Codex, OpenCode, and Pi natively, plus 30+ more agents through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/docs/supported-providers).
+Otto runs Claude Code, Codex, OpenCode, and Pi natively, plus additional agents through the catalog through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
 
 Happy Coder runs Claude Code and Codex.
 
@@ -80,20 +80,27 @@ Otto's speech-to-text and text-to-speech run locally on your device. Nothing lea
 
 ## Comparison
 
-|                              | Otto                                                            | Happy Coder            |
-| ---------------------------- | --------------------------------------------------------------- | ---------------------- |
-| License                      | Open source (AGPL-3.0)                                          | Open source (MIT)      |
-| Desktop app                  | macOS, Linux, Windows                                           | No                     |
-| Native mobile                | Android                                                         | Android                |
-| Architecture                 | Daemon owns agent lifecycle                                     | Wraps the agent CLI    |
-| Providers                    | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | Claude Code, Codex     |
-| Split panes and tabs         | Yes                                                             | No                     |
-| In-app terminal              | Yes                                                             | No                     |
-| In-app browser               | Yes                                                             | No                     |
-| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                        | No                     |
-| Git worktrees                | Yes                                                             | No                     |
-| Per-worktree dev server URLs | Yes                                                             | No                     |
-| CLI                          | Run, `--host`, ls, send, schedule, loop                         | Launch wrapped session |
-| Local voice (on-device)      | Yes                                                             | No                     |
+|                              | Otto                                                    | Happy Coder            |
+| ---------------------------- | ------------------------------------------------------- | ---------------------- |
+| License                      | Open source (AGPL-3.0)                                  | Open source (MIT)      |
+| Desktop app                  | macOS, Linux, Windows                                   | No                     |
+| Native mobile                | Android                                                 | Android                |
+| Architecture                 | Daemon owns agent lifecycle                             | Wraps the agent CLI    |
+| Providers                    | Claude Code, Codex, OpenCode, Pi + ACP catalog + custom | Claude Code, Codex     |
+| Split panes and tabs         | Yes                                                     | No                     |
+| In-app terminal              | Yes                                                     | No                     |
+| In-app browser               | Yes                                                     | No                     |
+| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                | No                     |
+| Git worktrees                | Yes                                                     | No                     |
+| Per-worktree dev server URLs | Yes                                                     | No                     |
+| CLI                          | Run, `--host`, ls, send, schedule, loop                 | Launch wrapped session |
+| Local voice (on-device)      | Yes                                                     | No                     |
 
 See also: [Otto vs Conductor](/alternatives/conductor), [Otto vs Superset](/alternatives/superset), [Otto vs OpenChamber](/alternatives/openchamber).
+
+## Application extensions
+
+[Otto plugins](/docs/plugins) extend the application through client and server APIs: providers,
+workspace panels, commands, settings, and chat components. Otto also retains its shared tools for
+cloud and local providers. Android builds and the web app are available from [Downloads](/download);
+this fork does not currently publish an iOS App Store build.

@@ -19,12 +19,25 @@ const SERVER = "host-1";
 const AGENT = "agent-1";
 
 function user(id: string): StreamItem {
-  return { kind: "user_message", id, text: id, timestamp: new Date(0) };
+  return {
+    kind: "user_message",
+    id,
+    text: id,
+    turnId: id === "u2" ? "turn2" : "turn1",
+    timestamp: new Date(0),
+  };
 }
 
-function assistant(groupId: string, blockIndex: number, text: string, live = false): StreamItem {
+function assistant(
+  groupId: string,
+  blockIndex: number,
+  text: string,
+  live = false,
+  turnId = "turn1",
+): StreamItem {
   return {
     kind: "assistant_message",
+    turnId,
     id: live ? `${groupId}:head` : `${groupId}:block:${blockIndex}`,
     text,
     timestamp: new Date(0),
@@ -33,10 +46,22 @@ function assistant(groupId: string, blockIndex: number, text: string, live = fal
   };
 }
 
-function setStatus(status: Agent["status"]): void {
+function setStatus(
+  status: Agent["status"],
+  turnId: string | null = status === "running" ? "turn1" : null,
+): void {
   useSessionStore.getState().setAgents(SERVER, (prev) => {
     const next = new Map(prev);
-    next.set(AGENT, { ...(next.get(AGENT) as Agent), id: AGENT, serverId: SERVER, status });
+    next.set(AGENT, {
+      ...(next.get(AGENT) as Agent),
+      id: AGENT,
+      serverId: SERVER,
+      status,
+      turn:
+        turnId === null
+          ? { phase: "idle", cancellationRequestId: null }
+          : { phase: "open", turnId, startedAt: new Date(0), cancellationRequestId: null },
+    });
     return next;
   });
 }
@@ -142,5 +167,70 @@ describe("ChatAutoSpeechSource", () => {
     });
 
     expect(spoken).toEqual(["still writing"]);
+  });
+
+  it("follows explicit turn liveness when status disagrees", async () => {
+    setStream({ tail: [user("u1")] });
+    setStatus("idle", "turn1");
+    mount();
+    await act(async () => {
+      setStream({ head: [assistant("g1", 0, "first"), assistant("g1", 1, "second", true)] });
+    });
+    expect(spoken).toEqual(["first"]);
+    await act(async () => {
+      setStatus("running", null);
+    });
+    expect(spoken).toEqual(["first", "second"]);
+  });
+
+  it("flushes the observed turn when the next turn opens without an intermediate idle snapshot", async () => {
+    setStream({ tail: [user("u1")] });
+    setStatus("running");
+    mount();
+    await act(async () => {
+      setStream({ head: [assistant("g1", 0, "last paragraph", true)] });
+    });
+    expect(spoken).toEqual([]);
+    await act(async () => {
+      setStream({ tail: [user("u1"), assistant("g1", 0, "last paragraph"), user("u2")], head: [] });
+      setStatus("running", "turn2");
+    });
+    expect(spoken).toEqual(["last paragraph"]);
+    await act(async () => {
+      setStream({ head: [assistant("g2", 0, "new reply", true, "turn2")] });
+      setStatus("idle");
+    });
+    expect(spoken).toEqual(["last paragraph", "new reply"]);
+  });
+
+  it("seeds a running reconnect snapshot before reading newly completed paragraphs", async () => {
+    setStatus("running");
+    mount();
+    await act(async () => {
+      setStream({
+        tail: [user("u1"), assistant("g1", 0, "before reconnect")],
+        head: [assistant("g1", 1, "still writing", true)],
+      });
+    });
+    expect(spoken).toEqual([]);
+    await act(async () => {
+      setStatus("idle");
+    });
+    expect(spoken).toEqual(["still writing"]);
+  });
+
+  it("does not read a finished reply again when a later submission only changes status", async () => {
+    setStream({ tail: [user("u1")] });
+    setStatus("running");
+    mount();
+    await act(async () => {
+      setStream({ head: [assistant("g1", 0, "finished reply", true)] });
+      setStatus("idle");
+    });
+    expect(spoken).toEqual(["finished reply"]);
+    await act(async () => {
+      setStatus("running", null);
+    });
+    expect(spoken).toEqual(["finished reply"]);
   });
 });

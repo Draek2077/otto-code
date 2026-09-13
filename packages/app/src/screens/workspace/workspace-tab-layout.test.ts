@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeWorkspaceTabLayout,
   computeWorkspaceTabRailWidth,
+  completeWorkspaceTabLabelWidths,
   retainWorkspaceTabMeasuredWidth,
 } from "@/screens/workspace/workspace-tab-layout";
 
@@ -12,13 +13,17 @@ const metrics = {
   tabGap: 4,
   minTabWidth: 96,
   maxTabWidth: 160,
+  tabIconWidth: 14,
+  tabContentGap: 4,
+  tabHorizontalPadding: 8,
+  closeButtonWidth: 0,
 };
 
 describe("computeWorkspaceTabLayout", () => {
-  it("grows every tab to the maximum width when the strip has ample space", () => {
+  it("keeps each tab at its natural content width when space is available", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1200,
-      tabCount: 3,
+      tabLabelWidths: [56, 70, 49],
       metrics,
     });
 
@@ -26,37 +31,37 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.requiresHorizontalScrollFallback).toBe(false);
     expect(result.items).toHaveLength(3);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
-    expect(result.items.map((item) => item.width)).toEqual([160, 160, 160]);
+    expect(result.items.map((item) => item.width)).toEqual([96, 104, 96]);
   });
 
-  it("clamps a single tab at the maximum width", () => {
+  it("sizes a single tab between the minimum and maximum from its content", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1200,
-      tabCount: 1,
+      tabLabelWidths: [105],
       metrics,
     });
 
     expect(result.requiresHorizontalScrollFallback).toBe(false);
-    expect(result.items.map((item) => item.width)).toEqual([160]);
+    expect(result.items.map((item) => item.width)).toEqual([139]);
   });
 
-  it("divides available space evenly without crossing the clickable minimum", () => {
+  it("shrinks natural widths proportionally without crossing the clickable minimum", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 460,
-      tabCount: 3,
+      tabLabelWidths: [168, 84, 56],
       metrics,
     });
 
     expect(result.closeButtonPolicy).toBe("all");
     expect(result.requiresHorizontalScrollFallback).toBe(false);
-    expect(result.items.map((item) => item.width)).toEqual([105, 105, 105]);
+    expect(result.items.map((item) => item.width)).toEqual([117, 103, 96]);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
   });
 
   it("caps long tabs at the maximum width", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1004,
-      tabCount: 4,
+      tabLabelWidths: [280, 280, 280, 280],
       metrics: {
         ...metrics,
         actionsReservedWidth: 44,
@@ -70,26 +75,10 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.items.map((item) => item.width)).toEqual([160, 160, 160, 160]);
   });
 
-  it("gives every tab more room as the available strip width grows", () => {
-    const narrow = computeWorkspaceTabLayout({
-      viewportWidth: 320,
-      tabCount: 2,
-      metrics,
-    });
-    const wide = computeWorkspaceTabLayout({
-      viewportWidth: 440,
-      tabCount: 2,
-      metrics,
-    });
-
-    expect(narrow.items.map((item) => item.width)).toEqual([96, 96]);
-    expect(wide.items.map((item) => item.width)).toEqual([150, 150]);
-  });
-
   it("keeps every tab at the clickable minimum at the exact fit boundary", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 532,
-      tabCount: 4,
+      tabLabelWidths: [98, 98, 98, 98],
       metrics,
     });
 
@@ -102,7 +91,7 @@ describe("computeWorkspaceTabLayout", () => {
   it("uses horizontal scroll rather than shrinking below the clickable minimum", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 531,
-      tabCount: 4,
+      tabLabelWidths: [98, 98, 98, 98],
       metrics,
     });
 
@@ -115,7 +104,7 @@ describe("computeWorkspaceTabLayout", () => {
   it("returns empty layout details when there are no tabs", () => {
     const result = computeWorkspaceTabLayout({
       viewportWidth: 1200,
-      tabCount: 0,
+      tabLabelWidths: [],
       metrics,
     });
 
@@ -124,14 +113,14 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.items).toEqual([]);
   });
 
-  it("gives every tab the same measured share", () => {
+  it("uses rendered label width rather than character count", () => {
     const result = computeWorkspaceTabLayout({
-      viewportWidth: 440,
-      tabCount: 2,
+      viewportWidth: 1200,
+      tabLabelWidths: [68, 104],
       metrics,
     });
 
-    expect(result.items.map((item) => item.width)).toEqual([150, 150]);
+    expect(result.items.map((item) => item.width)).toEqual([102, 138]);
   });
 });
 
@@ -189,5 +178,47 @@ describe("computeWorkspaceTabRailWidth", () => {
     });
 
     expect(width).toBe(120);
+  });
+});
+
+describe("resolved tab label measurement", () => {
+  it("replaces a loading fallback width only when the actual title has been measured", () => {
+    const loading = [{ key: "chat-1", label: "Agent", modified: false }];
+    const ready = [{ key: "chat-1", label: "Investigate native project routing", modified: false }];
+    const measurements = new Map([["chat-1", { label: "Agent", width: 30 }]]);
+    const fallbackWidths = completeWorkspaceTabLabelWidths(loading, measurements)!;
+    expect(completeWorkspaceTabLabelWidths(ready, measurements)).toBeNull();
+    measurements.set("chat-1", { label: ready[0]!.label, width: 180 });
+    const readyWidths = completeWorkspaceTabLabelWidths(ready, measurements)!;
+    const fallback = computeWorkspaceTabLayout({
+      viewportWidth: 1000,
+      tabLabelWidths: fallbackWidths,
+      metrics,
+    });
+    const resolved = computeWorkspaceTabLayout({
+      viewportWidth: 1000,
+      tabLabelWidths: readyWidths,
+      metrics,
+    });
+    expect(resolved.items[0]!.width).toBeGreaterThan(fallback.items[0]!.width);
+    expect(resolved.items[0]!.width).toBe(metrics.maxTabWidth);
+  });
+
+  it("waits for every new tab and reserves modified chrome without changing its label", () => {
+    const labels = [
+      { key: "a", label: "File.ts", modified: false },
+      { key: "b", label: "Other.ts", modified: false },
+    ];
+    const measurements = new Map([["a", { label: "File.ts", width: 40 }]]);
+    expect(completeWorkspaceTabLabelWidths(labels, measurements)).toBeNull();
+    measurements.set("b", { label: "Other.ts", width: 48 });
+    const clean = completeWorkspaceTabLabelWidths(labels, measurements)!;
+    const dirty = completeWorkspaceTabLabelWidths(
+      [{ ...labels[0]!, modified: true }, labels[1]!],
+      measurements,
+    )!;
+    expect(dirty[0]! - clean[0]!).toBe(12);
+    expect(dirty[1]).toBe(clean[1]);
+    expect(completeWorkspaceTabLabelWidths(labels, measurements)).toEqual(clean);
   });
 });

@@ -1,19 +1,26 @@
 // @vitest-environment jsdom
-// The review draft store persists through AsyncStorage's web shim, which needs window.
+// Query fixtures use the app window storage shim.
 import "@/test/window-local-storage";
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CheckoutStatusUpdate } from "@otto-code/protocol/messages";
-import { checkoutPrStatusQueryKey, checkoutStatusQueryKey } from "@/git/query-keys";
+import {
+  checkoutCommitsQueryKey,
+  checkoutPrStatusQueryKey,
+  checkoutStatusQueryKey,
+} from "@/git/query-keys";
 import { prPaneTimelineQueryKey } from "@/git/pull-request-panel/query-keys";
-import { resetReviewDraftStore, useReviewDraftStore } from "@/review/store";
+import {
+  resetWorkingDiffComparisons,
+  resolveWorkingDiffComparison,
+  selectWorkingDiffComparison,
+} from "@/git/working-diff-comparison";
 import {
   applyCheckoutStatusUpdateFromEvent,
   ensureCheckoutStatus,
   type CheckoutPrStatusPayload,
   type CheckoutStatusPayload,
   fetchCheckoutStatus,
-  reconcileCheckoutStatusWithUncommittedDiff,
 } from "./checkout-status-cache";
 
 const serverId = "server-1";
@@ -74,6 +81,7 @@ function prStatus(overrides: Partial<CheckoutPrStatusPayload> = {}): CheckoutPrS
       reviewDecision: null,
     },
     githubFeaturesEnabled: true,
+    authState: "authenticated",
     error: null,
     requestId: "pr-status-1",
     ...overrides,
@@ -95,10 +103,11 @@ function checkoutStatusUpdate(
   } as CheckoutStatusUpdate;
 }
 
-function setDiffModeOverride(isDirtyAtSelection: boolean): void {
-  useReviewDraftStore.getState().setDiffModeOverride({
-    scopeKey: "review:scope",
-    override: { serverId, cwd, mode: "base", isDirtyAtSelection },
+function selectBaseComparison(): void {
+  selectWorkingDiffComparison({
+    serverId,
+    cwd,
+    comparison: "base",
   });
 }
 
@@ -107,7 +116,7 @@ function createQueryClient(): QueryClient {
 }
 
 beforeEach(() => {
-  resetReviewDraftStore();
+  resetWorkingDiffComparisons();
 });
 
 describe("fetchCheckoutStatus", () => {
@@ -121,13 +130,14 @@ describe("fetchCheckoutStatus", () => {
     expect(client.getCheckoutStatus).toHaveBeenCalledExactlyOnceWith(cwd);
   });
 
-  it("preserves a manual diff-mode override when the fetched dirty state flipped", async () => {
-    setDiffModeOverride(true);
+  it("preserves a manual working-diff comparison when the fetched dirty state flipped", async () => {
+    selectBaseComparison();
     const client = { getCheckoutStatus: vi.fn(async () => checkoutStatus({ isDirty: false })) };
 
     await fetchCheckoutStatus({ client, serverId, cwd });
 
-    expect(useReviewDraftStore.getState().diffModeOverrides["review:scope"]).toBeDefined();
+    expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: false })).toBe("base");
+    expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: true })).toBe("base");
   });
 
   it("rejects a failed measurement instead of caching it as a non-git checkout", async () => {
@@ -223,6 +233,24 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
     );
   });
 
+  it("invalidates the commit query for Git publications, not PR-only notifications", () => {
+    const queryClient = createQueryClient();
+    const key = checkoutCommitsQueryKey(serverId, cwd);
+    queryClient.setQueryData(key, { entries: [] });
+    applyCheckoutStatusUpdateFromEvent({
+      queryClient,
+      serverId,
+      message: checkoutStatusUpdate(checkoutStatus(), prStatus(), { prStatusOnly: true }),
+    });
+    expect(queryClient.getQueryState(key)?.isInvalidated).toBe(false);
+    applyCheckoutStatusUpdateFromEvent({
+      queryClient,
+      serverId,
+      message: checkoutStatusUpdate(checkoutStatus({ aheadOfOrigin: 1 })),
+    });
+    expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+  });
+
   it("writes the PR status cache when prStatus is present, and skips it otherwise", () => {
     const queryClient = createQueryClient();
     const pushedPr = prStatus({ requestId: "pr-1" });
@@ -284,9 +312,9 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
     ).toMatchObject({ hosting: { provider: "github" }, forge: "github" });
   });
 
-  it("preserves a manual diff-mode override when the pushed dirty state flipped", () => {
+  it("preserves a manual working-diff comparison when the pushed dirty state flipped", () => {
     const queryClient = createQueryClient();
-    setDiffModeOverride(false);
+    selectBaseComparison();
 
     applyCheckoutStatusUpdateFromEvent({
       queryClient,
@@ -294,12 +322,12 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
       message: checkoutStatusUpdate(checkoutStatus({ isDirty: true })),
     });
 
-    expect(useReviewDraftStore.getState().diffModeOverrides["review:scope"]).toBeDefined();
+    expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: true })).toBe("base");
   });
 
-  it("keeps a manual diff-mode override while the pushed dirty state still matches", () => {
+  it("keeps a manual working-diff comparison while the pushed dirty state still matches", () => {
     const queryClient = createQueryClient();
-    setDiffModeOverride(true);
+    selectBaseComparison();
 
     applyCheckoutStatusUpdateFromEvent({
       queryClient,
@@ -307,7 +335,7 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
       message: checkoutStatusUpdate(checkoutStatus({ isDirty: true })),
     });
 
-    expect(useReviewDraftStore.getState().diffModeOverrides["review:scope"]).toBeDefined();
+    expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: true })).toBe("base");
   });
 
   it("invalidates the PR timeline when the prStatus changes, ignoring the volatile requestId", () => {
@@ -365,20 +393,6 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
     );
   });
 
-  it("drops a full push whose git state was measured before the cached one", () => {
-    const queryClient = createQueryClient();
-    const newer = checkoutStatus({ aheadOfOrigin: 1, gitStateAt: 200 });
-    queryClient.setQueryData(checkoutStatusQueryKey(serverId, cwd), newer);
-
-    applyCheckoutStatusUpdateFromEvent({
-      queryClient,
-      serverId,
-      message: checkoutStatusUpdate(checkoutStatus({ aheadOfOrigin: 0, gitStateAt: 100 })),
-    });
-
-    expect(queryClient.getQueryData(checkoutStatusQueryKey(serverId, cwd))).toEqual(newer);
-  });
-
   it("applies a full push whose git state is at least as new as the cached one", () => {
     const queryClient = createQueryClient();
     queryClient.setQueryData(
@@ -434,92 +448,5 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
 
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(otherTimelineKey)?.isInvalidated).toBe(false);
-  });
-});
-
-describe("reconcileCheckoutStatusWithUncommittedDiff", () => {
-  it("invalidates a stale-clean status when the uncommitted diff proves the tree is dirty", () => {
-    const queryClient = createQueryClient();
-    queryClient.setQueryData(
-      checkoutStatusQueryKey(serverId, cwd),
-      checkoutStatus({ isDirty: false }),
-    );
-
-    reconcileCheckoutStatusWithUncommittedDiff({
-      queryClient,
-      serverId,
-      cwd,
-      diffHasUncommittedFiles: true,
-    });
-
-    expect(queryClient.getQueryState(checkoutStatusQueryKey(serverId, cwd))?.isInvalidated).toBe(
-      true,
-    );
-  });
-
-  it("leaves an already-dirty status untouched", () => {
-    const queryClient = createQueryClient();
-    queryClient.setQueryData(
-      checkoutStatusQueryKey(serverId, cwd),
-      checkoutStatus({ isDirty: true }),
-    );
-
-    reconcileCheckoutStatusWithUncommittedDiff({
-      queryClient,
-      serverId,
-      cwd,
-      diffHasUncommittedFiles: true,
-    });
-
-    expect(queryClient.getQueryState(checkoutStatusQueryKey(serverId, cwd))?.isInvalidated).toBe(
-      false,
-    );
-  });
-
-  it("does not reconcile the reverse direction (empty diff) to avoid whitespace-filter churn", () => {
-    const queryClient = createQueryClient();
-    queryClient.setQueryData(
-      checkoutStatusQueryKey(serverId, cwd),
-      checkoutStatus({ isDirty: true }),
-    );
-
-    reconcileCheckoutStatusWithUncommittedDiff({
-      queryClient,
-      serverId,
-      cwd,
-      diffHasUncommittedFiles: false,
-    });
-
-    expect(queryClient.getQueryState(checkoutStatusQueryKey(serverId, cwd))?.isInvalidated).toBe(
-      false,
-    );
-  });
-
-  it("no-ops when the checkout is not git or has no cached status", () => {
-    const queryClient = createQueryClient();
-
-    // No cached status at all.
-    reconcileCheckoutStatusWithUncommittedDiff({
-      queryClient,
-      serverId,
-      cwd,
-      diffHasUncommittedFiles: true,
-    });
-    expect(queryClient.getQueryState(checkoutStatusQueryKey(serverId, cwd))).toBeUndefined();
-
-    // Cached status is a non-git checkout - isDirty is null, nothing to reconcile.
-    queryClient.setQueryData(
-      checkoutStatusQueryKey(serverId, cwd),
-      checkoutStatus({ isGit: false, isDirty: null, repoRoot: null, currentBranch: null }),
-    );
-    reconcileCheckoutStatusWithUncommittedDiff({
-      queryClient,
-      serverId,
-      cwd,
-      diffHasUncommittedFiles: true,
-    });
-    expect(queryClient.getQueryState(checkoutStatusQueryKey(serverId, cwd))?.isInvalidated).toBe(
-      false,
-    );
   });
 });

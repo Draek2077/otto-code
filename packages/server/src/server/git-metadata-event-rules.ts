@@ -1,3 +1,4 @@
+import { OTTO_GIT_METADATA_EVENT_RULES } from "./otto/git-metadata-event-rules.js";
 export type GitMetadataScope = "worktree" | "common";
 
 type GitMetadataEventRule = {
@@ -42,14 +43,7 @@ export const GIT_METADATA_EVENT_RULES = [
     route: "owner",
     refreshBase: true,
   },
-  {
-    id: "otto-worktree-metadata",
-    scope: "worktree",
-    match: "exact",
-    path: "otto/worktree.json",
-    route: "owner",
-    refreshBase: true,
-  },
+  ...OTTO_GIT_METADATA_EVENT_RULES,
   {
     id: "main-index",
     scope: "common",

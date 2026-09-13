@@ -50,7 +50,7 @@ import { useVoiceOptional, useVoiceAudioEngineOptional } from "@/contexts/voice-
 import { useToast } from "@/contexts/toast-context";
 import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
 import type { ComposerAttachment } from "@/attachments/types";
-import type { ImageAttachment, MessagePayload } from "@/composer/types";
+import type { ImageAttachment, MessagePayload, TextReplacement } from "@/composer/types";
 import { focusWithRetries } from "@/utils/web-focus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -73,6 +73,8 @@ import { isWeb } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { AutoSpeechButton } from "./auto-speech-button";
 import { useComposerHeightMirror } from "./height-mirror";
+import { ComposerTextInput } from "@/components/ui/text-input/composer-text-input";
+import type { NativePastedFile } from "@/composer/native-pasted-image";
 import { MIN_INPUT_HEIGHT, resolveMaxInputHeight } from "./max-height";
 import { resolveComposerInputMode, type ComposerInputMode } from "@/composer/input-mode";
 import {
@@ -139,6 +141,7 @@ export interface MessageInputProps {
   showAutoSpeechButton?: boolean;
   onAttachButtonRef?: (node: View | null) => void;
   onAddImages?: (images: ImageAttachment[]) => void;
+  onPasteImages?: (files: readonly NativePastedFile[]) => void;
   client: DaemonClient | null;
   /** Dictation start gate from host runtime (socket connected + directory ready). */
   isReadyForDictation?: boolean;
@@ -184,9 +187,6 @@ export interface MessageInputProps {
   onQueue?: (payload: MessagePayload) => void;
   /** Optional handler used when submit button is in loading state. */
   onSubmitLoadingPress?: () => void;
-  /** Changes when the draft's text is replaced programmatically. Used as a
-   *  remount key so a rewrite does not fight the caret. */
-  textReplacementKey?: string;
   /** Intercept key press events before default handling. Return true to prevent default. */
   onKeyPress?: (event: ComposerKeyPressEvent) => boolean;
   /** Reports cursor selection updates from the underlying input. */
@@ -207,6 +207,8 @@ export interface MessageInputProps {
   inputMode?: ComposerInputMode;
   /** Renders `value` as static text on the same surface, for content there is nothing to type into. */
   readOnly?: boolean;
+  /** Command issued when application state must replace native-owned text. */
+  textReplacement?: TextReplacement;
   /** Replaces the submit icon with this label, still inside the composer's own toolbar row. */
   submitLabel?: string;
 }
@@ -645,6 +647,9 @@ function MessageInputOverlay({
 }
 
 interface ComposerTextSurfaceProps {
+  onPasteImages?: (files: readonly NativePastedFile[]) => void;
+  onPasteError?: () => void;
+  pasteImagesEnabled: boolean;
   textReplacementKey: string | undefined;
   readOnly: boolean;
   value: string;
@@ -783,6 +788,9 @@ function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElemen
         {...({ dataSet: COMPOSER_INPUT_DATASET } as Record<string, unknown>)}
         value={props.value}
         onChangeText={props.onChangeText}
+        onPasteImages={props.onPasteImages}
+        onPasteError={props.onPasteError}
+        pasteImagesEnabled={props.pasteImagesEnabled}
         placeholder={placeholder}
         uniProps={textInputPlaceholderColorMapping}
         accessibilityLabel={props.accessibilityLabel}
@@ -1284,7 +1292,7 @@ interface ResolvedMessageInputProps {
   attachmentSlot: React.ReactNode;
   inputMode: ComposerInputMode;
   readOnly: boolean;
-  textReplacementKey: string | undefined;
+  textReplacement?: TextReplacement;
   submitLabel: string | undefined;
 }
 
@@ -1339,7 +1347,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     attachmentSlot: props.attachmentSlot,
     inputMode: props.inputMode ?? "chat",
     readOnly: props.readOnly ?? false,
-    textReplacementKey: props.textReplacementKey,
+    textReplacement: props.textReplacement,
     submitLabel: props.submitLabel,
   };
 }
@@ -1348,6 +1356,17 @@ function extractErrorMessage(error: unknown): string | null {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
   return null;
+}
+
+function composerEditingState(input: {
+  isConnected: boolean;
+  disabled: boolean;
+  isDictating: boolean;
+  isRealtimeVoiceForCurrentAgent: boolean;
+  showAttachments: boolean;
+}) {
+  const editable = !input.isDictating && !input.isRealtimeVoiceForCurrentAgent && !input.disabled;
+  return { editable, pasteImagesEnabled: input.isConnected && editable && input.showAttachments };
 }
 
 export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
@@ -1402,9 +1421,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       attachmentSlot,
       inputMode,
       readOnly,
-      textReplacementKey,
+      textReplacement,
       submitLabel,
     } = resolveMessageInputProps(props);
+    // Otto remounts the native input on explicit replacements so stale native
+    // events cannot overwrite a rewrite. Ordinary controlled typing keeps its caret.
+    const textReplacementKey = textReplacement?.key;
     const mode = resolveComposerInputMode(inputMode);
     const { t } = useTranslation();
     const isCompact = useIsCompactFormFactor();
@@ -2184,6 +2206,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       [isDictating, isRealtimeVoiceForCurrentAgent, voice?.isMuted, buttonIconSize],
     );
 
+    const editingState = composerEditingState({
+      isConnected,
+      disabled,
+      isDictating,
+      isRealtimeVoiceForCurrentAgent,
+      showAttachments: mode.showAttachments,
+    });
+
     return (
       <View ref={rootMergedRef} style={styles.container} testID="message-input-root">
         {/* Regular input */}
@@ -2191,6 +2221,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           {attachmentSlot}
           {/* Text input */}
           <ComposerTextSurface
+            onPasteImages={props.onPasteImages}
+            onPasteError={props.onPasteImages ? handlePasteImageError : undefined}
+            pasteImagesEnabled={editingState.pasteImagesEnabled}
             textReplacementKey={textReplacementKey}
             readOnly={readOnly}
             value={value}
@@ -2203,7 +2236,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             onChangeText={handleInputChange}
             onFocus={handleInputFocus}
             onBlur={handleInputBlur}
-            editable={!isDictating && !isRealtimeVoiceForCurrentAgent && !disabled}
+            editable={editingState.editable}
             scrollEnabled={isWeb ? inputHeight >= maxInputHeight : true}
             autoFocus={isWeb && autoFocus}
             onContentSizeChange={handleContentSizeChange}
@@ -2308,9 +2341,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
 const styles = StyleSheet.create((theme: Theme) => ({
   container: {
+    flexShrink: 1,
     position: "relative",
   },
   inputWrapper: {
+    flexShrink: 1,
     flexDirection: "column",
     gap: theme.spacing[1],
     backgroundColor: theme.colors.surface1,
@@ -2339,6 +2374,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     borderStyle: "dotted",
   },
   textInputScrollWrapper: {
+    flexShrink: 1,
     position: "relative",
   },
   shortcutDiscoveryAnchor: {
@@ -2360,6 +2396,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
     zIndex: 1,
   },
   textInput: {
+    // Preserve the controls when an ancestor constrains an overlong draft.
+    flexShrink: 1,
     width: "100%",
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
@@ -2381,6 +2419,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     color: theme.colors.foregroundMuted,
   },
   buttonRow: {
+    flexShrink: 0,
     marginHorizontal: -6,
     marginBottom: -6,
     overflow: "hidden",
@@ -2497,7 +2536,7 @@ const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedCornerDownLeft = withUnistyles(CornerDownLeft);
 const ThemedSplit = withUnistyles(Split);
 const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
-const ThemedTextInput = withUnistyles(TextInput);
+const ThemedTextInput = withUnistyles(ComposerTextInput);
 
 const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });

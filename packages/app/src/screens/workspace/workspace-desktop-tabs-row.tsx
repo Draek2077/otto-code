@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -70,7 +71,19 @@ import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useNonClientHover } from "@/hooks/use-non-client-hover";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
-import { TAB_MAX_WIDTH, TAB_MIN_WIDTH } from "@/screens/workspace/workspace-tab-layout";
+import {
+  TAB_MAX_WIDTH,
+  TAB_MIN_WIDTH,
+  TAB_ICON_WIDTH,
+  TAB_HORIZONTAL_PADDING,
+  TAB_CONTENT_GAP,
+  TAB_CLOSE_BUTTON_WIDTH,
+  retainWorkspaceTabMeasuredWidth,
+  completeWorkspaceTabLabelWidths,
+  TAB_MODIFIED_DOT_SIZE,
+  type WorkspaceTabLabel,
+  type WorkspaceTabLabelMeasurement,
+} from "@/screens/workspace/workspace-tab-layout";
 import { useHostFeature } from "@/runtime/host-features";
 import {
   WorkspaceTabPresentationResolver,
@@ -98,6 +111,7 @@ import { useWorkspace } from "@/stores/session-store-hooks";
 import { useBrowserStore } from "@/desktop/browser/store";
 import { ArtifactOpenMenu } from "@/components/artifacts/artifact-open-menu";
 import { panelTargetSupportsHost } from "@/plugins/workspace-panels/locations";
+import { useCompactTimeAgo } from "@/hooks/use-compact-time-ago";
 import {
   computeVisibleTabCount,
   reorderTabIntoVisible,
@@ -135,6 +149,7 @@ const ORIENTATION_TOGGLE_RESERVED_WIDTH = SMALL_TOOL_WIDTH + 8;
 // the strip. Reserved out of the tab-layout budget only while tabs are hidden,
 // so the visible chips never render underneath it.
 const TAB_OVERFLOW_CONTROL_WIDTH = 40;
+const AGENT_TOOLTIP_TITLE_MAX_LENGTH = 80;
 
 const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
 const ThemedX = withUnistyles(X);
@@ -178,9 +193,87 @@ function tabOverflowButtonStyle({ hovered, pressed }: PressableStateCallbackType
   return [styles.tabOverflowButton, (hovered || pressed) && styles.newTabActionButtonHovered];
 }
 
-function updateMeasuredWidth(setWidth: Dispatch<SetStateAction<number>>, event: LayoutChangeEvent) {
+function updateMeasuredWidth(
+  setWidth: React.Dispatch<React.SetStateAction<number>>,
+  event: LayoutChangeEvent,
+) {
   const nextWidth = Math.round(event.nativeEvent.layout.width);
-  setWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+  setWidth((current) => retainWorkspaceTabMeasuredWidth(current, nextWidth));
+}
+
+function normalizeAgentTooltipTitle(title: string): string {
+  return title.replace(/\s+/g, " ").trim();
+}
+
+function formatAgentTooltipTitle(singleLineTitle: string): string {
+  if (singleLineTitle.length <= AGENT_TOOLTIP_TITLE_MAX_LENGTH) return singleLineTitle;
+  return `${singleLineTitle.slice(0, AGENT_TOOLTIP_TITLE_MAX_LENGTH - 1).trimEnd()}…`;
+}
+
+function formatAgentTooltipActivity(compactActivity: string): string {
+  if (compactActivity === "now") return "just now";
+  if (/^\d/.test(compactActivity)) return `${compactActivity} ago`;
+  return compactActivity;
+}
+
+function AgentTabTooltipBody({
+  serverId,
+  agentId,
+  title,
+}: {
+  serverId: string;
+  agentId: string;
+  title: string;
+}) {
+  const lastActivityAt = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    const agent = session?.agents.get(agentId) ?? session?.agentDetails.get(agentId) ?? null;
+    return state.agentLastActivity.get(agentId) ?? agent?.lastActivityAt ?? null;
+  });
+  const compactActivity = useCompactTimeAgo(lastActivityAt);
+  const activity = formatAgentTooltipActivity(compactActivity);
+
+  return (
+    <View style={styles.tooltipAgentContent}>
+      <Text style={styles.agentTooltipTitle} numberOfLines={1} ellipsizeMode="tail">
+        {title}
+      </Text>
+      <View style={styles.tooltipAgentMetadata}>
+        <Text style={styles.tooltipAgentId}>{agentId.slice(0, 7)}</Text>
+        {activity ? (
+          <>
+            <Text style={styles.tooltipAgentSeparator}>·</Text>
+            <Text style={styles.tooltipAgentActivity}>{activity}</Text>
+          </>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function TabLabelMeasurement({
+  tabKey,
+  label,
+  onMeasure,
+}: {
+  tabKey: string;
+  label: string;
+  onMeasure: (tabKey: string, label: string, event: LayoutChangeEvent) => void;
+}) {
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => onMeasure(tabKey, label, event),
+    [label, onMeasure, tabKey],
+  );
+
+  return (
+    <Text
+      style={[styles.tabLabel, styles.tabLabelMeasurement]}
+      numberOfLines={1}
+      onLayout={handleLayout}
+    >
+      {label}
+    </Text>
+  );
 }
 
 export interface WorkspaceTabRowExtrasProps {
@@ -652,6 +745,7 @@ export function usePaneTabAgentFacts({
 }
 
 export interface WorkspaceDesktopTabRowItem {
+  presentation?: WorkspaceTabPresentation;
   tab: WorkspaceTabDescriptor;
   isActive: boolean;
   isCloseHovered: boolean;
@@ -713,6 +807,25 @@ export function TabOrientationToggleButton({
   );
 }
 
+interface ResolvedWorkspaceDesktopTabRowItem extends WorkspaceDesktopTabRowItem {
+  presentation: WorkspaceTabPresentation;
+}
+
+interface WorkspaceTabTrackSnapshot {
+  signature: string;
+  tabs: ResolvedWorkspaceDesktopTabRowItem[];
+  labels: WorkspaceTabLabel[];
+  labelWidths: number[];
+}
+
+function workspaceTabLabelSignature(labels: WorkspaceTabLabel[]): string {
+  return JSON.stringify(labels);
+}
+
+function sameWidths(left: number[], right: number[]): boolean {
+  return left.length === right.length && left.every((width, index) => width === right[index]);
+}
+
 interface WorkspaceDesktopTabsRowProps {
   paneId?: string;
   isFocused?: boolean;
@@ -766,6 +879,49 @@ interface WorkspaceDesktopTabsRowProps {
    * split-container's `windowControlsInset`.
    */
   windowControlsInset?: { left: number; right: number };
+}
+
+interface WorkspaceDesktopTabPresentationSlotProps {
+  tab: WorkspaceTabDescriptor;
+  serverId: string;
+  workspaceId: string;
+  onResolve: (tabKey: string, presentation: WorkspaceTabPresentation) => void;
+}
+
+const EMPTY_RESOLVED_TAB_ROWS: ResolvedWorkspaceDesktopTabRowItem[] = [];
+
+function WorkspaceDesktopTabPresentationSlot({
+  tab,
+  serverId,
+  workspaceId,
+  onResolve,
+}: WorkspaceDesktopTabPresentationSlotProps) {
+  return (
+    <WorkspaceTabPresentationResolver tab={tab} serverId={serverId} workspaceId={workspaceId}>
+      {(presentation) => (
+        <WorkspaceDesktopTabPresentationCommit
+          tabKey={tab.key}
+          presentation={presentation}
+          onResolve={onResolve}
+        />
+      )}
+    </WorkspaceTabPresentationResolver>
+  );
+}
+
+function WorkspaceDesktopTabPresentationCommit({
+  tabKey,
+  presentation,
+  onResolve,
+}: {
+  tabKey: string;
+  presentation: WorkspaceTabPresentation;
+  onResolve: (tabKey: string, presentation: WorkspaceTabPresentation) => void;
+}) {
+  useLayoutEffect(() => {
+    onResolve(tabKey, presentation);
+  }, [onResolve, presentation, tabKey]);
+  return null;
 }
 
 export function getFallbackTabLabel(
@@ -860,6 +1016,7 @@ function TabHandleContent({
     [presentation.statusBucket],
   );
 
+  const { t } = useTranslation();
   return (
     <View style={styles.tabHandle} dataSet={tabHandleDataSet}>
       <View style={styles.tabIcon}>
@@ -877,6 +1034,13 @@ function TabHandleContent({
         <Text style={tabLabelStyle} selectable={false} numberOfLines={1} ellipsizeMode="tail">
           {presentation.label}
         </Text>
+      ) : null}
+      {presentation.modified ? (
+        <View
+          style={styles.tabModifiedDot}
+          accessibilityLabel={t("workspace.tabs.modified")}
+          testID={`workspace-tab-modified-${presentation.key}`}
+        />
       ) : null}
     </View>
   );
@@ -974,7 +1138,43 @@ function TabCloseButtonContents({
   );
 }
 
+function WorkspaceTabTooltip({
+  tab,
+  serverId,
+  tooltipLabel,
+  tabShortcutKeys,
+}: {
+  tab: WorkspaceTabDescriptor;
+  serverId: string;
+  tooltipLabel: string;
+  tabShortcutKeys: ReturnType<typeof useShortcutKeys>;
+}) {
+  return (
+    <TooltipContent
+      side="bottom"
+      align="center"
+      offset={8}
+      maxWidth={720}
+      testID={`workspace-tab-tooltip-${tab.target.kind === "agent" ? tab.target.agentId : tab.tabId}`}
+    >
+      {tab.target.kind === "agent" ? (
+        <AgentTabTooltipBody
+          serverId={serverId}
+          agentId={tab.target.agentId}
+          title={tooltipLabel}
+        />
+      ) : (
+        <View style={styles.newTabTooltipRow}>
+          <Text style={styles.newTabTooltipText}>{tooltipLabel}</Text>
+          {tabShortcutKeys ? <Shortcut chord={tabShortcutKeys} /> : null}
+        </View>
+      )}
+    </TooltipContent>
+  );
+}
+
 function TabChip({
+  serverId,
   tab,
   isActive,
   isDragging,
@@ -987,6 +1187,7 @@ function TabChip({
   isClosingTab,
   presentation,
   tooltipLabel,
+  accessibilityLabel,
   resolvedTab,
   setHoveredCloseTabKey,
   onNavigateTab,
@@ -994,6 +1195,7 @@ function TabChip({
   dragHandleProps,
   orientation = "horizontal",
 }: {
+  serverId: string;
   tab: WorkspaceTabDescriptor;
   isActive: boolean;
   isDragging: boolean;
@@ -1006,6 +1208,7 @@ function TabChip({
   isClosingTab: boolean;
   presentation: WorkspaceTabPresentation;
   tooltipLabel: string;
+  accessibilityLabel: string;
   resolvedTab: WorkspaceDesktopTabActions;
   setHoveredCloseTabKey: Dispatch<SetStateAction<string | null>>;
   onNavigateTab: (tabId: string) => void;
@@ -1161,7 +1364,7 @@ function TabChip({
               onPressIn={handleNavigateTab}
               onPress={handleNavigateTab}
               accessibilityRole="button"
-              accessibilityLabel={tooltipLabel}
+              accessibilityLabel={accessibilityLabel}
               accessibilityState={tabAccessibilityState}
               aria-selected={isActive}
             >
@@ -1216,12 +1419,12 @@ function TabChip({
               ) : null}
             </ContextMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <View style={styles.newTabTooltipRow}>
-              <Text style={styles.newTabTooltipText}>{tooltipLabel}</Text>
-              {tabShortcutKeys ? <Shortcut chord={tabShortcutKeys} /> : null}
-            </View>
-          </TooltipContent>
+          <WorkspaceTabTooltip
+            tab={tab}
+            serverId={serverId}
+            tooltipLabel={tooltipLabel}
+            tabShortcutKeys={tabShortcutKeys}
+          />
         </Tooltip>
 
         <ContextMenuContent align="start" width={DROPDOWN_WIDTH} testID={contextMenuTestId}>
@@ -1442,8 +1645,67 @@ function useWorkspaceTabOverflow({
   };
 }
 
+export function WorkspaceDesktopTabsRow(props: WorkspaceDesktopTabsRowProps) {
+  const [presentations, setPresentations] = useState(
+    () => new Map<string, WorkspaceTabPresentation>(),
+  );
+  const handlePresentation = useCallback(
+    (tabKey: string, presentation: WorkspaceTabPresentation) => {
+      setPresentations((current) => {
+        if (current.get(tabKey) === presentation) {
+          return current;
+        }
+        const next = new Map(current);
+        next.set(tabKey, presentation);
+        return next;
+      });
+    },
+    [],
+  );
+  const currentTabKeys = useMemo(
+    () => new Set(props.tabs.map((item) => item.tab.key)),
+    [props.tabs],
+  );
+  useEffect(() => {
+    setPresentations((current) => {
+      const removedKeys = [...current.keys()].filter((key) => !currentTabKeys.has(key));
+      if (removedKeys.length === 0) {
+        return current;
+      }
+      const next = new Map(current);
+      for (const key of removedKeys) {
+        next.delete(key);
+      }
+      return next;
+    });
+  }, [currentTabKeys]);
+  const resolvedTabs = useMemo(
+    () =>
+      props.tabs.flatMap((item) => {
+        const presentation = presentations.get(item.tab.key);
+        return presentation ? [{ ...item, presentation }] : [];
+      }),
+    [presentations, props.tabs],
+  );
+
+  return (
+    <>
+      <ResolvedWorkspaceDesktopTabsRow {...props} tabs={resolvedTabs} />
+      {props.tabs.map(({ tab }) => (
+        <WorkspaceDesktopTabPresentationSlot
+          key={`${tab.key}:${tab.kind}`}
+          tab={tab}
+          serverId={props.normalizedServerId}
+          workspaceId={props.normalizedWorkspaceId}
+          onResolve={handlePresentation}
+        />
+      ))}
+    </>
+  );
+}
+
 // oxlint-disable-next-line complexity
-export function WorkspaceDesktopTabsRow({
+function ResolvedWorkspaceDesktopTabsRow({
   paneId,
   isFocused = false,
   tabs,
@@ -1486,7 +1748,7 @@ export function WorkspaceDesktopTabsRow({
   tabOrientation,
   onToggleTabOrientation,
   windowControlsInset,
-}: WorkspaceDesktopTabsRowProps) {
+}: Omit<WorkspaceDesktopTabsRowProps, "tabs"> & { tabs: ResolvedWorkspaceDesktopTabRowItem[] }) {
   const { t } = useTranslation();
   const router = useRouter();
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
@@ -1529,12 +1791,116 @@ export function WorkspaceDesktopTabsRow({
     updateMeasuredWidth(setTabsActionsWidth, event);
   }, []);
 
+  const [labelMeasurements, setLabelMeasurements] = useState(
+    () => new Map<string, WorkspaceTabLabelMeasurement>(),
+  );
+  const [trackSnapshot, setTrackSnapshot] = useState<WorkspaceTabTrackSnapshot | null>(null);
+  const fallbackTabLabels = useMemo(
+    () => ({
+      newTab: t("workspace.tabs.actions.newTab"),
+      newAgent: t("workspace.tabs.fallback.newAgent"),
+      setup: t("workspace.tabs.fallback.setup"),
+      terminal: t("workspace.tabs.fallback.terminal"),
+      agent: t("workspace.tabs.fallback.agent"),
+      changes: t("panels.diff.changesLabel"),
+      files: t("panels.files.label"),
+      pullRequest: t("panels.pullRequest.label"),
+    }),
+    [t],
+  );
+  const tabLabels = useMemo(
+    () =>
+      tabs.map((tab) => {
+        const label =
+          tab.presentation.titleState === "loading"
+            ? getFallbackTabLabel(tab.tab, fallbackTabLabels)
+            : tab.presentation.label;
+        return { key: tab.tab.key, label, modified: tab.presentation.modified };
+      }),
+    [fallbackTabLabels, tabs],
+  );
+  const tabLabelSignature = useMemo(() => workspaceTabLabelSignature(tabLabels), [tabLabels]);
+  const currentTabLabelKeys = useMemo(() => new Set(tabLabels.map(({ key }) => key)), [tabLabels]);
+  useEffect(() => {
+    setLabelMeasurements((current) => {
+      const removedKeys = [...current.keys()].filter((key) => !currentTabLabelKeys.has(key));
+      if (removedKeys.length === 0) {
+        return current;
+      }
+      const next = new Map(current);
+      for (const key of removedKeys) {
+        next.delete(key);
+      }
+      return next;
+    });
+  }, [currentTabLabelKeys]);
+  const publishMeasuredTrack = useCallback(() => {
+    if (tabsContainerWidth <= 0) {
+      return;
+    }
+    const labelWidths = completeWorkspaceTabLabelWidths(tabLabels, labelMeasurements);
+    if (!labelWidths) {
+      return;
+    }
+
+    setTrackSnapshot((current) => {
+      if (
+        current?.signature === tabLabelSignature &&
+        sameWidths(current.labelWidths, labelWidths)
+      ) {
+        return current;
+      }
+      return {
+        signature: tabLabelSignature,
+        tabs,
+        labels: tabLabels,
+        labelWidths,
+      };
+    });
+  }, [labelMeasurements, tabLabelSignature, tabLabels, tabs, tabsContainerWidth]);
+
+  useLayoutEffect(() => {
+    publishMeasuredTrack();
+  }, [publishMeasuredTrack]);
+
+  const handleTabLabelLayout = useCallback(
+    (key: string, label: string, event: LayoutChangeEvent) => {
+      const width = Math.ceil(event.nativeEvent.layout.width);
+      if (width <= 0) {
+        return;
+      }
+      setLabelMeasurements((current) => {
+        const measurement = current.get(key);
+        if (measurement?.label === label && measurement.width === width) {
+          return current;
+        }
+        const next = new Map(current);
+        next.set(key, { label, width });
+        return next;
+      });
+    },
+    [],
+  );
+
+  const displayedTabs = useMemo(() => {
+    if (!trackSnapshot) {
+      return EMPTY_RESOLVED_TAB_ROWS;
+    }
+    const currentTabs = new Map(
+      tabs.map((tab, index) => [tab.tab.key, { tab, label: tabLabels[index]?.label }]),
+    );
+    return trackSnapshot.tabs.map((snapshotTab, index) => {
+      const current = currentTabs.get(snapshotTab.tab.key);
+      return current?.label === trackSnapshot.labels[index]?.label ? current.tab : snapshotTab;
+    });
+  }, [tabLabels, tabs, trackSnapshot]);
+
   // The active tab remains visible (see splitTabsForOverflow); the full list
   // still drives pane facts and select-to-swap reordering. Visible chips retain
   // their readable labelled minimum; excess tabs belong in the overflow menu.
   const { visibleTabs, hiddenTabs, overflowReservedWidth, handleSelectHiddenTab } =
     useWorkspaceTabOverflow({
-      tabs,
+      tabs: displayedTabs,
       focusedTab,
       contentWidth,
       toolsStripWidth: tabsActionsWidth,
@@ -1557,6 +1923,10 @@ export function WorkspaceDesktopTabsRow({
       tabGap: 0,
       minTabWidth: TAB_MIN_WIDTH,
       maxTabWidth: TAB_MAX_WIDTH,
+      tabIconWidth: TAB_ICON_WIDTH,
+      tabContentGap: TAB_CONTENT_GAP,
+      tabHorizontalPadding: TAB_HORIZONTAL_PADDING,
+      closeButtonWidth: TAB_CLOSE_BUTTON_WIDTH,
     }),
     [overflowReservedWidth, tabsActionsWidth],
   );
@@ -1592,8 +1962,15 @@ export function WorkspaceDesktopTabsRow({
       normalizedServerId,
     });
 
+  const visibleLabelWidths = useMemo(() => {
+    const byKey = new Map(
+      trackSnapshot?.labels.map((label, index) => [label.key, trackSnapshot.labelWidths[index]]) ??
+        [],
+    );
+    return visibleTabs.map(({ tab }) => byKey.get(tab.key) ?? 0);
+  }, [trackSnapshot, visibleTabs]);
   const { layout } = useWorkspaceTabLayout({
-    tabCount: visibleTabs.length,
+    tabLabelWidths: visibleLabelWidths,
     viewportWidthOverride: contentWidth > 0 ? contentWidth : null,
     metrics: layoutMetrics,
   });
@@ -1751,6 +2128,21 @@ export function WorkspaceDesktopTabsRow({
       onPointerEnter={handleRowPointerEnter}
       onPointerLeave={handleRowPointerLeave}
     >
+      <View
+        style={styles.tabLabelMeasurements}
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
+        {tabLabels.map(({ key, label }) => (
+          <TabLabelMeasurement
+            key={`${key}:${label}`}
+            tabKey={key}
+            label={label}
+            onMeasure={handleTabLabelLayout}
+          />
+        ))}
+      </View>
       <View style={styles.tabsBottomHairline} pointerEvents="none" />
       <View style={ORIENTATION_TOGGLE_SLOT_STYLE}>
         <TabOrientationToggleButton
@@ -1947,61 +2339,72 @@ export function ResolvedDesktopTabChip({
     ],
   );
 
-  return (
+  const renderPresentation = (presentation: WorkspaceTabPresentation) => {
+    const rawTooltipLabel =
+      presentation.titleState === "loading" ? t("common.states.loading") : presentation.tooltip;
+    const accessibilityLabel =
+      item.tab.target.kind === "agent"
+        ? normalizeAgentTooltipTitle(rawTooltipLabel)
+        : rawTooltipLabel;
+    const tooltipLabel =
+      item.tab.target.kind === "agent"
+        ? formatAgentTooltipTitle(accessibilityLabel)
+        : rawTooltipLabel;
+
+    return (
+      <View style={styles.tabSlot}>
+        {showDropIndicatorBefore ? (
+          <View
+            style={
+              orientation === "vertical"
+                ? TAB_DROP_INDICATOR_ABOVE_STYLE
+                : TAB_DROP_INDICATOR_BEFORE_STYLE
+            }
+          />
+        ) : null}
+        <TabChip
+          serverId={normalizedServerId}
+          accessibilityLabel={accessibilityLabel}
+          tab={item.tab}
+          isActive={item.isActive}
+          isDragging={isDragging}
+          isFocused={isFocused}
+          shortcutIndex={isFocused && index < 9 ? index + 1 : null}
+          resolvedTabWidth={resolvedTabWidth}
+          showLabel={showLabel}
+          showCloseButton={showCloseButton}
+          isCloseHovered={item.isCloseHovered}
+          isClosingTab={item.isClosingTab}
+          presentation={presentation}
+          tooltipLabel={tooltipLabel}
+          resolvedTab={resolvedTab}
+          setHoveredCloseTabKey={setHoveredCloseTabKey}
+          onNavigateTab={onNavigateTab}
+          onCloseTab={onCloseTab}
+          dragHandleProps={dragHandleProps}
+          orientation={orientation}
+        />
+        {showDropIndicatorAfter ? (
+          <View
+            style={
+              orientation === "vertical"
+                ? TAB_DROP_INDICATOR_BELOW_STYLE
+                : TAB_DROP_INDICATOR_AFTER_STYLE
+            }
+          />
+        ) : null}
+      </View>
+    );
+  };
+  return item.presentation ? (
+    renderPresentation(item.presentation)
+  ) : (
     <WorkspaceTabPresentationResolver
       tab={item.tab}
       serverId={normalizedServerId}
       workspaceId={normalizedWorkspaceId}
     >
-      {(presentation) => {
-        const tooltipLabel =
-          presentation.titleState === "loading"
-            ? t("workspace.tabs.loadingAgentTitle")
-            : presentation.label;
-
-        return (
-          <View style={styles.tabSlot}>
-            {showDropIndicatorBefore ? (
-              <View
-                style={
-                  orientation === "vertical"
-                    ? TAB_DROP_INDICATOR_ABOVE_STYLE
-                    : TAB_DROP_INDICATOR_BEFORE_STYLE
-                }
-              />
-            ) : null}
-            <TabChip
-              tab={item.tab}
-              isActive={item.isActive}
-              isDragging={isDragging}
-              isFocused={isFocused}
-              shortcutIndex={isFocused && index < 9 ? index + 1 : null}
-              resolvedTabWidth={resolvedTabWidth}
-              showLabel={showLabel}
-              showCloseButton={showCloseButton}
-              isCloseHovered={item.isCloseHovered}
-              isClosingTab={item.isClosingTab}
-              presentation={presentation}
-              tooltipLabel={tooltipLabel}
-              resolvedTab={resolvedTab}
-              setHoveredCloseTabKey={setHoveredCloseTabKey}
-              onNavigateTab={onNavigateTab}
-              onCloseTab={onCloseTab}
-              dragHandleProps={dragHandleProps}
-              orientation={orientation}
-            />
-            {showDropIndicatorAfter ? (
-              <View
-                style={
-                  orientation === "vertical"
-                    ? TAB_DROP_INDICATOR_BELOW_STYLE
-                    : TAB_DROP_INDICATOR_AFTER_STYLE
-                }
-              />
-            ) : null}
-          </View>
-        );
-      }}
+      {renderPresentation}
     </WorkspaceTabPresentationResolver>
   );
 }
@@ -2366,6 +2769,24 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
     userSelect: "none",
   },
+  tabLabelMeasurements: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    opacity: 0,
+    alignItems: "flex-start",
+    pointerEvents: "none",
+  },
+  tabLabelMeasurement: {
+    flexShrink: 0,
+  },
+  tabModifiedDot: {
+    width: TAB_MODIFIED_DOT_SIZE,
+    height: TAB_MODIFIED_DOT_SIZE,
+    borderRadius: 4,
+    backgroundColor: theme.colors.foregroundMuted,
+    flexShrink: 0,
+  },
   tabLabelSkeleton: {
     width: 96,
     maxWidth: "100%",
@@ -2465,12 +2886,33 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
   },
-  newTabTooltipRow: {
+  newTabTooltipRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing[1] },
+  tooltipAgentContent: {
+    gap: theme.spacing[0.5],
+    maxWidth: 420,
+  },
+  agentTooltipTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+  },
+  tooltipAgentMetadata: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
+    gap: theme.spacing[1],
   },
   newTabTooltipShortcut: {},
+  tooltipAgentId: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  tooltipAgentSeparator: {
+    color: theme.colors.foregroundExtraMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  tooltipAgentActivity: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
   menuItemHint: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,

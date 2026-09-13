@@ -14,6 +14,13 @@ category: Getting started
 Projects built by the Otto community. These **aren't official Otto projects** and aren't covered by Otto's support, but they're useful starting points, especially for self-hosting. Review the code before running anything that touches your machine or your agents.
 These projects are related to Otto and built by the community.
 
+## Plugin directory
+
+[paseo.cafe](https://paseo.cafe) is a community-run directory of Paseo plugins. Listings are generated
+from each plugin's public repository, so it is the fastest way to see what people are building and to
+publish your own. It is independent of the Paseo project and nothing on it is reviewed or endorsed by
+us, so read a plugin's source before installing it.
+
 ## Tools and integrations
 
 | Project                                                                                    | What it does                                                                                                                         |

@@ -7,7 +7,7 @@ import {
 } from "@/screens/workspace/workspace-tab-layout";
 
 interface UseWorkspaceTabLayoutInput {
-  tabCount: number;
+  tabLabelWidths: number[];
   viewportWidthOverride?: number | null;
   metrics: WorkspaceTabLayoutMetrics;
 }
@@ -29,10 +29,10 @@ export function useWorkspaceTabLayout(
     () =>
       computeWorkspaceTabLayout({
         viewportWidth: resolvedViewportWidth,
-        tabCount: input.tabCount,
+        tabLabelWidths: input.tabLabelWidths,
         metrics: input.metrics,
       }),
-    [input.metrics, input.tabCount, resolvedViewportWidth],
+    [input.metrics, input.tabLabelWidths, resolvedViewportWidth],
   );
 
   return {

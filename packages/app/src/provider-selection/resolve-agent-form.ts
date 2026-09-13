@@ -1,5 +1,5 @@
 import type { AgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
-import { parseEffortLevel, resolveEffortOption } from "@otto-code/protocol/effort";
+import { resolveOttoThinkingFallback } from "./otto-model-selection-policy";
 import type {
   AgentModelDefinition,
   AgentProvider,
@@ -14,30 +14,24 @@ import { coerceModeForModel, findModelDefinition } from "./mode-support";
 import { findModelByReference } from "./model-catalog";
 
 export interface FormInitialValues {
-  serverId?: string | null;
   provider?: AgentProvider;
   modeId?: string | null;
   model?: string | null;
   thinkingOptionId?: string | null;
-  workingDir?: string;
 }
 
 export interface FormState {
-  serverId: string | null;
   provider: AgentProvider | null;
   modeId: string;
   model: string;
   thinkingOptionId: string;
-  workingDir: string;
 }
 
 export interface UserModifiedFields {
-  serverId: boolean;
   provider: boolean;
   modeId: boolean;
   model: boolean;
   thinkingOptionId: boolean;
-  workingDir: boolean;
 }
 
 export type ProviderModelsByProvider = Map<AgentProvider, AgentModelDefinition[] | null>;
@@ -48,15 +42,18 @@ export interface AgentFormReducerState {
   form: FormState;
   userModified: UserModifiedFields;
   resolution: AgentFormResolutionState;
+  inputs?: {
+    serverId: string | null;
+    initialValues: FormInitialValues | undefined;
+    active: boolean;
+  };
 }
 
 export const INITIAL_USER_MODIFIED: UserModifiedFields = {
-  serverId: false,
   provider: false,
   modeId: false,
   model: false,
   thinkingOptionId: false,
-  workingDir: false,
 };
 
 export const PENDING_AGENT_FORM_RESOLUTION: AgentFormResolutionState = { status: "pending" };
@@ -70,7 +67,21 @@ export const RESOLVABLE_PROVIDER_STATUSES = new Set<ProviderSnapshotEntry["statu
 ]);
 export const SELECTABLE_PROVIDER_STATUSES = new Set<ProviderSnapshotEntry["status"]>(["ready"]);
 
+interface AgentFormInputs {
+  type: "INPUTS_CHANGED";
+  serverId: string | null;
+  isVisible: boolean;
+  isCreateFlow: boolean;
+  isPreferencesLoading: boolean;
+  hasSnapshot: boolean;
+  initialValues: FormInitialValues | undefined;
+  preferences: FormPreferences | null;
+  providerModelsByProvider: ProviderModelsByProvider;
+  allowedProviderMap: Map<AgentProvider, AgentProviderDefinition>;
+}
+
 export type AgentFormAction =
+  | AgentFormInputs
   | { type: "REQUEST_RESOLUTION" }
   | {
       type: "COMPLETE_RESOLUTION";
@@ -79,8 +90,6 @@ export type AgentFormAction =
       providerModelsByProvider: ProviderModelsByProvider;
       allowedProviderMap: Map<AgentProvider, AgentProviderDefinition>;
     }
-  | { type: "SET_SERVER_ID"; value: string | null }
-  | { type: "SET_SERVER_ID_FROM_USER"; value: string | null }
   | {
       type: "SET_PROVIDER_FROM_USER";
       provider: AgentProvider;
@@ -111,13 +120,10 @@ export type AgentFormAction =
       type: "SET_MODEL_FROM_USER";
       modelId: string;
       availableModels: AgentModelDefinition[] | null;
-      preferredThinkingOptionId?: string;
+      providerPrefs?: ProviderPrefs;
     }
   | { type: "CLEAR_PROVIDER_SELECTION_FROM_USER" }
   | { type: "SET_THINKING_OPTION_FROM_USER"; thinkingOptionId: string }
-  | { type: "SET_WORKING_DIR"; value: string }
-  | { type: "SET_WORKING_DIR_FROM_USER"; value: string }
-  | { type: "AUTO_SELECT_SERVER"; candidateServerId: string }
   | { type: "RESET" };
 
 type CompleteResolutionAction = Extract<AgentFormAction, { type: "COMPLETE_RESOLUTION" }>;
@@ -152,12 +158,22 @@ export function resolveEffectiveModel(
   modelId: string,
 ): AgentModelDefinition | null {
   if (!availableModels || availableModels.length === 0) return null;
-  const normalizedModelId = modelId.trim();
-  if (!normalizedModelId) return null;
-  return (
-    availableModels.find((model) => model.id === normalizedModelId) ??
-    resolveDefaultModel(availableModels)
-  );
+  if (!normalizeSelectedModelId(modelId)) return null;
+  return findModelByReference(availableModels, modelId) ?? null;
+}
+
+function resolvePreferredThinkingOptionId(input: {
+  availableModels: AgentModelDefinition[] | null;
+  providerPrefs: ProviderPrefs | undefined;
+  modelId: string;
+}): string {
+  const model = findModelByReference(input.availableModels, input.modelId);
+  const modelReferences = model ? [model.id, ...(model.aliases ?? [])] : [input.modelId];
+  for (const modelReference of modelReferences) {
+    const thinkingOptionId = input.providerPrefs?.thinkingByModel?.[modelReference]?.trim();
+    if (thinkingOptionId) return thinkingOptionId;
+  }
+  return "";
 }
 
 export function resolveThinkingOptionId(args: {
@@ -177,36 +193,11 @@ export function resolveThinkingOptionId(args: {
     return normalizedThinkingOptionId;
   }
 
-  if (normalizedThinkingOptionId) {
-    // A toggle model has no canonical low/medium/high scale. Any remembered
-    // non-Off canonical effort means the user wants reasoning enabled.
-    const requestedLevel = parseEffortLevel(normalizedThinkingOptionId);
-    if (
-      requestedLevel !== null &&
-      requestedLevel !== "off" &&
-      thinkingOptions.some((option) => option.id === "on")
-    ) {
-      return "on";
-    }
-    try {
-      return resolveEffortOption({
-        requested: normalizedThinkingOptionId,
-        thinkingOptions,
-      }).optionId;
-    } catch {
-      // Fully custom option ids can only be restored by exact id; fall through
-      // to the model's honest default when a remembered value is unavailable.
-    }
-  }
-  // `ultracode` is an opt-in Claude workflow, not a normal effort level. A
-  // provider snapshot may advertise it as its default, but letting that become
-  // a fresh form's implicit value launches a different workflow without any
-  // user choice. Exact explicit selections returned above remain valid.
-  const advertisedDefault = effectiveModel?.defaultThinkingOptionId;
-  if (advertisedDefault && advertisedDefault.toLowerCase() !== "ultracode") {
-    return advertisedDefault;
-  }
-  return thinkingOptions.find((option) => option.id.toLowerCase() !== "ultracode")?.id ?? "";
+  return resolveOttoThinkingFallback({
+    requestedThinkingOptionId: normalizedThinkingOptionId,
+    thinkingOptions,
+    defaultThinkingOptionId: effectiveModel?.defaultThinkingOptionId,
+  });
 }
 
 const normalizeSelectedModeId = normalizeSelectedModelId;
@@ -244,36 +235,12 @@ export function mergeSelectedComposerPreferences(args: {
   });
 }
 
-export function combineInitialValues(
-  initialValues: FormInitialValues | undefined,
-  initialServerId: string | null,
-): FormInitialValues | undefined {
-  const hasExplicitServerId = initialValues?.serverId !== undefined;
-  const serverIdFromOptions = initialServerId === null ? undefined : initialServerId;
-
-  if (!initialValues && !hasExplicitServerId && serverIdFromOptions === undefined) {
-    return undefined;
-  }
-
-  if (hasExplicitServerId) {
-    return { ...initialValues, serverId: initialValues?.serverId };
-  }
-
-  if (serverIdFromOptions !== undefined) {
-    return { ...initialValues, serverId: serverIdFromOptions };
-  }
-
-  return initialValues;
-}
-
 export function hasFormStateChanged(prev: FormState, next: FormState): boolean {
   return (
-    prev.serverId !== next.serverId ||
     prev.provider !== next.provider ||
     prev.modeId !== next.modeId ||
     prev.model !== next.model ||
-    prev.thinkingOptionId !== next.thinkingOptionId ||
-    prev.workingDir !== next.workingDir
+    prev.thinkingOptionId !== next.thinkingOptionId
   );
 }
 
@@ -310,29 +277,11 @@ function resolveProvider(input: {
   userModified: boolean;
   initialValues: FormInitialValues | undefined;
   preferences: FormPreferences | null;
-  allowedProviderMap: Map<AgentProvider, AgentProviderDefinition>;
 }): AgentProvider | null {
-  const { currentProvider, userModified, initialValues, preferences, allowedProviderMap } = input;
-  if (userModified) {
-    if (
-      currentProvider &&
-      allowedProviderMap.size > 0 &&
-      !allowedProviderMap.has(currentProvider)
-    ) {
-      return null;
-    }
-    return currentProvider;
-  }
-  if (initialValues?.provider && allowedProviderMap.has(initialValues.provider)) {
-    return initialValues.provider;
-  }
-  if (preferences?.provider && allowedProviderMap.has(preferences.provider)) {
-    return preferences.provider;
-  }
-  if (currentProvider && allowedProviderMap.size > 0 && !allowedProviderMap.has(currentProvider)) {
-    return null;
-  }
-  return currentProvider;
+  const { currentProvider, userModified, initialValues, preferences } = input;
+  // Discovery readiness does not change the user's saved or explicit choice.
+  if (userModified) return currentProvider;
+  return initialValues?.provider ?? preferences?.provider ?? currentProvider;
 }
 
 function resolveModeId(input: {
@@ -368,23 +317,29 @@ function resolveModelField(input: {
   if (!provider) return "";
   const initialModel = normalizeSelectedModelId(initialValues?.model);
   const preferredModel = normalizeSelectedModelId(providerPrefs?.model);
-  const defaultModelId = resolveDefaultModelId(availableModels);
+  // COMPAT(default-model-id): added in v0.7.2, remove after 2026-12-06.
+  // Older drafts used "default" before providers exposed concrete model IDs.
+  if ((initialModel || preferredModel) === "default" && availableModels?.length) {
+    return (
+      findModelByReference(availableModels, "default")?.id || resolveDefaultModelId(availableModels)
+    );
+  }
   if (initialModel) {
     return !availableModels
       ? initialModel
-      : (findModelByReference(availableModels, initialModel)?.id ?? defaultModelId);
+      : resolveCanonicalModelId(availableModels, initialModel) || initialModel;
   }
   if (preferredModel) {
     return !availableModels
       ? preferredModel
-      : (findModelByReference(availableModels, preferredModel)?.id ?? defaultModelId);
+      : resolveCanonicalModelId(availableModels, preferredModel) || preferredModel;
   }
   // The provider's own default, materialized into state rather than painted in
   // at label time. It used to return "" here and let resolveSelectedModelLabel
   // display the default anyway, so the picker showed a model the form did not
   // actually hold - the last tier of the ladder has to be a real value or
   // "what you see" and "what you'll get" can disagree.
-  return defaultModelId;
+  return resolveDefaultModelId(availableModels);
 }
 
 function resolveThinkingOption(input: {
@@ -396,27 +351,28 @@ function resolveThinkingOption(input: {
   providerPrefs: ProviderPrefs | undefined;
   availableModels: AgentModelDefinition[] | null;
 }): string {
-  const { provider, userModified, currentThinkingOptionId, modelId, initialValues, providerPrefs } =
-    input;
+  const {
+    provider,
+    userModified,
+    currentThinkingOptionId,
+    modelId,
+    initialValues,
+    providerPrefs,
+    availableModels,
+  } = input;
   if (!provider) return "";
   if (userModified) return currentThinkingOptionId;
   const initialThinkingOptionId =
     typeof initialValues?.thinkingOptionId === "string"
       ? initialValues.thinkingOptionId.trim()
       : "";
-  const effectiveModelId = modelId.trim();
-  const preferredThinking = effectiveModelId
-    ? (providerPrefs?.thinkingByModel?.[effectiveModelId]?.trim() ?? "")
-    : "";
+  const preferredThinking = resolvePreferredThinkingOptionId({
+    availableModels,
+    providerPrefs,
+    modelId,
+  });
   if (initialThinkingOptionId.length > 0) return initialThinkingOptionId;
   if (preferredThinking.length > 0) return preferredThinking;
-  // A renamed model retains its remembered effort. Only aliases advertised by
-  // this model qualify; an unavailable unrelated model must not donate its preference.
-  const model = findModelByReference(input.availableModels, effectiveModelId);
-  for (const alias of model?.aliases ?? []) {
-    const remembered = providerPrefs?.thinkingByModel?.[alias]?.trim();
-    if (remembered) return remembered;
-  }
   return "";
 }
 
@@ -435,7 +391,6 @@ export function resolveFormState(
     userModified: userModified.provider,
     initialValues,
     preferences,
-    allowedProviderMap,
   });
 
   const providerDef = result.provider ? allowedProviderMap.get(result.provider) : undefined;
@@ -479,14 +434,6 @@ export function resolveFormState(
     });
   }
 
-  if (!userModified.serverId && initialValues?.serverId !== undefined) {
-    result.serverId = initialValues.serverId;
-  }
-
-  if (!userModified.workingDir && initialValues?.workingDir !== undefined) {
-    result.workingDir = initialValues.workingDir;
-  }
-
   return result;
 }
 
@@ -524,14 +471,10 @@ function pickNextModelForProvider(input: {
   providerModels: AgentModelDefinition[] | null;
   providerPrefs: ProviderPrefs | undefined;
 }): string {
-  const { providerModels, providerPrefs } = input;
-  const isValidModel = (m: string) => providerModels?.some((am) => am.id === m) ?? false;
-  const preferredModel = normalizeSelectedModelId(providerPrefs?.model);
-  const defaultModelId = resolveDefaultModelId(providerModels);
-  if (preferredModel && (!providerModels || isValidModel(preferredModel))) {
-    return preferredModel;
-  }
-  return defaultModelId;
+  const preferredModel = normalizeSelectedModelId(input.providerPrefs?.model);
+  return preferredModel
+    ? resolveCanonicalModelId(input.providerModels, preferredModel) || preferredModel
+    : resolveDefaultModelId(input.providerModels);
 }
 
 function pickNextModeForProvider(input: {
@@ -566,9 +509,11 @@ function pickNextThinkingOptionForProvider(input: {
   modelId: string;
 }): string {
   const { providerModels, providerPrefs, modelId } = input;
-  const preferredThinking = modelId
-    ? (providerPrefs?.thinkingByModel?.[modelId]?.trim() ?? "")
-    : "";
+  const preferredThinking = resolvePreferredThinkingOptionId({
+    availableModels: providerModels,
+    providerPrefs,
+    modelId,
+  });
   return resolveThinkingOptionId({
     availableModels: providerModels,
     modelId,
@@ -576,16 +521,35 @@ function pickNextThinkingOptionForProvider(input: {
   });
 }
 
+function pickNextThinkingOptionForTarget(input: {
+  availableModels: AgentModelDefinition[] | null;
+  providerPrefs: ProviderPrefs | undefined;
+  modelId: string;
+  currentModelId: string;
+  currentThinkingOptionId: string;
+  isSameProvider: boolean;
+}): string {
+  const requestedThinkingOptionId =
+    input.isSameProvider &&
+    resolveCanonicalModelId(input.availableModels, input.currentModelId) === input.modelId
+      ? input.currentThinkingOptionId
+      : resolvePreferredThinkingOptionId({
+          availableModels: input.availableModels,
+          providerPrefs: input.providerPrefs,
+          modelId: input.modelId,
+        });
+  return resolveThinkingOptionId({
+    availableModels: input.availableModels,
+    modelId: input.modelId,
+    requestedThinkingOptionId,
+  });
+}
+
 function completeResolution(
   state: AgentFormReducerState,
   action: CompleteResolutionAction,
 ): AgentFormReducerState {
-  // Once a provider has settled, background snapshot/preference updates must
-  // not change the selection out from under the user. But while NOTHING is
-  // selected, resolution keeps retrying: the preferred provider may have been
-  // unresolvable in a stale snapshot (e.g. a remote endpoint that was briefly
-  // unreachable) and should be picked up once fresh entries arrive.
-  if (state.resolution.status === "completed" && state.form.provider !== null) {
+  if (state.resolution.status === "completed") {
     return state;
   }
   const resolved = resolveFormStateFromProviderModels(
@@ -596,10 +560,8 @@ function completeResolution(
     state.form,
     action.allowedProviderMap,
   );
-  const changed = hasFormStateChanged(state.form, resolved);
-  if (!changed && state.resolution.status === "completed") return state;
   const nextState = { ...state, resolution: { status: "completed" } as const };
-  if (!changed) return nextState;
+  if (!hasFormStateChanged(state.form, resolved)) return nextState;
   return { ...nextState, form: resolved };
 }
 
@@ -617,7 +579,12 @@ function applyProfile(state: AgentFormReducerState, action: ApplyProfileAction) 
     availableModels: action.providerModels,
     modelId: nextModelId,
     requestedThinkingOptionId:
-      action.thinkingOptionId || action.providerPrefs?.thinkingByModel?.[nextModelId]?.trim() || "",
+      action.thinkingOptionId ||
+      resolvePreferredThinkingOptionId({
+        availableModels: action.providerModels,
+        providerPrefs: action.providerPrefs,
+        modelId: nextModelId,
+      }),
   });
   return {
     ...state,
@@ -638,37 +605,55 @@ function applyProfile(state: AgentFormReducerState, action: ApplyProfileAction) 
   };
 }
 
+function sameInitialValues(left: FormInitialValues = {}, right: FormInitialValues = {}): boolean {
+  return (
+    left.provider === right.provider &&
+    left.model === right.model &&
+    left.modeId === right.modeId &&
+    left.thinkingOptionId === right.thinkingOptionId
+  );
+}
+
+function receiveInputs(
+  state: AgentFormReducerState,
+  action: AgentFormInputs,
+): AgentFormReducerState {
+  const active = action.isVisible && action.isCreateFlow;
+  const previous = state.inputs;
+  const initial = action.initialValues;
+  const changed =
+    previous?.active !== active ||
+    previous.serverId !== action.serverId ||
+    !sameInitialValues(previous.initialValues, initial);
+  let next = state;
+  if (changed) {
+    next = {
+      ...resolveAgentForm(state, { type: action.isVisible ? "REQUEST_RESOLUTION" : "RESET" }),
+      inputs: { serverId: action.serverId, initialValues: initial, active },
+    };
+  }
+  if (!active || action.isPreferencesLoading || !action.serverId || !action.hasSnapshot)
+    return next;
+  return completeResolution(next, { ...action, type: "COMPLETE_RESOLUTION" });
+}
+
 // oxlint-disable-next-line complexity
 export function resolveAgentForm(
   state: AgentFormReducerState,
   action: AgentFormAction,
 ): AgentFormReducerState {
   switch (action.type) {
+    case "INPUTS_CHANGED":
+      return receiveInputs(state, action);
     case "REQUEST_RESOLUTION":
-      // Re-open the resolution window WITHOUT forgetting what has already been
-      // explicitly set. This fires on every isVisible/resolutionIntentKey
-      // change, and the intent key flips mid-life whenever a late-arriving
-      // workingDir turns `undefined` initialValues into real ones. Clearing the
-      // flags there let the next COMPLETE_RESOLUTION re-derive from
-      // initialValues/device prefs and silently revert values a personality (or
-      // the active team's holder) had already applied - the picker kept showing
-      // "Team's Chatter" while the model underneath had reverted. Closing the
-      // form still dispatches RESET, which is the one place a genuinely fresh
-      // start clears these flags.
-      return { ...state, resolution: PENDING_AGENT_FORM_RESOLUTION };
+      return {
+        ...state,
+        userModified: INITIAL_USER_MODIFIED,
+        resolution: PENDING_AGENT_FORM_RESOLUTION,
+      };
 
     case "COMPLETE_RESOLUTION":
       return completeResolution(state, action);
-
-    case "SET_SERVER_ID":
-      return { ...state, form: { ...state.form, serverId: action.value } };
-
-    case "SET_SERVER_ID_FROM_USER":
-      return {
-        ...state,
-        form: { ...state.form, serverId: action.value },
-        userModified: { ...state.userModified, serverId: true },
-      };
 
     case "SET_PROVIDER_FROM_USER": {
       const nextModelId = pickNextModelForProvider({
@@ -698,13 +683,15 @@ export function resolveAgentForm(
     }
 
     case "SET_PROVIDER_AND_MODEL_FROM_USER": {
-      const normalizedModelId = normalizeSelectedModelId(action.modelId);
+      const normalizedModelId = resolveCanonicalModelId(action.providerModels, action.modelId);
       const nextModelId = normalizedModelId || resolveDefaultModelId(action.providerModels);
-      const nextThinkingOptionId = resolveThinkingOptionId({
+      const nextThinkingOptionId = pickNextThinkingOptionForTarget({
         availableModels: action.providerModels,
         modelId: nextModelId,
-        requestedThinkingOptionId:
-          action.providerPrefs?.thinkingByModel?.[nextModelId]?.trim() ?? "",
+        providerPrefs: action.providerPrefs,
+        currentModelId: state.form.model,
+        currentThinkingOptionId: state.form.thinkingOptionId,
+        isSameProvider: state.form.provider === action.provider,
       });
       const nextModeId = pickNextModeForProviderAndModel({
         currentProvider: state.form.provider,
@@ -741,14 +728,15 @@ export function resolveAgentForm(
       };
 
     case "SET_MODEL_FROM_USER": {
-      const normalizedModelId = normalizeSelectedModelId(action.modelId);
+      const normalizedModelId = resolveCanonicalModelId(action.availableModels, action.modelId);
       const nextModelId = normalizedModelId || resolveDefaultModelId(action.availableModels);
-      const nextThinkingOptionId = resolveThinkingOptionId({
+      const nextThinkingOptionId = pickNextThinkingOptionForTarget({
         availableModels: action.availableModels,
         modelId: nextModelId,
-        requestedThinkingOptionId:
-          action.preferredThinkingOptionId?.trim() ||
-          (state.userModified.thinkingOptionId ? state.form.thinkingOptionId : ""),
+        providerPrefs: action.providerPrefs,
+        currentModelId: state.form.model,
+        currentThinkingOptionId: state.form.thinkingOptionId,
+        isSameProvider: true,
       });
       return {
         ...state,
@@ -792,20 +780,6 @@ export function resolveAgentForm(
         form: { ...state.form, thinkingOptionId: action.thinkingOptionId },
         userModified: { ...state.userModified, thinkingOptionId: true },
       };
-
-    case "SET_WORKING_DIR":
-      return { ...state, form: { ...state.form, workingDir: action.value } };
-
-    case "SET_WORKING_DIR_FROM_USER":
-      return {
-        ...state,
-        form: { ...state.form, workingDir: action.value },
-        userModified: { ...state.userModified, workingDir: true },
-      };
-
-    case "AUTO_SELECT_SERVER":
-      if (state.form.serverId) return state;
-      return { ...state, form: { ...state.form, serverId: action.candidateServerId } };
 
     case "RESET":
       return {

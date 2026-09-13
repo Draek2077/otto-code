@@ -8,6 +8,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
   },
 }));
 
+import { resolveCompactExplorerTabs } from "@/components/compact-explorer-sidebar-host-state";
 import { usePanelStore } from "@/stores/panel-store";
 import {
   collectAllTabs,
@@ -35,7 +36,11 @@ beforeEach(() => {
     sidePaneIdByWorkspace: {},
     splitSizesByWorkspace: {},
   });
-  usePanelStore.setState({ mobilePanel: { target: "agent", revision: 0 } });
+  usePanelStore.setState({
+    mobilePanel: { target: "agent", revision: 0 },
+    explorerTab: "files",
+    explorerTabByCheckout: {},
+  });
 });
 
 describe("Explorer sidebar", () => {
@@ -84,10 +89,36 @@ describe("Explorer sidebar", () => {
       workspaceKey: WORKSPACE_KEY,
       checkout: CHECKOUT,
     };
-    toggleExplorerSidebar(input);
-    expect(isExplorerSidebarOpen(input)).toBe(true);
+    openExplorerSidebarView({ ...input, view: "files" });
     toggleExplorerSidebar(input);
     expect(isExplorerSidebarOpen(input)).toBe(false);
+    toggleExplorerSidebar(input);
+    expect(isExplorerSidebarOpen(input)).toBe(true);
+    const openedState = useWorkspaceLayoutStore.getState();
+    const openedLayout = openedState.layoutByWorkspace[WORKSPACE_KEY];
+    const explorerPaneId = selectExplorerSidebarPaneId(openedState, WORKSPACE_KEY);
+    const explorerPane =
+      openedLayout && explorerPaneId ? findPaneById(openedLayout.root, explorerPaneId) : null;
+    const activeExplorerTarget =
+      openedLayout && explorerPane
+        ? collectAllTabs(openedLayout.root).find((tab) => tab.tabId === explorerPane.focusedTabId)
+            ?.target.kind
+        : null;
+    expect(activeExplorerTarget).toBe("files");
+  });
+
+  it("toggles the compact Explorer without changing its selected view", () => {
+    usePanelStore.getState().setExplorerTabForCheckout({ ...CHECKOUT, tab: "files" });
+    const input = {
+      isCompact: true,
+      workspaceKey: WORKSPACE_KEY,
+      checkout: CHECKOUT,
+    };
+
+    toggleExplorerSidebar(input);
+
+    expect(isExplorerSidebarOpen(input)).toBe(true);
+    expect(usePanelStore.getState().explorerTab).toBe("files");
   });
 
   it("opens Search in User mode", () => {
@@ -103,18 +134,39 @@ describe("Explorer sidebar", () => {
     expect(usePanelStore.getState().explorerTab).toBe("search");
   });
 
-  it("defaults the User-mode compact toggle to Files for Git workspaces", () => {
-    usePanelStore.setState({ explorerTab: "changes" });
-
-    toggleExplorerSidebar({
+  it("preserves the stored view while User mode presents only Files and Search", () => {
+    usePanelStore.getState().setExplorerTabForCheckout({ ...CHECKOUT, tab: "changes" });
+    const input = {
       isCompact: true,
       isDeveloperMode: false,
       workspaceKey: WORKSPACE_KEY,
       checkout: CHECKOUT,
-    });
-
+    };
+    toggleExplorerSidebar(input);
     expect(usePanelStore.getState().mobilePanel.target).toBe("file-explorer");
-    expect(usePanelStore.getState().explorerTab).toBe("files");
+    const activeTab = usePanelStore.getState().explorerTab;
+    expect(activeTab).toBe("changes");
+    expect(
+      resolveCompactExplorerTabs({
+        activeTab,
+        isDeveloperMode: false,
+        isGit: true,
+        hasProjectSearch: true,
+        showPullRequest: true,
+      }),
+    ).toEqual({ activeTab: "files", tabs: ["files", "search"] });
+    toggleExplorerSidebar(input);
+    toggleExplorerSidebar({ ...input, isDeveloperMode: true });
+    expect(usePanelStore.getState().explorerTab).toBe("changes");
+    expect(
+      resolveCompactExplorerTabs({
+        activeTab: usePanelStore.getState().explorerTab,
+        isDeveloperMode: true,
+        isGit: true,
+        hasProjectSearch: true,
+        showPullRequest: true,
+      }).activeTab,
+    ).toBe("changes");
   });
 
   it("keeps Files and Search in the User-mode desktop Explorer", () => {

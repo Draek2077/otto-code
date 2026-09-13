@@ -22,6 +22,7 @@ export default function SettingsHostLayout() {
     <ThemedStack screenOptions={SETTINGS_HOST_STACK_SCREEN_OPTIONS}>
       <Stack.Screen name="index" />
       <Stack.Screen name="[hostSection]" />
+      <Stack.Screen name="plugins/[pluginId]/[screenId]" />
     </ThemedStack>
   );
 }

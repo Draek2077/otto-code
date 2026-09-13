@@ -8,6 +8,7 @@ import { useAutoClearCompletedSubagentsSetting } from "@/hooks/use-auto-clear-co
 import { useSettings } from "@/hooks/use-settings";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { usePaneContext } from "@/panels/pane-context";
+import { PluginComposerPills, useHasPluginComposerPills } from "@/plugins";
 import { useSessionStore } from "@/stores/session-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { openPreferredWorkspaceTarget } from "@/workspace-tabs/open-beside";
@@ -104,7 +105,8 @@ export const AgentTracks = memo(function AgentTracks({
     });
   }, [isCompact, openInSidePane, tabId, workspaceKey]);
 
-  if (!hasDiff && rows.length === 0 && !hasTasks) return null;
+  const hasPluginComposerPills = useHasPluginComposerPills(serverId, workspaceId, agentId);
+  if (!hasDiff && rows.length === 0 && !hasTasks && !hasPluginComposerPills) return null;
   return (
     <ComposerTrackBar>
       <AgentTaskList serverId={serverId} agentId={agentId} />
@@ -117,6 +119,12 @@ export const AgentTracks = memo(function AgentTracks({
         onStopSubagent={stopSubagent}
         onClearCompleted={clearCompleted}
         onDetachSubagent={canDetach ? detachSubagent : undefined}
+      />
+      <PluginComposerPills
+        serverId={serverId}
+        workspaceId={workspaceId}
+        agentId={agentId}
+        compact={isCompact}
       />
       <WorkspaceDiffStatPill
         serverId={serverId}

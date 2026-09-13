@@ -11,38 +11,52 @@ export function attachMutableProviderConfigOwner(options: {
   providerSnapshotManager: ProviderSnapshotManager;
   updateProviderRegistry: (state: AgentManagerProviderState) => void;
 }): () => void {
-  let publishPendingProviderChange: (() => void) | null = null;
+  let commitPendingProviderChange: (() => void) | null = null;
 
   const unsubscribeApply = options.store.onApply((config, previous, details) => {
     if (equal(config.providers, previous.providers)) return () => undefined;
 
     const previousAgentManagerState =
       options.providerSnapshotManager.getAgentManagerProviderState();
-    const staged = options.providerSnapshotManager.stageMutableProviderConfig(config.providers, {
-      removeProviders: details.removedProviders,
-      replace: true,
-    });
+    // Preparation leaves published catalogs and in-flight discovery untouched.
+    // The config store commits only after every live owner's apply succeeds.
+    const prepared = options.providerSnapshotManager.prepareMutableProviderConfig(
+      config.providers,
+      {
+        removeProviders: details.removedProviders,
+        replace: true,
+      },
+    );
     try {
-      options.updateProviderRegistry(staged.agentManagerState);
+      options.updateProviderRegistry(prepared.agentManagerState);
     } catch (error) {
-      staged.rollback();
+      try {
+        options.updateProviderRegistry(previousAgentManagerState);
+      } catch (rollbackError) {
+        const failure = new AggregateError(
+          [error, rollbackError],
+          "Provider config apply failed and the previous agent registry could not be restored",
+          { cause: error },
+        );
+        throw failure;
+      }
       throw error;
     }
-    publishPendingProviderChange = staged.publish;
+    commitPendingProviderChange = prepared.commit;
 
     return () => {
-      publishPendingProviderChange = null;
-      staged.rollback();
+      commitPendingProviderChange = null;
       options.updateProviderRegistry(previousAgentManagerState);
     };
   });
   const unsubscribeChange = options.store.onChange(() => {
-    const publish = publishPendingProviderChange;
-    publishPendingProviderChange = null;
-    publish?.();
+    const commit = commitPendingProviderChange;
+    commitPendingProviderChange = null;
+    commit?.();
   });
 
   return () => {
+    commitPendingProviderChange = null;
     unsubscribeApply();
     unsubscribeChange();
   };

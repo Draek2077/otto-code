@@ -487,6 +487,36 @@ describe("agent detach RPC", () => {
     }
     expect(parsed.features?.agentDetach).toBe(true);
   });
+
+  test("parses the workspace-targeted session import feature gate", () => {
+    const parsed = parseServerInfoStatusPayload({
+      status: "server_info",
+      serverId: "srv-test",
+      features: {
+        importSessionWorkspaceTarget: true,
+      },
+    });
+
+    if (!parsed) {
+      throw new Error("Expected server info payload to parse");
+    }
+    expect(parsed.features?.importSessionWorkspaceTarget).toBe(true);
+  });
+
+  test("parses the session import search feature gate", () => {
+    const parsed = parseServerInfoStatusPayload({
+      status: "server_info",
+      serverId: "srv-test",
+      features: {
+        importSessionSearch: true,
+      },
+    });
+
+    if (!parsed) {
+      throw new Error("Expected server info payload to parse");
+    }
+    expect(parsed.features?.importSessionSearch).toBe(true);
+  });
 });
 
 describe("agent setting action responses", () => {

@@ -1,6 +1,6 @@
 ---
 title: Self-hosting Hub
-description: Run Hub locally with its embedded database, or deploy it with PostgreSQL.
+description: "Upstream Paseo Hub reference. Run Hub locally with its embedded database, or deploy it with PostgreSQL."
 nav: Self-hosting
 order: 74
 category: Hub
@@ -8,10 +8,14 @@ category: Hub
 
 # Self-hosting Hub
 
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
+
+> The package, source repository, container image and deployment examples are retained from the linked [Paseo v0.8.0 source](https://github.com/getpaseo/paseo/blob/v0.8.0/public-docs/hub/self-hosting/index.md). Their current publication or availability is not verified by this manual.
+
 The shortest path is one command:
 
 ```sh
-npx @otto-code/hub
+npx @getpaseo/hub
 ```
 
 Open <http://localhost:3000>. A fresh Hub creates its embedded database and authentication secret, then guides you through creating the operator account and the GitHub, Slack, or Discord apps you want.
@@ -20,12 +24,12 @@ Follow the [quickstart](/docs/hub/quickstart) to connect Slack over Socket Mode 
 
 ## Local data
 
-Without `DATABASE_URL`, Hub stores an embedded PGlite database and its generated authentication secret under `$XDG_DATA_HOME/otto-hub`. If `XDG_DATA_HOME` is not set to an absolute path, Hub uses `~/.local/share/otto-hub`. Both survive restarts.
+Without `DATABASE_URL`, Hub stores an embedded PGlite database and its generated authentication secret under `$XDG_DATA_HOME/paseo-hub`. If `XDG_DATA_HOME` is not set to an absolute path, Hub uses `~/.local/share/paseo-hub`. Both survive restarts.
 
 Set a different location explicitly with:
 
 ```sh
-OTTO_HUB_DATA_DIR=/path/to/otto-hub-data npx @otto-code/hub
+PASEO_HUB_DATA_DIR=/path/to/paseo-hub-data npx @getpaseo/hub
 ```
 
 Embedded mode supports one Hub process per data directory. It is intended for a personal or single-process Hub. Back up the whole data directory before upgrading or moving it.
@@ -39,7 +43,7 @@ GitHub event triggers use webhooks and need a public HTTPS address. Repository a
 When Hub is available at a stable public origin, set it before starting:
 
 ```sh
-OTTO_HUB_APP_URL=https://hub.example.com npx @otto-code/hub
+PASEO_HUB_APP_URL=https://hub.example.com npx @getpaseo/hub
 ```
 
 Changing the public origin requires updating callback and webhook settings in the provider apps. The **Apps** page generates the URLs for the origin Hub is currently using.
@@ -49,13 +53,13 @@ Changing the public origin requires updating callback and webhook settings in th
 Set `DATABASE_URL` to use PostgreSQL instead of the embedded database:
 
 ```sh
-DATABASE_URL=postgres://otto:password@localhost:5432/otto_hub \
-  npx @otto-code/hub
+DATABASE_URL=postgres://paseo:password@localhost:5432/paseo_hub \
+  npx @getpaseo/hub
 ```
 
 Use PostgreSQL for a durable server deployment, more than one Hub process, or an existing database backup and operations setup. Migrations run automatically at startup. Hub does not start listening when a migration fails.
 
-The database also stores Hub's generated authentication secret. Set `OTTO_HUB_AUTH_SECRET` only when the deployment must supply that secret from a platform secret store. While the override is set, Hub uses it without replacing the stored secret. Changing the effective secret signs everyone out of the dashboard; execution credentials already issued remain valid until their execution ends.
+The database also stores Hub's generated authentication secret. Set `PASEO_HUB_AUTH_SECRET` only when the deployment must supply that secret from a platform secret store. While the override is set, Hub uses it without replacing the stored secret. Changing the effective secret signs everyone out of the dashboard; execution credentials already issued remain valid until their execution ends.
 
 ## App configuration
 
@@ -97,27 +101,27 @@ See [GitHub](/docs/hub/self-hosting/github-app), [Slack](/docs/hub/self-hosting/
 Browser setup is the default for a fresh database. An unattended deployment can create the first operator from environment variables instead:
 
 ```dotenv
-OTTO_BOOTSTRAP_ORGANIZATION=My organization
-OTTO_BOOTSTRAP_OWNER_EMAIL=me@example.com
-OTTO_BOOTSTRAP_OWNER_PASSWORD=replace-with-a-temporary-password
+PASEO_BOOTSTRAP_ORGANIZATION=My organization
+PASEO_BOOTSTRAP_OWNER_EMAIL=me@example.com
+PASEO_BOOTSTRAP_OWNER_PASSWORD=replace-with-a-temporary-password
 ```
 
-The password must be at least 12 characters. Sign in once, replace it in the dashboard, then remove `OTTO_BOOTSTRAP_OWNER_PASSWORD`. Hub keeps the account and organization.
+The password must be at least 12 characters. Sign in once, replace it in the dashboard, then remove `PASEO_BOOTSTRAP_OWNER_PASSWORD`. Hub keeps the account and organization.
 
 ## Docker Compose
 
 The repository contains Hub and PostgreSQL as one Compose stack:
 
 ```sh
-git clone https://github.com/Draek2077/hub.git
+git clone https://github.com/getpaseo/hub.git
 cd hub
 cp .env.example .env
 docker compose up -d
 ```
 
-Open <http://localhost:3000> and complete browser setup. For a public deployment, set `OTTO_HUB_APP_URL` and any reverse-proxy settings in `.env` before starting the stack.
+Open <http://localhost:3000> and complete browser setup. For a public deployment, set `PASEO_HUB_APP_URL` and any reverse-proxy settings in `.env` before starting the stack.
 
-The stack publishes Hub on port `3000` and stores PostgreSQL data in a named volume. The Hub image is `ghcr.io/Draek2077/hub:latest`.
+The stack publishes Hub on port `3000` and stores PostgreSQL data in a named volume. The Hub image is `ghcr.io/getpaseo/hub:latest`.
 
 ### HTTPS with Caddy
 
@@ -134,8 +138,8 @@ Point `hub.example.com` at the host and open ports 80 and 443. Caddy [obtains an
 Then set in `.env`:
 
 ```dotenv
-OTTO_HUB_APP_URL=https://hub.example.com
-OTTO_HUB_TRUSTED_CLIENT_IP_HEADER=x-forwarded-for
+PASEO_HUB_APP_URL=https://hub.example.com
+PASEO_HUB_TRUSTED_CLIENT_IP_HEADER=x-forwarded-for
 ```
 
 To keep port `3000` off the public interface, change the `hub` port in `compose.yml` to `"127.0.0.1:3000:3000"`.
@@ -145,7 +149,7 @@ To keep port `3000` off the public interface, change the `hub` port in `compose.
 Clone the repository and create an app and database under names you control:
 
 ```sh
-git clone https://github.com/Draek2077/hub.git
+git clone https://github.com/getpaseo/hub.git
 cd hub
 fly apps create your-hub
 fly postgres create --name your-hub-db
@@ -156,7 +160,7 @@ Deploy the Dockerfile and give Hub its public origin:
 
 ```sh
 fly deploy -a your-hub \
-  -e OTTO_HUB_APP_URL=https://your-hub.fly.dev
+  -e PASEO_HUB_APP_URL=https://your-hub.fly.dev
 ```
 
 Open that address and complete browser setup, or set the [bootstrap environment](#bootstrap-from-environment) before deploying.

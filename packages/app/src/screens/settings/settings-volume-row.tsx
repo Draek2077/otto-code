@@ -1,3 +1,4 @@
+import { SettingsTargetLabel } from "@/screens/settings-search/target";
 // A 0-100% volume slider settings row: label + hint on the left, slider and
 // percent readout on the right.
 //
@@ -55,7 +56,7 @@ export function SettingsVolumeRow({
   return (
     <View style={VOLUME_ROW} testID={rowTestID}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
       <View style={styles.volumeField}>

@@ -45,11 +45,10 @@ function useFilePanelDirty(
   );
 }
 
-function useFilePanelDescriptor(target: WorkspaceFileTabTarget, context: PanelDescriptorContext) {
+function useFilePanelDescriptor(target: WorkspaceFileTabTarget) {
   const fileName = target.path.split("/").findLast(Boolean) ?? target.path;
-  const dirty = useFilePanelDirty(target, context);
   return {
-    label: dirty ? `● ${fileName}` : fileName,
+    label: fileName,
     subtitle: target.path,
     tooltip: target.path,
     titleState: "ready" as const,

@@ -77,7 +77,7 @@ export function CompactModelSheet({
   });
   const { prepareToOpen, reset } = browser;
   const ProviderIcon =
-    selectedProvider.trim().length > 0 ? getProviderIcon(selectedProvider) : null;
+    selectedProvider.trim().length > 0 ? getProviderIcon(selectedProvider, serverId) : null;
   // A live Personality switch replaces the provider glyph with a spinner, the
   // same signal the desktop trigger gives.
   const triggerGlyph = useMemo(() => {

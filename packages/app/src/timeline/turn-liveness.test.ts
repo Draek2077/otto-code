@@ -76,13 +76,64 @@ describe("turn activity", () => {
     });
   });
 
-  it("keeps the working indicator active while the agent status is running", () => {
-    const fallbackStart = new Date("2026-08-21T12:00:00.000Z");
-    expect(resolveTurnPresentation(TURN_LIVENESS_IDLE, false, true, fallbackStart)).toEqual({
-      isActive: true,
+  it("keeps an authoritative idle turn inactive without an active submission", () => {
+    expect(resolveTurnPresentation(TURN_LIVENESS_IDLE, false)).toEqual({
+      isActive: false,
       isCancelling: false,
-      startedAt: fallbackStart,
+      startedAt: null,
       turnId: null,
     });
+  });
+
+  it("preserves the observed identity and cancellation across an anonymous running snapshot", () => {
+    const open = reduceTurnLiveness(TURN_LIVENESS_IDLE, {
+      type: "stream_open",
+      turn: { turnId: "turn-A", startedAt },
+    });
+    const cancelling = reduceTurnLiveness(open, { type: "cancellation_started", requestId: 3 });
+    const legacy = reduceTurnLiveness(cancelling, {
+      type: "snapshot",
+      activeTurn: { turnId: null, startedAt: new Date(startedAt.getTime() + 1000) },
+    });
+    expect(legacy).toEqual({
+      phase: "open",
+      turnId: "turn-A",
+      startedAt,
+      cancellationRequestId: 3,
+    });
+    expect(resolveTurnPresentation(legacy, false)).toEqual({
+      isActive: true,
+      isCancelling: true,
+      startedAt,
+      turnId: "turn-A",
+    });
+    expect(reduceTurnLiveness(legacy, { type: "snapshot", activeTurn: null })).toEqual(
+      TURN_LIVENESS_IDLE,
+    );
+    const nextStart = new Date(startedAt.getTime() + 2000);
+    expect(
+      reduceTurnLiveness(legacy, {
+        type: "snapshot",
+        activeTurn: { turnId: "turn-B", startedAt: nextStart },
+      }),
+    ).toEqual({
+      phase: "open",
+      turnId: "turn-B",
+      startedAt: nextStart,
+      cancellationRequestId: null,
+    });
+  });
+
+  it("does not suppress an anonymous stream start using the legacy snapshot rule", () => {
+    const open = reduceTurnLiveness(TURN_LIVENESS_IDLE, {
+      type: "stream_open",
+      turn: { turnId: "turn-A", startedAt },
+    });
+    expect(
+      reduceTurnLiveness(open, {
+        type: "stream_open",
+        turn: { turnId: null, startedAt },
+      }),
+    ).toEqual({ phase: "open", turnId: null, startedAt, cancellationRequestId: null });
   });
 });

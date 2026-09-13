@@ -1,10 +1,11 @@
+import { SettingsButton } from "@/screens/settings-search/controls";
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Button } from "@/components/ui/button";
 import { NumberStepperField } from "@/components/ui/number-stepper-field";
 import { useFetchQuery } from "@/data/query";
 import { clearPreviewAttachments, readAttachmentStoreUsage } from "@/attachments/service";
@@ -164,7 +165,12 @@ function HostImageStoreRow({ serverId }: { serverId: string }) {
   return (
     <View style={settingsStyles.row} testID="storage-host-images-row">
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.host.storage.hostImages")}</Text>
+        <SettingsTargetText
+          settingId="host-storage-host-images-images-on-this-host"
+          style={settingsStyles.rowTitle}
+        >
+          {t("settings.host.storage.hostImages")}
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           {isEmpty
             ? t("settings.host.storage.hostImagesEmpty")
@@ -175,7 +181,8 @@ function HostImageStoreRow({ serverId }: { serverId: string }) {
         </Text>
         <Text style={settingsStyles.rowHint}>{t("settings.host.storage.hostImagesHint")}</Text>
       </View>
-      <Button
+      <SettingsButton
+        settingIds={["host-storage-host-images-clear-host-images"]}
         variant="secondary"
         size="sm"
         disabled={isEmpty || isClearing}
@@ -183,7 +190,7 @@ function HostImageStoreRow({ serverId }: { serverId: string }) {
         testID="storage-host-images-clear"
       >
         {t("settings.host.storage.clear")}
-      </Button>
+      </SettingsButton>
     </View>
   );
 }
@@ -234,7 +241,12 @@ function PreviewCacheRow({ withBorder }: { withBorder: boolean }) {
       testID="storage-preview-cache-row"
     >
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.host.storage.previewCache")}</Text>
+        <SettingsTargetText
+          settingId="app-diagnostics-storage-cache-on-this-device-cached-copies-on-this-device"
+          style={settingsStyles.rowTitle}
+        >
+          {t("settings.host.storage.previewCache")}
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           {isEmpty
             ? t("settings.host.storage.previewCacheEmpty")
@@ -249,7 +261,8 @@ function PreviewCacheRow({ withBorder }: { withBorder: boolean }) {
           })}
         </Text>
       </View>
-      <Button
+      <SettingsButton
+        settingIds={["app-diagnostics-storage-cache-on-this-device-clear-cached-copies"]}
         variant="secondary"
         size="sm"
         disabled={isEmpty || isClearing}
@@ -257,7 +270,7 @@ function PreviewCacheRow({ withBorder }: { withBorder: boolean }) {
         testID="storage-preview-cache-clear"
       >
         {t("settings.host.storage.clear")}
-      </Button>
+      </SettingsButton>
     </View>
   );
 }
@@ -305,7 +318,12 @@ function RetentionCard({ serverId }: { serverId: string }) {
     <View style={[settingsStyles.card, styles.retentionSpacing]} testID="storage-retention-card">
       <View style={settingsStyles.rowResponsive}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.host.storage.maxAge")}</Text>
+          <SettingsTargetText
+            settingId="host-storage-retention-keep-images-for"
+            style={settingsStyles.rowTitle}
+          >
+            {t("settings.host.storage.maxAge")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>{t("settings.host.storage.maxAgeHint")}</Text>
         </View>
         <NumberStepperField
@@ -320,7 +338,12 @@ function RetentionCard({ serverId }: { serverId: string }) {
       </View>
       <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.host.storage.maxTotal")}</Text>
+          <SettingsTargetText
+            settingId="host-storage-retention-maximum-size"
+            style={settingsStyles.rowTitle}
+          >
+            {t("settings.host.storage.maxTotal")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>{t("settings.host.storage.maxTotalHint")}</Text>
         </View>
         <NumberStepperField

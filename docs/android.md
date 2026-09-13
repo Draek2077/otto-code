@@ -15,7 +15,9 @@ EAS profiles: `development`, `production`, and `production-apk` in `packages/app
 
 ## Version codes
 
-`packages/app/app.config.js` derives Android `versionCode` from the package version with:
+`packages/app/native-release-version.js` is the single definition of native and F-Droid version-code math. Do not re-derive these numbers anywhere else — a drifted copy produces changelog files that match no published APK, and nothing fails loudly.
+
+The base version code comes from the package version:
 
 ```text
 major * 1_000_000 + minor * 1_000 + patch
@@ -338,6 +340,37 @@ Keep the excluded npm packages installed. Normal builds use them, while the F-Dr
 The EAS `production-apk` profile uses the large Android resource class. Release builds compile the native ABIs and run Hermes bundling in the same Gradle invocation; the default worker can exhaust its remaining memory and kill Hermes with exit code 137 even when Gradle's own heap is correctly sized.
 
 The GitHub runner build (`.github/workflows/android-apk-release.yml`) cannot be resized, so it splits the work instead: `:app:createBundleReleaseJsAndAssets` runs in its own Gradle invocation first, the daemon is stopped, and only then does `:app:assembleRelease` run, finding the bundle task `UP-TO-DATE`. Inside a single `assembleRelease` the Metro, `hermesc`, and `compose-source-maps.js` chain runs last, after the Gradle and Kotlin daemons have grown their heaps compiling every native module. That combined peak is what produces the bare "The operation was canceled." failure on a hosted runner (v0.8.1 at a 12G swapfile, v0.9.0 at 24G): the box thrashes, the runner misses its heartbeat, and the service cancels the job with no annotation. Both Gradle steps print `free -m` samples every fifteen seconds into the step log so the next such failure carries numbers. The first sampled run (the `android-v0.9.0` retry, 2026-09-04) put the peak at about 40 GB: from two minutes after Metro finished until the bundle task ended eighteen minutes later, RAM sat at 15.6 GB used with the whole 24 GB swapfile consumed and under 400 MB available. That peak was `hermesc` compiling one file: the zod-aot outbound WebSocket validator, which zod-aot emitted as a single function of about 25,000 lines and 7,400 locals. Measured on 2026-09-12 with the Windows `hermesc` (a debug build) under a 12 GB cap, that file alone was killed at the cap after eight minutes with or without `-O` and `-output-source-map`, while the same validators generated as one function per message type compiled in 13 seconds at 0.57 GB. Bundle growth was not the cause: v0.9.2 through v0.9.7 survived this step at full swap and v0.9.8 and v0.9.9 were shut down in it, with the validator effectively unchanged (6,918,978 bytes at v0.9.7, 6,927,644 at v0.9.9) and the same runner image. The protocol package now generates one validator per message type (see [protocol-validation.md](protocol-validation.md)). Keep every generated function small; swap size, `hermesFlags`, and ABI filters do not move this peak.
+
+### F-Droid store metadata
+
+F-Droid reads the store listing from `fastlane/metadata/android/<locale>/` **at the repo root**. This location provides the best compatibility with the F-Droid release process.
+
+```text
+fastlane/metadata/android/
+├── en-US/                      (F-Droid fallback locale, mandatory)
+│   ├── title.txt               (<=50 chars)
+│   ├── short_description.txt   (<=80 chars)
+│   ├── full_description.txt    (<=4000 chars, limited HTML)
+│   ├── images/
+│   │   ├── icon.png            (512x512)
+│   │   ├── featureGraphic.png  (1024x500)
+│   │   └── phoneScreenshots/   (1.png, 2.png, ...)
+│   └── changelogs/             (generated — see below)
+├── ja/
+└── zh-CN/
+```
+
+Locale directories generally match `packages/app/src/i18n/locales.ts`, but note that `en` becomes `en-US`.
+
+F-Droid changelogs are generated from `CHANGELOG.md`. Run `npm run fdroid:changelogs`; `npm run fdroid:changelogs:check` verifies without writing. It is wired into the npm `version` lifecycle, so a release picks it up automatically and `git add -A` stages the result.
+
+One changelog must be generated per-ABI-split, so each version will create **four** identical version-coded entries. F-Droid caps changelogs at 500 characters, so the generator strips some content and adds a link to the full notes.
+
+Stable sync fails loudly if `CHANGELOG.md` has no entry for the version being cut. That is intentional — the release checklist requires the entry to be committed first, so an abort here means the checklist was skipped.
+
+Because the generator runs off the version in `package.json`, it must run **before** the tag is created: fdroidserver only reads metadata from the tag it builds, so the file for version N has to exist in the commit N points at.
+
+Beta releases are an explicit no-op: they do not create or rewrite F-Droid changelog files. Stable releases and promotions generate the four ABI entries from their final changelog.
 
 ### React version lockstep
 

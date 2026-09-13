@@ -1,4 +1,5 @@
-import type { SettingsView } from "@/screens/settings-screen";
+import type { SettingsView } from "@/navigation/settings-navigation";
+import { buildPluginSettingsRoute } from "@/plugins/settings/routes";
 import {
   buildProjectSettingsRoute,
   buildSettingsHostSectionRoute,
@@ -9,11 +10,11 @@ import {
 export type SettingsRoute =
   | ReturnType<typeof buildSettingsSectionRoute>
   | ReturnType<typeof buildSettingsHostSectionRoute>
-  | ReturnType<typeof buildProjectSettingsRoute>;
+  | ReturnType<typeof buildProjectSettingsRoute>
+  | ReturnType<typeof buildPluginSettingsRoute>;
 
-// Remembers the settings sub-page the user was last on, so re-opening Settings
-// returns there instead of resetting to General. Scoped to the running app
-// session (module-level, not persisted): a full app restart starts at General.
+// Remembers a sub-page for callers that explicitly restore it. The normal Settings
+// entry remains the search-first overview. Scoped to the running app session only.
 let lastSettingsRoute: SettingsRoute | null = null;
 
 /** The route that re-enters a settings view, or null for the root list / invalid ids. */
@@ -27,6 +28,10 @@ export function settingsViewRoute(view: SettingsView): SettingsRoute | null {
     case "project":
       return view.serverId && view.projectId
         ? buildProjectSettingsRoute(view.serverId, view.projectId)
+        : null;
+    case "plugin":
+      return view.serverId.trim() && view.pluginId.trim() && view.screenId.trim()
+        ? buildPluginSettingsRoute(view.serverId, view.pluginId, view.screenId)
         : null;
     case "root":
       return null;

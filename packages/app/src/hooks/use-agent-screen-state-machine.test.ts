@@ -17,6 +17,7 @@ function createAgent(id: string): Agent {
     id,
     provider: "claude",
     status: "running",
+    turn: { phase: "open", turnId: "turn-1", startedAt: now, cancellationRequestId: null },
     createdAt: now,
     updatedAt: now,
     lastUserMessageAt: now,
@@ -65,6 +66,7 @@ function createBaseInput(): AgentScreenMachineInput {
     isHistorySyncing: false,
     needsAuthoritativeSync: false,
     visibilityCatchUpStatus: "ready",
+    visibilityCatchUpError: null,
     hasHydratedHistoryBefore: false,
   };
 }
@@ -244,22 +246,22 @@ describe("deriveAgentScreenViewState", () => {
     expectSyncErrorSync(ready);
   });
 
-  it("reports a chat the host no longer has as missing, not as a retry", () => {
-    const memory = createBaseMemory({
-      hasRenderedReady: true,
-      lastReadyAgent: createAgent("agent-1"),
+  it("shows the owner error when the first timeline load fails", () => {
+    const result = deriveAgentScreenViewState({
+      input: {
+        ...createBaseInput(),
+        agent: createAgent("agent-1"),
+        visibilityCatchUpStatus: "error",
+        visibilityCatchUpError: "already has an active writer",
+      },
+      memory: createBaseMemory(),
     });
-    const input: AgentScreenMachineInput = {
-      ...createBaseInput(),
-      agent: createAgent("agent-1"),
-      hasHydratedHistoryBefore: true,
-      visibilityCatchUpStatus: "missing",
-    };
 
-    const result = deriveAgentScreenViewState({ input, memory });
-    const ready = expectReadyState(result.state);
-
-    expect(ready.sync.status).toBe("sync_missing");
+    expect(result.state).toEqual({
+      tag: "error",
+      message: "already has an active writer",
+    });
+    expect(result.memory.hadInitialSyncFailure).toBe(true);
   });
 
   it("keeps sync errors non-blocking once the screen was ready", () => {

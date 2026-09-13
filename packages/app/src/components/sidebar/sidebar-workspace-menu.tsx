@@ -12,6 +12,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   Archive,
   BookOpen,
+  Circle,
   CircleCheck,
   ContextualToken,
   Copy,
@@ -67,6 +68,7 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
 const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedArchive = withUnistyles(Archive);
+const ThemedCircle = withUnistyles(Circle);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedPin = withUnistyles(Pin);
@@ -92,6 +94,7 @@ const labelsLeadingIcon = <ThemedTag size="sm" uniProps={foregroundMutedColorMap
 const openBaseWorkspaceLeadingIcon = (
   <ThemedFolderOpen size="sm" uniProps={foregroundMutedColorMapping} />
 );
+const markAsUnreadLeadingIcon = <ThemedCircle size="sm" uniProps={foregroundMutedColorMapping} />;
 
 function renderTriggerIcon({ hovered }: { hovered?: boolean }) {
   return <WorkspaceKebabTriggerIcon hovered={hovered} />;
@@ -119,6 +122,7 @@ export interface SidebarWorkspaceMenuProps {
   serverId?: string;
   workspaceId?: string;
   workspaceLabels?: readonly string[];
+  onMarkAsUnread?: () => void;
   onArchive: () => void;
   archiveLabel?: string;
   archiveStatus?: "idle" | "pending" | "success";
@@ -171,6 +175,7 @@ function SidebarWorkspaceMenuItems({
   onOpenBaseCheckout,
   serverId,
   workspaceId,
+  onMarkAsUnread,
   onArchive,
   archiveLabel,
   archiveStatus,
@@ -244,27 +249,37 @@ function SidebarWorkspaceMenuItems({
           Mark as read
         </WorkspaceMenuItem>
       ) : null}
+      {onMarkAsUnread ? (
+        <WorkspaceMenuItem
+          surface={surface}
+          testID={`sidebar-workspace-menu-mark-as-unread-${workspaceKey}`}
+          leading={markAsUnreadLeadingIcon}
+          onSelect={onMarkAsUnread}
+        >
+          Mark as unread
+        </WorkspaceMenuItem>
+      ) : null}
       {hasIdentityActions && hasManagementActions ? (
         <WorkspaceMenuSeparator surface={surface} />
       ) : null}
       {hasManagementActions ? (
-        <WorkspaceMenuItem
-          surface={surface}
-          testID={`sidebar-workspace-menu-context-management-${workspaceKey}`}
-          leading={contextLeadingIcon}
-          onSelect={handleManageContext}
-        >
-          {t("workspace.contextManagement.openAction")}
-        </WorkspaceMenuItem>
-      ) : null}
-      {hasManagementActions ? (
-        <WorkspaceMenuItem
-          surface={surface}
-          leading={knowledgeLeadingIcon}
-          onSelect={handleManageKnowledge}
-        >
-          Manage knowledge
-        </WorkspaceMenuItem>
+        <>
+          <WorkspaceMenuItem
+            surface={surface}
+            testID={`sidebar-workspace-menu-context-management-${workspaceKey}`}
+            leading={contextLeadingIcon}
+            onSelect={handleManageContext}
+          >
+            {t("workspace.contextManagement.openAction")}
+          </WorkspaceMenuItem>
+          <WorkspaceMenuItem
+            surface={surface}
+            leading={knowledgeLeadingIcon}
+            onSelect={handleManageKnowledge}
+          >
+            Manage knowledge
+          </WorkspaceMenuItem>
+        </>
       ) : null}
       {hasManagementActions ? (
         <>
@@ -334,6 +349,7 @@ export function SidebarWorkspaceMenu({
   serverId,
   workspaceId,
   workspaceLabels,
+  onMarkAsUnread,
   onArchive,
   archiveLabel,
   archiveStatus,
@@ -379,6 +395,7 @@ export function SidebarWorkspaceMenu({
           onOpenBaseCheckout={onOpenBaseCheckout}
           serverId={serverId}
           workspaceId={workspaceId}
+          onMarkAsUnread={onMarkAsUnread}
           onArchive={onArchive}
           archiveLabel={archiveLabel}
           archiveStatus={archiveStatus}
@@ -414,6 +431,7 @@ export function SidebarWorkspaceContextMenu({
   onOpenBaseCheckout,
   serverId,
   workspaceId,
+  onMarkAsUnread,
   onArchive,
   archiveLabel,
   archiveStatus,
@@ -491,6 +509,7 @@ export function SidebarWorkspaceContextMenu({
           onOpenBaseCheckout={onOpenBaseCheckout}
           serverId={serverId}
           workspaceId={workspaceId}
+          onMarkAsUnread={onMarkAsUnread}
           onArchive={onArchive}
           archiveLabel={archiveLabel}
           archiveStatus={archiveStatus}

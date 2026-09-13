@@ -8,6 +8,7 @@ import type {
 import type { AgentManager, ManagedAgent } from "./agent-manager.js";
 import type { AgentStorage } from "./agent-storage.js";
 import { ensureAgentLoaded } from "./agent-loading.js";
+import { isStaleProviderSessionError } from "./stale-provider-session-error.js";
 import type { ActiveTurnBehavior } from "@otto-code/protocol/messages";
 
 export type AgentUnarchiveController = Pick<AgentManager, "notifyAgentState" | "unarchiveSnapshot">;
@@ -24,7 +25,9 @@ export type AgentRunController = Pick<
   // upstream's, so the controller stays derived rather than hand-written.
   | "isBusyOnlyWithOutOfBandRun"
   | "enqueueSteerMessage"
->;
+> & {
+  reloadAgentSession(agentId: string): Promise<unknown>;
+};
 
 /**
  * How a prompt reaches a BUSY agent. Against an idle agent both modes are the
@@ -147,6 +150,14 @@ async function startOrReplaceRun(
   return { iterator, replaced };
 }
 
+async function drainAgentRunIterator(
+  iterator: AsyncGenerator<import("./agent-sdk-types.js").AgentStreamEvent>,
+): Promise<void> {
+  for await (const _ of iterator) {
+    // Events are broadcast via AgentManager subscribers.
+  }
+}
+
 export async function startAgentRun(
   agentManager: AgentRunController,
   agentId: string,
@@ -177,6 +188,44 @@ export async function startAgentRun(
   if (queued) {
     return queued;
   }
+  let recovered = false;
+  const recoverStaleSession = async (error: unknown): Promise<void> => {
+    if (!isStaleProviderSessionError(error) || recovered) throw error;
+    recovered = true;
+    logger.info({ agentId, err: error }, "Provider session went stale; reopening from persistence");
+    await agentManager.reloadAgentSession(agentId);
+  };
+  try {
+    return await startAgentRunInner(
+      agentManager,
+      agentId,
+      prompt,
+      logger,
+      recoverStaleSession,
+      options,
+    );
+  } catch (error) {
+    await recoverStaleSession(error);
+    return await startAgentRunInner(
+      agentManager,
+      agentId,
+      prompt,
+      logger,
+      recoverStaleSession,
+      options,
+    );
+  }
+}
+
+async function startAgentRunInner(
+  agentManager: AgentRunController,
+  agentId: string,
+  prompt: AgentPromptInput,
+  logger: Logger,
+  recoverStaleSession: (error: unknown) => Promise<void>,
+  options?: StartAgentRunOptions,
+): Promise<{ disposition: PromptDispatchDisposition }> {
+  const snapshot = agentManager.getAgent(agentId);
   const steered = await steerOrReplaceActiveRun(agentManager, agentId, prompt, options);
   if (steered?.disposition === "steered") {
     return steered;
@@ -195,8 +244,12 @@ export async function startAgentRun(
   );
   void (async () => {
     try {
-      for await (const _ of iterator) {
-        // Events are broadcast via AgentManager subscribers.
+      try {
+        await drainAgentRunIterator(iterator);
+      } catch (error) {
+        await recoverStaleSession(error);
+        const retry = await startOrReplaceRun(agentManager, agentId, prompt, options);
+        await drainAgentRunIterator(retry.iterator);
       }
       logger.trace(
         {

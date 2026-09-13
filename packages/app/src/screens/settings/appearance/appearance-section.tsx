@@ -1,3 +1,9 @@
+import {
+  SettingsTargetText,
+  SettingsTargetScope,
+  SettingsTargetLabel,
+} from "@/screens/settings-search/target";
+import { SidebarNavSection } from "./sidebar-nav-section";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -162,7 +168,9 @@ function ModeRow({ value, onChange }: ModeRowProps) {
   return (
     <View style={settingsStyles.rowResponsive}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.appearance.theme.mode")}</Text>
+        <SettingsTargetText settingId="app-appearance-theme-mode" style={settingsStyles.rowTitle}>
+          {t("settings.appearance.theme.mode")}
+        </SettingsTargetText>
       </View>
       <SegmentedControl
         size="sm"
@@ -220,7 +228,9 @@ function ThemeRow({ list, value, onChange }: ThemeRowProps) {
   return (
     <View style={styles.rowWithBorder}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.appearance.theme.title")}</Text>
+        <SettingsTargetText settingId="app-appearance-theme-theme" style={settingsStyles.rowTitle}>
+          {t("settings.appearance.theme.title")}
+        </SettingsTargetText>
       </View>
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -261,7 +271,12 @@ function PluginThemeRow({
   return (
     <View style={styles.rowWithBorder}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Plugin theme</Text>
+        <SettingsTargetText
+          settingId="app-appearance-theme-plugin-theme"
+          style={settingsStyles.rowTitle}
+        >
+          Plugin theme
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>Provided by an installed plugin</Text>
       </View>
       <DropdownMenu>
@@ -344,7 +359,7 @@ function FontFamilyRow({
   return (
     <View style={responsiveRowStyle(withBorder)}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
       <TextInput
@@ -388,7 +403,7 @@ function FontSizeRow({
   return (
     <View style={responsiveRowStyle(withBorder)}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
       </View>
       <View style={styles.sizeField}>
         <Slider
@@ -430,7 +445,12 @@ function FontContrastRow({ draftPercent, onChangeDraft, onCommit }: FontContrast
     <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
         {/* i18n: English-only pending a translation pass (font contrast). */}
-        <Text style={settingsStyles.rowTitle}>Contrast</Text>
+        <SettingsTargetText
+          settingId="app-appearance-fonts-contrast"
+          style={settingsStyles.rowTitle}
+        >
+          Contrast
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           {`How hard text sits against the background. ${DEFAULT_FONT_CONTRAST.toFixed(2)} is the theme as designed.`}
         </Text>
@@ -476,9 +496,12 @@ function ChatWidthRow({ value, onChange }: ChatWidthRowProps) {
   return (
     <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>
+        <SettingsTargetText
+          settingId="app-appearance-layout-chat-width"
+          style={settingsStyles.rowTitle}
+        >
           {t("settings.appearance.layout.chatWidth.title")}
-        </Text>
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>{t("settings.appearance.layout.chatWidth.hint")}</Text>
       </View>
       <SegmentedControl
@@ -516,7 +539,12 @@ function TabOrientationRow({ value, onChange }: TabOrientationRowProps) {
     <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
         {/* i18n: English-only pending a translation pass (Vertical tabs). */}
-        <Text style={settingsStyles.rowTitle}>Default tab orientation</Text>
+        <SettingsTargetText
+          settingId="app-appearance-layout-default-tab-orientation"
+          style={settingsStyles.rowTitle}
+        >
+          Default tab orientation
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           Tab-strip layout for new panes: a horizontal row at the top, or a vertical rail on the
           left. Any pane can override it.
@@ -550,7 +578,12 @@ function WorkspaceChangeIndicatorRow({ value, onChange }: WorkspaceChangeIndicat
   return (
     <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Workspace branch changes indicator</Text>
+        <SettingsTargetText
+          settingId="app-appearance-layout-workspace-branch-changes-indicator"
+          style={settingsStyles.rowTitle}
+        >
+          Workspace branch changes indicator
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           Uncommitted clears when you commit. Branch compares your branch with its selected base.
         </Text>
@@ -593,9 +626,12 @@ function MessageTimestampRow({ value, onChange }: MessageTimestampRowProps) {
   return (
     <View style={responsiveRowStyle(true)}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>
+        <SettingsTargetText
+          settingId="app-chat-presentation-time-format"
+          style={settingsStyles.rowTitle}
+        >
           {t("settings.appearance.agents.messageTimestamp.title")}
-        </Text>
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           {t("settings.appearance.agents.messageTimestamp.hint")}
         </Text>
@@ -659,9 +695,12 @@ function TextEffectsRow({ value, onChange }: TextEffectsRowProps) {
   return (
     <View style={styles.rowWithBorder}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>
+        <SettingsTargetText
+          settingId="app-chat-presentation-text-effects"
+          style={settingsStyles.rowTitle}
+        >
           {t("settings.appearance.agents.textEffects.title")}
-        </Text>
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           {t("settings.appearance.agents.textEffects.hint")}
         </Text>
@@ -733,7 +772,12 @@ function ToolCallDetailRow({ value, onChange }: ToolCallDetailRowProps) {
   return (
     <View style={styles.rowWithBorder}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.general.toolCallDetail.label")}</Text>
+        <SettingsTargetText
+          settingId="app-chat-presentation-tool-call-display"
+          style={settingsStyles.rowTitle}
+        >
+          {t("settings.general.toolCallDetail.label")}
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           {t("settings.general.toolCallDetail.description")}
         </Text>
@@ -790,7 +834,7 @@ function LayoutToggleRow({
   return (
     <View style={withBorder ? styles.rowWithBorder : settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
       <Switch
@@ -875,7 +919,12 @@ export function ChatAppearanceSection() {
       <View style={settingsStyles.card}>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Sub-agent presentation</Text>
+            <SettingsTargetText
+              settingId="app-chat-presentation-sub-agent-presentation"
+              style={settingsStyles.rowTitle}
+            >
+              Sub-agent presentation
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Choose Otto&apos;s detailed panels or Paseo&apos;s compact composer pills. This
               changes only how the same running sub-agents are shown.
@@ -892,28 +941,34 @@ export function ChatAppearanceSection() {
             testID="settings-subagent-track-presentation"
           />
         </View>
-        <LayoutToggleRow
-          title={t("settings.appearance.agents.blackChatBackground.title")}
-          hint={t("settings.appearance.agents.blackChatBackground.hint")}
-          accessibilityLabel={t(
-            "settings.appearance.agents.blackChatBackground.accessibilityLabel",
-          )}
-          value={settings.blackTabBackground}
-          withBorder={false}
-          onValueChange={handleBlackTabBackgroundChange}
-          testID="settings-black-tab-background-switch"
-        />
-        <LayoutToggleRow
-          title={t("settings.appearance.agents.groupConsecutiveActions.title")}
-          hint={t("settings.appearance.agents.groupConsecutiveActions.hint")}
-          accessibilityLabel={t(
-            "settings.appearance.agents.groupConsecutiveActions.accessibilityLabel",
-          )}
-          value={settings.groupConsecutiveActions}
-          withBorder
-          onValueChange={handleGroupConsecutiveActionsChange}
-          testID="settings-group-consecutive-actions-switch"
-        />
+        <SettingsTargetScope settingIds={["app-chat-presentation-black-agent-chat-background"]}>
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.blackChatBackground.title")}
+            hint={t("settings.appearance.agents.blackChatBackground.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.blackChatBackground.accessibilityLabel",
+            )}
+            value={settings.blackTabBackground}
+            withBorder={false}
+            onValueChange={handleBlackTabBackgroundChange}
+            testID="settings-black-tab-background-switch"
+          />
+        </SettingsTargetScope>
+        <SettingsTargetScope
+          settingIds={["app-chat-presentation-group-consecutive-actions-together"]}
+        >
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.groupConsecutiveActions.title")}
+            hint={t("settings.appearance.agents.groupConsecutiveActions.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.groupConsecutiveActions.accessibilityLabel",
+            )}
+            value={settings.groupConsecutiveActions}
+            withBorder
+            onValueChange={handleGroupConsecutiveActionsChange}
+            testID="settings-group-consecutive-actions-switch"
+          />
+        </SettingsTargetScope>
         <LayoutToggleRow
           title={t("settings.appearance.agents.chatOutline.title")}
           hint={t("settings.appearance.agents.chatOutline.hint")}
@@ -927,66 +982,82 @@ export function ChatAppearanceSection() {
           value={settings.toolCallDetailLevel}
           onChange={handleToolCallDetailLevelChange}
         />
-        <LayoutToggleRow
-          title={t("settings.appearance.agents.wrapToolCallText.title")}
-          hint={t("settings.appearance.agents.wrapToolCallText.hint")}
-          accessibilityLabel={t("settings.appearance.agents.wrapToolCallText.accessibilityLabel")}
-          value={settings.wrapToolCallText}
-          withBorder
-          onValueChange={handleWrapToolCallTextChange}
-          testID="settings-wrap-tool-call-text-switch"
-        />
-        <LayoutToggleRow
-          title={t("settings.appearance.agents.chatMetricsBar.title")}
-          hint={t("settings.appearance.agents.chatMetricsBar.hint")}
-          accessibilityLabel={t("settings.appearance.agents.chatMetricsBar.accessibilityLabel")}
-          value={settings.chatMetricsBar}
-          withBorder
-          onValueChange={handleChatMetricsBarChange}
-          testID="settings-chat-metrics-bar-switch"
-        />
-        <LayoutToggleRow
-          title={t("settings.appearance.agents.autoExpandReasoning.title")}
-          hint={t("settings.appearance.agents.autoExpandReasoning.hint")}
-          accessibilityLabel={t(
-            "settings.appearance.agents.autoExpandReasoning.accessibilityLabel",
-          )}
-          value={settings.autoExpandReasoning}
-          withBorder
-          onValueChange={handleAutoExpandReasoningChange}
-          testID="settings-auto-expand-reasoning-switch"
-        />
-        <LayoutToggleRow
-          title={t("settings.appearance.agents.hideMessageDetails.title")}
-          hint={t("settings.appearance.agents.hideMessageDetails.hint")}
-          accessibilityLabel={t("settings.appearance.agents.hideMessageDetails.accessibilityLabel")}
-          value={settings.hideChatMessageDetails}
-          withBorder
-          onValueChange={handleHideChatMessageDetailsChange}
-          testID="settings-hide-message-details-switch"
-        />
+        <SettingsTargetScope settingIds={["app-chat-presentation-wrap-tool-call-text"]}>
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.wrapToolCallText.title")}
+            hint={t("settings.appearance.agents.wrapToolCallText.hint")}
+            accessibilityLabel={t("settings.appearance.agents.wrapToolCallText.accessibilityLabel")}
+            value={settings.wrapToolCallText}
+            withBorder
+            onValueChange={handleWrapToolCallTextChange}
+            testID="settings-wrap-tool-call-text-switch"
+          />
+        </SettingsTargetScope>
+        <SettingsTargetScope settingIds={["app-chat-presentation-show-chat-metrics"]}>
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.chatMetricsBar.title")}
+            hint={t("settings.appearance.agents.chatMetricsBar.hint")}
+            accessibilityLabel={t("settings.appearance.agents.chatMetricsBar.accessibilityLabel")}
+            value={settings.chatMetricsBar}
+            withBorder
+            onValueChange={handleChatMetricsBarChange}
+            testID="settings-chat-metrics-bar-switch"
+          />
+        </SettingsTargetScope>
+        <SettingsTargetScope settingIds={["app-chat-presentation-always-expand-reasoning"]}>
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.autoExpandReasoning.title")}
+            hint={t("settings.appearance.agents.autoExpandReasoning.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.autoExpandReasoning.accessibilityLabel",
+            )}
+            value={settings.autoExpandReasoning}
+            withBorder
+            onValueChange={handleAutoExpandReasoningChange}
+            testID="settings-auto-expand-reasoning-switch"
+          />
+        </SettingsTargetScope>
+        <SettingsTargetScope
+          settingIds={["app-chat-presentation-hide-message-details-until-hover"]}
+        >
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.hideMessageDetails.title")}
+            hint={t("settings.appearance.agents.hideMessageDetails.hint")}
+            accessibilityLabel={t(
+              "settings.appearance.agents.hideMessageDetails.accessibilityLabel",
+            )}
+            value={settings.hideChatMessageDetails}
+            withBorder
+            onValueChange={handleHideChatMessageDetailsChange}
+            testID="settings-hide-message-details-switch"
+          />
+        </SettingsTargetScope>
         <MessageTimestampRow
           value={settings.chatTimestampDisplay}
           onChange={handleChatTimestampDisplayChange}
         />
-        <LayoutToggleRow
-          title="Gradient"
-          hint="Paint a soft diagonal gradient into the top corner of each chat message bubble. Turn off for flat bubbles."
-          accessibilityLabel="Gradient"
-          value={settings.chatBubbleGradient}
-          withBorder
-          onValueChange={handleChatBubbleGradientChange}
-          testID="settings-chat-bubble-gradient-switch"
-        />
-        <LayoutToggleRow
-          title="Wrap long lines"
-          hint="Wrap long lines in tool output, commands, and diffs instead of scrolling horizontally."
-          accessibilityLabel="Wrap long lines"
-          value={settings.wrapCodeLines}
-          withBorder
-          onValueChange={handleWrapCodeLinesChange}
-          testID="settings-wrap-code-lines-switch"
-        />
+        <SettingsTargetScope settingIds={["app-chat-presentation-gradient"]}>
+          <LayoutToggleRow
+            title="Gradient"
+            hint="Paint a soft diagonal gradient into the top corner of each chat message bubble. Turn off for flat bubbles."
+            accessibilityLabel="Gradient"
+            value={settings.chatBubbleGradient}
+            withBorder
+            onValueChange={handleChatBubbleGradientChange}
+            testID="settings-chat-bubble-gradient-switch"
+          />
+        </SettingsTargetScope>
+        <SettingsTargetScope settingIds={["app-chat-presentation-wrap-long-lines"]}>
+          <LayoutToggleRow
+            title="Wrap long lines"
+            hint="Wrap long lines in tool output, commands, and diffs instead of scrolling horizontally."
+            accessibilityLabel="Wrap long lines"
+            value={settings.wrapCodeLines}
+            withBorder
+            onValueChange={handleWrapCodeLinesChange}
+            testID="settings-wrap-code-lines-switch"
+          />
+        </SettingsTargetScope>
         <TextEffectsRow value={settings.textEffectTheme} onChange={handleTextEffectThemeChange} />
       </View>
     </SettingsSection>
@@ -1245,7 +1316,12 @@ export function AppearanceSection() {
           {showUiGallery ? (
             <View style={styles.rowWithBorder}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>UI Gallery</Text>
+                <SettingsTargetText
+                  settingId="app-appearance-theme-ui-gallery"
+                  style={settingsStyles.rowTitle}
+                >
+                  UI Gallery
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   Audit production controls in every enforced state and theme.
                 </Text>
@@ -1270,42 +1346,50 @@ export function AppearanceSection() {
           native page-transition fades. */}
       <SettingsSection title="Animations">
         <View style={settingsStyles.card}>
-          <LayoutToggleRow
-            title="Animate transitions"
-            hint="Cross-fade between pages and slide the sidebars open instead of switching instantly."
-            accessibilityLabel="Animate transitions"
-            value={settings.animationsEnabled}
-            withBorder={false}
-            onValueChange={handleAnimationsEnabledChange}
-            testID="settings-animations-enabled-switch"
-          />
+          <SettingsTargetScope settingIds={["app-appearance-animations-animate-transitions"]}>
+            <LayoutToggleRow
+              title="Animate transitions"
+              hint="Cross-fade between pages and slide the sidebars open instead of switching instantly."
+              accessibilityLabel="Animate transitions"
+              value={settings.animationsEnabled}
+              withBorder={false}
+              onValueChange={handleAnimationsEnabledChange}
+              testID="settings-animations-enabled-switch"
+            />
+          </SettingsTargetScope>
         </View>
       </SettingsSection>
       {showLayoutSection ? (
         <SettingsSection title={t("settings.appearance.layout.title")}>
           <View style={settingsStyles.card}>
-            <LayoutToggleRow
-              title={t("settings.appearance.layout.compactSidebarTopSpacing.title")}
-              hint={t("settings.appearance.layout.compactSidebarTopSpacing.hint")}
-              accessibilityLabel={t(
-                "settings.appearance.layout.compactSidebarTopSpacing.accessibilityLabel",
-              )}
-              value={settings.compactSidebarTopSpacing}
-              withBorder={false}
-              onValueChange={handleCompactSidebarTopSpacingChange}
-              testID="settings-compact-sidebar-top-spacing-switch"
-            />
-            <LayoutToggleRow
-              title={t("settings.appearance.layout.workspaceToolsInList.title")}
-              hint={t("settings.appearance.layout.workspaceToolsInList.hint")}
-              accessibilityLabel={t(
-                "settings.appearance.layout.workspaceToolsInList.accessibilityLabel",
-              )}
-              value={settings.workspaceToolsPlacement === "workspaceList"}
-              withBorder
-              onValueChange={handleWorkspaceToolsPlacementChange}
-              testID="settings-workspace-tools-placement-switch"
-            />
+            <SettingsTargetScope settingIds={["app-appearance-layout-reduce-space-above-sidebar"]}>
+              <LayoutToggleRow
+                title={t("settings.appearance.layout.compactSidebarTopSpacing.title")}
+                hint={t("settings.appearance.layout.compactSidebarTopSpacing.hint")}
+                accessibilityLabel={t(
+                  "settings.appearance.layout.compactSidebarTopSpacing.accessibilityLabel",
+                )}
+                value={settings.compactSidebarTopSpacing}
+                withBorder={false}
+                onValueChange={handleCompactSidebarTopSpacingChange}
+                testID="settings-compact-sidebar-top-spacing-switch"
+              />
+            </SettingsTargetScope>
+            <SettingsTargetScope
+              settingIds={["app-appearance-layout-show-workspace-tools-in-workspace-list"]}
+            >
+              <LayoutToggleRow
+                title={t("settings.appearance.layout.workspaceToolsInList.title")}
+                hint={t("settings.appearance.layout.workspaceToolsInList.hint")}
+                accessibilityLabel={t(
+                  "settings.appearance.layout.workspaceToolsInList.accessibilityLabel",
+                )}
+                value={settings.workspaceToolsPlacement === "workspaceList"}
+                withBorder
+                onValueChange={handleWorkspaceToolsPlacementChange}
+                testID="settings-workspace-tools-placement-switch"
+              />
+            </SettingsTargetScope>
             {isDeveloperMode ? (
               <WorkspaceChangeIndicatorRow
                 value={settings.workspaceChangeIndicator}
@@ -1313,101 +1397,118 @@ export function AppearanceSection() {
               />
             ) : null}
             {/* i18n: English-only pending a translation pass (Agent Teams). */}
-            <LayoutToggleRow
-              title="Team switcher in title bar"
-              hint="Move the Active Team switcher from the sidebar menu into the workspace title bar, ahead of the other tools."
-              accessibilityLabel="Team switcher in title bar"
-              value={settings.teamSwitcherPlacement === "titlebar"}
-              withBorder
-              onValueChange={handleTeamSwitcherPlacementChange}
-              testID="settings-team-switcher-placement-switch"
-            />
+            <SettingsTargetScope settingIds={["app-appearance-layout-team-switcher-in-title-bar"]}>
+              <LayoutToggleRow
+                title="Team switcher in title bar"
+                hint="Move the Active Team switcher from the sidebar menu into the workspace title bar, ahead of the other tools."
+                accessibilityLabel="Team switcher in title bar"
+                value={settings.teamSwitcherPlacement === "titlebar"}
+                withBorder
+                onValueChange={handleTeamSwitcherPlacementChange}
+                testID="settings-team-switcher-placement-switch"
+              />
+            </SettingsTargetScope>
             <ChatWidthRow value={settings.chatWidth} onChange={handleChatWidthChange} />
             <TabOrientationRow
               value={settings.defaultTabOrientation}
               onChange={handleDefaultTabOrientationChange}
             />
-            <LayoutToggleRow
-              title={t("settings.appearance.layout.hideTabToolbarOptions.title")}
-              hint={t("settings.appearance.layout.hideTabToolbarOptions.hint")}
-              accessibilityLabel={t(
-                "settings.appearance.layout.hideTabToolbarOptions.accessibilityLabel",
-              )}
-              value={settings.hideTabToolbarOptions}
-              withBorder
-              onValueChange={handleHideTabToolbarOptionsChange}
-              testID="settings-hide-tab-toolbar-options-switch"
-            />
+            <SettingsTargetScope settingIds={["app-appearance-layout-hide-tab-toolbar-options"]}>
+              <LayoutToggleRow
+                title={t("settings.appearance.layout.hideTabToolbarOptions.title")}
+                hint={t("settings.appearance.layout.hideTabToolbarOptions.hint")}
+                accessibilityLabel={t(
+                  "settings.appearance.layout.hideTabToolbarOptions.accessibilityLabel",
+                )}
+                value={settings.hideTabToolbarOptions}
+                withBorder
+                onValueChange={handleHideTabToolbarOptionsChange}
+                testID="settings-hide-tab-toolbar-options-switch"
+              />
+            </SettingsTargetScope>
           </View>
         </SettingsSection>
       ) : null}
       {/* Visualizer settings moved to their own top-level section
           (visualizer-section.tsx) - the rows kept their i18n keys. */}
+      <SidebarNavSection />
       <SettingsSection title={t("settings.appearance.fonts.title")}>
         <View style={settingsStyles.card}>
           {showFontFamilyRows ? (
-            <FontFamilyRow
-              title={t("settings.appearance.fonts.interfaceFont")}
-              hint={t("settings.appearance.fonts.interfaceFontHint")}
-              accessibilityLabel={t("settings.appearance.fonts.interfaceFontAccessibility")}
-              placeholder={uiFontPlaceholder}
-              value={settings.uiFontFamily}
-              draft={uiFontDraft}
-              withBorder={false}
-              onChangeDraft={setUiFontDraft}
-              onCommit={commitUiFontFamily}
-            />
+            <SettingsTargetScope settingIds={["app-appearance-fonts-interface-font"]}>
+              <FontFamilyRow
+                title={t("settings.appearance.fonts.interfaceFont")}
+                hint={t("settings.appearance.fonts.interfaceFontHint")}
+                accessibilityLabel={t("settings.appearance.fonts.interfaceFontAccessibility")}
+                placeholder={uiFontPlaceholder}
+                value={settings.uiFontFamily}
+                draft={uiFontDraft}
+                withBorder={false}
+                onChangeDraft={setUiFontDraft}
+                onCommit={commitUiFontFamily}
+              />
+            </SettingsTargetScope>
           ) : null}
-          <FontSizeRow
-            title={t("settings.appearance.fonts.interfaceSize")}
-            accessibilityLabel={t("settings.appearance.fonts.interfaceSizeAccessibility")}
-            min={MIN_UI_FONT_SIZE}
-            max={MAX_UI_FONT_SIZE}
-            draft={uiSizeDraft}
-            withBorder={showFontFamilyRows}
-            onChangeDraft={setUiSizeDraft}
-            onCommit={commitUiSize}
-          />
-          <FontSizeRow
-            title="Content size"
-            accessibilityLabel="Content size"
-            min={MIN_CONTENT_FONT_SIZE}
-            max={MAX_CONTENT_FONT_SIZE}
-            draft={contentSizeDraft}
-            onChangeDraft={setContentSizeDraft}
-            onCommit={commitContentSize}
-          />
+          <SettingsTargetScope settingIds={["app-appearance-fonts-interface-size"]}>
+            <FontSizeRow
+              title={t("settings.appearance.fonts.interfaceSize")}
+              accessibilityLabel={t("settings.appearance.fonts.interfaceSizeAccessibility")}
+              min={MIN_UI_FONT_SIZE}
+              max={MAX_UI_FONT_SIZE}
+              draft={uiSizeDraft}
+              withBorder={showFontFamilyRows}
+              onChangeDraft={setUiSizeDraft}
+              onCommit={commitUiSize}
+            />
+          </SettingsTargetScope>
+          <SettingsTargetScope settingIds={["app-appearance-fonts-content-size"]}>
+            <FontSizeRow
+              title="Content size"
+              accessibilityLabel="Content size"
+              min={MIN_CONTENT_FONT_SIZE}
+              max={MAX_CONTENT_FONT_SIZE}
+              draft={contentSizeDraft}
+              onChangeDraft={setContentSizeDraft}
+              onCommit={commitContentSize}
+            />
+          </SettingsTargetScope>
           {showFontFamilyRows ? (
-            <FontFamilyRow
-              title={t("settings.appearance.fonts.codeFont")}
-              hint={t("settings.appearance.fonts.codeFontHint")}
-              accessibilityLabel={t("settings.appearance.fonts.codeFontAccessibility")}
-              placeholder={monoFontPlaceholder}
-              value={settings.monoFontFamily}
-              draft={monoFontDraft}
-              withBorder
-              onChangeDraft={setMonoFontDraft}
-              onCommit={commitMonoFontFamily}
-            />
+            <SettingsTargetScope settingIds={["app-appearance-fonts-code-font"]}>
+              <FontFamilyRow
+                title={t("settings.appearance.fonts.codeFont")}
+                hint={t("settings.appearance.fonts.codeFontHint")}
+                accessibilityLabel={t("settings.appearance.fonts.codeFontAccessibility")}
+                placeholder={monoFontPlaceholder}
+                value={settings.monoFontFamily}
+                draft={monoFontDraft}
+                withBorder
+                onChangeDraft={setMonoFontDraft}
+                onCommit={commitMonoFontFamily}
+              />
+            </SettingsTargetScope>
           ) : null}
-          <FontSizeRow
-            title={t("settings.appearance.fonts.codeSize")}
-            accessibilityLabel={t("settings.appearance.fonts.codeSizeAccessibility")}
-            min={MIN_CODE_FONT_SIZE}
-            max={MAX_CODE_FONT_SIZE}
-            draft={codeSizeDraft}
-            onChangeDraft={setCodeSizeDraft}
-            onCommit={commitCodeSize}
-          />
-          <FontSizeRow
-            title={t("settings.appearance.fonts.terminalSize")}
-            accessibilityLabel={t("settings.appearance.fonts.terminalSizeAccessibility")}
-            min={MIN_TERMINAL_FONT_SIZE}
-            max={MAX_TERMINAL_FONT_SIZE}
-            draft={terminalSizeDraft}
-            onChangeDraft={setTerminalSizeDraft}
-            onCommit={commitTerminalSize}
-          />
+          <SettingsTargetScope settingIds={["app-appearance-fonts-code-size"]}>
+            <FontSizeRow
+              title={t("settings.appearance.fonts.codeSize")}
+              accessibilityLabel={t("settings.appearance.fonts.codeSizeAccessibility")}
+              min={MIN_CODE_FONT_SIZE}
+              max={MAX_CODE_FONT_SIZE}
+              draft={codeSizeDraft}
+              onChangeDraft={setCodeSizeDraft}
+              onCommit={commitCodeSize}
+            />
+          </SettingsTargetScope>
+          <SettingsTargetScope settingIds={["app-appearance-fonts-terminal-size"]}>
+            <FontSizeRow
+              title={t("settings.appearance.fonts.terminalSize")}
+              accessibilityLabel={t("settings.appearance.fonts.terminalSizeAccessibility")}
+              min={MIN_TERMINAL_FONT_SIZE}
+              max={MAX_TERMINAL_FONT_SIZE}
+              draft={terminalSizeDraft}
+              onChangeDraft={setTerminalSizeDraft}
+              onCommit={commitTerminalSize}
+            />
+          </SettingsTargetScope>
           <FontContrastRow
             draftPercent={contrastDraft}
             onChangeDraft={setContrastDraft}

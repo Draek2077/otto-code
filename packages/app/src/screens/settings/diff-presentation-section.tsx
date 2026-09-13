@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useMemo } from "react";
 import { Text, View } from "react-native";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
@@ -66,7 +67,12 @@ export function DiffPresentationSection() {
       <View style={settingsStyles.card}>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Review view</Text>
+            <SettingsTargetText
+              settingId="app-editor-diff-review-review-view"
+              style={settingsStyles.rowTitle}
+            >
+              Review view
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Used by Changes, History, Refine, and agent edits. Structural falls back to Line when
               a file cannot be aligned safely.
@@ -82,7 +88,12 @@ export function DiffPresentationSection() {
         </View>
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Default Changes view</Text>
+            <SettingsTargetText
+              settingId="app-editor-diff-review-default-changes-view"
+              style={settingsStyles.rowTitle}
+            >
+              Default Changes view
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Open Changes with inline file diffs or a file tree.
             </Text>
@@ -97,7 +108,12 @@ export function DiffPresentationSection() {
         </View>
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Formatting-only changes</Text>
+            <SettingsTargetText
+              settingId="app-editor-diff-review-formatting-only-changes"
+              style={settingsStyles.rowTitle}
+            >
+              Formatting-only changes
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Show whitespace-only changes in a neutral color. Off hides them.
             </Text>
@@ -111,7 +127,12 @@ export function DiffPresentationSection() {
         </View>
         <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Compact replacements</Text>
+            <SettingsTargetText
+              settingId="app-editor-diff-review-compact-replacements"
+              style={settingsStyles.rowTitle}
+            >
+              Compact replacements
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Show a small Structural replacement as the new token, or as old and new side by side.
             </Text>

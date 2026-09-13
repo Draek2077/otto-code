@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -122,7 +123,9 @@ function ColorRow({ color, onChange }: { color: HostColor; onChange: (color: Hos
   return (
     <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.host.appearance.color.label")}</Text>
+        <SettingsTargetText settingId="host-host-appearance-color" style={settingsStyles.rowTitle}>
+          {t("settings.host.appearance.color.label")}
+        </SettingsTargetText>
       </View>
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -163,7 +166,12 @@ function BadgeDisplayRow({
   return (
     <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.host.appearance.badge.label")}</Text>
+        <SettingsTargetText
+          settingId="host-host-appearance-sidebar-badge"
+          style={settingsStyles.rowTitle}
+        >
+          {t("settings.host.appearance.badge.label")}
+        </SettingsTargetText>
       </View>
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -290,7 +298,12 @@ export function HostAppearanceSection({ host }: { host: HostProfile }) {
       <View style={settingsStyles.card}>
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.host.appearance.name.label")}</Text>
+            <SettingsTargetText
+              settingId="host-host-appearance-name"
+              style={settingsStyles.rowTitle}
+            >
+              {t("settings.host.appearance.name.label")}
+            </SettingsTargetText>
           </View>
           <View style={styles.nameValue}>
             <Text style={styles.nameText} numberOfLines={1}>

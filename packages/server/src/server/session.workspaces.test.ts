@@ -1,3 +1,4 @@
+import { createAgentRequestsStub } from "./test-utils/session-stubs.js";
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
@@ -17,6 +18,7 @@ import { z } from "zod";
 import { createTestLogger } from "../test-utils/test-logger.js";
 import { Session } from "./session.js";
 import type { SessionOptions } from "./session.js";
+import { OWNER_PERMISSIONS } from "./authorization/index.js";
 import type { AgentUpdatesService } from "./session/agent-updates/agent-updates-service.js";
 import type { AgentSnapshotPayload, SessionOutboundMessage } from "@otto-code/protocol/messages";
 import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
@@ -46,7 +48,8 @@ import type { WorkspaceGitRuntimeSnapshot } from "./workspace-git-service.js";
 import type { GeneratedWorkspaceName } from "./worktree-branch-name-generator.js";
 import { WorkspaceAutoName } from "./workspace-auto-name.js";
 import { deriveProjectKey } from "./project-key.js";
-import type { GitHubService } from "../services/github-service.js";
+import { generateProjectId } from "./workspace-registry-model.js";
+import type { ForgeService } from "../services/forge-service.js";
 import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-service-stub.js";
 import {
   asSessionLogger,
@@ -72,6 +75,7 @@ import {
   type PersistedProjectKind,
   type PersistedProjectRecord,
   type PersistedWorkspaceRecord,
+  type WorkspaceMutation,
 } from "./workspace-registry.js";
 
 const REPO_CWD = path.resolve("/tmp/repo");
@@ -104,6 +108,7 @@ interface SessionTestAccess {
     get(id: string): Promise<unknown>;
     upsert(record: unknown): Promise<unknown>;
     remove(projectId: string): Promise<void>;
+    getOrCreateActiveByRoot: SessionOptions["projectRegistry"]["getOrCreateActiveByRoot"];
   };
   agentStorage: {
     list(...args: unknown[]): Promise<unknown[]>;
@@ -114,7 +119,10 @@ interface SessionTestAccess {
     listAgents(): unknown[];
     getAgent(agentId: string): unknown;
     reloadAgentSession(agentId: string, overrides?: unknown, options?: unknown): Promise<unknown>;
-    listImportableSessions(options?: unknown): Promise<unknown[]>;
+    listImportableSessions(options?: unknown): Promise<{
+      sessions: unknown[];
+      providerErrors: Array<{ provider: string; message: string }>;
+    }>;
     importProviderSession(input: unknown): Promise<unknown>;
     resumeAgentFromPersistence(
       handle: unknown,
@@ -130,6 +138,10 @@ interface SessionTestAccess {
     list(...args: unknown[]): Promise<unknown[]>;
     archive(workspaceId: string, archivedAt: string): Promise<void>;
     get(workspaceId: string): Promise<unknown>;
+    update(
+      workspaceId: string,
+      updater: (record: PersistedWorkspaceRecord) => PersistedWorkspaceRecord,
+    ): Promise<unknown>;
     upsert(record: unknown): Promise<unknown>;
   };
   agentUpdates: AgentUpdatesService;
@@ -163,6 +175,9 @@ interface SessionTestAccess {
   clearWorkspaceArchiving(workspaceIds: Iterable<string>): void;
   emitWorkspaceUpdateForCwd(...args: unknown[]): Promise<unknown>;
   emitWorkspaceUpdatesForWorkspaceIds(...args: unknown[]): Promise<unknown>;
+  emitWorkspaceUpdatesForExternalWorkspaceIds(workspaceIds: Iterable<string>): Promise<void>;
+  updateClientCapabilities(capabilities: Record<string, unknown> | null): void;
+  cleanup: Session["cleanup"];
   emit(message: unknown): void;
   onMessage(message: unknown): void;
   ottoHome: string;
@@ -223,6 +238,7 @@ function makeAgent(input: {
   requiresAttention?: boolean;
   attentionReason?: AgentSnapshotPayload["attentionReason"];
   attentionTimestamp?: string | null;
+  labels?: Record<string, string>;
 }): AgentSnapshotPayload {
   const pendingPermissionCount = input.pendingPermissions ?? 0;
   return {
@@ -259,7 +275,7 @@ function makeAgent(input: {
       sessionId: null,
     },
     title: null,
-    labels: {},
+    labels: input.labels ?? {},
     requiresAttention: input.requiresAttention ?? false,
     attentionReason: input.attentionReason ?? null,
     attentionTimestamp: input.attentionTimestamp ?? null,
@@ -273,17 +289,20 @@ function makeStoredAgent(input: {
   updatedAt: string;
   requiresAttention?: boolean;
   attentionReason?: StoredAgentRecord["attentionReason"];
+  workspaceId?: string;
+  labels?: Record<string, string>;
 }): StoredAgentRecord {
   return {
     id: input.id,
     provider: "codex",
     cwd: input.cwd,
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
     createdAt: input.updatedAt,
     updatedAt: input.updatedAt,
     lastActivityAt: input.updatedAt,
     lastUserMessageAt: null,
     title: null,
-    labels: {},
+    labels: input.labels ?? {},
     lastStatus: "closed",
     lastModeId: null,
     config: { provider: "codex", cwd: input.cwd },
@@ -577,10 +596,11 @@ function createDefaultProjectRegistryStub(): SessionOptions["projectRegistry"] {
       );
       if (existing) return existing;
       const project = createPersistedProjectRecord({
-        projectId: `prj_test_${known.length + 1}`,
+        projectId: generateProjectId(),
         rootPath: input.rootPath,
         kind: input.kind,
         displayName: input.displayName,
+        projectKey: input.projectKey,
         createdAt: input.timestamp,
         updatedAt: input.timestamp,
       });
@@ -611,7 +631,8 @@ function createSessionForWorkspaceTests(
     agentStorage?: { [K in keyof SessionOptions["agentStorage"]]?: unknown };
     projectRegistry?: SessionOptions["projectRegistry"];
     workspaceRegistry?: SessionOptions["workspaceRegistry"];
-    github?: GitHubService;
+    onWorkspaceRecovered?: SessionOptions["onWorkspaceRecovered"];
+    github?: ForgeService;
     ottoHome?: string;
     worktreesRoot?: string;
     renameCurrentBranch?: (
@@ -642,6 +663,7 @@ function createSessionForWorkspaceTests(
     archiveSnapshot: async () => ({}),
     unarchiveSnapshot: async () => true,
     clearAgentAttention: async () => {},
+    markAgentUnread: async () => {},
     notifyAgentState: () => {},
     ...options.agentManager,
   });
@@ -694,9 +716,9 @@ function createSessionForWorkspaceTests(
 
   const session = asTestSession(
     new Session({
+      agentRequests: createAgentRequestsStub(),
       clientId: "test-client",
-      // See session.test.ts: a session without scopes throws on construction.
-      scopes: ["*"],
+      permissions: OWNER_PERMISSIONS,
       appVersion: options.appVersion ?? null,
       onMessage: options.onMessage ?? vi.fn(),
       logger: asSessionLogger(logger),
@@ -734,6 +756,7 @@ function createSessionForWorkspaceTests(
       }),
       projectRegistry: options.projectRegistry ?? createDefaultProjectRegistryStub(),
       workspaceRegistry,
+      onWorkspaceRecovered: options.onWorkspaceRecovered,
       filesystem: { isDirectory: async () => true },
       scheduleService: asScheduleService(),
       checkoutDiffManager: asCheckoutDiffManager({
@@ -756,6 +779,7 @@ function createSessionForWorkspaceTests(
       workspaceAutoName: new WorkspaceAutoName({
         agentManager,
         workspaceRegistry,
+        onWorkspaceRecovered: options.onWorkspaceRecovered,
         workspaceGitService,
         providerSnapshotManager,
         readDaemonConfig: () => ({ metadataGeneration: { providers: [] } }),
@@ -1032,9 +1056,10 @@ test("create_agent_request keeps requested child cwd when grouped under an exist
     const emitted: SessionOutboundMessage[] = [];
     const session = asTestSession(
       new Session({
+        agentRequests: createAgentRequestsStub(),
         clientId: "test-client",
         serverId: "test-server",
-        scopes: ["*"],
+        permissions: OWNER_PERMISSIONS,
         appVersion: null,
         onMessage: (message) => emitted.push(message),
         logger: asSessionLogger(logger),
@@ -1045,6 +1070,7 @@ test("create_agent_request keeps requested child cwd when grouped under an exist
         agentStorage,
         projectRegistry,
         workspaceRegistry,
+        onWorkspaceRecovered: options.onWorkspaceRecovered,
         scheduleService: asScheduleService(),
         checkoutDiffManager: asCheckoutDiffManager({
           subscribe: async () => ({
@@ -1111,6 +1137,165 @@ test("create_agent_request keeps requested child cwd when grouped under an exist
   }
 });
 
+test("create_agent_request launches from an exact subdirectory in a created worktree", async () => {
+  const workdir = mkdtempSync(path.join(tmpdir(), "otto-create-agent-worktree-cwd-"));
+  try {
+    const parent = path.join(workdir, "parent");
+    const child = path.join(parent, "packages", "app");
+    mkdirSync(child, { recursive: true });
+    execFileSync("git", ["init", "-b", "main"], { cwd: parent, stdio: "pipe" });
+    execFileSync("git", ["config", "user.email", "test@otto.local"], {
+      cwd: parent,
+      stdio: "pipe",
+    });
+    execFileSync("git", ["config", "user.name", "Otto Test"], { cwd: parent, stdio: "pipe" });
+    writeFileSync(path.join(child, "README.md"), "app\n");
+    execFileSync("git", ["add", "."], { cwd: parent, stdio: "pipe" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: parent, stdio: "pipe" });
+
+    const logger = {
+      child: () => logger,
+      trace: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const agentStorage = new AgentStorage(path.join(workdir, "agents"), asSessionLogger(logger));
+    const agentManager = new AgentManager({
+      clients: { codex: new CreateAgentTestClient() },
+      registry: agentStorage,
+      logger: asSessionLogger(logger),
+      idFactory: () => "00000000-0000-4000-8000-000000000552",
+    });
+    const projectRegistry = new FileBackedProjectRegistry(
+      path.join(workdir, "projects.json"),
+      asSessionLogger(logger),
+    );
+    const workspaceRegistry = new FileBackedWorkspaceRegistry(
+      path.join(workdir, "workspaces.json"),
+      asSessionLogger(logger),
+    );
+    const workspaceGitService = createNoopWorkspaceGitService({
+      getCheckout: async (cwd: string) => ({
+        cwd,
+        isGit: true,
+        currentBranch: "main",
+        remoteUrl: null,
+        worktreeRoot: parent,
+        isOttoOwnedWorktree: false,
+        mainRepoRoot: null,
+      }),
+      resolveRepoRoot: async () => parent,
+      resolveDefaultBranch: async () => "main",
+    });
+    await projectRegistry.upsert(
+      createPersistedProjectRecord({
+        projectId: "proj-parent",
+        rootPath: parent,
+        kind: "git",
+        displayName: "parent",
+        createdAt: "2026-05-07T00:00:00.000Z",
+        updatedAt: "2026-05-07T00:00:00.000Z",
+      }),
+    );
+    await workspaceRegistry.upsert(
+      createPersistedWorkspaceRecord({
+        workspaceId: "ws-parent",
+        projectId: "proj-parent",
+        cwd: parent,
+        kind: "local_checkout",
+        displayName: "parent",
+        createdAt: "2026-05-07T00:00:00.000Z",
+        updatedAt: "2026-05-07T00:00:00.000Z",
+      }),
+    );
+
+    const emitted: SessionOutboundMessage[] = [];
+    const session = new Session({
+      agentRequests: createAgentRequestsStub(),
+      clientId: "test-client",
+      permissions: OWNER_PERMISSIONS,
+      appVersion: null,
+      onMessage: (message) => emitted.push(message),
+      logger: asSessionLogger(logger),
+      downloadTokenStore: asDownloadTokenStore(),
+      pushNotifications: asPushNotifications(),
+      ottoHome: path.join(workdir, "otto-home"),
+      agentManager,
+      agentStorage,
+      projectRegistry,
+      workspaceRegistry,
+      onWorkspaceRecovered: options.onWorkspaceRecovered,
+      scheduleService: asScheduleService(),
+      checkoutDiffManager: asCheckoutDiffManager({
+        subscribe: async () => ({
+          initial: { cwd: child, files: [], error: null },
+          unsubscribe: () => {},
+        }),
+        scheduleRefreshForCwd: () => {},
+        onWorkspaceStateMayHaveChanged: () => {},
+        getMetrics: () => ({
+          checkoutDiffTargetCount: 0,
+          checkoutDiffSubscriptionCount: 0,
+          checkoutDiffWatcherCount: 0,
+          checkoutDiffFallbackRefreshTargetCount: 0,
+        }),
+        dispose: () => {},
+      }),
+      workspaceGitService,
+      workspaceAutoName: new WorkspaceAutoName({
+        agentManager,
+        workspaceRegistry,
+        onWorkspaceRecovered: options.onWorkspaceRecovered,
+        workspaceGitService,
+        providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+        readDaemonConfig: () => ({ metadataGeneration: { providers: [] } }),
+        gitMutation: { notifyGitMutation: async () => {} },
+        emitWorkspaceUpdateForCwd: async () => {},
+        emitWorkspaceUpdateForWorkspaceId: async () => {},
+        logger: asSessionLogger(logger),
+      }),
+      daemonConfigStore: asDaemonConfigStore({
+        get: () => ({ mcp: { injectIntoAgents: false }, providers: {} }),
+        onChange: () => () => {},
+      }),
+      mcpBaseUrl: null,
+      stt: null,
+      tts: null,
+      providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+      terminalManager: null,
+    });
+
+    await session.handleMessage({
+      type: "create_agent_request",
+      requestId: "req-create-worktree-child",
+      config: { provider: "codex", cwd: child },
+      attachments: [],
+      worktree: { mode: "branch-off", newBranch: "feature/created-worktree" },
+    });
+
+    const [createdAgent] = agentManager.listAgents();
+    const createdWorktreeRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: createdAgent!.cwd,
+      stdio: "pipe",
+    })
+      .toString()
+      .trim();
+    expect(
+      createRealpathAwarePathMatcher(path.join(createdWorktreeRoot, "packages", "app"))(
+        createdAgent?.cwd ?? "",
+      ),
+    ).toBe(true);
+    expect(findByType(emitted, "status")?.payload).toMatchObject({
+      status: "agent_created",
+      agent: { cwd: createdAgent?.cwd },
+    });
+  } finally {
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
 test("create_agent_request does not title an existing workspace from the agent prompt", async () => {
   vi.useFakeTimers();
   const workdir = mkdtempSync(path.join(tmpdir(), "otto-create-agent-existing-title-"));
@@ -1168,8 +1353,9 @@ test("create_agent_request does not title an existing workspace from the agent p
     let generateCalls = 0;
     const session = asTestSession(
       new Session({
+        agentRequests: createAgentRequestsStub(),
         clientId: "test-client",
-        scopes: ["*"],
+        permissions: OWNER_PERMISSIONS,
         appVersion: null,
         onMessage: vi.fn(),
         logger: asSessionLogger(logger),
@@ -1180,6 +1366,7 @@ test("create_agent_request does not title an existing workspace from the agent p
         agentStorage,
         projectRegistry,
         workspaceRegistry,
+        onWorkspaceRecovered: options.onWorkspaceRecovered,
         scheduleService: asScheduleService(),
         checkoutDiffManager: asCheckoutDiffManager({
           subscribe: async () => ({
@@ -1441,8 +1628,9 @@ test("archive emits an authoritative agent_update upsert for subscribed clients"
 
   const session = asTestSession(
     new Session({
+      agentRequests: createAgentRequestsStub(),
       clientId: "test-client",
-      scopes: ["*"],
+      permissions: OWNER_PERMISSIONS,
       onMessage: (message) => emitted.push(message),
       logger: asSessionLogger(logger),
       downloadTokenStore: asDownloadTokenStore(),
@@ -1658,6 +1846,123 @@ test("workspace clear attention responds with an error instead of timing out", a
   });
 });
 
+test("workspace mark unread selects the newest finished workspace root", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: REPO_CWD,
+    projectId: REPO_CWD,
+    cwd: REPO_CWD,
+    kind: "directory",
+    displayName: "repo",
+    createdAt: "2026-03-30T15:00:00.000Z",
+    updatedAt: "2026-03-30T15:00:00.000Z",
+  });
+  const project = createPersistedProjectRecord({
+    projectId: REPO_CWD,
+    rootPath: REPO_CWD,
+    kind: "non_git",
+    displayName: "repo",
+    createdAt: "2026-03-30T15:00:00.000Z",
+    updatedAt: "2026-03-30T15:00:00.000Z",
+  });
+  const storedRecords = new Map<string, StoredAgentRecord>([
+    [
+      "root-agent",
+      makeStoredAgent({
+        id: "root-agent",
+        cwd: REPO_CWD,
+        workspaceId: workspace.workspaceId,
+        updatedAt: "2026-03-30T16:00:00.000Z",
+      }),
+    ],
+    [
+      "newer-child",
+      makeStoredAgent({
+        id: "newer-child",
+        cwd: REPO_CWD,
+        workspaceId: workspace.workspaceId,
+        updatedAt: "2026-03-30T17:00:00.000Z",
+        labels: { "paseo.parent-agent-id": "root-agent" },
+      }),
+    ],
+  ]);
+  const markedAgentIds: string[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+    agentManager: {
+      markAgentUnread: async (agentId: string) => {
+        markedAgentIds.push(agentId);
+      },
+    },
+  });
+
+  session.workspaceRegistry.list = async () => [workspace];
+  session.workspaceRegistry.get = async (id: string) =>
+    id === workspace.workspaceId ? workspace : null;
+  session.projectRegistry.list = async () => [project];
+  session.projectRegistry.get = async (id: string) => (id === project.projectId ? project : null);
+  session.listAgentPayloads = async () =>
+    Array.from(storedRecords.values()).map((record) =>
+      makeAgent({
+        id: record.id,
+        cwd: record.cwd,
+        workspaceId: record.workspaceId,
+        status: record.lastStatus,
+        updatedAt: record.updatedAt,
+        requiresAttention: record.requiresAttention,
+        attentionReason: record.attentionReason,
+        attentionTimestamp: record.attentionTimestamp,
+        labels: record.labels,
+      }),
+    );
+
+  await session.handleMessage({
+    type: "workspace.mark_unread.request",
+    workspaceId: workspace.workspaceId,
+    requestId: "req-mark-unread",
+  });
+
+  expect(markedAgentIds).toEqual(["root-agent"]);
+  expect(findByType(emitted, "workspace.mark_unread.response").payload).toEqual({
+    requestId: "req-mark-unread",
+    workspaceId: workspace.workspaceId,
+    markedAgentId: "root-agent",
+    success: true,
+    error: null,
+  });
+});
+
+test("workspace mark unread rejects workspaces without a finished root agent", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: REPO_CWD,
+    projectId: REPO_CWD,
+    cwd: REPO_CWD,
+    kind: "directory",
+    displayName: "repo",
+    createdAt: "2026-03-30T15:00:00.000Z",
+    updatedAt: "2026-03-30T15:00:00.000Z",
+  });
+  const session = createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) });
+  session.workspaceRegistry.get = async (id: string) =>
+    id === workspace.workspaceId ? workspace : null;
+  session.listAgentPayloads = async () => [];
+
+  await session.handleMessage({
+    type: "workspace.mark_unread.request",
+    workspaceId: workspace.workspaceId,
+    requestId: "req-mark-unread",
+  });
+
+  expect(findByType(emitted, "workspace.mark_unread.response").payload).toEqual({
+    requestId: "req-mark-unread",
+    workspaceId: workspace.workspaceId,
+    markedAgentId: null,
+    success: false,
+    error: `Workspace has no finished agent to mark unread: ${workspace.workspaceId}`,
+  });
+});
+
 test("workspace clear attention can clear multiple workspaces in one request", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const workspaces = [
@@ -1809,8 +2114,9 @@ test("close_items_request archives agents and kills terminals in one batch", asy
   const cancelAgentRun = vi.fn(async () => true);
   const session = asTestSession(
     new Session({
+      agentRequests: createAgentRequestsStub(),
       clientId: "test-client",
-      scopes: ["*"],
+      permissions: OWNER_PERMISSIONS,
       onMessage: (message) => emitted.push(message),
       logger: asSessionLogger(sessionLogger),
       downloadTokenStore: asDownloadTokenStore(),
@@ -1978,8 +2284,9 @@ test("close_items_request archives stored agents that are not currently loaded",
 
   const session = asTestSession(
     new Session({
+      agentRequests: createAgentRequestsStub(),
       clientId: "test-client",
-      scopes: ["*"],
+      permissions: OWNER_PERMISSIONS,
       onMessage: (message) => emitted.push(message),
       logger: asSessionLogger(sessionLogger),
       downloadTokenStore: asDownloadTokenStore(),
@@ -2138,8 +2445,9 @@ test("close_items_request continues after an archive failure", async () => {
   const killTerminalBestEffort = vi.fn();
   const session = asTestSession(
     new Session({
+      agentRequests: createAgentRequestsStub(),
       clientId: "test-client",
-      scopes: ["*"],
+      permissions: OWNER_PERMISSIONS,
       onMessage: (message) => emitted.push(message),
       logger: asSessionLogger(sessionLogger),
       downloadTokenStore: asDownloadTokenStore(),
@@ -2971,9 +3279,12 @@ test("fetch_recent_provider_sessions_request lists importable provider sessions 
   session.agentManager.listImportableSessions = async (options?: unknown) => {
     const providerFilter = (options as { providerFilter?: Set<string> } | undefined)
       ?.providerFilter;
-    return providerFilter
-      ? importableSessions.filter((entry) => providerFilter.has(entry.provider))
-      : importableSessions;
+    return {
+      sessions: providerFilter
+        ? importableSessions.filter((entry) => providerFilter.has(entry.provider))
+        : importableSessions,
+      providerErrors: [],
+    };
   };
   session.agentStorage.list = async () => [
     {
@@ -3045,7 +3356,10 @@ test("fetch_recent_provider_sessions_request forwards providerFilter to agent ma
   session.agentStorage.list = async () => [];
   session.agentManager.listImportableSessions = async (options?: unknown) => {
     capturedOptions = options as { providerFilter?: Set<string>; limit?: number };
-    return [];
+    return {
+      sessions: [],
+      providerErrors: [{ provider: "claude", message: "Claude listing failed" }],
+    };
   };
 
   await session.handleMessage({
@@ -3063,6 +3377,7 @@ test("fetch_recent_provider_sessions_request forwards providerFilter to agent ma
       payload: {
         requestId: "req-provider-filter",
         entries: [],
+        providerErrors: [{ provider: "claude", message: "Claude listing failed" }],
       },
     },
   ]);
@@ -3084,17 +3399,20 @@ test("fetch_recent_provider_sessions_request reports filteredAlreadyImportedCoun
     },
   ];
   session.agentStorage.list = async () => [];
-  session.agentManager.listImportableSessions = async () => [
-    {
-      provider: "codex",
-      providerHandleId: "live-handle",
-      cwd: "/tmp/recent",
-      title: "Already live",
-      firstPromptPreview: "live prompt",
-      lastPromptPreview: "live prompt",
-      lastActivityAt: new Date("2026-04-30T12:01:00.000Z"),
-    },
-  ];
+  session.agentManager.listImportableSessions = async () => ({
+    sessions: [
+      {
+        provider: "codex",
+        providerHandleId: "live-handle",
+        cwd: "/tmp/recent",
+        title: "Already live",
+        firstPromptPreview: "live prompt",
+        lastPromptPreview: "live prompt",
+        lastActivityAt: new Date("2026-04-30T12:01:00.000Z"),
+      },
+    ],
+    providerErrors: [],
+  });
 
   await session.handleMessage({
     type: "fetch_recent_provider_sessions_request",
@@ -3313,8 +3631,9 @@ test("workspace update stream keeps persisted workspace visible after agents sto
 
   const session = asTestSession(
     new Session({
+      agentRequests: createAgentRequestsStub(),
       clientId: "test-client",
-      scopes: ["*"],
+      permissions: OWNER_PERMISSIONS,
       onMessage: (message) => emitted.push(message),
       logger: asSessionLogger(logger),
       downloadTokenStore: asDownloadTokenStore(),
@@ -4536,6 +4855,7 @@ test("open_project_request reclassifies an archived directory workspace when git
   // ownership belongs to the agent-restore path (S6 in
   // session.workspace-resolution-invariants.test.ts).
   expect(response?.payload.workspace?.projectId).not.toBe(cwd);
+  expect(response?.payload.workspace?.projectId).toMatch(/^prj_[0-9a-f]{16}$/);
   expect(projects.get(cwd)?.archivedAt).toBe(archivedAt);
   expect(workspaces.get(workspaceId)?.archivedAt).toBe(archivedAt);
 });
@@ -4658,7 +4978,7 @@ test("open_project_request reclassifies an active directory workspace when git m
   expect(workspaces.get(workspaceId)?.projectId).toBe(cwd);
 });
 
-test("open_project_request groups a plain git worktree under an existing repo project", async () => {
+test("open_project_request gives a plain git worktree its own exact-root project", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const session = createSessionForWorkspaceTests();
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
@@ -4718,7 +5038,7 @@ test("open_project_request groups a plain git worktree under an existing repo pr
     cwd: requestedCwd,
     isGit: true,
     currentBranch: requestedCwd === repoRoot ? "main" : "feature/desktop-daemon-settings",
-    remoteUrl: "git@github.com:otto-code-ai/otto-code.git",
+    remoteUrl: "git@github.com:getotto/otto.git",
     worktreeRoot: requestedCwd,
     isOttoOwnedWorktree: false,
     mainRepoRoot: requestedCwd === repoRoot ? null : repoRoot,
@@ -4729,7 +5049,7 @@ test("open_project_request groups a plain git worktree under an existing repo pr
         isGit: true,
         repoRoot: requestedCwd,
         currentBranch: requestedCwd === repoRoot ? "main" : "feature/desktop-daemon-settings",
-        remoteUrl: "git@github.com:otto-code-ai/otto-code.git",
+        remoteUrl: "git@github.com:getotto/otto.git",
         isOttoOwnedWorktree: false,
         mainRepoRoot: requestedCwd === repoRoot ? null : repoRoot,
       },
@@ -4744,16 +5064,26 @@ test("open_project_request groups a plain git worktree under an existing repo pr
   const response = findByType(emitted, "open_project_response");
 
   expect(response?.payload.error).toBeNull();
-  expect(response?.payload.workspace?.projectId).toBe(repoRoot);
-  expect(response?.payload.workspace?.workspaceKind).toBe("worktree");
+  expect(response?.payload.workspace?.projectId).toMatch(/^prj_[0-9a-f]{16}$/);
   const worktreeWorkspace = Array.from(workspaces.values()).find(
     (workspace) => workspace.cwd === cwd,
   );
-  expect(worktreeWorkspace?.projectId).toBe(repoRoot);
-  expect(worktreeWorkspace?.kind).toBe("worktree");
+  expect(worktreeWorkspace?.projectId).toMatch(/^prj_[0-9a-f]{16}$/);
+  expect(worktreeWorkspace?.projectId).not.toBe(repoRoot);
+  expect(projects.get(worktreeWorkspace!.projectId)).toMatchObject({
+    rootPath: cwd,
+    projectKey: deriveProjectKey({
+      rootPath: cwd,
+      remoteUrl: "git@github.com:getotto/otto.git",
+      worktreeRoot: cwd,
+      mainRepoRoot: repoRoot,
+    }),
+  });
+  expect(projects.get(repoRoot)?.rootPath).toBe(repoRoot);
+  expect(workspaces.get(repoRoot)?.projectId).toBe(repoRoot);
 });
 
-test("open_project_request unarchives an existing archived workspace and project", async () => {
+test("open_project_request keeps archived records and allocates a fresh workspace", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const session = createSessionForWorkspaceTests();
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
@@ -4812,18 +5142,15 @@ test("open_project_request unarchives an existing archived workspace and project
     requestId: "req-open-unarchive",
   });
 
-  // The whole project was archived, so opening its directory stands up a fresh
-  // workspace and leaves the archived pair intact. Bringing the original back is
-  // the agent-restore path's job, which is why the two are separate RPCs. See
-  // S6/S11 in session.workspace-resolution-invariants.test.ts.
-  expect(workspaces.get(workspaceId)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
-  expect(projects.get(cwd)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+  expect(workspaces.get(workspaceId)?.archivedAt).not.toBeNull();
+  expect(projects.get(cwd)?.archivedAt).not.toBeNull();
   const response = findByType(emitted, "open_project_response");
   expect(response?.payload.error).toBeNull();
   expect(response?.payload.workspace?.id).not.toBe(workspaceId);
+  expect(response?.payload.workspace?.projectId).toMatch(/^prj_[0-9a-f]{16}$/);
 });
 
-test("open_project_request recreates a missing project record when unarchiving its workspace", async () => {
+test("open_project_request does not repurpose an orphaned archived workspace", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const session = createSessionForWorkspaceTests();
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
@@ -4870,18 +5197,12 @@ test("open_project_request recreates a missing project record when unarchiving i
     requestId: "req-open-removed-project",
   });
 
-  expect(projects.get(cwd)).toEqual(
-    expect.objectContaining({
-      projectId: cwd,
-      displayName: "repo",
-      archivedAt: null,
-    }),
-  );
-  expect(workspaces.get(workspaceId)?.archivedAt).toBeNull();
+  expect(projects.get(cwd)).toBeUndefined();
+  expect(workspaces.get(workspaceId)?.archivedAt).not.toBeNull();
   const response = findByType(emitted, "open_project_response");
   expect(response?.payload.error).toBeNull();
-  expect(response?.payload.workspace?.id).toBe(workspaceId);
-  expect(response?.payload.workspace?.projectDisplayName).toBe("repo");
+  expect(response?.payload.workspace?.id).not.toBe(workspaceId);
+  expect(response?.payload.workspace?.projectId).toMatch(/^prj_[0-9a-f]{16}$/);
 });
 
 test("refresh_agent_request unarchives the owning workspace when its directory exists", async () => {
@@ -5304,145 +5625,287 @@ test("refresh_agent_request leaves the worktree archived and surfaces a typed er
 
 function createRecreateWorktreeRepo(): { tempDir: string; repoDir: string } {
   const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "otto-recreate-worktree-")));
-  const repoDir = path.join(tempDir, "repo");
-  execFileSync("git", ["init", "-b", "main", repoDir], { stdio: "pipe" });
-  execFileSync("git", ["config", "user.email", "test@otto-code.local"], {
-    cwd: repoDir,
-    stdio: "pipe",
-  });
-  execFileSync("git", ["config", "user.name", "Otto Test"], { cwd: repoDir, stdio: "pipe" });
-  execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir, stdio: "pipe" });
-  writeFileSync(path.join(repoDir, "README.md"), "main\n");
-  execFileSync("git", ["add", "README.md"], { cwd: repoDir, stdio: "pipe" });
-  execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir, stdio: "pipe" });
-  return { tempDir, repoDir };
+  try {
+    const repoDir = path.join(tempDir, "repo");
+    const hooksPath = path.join(tempDir, "empty-hooks");
+    mkdirSync(hooksPath);
+    execFileSync("git", ["init", "-b", "main", repoDir], { stdio: "pipe" });
+    execFileSync("git", ["config", "user.email", "test@otto-code.local"], {
+      cwd: repoDir,
+      stdio: "pipe",
+    });
+    execFileSync("git", ["config", "user.name", "Otto Test"], { cwd: repoDir, stdio: "pipe" });
+    // Local fixture configuration only; never invoke user hooks/signing/fsmonitor.
+    for (const [key, value] of [
+      ["commit.gpgsign", "false"],
+      ["core.hooksPath", hooksPath],
+      ["core.fsmonitor", "false"],
+    ] as const) {
+      execFileSync("git", ["config", "--local", key, value], { cwd: repoDir, stdio: "pipe" });
+    }
+    writeFileSync(path.join(repoDir, "README.md"), "main\n");
+    execFileSync("git", ["add", "README.md"], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir, stdio: "pipe" });
+    return { tempDir, repoDir };
+  } catch (error) {
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    throw error;
+  }
 }
+
+test.each([false, true])(
+  "worktree.reattach binds a real Otto orphan to its source project (explicit choice: %s)",
+  async (explicitChoice) => {
+    const { tempDir, repoDir } = createRecreateWorktreeRepo();
+    let session: ReturnType<typeof createSessionForWorkspaceTests> | undefined;
+    try {
+      const worktreesRoot = path.join(tempDir, "worktrees");
+      const ottoHome = path.join(tempDir, "otto-home");
+      const created = await createWorktree({
+        cwd: repoDir,
+        worktreeSlug: "reattach",
+        source: { kind: "branch-off", baseBranch: "main", branchName: "feature/reattach" },
+        runSetup: false,
+        ottoHome,
+        worktreesRoot,
+      });
+      const cwd = realpathSync(created.worktreePath);
+      const logger = createTestLogger();
+      const projectRegistry = new FileBackedProjectRegistry(
+        path.join(tempDir, "projects.json"),
+        logger,
+      );
+      const workspaceRegistry = new FileBackedWorkspaceRegistry(
+        path.join(tempDir, "workspaces.json"),
+        logger,
+      );
+      await projectRegistry.initialize();
+      await workspaceRegistry.initialize();
+      const sourceRoot = explicitChoice ? path.join(repoDir, "packages", "app") : repoDir;
+      mkdirSync(sourceRoot, { recursive: true });
+      const sourceProject = await projectRegistry.getOrCreateActiveByRoot({
+        rootPath: sourceRoot,
+        kind: "git",
+        displayName: "Selected source project",
+        projectKey: deriveProjectKey({
+          rootPath: sourceRoot,
+          remoteUrl: null,
+          worktreeRoot: repoDir,
+          mainRepoRoot: null,
+        }),
+        timestamp: "2026-03-01T12:00:00.000Z",
+      });
+      const emitted: SessionOutboundMessage[] = [];
+      session = createSessionForWorkspaceTests({
+        ottoHome,
+        worktreesRoot,
+        projectRegistry,
+        workspaceRegistry,
+        workspaceGitService: createNoopWorkspaceGitService({
+          getCheckout: async (requestedCwd) => ({
+            cwd: requestedCwd,
+            isGit: true,
+            currentBranch: requestedCwd === cwd ? "feature/reattach" : "main",
+            remoteUrl: null,
+            worktreeRoot: requestedCwd === cwd ? cwd : repoDir,
+            isOttoOwnedWorktree: requestedCwd === cwd,
+            mainRepoRoot: requestedCwd === cwd ? repoDir : null,
+          }),
+        }),
+        onMessage: (message) => {
+          if (isSessionOutboundMessage(message)) emitted.push(message);
+        },
+      });
+      session.filesystem.isDirectory = async (target) =>
+        existsSync(target) && statSync(target).isDirectory();
+      await session.handleMessage({
+        type: "worktree.reattach.request",
+        requestId: "outside",
+        target: { kind: "orphan", worktreePath: repoDir },
+      });
+      expect(findByType(emitted, "worktree.reattach.response")?.payload.error).toMatch(
+        /Otto-owned worktree/,
+      );
+      expect(await workspaceRegistry.list()).toHaveLength(0);
+      emitted.length = 0;
+      await session.handleMessage({
+        type: "worktree.reattach.request",
+        requestId: "reattach",
+        target: {
+          kind: "orphan",
+          worktreePath: cwd,
+          ...(explicitChoice ? { projectId: sourceProject.projectId } : {}),
+        },
+      });
+      const response = findByType(emitted, "worktree.reattach.response");
+      expect(response?.payload.error).toBeNull();
+      expect(response?.payload.workspace).toMatchObject({
+        projectId: sourceProject.projectId,
+        workspaceDirectory: cwd,
+        projectRootPath: sourceRoot,
+      });
+      const [workspace] = await workspaceRegistry.list();
+      expect(workspace).toMatchObject({
+        projectId: sourceProject.projectId,
+        cwd,
+        isOttoOwnedWorktree: true,
+        mainRepoRoot: repoDir,
+      });
+      expect(await projectRegistry.list()).toHaveLength(1);
+      expect(await projectRegistry.get(sourceProject.projectId)).toMatchObject({
+        rootPath: sourceRoot,
+        projectKey: sourceProject.projectKey,
+      });
+      await session.handleMessage({
+        type: "worktree.reattach.request",
+        requestId: "repeat",
+        target: { kind: "orphan", worktreePath: cwd },
+      });
+      expect((await workspaceRegistry.list()).map((record) => record.workspaceId)).toEqual([
+        workspace!.workspaceId,
+      ]);
+    } finally {
+      try {
+        await session?.cleanup();
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      }
+    }
+  },
+);
 
 test("refresh_agent_request recreates a real deleted worktree against a temp git repo and unarchives the same workspace", async () => {
   const { tempDir, repoDir } = createRecreateWorktreeRepo();
-  const branch = "feature/keep";
-  execFileSync("git", ["branch", branch], { cwd: repoDir, stdio: "pipe" });
+  let session: ReturnType<typeof createSessionForWorkspaceTests> | undefined;
+  try {
+    const branch = "feature/keep";
+    execFileSync("git", ["branch", branch], { cwd: repoDir, stdio: "pipe" });
 
-  const worktreesRoot = path.join(tempDir, "worktrees");
-  const ottoHome = path.join(tempDir, "otto-home");
-  const created = await createWorktree({
-    cwd: repoDir,
-    worktreeSlug: "keep",
-    source: { kind: "checkout-branch", branchName: branch },
-    runSetup: false,
-    ottoHome,
-    worktreesRoot,
-  });
-  const worktreePath = realpathSync(created.worktreePath);
-  // Simulate archive: drop the worktree dir but keep the branch.
-  rmSync(worktreePath, { recursive: true, force: true });
-  execFileSync("git", ["worktree", "prune"], { cwd: repoDir, stdio: "pipe" });
-  expect(existsSync(worktreePath)).toBe(false);
+    const worktreesRoot = path.join(tempDir, "worktrees");
+    const ottoHome = path.join(tempDir, "otto-home");
+    const created = await createWorktree({
+      cwd: repoDir,
+      worktreeSlug: "keep",
+      source: { kind: "checkout-branch", branchName: branch },
+      runSetup: false,
+      ottoHome,
+      worktreesRoot,
+    });
+    const worktreePath = realpathSync(created.worktreePath);
+    // Simulate archive: drop the worktree dir but keep the branch.
+    rmSync(worktreePath, { recursive: true, force: true });
+    execFileSync("git", ["worktree", "prune"], { cwd: repoDir, stdio: "pipe" });
+    expect(existsSync(worktreePath)).toBe(false);
 
-  const emitted: SessionOutboundMessage[] = [];
-  const session = createSessionForWorkspaceTests({
-    // COMPAT(worktreeRestore): refresh_agent_request only restores the owning
-    // workspace for pre-0.1.105 clients; newer ones call worktree.reattach.
-    appVersion: "0.1.104",
-    ottoHome,
-    worktreesRoot,
-    onMessage: (message) => {
-      if (isSessionOutboundMessage(message)) emitted.push(message);
-    },
-  });
-  // Real directory probe so the missing worktree reads as gone and the repo root as present.
-  session.filesystem.isDirectory = async (target: string) =>
-    existsSync(target) && statSync(target).isDirectory();
+    const emitted: SessionOutboundMessage[] = [];
+    session = createSessionForWorkspaceTests({
+      // COMPAT(worktreeRestore): refresh_agent_request only restores the owning
+      // workspace for pre-0.1.105 clients; newer ones call worktree.reattach.
+      appVersion: "0.1.104",
+      ottoHome,
+      worktreesRoot,
+      onMessage: (message) => {
+        if (isSessionOutboundMessage(message)) emitted.push(message);
+      },
+    });
+    // Real directory probe so the missing worktree reads as gone and the repo root as present.
+    session.filesystem.isDirectory = async (target: string) =>
+      existsSync(target) && statSync(target).isDirectory();
 
-  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
-  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
-  const workspaceId = "ws-real-recreate";
-  const agentId = "agent-real-recreate";
-  const projectId = repoDir;
-  projects.set(
-    projectId,
-    createPersistedProjectRecord({
+    const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+    const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+    const workspaceId = "ws-real-recreate";
+    const agentId = "agent-real-recreate";
+    const projectId = repoDir;
+    projects.set(
       projectId,
-      rootPath: repoDir,
-      kind: "git",
-      displayName: "worktree-project",
-      createdAt: "2026-03-01T12:00:00.000Z",
-      updatedAt: "2026-03-10T00:00:00.000Z",
-      archivedAt: "2026-03-10T00:00:00.000Z",
-    }),
-  );
-  workspaces.set(
-    workspaceId,
-    createPersistedWorkspaceRecord({
+      createPersistedProjectRecord({
+        projectId,
+        rootPath: repoDir,
+        kind: "git",
+        displayName: "worktree-project",
+        createdAt: "2026-03-01T12:00:00.000Z",
+        updatedAt: "2026-03-10T00:00:00.000Z",
+        archivedAt: "2026-03-10T00:00:00.000Z",
+      }),
+    );
+    workspaces.set(
       workspaceId,
-      projectId,
-      cwd: worktreePath,
-      kind: "worktree",
-      branch,
-      displayName: branch,
-      createdAt: "2026-03-01T12:00:00.000Z",
-      updatedAt: "2026-03-10T00:00:00.000Z",
+      createPersistedWorkspaceRecord({
+        workspaceId,
+        projectId,
+        cwd: worktreePath,
+        kind: "worktree",
+        branch,
+        displayName: branch,
+        createdAt: "2026-03-01T12:00:00.000Z",
+        updatedAt: "2026-03-10T00:00:00.000Z",
+        archivedAt: "2026-03-10T00:00:00.000Z",
+      }),
+    );
+
+    const storedAgent: StoredAgentRecord = {
+      ...makeStoredAgent({ id: agentId, cwd: worktreePath, updatedAt: "2026-03-10T00:00:00.000Z" }),
+      workspaceId,
       archivedAt: "2026-03-10T00:00:00.000Z",
-    }),
-  );
+    };
 
-  const storedAgent: StoredAgentRecord = {
-    ...makeStoredAgent({ id: agentId, cwd: worktreePath, updatedAt: "2026-03-10T00:00:00.000Z" }),
-    workspaceId,
-    archivedAt: "2026-03-10T00:00:00.000Z",
-  };
+    session.projectRegistry.get = async (id: string) => projects.get(id) ?? null;
+    session.projectRegistry.upsert = async (
+      record: ReturnType<typeof createPersistedProjectRecord>,
+    ) => {
+      projects.set(record.projectId, record);
+    };
+    session.workspaceRegistry.get = async (id: string) => workspaces.get(id) ?? null;
+    session.workspaceRegistry.upsert = async (
+      record: ReturnType<typeof createPersistedWorkspaceRecord>,
+    ) => {
+      workspaces.set(record.workspaceId, record);
+    };
+    session.projectRegistry.list = async () => Array.from(projects.values());
+    session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+    session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
+    session.agentStorage.upsert = async () => {};
 
-  session.projectRegistry.get = async (id: string) => projects.get(id) ?? null;
-  session.projectRegistry.upsert = async (
-    record: ReturnType<typeof createPersistedProjectRecord>,
-  ) => {
-    projects.set(record.projectId, record);
-  };
-  session.workspaceRegistry.get = async (id: string) => workspaces.get(id) ?? null;
-  session.workspaceRegistry.upsert = async (
-    record: ReturnType<typeof createPersistedWorkspaceRecord>,
-  ) => {
-    workspaces.set(record.workspaceId, record);
-  };
-  session.projectRegistry.list = async () => Array.from(projects.values());
-  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
-  session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
-  session.agentStorage.upsert = async () => {};
+    const managed = makeManagedAgent({
+      id: agentId,
+      cwd: worktreePath,
+      workspaceId,
+      lifecycle: "idle",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+    });
+    session.agentManager.getAgent = () => managed;
+    session.interruptAgentIfRunning = async () => undefined;
+    session.agentManager.reloadAgentSession = async () => managed;
+    session.agentManager.hydrateTimelineFromProvider = async () => undefined;
+    session.agentManager.getTimeline = () => [];
+    session.agentUpdates.forwardLiveAgent = async () => undefined;
 
-  const managed = makeManagedAgent({
-    id: agentId,
-    cwd: worktreePath,
-    workspaceId,
-    lifecycle: "idle",
-    updatedAt: "2026-03-10T00:00:00.000Z",
-  });
-  session.agentManager.getAgent = () => managed;
-  session.interruptAgentIfRunning = async () => undefined;
-  session.agentManager.reloadAgentSession = async () => managed;
-  session.agentManager.hydrateTimelineFromProvider = async () => undefined;
-  session.agentManager.getTimeline = () => [];
-  session.agentUpdates.forwardLiveAgent = async () => undefined;
+    await session.handleMessage({
+      type: "refresh_agent_request",
+      agentId,
+      requestId: "req-refresh-real-recreate",
+    });
 
-  await session.handleMessage({
-    type: "refresh_agent_request",
-    agentId,
-    requestId: "req-refresh-real-recreate",
-  });
-
-  expect(findByType(emitted, "rpc_error")).toBeUndefined();
-  expect(existsSync(worktreePath)).toBe(true);
-  const headBranch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-    cwd: worktreePath,
-    stdio: "pipe",
-  })
-    .toString()
-    .trim();
-  expect(headBranch).toBe(branch);
-  expect(workspaces.get(workspaceId)?.workspaceId).toBe(workspaceId);
-  expect(workspaces.get(workspaceId)?.cwd).toBe(worktreePath);
-  expect(workspaces.get(workspaceId)?.archivedAt).toBeNull();
-
-  rmSync(tempDir, { recursive: true, force: true });
+    expect(findByType(emitted, "rpc_error")).toBeUndefined();
+    expect(existsSync(worktreePath)).toBe(true);
+    const headBranch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: worktreePath,
+      stdio: "pipe",
+    })
+      .toString()
+      .trim();
+    expect(headBranch).toBe(branch);
+    expect(workspaces.get(workspaceId)?.workspaceId).toBe(workspaceId);
+    expect(workspaces.get(workspaceId)?.cwd).toBe(worktreePath);
+    expect(workspaces.get(workspaceId)?.archivedAt).toBeNull();
+  } finally {
+    try {
+      await session?.cleanup();
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    }
+  }
 });
 
 test("recreateOwningWorktreeForRestore throws a typed WorktreeRequestError and leaves the workspace archived when the project root is missing", async () => {
@@ -7958,7 +8421,7 @@ function createWorkspaceCreatePrRepo(): WorkspaceCreatePrRepoFixture {
   return { tempDir, repoDir, ottoHome, headRef, prFileName, prNumber };
 }
 
-function createPrCheckoutGitHubService(params: { headRef: string }): GitHubService {
+function createPrCheckoutGitHubService(params: { headRef: string }): ForgeService {
   return {
     listPullRequests: async () => [],
     listIssues: async () => [],
@@ -7987,6 +8450,10 @@ function createPrCheckoutGitHubService(params: { headRef: string }): GitHubServi
       // from the remote (as in this fixture).
       checkoutRefs: [{ remoteName: "origin", remoteRef: `refs/pull/${number}/head` }],
     }),
+    defaultCheckoutRefs: ({ changeRequestNumber }) => [
+      { remoteName: "origin", remoteRef: `refs/pull/${changeRequestNumber}/head` },
+    ],
+    buildPrLocalBranchName: ({ headRef }) => headRef,
     getCurrentPullRequestStatus: async () => null,
     getPullRequestTimeline: async ({ prNumber }) => ({
       prNumber,
@@ -8435,6 +8902,7 @@ test("workspace.create.response persists the first prompt as the initial title",
   expect(workspaceId).toBeDefined();
   const persisted = await session.workspaceRegistry.get(workspaceId as string);
   expect(persisted?.title).toBe("Add retries to the payments flow");
+  expect(filterByType(emitted, "workspace_update")).toHaveLength(1);
 });
 
 test("workspace.create.request rejects a directory already backing a live workspace", async () => {
@@ -8478,4 +8946,1855 @@ test("workspace.create.request rejects a directory already backing a live worksp
   expect(response?.payload.error).toContain('"Payments checkout"');
   // No second record was minted for the occupied directory.
   expect(workspaces.size).toBe(1);
+});
+
+test("workspace placements preserve checkout facts independently from the project", async () => {
+  const session = createSessionForWorkspaceTests();
+  const manualWorktree = createPersistedWorkspaceRecord({
+    workspaceId: "ws-manual-worktree",
+    projectId: "proj-manual-worktree",
+    cwd: "/tmp/manual-worktree",
+    kind: "worktree",
+    displayName: "manual",
+    isOttoOwnedWorktree: false,
+    mainRepoRoot: "/tmp/main-repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const explicitDirectory = createPersistedWorkspaceRecord({
+    workspaceId: "ws-explicit-directory",
+    projectId: "proj-manual-worktree",
+    cwd: "/tmp/plain-directory",
+    kind: "directory",
+    displayName: "plain",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const ottoSubdirectory = createPersistedWorkspaceRecord({
+    workspaceId: "ws-otto-subdirectory",
+    projectId: "proj-manual-worktree",
+    cwd: "/tmp/otto-worktree/packages/app",
+    kind: "worktree",
+    displayName: "app",
+    isOttoOwnedWorktree: true,
+    mainRepoRoot: "/tmp/main-repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const project = createPersistedProjectRecord({
+    projectId: "proj-manual-worktree",
+    rootPath: "/tmp/main-repo",
+    kind: "git",
+    displayName: "main",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    [manualWorktree, explicitDirectory, ottoSubdirectory].find(
+      (workspace) => workspace.workspaceId === workspaceId,
+    ) ?? null;
+  session.projectRegistry.get = async () => project;
+  session.workspaceGitService.peekSnapshot = (cwd: string) =>
+    cwd === ottoSubdirectory.cwd
+      ? createWorkspaceRuntimeSnapshot(cwd, {
+          git: { repoRoot: "/tmp/otto-worktree" },
+        })
+      : null;
+
+  await expect(
+    session.buildProjectPlacementForWorkspaceId(manualWorktree.workspaceId),
+  ).resolves.toEqual(
+    expect.objectContaining({
+      checkout: expect.objectContaining({
+        isGit: true,
+        isOttoOwnedWorktree: false,
+        mainRepoRoot: "/tmp/main-repo",
+      }),
+    }),
+  );
+  await expect(
+    session.buildProjectPlacementForWorkspaceId(explicitDirectory.workspaceId),
+  ).resolves.toEqual(
+    expect.objectContaining({
+      checkout: expect.objectContaining({
+        isGit: false,
+        isOttoOwnedWorktree: false,
+        mainRepoRoot: null,
+      }),
+    }),
+  );
+  await expect(
+    session.buildProjectPlacementForWorkspaceId(ottoSubdirectory.workspaceId),
+  ).resolves.toEqual(
+    expect.objectContaining({
+      checkout: expect.objectContaining({
+        cwd: ottoSubdirectory.cwd,
+        worktreeRoot: "/tmp/otto-worktree",
+      }),
+    }),
+  );
+});
+
+test("create otto worktree response preserves an explicit non-Git project", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const createdAt = "2026-05-12T12:00:00.000Z";
+  vi.setSystemTime(new Date(createdAt));
+  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "session-worktree-test-")));
+  const repoDir = path.join(tempDir, "repo");
+  const ottoHome = path.join(tempDir, "otto-home");
+  mkdirSync(repoDir, { recursive: true });
+  execFileSync("git", ["init", "-b", "main"], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["config", "user.email", "test@test.com"], {
+    cwd: repoDir,
+    stdio: "pipe",
+  });
+  execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir, stdio: "pipe" });
+  writeFileSync(path.join(repoDir, "file.txt"), "hello\n");
+  execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "initial"], {
+    cwd: repoDir,
+    stdio: "pipe",
+  });
+  const workspaceGitService = createNoopWorkspaceGitService();
+  workspaceGitService.getSnapshot = vi.fn(async (cwd: string) => {
+    if (cwd === repoDir) {
+      return createWorkspaceRuntimeSnapshot(cwd, {
+        git: {
+          repoRoot: repoDir,
+          currentBranch: "main",
+          remoteUrl: null,
+          isOttoOwnedWorktree: false,
+          mainRepoRoot: null,
+        },
+      });
+    }
+
+    if (cwd.includes("worktree-123")) {
+      return createWorkspaceRuntimeSnapshot(cwd, {
+        git: {
+          repoRoot: cwd,
+          currentBranch: "worktree-123",
+          remoteUrl: null,
+          isOttoOwnedWorktree: true,
+          mainRepoRoot: repoDir,
+        },
+      });
+    }
+
+    return createWorkspaceRuntimeSnapshot(cwd, {
+      git: {
+        repoRoot: cwd,
+        currentBranch: "main",
+        remoteUrl: null,
+        isOttoOwnedWorktree: false,
+        mainRepoRoot: null,
+      },
+    });
+  });
+  const session = asTestSession(
+    createSessionForWorkspaceTests({
+      workspaceGitService,
+    }),
+  );
+
+  const workspaces = new Map();
+  const explicitProject = createPersistedProjectRecord({
+    projectId: "prj_explicit_non_git",
+    rootPath: path.join(tempDir, "selected-project"),
+    kind: "non_git",
+    displayName: "Selected project",
+    createdAt,
+    updatedAt: createdAt,
+  });
+  const projects = new Map([[explicitProject.projectId, explicitProject]]);
+  session.ottoHome = ottoHome;
+  session.workspaceRegistry.get = async (lookupWorkspaceId: string) =>
+    workspaces.get(lookupWorkspaceId) ?? null;
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.projectRegistry.getOrCreateActiveByRoot = async (input) => {
+    const existing = Array.from(projects.values()).find(
+      (project) => !project.archivedAt && project.rootPath === input.rootPath,
+    );
+    if (existing) return existing;
+    const project = createPersistedProjectRecord({
+      projectId: `prj_${projects.size.toString().padStart(16, "0")}`,
+      rootPath: input.rootPath,
+      kind: input.kind,
+      displayName: input.displayName,
+      createdAt: input.timestamp,
+      updatedAt: input.timestamp,
+    });
+    projects.set(project.projectId, project);
+    return project;
+  };
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.emit = (message: unknown) => {
+    if (isSessionOutboundMessage(message)) emitted.push(message);
+  };
+  try {
+    await session.handleCreateOttoWorktreeRequest({
+      type: "create_otto_worktree_request",
+      cwd: repoDir,
+      projectId: explicitProject.projectId,
+      worktreeSlug: "worktree-123",
+      requestId: "req-worktree",
+    });
+  } finally {
+    vi.useRealTimers();
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+
+  const response = findByType(emitted, "create_otto_worktree_response");
+
+  expect(response?.payload.error).toBeNull();
+  expect(response?.payload.workspace).toMatchObject({
+    projectId: explicitProject.projectId,
+    projectDisplayName: explicitProject.displayName,
+    projectRootPath: explicitProject.rootPath,
+    projectKind: "non_git",
+    workspaceKind: "worktree",
+    name: "worktree-123",
+    status: "done",
+    statusEnteredAt: createdAt,
+  });
+  expect(response?.payload.workspace?.id).toMatch(/^wks_[0-9a-f]{16}$/);
+  expect(response?.payload.workspace?.workspaceDirectory).toContain(path.join("worktree-123"));
+  expect(workspaces.has(response?.payload.workspace?.id ?? "")).toBe(true);
+  expect(projects.get(explicitProject.projectId)).toEqual({
+    ...explicitProject,
+    projectKey: deriveProjectKey({
+      rootPath: explicitProject.rootPath,
+      remoteUrl: null,
+      worktreeRoot: null,
+      mainRepoRoot: null,
+    }),
+  });
+});
+
+test("workspace updates stay scoped to the matching cwd", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const archivedWorkspaceIds: string[] = [];
+  const missingRoot = path.join(tmpdir(), `otto-scoped-workspace-${Date.now()}`);
+  rmSync(missingRoot, { recursive: true, force: true });
+  const mainCwd = path.join(missingRoot, "main");
+  const featureCwd = path.join(missingRoot, "feature");
+  const session = createSessionForWorkspaceTests();
+  session.workspaceRegistry.list = async () => [
+    createPersistedWorkspaceRecord({
+      workspaceId: "ws-repo-main",
+      projectId: "proj-repo-main",
+      cwd: mainCwd,
+      kind: "local_checkout",
+      displayName: "main",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    }),
+    createPersistedWorkspaceRecord({
+      workspaceId: "ws-repo-feature",
+      projectId: "proj-repo-main",
+      cwd: featureCwd,
+      kind: "worktree",
+      displayName: "feature",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    }),
+  ];
+  session.workspaceRegistry.archive = async (workspaceId) => {
+    archivedWorkspaceIds.push(workspaceId);
+  };
+  session.workspaceUpdatesSubscription = {
+    subscriptionId: "sub-dedup",
+    filter: undefined,
+    isBootstrapping: false,
+    pendingUpdatesByWorkspaceId: new Map(),
+    lastEmittedByWorkspaceId: new Map(),
+  };
+  session.buildWorkspaceDescriptorMap = async () =>
+    new Map([
+      [
+        "ws-repo-feature",
+        {
+          id: "ws-repo-feature",
+          projectId: "proj-repo-main",
+          projectDisplayName: "repo",
+          projectRootPath: mainCwd,
+          projectKind: "git",
+          workspaceKind: "worktree",
+          name: "feature",
+          status: "running",
+          activityAt: "2026-03-01T12:00:00.000Z",
+        },
+      ],
+    ]);
+  session.onMessage = (message: unknown) => {
+    if (isSessionOutboundMessage(message)) emitted.push(message);
+  };
+
+  await session.emitWorkspaceUpdateForCwd(featureCwd);
+  await flushWorkspaceUpdateBackgroundWork();
+
+  const workspaceUpdates = filterByType(emitted, "workspace_update");
+  expect(workspaceUpdates).toEqual([
+    {
+      type: "workspace_update",
+      payload: {
+        kind: "upsert",
+        workspace: expect.objectContaining({ id: "ws-repo-feature" }),
+      },
+    },
+  ]);
+  expect(archivedWorkspaceIds).toEqual([]);
+});
+
+test("import_agent_request imports into the workspace that opened the import sheet", async () => {
+  const session = createSessionForWorkspaceTests();
+  const workspaceId = "ws-repo-running";
+  let importedWorkspaceId: string | undefined;
+  let workspaceCreated = false;
+
+  session.projectRegistry.get = async () =>
+    createPersistedProjectRecord({
+      projectId: "proj-repo-running",
+      rootPath: REPO_CWD,
+      kind: "non_git",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+  session.workspaceRegistry.upsert = async () => {
+    workspaceCreated = true;
+  };
+
+  session.agentManager.importProviderSession = async (input: unknown) => {
+    importedWorkspaceId = (input as { workspaceId: string }).workspaceId;
+    return makeManagedAgent({
+      id: "imported-agent",
+      cwd: REPO_CWD,
+      workspaceId: importedWorkspaceId,
+      lifecycle: "idle",
+      updatedAt: "2026-05-21T00:00:00.000Z",
+    });
+  };
+  session.agentManager.getTimeline = () => [];
+  session.agentStorage.list = async () => [];
+  session.agentStorage.get = async () => null;
+  session.agentUpdates.forwardLiveAgent = async () => undefined;
+
+  await session.handleMessage({
+    type: "import_agent_request",
+    requestId: "req-import-current-workspace",
+    providerId: "codex",
+    providerHandleId: "session-xyz",
+    cwd: REPO_CWD,
+    workspaceId,
+  });
+
+  expect(importedWorkspaceId).toBe(workspaceId);
+  expect(workspaceCreated).toBe(false);
+});
+
+test("import_agent_request maps an import failure to agent_create_failed", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+  });
+  session.projectRegistry.get = async () =>
+    createPersistedProjectRecord({
+      projectId: "proj-repo-running",
+      rootPath: REPO_CWD,
+      kind: "non_git",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+    });
+  session.agentStorage.list = async () => [];
+  session.agentManager.importProviderSession = async () => {
+    throw new Error("provider session is unavailable");
+  };
+
+  await session.handleMessage({
+    type: "import_agent_request",
+    requestId: "req-failed-import",
+    providerId: "codex",
+    providerHandleId: "stale-session",
+    cwd: REPO_CWD,
+    workspaceId: "ws-repo-running",
+  });
+
+  expect(findByType(emitted, "status")?.payload).toMatchObject({
+    status: "agent_create_failed",
+    requestId: "req-failed-import",
+    error: "provider session is unavailable",
+  });
+});
+
+test("workspace recovery stays accepted when git observer warming fails", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const workspaceGitService = createNoopWorkspaceGitService({
+    registerWorkspace: () => {
+      throw new Error("git watcher unavailable");
+    },
+  });
+  const session = createSessionForWorkspaceTests({
+    appVersion: "0.1.105",
+    workspaceGitService,
+    onMessage: (message) => {
+      if (isSessionOutboundMessage(message)) emitted.push(message);
+    },
+  });
+  const archivedAt = "2026-03-10T00:00:00.000Z";
+  let project = createPersistedProjectRecord({
+    projectId: REPO_CWD,
+    rootPath: REPO_CWD,
+    kind: "git",
+    displayName: "repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: archivedAt,
+    archivedAt,
+  });
+  let workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-recovery-warm-failure",
+    projectId: project.projectId,
+    cwd: REPO_CWD,
+    kind: "directory",
+    displayName: "repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: archivedAt,
+    archivedAt,
+  });
+
+  session.filesystem.isDirectory = async () => true;
+  session.projectRegistry.get = async (projectId: string) =>
+    projectId === project.projectId ? project : null;
+  session.projectRegistry.list = async () => [project];
+  session.projectRegistry.upsert = async (record: PersistedProjectRecord) => {
+    project = record;
+  };
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    workspaceId === workspace.workspaceId ? workspace : null;
+  session.workspaceRegistry.list = async () => [workspace];
+  session.workspaceRegistry.upsert = async (record: PersistedWorkspaceRecord) => {
+    workspace = record;
+  };
+  session.workspaceUpdatesSubscription = {
+    subscriptionId: "sub-recovery-warm-failure",
+    filter: undefined,
+    isBootstrapping: false,
+    pendingUpdatesByWorkspaceId: new Map(),
+    lastEmittedByWorkspaceId: new Map(),
+  };
+  session.listAgentPayloads = async () => [];
+
+  await session.handleMessage({
+    type: "workspace.recovery.restore.request",
+    requestId: "req-recovery-warm-failure",
+    workspaceId: workspace.workspaceId,
+  });
+
+  expect(workspace.archivedAt).toBeNull();
+  expect(findByType(emitted, "workspace.recovery.restore.response")?.payload).toEqual({
+    requestId: "req-recovery-warm-failure",
+    workspaceId: workspace.workspaceId,
+    accepted: true,
+    error: null,
+  });
+  expect(findByType(emitted, "workspace_update")?.payload).toMatchObject({
+    kind: "upsert",
+    workspace: { id: workspace.workspaceId },
+  });
+});
+
+test("refresh_agent_request leaves workspace archival independent when its directory exists", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => {
+      if (isSessionOutboundMessage(message)) emitted.push(message);
+    },
+  });
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+
+  const cwd = path.resolve("/tmp/otto-unit2-existing-dir");
+  session.filesystem.isDirectory = async () => true;
+  const workspaceId = "ws-repo-archived";
+  const agentId = "agent-archived";
+  projects.set(
+    cwd,
+    createPersistedProjectRecord({
+      projectId: cwd,
+      rootPath: cwd,
+      kind: "non_git",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+  workspaces.set(
+    workspaceId,
+    createPersistedWorkspaceRecord({
+      workspaceId,
+      projectId: cwd,
+      cwd,
+      kind: "directory",
+      displayName: "repo",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+
+  const storedAgent: StoredAgentRecord = {
+    ...makeStoredAgent({ id: agentId, cwd, updatedAt: "2026-03-10T00:00:00.000Z" }),
+    workspaceId,
+    archivedAt: "2026-03-10T00:00:00.000Z",
+  };
+
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (lookupWorkspaceId: string) =>
+    workspaces.get(lookupWorkspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+  session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
+  session.agentStorage.upsert = async () => {};
+
+  const managed = makeManagedAgent({
+    id: agentId,
+    cwd,
+    workspaceId,
+    lifecycle: "idle",
+    updatedAt: "2026-03-10T00:00:00.000Z",
+  });
+  session.agentManager.getAgent = () => managed;
+  session.interruptAgentIfRunning = async () => undefined;
+  session.agentManager.reloadAgentSession = async () => managed;
+  session.agentManager.hydrateTimelineFromProvider = async () => undefined;
+  session.agentManager.getTimeline = () => [];
+  session.agentUpdates.forwardLiveAgent = async () => undefined;
+
+  const unarchivedWorkspaceIds: string[][] = [];
+  const realEmit = session.emitWorkspaceUpdatesForWorkspaceIds.bind(session);
+  session.emitWorkspaceUpdatesForWorkspaceIds = async (ids: string[], ...rest: unknown[]) => {
+    unarchivedWorkspaceIds.push(ids);
+    return realEmit(ids, ...rest);
+  };
+
+  await session.handleMessage({
+    type: "refresh_agent_request",
+    agentId,
+    requestId: "req-refresh-unarchive",
+  });
+
+  expect(workspaces.get(workspaceId)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+  expect(projects.get(cwd)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+  expect(unarchivedWorkspaceIds).toEqual([]);
+  expect(findByType(emitted, "rpc_error")).toBeUndefined();
+});
+
+test("refresh_agent_request leaves workspace archival independent when its directory is missing", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => {
+      if (isSessionOutboundMessage(message)) emitted.push(message);
+    },
+  });
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+
+  const cwd = path.resolve("/tmp/otto-missing-workspace-dir");
+  session.filesystem.isDirectory = async () => false;
+  const workspaceId = "ws-missing-dir";
+  const agentId = "agent-missing-dir";
+  projects.set(
+    cwd,
+    createPersistedProjectRecord({
+      projectId: cwd,
+      rootPath: cwd,
+      kind: "non_git",
+      displayName: "missing",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+  workspaces.set(
+    workspaceId,
+    createPersistedWorkspaceRecord({
+      workspaceId,
+      projectId: cwd,
+      cwd,
+      kind: "directory",
+      displayName: "missing",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+
+  const storedAgent: StoredAgentRecord = {
+    ...makeStoredAgent({ id: agentId, cwd, updatedAt: "2026-03-10T00:00:00.000Z" }),
+    workspaceId,
+    archivedAt: "2026-03-10T00:00:00.000Z",
+  };
+
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (lookupWorkspaceId: string) =>
+    workspaces.get(lookupWorkspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+  session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
+  session.agentStorage.upsert = async () => {};
+
+  const managed = makeManagedAgent({
+    id: agentId,
+    cwd,
+    workspaceId,
+    lifecycle: "idle",
+    updatedAt: "2026-03-10T00:00:00.000Z",
+  });
+  session.agentManager.getAgent = () => managed;
+  session.interruptAgentIfRunning = async () => undefined;
+  session.agentManager.reloadAgentSession = async () => managed;
+  session.agentManager.hydrateTimelineFromProvider = async () => undefined;
+  session.agentManager.getTimeline = () => [];
+  session.agentUpdates.forwardLiveAgent = async () => undefined;
+
+  await session.handleMessage({
+    type: "refresh_agent_request",
+    agentId,
+    requestId: "req-refresh-missing-dir",
+  });
+
+  expect(workspaces.get(workspaceId)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+  expect(projects.get(cwd)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+});
+
+test("refresh_agent_request does not recreate or unarchive a deleted worktree", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    appVersion: "0.1.105",
+    onMessage: (message) => {
+      if (isSessionOutboundMessage(message)) emitted.push(message);
+    },
+  });
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+
+  const cwd = path.resolve("/tmp/otto-deleted-worktree-dir");
+  session.filesystem.isDirectory = async () => false;
+  const workspaceId = "ws-deleted-worktree";
+  const agentId = "agent-deleted-worktree";
+  projects.set(
+    cwd,
+    createPersistedProjectRecord({
+      projectId: cwd,
+      rootPath: cwd,
+      kind: "git",
+      displayName: "worktree-project",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+  workspaces.set(
+    workspaceId,
+    createPersistedWorkspaceRecord({
+      workspaceId,
+      projectId: cwd,
+      cwd,
+      kind: "worktree",
+      branch: "feature/keep",
+      displayName: "feature/keep",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+
+  const storedAgent: StoredAgentRecord = {
+    ...makeStoredAgent({ id: agentId, cwd, updatedAt: "2026-03-10T00:00:00.000Z" }),
+    workspaceId,
+    archivedAt: "2026-03-10T00:00:00.000Z",
+  };
+
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (lookupWorkspaceId: string) =>
+    workspaces.get(lookupWorkspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+  session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
+  session.agentStorage.upsert = async () => {};
+
+  const managed = makeManagedAgent({
+    id: agentId,
+    cwd,
+    workspaceId,
+    lifecycle: "idle",
+    updatedAt: "2026-03-10T00:00:00.000Z",
+  });
+  session.agentManager.getAgent = () => managed;
+  session.interruptAgentIfRunning = async () => undefined;
+  session.agentManager.reloadAgentSession = async () => managed;
+  session.agentManager.hydrateTimelineFromProvider = async () => undefined;
+  session.agentManager.getTimeline = () => [];
+  session.agentUpdates.forwardLiveAgent = async () => undefined;
+
+  const unarchivedWorkspaceIds: string[][] = [];
+  const realEmit = session.emitWorkspaceUpdatesForWorkspaceIds.bind(session);
+  session.emitWorkspaceUpdatesForWorkspaceIds = async (ids: string[], ...rest: unknown[]) => {
+    unarchivedWorkspaceIds.push(ids);
+    return realEmit(ids, ...rest);
+  };
+
+  await session.handleMessage({
+    type: "refresh_agent_request",
+    agentId,
+    requestId: "req-refresh-recreate-worktree",
+  });
+
+  expect(workspaces.get(workspaceId)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+  expect(workspaces.get(workspaceId)?.workspaceId).toBe(workspaceId);
+  expect(unarchivedWorkspaceIds).toEqual([]);
+  expect(findByType(emitted, "rpc_error")).toBeUndefined();
+});
+
+test("refresh_agent_request does not inspect an archived worktree branch", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => {
+      if (isSessionOutboundMessage(message)) emitted.push(message);
+    },
+  });
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+
+  const cwd = path.resolve("/tmp/otto-deleted-worktree-fail");
+  session.filesystem.isDirectory = async () => false;
+  const workspaceId = "ws-deleted-worktree-fail";
+  const agentId = "agent-deleted-worktree-fail";
+  projects.set(
+    cwd,
+    createPersistedProjectRecord({
+      projectId: cwd,
+      rootPath: cwd,
+      kind: "git",
+      displayName: "worktree-project",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+  workspaces.set(
+    workspaceId,
+    createPersistedWorkspaceRecord({
+      workspaceId,
+      projectId: cwd,
+      cwd,
+      kind: "worktree",
+      branch: "feature/gone",
+      displayName: "feature/gone",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+      archivedAt: "2026-03-10T00:00:00.000Z",
+    }),
+  );
+
+  const storedAgent: StoredAgentRecord = {
+    ...makeStoredAgent({ id: agentId, cwd, updatedAt: "2026-03-10T00:00:00.000Z" }),
+    workspaceId,
+    archivedAt: "2026-03-10T00:00:00.000Z",
+  };
+
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.workspaceRegistry.get = async (lookupWorkspaceId: string) =>
+    workspaces.get(lookupWorkspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+  session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
+  session.agentStorage.upsert = async () => {};
+
+  const managed = makeManagedAgent({
+    id: agentId,
+    cwd,
+    workspaceId,
+    lifecycle: "idle",
+    updatedAt: "2026-03-10T00:00:00.000Z",
+  });
+  session.agentManager.getAgent = () => managed;
+  session.interruptAgentIfRunning = async () => undefined;
+  session.agentManager.reloadAgentSession = async () => managed;
+  session.agentManager.hydrateTimelineFromProvider = async () => undefined;
+  session.agentManager.getTimeline = () => [];
+  session.agentUpdates.forwardLiveAgent = async () => undefined;
+
+  await session.handleMessage({
+    type: "refresh_agent_request",
+    agentId,
+    requestId: "req-refresh-recreate-fail",
+  });
+
+  expect(workspaces.get(workspaceId)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+  expect(findByType(emitted, "rpc_error")).toBeUndefined();
+});
+
+test("lists Git runtime for a checkout explicitly owned by a non-Git project", async () => {
+  const session = createSessionForWorkspaceTests();
+  const project = createPersistedProjectRecord({
+    projectId: "proj-explicit-directory",
+    rootPath: "/tmp/explicit-directory",
+    kind: "non_git",
+    displayName: "directory project",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-explicit-checkout",
+    projectId: project.projectId,
+    cwd: REPO_CWD,
+    kind: "local_checkout",
+    displayName: "main",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  session.listAgentPayloads = async () => [];
+  session.projectRegistry.list = async () => [project];
+  session.workspaceRegistry.list = async () => [workspace];
+  session.workspaceGitService.peekSnapshot = () => createWorkspaceRuntimeSnapshot(REPO_CWD);
+
+  const descriptors = Array.from(
+    (await session.buildWorkspaceDescriptorMap({ includeGitData: true })).values(),
+  ) as Array<{ gitRuntime?: { currentBranch: string | null }; githubRuntime?: unknown }>;
+
+  expect(descriptors[0]).toMatchObject({
+    gitRuntime: { currentBranch: "main" },
+    githubRuntime: expect.any(Object),
+  });
+});
+
+test("external workspace updates emit one deduplicated batch", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests();
+  const project = createPersistedProjectRecord({
+    projectId: "proj-observer-batch",
+    rootPath: "/tmp/observer-batch",
+    kind: "non_git",
+    displayName: "observer-batch",
+    createdAt: "2026-07-15T00:00:00.000Z",
+    updatedAt: "2026-07-15T00:00:00.000Z",
+  });
+  const main = createPersistedWorkspaceRecord({
+    workspaceId: "ws-observer-main",
+    projectId: project.projectId,
+    cwd: "/tmp/observer-batch/main",
+    kind: "directory",
+    displayName: "main",
+    createdAt: "2026-07-15T00:00:00.000Z",
+    updatedAt: "2026-07-15T00:00:00.000Z",
+  });
+  const feature = createPersistedWorkspaceRecord({
+    workspaceId: "ws-observer-feature",
+    projectId: project.projectId,
+    cwd: "/tmp/observer-batch/feature",
+    kind: "directory",
+    displayName: "feature",
+    createdAt: "2026-07-15T00:00:00.000Z",
+    updatedAt: "2026-07-15T00:00:00.000Z",
+  });
+  const snapshotReads = { projects: 0, workspaces: 0 };
+  session.projectRegistry.list = async () => {
+    snapshotReads.projects += 1;
+    return [project];
+  };
+  session.workspaceRegistry.list = async () => {
+    snapshotReads.workspaces += 1;
+    return [main, feature];
+  };
+  session.listAgentPayloads = async () => [];
+  session.workspaceUpdatesSubscription = {
+    subscriptionId: "sub-observer-batch",
+    filter: undefined,
+    isBootstrapping: false,
+    pendingUpdatesByWorkspaceId: new Map(),
+    lastEmittedByWorkspaceId: new Map(),
+  };
+  session.onMessage = (message) => {
+    if (isSessionOutboundMessage(message)) emitted.push(message);
+  };
+
+  await session.emitWorkspaceUpdatesForExternalWorkspaceIds([
+    main.workspaceId,
+    feature.workspaceId,
+    main.workspaceId,
+  ]);
+
+  expect(filterByType(emitted, "workspace_update")).toEqual([
+    {
+      type: "workspace_update",
+      payload: {
+        kind: "upsert",
+        workspace: expect.objectContaining({
+          id: main.workspaceId,
+          projectId: project.projectId,
+          workspaceDirectory: main.cwd,
+          name: main.displayName,
+        }),
+      },
+    },
+    {
+      type: "workspace_update",
+      payload: {
+        kind: "upsert",
+        workspace: expect.objectContaining({
+          id: feature.workspaceId,
+          projectId: project.projectId,
+          workspaceDirectory: feature.cwd,
+          name: feature.displayName,
+        }),
+      },
+    },
+  ]);
+  expect(snapshotReads).toEqual({ projects: 1, workspaces: 1 });
+});
+
+test("workspace mutation handling does not let a delayed upsert recreate an archived observer", async () => {
+  let mutationListener: ((mutation: WorkspaceMutation) => void | Promise<void>) | null = null;
+  const registerCalls: string[] = [];
+  const unsubscribeCalls: string[] = [];
+  const project = createPersistedProjectRecord({
+    projectId: "proj-race",
+    rootPath: REPO_CWD,
+    kind: "git",
+    displayName: "repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-race",
+    projectId: project.projectId,
+    cwd: REPO_CWD,
+    kind: "local_checkout",
+    displayName: "main",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const descriptor = {
+    id: workspace.workspaceId,
+    projectId: project.projectId,
+    projectDisplayName: project.displayName,
+    projectRootPath: project.rootPath,
+    workspaceDirectory: workspace.cwd,
+    projectKind: project.kind,
+    workspaceKind: workspace.kind,
+    name: workspace.displayName,
+    status: "done",
+    activityAt: null,
+    diffStat: null,
+  } as WorkspaceDescriptorPayload;
+  let listedWorkspaces: PersistedWorkspaceRecord[] = [];
+  const workspaceRegistry: SessionOptions["workspaceRegistry"] = {
+    initialize: async () => {},
+    existsOnDisk: async () => true,
+    list: async () => listedWorkspaces,
+    get: async (workspaceId: string) => (workspaceId === workspace.workspaceId ? workspace : null),
+    update: async () => null,
+    upsert: async () => {},
+    archive: async () => {},
+    remove: async () => {},
+    subscribeToMutations: (listener) => {
+      mutationListener = listener;
+      return () => {
+        mutationListener = null;
+      };
+    },
+  };
+  const session = createSessionForWorkspaceTests({
+    projectRegistry: {
+      initialize: async () => {},
+      existsOnDisk: async () => true,
+      list: async () => [project],
+      get: async (projectId: string) => (projectId === project.projectId ? project : null),
+      getOrCreateActiveByRoot: async () => project,
+      upsert: async () => {},
+      archive: async () => {},
+      remove: async () => {},
+    },
+    workspaceRegistry,
+    workspaceGitService: createNoopWorkspaceGitService({
+      registerWorkspace: ({ cwd }) => {
+        registerCalls.push(path.resolve(cwd));
+        return {
+          unsubscribe: () => {
+            unsubscribeCalls.push(path.resolve(cwd));
+          },
+        };
+      },
+    }),
+  });
+  session.emitWorkspaceUpdatesForWorkspaceIds = async () => {};
+
+  await session.handleMessage({
+    type: "fetch_workspaces_request",
+    requestId: "req-fetch-workspaces-subscribe",
+    subscribe: {},
+  });
+  listedWorkspaces = [workspace];
+
+  let resumeDescribe!: () => void;
+  const describeStarted = new Promise<void>((resolveStarted) => {
+    session.describeWorkspaceRecordWithGitData = async () => {
+      resolveStarted();
+      await new Promise<void>((resolveResume) => {
+        resumeDescribe = resolveResume;
+      });
+      return descriptor;
+    };
+  });
+
+  const upsertMutation = mutationListener?.({
+    kind: "upsert",
+    workspaceId: workspace.workspaceId,
+    workspace,
+  });
+  expect(upsertMutation).toBeDefined();
+  const upsertPromise = Promise.resolve(upsertMutation);
+  await describeStarted;
+
+  const archivedWorkspace = { ...workspace, archivedAt: "2026-03-02T12:00:00.000Z" };
+  const archivePromise = Promise.resolve(
+    mutationListener?.({
+      kind: "archive",
+      workspaceId: workspace.workspaceId,
+      workspace: archivedWorkspace,
+    }),
+  );
+
+  await Promise.resolve();
+  expect(unsubscribeCalls).toEqual([]);
+
+  resumeDescribe();
+  await upsertPromise;
+  await archivePromise;
+
+  expect(registerCalls).toEqual([REPO_CWD]);
+  expect(unsubscribeCalls).toEqual([REPO_CWD]);
+});
+
+test("workspace mutations outside a filtered subscription neither watch nor emit", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  let mutationListener: ((mutation: WorkspaceMutation) => void | Promise<void>) | null = null;
+  const registerCalls: string[] = [];
+  const project = createPersistedProjectRecord({
+    projectId: "proj-filtered-mutation",
+    rootPath: REPO_CWD,
+    kind: "git",
+    displayName: "repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-filtered-mutation",
+    projectId: project.projectId,
+    cwd: REPO_CWD,
+    kind: "local_checkout",
+    displayName: "main",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const descriptor = {
+    id: workspace.workspaceId,
+    projectId: project.projectId,
+    projectDisplayName: project.displayName,
+    projectRootPath: project.rootPath,
+    workspaceDirectory: workspace.cwd,
+    projectKind: project.kind,
+    workspaceKind: workspace.kind,
+    name: workspace.displayName,
+    status: "done",
+    activityAt: null,
+    diffStat: null,
+  } as WorkspaceDescriptorPayload;
+  const workspaceRegistry: SessionOptions["workspaceRegistry"] = {
+    initialize: async () => {},
+    existsOnDisk: async () => true,
+    list: async () => [workspace],
+    get: async (workspaceId: string) => (workspaceId === workspace.workspaceId ? workspace : null),
+    update: async () => null,
+    upsert: async () => {},
+    archive: async () => {},
+    remove: async () => {},
+    subscribeToMutations: (listener) => {
+      mutationListener = listener;
+      return () => {
+        mutationListener = null;
+      };
+    },
+  };
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+    projectRegistry: {
+      initialize: async () => {},
+      existsOnDisk: async () => true,
+      list: async () => [project],
+      get: async (projectId: string) => (projectId === project.projectId ? project : null),
+      getOrCreateActiveByRoot: async () => project,
+      upsert: async () => {},
+      archive: async () => {},
+      remove: async () => {},
+    },
+    workspaceRegistry,
+    workspaceGitService: createNoopWorkspaceGitService({
+      registerWorkspace: ({ cwd }) => {
+        registerCalls.push(path.resolve(cwd));
+        return { unsubscribe: () => {} };
+      },
+    }),
+  });
+  session.listFetchWorkspacesEntries = async () => ({
+    entries: [],
+    emptyProjects: [],
+    pageInfo: { nextCursor: null, prevCursor: null, hasMore: false },
+  });
+  session.buildWorkspaceDescriptorMap = async () => new Map([[descriptor.id, descriptor]]);
+
+  await session.handleMessage({
+    type: "fetch_workspaces_request",
+    requestId: "req-filtered-mutation",
+    filter: { projectId: "some-other-project" },
+    subscribe: {},
+  });
+  emitted.length = 0;
+
+  await mutationListener?.({
+    kind: "upsert",
+    workspaceId: workspace.workspaceId,
+    workspace,
+  });
+  session.buildWorkspaceDescriptorMap = async () => new Map();
+  await mutationListener?.({
+    kind: "archive",
+    workspaceId: workspace.workspaceId,
+    workspace: { ...workspace, archivedAt: "2026-03-02T12:00:00.000Z" },
+  });
+
+  expect(registerCalls).toEqual([]);
+  expect(filterByType(emitted, "workspace_update")).toEqual([]);
+});
+
+test("project removal mutation broadcasts the final delta to another subscribed session", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const project = createPersistedProjectRecord({
+    projectId: "proj-global-remove",
+    rootPath: REPO_CWD,
+    kind: "git",
+    displayName: "repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-global-remove",
+    projectId: project.projectId,
+    cwd: REPO_CWD,
+    kind: "local_checkout",
+    displayName: "main",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-02T12:00:00.000Z",
+    archivedAt: "2026-03-02T12:00:00.000Z",
+  });
+  let projectMutationListener:
+    | Parameters<NonNullable<SessionOptions["projectRegistry"]["subscribeToMutations"]>>[0]
+    | null = null;
+  const projectRegistry: SessionOptions["projectRegistry"] = {
+    initialize: async () => {},
+    existsOnDisk: async () => true,
+    list: async () => [],
+    get: async () => null,
+    getOrCreateActiveByRoot: async () => project,
+    upsert: async () => {},
+    archive: async () => {},
+    remove: async (projectId) => {
+      await projectMutationListener?.({ kind: "remove", projectId, project: null });
+    },
+    subscribeToMutations: (listener) => {
+      projectMutationListener = listener;
+      return () => {
+        projectMutationListener = null;
+      };
+    },
+  };
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+    projectRegistry,
+    workspaceRegistry: {
+      initialize: async () => {},
+      existsOnDisk: async () => true,
+      list: async () => [workspace],
+      get: async (workspaceId) => (workspaceId === workspace.workspaceId ? workspace : null),
+      update: async () => null,
+      upsert: async () => {},
+      archive: async () => {},
+      remove: async () => {},
+    },
+  });
+  session.workspaceUpdatesSubscription = {
+    subscriptionId: "sub-global-remove",
+    filter: undefined,
+    isBootstrapping: false,
+    pendingUpdatesByWorkspaceId: new Map(),
+    lastEmittedByWorkspaceId: new Map([
+      [
+        workspace.workspaceId,
+        {
+          kind: "remove",
+          id: workspace.workspaceId,
+          emptyProject: {
+            projectId: project.projectId,
+            projectDisplayName: project.displayName,
+            projectCustomName: null,
+            projectRootPath: project.rootPath,
+            projectKind: project.kind,
+          },
+        },
+      ],
+    ]),
+  };
+
+  await projectRegistry.remove(project.projectId);
+
+  expect(filterByType(emitted, "workspace_update")).toEqual([
+    {
+      type: "workspace_update",
+      payload: {
+        kind: "remove",
+        id: workspace.workspaceId,
+        removedProjectId: project.projectId,
+      },
+    },
+  ]);
+});
+
+test("workspace mutation handling drops queued observer sync after session cleanup", async () => {
+  let mutationListener: ((mutation: WorkspaceMutation) => void | Promise<void>) | null = null;
+  const registerCalls: string[] = [];
+  const unsubscribeCalls: string[] = [];
+  const project = createPersistedProjectRecord({
+    projectId: "proj-cleanup-race",
+    rootPath: REPO_CWD,
+    kind: "git",
+    displayName: "repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const firstWorkspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-cleanup-first",
+    projectId: project.projectId,
+    cwd: REPO_CWD,
+    kind: "local_checkout",
+    displayName: "main",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const queuedWorkspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-cleanup-queued",
+    projectId: project.projectId,
+    cwd: "/tmp/repo/queued",
+    kind: "local_checkout",
+    displayName: "queued",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspaces = new Map([
+    [firstWorkspace.workspaceId, firstWorkspace],
+    [queuedWorkspace.workspaceId, queuedWorkspace],
+  ]);
+  let listedWorkspaces: PersistedWorkspaceRecord[] = [];
+  const workspaceRegistry: SessionOptions["workspaceRegistry"] = {
+    initialize: async () => {},
+    existsOnDisk: async () => true,
+    list: async () => listedWorkspaces,
+    get: async (workspaceId: string) => workspaces.get(workspaceId) ?? null,
+    update: async () => null,
+    upsert: async () => {},
+    archive: async () => {},
+    remove: async () => {},
+    subscribeToMutations: (listener) => {
+      mutationListener = listener;
+      return () => {
+        mutationListener = null;
+      };
+    },
+  };
+  const session = createSessionForWorkspaceTests({
+    projectRegistry: {
+      initialize: async () => {},
+      existsOnDisk: async () => true,
+      list: async () => [project],
+      get: async (projectId: string) => (projectId === project.projectId ? project : null),
+      getOrCreateActiveByRoot: async () => project,
+      upsert: async () => {},
+      archive: async () => {},
+      remove: async () => {},
+    },
+    workspaceRegistry,
+    workspaceGitService: createNoopWorkspaceGitService({
+      registerWorkspace: ({ cwd }) => {
+        registerCalls.push(path.resolve(cwd));
+        return {
+          unsubscribe: () => {
+            unsubscribeCalls.push(path.resolve(cwd));
+          },
+        };
+      },
+    }),
+  });
+
+  await session.handleMessage({
+    type: "fetch_workspaces_request",
+    requestId: "req-fetch-workspaces-cleanup-subscribe",
+    subscribe: {},
+  });
+  listedWorkspaces = Array.from(workspaces.values());
+
+  session.describeWorkspaceRecordWithGitData = async (workspace) =>
+    ({
+      id: workspace.workspaceId,
+      projectId: workspace.projectId,
+      projectDisplayName: project.displayName,
+      projectRootPath: project.rootPath,
+      workspaceDirectory: workspace.cwd,
+      projectKind: project.kind,
+      workspaceKind: workspace.kind,
+      name: workspace.displayName,
+      status: "done",
+      activityAt: null,
+      diffStat: null,
+    }) as WorkspaceDescriptorPayload;
+
+  let resumeFirstEmit!: () => void;
+  const firstEmitStarted = new Promise<void>((resolveStarted) => {
+    session.emitWorkspaceUpdatesForWorkspaceIds = async () => {
+      resolveStarted();
+      await new Promise<void>((resolveResume) => {
+        resumeFirstEmit = resolveResume;
+      });
+    };
+  });
+
+  const firstMutationPromise = Promise.resolve(
+    mutationListener?.({
+      kind: "upsert",
+      workspaceId: firstWorkspace.workspaceId,
+      workspace: firstWorkspace,
+    }),
+  );
+  expect(firstMutationPromise).toBeDefined();
+  await firstEmitStarted;
+
+  const queuedMutationPromise = Promise.resolve(
+    mutationListener?.({
+      kind: "upsert",
+      workspaceId: queuedWorkspace.workspaceId,
+      workspace: queuedWorkspace,
+    }),
+  );
+
+  await session.cleanup();
+  resumeFirstEmit();
+  await firstMutationPromise;
+  await queuedMutationPromise;
+
+  expect(registerCalls).toEqual([REPO_CWD]);
+  expect(unsubscribeCalls).toEqual([REPO_CWD]);
+});
+
+test("a workspace leaving a filtered subscription after bootstrap emits a removal", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = asTestSession(
+    createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) }),
+  );
+  const descriptor = {
+    id: "ws-buffered",
+    projectId: "proj-buffered",
+    projectDisplayName: "repo",
+    projectRootPath: REPO_CWD,
+    workspaceDirectory: REPO_CWD,
+    projectKind: "git" as const,
+    workspaceKind: "local_checkout" as const,
+    name: "repo work",
+    status: "done" as const,
+    activityAt: null,
+    diffStat: null,
+  };
+  let currentDescriptor: typeof descriptor | null = descriptor;
+  let finishListing: (result: ListFetchResult) => void = () => {};
+  const listing = new Promise<ListFetchResult>((resolve) => {
+    finishListing = resolve;
+  });
+  session.listFetchWorkspacesEntries = async () => listing;
+  session.buildWorkspaceDescriptorMap = async () =>
+    new Map(currentDescriptor ? [[currentDescriptor.id, currentDescriptor]] : []);
+  const bootstrap = session.handleMessage({
+    type: "fetch_workspaces_request",
+    requestId: "req-buffered-filter",
+    filter: { query: "repo" },
+    subscribe: { subscriptionId: "sub-buffered-filter" },
+  });
+  await session.emitWorkspaceUpdatesForWorkspaceIds([descriptor.id]);
+  finishListing({
+    entries: [],
+    emptyProjects: [],
+    pageInfo: { nextCursor: null, prevCursor: null, hasMore: false },
+  });
+  await bootstrap;
+
+  expect(filterByType(emitted, "workspace_update")).toEqual([
+    { type: "workspace_update", payload: { kind: "upsert", workspace: descriptor } },
+  ]);
+
+  emitted.length = 0;
+  currentDescriptor = { ...descriptor, name: "other work" };
+  await session.emitWorkspaceUpdatesForWorkspaceIds([descriptor.id]);
+
+  expect(filterByType(emitted, "workspace_update")).toEqual([
+    {
+      type: "workspace_update",
+      payload: { kind: "remove", id: descriptor.id },
+    },
+  ]);
+});
+
+test("project.rename.request updates a project with no workspaces", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = asTestSession(
+    createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) }),
+  );
+  session.updateClientCapabilities({ [CLIENT_CAPS.projectUpdates]: true });
+
+  const project = createPersistedProjectRecord({
+    projectId: "prj_empty",
+    rootPath: REPO_CWD,
+    kind: "non_git",
+    displayName: "repo",
+    createdAt: "2026-07-20T12:00:00.000Z",
+    updatedAt: "2026-07-20T12:00:00.000Z",
+  });
+  session.projectRegistry.get = async () => project;
+  session.projectRegistry.upsert = async () => project;
+  session.workspaceRegistry.list = async () => [];
+
+  await session.handleMessage({
+    type: "project.rename.request",
+    projectId: project.projectId,
+    customName: "Renamed empty project",
+    requestId: "req-rename-empty",
+  });
+
+  expect(findByType(emitted, "project.update")?.payload).toMatchObject({
+    kind: "upsert",
+    project: {
+      projectId: project.projectId,
+      projectDisplayName: "Renamed empty project",
+      projectCustomName: "Renamed empty project",
+    },
+  });
+});
+
+test("workspace.pin.set.request stores the pin timestamp and emits an updated descriptor", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = asTestSession(
+    createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) }),
+  );
+  const project = createPersistedProjectRecord({
+    projectId: "proj-1",
+    rootPath: REPO_CWD,
+    kind: "git",
+    displayName: "acme/repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-1",
+    projectId: project.projectId,
+    cwd: REPO_CWD,
+    kind: "local_checkout",
+    displayName: "main",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspaces = new Map([[workspace.workspaceId, workspace]]);
+  session.projectRegistry.get = async (id: string) => (id === project.projectId ? project : null);
+  session.projectRegistry.list = async () => [project];
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceRegistry.update = async (id, updater) => {
+    const existing = workspaces.get(id);
+    if (!existing) return null;
+    const updated = updater(existing);
+    workspaces.set(id, updated);
+    return updated;
+  };
+  session.workspaceUpdatesSubscription = {
+    subscriptionId: "sub-workspaces",
+    filter: {},
+    isBootstrapping: false,
+    lastEmittedByWorkspaceId: new Map(),
+    pendingUpdatesByWorkspaceId: new Map(),
+  };
+
+  await session.handleMessage({
+    type: "workspace.pin.set.request",
+    workspaceId: workspace.workspaceId,
+    pinned: true,
+    requestId: "req-pin-1",
+  });
+
+  const response = findByType(emitted, "workspace.pin.set.response");
+  expect(response?.payload).toMatchObject({
+    requestId: "req-pin-1",
+    workspaceId: "ws-1",
+    accepted: true,
+    error: null,
+  });
+  expect(response?.payload.pinnedAt).toEqual(expect.any(String));
+  expect(workspaces.get("ws-1")?.pinnedAt).toBe(response?.payload.pinnedAt);
+  expect(findByType(emitted, "workspace_update")?.payload).toMatchObject({
+    kind: "upsert",
+    workspace: {
+      id: "ws-1",
+      pinnedAt: response?.payload.pinnedAt,
+    },
+  });
+});
+
+test("workspace auto-name uses the backing root for a nested worktree", async () => {
+  vi.useFakeTimers();
+  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "workspace-auto-name-rejected-")));
+  const repoDir = path.join(tempDir, "repo");
+  mkdirSync(repoDir);
+  execFileSync("git", ["init", repoDir], { stdio: "pipe" });
+  execFileSync("git", ["config", "user.email", "test@getotto.local"], {
+    cwd: repoDir,
+    stdio: "pipe",
+  });
+  execFileSync("git", ["config", "user.name", "Otto Test"], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir, stdio: "pipe" });
+  writeFileSync(path.join(repoDir, "README.md"), "hello\n");
+  execFileSync("git", ["add", "README.md"], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["branch", "-M", "placeholder-branch"], { cwd: repoDir, stdio: "pipe" });
+  writeOttoWorktreeMetadata(repoDir, { baseRefName: "main" });
+  writeOttoWorktreeFirstAgentBranchAutoNameMetadata(repoDir, {
+    placeholderBranchName: "placeholder-branch",
+  });
+  const workspaceCwd = path.join(repoDir, "packages", "app");
+  mkdirSync(workspaceCwd, { recursive: true });
+
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-rejected-branch-title",
+    projectId: "proj-rejected-branch-title",
+    cwd: workspaceCwd,
+    kind: "worktree",
+    displayName: "Fix checkout title",
+    title: "Fix checkout title",
+    branch: "placeholder-branch",
+    worktreeRoot: repoDir,
+    isOttoOwnedWorktree: true,
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const stored = new Map([[workspace.workspaceId, workspace]]);
+  let generateCalls = 0;
+  const gitMutations: string[] = [];
+  const emittedCwds: string[] = [];
+  const workspaceAutoName = new WorkspaceAutoName({
+    agentManager: asAgentManager({}),
+    workspaceRegistry: {
+      update: async (workspaceId, updater) => {
+        const current = stored.get(workspaceId);
+        if (!current) return null;
+        const updated = updater(current);
+        stored.set(workspaceId, updated);
+        return updated;
+      },
+    },
+    workspaceGitService: createNoopWorkspaceGitService(),
+    providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+    readDaemonConfig: () => ({ metadataGeneration: { providers: [] } }),
+    gitMutation: {
+      notifyGitMutation: async (_cwd, reason) => {
+        gitMutations.push(reason);
+      },
+    },
+    emitWorkspaceUpdateForCwd: async (cwd) => {
+      emittedCwds.push(cwd);
+    },
+    emitWorkspaceUpdateForWorkspaceId: async () => {},
+    logger: asSessionLogger(createTestLogger()),
+    generateWorkspaceName: async () => {
+      generateCalls += 1;
+      return { title: "Generated Invalid Branch Title", branch: "Invalid Branch Name" };
+    },
+  });
+
+  try {
+    workspaceAutoName.scheduleForWorktree({
+      workspace,
+      firstAgentContext: { prompt: "Fix checkout title" },
+    });
+    await vi.runAllTimersAsync();
+
+    expect(generateCalls).toBe(1);
+    expect(stored.get(workspace.workspaceId)).toMatchObject({
+      title: "Generated Invalid Branch Title",
+      branch: "placeholder-branch",
+    });
+    expect(
+      execFileSync("git", ["branch", "--show-current"], { cwd: repoDir, stdio: "pipe" })
+        .toString()
+        .trim(),
+    ).toBe("placeholder-branch");
+    expect(readOttoWorktreeMetadata(repoDir)).toMatchObject({
+      version: 2,
+      firstAgentBranchAutoName: {
+        status: "attempted",
+        placeholderBranchName: "placeholder-branch",
+      },
+    });
+    expect(gitMutations).toEqual([]);
+    expect(emittedCwds).toEqual([workspaceCwd]);
+  } finally {
+    vi.useRealTimers();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("workspace create emits through a matching workspace subscription", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  let mutationListener: ((mutation: WorkspaceMutation) => void | Promise<void>) | null = null;
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+    workspaceRegistry: {
+      initialize: async () => {},
+      existsOnDisk: async () => true,
+      list: async () => Array.from(workspaces.values()),
+      get: async (workspaceId) => workspaces.get(workspaceId) ?? null,
+      upsert: async (workspace, context) => {
+        workspaces.set(workspace.workspaceId, workspace);
+        await mutationListener?.({
+          kind: "upsert",
+          workspaceId: workspace.workspaceId,
+          workspace,
+          expectsInitialAgent: context?.expectsInitialAgent,
+        });
+      },
+      archive: async () => {},
+      remove: async () => {},
+      subscribeToMutations: (listener) => {
+        mutationListener = listener;
+        return () => {
+          mutationListener = null;
+        };
+      },
+    },
+  });
+  session.listAgentPayloads = async () => [];
+
+  await session.handleMessage({
+    type: "fetch_workspaces_request",
+    requestId: "req-subscribe-create-match",
+    filter: { query: "Implement" },
+    subscribe: { subscriptionId: "sub-create-match" },
+  });
+  emitted.length = 0;
+  await session.handleMessage({
+    type: "workspace.create.request",
+    requestId: "req-create-match",
+    source: { kind: "directory", path: REPO_CWD },
+    firstAgentContext: { prompt: "Implement the requested change" },
+  });
+
+  const statuses = filterByType(emitted, "workspace_update").flatMap((message) =>
+    message.payload.kind === "upsert" ? [message.payload.workspace.status] : [],
+  );
+  expect(statuses).toContain("running");
+  expect(statuses).not.toContain("done");
+});
+
+test("workspace create stays out of a non-matching workspace subscription", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+    workspaceRegistry: {
+      initialize: async () => {},
+      existsOnDisk: async () => true,
+      list: async () => Array.from(workspaces.values()),
+      get: async (workspaceId) => workspaces.get(workspaceId) ?? null,
+      upsert: async (workspace) => {
+        workspaces.set(workspace.workspaceId, workspace);
+      },
+      archive: async () => {},
+      remove: async () => {},
+    },
+  });
+  session.listAgentPayloads = async () => [];
+
+  await session.handleMessage({
+    type: "fetch_workspaces_request",
+    requestId: "req-subscribe-create-filtered",
+    filter: { query: "definitely-not-this-workspace" },
+    subscribe: { subscriptionId: "sub-create-filtered" },
+  });
+  emitted.length = 0;
+  await session.handleMessage({
+    type: "workspace.create.request",
+    requestId: "req-create-filtered",
+    source: { kind: "directory", path: REPO_CWD },
+  });
+
+  expect(filterByType(emitted, "workspace_update")).toEqual([]);
+});
+
+test("workspace.create.request attaches a directory workspace to its explicit active project", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const projects = new Map([
+    [
+      "prj_explicit",
+      createPersistedProjectRecord({
+        projectId: "prj_explicit",
+        rootPath: path.join(REPO_CWD, "unrelated"),
+        kind: "non_git",
+        displayName: "unrelated",
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      }),
+    ],
+  ]);
+  const workspaces = new Map<string, PersistedWorkspaceRecord>();
+  const session = createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) });
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.workspaceRegistry.upsert = async (record: unknown) => {
+    const workspace = record as PersistedWorkspaceRecord;
+    workspaces.set(workspace.workspaceId, workspace);
+  };
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    workspaces.get(workspaceId) ?? null;
+
+  await session.handleMessage({
+    type: "workspace.create.request",
+    requestId: "req-explicit-project",
+    source: { kind: "directory", path: REPO_CWD, projectId: "prj_explicit" },
+  });
+
+  const response = findByType(emitted, "workspace.create.response");
+  expect(response?.payload).toMatchObject({
+    requestId: "req-explicit-project",
+    error: null,
+    workspace: { projectId: "prj_explicit" },
+  });
+  const workspaceId = response?.payload.workspace?.id;
+  expect(workspaceId).toEqual(expect.any(String));
+  expect(workspaces.get(workspaceId as string)).toMatchObject({
+    cwd: REPO_CWD,
+    projectId: "prj_explicit",
+  });
+});
+
+test("workspace.create.request reports an unknown explicit project", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) });
+
+  await session.handleMessage({
+    type: "workspace.create.request",
+    requestId: "req-unknown-project",
+    source: { kind: "directory", path: REPO_CWD, projectId: "prj_missing" },
+  });
+
+  expect(findByType(emitted, "workspace.create.response")?.payload).toMatchObject({
+    requestId: "req-unknown-project",
+    workspace: null,
+    errorCode: "unknown_project",
+  });
+});
+
+test("workspace.create.request reports an archived explicit project", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const archivedProject = createPersistedProjectRecord({
+    projectId: "prj_archived",
+    rootPath: path.join(REPO_CWD, "unrelated"),
+    kind: "non_git",
+    displayName: "unrelated",
+    createdAt: "2026-03-01T00:00:00.000Z",
+    updatedAt: "2026-03-01T00:00:00.000Z",
+    archivedAt: "2026-03-02T00:00:00.000Z",
+  });
+  const session = createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) });
+  session.projectRegistry.get = async (projectId: string) =>
+    projectId === archivedProject.projectId ? archivedProject : null;
+
+  await session.handleMessage({
+    type: "workspace.create.request",
+    requestId: "req-archived-project",
+    source: { kind: "directory", path: REPO_CWD, projectId: "prj_archived" },
+  });
+
+  expect(findByType(emitted, "workspace.create.response")?.payload).toMatchObject({
+    requestId: "req-archived-project",
+    workspace: null,
+    errorCode: "archived_project",
+  });
 });

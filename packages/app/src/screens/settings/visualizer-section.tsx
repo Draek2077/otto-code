@@ -1,3 +1,8 @@
+import {
+  SettingsTargetText,
+  SettingsTargetScope,
+  SettingsTargetLabel,
+} from "@/screens/settings-search/target";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
@@ -48,7 +53,7 @@ function ToggleRow({
   return (
     <View style={withBorder ? styles.rowWithBorder : settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
       <Switch
@@ -102,7 +107,7 @@ function VolumeRow({ title, hint, accessibilityLabel, value, onCommit }: VolumeR
   return (
     <View style={settingsStyles.rowResponsive}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
       <View style={styles.volumeField}>
@@ -224,15 +229,17 @@ export function VisualizerSection() {
     <>
       <SettingsSection title="Availability">
         <View style={settingsStyles.card}>
-          <ToggleRow
-            title="Enable Visualizer"
-            hint="The live agent-orchestration graph. Turning it off removes the header button and Runs “Visualize” action, and closes open Visualizer tabs."
-            accessibilityLabel="Enable Visualizer"
-            value={visualizerEnabled}
-            withBorder={false}
-            onValueChange={handleEnabledChange}
-            testID="settings-visualizer-enable-switch"
-          />
+          <SettingsTargetScope settingIds={["app-visualizer-availability-enable-visualizer"]}>
+            <ToggleRow
+              title="Enable Visualizer"
+              hint="The live agent-orchestration graph. Turning it off removes the header button and Runs “Visualize” action, and closes open Visualizer tabs."
+              accessibilityLabel="Enable Visualizer"
+              value={visualizerEnabled}
+              withBorder={false}
+              onValueChange={handleEnabledChange}
+              testID="settings-visualizer-enable-switch"
+            />
+          </SettingsTargetScope>
         </View>
       </SettingsSection>
       {visualizerEnabled ? (
@@ -242,7 +249,12 @@ export function VisualizerSection() {
               {isSoftwareRendering ? (
                 <View style={styles.gpuNotice}>
                   <View style={settingsStyles.rowContent}>
-                    <Text style={settingsStyles.rowTitle}>GPU acceleration is off</Text>
+                    <SettingsTargetText
+                      settingId="app-visualizer-rendering-gpu-acceleration"
+                      style={settingsStyles.rowTitle}
+                    >
+                      GPU acceleration is off
+                    </SettingsTargetText>
                     <Text style={settingsStyles.rowHint}>
                       Otto fell back to software rendering after the GPU crashed, so bloom and other
                       heavy effects are disabled. Turning acceleration back on restarts Otto.
@@ -260,18 +272,25 @@ export function VisualizerSection() {
                   </Button>
                 </View>
               ) : null}
-              <ToggleRow
-                title="FPS meter"
-                hint="Show a small frames-per-second readout in the top-left corner of open Visualizer tabs."
-                accessibilityLabel="FPS meter"
-                value={settings.visualizerShowFps}
-                withBorder={false}
-                onValueChange={handleShowFpsChange}
-                testID="settings-visualizer-fps-switch"
-              />
+              <SettingsTargetScope settingIds={["app-visualizer-rendering-fps-meter"]}>
+                <ToggleRow
+                  title="FPS meter"
+                  hint="Show a small frames-per-second readout in the top-left corner of open Visualizer tabs."
+                  accessibilityLabel="FPS meter"
+                  value={settings.visualizerShowFps}
+                  withBorder={false}
+                  onValueChange={handleShowFpsChange}
+                  testID="settings-visualizer-fps-switch"
+                />
+              </SettingsTargetScope>
               <View style={qualityRowStyle}>
                 <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>Sharpness</Text>
+                  <SettingsTargetText
+                    settingId="app-visualizer-rendering-sharpness"
+                    style={settingsStyles.rowTitle}
+                  >
+                    Sharpness
+                  </SettingsTargetText>
                   <Text style={settingsStyles.rowHint}>
                     Canvas resolution against frame rate: Fast renders at 1x, Native at the
                     display&apos;s full pixel ratio. Applies the next time a Visualizer tab loads.
@@ -287,7 +306,12 @@ export function VisualizerSection() {
               </View>
               <View style={qualityRowStyle}>
                 <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>Node shape</Text>
+                  <SettingsTargetText
+                    settingId="app-visualizer-rendering-node-shape"
+                    style={settingsStyles.rowTitle}
+                  >
+                    Node shape
+                  </SettingsTargetText>
                   <Text style={settingsStyles.rowHint}>
                     The silhouette drawn for each agent node on the graph. Applies live to open
                     Visualizer tabs.
@@ -303,7 +327,12 @@ export function VisualizerSection() {
               </View>
               <View style={qualityRowStyle}>
                 <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>Context readout</Text>
+                  <SettingsTargetText
+                    settingId="app-visualizer-rendering-context-readout"
+                    style={settingsStyles.rowTitle}
+                  >
+                    Context readout
+                  </SettingsTargetText>
                   <Text style={settingsStyles.rowHint}>
                     Whether the main agent node shows context occupancy as a ring around it or a bar
                     under it. Sub-agent nodes always use the bar.
@@ -317,82 +346,98 @@ export function VisualizerSection() {
                   testID="settings-visualizer-context-display"
                 />
               </View>
-              <ToggleRow
-                title="Node glow"
-                hint="The soft holographic halo drawn around each agent node. The node body and ring stay; this only toggles the surrounding glow."
-                accessibilityLabel="Node glow"
-                value={settings.visualizerRenderNodeGlow}
-                withBorder
-                onValueChange={handleNodeGlowChange}
-                testID="settings-visualizer-node-glow-switch"
-              />
-              <ToggleRow
-                title="Bloom"
-                hint={
-                  isSoftwareRendering
-                    ? "Off while GPU acceleration is disabled - bloom needs the GPU and is the single most expensive visual effect. Re-enable acceleration above to turn it back on."
-                    : "A whole-viewport blurred echo of the scene, composited over everything for a holographic haze. The single most expensive visual effect. (The per-node halo is the separate 'Node glow' toggle above.)"
-                }
-                accessibilityLabel="Bloom"
-                value={isSoftwareRendering ? false : settings.visualizerRenderBloom}
-                withBorder
-                onValueChange={handleBloomChange}
-                disabled={isSoftwareRendering}
-                testID="settings-visualizer-bloom-switch"
-              />
-              <ToggleRow
-                title="Background stars"
-                hint="The drifting parallax star field behind the graph."
-                accessibilityLabel="Background stars"
-                value={settings.visualizerRenderStars}
-                withBorder
-                onValueChange={handleStarsChange}
-                testID="settings-visualizer-stars-switch"
-              />
-              <ToggleRow
-                title="Backdrop"
-                hint="The deep-space background fill and the ambient spotlight that follows the active agent."
-                accessibilityLabel="Backdrop"
-                value={settings.visualizerRenderBackdrop}
-                withBorder
-                onValueChange={handleBackdropChange}
-                testID="settings-visualizer-backdrop-switch"
-              />
+              <SettingsTargetScope settingIds={["app-visualizer-rendering-node-glow"]}>
+                <ToggleRow
+                  title="Node glow"
+                  hint="The soft holographic halo drawn around each agent node. The node body and ring stay; this only toggles the surrounding glow."
+                  accessibilityLabel="Node glow"
+                  value={settings.visualizerRenderNodeGlow}
+                  withBorder
+                  onValueChange={handleNodeGlowChange}
+                  testID="settings-visualizer-node-glow-switch"
+                />
+              </SettingsTargetScope>
+              <SettingsTargetScope settingIds={["app-visualizer-rendering-bloom"]}>
+                <ToggleRow
+                  title="Bloom"
+                  hint={
+                    isSoftwareRendering
+                      ? "Off while GPU acceleration is disabled - bloom needs the GPU and is the single most expensive visual effect. Re-enable acceleration above to turn it back on."
+                      : "A whole-viewport blurred echo of the scene, composited over everything for a holographic haze. The single most expensive visual effect. (The per-node halo is the separate 'Node glow' toggle above.)"
+                  }
+                  accessibilityLabel="Bloom"
+                  value={isSoftwareRendering ? false : settings.visualizerRenderBloom}
+                  withBorder
+                  onValueChange={handleBloomChange}
+                  disabled={isSoftwareRendering}
+                  testID="settings-visualizer-bloom-switch"
+                />
+              </SettingsTargetScope>
+              <SettingsTargetScope settingIds={["app-visualizer-rendering-background-stars"]}>
+                <ToggleRow
+                  title="Background stars"
+                  hint="The drifting parallax star field behind the graph."
+                  accessibilityLabel="Background stars"
+                  value={settings.visualizerRenderStars}
+                  withBorder
+                  onValueChange={handleStarsChange}
+                  testID="settings-visualizer-stars-switch"
+                />
+              </SettingsTargetScope>
+              <SettingsTargetScope settingIds={["app-visualizer-rendering-backdrop"]}>
+                <ToggleRow
+                  title="Backdrop"
+                  hint="The deep-space background fill and the ambient spotlight that follows the active agent."
+                  accessibilityLabel="Backdrop"
+                  value={settings.visualizerRenderBackdrop}
+                  withBorder
+                  onValueChange={handleBackdropChange}
+                  testID="settings-visualizer-backdrop-switch"
+                />
+              </SettingsTargetScope>
             </View>
           </SettingsSection>
           <SettingsSection title="Panels">
             <View style={settingsStyles.card}>
-              <ToggleRow
-                title={t("settings.appearance.visualizer.timeline.title")}
-                hint={t("settings.appearance.visualizer.timeline.hint")}
-                accessibilityLabel={t("settings.appearance.visualizer.timeline.accessibilityLabel")}
-                value={settings.visualizerPanelTimeline}
-                withBorder={false}
-                onValueChange={handleTimelineChange}
-                testID="settings-visualizer-timeline-switch"
-              />
-              <ToggleRow
-                title={t("settings.appearance.visualizer.fileAttention.title")}
-                hint={t("settings.appearance.visualizer.fileAttention.hint")}
-                accessibilityLabel={t(
-                  "settings.appearance.visualizer.fileAttention.accessibilityLabel",
-                )}
-                value={settings.visualizerPanelFileAttention}
-                withBorder
-                onValueChange={handleFileAttentionChange}
-                testID="settings-visualizer-file-attention-switch"
-              />
-              <ToggleRow
-                title={t("settings.appearance.visualizer.costOverlay.title")}
-                hint={t("settings.appearance.visualizer.costOverlay.hint")}
-                accessibilityLabel={t(
-                  "settings.appearance.visualizer.costOverlay.accessibilityLabel",
-                )}
-                value={settings.visualizerPanelCostOverlay}
-                withBorder
-                onValueChange={handleCostOverlayChange}
-                testID="settings-visualizer-cost-overlay-switch"
-              />
+              <SettingsTargetScope settingIds={["app-visualizer-panels-timeline"]}>
+                <ToggleRow
+                  title={t("settings.appearance.visualizer.timeline.title")}
+                  hint={t("settings.appearance.visualizer.timeline.hint")}
+                  accessibilityLabel={t(
+                    "settings.appearance.visualizer.timeline.accessibilityLabel",
+                  )}
+                  value={settings.visualizerPanelTimeline}
+                  withBorder={false}
+                  onValueChange={handleTimelineChange}
+                  testID="settings-visualizer-timeline-switch"
+                />
+              </SettingsTargetScope>
+              <SettingsTargetScope settingIds={["app-visualizer-panels-file-attention"]}>
+                <ToggleRow
+                  title={t("settings.appearance.visualizer.fileAttention.title")}
+                  hint={t("settings.appearance.visualizer.fileAttention.hint")}
+                  accessibilityLabel={t(
+                    "settings.appearance.visualizer.fileAttention.accessibilityLabel",
+                  )}
+                  value={settings.visualizerPanelFileAttention}
+                  withBorder
+                  onValueChange={handleFileAttentionChange}
+                  testID="settings-visualizer-file-attention-switch"
+                />
+              </SettingsTargetScope>
+              <SettingsTargetScope settingIds={["app-visualizer-panels-cost-overlay"]}>
+                <ToggleRow
+                  title={t("settings.appearance.visualizer.costOverlay.title")}
+                  hint={t("settings.appearance.visualizer.costOverlay.hint")}
+                  accessibilityLabel={t(
+                    "settings.appearance.visualizer.costOverlay.accessibilityLabel",
+                  )}
+                  value={settings.visualizerPanelCostOverlay}
+                  withBorder
+                  onValueChange={handleCostOverlayChange}
+                  testID="settings-visualizer-cost-overlay-switch"
+                />
+              </SettingsTargetScope>
             </View>
           </SettingsSection>
           <SettingsSection title="Sound">
@@ -400,13 +445,15 @@ export function VisualizerSection() {
               {/* Sound EFFECTS only. Agent voice cues are a separate channel
                   with its own volume in Settings -> <host> -> Agents; this
                   slider and the in-page mute have no say over them. */}
-              <VolumeRow
-                title="Volume"
-                hint="Sound effect loudness - mute with the speaker button in the Visualizer. Agent voice cues have their own volume in Agents settings."
-                accessibilityLabel="Visualizer sound volume"
-                value={settings.visualizerSoundVolume}
-                onCommit={handleVolumeCommit}
-              />
+              <SettingsTargetScope settingIds={["app-visualizer-sound-volume"]}>
+                <VolumeRow
+                  title="Volume"
+                  hint="Sound effect loudness - mute with the speaker button in the Visualizer. Agent voice cues have their own volume in Agents settings."
+                  accessibilityLabel="Visualizer sound volume"
+                  value={settings.visualizerSoundVolume}
+                  onCommit={handleVolumeCommit}
+                />
+              </SettingsTargetScope>
             </View>
           </SettingsSection>
         </>

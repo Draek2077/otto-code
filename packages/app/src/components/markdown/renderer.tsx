@@ -55,12 +55,8 @@ import {
   type MarkdownDisplayPart,
   type MarkdownInlineImagePart,
 } from "./html-ish";
-import { TASK_LINE_ATTRIBUTE, TASK_STATE_ATTRIBUTE } from "./task-lists";
-import {
-  MarkdownTaskCheckbox,
-  MarkdownTaskProvider,
-  type MarkdownTaskToggle,
-} from "./task-context";
+import { MarkdownListMarker } from "./otto/task-marker";
+import { MarkdownTaskProvider, type MarkdownTaskToggle } from "./task-context";
 import { ALERT_ATTRIBUTE, type GithubAlertKind } from "./github-alerts";
 import { MATH_BLOCK_TOKEN, MATH_INLINE_TOKEN } from "./math";
 import { MathFormula } from "./math-formula";
@@ -1302,31 +1298,14 @@ export function createSharedMarkdownRules(): RenderRules {
       const { isOrdered, marker } = getMarkdownListMarker(node, parent);
       const iconStyle = isOrdered ? styles.ordered_list_icon : styles.bullet_list_icon;
       const contentStyle = isOrdered ? styles.ordered_list_content : styles.bullet_list_content;
-      const taskState = node.attributes?.[TASK_STATE_ATTRIBUTE];
-
-      if (taskState === "checked" || taskState === "unchecked") {
-        const rawLine = node.attributes?.[TASK_LINE_ATTRIBUTE];
-        const line = typeof rawLine === "string" ? Number.parseInt(rawLine, 10) : Number.NaN;
-        return (
-          <View key={node.key} style={styles.list_item}>
-            {/* The checkbox replaces a bullet, which is what GitHub does, but
-                sits after an ordered list's number rather than eating it. */}
-            {isOrdered ? <Text style={iconStyle}>{marker}</Text> : null}
-            <MarkdownTaskCheckbox
-              checked={taskState === "checked"}
-              line={Number.isInteger(line) ? line : null}
-              style={iconStyle}
-            />
-            <MarkdownListItemContent contentStyle={contentStyle}>
-              {children}
-            </MarkdownListItemContent>
-          </View>
-        );
-      }
-
       return (
         <View key={node.key} style={styles.list_item}>
-          <Text style={iconStyle}>{marker}</Text>
+          <MarkdownListMarker
+            attributes={node.attributes}
+            ordered={isOrdered}
+            marker={marker}
+            style={iconStyle}
+          />
           <MarkdownListItemContent contentStyle={contentStyle}>{children}</MarkdownListItemContent>
         </View>
       );

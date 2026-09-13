@@ -4,11 +4,13 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FormPreferenceUpdate } from "@/create-agent-preferences/service";
 import type { FormPreferences } from "@/create-agent-preferences/preferences";
 import { materializeAgentProfile } from "@/agent-profiles/internal/materialize-profile";
 import { useAgentFormState } from "./use-agent-form-state";
 
 const mocks = vi.hoisted(() => ({
+  snapshotRequests: vi.fn(),
   snapshot: {
     entries: undefined as ProviderSnapshotEntry[] | undefined,
     isLoading: false,
@@ -20,16 +22,19 @@ const mocks = vi.hoisted(() => ({
   preferences: {
     preferences: {} as FormPreferences,
     isLoading: false,
-    updatePreferences: vi.fn(async () => {}),
+    updatePreferences: vi.fn<(updates: FormPreferenceUpdate) => Promise<FormPreferences>>(),
   },
 }));
 
 vi.mock("./use-providers-snapshot", () => ({
-  useProvidersSnapshot: (serverId: string | null) => ({
-    ...mocks.snapshot,
-    // Mirror the real hook: no data until there is a host to ask.
-    entries: serverId ? mocks.snapshot.entries : undefined,
-  }),
+  useProvidersSnapshot: (serverId: string | null, options: { cwd: string }) => {
+    mocks.snapshotRequests(serverId, options);
+    return {
+      ...mocks.snapshot,
+      // Mirror the real hook: no data until there is a host to ask.
+      entries: serverId ? mocks.snapshot.entries : undefined,
+    };
+  },
 }));
 
 vi.mock("./use-form-preferences", async () => {
@@ -42,10 +47,6 @@ vi.mock("./use-form-preferences", async () => {
     useFormPreferences: () => mocks.preferences,
   };
 });
-
-vi.mock("@/runtime/host-runtime", () => ({
-  useHosts: () => [{ serverId: "host-a", label: "Host A" }],
-}));
 
 const READY_ENTRIES: ProviderSnapshotEntry[] = [
   {
@@ -97,17 +98,16 @@ const SAVED_PREFERENCES: FormPreferences = {
   },
 };
 
-// The artifact create sheet's exact usage: mounted closed, opened globally
-// (no initial server/project), host auto-selected from online servers.
+// The caller owns the selected host and directory, including an empty global directory.
 function renderArtifactStyleForm() {
   return renderHook(
     ({ visible }: { visible: boolean }) =>
       useAgentFormState({
-        initialServerId: null,
+        serverId: "host-a",
+        workingDir: "",
         initialValues: undefined,
         isVisible: visible,
         isCreateFlow: true,
-        onlineServerIds: ["host-a"],
       }),
     { initialProps: { visible: false } },
   );
@@ -118,6 +118,14 @@ describe("useAgentFormState (create-sheet open flow)", () => {
     mocks.snapshot.entries = undefined;
     mocks.preferences.preferences = SAVED_PREFERENCES;
     mocks.preferences.isLoading = false;
+    mocks.preferences.updatePreferences.mockImplementation(async (updates) => {
+      const next =
+        typeof updates === "function"
+          ? updates(mocks.preferences.preferences)
+          : { ...mocks.preferences.preferences, ...updates };
+      mocks.preferences.preferences = next;
+      return next;
+    });
   });
 
   afterEach(() => {
@@ -130,11 +138,6 @@ describe("useAgentFormState (create-sheet open flow)", () => {
     const { result, rerender } = renderArtifactStyleForm();
 
     rerender({ visible: true });
-    // The artifact sheet re-seeds host + cwd from props on open.
-    act(() => {
-      result.current.setSelectedServerId(null);
-      result.current.setWorkingDir("");
-    });
 
     await waitFor(() => {
       expect(result.current.selectedServerId).toBe("host-a");
@@ -148,10 +151,6 @@ describe("useAgentFormState (create-sheet open flow)", () => {
     const { result, rerender } = renderArtifactStyleForm();
 
     rerender({ visible: true });
-    act(() => {
-      result.current.setSelectedServerId(null);
-      result.current.setWorkingDir("");
-    });
     await waitFor(() => {
       expect(result.current.selectedServerId).toBe("host-a");
     });
@@ -166,7 +165,7 @@ describe("useAgentFormState (create-sheet open flow)", () => {
     expect(result.current.selectedModel).toBe("model-b");
   });
 
-  it("recovers the preselection when the preferred provider heals after open", async () => {
+  it("retains saved intent throughout provider failure and recovery", async () => {
     // A stale cached snapshot can hold the preferred provider in an error
     // state (e.g. a remote endpoint that was asleep). The form must not
     // settle on "no selection" - it re-resolves when fresh entries arrive.
@@ -177,7 +176,8 @@ describe("useAgentFormState (create-sheet open flow)", () => {
     await waitFor(() => {
       expect(result.current.selectedServerId).toBe("host-a");
     });
-    expect(result.current.selectedProvider).toBeNull();
+    expect(result.current.selectedProvider).toBe("mock");
+    expect(result.current.selectedModel).toBe("model-b");
 
     mocks.snapshot.entries = READY_ENTRIES;
     rerender({ visible: true });
@@ -354,4 +354,131 @@ describe("useAgentFormState (create-sheet open flow)", () => {
       expect(result.current.selectedModel).toBe("model-b");
     });
   });
+});
+
+describe("caller-owned form execution context", () => {
+  beforeEach(() => {
+    mocks.preferences.updatePreferences.mockImplementation(async (updates) => {
+      const next =
+        typeof updates === "function"
+          ? updates(mocks.preferences.preferences)
+          : { ...mocks.preferences.preferences, ...updates };
+      mocks.preferences.preferences = next;
+      return next;
+    });
+  });
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("uses the caller host and directory on the first render and never invents a host", () => {
+    mocks.snapshot.entries = READY_ENTRIES;
+    mocks.preferences.preferences = SAVED_PREFERENCES;
+    const { result, rerender } = renderHook(
+      ({ serverId, workingDir }: { serverId: string | null; workingDir: string }) =>
+        useAgentFormState({ serverId, workingDir }),
+      { initialProps: { serverId: null as string | null, workingDir: "C:/project" } },
+    );
+    expect(result.current.selectedServerId).toBeNull();
+    expect(mocks.snapshotRequests).toHaveBeenNthCalledWith(1, null, { cwd: "C:/project" });
+    rerender({ serverId: "host-a", workingDir: "C:/project" });
+    expect(result.current.selectedServerId).toBe("host-a");
+    expect(result.current.workingDir).toBe("C:/project");
+    expect(mocks.snapshotRequests).toHaveBeenLastCalledWith("host-a", { cwd: "C:/project" });
+  });
+
+  it("keeps applied personality values and persistence isolation through cwd discovery changes", () => {
+    mocks.snapshot.entries = READY_ENTRIES;
+    mocks.preferences.preferences = SAVED_PREFERENCES;
+    const { result, rerender } = renderHook(
+      ({ workingDir }) => useAgentFormState({ serverId: "host-a", workingDir }),
+      { initialProps: { workingDir: "" } },
+    );
+    act(() =>
+      result.current.applyPersonalityValues({
+        provider: "mock",
+        model: "model-a",
+        thinkingOptionId: "low",
+      }),
+    );
+    mocks.preferences.updatePreferences.mockClear();
+    mocks.snapshot.entries = undefined;
+    rerender({ workingDir: "C:/project" });
+    mocks.snapshot.entries = READY_ENTRIES;
+    rerender({ workingDir: "C:/project" });
+    expect(result.current.selectedModel).toBe("model-a");
+    expect(result.current.selectedThinkingOptionId).toBe("low");
+    expect(mocks.preferences.updatePreferences).not.toHaveBeenCalled();
+  });
+
+  it("exposes plugin providers and filters hidden Brain/local models without changing saved intent", () => {
+    mocks.snapshot.entries = [
+      {
+        provider: "plugin.custom",
+        label: "Plugin Agent",
+        status: "ready",
+        enabled: true,
+        models: [{ provider: "plugin.custom", id: "visible", label: "Visible" }],
+      },
+      {
+        provider: "otto-brain",
+        label: "Otto Brain",
+        status: "ready",
+        enabled: true,
+        models: [
+          {
+            provider: "otto-brain",
+            id: "visible",
+            label: "Visible",
+            thinkingOptions: [{ id: "high", label: "High" }],
+          },
+          { provider: "otto-brain", id: "hidden", label: "Hidden", isVisible: false },
+        ],
+      },
+    ];
+    mocks.preferences.preferences = {
+      provider: "otto-brain",
+      providerPreferences: { "otto-brain": { model: "hidden" } },
+    };
+    const { result } = renderHook(() => useAgentFormState({ serverId: "host-a", workingDir: "" }));
+    expect(result.current.selectedModel).toBe("hidden");
+    expect(result.current.allProviderModels.get("otto-brain")?.map((model) => model.id)).toEqual([
+      "visible",
+    ]);
+    expect(result.current.modelSelectorProviders.map((provider) => provider.id)).toContain(
+      "plugin.custom",
+    );
+    act(() => result.current.setProviderAndModelFromUser("plugin.custom", "visible"));
+    expect(result.current.selectedProvider).toBe("plugin.custom");
+    expect(result.current.selectedModel).toBe("visible");
+  });
+});
+
+it("restores a model's just-selected effort before preference persistence settles", async () => {
+  mocks.snapshot.entries = READY_ENTRIES;
+  mocks.preferences.preferences = SAVED_PREFERENCES;
+  let stored = SAVED_PREFERENCES;
+  const pending: Array<() => void> = [];
+  mocks.preferences.updatePreferences.mockImplementation(
+    (updates) =>
+      new Promise((resolve) => {
+        pending.push(() => {
+          stored = typeof updates === "function" ? updates(stored) : { ...stored, ...updates };
+          resolve(stored);
+        });
+      }),
+  );
+  const { result, unmount } = renderHook(() =>
+    useAgentFormState({ serverId: "host-a", workingDir: "" }),
+  );
+  act(() => result.current.setModelFromUser("model-a"));
+  act(() => result.current.setThinkingOptionFromUser("low"));
+  act(() => result.current.setModelFromUser("model-b"));
+  act(() => result.current.setModelFromUser("model-a"));
+  expect(result.current.selectedThinkingOptionId).toBe("low");
+  await act(async () => {
+    for (const commit of pending) commit();
+  });
+  unmount();
 });

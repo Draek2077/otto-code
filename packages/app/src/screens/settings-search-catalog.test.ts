@@ -73,17 +73,29 @@ function readInventoryRows() {
 
 describe("Settings search catalog", () => {
   it("assigns every entry a unique id and a real settings scope", () => {
-    expect(SETTINGS_SEARCH_ITEMS).toHaveLength(433);
+    expect(SETTINGS_SEARCH_ITEMS).toHaveLength(472);
     expect(new Set(SETTINGS_SEARCH_ITEMS.map((item) => item.id)).size).toBe(
       SETTINGS_SEARCH_ITEMS.length,
     );
     for (const item of SETTINGS_SEARCH_ITEMS) {
+      expect(typeof item.id).toBe("string");
       expect(item.title).not.toHaveLength(0);
       expect(item.description).not.toHaveLength(0);
       expect(item.keywords).not.toHaveLength(0);
       expect(item.category).not.toHaveLength(0);
       expect(item.group).not.toHaveLength(0);
       expect(item.audience).not.toHaveLength(0);
+    }
+  });
+
+  it("does not send Settings searches to actions owned by the sidebar", () => {
+    // Frozen/current source places these actions in the project/team switchers.
+    for (const id of [
+      "host-projects-projects-add-project",
+      "host-teams-agent-teams-set-active-team",
+      "host-teams-agent-teams-deactivate-team",
+    ]) {
+      expect(SETTINGS_SEARCH_ITEMS.some((item) => item.id === id)).toBe(false);
     }
   });
 
@@ -250,5 +262,51 @@ describe("Settings search catalog", () => {
     expect(new Set(brainRows.map((item) => item.group))).not.toContain("Status");
     expect(brainRows.some((item) => item.title === "Lifecycle")).toBe(false);
     expect(brainRows.some((item) => item.title === "Model override")).toBe(false);
+  });
+  it("indexes current control labels and defaults without changing remembered destinations", () => {
+    const row = (title: string) => SETTINGS_SEARCH_ITEMS.find((item) => item.title === title);
+    expect(row("Default send")).toMatchObject({
+      id: "app-chat-agent-behavior-default-send",
+      section: "chat",
+      defaultValue: "Steer",
+    });
+    expect(row("Silence timeout (ms)")).toMatchObject({
+      id: "app-integrations-voice-dictation-on-this-device-silence-timeout",
+      section: "integrations",
+      defaultValue: "1100 ms",
+    });
+    expect(row("Content size")).toMatchObject({ section: "appearance", defaultValue: "17 px" });
+    expect(row("Plugin theme")).toMatchObject({
+      section: "appearance",
+      persistence: "pluginThemeId",
+    });
+    expect(row("Opening a pull request from Changes")?.choices).toContain("Explorer sidebar");
+    expect(row("What's new")).toMatchObject({ section: "about", kind: "Action" });
+  });
+
+  it("keeps host storage defaults distinct from per-project overrides", () => {
+    for (const title of [
+      "Store project Knowledge on this host",
+      "Store project Artifacts on this host",
+      "Store project Workflows on this host",
+    ]) {
+      expect(SETTINGS_SEARCH_ITEMS.find((item) => item.title === title)).toMatchObject({
+        section: "workspaces",
+        scope: "Host",
+        developerOnly: true,
+        defaultValue: "Repository",
+      });
+    }
+    for (const title of ["Store location", "Artifact storage", "Workflow storage"]) {
+      expect(SETTINGS_SEARCH_ITEMS.find((item) => item.title === title)).toMatchObject({
+        section: "projects",
+        scope: "Project",
+        defaultValue: "Host default",
+      });
+    }
+    const credentials = SETTINGS_SEARCH_ITEMS.filter((item) => item.title === "API token");
+    expect(credentials).toHaveLength(2);
+    expect(new Set(credentials.map((item) => item.scope))).toEqual(new Set(["Host", "Project"]));
+    expect(credentials.every((item) => item.defaultValue === "Empty")).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 ---
 title: Open Source Conductor Alternative With Linux, Windows, and Mobile
-description: Otto is open source, runs on macOS, Linux, and Windows, ships native iOS and Android apps, and supports 30+ agents through the in-app catalog plus any ACP or CLI agent. Conductor is macOS only and Claude Code or Codex only.
+description: Otto is open source, runs on macOS, Linux, and Windows, ships Android and web access from mobile devices, and supports built-in and catalog providers through the in-app catalog plus any ACP or CLI agent. Conductor is macOS only and Claude Code or Codex only.
 nav: Conductor
 order: 50
 ---
@@ -32,7 +32,7 @@ Conductor's desktop app is the host. Agents run inside it.
 
 ## Providers
 
-Otto runs Claude Code, Codex, OpenCode, and Pi natively, plus 30+ more agents through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/docs/supported-providers).
+Otto runs Claude Code, Codex, OpenCode, and Pi natively, plus additional agents through the catalog through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
 
 Conductor runs Claude Code and Codex.
 
@@ -70,7 +70,7 @@ Otto also gives each worktree its own dev server URL. Two agents running their d
 
 ## Mobile
 
-Otto ships a native Android app with the same feature set as the desktop app. Conductor has no mobile app.
+Otto ships a native Android app for checking and continuing agent work from a phone app. Conductor has no mobile app.
 
 ## Voice
 
@@ -78,20 +78,27 @@ Otto's speech-to-text and text-to-speech run locally on your device. Nothing lea
 
 ## Comparison
 
-|                              | Otto                                                            | Conductor          |
-| ---------------------------- | --------------------------------------------------------------- | ------------------ |
-| License                      | Open source (AGPL-3.0)                                          | Closed source      |
-| Platforms                    | macOS, Linux, Windows                                           | macOS only         |
-| Native mobile                | Android                                                         | No                 |
-| Providers                    | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | Claude Code, Codex |
-| Git worktrees                | Yes                                                             | Yes                |
-| Per-worktree dev server URLs | Yes                                                             | No                 |
-| Split panes and tabs         | Yes                                                             | No                 |
-| In-app terminal              | Yes                                                             | Yes                |
-| In-app browser               | Yes                                                             | No                 |
-| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                        | Yes                |
-| CLI                          | Run, `--host`, ls, send, schedule, loop                         | No                 |
-| Local voice (on-device)      | Yes                                                             | No                 |
-| Self-hosted daemon           | Yes                                                             | No                 |
+|                              | Otto                                                    | Conductor          |
+| ---------------------------- | ------------------------------------------------------- | ------------------ |
+| License                      | Open source (AGPL-3.0)                                  | Closed source      |
+| Platforms                    | macOS, Linux, Windows                                   | macOS only         |
+| Native mobile                | Android                                                 | No                 |
+| Providers                    | Claude Code, Codex, OpenCode, Pi + ACP catalog + custom | Claude Code, Codex |
+| Git worktrees                | Yes                                                     | Yes                |
+| Per-worktree dev server URLs | Yes                                                     | No                 |
+| Split panes and tabs         | Yes                                                     | No                 |
+| In-app terminal              | Yes                                                     | Yes                |
+| In-app browser               | Yes                                                     | No                 |
+| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                | Yes                |
+| CLI                          | Run, `--host`, ls, send, schedule, loop                 | No                 |
+| Local voice (on-device)      | Yes                                                     | No                 |
+| Self-hosted daemon           | Yes                                                     | No                 |
 
 See also: [Otto vs Superset](/alternatives/superset), [Otto vs OpenChamber](/alternatives/openchamber), [Otto vs Happy Coder](/alternatives/happy-coder).
+
+## Application extensions
+
+[Otto plugins](/docs/plugins) extend the application through client and server APIs: providers,
+workspace panels, commands, settings, and chat components. Otto also retains its shared tools for
+cloud and local providers. Android builds and the web app are available from [Downloads](/download);
+this fork does not currently publish an iOS App Store build.

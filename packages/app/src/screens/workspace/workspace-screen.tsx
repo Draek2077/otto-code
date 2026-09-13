@@ -81,7 +81,7 @@ import {
 import { SplitContainer } from "@/components/split-container";
 import { RetainedPanel } from "@/components/retained-panel";
 import { WorkspaceActions } from "@/git/workspace-actions";
-import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
+import { WorkspaceOpenInEditorButton } from "@/workspace/open-in-editor/button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import {
   WorkspaceVisualizerButton,
@@ -113,6 +113,7 @@ import {
 } from "@/screens/workspace/use-explorer-sidebar-visibility";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { FileFinderOverlay } from "@/components/file-finder-overlay";
+import { useNavigateToImportedAgent } from "@/hooks/use-import-session";
 import { useToast } from "@/contexts/toast-context";
 import { selectIsAgentListOpen, usePanelStore, type ExplorerTab } from "@/stores/panel-store";
 import { getOrCreateClientId } from "@/utils/client-id";
@@ -260,7 +261,6 @@ import {
   resolveCompactHeaderActions,
 } from "@/screens/workspace/compact-header-actions";
 import {
-  buildHostAgentDetailRoute,
   buildHostRootRoute,
   buildSettingsHostRoute,
   buildSettingsHostSectionRoute,
@@ -276,6 +276,7 @@ import {
 } from "@otto-code/protocol/terminal-profiles";
 import { getProviderIcon } from "@/components/provider-icons";
 import { releaseCleanEditorBuffer } from "@/editor/editor-buffer-store";
+import { PluginHeaderButtons } from "@/plugins";
 import {
   createWorkspaceFileTabTarget,
   normalizeWorkspaceFileLocation,
@@ -306,6 +307,7 @@ import {
   WorkspaceFallbackTabs,
 } from "./workspace-otto-controls";
 import { type TerminalProfile } from "@otto-code/protocol/messages";
+import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
 import { openPreferredWorkspacePreview } from "@/workspace-tabs/open-beside";
 import { getExplorerRequestedTargetHost } from "@/workspace-tabs/explorer-open-policy";
 import { type PaneHost } from "@/panels/panel-manifest";
@@ -979,6 +981,7 @@ interface MobileMountedTabSlotProps {
   isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
   paneId: string | null;
+  onFocusPane: (paneId: string) => void;
   buildPaneContentModel: (input: {
     paneId: string | null;
     tab: WorkspaceTabDescriptor;
@@ -1002,6 +1005,7 @@ const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
   isWorkspaceFocused,
   isPaneFocused,
   paneId,
+  onFocusPane,
   buildPaneContentModel,
 }: MobileMountedTabSlotProps) {
   const blackChatBackground = useBlackChatBackground();
@@ -1023,17 +1027,23 @@ const MobileMountedTabSlot = memo(function MobileMountedTabSlot({
     }),
     [blackChatBackground, content],
   );
+  const handleTouch = useCallback(() => {
+    if (!isPaneFocused && paneId) onFocusPane(paneId);
+    return false;
+  }, [isPaneFocused, onFocusPane, paneId]);
 
   return (
     <RenderProfile id={`MobileMountedTabSlot:${tabDescriptor.kind}:${tabDescriptor.tabId}`}>
       <RetainedPanel active={isVisible} style={styles.mobileMountedTabSlot}>
-        <WorkspacePaneContent
-          content={scopedContent}
-          isWorkspaceFocused={isWorkspaceFocused}
-          isPaneFocused={isPaneFocused}
-          // Already encodes route focus + frontmost tab, i.e. on screen.
-          isVisible={isVisible}
-        />
+        <View style={styles.mobileMountedTabSlot} onStartShouldSetResponderCapture={handleTouch}>
+          <WorkspacePaneContent
+            content={scopedContent}
+            isWorkspaceFocused={isWorkspaceFocused}
+            isPaneFocused={isPaneFocused}
+            // Already encodes route focus + frontmost tab, i.e. on screen.
+            isVisible={isVisible}
+          />
+        </View>
       </RetainedPanel>
     </RenderProfile>
   );
@@ -1916,6 +1926,8 @@ interface RenderWorkspaceContentInput {
   focusedPaneTabDescriptorMap: Map<string, WorkspaceTabDescriptor>;
   isRouteFocused: boolean;
   focusedPaneId: string | null;
+  paneFocusSuspended: boolean;
+  onFocusPane: (paneId: string) => void;
   buildMobilePaneContentModel: (input: {
     paneId: string | null;
     tab: WorkspaceTabDescriptor;
@@ -1931,6 +1943,8 @@ function renderWorkspaceContent(input: RenderWorkspaceContentInput): React.React
     focusedPaneTabDescriptorMap,
     isRouteFocused,
     focusedPaneId,
+    paneFocusSuspended,
+    onFocusPane,
     buildMobilePaneContentModel,
   } = input;
 
@@ -1970,8 +1984,9 @@ function renderWorkspaceContent(input: RenderWorkspaceContentInput): React.React
         tabDescriptor={tabDescriptor}
         isVisible={isRouteFocused && tabId === activeTabDescriptor.tabId}
         isWorkspaceFocused={isRouteFocused}
-        isPaneFocused={tabId === activeTabDescriptor.tabId}
+        isPaneFocused={!paneFocusSuspended && tabId === activeTabDescriptor.tabId}
         paneId={focusedPaneId}
+        onFocusPane={onFocusPane}
         buildPaneContentModel={buildMobilePaneContentModel}
       />
     );
@@ -2351,6 +2366,12 @@ function WorkspaceScreenContent({
     [workspaceId],
   );
   const workspaceDescriptor = useWorkspace(normalizedServerId, normalizedWorkspaceId);
+  useEffect(() => {
+    if (!normalizedServerId || !normalizedWorkspaceId || workspaceDescriptor) return;
+    void getHostRuntimeStore()
+      .prepareWorkspaceRoute(normalizedServerId, normalizedWorkspaceId)
+      .catch(() => undefined);
+  }, [normalizedServerId, normalizedWorkspaceId, workspaceDescriptor]);
   const workspaceScripts = getWorkspaceScripts(workspaceDescriptor);
   // Browser-tools-off heads-up wiring for handleCreateBrowserTab below.
   const { config: browserToolsConfig } = useDaemonConfig(normalizedServerId);
@@ -2696,6 +2717,9 @@ function WorkspaceScreenContent({
   const workspaceLayout = useWorkspaceLayoutStore((state) =>
     persistenceKey ? (state.layoutByWorkspace[persistenceKey] ?? null) : null,
   );
+  const unfocusedPaneId = useWorkspaceLayoutStore((state) =>
+    persistenceKey ? state.focusRestorationByWorkspace[persistenceKey]?.restorePaneId : undefined,
+  );
   const hasHydratedWorkspaceLayoutStore = useWorkspaceLayoutStoreHydrated();
   // Report pane-content readiness for the app-wide route-fade veil. A workspace
   // is "ready" to reveal once it has a layout - the tab strip and panes render
@@ -2731,8 +2755,9 @@ function WorkspaceScreenContent({
       deriveWorkspacePaneState({
         layout: workspaceLayout,
         tabs: visibleUiTabs,
+        paneId: workspaceLayout?.focusedPaneId ?? unfocusedPaneId,
       }),
-    [visibleUiTabs, workspaceLayout],
+    [visibleUiTabs, workspaceLayout, unfocusedPaneId],
   );
   useOpenAgentTabLabels({
     client,
@@ -2748,6 +2773,7 @@ function WorkspaceScreenContent({
   const openWorkspaceTabInBackground = useWorkspaceLayoutStore(
     (state) => state.openTabInBackground,
   );
+  const pullRequestOpenLocation = useSettings((preferences) => preferences.pullRequestOpenLocation);
   const focusWorkspaceTab = useWorkspaceLayoutStore((state) => state.focusTab);
   const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
   const unpinWorkspaceAgent = useWorkspaceLayoutStore((state) => state.unpinAgent);
@@ -2918,6 +2944,13 @@ function WorkspaceScreenContent({
       }),
     [isFocusModeEnabled, isMobile, isRouteFocused, visibleUiTabs, workspaceLayout],
   );
+  useEffect(() => {
+    for (const agentId of visibleAgentIds) {
+      void getHostRuntimeStore()
+        .prepareAgentTimeline(normalizedServerId, agentId)
+        .catch(() => undefined);
+    }
+  }, [normalizedServerId, visibleAgentIds]);
   useLayoutEffect(() => {
     if (!persistenceKey || !viewedTimelineSync) {
       return;
@@ -3119,15 +3152,14 @@ function WorkspaceScreenContent({
       visibleUiTabs,
     ],
   );
-  const importRouter = useRouter();
+  const navigateToImportedAgent = useNavigateToImportedAgent(normalizedServerId);
   const handleImportedOtherWorkspace = useCallback(
-    (agent: { id: string }) => {
+    (agent: Parameters<typeof navigateToImportedAgent>[0]) => {
       importRequestTabIdRef.current = null;
-      importRouter.push(buildHostAgentDetailRoute(normalizedServerId, agent.id) as Href);
+      return navigateToImportedAgent(agent);
     },
-    [normalizedServerId, importRouter],
+    [navigateToImportedAgent],
   );
-
   const handleImportedAgent = useCallback(
     (agentId: string) => {
       if (!persistenceKey) {
@@ -4484,6 +4516,25 @@ function WorkspaceScreenContent({
     handle: handleWorkspaceSidebarAction,
   });
 
+  const workspaceActionsEnabled = Boolean(
+    isRouteFocused && normalizedServerId && normalizedWorkspaceId,
+  );
+  // Gated on the same predicate as the header menu item, so the command center never lists a
+  // Show setup entry the menu would hide.
+  // Gated by isActive so the handler is only dispatched when the workspace has visible setup;
+  // the command center contribution is separately gated by canShowSetup in workspace-registration.
+  useKeyboardActionHandler({
+    handlerId: `workspace-setup-show:${normalizedServerId}:${normalizedWorkspaceId}`,
+    actions: ["workspace.setup.show"] as const,
+    enabled: workspaceActionsEnabled,
+    priority: 100,
+    isActive: () => showWorkspaceSetup,
+    handle: () => {
+      handleOpenSetupTab();
+      return true;
+    },
+  });
+
   const activeTabDescriptor = useMemo(() => activeTab?.descriptor ?? null, [activeTab]);
   const activeFileFields = getWorkspaceFileLocationFields(activeTabDescriptor);
   const activeFilePath = activeFileFields.path;
@@ -4555,6 +4606,15 @@ function WorkspaceScreenContent({
                 return;
               }
             }
+            if (target.kind === "pull_request" && pullRequestOpenLocation === "explorer") {
+              openExplorerSidebarView({
+                isCompact: isMobile,
+                workspaceKey: persistenceKey,
+                checkout: activeExplorerCheckout,
+                view: "pr",
+              });
+              return;
+            }
             const explorerRequestedHost =
               input.host === "explorer" ? getExplorerRequestedTargetHost(target) : null;
             const tabId = openPreferredWorkspacePreview({
@@ -4566,7 +4626,13 @@ function WorkspaceScreenContent({
               lastMainPaneId: input.paneId ?? null,
               target,
               source,
-              preferences: openInSidePanePreferences,
+              preferences:
+                target.kind === "pull_request"
+                  ? {
+                      ...openInSidePanePreferences,
+                      pullRequests: pullRequestOpenLocation === "side",
+                    }
+                  : openInSidePanePreferences,
               ...(explorerRequestedHost === "main" ? { defaultPaneId: DEFAULT_PANE_ID } : {}),
               ...(explorerRequestedHost === "explorer" && input.paneId
                 ? { defaultPaneId: input.paneId }
@@ -4614,6 +4680,8 @@ function WorkspaceScreenContent({
       openImportSheet,
       isMobile,
       openInSidePanePreferences,
+      pullRequestOpenLocation,
+      activeExplorerCheckout,
       openWorkspaceChildTabFocused,
       persistenceKey,
       retargetWorkspaceTab,
@@ -4648,6 +4716,12 @@ function WorkspaceScreenContent({
     },
     [buildPaneContentModel],
   );
+  const handleFocusPane = useStableEvent(function handleFocusPane(paneId: string) {
+    if (!persistenceKey || paneFocusSuppressedRef.current) {
+      return;
+    }
+    focusWorkspacePane(persistenceKey, paneId);
+  });
   const content = renderWorkspaceContent({
     isMissingWorkspaceDirectory,
     activeTabDescriptor,
@@ -4656,6 +4730,8 @@ function WorkspaceScreenContent({
     focusedPaneTabDescriptorMap,
     isRouteFocused,
     focusedPaneId,
+    paneFocusSuspended: Boolean(unfocusedPaneId),
+    onFocusPane: handleFocusPane,
     buildMobilePaneContentModel,
   });
 
@@ -4685,13 +4761,6 @@ function WorkspaceScreenContent({
       })),
     [activeTabDescriptor?.tabId, closingTabIds, hoveredCloseTabKey, tabs],
   );
-
-  const handleFocusPane = useStableEvent(function handleFocusPane(paneId: string) {
-    if (!persistenceKey || paneFocusSuppressedRef.current) {
-      return;
-    }
-    focusWorkspacePane(persistenceKey, paneId);
-  });
 
   const handleSplitPane = useCallback(
     function handleSplitPane(input: {
@@ -4794,6 +4863,7 @@ function WorkspaceScreenContent({
             cluster, before every other tool (renders null unless the setting
             moved it here). */}
         {!isMobile ? <HeaderActiveTeamSwitchers /> : null}
+        <PluginHeaderButtons serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
         {workspaceDirectory ? (
           <>
             {!isMobile &&
@@ -5492,7 +5562,7 @@ const styles = StyleSheet.create((theme) => ({
       md: "row",
     },
     alignItems: {
-      xs: "flex-start",
+      xs: "stretch",
       md: "center",
     },
     justifyContent: "flex-start",

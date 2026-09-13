@@ -3,8 +3,16 @@ import type { ComposerTrackPillSegment } from "@/composer/tracks";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { deriveSidebarStateBucket, STATUS_BUCKET_ORDER } from "@/utils/sidebar-agent-state";
 import { formatDuration } from "@/utils/time";
-import type { AgentLifecycleStatus } from "@otto-code/protocol/agent-lifecycle";
 import type { SubagentRow } from "./select";
+import { providerSubagentLifecycleStatus } from "./provider-store";
+
+function presentationStatus(row: SubagentRow) {
+  if (row.kind === "otto") {
+    if (row.turn.phase === "open") return "running";
+    return row.status === "running" ? "idle" : row.status;
+  }
+  return providerSubagentLifecycleStatus(row.status);
+}
 
 export interface SubagentRowPresentationData {
   key: string;
@@ -14,24 +22,6 @@ export interface SubagentRowPresentationData {
   titleState: "ready" | "loading";
   statusBucket: SidebarStateBucket | null;
   tooltip: string;
-}
-
-// Provider-reported subagents report terminal states Otto's agent lifecycle
-// does not name. Fold them onto the nearest lifecycle status so the sidebar
-// bucket logic stays single-sourced.
-function toAgentLifecycleStatus(row: SubagentRow): AgentLifecycleStatus {
-  if (row.kind === "otto") {
-    return row.status;
-  }
-  switch (row.status) {
-    case "failed":
-      return "error";
-    case "completed":
-    case "canceled":
-      return "closed";
-    default:
-      return row.status;
-  }
 }
 
 export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowPresentationData {
@@ -56,7 +46,7 @@ export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowP
     tooltip: subtitle ? `${label ?? ""} - ${subtitle}` : (label ?? ""),
     titleState: label ? "ready" : "loading",
     statusBucket: deriveSidebarStateBucket({
-      status: toAgentLifecycleStatus(row),
+      status: presentationStatus(row),
       requiresAttention: false,
     }),
   };
@@ -141,14 +131,15 @@ function summarizeSubagentStatus(rows: readonly SubagentRow[]): SubagentStatusCo
  * See docs/agent-lifecycle.md (Item 6).
  */
 export function isSubagentRowTidyEligible(row: SubagentRow): boolean {
-  if (row.requiresAttention) {
+  if (row.requiresAttention || isSubagentRowRunning(row)) {
     return false;
   }
   if (row.kind === "provider") return row.status === "completed" || row.status === "canceled";
-  if (row.status === "error" || row.status === "closed") {
+  const status = presentationStatus(row);
+  if (status === "error" || status === "closed") {
     return true;
   }
-  return row.status === "idle" && row.attend === "observed";
+  return status === "idle" && row.attend === "observed";
 }
 
 export interface PartitionedSubagentRows {
@@ -225,8 +216,8 @@ export type SubagentRowAction = "stop" | "archive";
  * (drop the row). Never offer Archive on something still running.
  * See docs/agent-lifecycle.md (Item 2).
  */
-export function resolveSubagentRowAction(status: SubagentRow["status"]): SubagentRowAction {
-  if (status === "initializing" || status === "running") {
+export function resolveSubagentRowAction(row: SubagentRow): SubagentRowAction {
+  if (isSubagentRowRunning(row)) {
     return "stop";
   }
   return "archive";
@@ -333,7 +324,8 @@ export function formatHeaderLabel(
  * True while the subagent is still doing work - the row live-ticks its elapsed
  * time. Mirrors the running set used by {@link resolveSubagentRowAction}.
  */
-export function isSubagentRowRunning(status: SubagentRow["status"]): boolean {
+export function isSubagentRowRunning(row: SubagentRow): boolean {
+  const status = presentationStatus(row);
   return status === "initializing" || status === "running";
 }
 
@@ -343,7 +335,7 @@ export function isSubagentRowRunning(status: SubagentRow["status"]): boolean {
  * for those instead. See docs/chat-lifecycle.md (the subagents track).
  */
 export function formatSubagentElapsed(row: SubagentRow): string | null {
-  if (row.kind !== "otto" || isSubagentRowRunning(row.status)) {
+  if (row.kind !== "otto" || isSubagentRowRunning(row)) {
     return null;
   }
   const ms = row.updatedAt.getTime() - row.createdAt.getTime();

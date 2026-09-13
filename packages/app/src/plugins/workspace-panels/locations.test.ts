@@ -1,6 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { PASEO_PLUGIN_API_VERSION } from "@otto-code/protocol/plugin-compatibility";
+import { describe, expect, it, vi } from "vitest";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { pluginRegistry } from "../registry";
 import { panelTargetSupportsHost, resolvePluginPanelOpenLocation } from "./locations";
+
+vi.mock("../navigation", () => ({
+  createPluginNavigation: () => ({}),
+}));
+vi.mock("../client-runtime", () => ({
+  createPluginClientRuntime: () => ({
+    otto: {},
+    rpc: async () => undefined,
+    openSurface: () => undefined,
+    openPanel: () => undefined,
+    addComposerPill: () => ({ update() {}, remove() {} }),
+    addHeaderButton: () => ({ update() {}, remove() {} }),
+  }),
+}));
 
 function install(locations: readonly ("workspace" | "explorer")[]) {
   const bundle = `(function() {
@@ -16,7 +32,19 @@ function install(locations: readonly ("workspace" | "explorer")[]) {
       return function() {};
     }};
   })`;
-  pluginRegistry.installCatalog("host-1", [{ id: "review", clientBundle: bundle }]);
+  pluginRegistry.installCatalog(
+    "host-1",
+    [
+      {
+        id: "review",
+        requirements: { paseo: `>=${PASEO_PLUGIN_API_VERSION}` },
+        clientBundle: bundle,
+      },
+    ],
+    {
+      client: {} as DaemonClient,
+    },
+  );
   return pluginRegistry.getSnapshot()[0]!;
 }
 

@@ -1,3 +1,4 @@
+import { SettingsButton } from "@/screens/settings-search/controls";
 import { useCallback, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import type {
@@ -134,7 +135,8 @@ export function TerminalCompatibilitySection({ serverId }: { serverId: string })
               </Text>
               {error ? <Text style={settingsStyles.rowError}>{error}</Text> : null}
             </View>
-            <Button
+            <SettingsButton
+              settingIds={["host-terminals-terminal-compatibility-test-compatibility"]}
               variant="outline"
               size="sm"
               onPress={handleRunDiagnostic}
@@ -143,7 +145,7 @@ export function TerminalCompatibilitySection({ serverId }: { serverId: string })
               testID="terminal-compatibility-button"
             >
               Test compatibility
-            </Button>
+            </SettingsButton>
           </View>
         </View>
       </SettingsSection>

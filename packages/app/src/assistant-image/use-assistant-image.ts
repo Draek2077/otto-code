@@ -63,7 +63,7 @@ const renderedDimensions: AssistantImageRenderedDimensionsReader = {
   },
 };
 
-export type AssistantImageResult =
+export type AssistantImageResult = (
   | {
       status: "loading";
       binding: AssistantImageRenderBinding | null;
@@ -74,7 +74,11 @@ export type AssistantImageResult =
       binding: AssistantImageRenderBinding;
       aspectRatio: number;
     }
-  | { status: "failed"; message: string };
+  | { status: "failed"; message: string }
+) & {
+  /** Original acquired bytes for host UI Copy/Save actions; direct URLs have no attachment. */
+  attachment?: AttachmentMetadata;
+};
 
 interface UseAssistantImageInput {
   source: string;
@@ -411,6 +415,10 @@ export function useAssistantImage({
   const dataImagePreview = usePreviewUrl(
     dataImageAttachment.status === "loaded" ? dataImageAttachment.attachment : null,
   );
+  const loadedDataAttachment =
+    dataImageAttachment.status === "loaded" ? dataImageAttachment.attachment : undefined;
+  const attachment =
+    fileAttachment.status === "loaded" ? fileAttachment.attachment : loadedDataAttachment;
   const directUri = resolution?.kind === "direct" && !dataImage ? resolution.uri : null;
   const preview = dataImage ? dataImagePreview : filePreview;
   const previewUri = preview.status === "loaded" ? preview.uri : null;
@@ -531,6 +539,7 @@ export function useAssistantImage({
         onError: handleImageError,
       },
       aspectRatio: lifecycle.aspectRatio,
+      attachment,
     };
   }
   if (lifecycle.status === "failed") {
@@ -540,5 +549,6 @@ export function useAssistantImage({
     status: "loading",
     binding,
     aspectRatio: hasCurrentLifecycleUri ? lifecycle.aspectRatio : null,
+    attachment,
   };
 }

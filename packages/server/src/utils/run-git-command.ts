@@ -72,7 +72,9 @@ function createGitCommandRuntimeMetricsWindow(policy: GitProcessPolicy) {
   });
 }
 
-export function configureGitProcessPolicy(policy: GitProcessPolicy): void {
+export function configureGitProcessPolicy(
+  policy: GitProcessPolicy = resolveGitProcessPolicy({ env: process.env }),
+): void {
   gitProcessScheduler = new GitProcessScheduler(policy);
   gitRuntimeMetrics = createGitCommandRuntimeMetricsWindow(policy);
 }
@@ -100,6 +102,15 @@ export interface GitCommandResult {
   truncated: boolean;
   exitCode: number | null;
   signal: NodeJS.Signals | null;
+}
+
+export type RunGitCommand = (
+  args: string[],
+  options: GitCommandOptions,
+) => Promise<GitCommandResult>;
+
+export function createRunGitCommand(provenance: string): RunGitCommand {
+  return (args, options) => runGitCommandWithProvenance(args, options, provenance);
 }
 
 export interface GitCommandMetric {
@@ -273,15 +284,16 @@ function getEnvOverlayKeys(envOverlay: ProcessEnvRecord | undefined): string[] {
   return Object.keys(envOverlay ?? {}).sort();
 }
 
-export function runGitCommand(
+function runGitCommandWithProvenance(
   args: string[],
   options: GitCommandOptions,
+  provenance?: string,
 ): Promise<GitCommandResult> {
   // Captured before the concurrency queue: the thunk may execute in a later
   // async context where the operation-log ALS store is no longer active.
   const commandObserver = getActiveGitCommandObserver();
   const metricsState = submitGitCommandMetric(args, options.cwd);
-  const runtimeMetric = gitRuntimeMetrics.submit(getGitOperation(args));
+  const runtimeMetric = gitRuntimeMetrics.submit(getGitOperation(args), provenance);
   const startCommand = () => {
     let releaseProcessSlot!: () => void;
     const exited = new Promise<void>((resolve) => {
@@ -547,6 +559,8 @@ export function runGitCommand(
   );
   return promise;
 }
+
+export const runGitCommand: RunGitCommand = runGitCommandWithProvenance;
 
 function formatGitCommand(args: string[]): string {
   return ["git", ...args].join(" ");

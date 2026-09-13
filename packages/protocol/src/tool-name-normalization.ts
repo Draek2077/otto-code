@@ -60,13 +60,21 @@ export function isOttoToolName(name: string): boolean {
 }
 
 export function getOttoToolLeafName(name: string): string | null {
+  return getNamespacedToolLeafName(name, "otto");
+}
+
+export function getPaseoToolLeafName(name: string): string | null {
+  return getNamespacedToolLeafName(name, "paseo");
+}
+
+function getNamespacedToolLeafName(name: string, namespace: "otto" | "paseo"): string | null {
   const normalized = normalizeToolName(name);
   if (normalized.includes("__")) {
     const segments = normalized.split("__").filter((s) => s.length > 0);
     if (
       segments.length >= 3 &&
       segments[0] === "mcp" &&
-      (segments[1] === "otto" || segments[1].startsWith("otto_"))
+      (segments[1] === namespace || segments[1].startsWith(`${namespace}_`))
     ) {
       return segments.slice(2).join("__");
     }
@@ -74,7 +82,7 @@ export function getOttoToolLeafName(name: string): string | null {
   }
   if (normalized.includes(".")) {
     const firstSegment = normalized.split(".")[0];
-    if (firstSegment === "otto" || firstSegment.startsWith("otto_")) {
+    if (firstSegment === namespace || firstSegment.startsWith(`${namespace}_`)) {
       return normalized.split(".").slice(1).join(".");
     }
     return null;

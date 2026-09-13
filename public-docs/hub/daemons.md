@@ -1,6 +1,6 @@
 ---
 title: Daemons in Hub
-description: Enroll a machine with Hub, reference it from configuration, and understand what Hub owns once it is connected.
+description: "Upstream Paseo Hub reference. Enroll a machine with Hub, reference it from configuration, and understand what Hub owns once it is connected."
 nav: Daemons
 order: 63
 category: Hub
@@ -8,24 +8,26 @@ category: Hub
 
 # Daemons in Hub
 
-A daemon is one of your machines running the Otto daemon. Enroll it once with your Hub organization, then any project can reference it.
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
+
+A daemon is one of your machines running the Paseo daemon. Enroll it once with your Hub organization, then triggers can reference it.
 
 ## Connect
 
 Log in from the machine first:
 
 ```sh
-otto hub login https://hub.example.com
+paseo hub login https://hub.example.com
 ```
 
-The CLI prints a URL and a verification code and opens your browser. The approved login is stored under `OTTO_HOME`.
+The CLI prints a URL and a verification code and opens your browser. The approved login is stored under `PASEO_HOME`.
 
-In an interactive terminal, login then offers to finish setup: whether to connect this daemon, and whether to initialize and deploy a starter workflow. Both default to yes. Declining the connection prints `otto hub connect <origin>; then otto hub init`, since connecting alone leaves the project without a workflow. Declining only the starter prints `otto hub init`. `--json` or non-TTY login only logs in. [Quickstart](/docs/hub/quickstart) walks through the questions.
+In an interactive terminal, login offers to connect this daemon and separately asks whether to allow Hub automations to run agents. Connection defaults to yes; execution permission defaults to no. It then links to **Triggers** and prints `paseo hub init` for creating a starter trigger as code. `--json` or non-TTY login only logs in. [Quickstart](/docs/hub/quickstart) walks through connection and initialization.
 
 Enroll the daemon on its own when you declined, or when the machine is already logged in:
 
 ```sh
-otto hub connect
+paseo hub connect
 ```
 
 `connect` uses the active login to request a single-use enrollment token. The daemon exchanges it for its own relationship credential; your CLI login is never stored as daemon authority.
@@ -39,30 +41,30 @@ You can rename the slug later without changing the daemon ID. Renaming after a c
 For unattended setup, pass an organization API key without storing it:
 
 ```sh
-OTTO_HUB_URL=https://hub.example.com OTTO_HUB_API_KEY=otto_pk_... otto hub connect
+PASEO_HUB_URL=https://hub.example.com PASEO_HUB_API_KEY=paseo_pk_... paseo hub connect
 ```
 
-Origin precedence is explicit `[origin]`, `OTTO_HUB_URL`, active stored login, then `https://hub.otto-code.me`. An explicit `--api-key <secret>` takes precedence over the environment and an exact-origin stored login.
+Origin precedence is explicit `[origin]`, `PASEO_HUB_URL`, active stored login, then `https://hub.paseo.sh`. An explicit `--api-key <secret>` takes precedence over the environment and an exact-origin stored login.
 
 Check and undo:
 
 ```sh
-otto hub status
-otto hub disconnect
-otto hub disconnect --force   # drop local authority when Hub is unreachable
+paseo hub status
+paseo hub disconnect
+paseo hub disconnect --force   # drop local authority when Hub is unreachable
 ```
 
 One daemon has one Hub relationship. Connecting a daemon that already has one is refused.
 
-`otto hub logout` removes the active CLI login. The daemon's relationship is a separate identity and stays connected.
+`paseo hub logout` removes the active CLI login. The daemon's relationship is a separate identity and stays connected.
 
 In an interactive terminal, logout offers to disconnect a daemon enrolled with the same Hub. Accepting disconnects first and then deletes the login, so a failed disconnection keeps your credential. Declining removes only the login.
 
 Noninteractive and `--json` logout never disconnect implicitly:
 
 ```sh
-otto hub logout --disconnect-daemon           # remove both identities
-otto hub logout --disconnect-daemon --force   # drop local authority when Hub is unreachable
+paseo hub logout --disconnect-daemon           # remove both identities
+paseo hub logout --disconnect-daemon --force   # drop local authority when Hub is unreachable
 ```
 
 ## Reference it from configuration
@@ -84,11 +86,11 @@ To keep executions off your working tree, add a worktree:
 ```yaml
 worktree:
   mode: branch-off
-  newBranch: trigger-${{ otto.execution.id }}
+  newBranch: trigger-${{ paseo.execution.id }}
   base: origin/main
 ```
 
-`${{ otto.execution.id }}` renders the execution's UUID, so every execution gets its own branch off `origin/main`.
+`${{ paseo.execution.id }}` renders the execution's UUID, so every execution gets its own branch off `origin/main`.
 
 [Environment fields](/docs/hub/configuration/hub-yml#environments) lists what `newBranch` accepts. See [Git worktrees](/docs/worktrees) for setup hooks and scripts.
 

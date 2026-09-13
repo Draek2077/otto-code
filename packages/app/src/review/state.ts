@@ -13,23 +13,10 @@ export interface ReviewDraftComment {
   updatedAt: string;
 }
 
-// A manual mode selection belongs to the checkout, not its momentary dirty
-// state. A commit can make an Uncommitted view empty, but it must not also move
-// the reader to Committed behind their back.
-export interface DiffModeOverride {
-  serverId: string;
-  cwd: string;
-  mode: ReviewDraftMode;
-  isDirtyAtSelection: boolean;
-}
-
 export interface ReviewDraftStoreState {
   drafts: Record<string, ReviewDraftComment[]>;
-  // In-memory only - not persisted. Keyed by scope key.
-  diffModeOverrides: Record<string, DiffModeOverride>;
 }
 
-// Only drafts are persisted; diffModeOverrides is intentionally excluded.
 export interface SerializedReviewDraftState {
   drafts: Record<string, ReviewDraftComment[]>;
   activeModesByScope?: Record<string, ReviewDraftMode>;
@@ -52,42 +39,6 @@ export const SerializedReviewDraftStateSchema: z.ZodType<SerializedReviewDraftSt
     // COMPAT(reviewDraftModes): v1 persisted this field; v2 discards it during migration.
     activeModesByScope: z.record(z.string(), z.enum(["uncommitted", "base"])).optional(),
   });
-
-export function setDiffModeOverrideInState(
-  state: ReviewDraftStoreState,
-  input: { scopeKey: string; override: DiffModeOverride },
-): ReviewDraftStoreState {
-  return {
-    ...state,
-    diffModeOverrides: {
-      ...state.diffModeOverrides,
-      [input.scopeKey]: input.override,
-    },
-  };
-}
-
-// Kept as a data-boundary no-op while old callers continue to report status
-// transitions. Manual selection now persists across dirty/clean transitions.
-export function expireStaleDiffModeOverridesInState(
-  state: ReviewDraftStoreState,
-  input: { serverId: string; cwd: string; isDirty: boolean },
-): ReviewDraftStoreState {
-  void input;
-  return state;
-}
-
-// Pure read - returns the effective mode without mutating state. A user-selected
-// mode deliberately wins even when a commit or a new edit flips the dirty bit.
-export function resolveDiffMode(input: {
-  override: DiffModeOverride | undefined;
-  hasUncommittedChanges: boolean;
-}): ReviewDraftMode {
-  const { override, hasUncommittedChanges } = input;
-  if (override) {
-    return override.mode;
-  }
-  return hasUncommittedChanges ? "uncommitted" : "base";
-}
 
 export function addCommentToState(
   state: ReviewDraftStoreState,
@@ -217,7 +168,6 @@ export function normalizePersistedState(state: unknown): ReviewDraftStoreState {
   const result = SerializedReviewDraftStateSchema.safeParse(state);
   return {
     drafts: result.success ? result.data.drafts : {},
-    diffModeOverrides: {},
   };
 }
 

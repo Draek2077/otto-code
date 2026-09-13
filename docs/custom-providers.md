@@ -529,6 +529,35 @@ OMP already ships as a built-in provider option. It is disabled by default; enab
 }
 ```
 
+Custom OMP profiles should extend `omp`. They inherit the OMP adapter's `rpc-ui` approvals, native Otto host tools, provider-managed subagents, and import behavior:
+
+```json
+{
+  "agents": {
+    "providers": {
+      "omp-work": {
+        "extends": "omp",
+        "label": "Oh My Pi (Work)",
+        "command": ["omp"],
+        "env": {
+          "XDG_CONFIG_HOME": "~/.config/omp-work",
+          "XDG_STATE_HOME": "~/.local/state/omp-work"
+        },
+        "params": {
+          "sessionDir": "~/.local/state/omp-work/omp/agent/sessions",
+          "rpcTimeoutMs": 60000,
+          "smolModel": "openai/gpt-5-mini",
+          "slowModel": "anthropic/claude-opus-4-1",
+          "planModel": "openai/o3"
+        }
+      }
+    }
+  }
+}
+```
+
+`params.sessionDir` is used only for importing sessions that were started outside Otto. If `command` or XDG env vars move OMP's state directory, set `params.sessionDir` to the resulting OMP JSONL session directory; launching and resuming still go through the configured command. OMP waits 20 seconds for its initial `ready` frame and 60 seconds for later control-plane RPCs by default. `params.rpcTimeoutMs` overrides both deadlines.
+
 For other providers that keep Pi's `--mode rpc` API but write sessions somewhere else, extend `pi`, replace the command, and provide the JSONL session directory:
 
 ```json
@@ -540,7 +569,8 @@ For other providers that keep Pi's `--mode rpc` API but write sessions somewhere
         "label": "My Pi Fork",
         "command": ["my-pi-fork"],
         "params": {
-          "sessionDir": "~/.my-pi-fork/sessions"
+          "sessionDir": "~/.my-pi-fork/sessions",
+          "rpcTimeoutMs": 60000
         }
       }
     }
@@ -548,7 +578,7 @@ For other providers that keep Pi's `--mode rpc` API but write sessions somewhere
 }
 ```
 
-The session directory is used only for importing sessions that were started outside Otto. Launching and resuming still go through the configured command, so this example resumes with `my-pi-fork --mode rpc --session <session-file>`.
+This session directory is also import-only. Launching and resuming still go through the configured command, so this example resumes with `my-pi-fork --mode rpc --session <session-file>`. `params.rpcTimeoutMs` overrides the 60-second Pi control-plane RPC deadline.
 
 ---
 
@@ -624,6 +654,39 @@ Otto tools such as subagent creation come from the shared internal tool catalog.
   }
 }
 ```
+
+ACP agents execute filesystem operations in their own environment by default,
+while terminal operations run through Otto on the host. To customize which
+operations Otto handles, configure client capabilities in provider params:
+
+```json
+{
+  "agents": {
+    "providers": {
+      "container-agent": {
+        "extends": "acp",
+        "label": "Container Agent",
+        "command": ["container-agent", "acp"],
+        "params": {
+          "clientCapabilities": {
+            "fs": {
+              "readTextFile": false,
+              "writeTextFile": false
+            },
+            "terminal": false
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+When an agent runs in a container or remote environment that manages its own
+terminal, set `terminal: false` to keep command execution inside the agent
+container. When delegating filesystem operations to Otto (`fs.readTextFile: true`
+or `fs.writeTextFile: true`), ensure the agent and Otto share equivalent
+absolute workspace paths.
 
 ### Generic ACP diagnostics
 

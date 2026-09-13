@@ -17,6 +17,10 @@ export const en = {
       retry: "Retry",
       search: "Search",
       select: "Select",
+
+      selectAll: "Select all",
+
+      copyLine: "Copy line",
     },
     placeholders: {
       search: "Search...",
@@ -42,6 +46,8 @@ export const en = {
       daemonClientDisconnected: "Daemon client is disconnected",
       noFileFound: "No file found for {{token}}",
       unexpectedDictationError: "An unexpected error occurred while handling dictation.",
+
+      unableToCopy: "Unable to copy",
     },
     connectionStatus: {
       online: "Online",
@@ -472,6 +478,8 @@ export const en = {
       question: "How would you like to proceed?",
       proposedPlan: "Proposed plan",
     },
+
+    messageCapped: "This message was capped ({{bytes}} bytes).",
   },
   agentPanel: {
     states: {
@@ -617,6 +625,8 @@ export const en = {
       resetZoom: "Reset view",
       viewSource: "View source",
       viewDiagram: "View diagram",
+
+      fullscreen: "Fullscreen",
     },
     actions: {
       copyCode: "Copy code",
@@ -720,6 +730,8 @@ export const en = {
       failedAll: "Could not load recent sessions.",
       failedProviders: "Could not load sessions for {{providers}}.",
       failedImport: "Could not import selected session.",
+
+      failedProvider: "Could not load {{provider}} sessions",
     },
     actions: {
       selectAll: "Select all shown",
@@ -728,6 +740,8 @@ export const en = {
       loadMore: "Load more",
 
       refresh: "Refresh sessions",
+
+      showAll: "Show all",
     },
     preview: {
       untitledSession: "Untitled session",
@@ -737,10 +751,21 @@ export const en = {
       noRecent: "No recent sessions to import.",
       alreadyImported: "All recent sessions are already imported.",
       noProviderSessions: "No {{provider}} sessions found.",
+
+      noMatches: "No sessions match your search.",
     },
     row: {
       importing: "Importing...",
     },
+
+    scope: {
+      host: "Sessions on {{host}}",
+      workspace: "This workspace",
+    },
+
+    searchPlaceholder: "Search sessions...",
+
+    chooseHostTitle: "Import from host",
   },
   workspace: {
     moveChat: {
@@ -886,12 +911,16 @@ export const en = {
         completed: "Setup completed",
         failed: "Setup failed",
         workspace: "Workspace setup",
+
+        blocked: "Setup blocked",
       },
       status: {
         running: "Running",
         completed: "Completed",
         failed: "Failed",
         waiting: "Waiting for setup output",
+
+        blocked: "Blocked",
       },
       waiting: "Setting up workspace...",
       empty: {
@@ -903,6 +932,14 @@ export const en = {
       },
       log: {
         noOutput: "No output",
+      },
+
+      blocked: {
+        title: "Setup was not run",
+        description:
+          "This PR comes from {{repository}}, a different repository. Its setup and scripts could run code you have not reviewed.",
+        run: "Run setup",
+        runFailed: "Failed to run workspace setup",
       },
     },
     browser: {
@@ -925,6 +962,10 @@ export const en = {
         screenshotCopied: "Copied screenshot to clipboard",
         elementCopied: "Copied element to clipboard",
         screenshotFailed: "Couldn't copy screenshot",
+
+        selectorFailed: "Couldn't start element selector",
+
+        selectorLoading: "Wait for the page to finish loading",
       },
       annotate: {
         title: "Annotate element",
@@ -1201,6 +1242,8 @@ export const en = {
         public: "Reverse proxy",
         otto: "Memorable",
         direct: "Direct",
+
+        paseo: "Memorable",
       },
     },
     git: {
@@ -1469,6 +1512,8 @@ export const en = {
         expandAllFiles: "Expand all files",
         seeUncommittedChanges: "See uncommitted changes",
         seeCommittedChanges: "See committed changes",
+
+        modifiedFile: "Modified",
       },
       commit: {
         type: {
@@ -1572,6 +1617,17 @@ export const en = {
         accessibility: {
           pullRequest: "Pull request #{{number}}",
           pullRequest_mr: "Merge request !{{number}}",
+
+          checkStatus: {
+            passed: "Passed",
+            failed: "Failed",
+            warning: "Warning",
+            actionRequired: "Action required",
+            manual: "Manual",
+            pending: "Pending",
+            skipped: "Skipped",
+            cancelled: "Cancelled",
+          },
         },
         states: {
           draft: "Draft",
@@ -1642,6 +1698,8 @@ export const en = {
         cancel: "Cancel",
         failed: "Failed to discard changes",
       },
+
+      openIn: "Open in {{target}}",
     },
     tree: {
       showFolderTree: "Show folder tree",
@@ -1706,6 +1764,10 @@ export const en = {
       sessions: "History",
       schedules: "Schedules",
       artifacts: "Artifacts",
+
+      search: "Search",
+      kanban: "Kanban",
+      runs: "Workflows",
     },
     worktreeSetup: {
       title: "Set up worktree scripts",
@@ -1794,6 +1856,15 @@ export const en = {
         hostDisconnected: "Host is not connected",
         hideFailed: "Failed to hide workspace",
         archiveFailed: "Failed to archive workspace",
+      },
+
+      checks: {
+        passed: "Passed: {{count}}",
+        failed: "Failed: {{count}}",
+        warning: "Warnings: {{count}}",
+        actionRequired: "Action required: {{count}}",
+        manual: "Manual: {{count}}",
+        pending: "Pending: {{count}}",
       },
     },
     pinned: {
@@ -2367,7 +2438,7 @@ export const en = {
       },
       importSession: {
         title: "Import session",
-        description: "Bring in recent external CLI sessions",
+        description: "Open a Claude Code, Codex or other session you started in a terminal",
       },
       setupProviders: {
         title: "Setup providers",
@@ -2411,6 +2482,8 @@ export const en = {
     stashRestored: "Stashed changes restored",
     switchInProgress: "Branch switch in progress",
     checkedOutElsewhere: "Checked out in another workspace",
+
+    triggerTooltip: "Switch workspace branch",
   },
   agentAutocomplete: {
     searchingWorkspace: "Searching workspace...",
@@ -2592,6 +2665,14 @@ export const en = {
     searchAllPlaceholder: "Search all models...",
     searchPlaceholder: "Search models...",
     openProviderSettings: "Open {{provider}} settings",
+
+    editProfilesCount: "Edit profiles ({{count}})",
+
+    editProfileLabel: "Edit {{name}}",
+
+    createProfileFromModel: "Create profile from this model",
+
+    model: "Model",
   },
   providerCatalog: {
     title: "Add provider",
@@ -2639,6 +2720,11 @@ export const en = {
       pasteLink: {
         title: "Paste pairing link",
         description: "Encrypted relay connection.",
+      },
+
+      remoteSsh: {
+        title: "Remote SSH",
+        description: "Connect through the desktop SSH client.",
       },
     },
     direct: {
@@ -2741,6 +2827,24 @@ export const en = {
       securityWarning:
         "Treat this pairing link like a password. Anyone with it can access this daemon.",
     },
+
+    remoteSsh: {
+      title: "Remote SSH",
+      helper: "Connect to an Otto daemon running on the remote host.",
+      fields: {
+        target: "SSH host",
+      },
+      actions: {
+        cancel: "Cancel",
+        connect: "Connect",
+        connecting: "Connecting...",
+      },
+      errors: {
+        targetRequired: "SSH host is required",
+        invalidTarget: "Enter a valid ssh:// host",
+        failedToConnect: "Unable to connect over SSH. {{detail}}",
+      },
+    },
   },
   realtimeVoice: {
     actions: {
@@ -2770,6 +2874,8 @@ export const en = {
     inOtto: "In Otto",
     externalBrowser: "External browser",
     dontAskAgain: "Don't ask again",
+
+    inPaseo: "In Otto",
   },
   downloads: {
     requestTokenFailed: "Failed to request download token.",
@@ -2835,6 +2941,8 @@ export const en = {
     },
     archiveFinishedAction: "Archive finished subagents",
     archiveFinishedTooltip: "Archive finished",
+
+    archiveFinishedRetry: "Retry ({{failed}}/{{total}})",
   },
   observedSubagents: {
     readOnlyTitle: "Observed subagent · read-only",
@@ -3231,6 +3339,8 @@ export const en = {
       label: "Files",
       subtitle: "Workspace files",
       tooltip: "Browse workspace files",
+
+      chooseFile: "Choose a file",
     },
     search: {
       label: "Search",
@@ -3277,6 +3387,11 @@ export const en = {
       other: "called Otto {{count}} times",
     },
     and: "and",
+
+    paseoCalls: {
+      one: "called Otto {{count}} time",
+      other: "called Otto {{count}} times",
+    },
   },
   renameModal: {
     rename: "Rename",
@@ -3390,6 +3505,8 @@ export const en = {
       storage: "Storage",
       terminals: "Terminals",
       host: "Overview",
+
+      plugins: "Plugins",
     },
     plugins: {
       title: "Plugins",
@@ -3445,6 +3562,13 @@ export const en = {
         errorTitle: "Unable to load plugins",
         retry: "Retry",
         empty: "No plugins configured",
+      },
+
+      screens: {
+        open: "Open",
+        offline: "Connect to this host to open plugin settings.",
+        update: "Update this host to use plugin settings.",
+        unavailable: "This plugin settings screen is unavailable.",
       },
     },
     metadataGeneration: {
@@ -3658,6 +3782,8 @@ export const en = {
         alertTitle: "Error",
         alertMessage: "Unable to open the update confirmation dialog.",
       },
+
+      whatsNewHint: "Release notes for every version",
     },
     appearance: {
       theme: {
@@ -3825,6 +3951,16 @@ export const en = {
         codeSizeAccessibility: "Code font size",
         terminalSize: "Terminal size",
         terminalSizeAccessibility: "Terminal font size",
+
+        codeSizeHint: "Used for code, diffs, and terminal output",
+
+        contentSizeAccessibility: "Content font size",
+
+        contentSizeHint: "Used for chat text and rendered Markdown",
+
+        contentSize: "Content size",
+
+        interfaceSizeHint: "Used for navigation, controls, and labels",
       },
       syntax: {
         title: "Syntax",
@@ -3836,6 +3972,14 @@ export const en = {
       },
       detailLevel: {
         title: "Detail level",
+      },
+
+      sidebar: {
+        title: "Sidebar",
+        description: "Choose which items appear at the top of the sidebar and in what order",
+        moveUp: "Move up",
+        moveDown: "Move down",
+        workspaceActions: "Workspaces header actions",
       },
     },
     shortcuts: {
@@ -4034,6 +4178,8 @@ export const en = {
       badges: {
         relay: "Relay",
         local: "Local",
+
+        remoteSsh: "Remote SSH",
       },
       connections: {
         title: "Connections",
@@ -4712,6 +4858,8 @@ export const en = {
         destinations: {
           main: "Main panel",
           side: "On the side",
+
+          explorer: "Explorer sidebar",
         },
         sources: {
           explorerFiles: {
@@ -4741,6 +4889,11 @@ export const en = {
           changesLinks: {
             label: "Opening Changes from an agent",
             description: "Open diff stats and review attachments beside the conversation",
+          },
+
+          diffs: {
+            label: "Opening a diff",
+            description: "Open diffs from Explorer and agent conversations beside your work",
           },
         },
       },
@@ -4858,6 +5011,17 @@ export const en = {
       deleteMessage_other: "This removes the label from {{count}} workspaces on this host.",
       offline: "This host is offline.",
       updateHost: "Update this host to manage labels.",
+    },
+  },
+
+  changelog: {
+    title: "What's new",
+    installed: "Installed",
+    showMore: "Show more",
+    openWebsite: "Full changelog",
+    error: {
+      title: "Unable to load the changelog",
+      description: "Check your connection and try again.",
     },
   },
 } as const;

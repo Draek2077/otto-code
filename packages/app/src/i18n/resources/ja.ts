@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ja: TranslationResources = {
@@ -20,6 +20,10 @@ export const ja: TranslationResources = {
       retry: "再試行",
       search: "検索",
       select: "選択",
+
+      selectAll: "すべて選択",
+
+      copyLine: "行をコピー",
     },
     placeholders: {
       search: "検索...",
@@ -45,6 +49,8 @@ export const ja: TranslationResources = {
       daemonClientDisconnected: "デーモンクライアントが切断されています",
       noFileFound: "{{token}}のファイルが見つかりません",
       unexpectedDictationError: "音声入力処理中に予期しないエラーが発生しました。",
+
+      unableToCopy: "コピーできません",
     },
     connectionStatus: {
       online: "オンライン",
@@ -477,6 +483,8 @@ export const ja: TranslationResources = {
       question: "どのように続けますか？",
       proposedPlan: "提案されたプラン",
     },
+
+    messageCapped: "このメッセージは上限で切り詰められました（{{bytes}}バイト）。",
   },
   agentPanel: {
     states: {
@@ -624,6 +632,8 @@ export const ja: TranslationResources = {
       resetZoom: "表示をリセット",
       viewSource: "ソースを表示",
       viewDiagram: "図を表示",
+
+      fullscreen: "全画面表示",
     },
     actions: {
       copyCode: "コードをコピー",
@@ -728,6 +738,8 @@ export const ja: TranslationResources = {
       failedAll: "最近のセッションを読み込めませんでした。",
       failedProviders: "{{providers}}のセッションを読み込めませんでした。",
       failedImport: "選択したセッションをインポートできませんでした。",
+
+      failedProvider: "{{provider}} のセッションを読み込めませんでした",
     },
     actions: {
       selectAll: "表示中のすべてを選択",
@@ -736,6 +748,8 @@ export const ja: TranslationResources = {
       loadMore: "さらに読み込む",
 
       refresh: "セッションを更新",
+
+      showAll: "すべて表示",
     },
     preview: {
       untitledSession: "無題のセッション",
@@ -745,10 +759,21 @@ export const ja: TranslationResources = {
       noRecent: "インポートする最近のセッションがありません。",
       alreadyImported: "最近のセッションはすでにすべてインポートされています。",
       noProviderSessions: "{{provider}}のセッションが見つかりません。",
+
+      noMatches: "検索に一致するセッションがありません。",
     },
     row: {
       importing: "インポート中...",
     },
+
+    scope: {
+      host: "{{host}} のセッション",
+      workspace: "このワークスペース",
+    },
+
+    searchPlaceholder: "セッションを検索...",
+
+    chooseHostTitle: en.importSession.chooseHostTitle,
   },
   workspace: {
     moveChat: {
@@ -895,12 +920,16 @@ export const ja: TranslationResources = {
         completed: "セットアップ完了",
         failed: "セットアップ失敗",
         workspace: "ワークスペースのセットアップ",
+
+        blocked: "セットアップはブロックされました",
       },
       status: {
         running: "実行中",
         completed: "完了",
         failed: "失敗",
         waiting: "セットアップ出力を待機中",
+
+        blocked: "ブロック済み",
       },
       waiting: "ワークスペースをセットアップ中...",
       empty: {
@@ -912,6 +941,14 @@ export const ja: TranslationResources = {
       },
       log: {
         noOutput: "出力なし",
+      },
+
+      blocked: {
+        title: "セットアップは実行されませんでした",
+        description:
+          "このPRは別のリポジトリ {{repository}} からのものです。セットアップとスクリプトは未確認のコードを実行する可能性があります。",
+        run: "セットアップを実行",
+        runFailed: "ワークスペースのセットアップに失敗しました",
       },
     },
     browser: {
@@ -934,6 +971,10 @@ export const ja: TranslationResources = {
         screenshotCopied: "スクリーンショットをクリップボードにコピーしました",
         elementCopied: "要素をクリップボードにコピーしました",
         screenshotFailed: "スクリーンショットをコピーできませんでした",
+
+        selectorFailed: "要素セレクターを開始できませんでした",
+
+        selectorLoading: "ページの読み込みが完了するまでお待ちください",
       },
       annotate: {
         title: "要素に注釈を付ける",
@@ -1209,6 +1250,8 @@ export const ja: TranslationResources = {
         public: "リバースプロキシ",
         otto: "Memorable",
         direct: "直接接続",
+
+        paseo: "Memorable",
       },
     },
     git: {
@@ -1477,6 +1520,8 @@ export const ja: TranslationResources = {
         expandAllFiles: "すべてのファイルを展開",
         seeUncommittedChanges: "未コミットの変更を表示",
         seeCommittedChanges: "コミット済みの変更を表示",
+
+        modifiedFile: "変更済み",
       },
       commit: {
         type: {
@@ -1580,6 +1625,17 @@ export const ja: TranslationResources = {
         accessibility: {
           pullRequest: "プルリクエスト#{{number}}",
           pullRequest_mr: "マージリクエスト !{{number}}",
+
+          checkStatus: {
+            passed: "成功",
+            failed: "失敗",
+            warning: "警告",
+            actionRequired: "操作が必要",
+            manual: "手動",
+            pending: "保留中",
+            skipped: "スキップ済み",
+            cancelled: "キャンセル済み",
+          },
         },
         states: {
           draft: "ドラフト",
@@ -1650,6 +1706,8 @@ export const ja: TranslationResources = {
         cancel: "キャンセル",
         failed: "変更の破棄に失敗しました",
       },
+
+      openIn: "{{target}}で開く",
     },
     tree: {
       showFolderTree: "フォルダツリーを表示",
@@ -1714,6 +1772,10 @@ export const ja: TranslationResources = {
       sessions: "履歴",
       schedules: "スケジュール",
       artifacts: "アーティファクト",
+
+      search: "検索",
+      kanban: "カンバン",
+      runs: "ワークフロー",
     },
     worktreeSetup: {
       title: "ワークツリースクリプトを設定",
@@ -1802,6 +1864,15 @@ export const ja: TranslationResources = {
         hostDisconnected: "ホストが接続されていません",
         hideFailed: "ワークスペースの非表示に失敗しました",
         archiveFailed: "ワークスペースのアーカイブに失敗しました",
+      },
+
+      checks: {
+        passed: "成功: {{count}}",
+        failed: "失敗: {{count}}",
+        warning: "警告: {{count}}",
+        actionRequired: "操作が必要: {{count}}",
+        manual: "手動: {{count}}",
+        pending: "保留中: {{count}}",
       },
     },
     pinned: {
@@ -2420,6 +2491,8 @@ export const ja: TranslationResources = {
     stashRestored: "スタッシュした変更を復元しました",
     switchInProgress: "ブランチを切り替え中です",
     checkedOutElsewhere: "別のワークスペースでチェックアウト済み",
+
+    triggerTooltip: "ワークスペースのブランチを切り替え",
   },
   agentAutocomplete: {
     searchingWorkspace: "ワークスペースを検索中...",
@@ -2604,6 +2677,14 @@ export const ja: TranslationResources = {
     searchAllPlaceholder: "すべてのモデルを検索...",
     searchPlaceholder: "モデルを検索...",
     openProviderSettings: "{{provider}}の設定を開く",
+
+    editProfilesCount: "プロファイルを編集（{{count}}）",
+
+    editProfileLabel: "{{name}}を編集",
+
+    createProfileFromModel: "このモデルからプロファイルを作成",
+
+    model: "モデル",
   },
   providerCatalog: {
     title: "プロバイダーを追加",
@@ -2651,6 +2732,11 @@ export const ja: TranslationResources = {
       pasteLink: {
         title: "ペアリングリンクを貼り付け",
         description: "暗号化されたリレー接続。",
+      },
+
+      remoteSsh: {
+        title: "リモート SSH",
+        description: "デスクトップの SSH クライアント経由で接続します。",
       },
     },
     direct: {
@@ -2755,6 +2841,24 @@ export const ja: TranslationResources = {
       securityWarning:
         "このペアリングリンクはパスワードと同様に扱ってください。リンクを知っている人は誰でもこのデーモンにアクセスできます。",
     },
+
+    remoteSsh: {
+      title: "リモート SSH",
+      helper: "リモートホストで動作する Otto デーモンに接続します。",
+      fields: {
+        target: "SSH ホスト",
+      },
+      actions: {
+        cancel: "キャンセル",
+        connect: "接続",
+        connecting: "接続中...",
+      },
+      errors: {
+        targetRequired: "SSH ホストは必須です",
+        invalidTarget: "有効な ssh:// ホストを入力してください",
+        failedToConnect: "SSH で接続できません。{{detail}}",
+      },
+    },
   },
   realtimeVoice: {
     actions: {
@@ -2784,6 +2888,8 @@ export const ja: TranslationResources = {
     inOtto: "Ottoで",
     externalBrowser: "外部ブラウザ",
     dontAskAgain: "次回から確認しない",
+
+    inPaseo: "Ottoで",
   },
   downloads: {
     requestTokenFailed: "ダウンロードトークンのリクエストに失敗しました。",
@@ -2849,6 +2955,8 @@ export const ja: TranslationResources = {
     },
     archiveFinishedAction: "完了したサブエージェントをアーカイブ",
     archiveFinishedTooltip: "完了した項目をアーカイブ",
+
+    archiveFinishedRetry: "再試行 ({{failed}}/{{total}})",
   },
   observedSubagents: {
     readOnlyTitle: "監視中のサブエージェント · 読み取り専用",
@@ -3248,6 +3356,8 @@ export const ja: TranslationResources = {
       label: "ファイル",
       subtitle: "ワークスペースのファイル",
       tooltip: "ワークスペースのファイルを参照",
+
+      chooseFile: "ファイルを選択",
     },
     search: {
       label: "検索",
@@ -3295,6 +3405,11 @@ export const ja: TranslationResources = {
       other: "called Otto {{count}} times",
     },
     and: "and",
+
+    paseoCalls: {
+      one: "Ottoを{{count}}回呼び出し",
+      other: "Ottoを{{count}}回呼び出し",
+    },
   },
   renameModal: {
     rename: "名前を変更",
@@ -3408,6 +3523,8 @@ export const ja: TranslationResources = {
       storage: "ストレージ",
       terminals: "ターミナル",
       host: "概要",
+
+      plugins: "プラグイン",
     },
     plugins: pluginSettings.ja,
     metadataGeneration: {
@@ -3622,6 +3739,8 @@ export const ja: TranslationResources = {
         alertTitle: "エラー",
         alertMessage: "更新確認ダイアログを開けません。",
       },
+
+      whatsNewHint: "各バージョンのリリースノート",
     },
     appearance: {
       theme: {
@@ -3791,6 +3910,16 @@ export const ja: TranslationResources = {
         codeSizeAccessibility: "コードフォントサイズ",
         terminalSize: "ターミナルサイズ",
         terminalSizeAccessibility: "ターミナルのフォントサイズ",
+
+        codeSizeHint: "コード、差分、ターミナル出力に使用されます",
+
+        contentSizeAccessibility: "コンテンツのフォントサイズ",
+
+        contentSizeHint: "チャットテキストとレンダリングされた Markdown に使用されます",
+
+        contentSize: "コンテンツサイズ",
+
+        interfaceSizeHint: "ナビゲーション、コントロール、ラベルに使用されます",
       },
       syntax: {
         title: "構文ハイライト",
@@ -3802,6 +3931,14 @@ export const ja: TranslationResources = {
       },
       detailLevel: {
         title: "詳細レベル",
+      },
+
+      sidebar: {
+        title: "サイドバー",
+        description: "サイドバー上部に表示する項目とその順序を選択します",
+        moveUp: "上に移動",
+        moveDown: "下に移動",
+        workspaceActions: "ワークスペース見出しの操作",
       },
     },
     shortcuts: {
@@ -4002,6 +4139,8 @@ export const ja: TranslationResources = {
       badges: {
         relay: "リレー",
         local: "ローカル",
+
+        remoteSsh: "リモート SSH",
       },
       connections: {
         title: "接続",
@@ -4688,6 +4827,7 @@ export const ja: TranslationResources = {
         destinations: {
           main: "Main panel",
           side: "On the side",
+          explorer: "エクスプローラーのサイドバー",
         },
         sources: {
           explorerFiles: {
@@ -4717,6 +4857,10 @@ export const ja: TranslationResources = {
           changesLinks: {
             label: "Opening Changes from an agent",
             description: "Open diff stats and review attachments beside the conversation",
+          },
+          diffs: {
+            label: "差分を開く",
+            description: "エクスプローラーやエージェントの会話の差分を作業の横に開きます",
           },
         },
       },
@@ -4835,6 +4979,17 @@ export const ja: TranslationResources = {
       deleteMessage_other: "このホストの{{count}}個のワークスペースからラベルを削除します。",
       offline: "このホストはオフラインです。",
       updateHost: "ラベルを管理するにはホストを更新してください。",
+    },
+  },
+
+  changelog: {
+    title: "新着情報",
+    installed: "インストール済み",
+    showMore: "もっと見る",
+    openWebsite: "変更履歴をすべて表示",
+    error: {
+      title: "変更履歴を読み込めません",
+      description: "接続を確認してもう一度お試しください。",
     },
   },
 } as const;

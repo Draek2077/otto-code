@@ -251,9 +251,9 @@ test.describe("Agent stream UI", () => {
     ).toBeVisible({
       timeout: 30_000,
     });
-    await awaitAssistantMessage(page);
-    // See the scroll-away test above - height accumulates more slowly with
-    // the tighter chat typography, so allow the stream more time.
+    // Reasoning rows collapse when the mock starts its next assistant response. Wait past
+    // that transition so their temporary height cannot satisfy the scroll-away setup.
+    await awaitAssistantMessage(page, "Now I have a clearer picture.");
     await waitForScrollableChat(page, {
       minScrollableDistance: SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE,
       timeout: 120_000,

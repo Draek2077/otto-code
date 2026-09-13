@@ -1,12 +1,14 @@
 ---
 title: GitHub for Hub
-description: Create the GitHub App your Hub uses for repository access and event triggers.
+description: "Upstream Paseo Hub reference. Create the GitHub App your Hub uses for repository access and event triggers."
 nav: GitHub App
 order: 75
 category: Hub
 ---
 
 # GitHub for Hub
+
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
 
 Hub talks to GitHub through a GitHub App you create and own. One App serves the Hub; each account or organization that installs it becomes a connection.
 
@@ -16,16 +18,16 @@ Open **Apps → GitHub**. Hub gives you the current callback URLs, required repo
 
 Repository access and installation work without a GitHub webhook. GitHub event triggers and configuration sync do not: GitHub must be able to deliver events to a public HTTPS URL.
 
-On a local HTTP Hub, the Apps guide lets you configure repository access and explains that event setup is unavailable. Reopen Hub at its public address after setting `OTTO_HUB_APP_URL` to add the webhook secret and events.
+On a local HTTP Hub, the Apps guide lets you configure repository access and explains that event setup is unavailable. Reopen Hub at its public address after setting `PASEO_HUB_APP_URL` to add the webhook secret and events.
 
 GitHub uses these Hub URLs:
 
-| Setting      | Hub URL                                               |
-| ------------ | ----------------------------------------------------- |
-| Homepage URL | `<OTTO_HUB_APP_URL>`                                  |
-| Callback URL | `<OTTO_HUB_APP_URL>/api/integrations/github/callback` |
-| Setup URL    | `<OTTO_HUB_APP_URL>/api/integrations/github/setup`    |
-| Webhook URL  | `<OTTO_HUB_APP_URL>/webhook`                          |
+| Setting      | Hub URL                                                |
+| ------------ | ------------------------------------------------------ |
+| Homepage URL | `<PASEO_HUB_APP_URL>`                                  |
+| Callback URL | `<PASEO_HUB_APP_URL>/api/integrations/github/callback` |
+| Setup URL    | `<PASEO_HUB_APP_URL>/api/integrations/github/setup`    |
+| Webhook URL  | `<PASEO_HUB_APP_URL>/webhook`                          |
 
 Keep GitHub's SSL verification enabled.
 
@@ -39,12 +41,12 @@ After Hub verifies the App, choose **Install on GitHub**. Select the account or 
 
 Start from Hub rather than GitHub's own install button. The round trip binds the installation to the active Hub organization.
 
-The connection appears with a slug derived from the account. An installation on `Draek2077`, for example, becomes `Draek2077-github`. Connect as many installations as the Hub organization needs.
+The connection appears with a slug derived from the account. An installation on `getpaseo`, for example, becomes `getpaseo-github`. Connect as many installations as the Hub organization needs.
 
 ## What the connection provides
 
 - **Events:** issues, comments, reviews, and pushes from repositories the installation can see. See [GitHub triggers](/docs/hub/triggers/github).
-- **Configuration sync:** a repository can hold the canonical `.otto` bundle. See [Configuration](/docs/hub/configuration).
+- **Configuration sync:** a repository can hold the canonical `.paseo` bundle. See [Configuration](/docs/hub/configuration).
 - **Execution credentials:** Hub mints scoped GitHub App tokens for workflow steps that explicitly request GitHub authority.
 
 An authenticated `gh` CLI on the daemon does not configure Hub's GitHub integration. It can still serve agents outside Hub's scoped GitHub authority, subject to the daemon and provider's own environment and permission policy.

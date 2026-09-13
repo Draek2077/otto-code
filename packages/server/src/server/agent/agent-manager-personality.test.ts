@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
+import { PluginRuntime } from "../plugins/runtime.js";
+import type { PluginLifecycle } from "../plugins/lifecycle/index.js";
 import { AgentManager } from "./agent-manager.js";
 import { ProjectKnowledgeService } from "./project-knowledge/project-knowledge-service.js";
 import { repositoryKnowledgeStore } from "./project-knowledge/project-knowledge-store.js";
@@ -173,6 +175,8 @@ function buildSnapshot(overrides: Partial<ResolvedProfileSnapshot> = {}): Resolv
     modeId: "auto",
     thinkingOptionId: "high",
     effortDegraded: false,
+    roles: [],
+    respectGlobalAppendPrompt: true,
     systemPrompt: "You are Vera.",
     ...overrides,
   };
@@ -189,6 +193,7 @@ interface Harness {
 function createHarness(
   options: {
     behavior?: SessionBehavior;
+    pluginLifecycle?: PluginLifecycle;
     appendSystemPrompt?: string;
     /** Stands in for the personality-memory service's brief resolver. */
     memoryBrief?: string | null;
@@ -200,6 +205,7 @@ function createHarness(
   const spawnedPersonalityIds: string[] = [];
   const manager = new AgentManager({
     clients: { codex: client },
+    pluginLifecycle: options.pluginLifecycle,
     logger,
     appendSystemPrompt: options.appendSystemPrompt,
     onPersonalitySpawn: (personalityId) => {
@@ -733,6 +739,42 @@ test("a live personality switch re-resolves the incoming personality's lessons",
     expect(update.systemPrompt).toContain("Vera knows this.");
     // The stored prompt stays memory-free so the ownership check keeps matching.
     expect(agent.config.systemPrompt).toBe("You are Vera.");
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("creation with an empty plugin runtime preserves Personality authority and unattended policy", async () => {
+  const harness = createHarness({
+    pluginLifecycle: new PluginRuntime(logger, "0.9.10"),
+    appendSystemPrompt: "Global instructions must stay suppressed.",
+    memoryBrief: "Personality memory remains available.",
+  });
+  try {
+    const profileSnapshot = buildSnapshot({ respectGlobalAppendPrompt: false });
+    const teamSnapshot = { teamId: "born-team", name: "Born team", teamPrompt: "Team frame." };
+    const agent = await harness.manager.createAgent(
+      {
+        provider: "codex",
+        cwd: harness.workdir,
+        systemPrompt: "You are Vera.",
+        profileSnapshot,
+        teamSnapshot,
+        workspaceAccess: "read",
+        unattended: true,
+      },
+      undefined,
+      { workspaceId: undefined },
+    );
+    expect(agent.config.profileSnapshot).toEqual(profileSnapshot);
+    expect(agent.config.teamSnapshot).toEqual(teamSnapshot);
+    expect(agent.config.workspaceAccess).toBe("read");
+    expect(agent.unattended).toBe(true);
+    expect(harness.spawnedPersonalityIds).toEqual([profileSnapshot.profileId]);
+    const launch = harness.client.lastSession!.config;
+    expect(launch.daemonAppendSystemPrompt).toBeUndefined();
+    expect(launch.systemPrompt).toContain("Personality memory remains available.");
+    expect(launch.systemPrompt).not.toContain("Global instructions must stay suppressed.");
   } finally {
     harness.cleanup();
   }

@@ -21,7 +21,7 @@
 //     let its own source be reclaimed would be a slower version of the same bug.
 //   * "Read what you WATCHED being written, never history" is now a turn latch
 //     rather than a render-time one. A turn is adopted only if this producer sees
-//     it RUNNING; anything else that lands in the buffers - the history page
+//     its identified turn OPEN; anything else that lands in the buffers - the history page
 //     fetched when you open the chat, a reconnect replaying the timeline, a
 //     catch-up after eviction - belongs to some other turn and is never spoken.
 //     Adopting also marks whatever that turn had already written as handled, so
@@ -31,12 +31,11 @@
 //
 // What it no longer waits for is the typewriter. A segment is speakable when the
 // model has moved past it, not when the reveal has finished drawing it - there is
-// no reveal at all for a chat that is not on screen. The two never visibly
-// diverge: the reveal paces in the thousands of characters per second while
-// synthesis answers in fractions of one, so the text is always already there by
-// the time the speaker reaches it.
+// no reveal at all for a chat that is not on screen. Audio synthesis and visual
+// presentation consume the same finished text independently.
 import { useEffect, useMemo, useRef } from "react";
 import { useSessionStore } from "@/stores/session-store";
+import { TURN_LIVENESS_IDLE } from "@/timeline/turn-liveness";
 import { useAgentStreamRetention } from "@/timeline/use-agent-stream-retention";
 import type { StreamItem } from "@/types/stream";
 import { finishedAssistantSegments } from "@/voice/auto-speech-segments";
@@ -47,53 +46,63 @@ const EMPTY_ITEMS: readonly StreamItem[] = [];
 /** One chat's auto-speech feed. Headless; mounted only while the mode is on. */
 export function ChatAutoSpeechSource({ serverId, agentId }: { serverId: string; agentId: string }) {
   useAgentStreamRetention(serverId, agentId);
-  const status = useSessionStore((state) => state.sessions[serverId]?.agents.get(agentId)?.status);
+  const turn = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    return (
+      session?.agents.get(agentId)?.turn ??
+      session?.agentDetails.get(agentId)?.turn ??
+      TURN_LIVENESS_IDLE
+    );
+  });
   const tail = useSessionStore((state) => state.sessions[serverId]?.agentStreamTail.get(agentId));
   const head = useSessionStore((state) => state.sessions[serverId]?.agentStreamHead.get(agentId));
 
-  const settledTurnKeyRef = useRef<string | null>(null);
-  // The turn this producer is reading, adopted only while it was RUNNING.
+  // The identified open turn this producer adopted after its first material arrived.
   const watchedTurnRef = useRef<string | null>(null);
   // Segments already offered from that turn. Reset with it, so it cannot grow
   // past one reply and an old segment can never fall out and be read twice.
   const handledRef = useRef(new Set<string>());
 
   useEffect(() => {
-    const running = status === "running";
-    const { turnKey, segments, settledTurnKey } = finishedAssistantSegments({
-      tail: tail ?? EMPTY_ITEMS,
-      head: head ?? EMPTY_ITEMS,
-      running,
-      settledTurnKey: settledTurnKeyRef.current,
-    });
-    settledTurnKeyRef.current = settledTurnKey;
+    const activeTurnId = turn.phase === "open" ? turn.turnId : null;
+    const watchedTurnId = watchedTurnRef.current;
+    const buffers = { tail: tail ?? EMPTY_ITEMS, head: head ?? EMPTY_ITEMS };
 
-    if (watchedTurnRef.current !== turnKey) {
-      if (!running) {
-        // A turn we never saw being written: history arriving, a reconnect
-        // replaying, a catch-up after eviction. Not ours to read.
-        return;
-      }
-      // Adopt it - and everything it had already written before we looked was
-      // written before the mode applied to it.
-      watchedTurnRef.current = turnKey;
-      handledRef.current = new Set(segments.map((segment) => segment.key));
-      return;
-    }
-
-    for (const segment of segments) {
-      if (handledRef.current.has(segment.key)) {
-        continue;
-      }
-      handledRef.current.add(segment.key);
-      autoSpeechQueue.enqueue({
-        groupId: segment.groupId,
-        serverId,
-        agentId,
-        text: segment.text,
+    // Flush the observed turn even when the next turn opens in the same store
+    // update as its final paragraph. Status and optimistic submission cannot
+    // make a completed turn start speaking again.
+    if (watchedTurnId !== null) {
+      const { segments } = finishedAssistantSegments({
+        ...buffers,
+        turnId: watchedTurnId,
+        activeTurnId,
       });
+      for (const segment of segments) {
+        if (handledRef.current.has(segment.key)) continue;
+        handledRef.current.add(segment.key);
+        autoSpeechQueue.enqueue({
+          groupId: segment.groupId,
+          serverId,
+          agentId,
+          text: segment.text,
+        });
+      }
     }
-  }, [agentId, head, serverId, status, tail]);
+
+    if (activeTurnId === null || activeTurnId === watchedTurnId) return;
+    // A source may mount before a reconnect/history snapshot arrives. Wait for
+    // material belonging to this turn before seeding the already-written set.
+    const belongsToActiveTurn = (item: StreamItem) =>
+      item.turnId === activeTurnId && !(item.kind === "user_message" && item.optimistic);
+    if (!buffers.tail.some(belongsToActiveTurn) && !buffers.head.some(belongsToActiveTurn)) return;
+    const { segments } = finishedAssistantSegments({
+      ...buffers,
+      turnId: activeTurnId,
+      activeTurnId,
+    });
+    watchedTurnRef.current = activeTurnId;
+    handledRef.current = new Set(segments.map((segment) => segment.key));
+  }, [agentId, head, serverId, tail, turn]);
 
   return null;
 }

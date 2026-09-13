@@ -4,7 +4,7 @@ import { View, Text } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { router } from "expo-router";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ChevronLeft, Trash2 } from "@/components/icons/material-icons";
+import { ChevronLeft, Trash2, Import } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { MenuHeader } from "@/components/headers/menu-header";
@@ -28,6 +28,7 @@ import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { useFetchQuery } from "@/data/query";
 import { formatFileSize } from "@/utils/format-file-size";
 import { useSessionStore } from "@/stores/session-store";
+import { useImportSession } from "@/hooks/use-import-session";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
 import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
 import { buildScheduleProjectTargets } from "@/schedules/schedule-project-targets";
@@ -98,6 +99,7 @@ export function SessionsScreen() {
 
 function SessionsScreenContent() {
   const { t } = useTranslation();
+  const importSession = useImportSession();
   const hosts = useHosts();
   const { projects } = useProjects();
   const preferredWorkspaceScope = usePreferredWorkspaceProjectScope();
@@ -413,6 +415,9 @@ function SessionsScreenContent() {
               Back
             </Button>
           ) : null}
+          <Button variant="ghost" leftIcon={Import} onPress={importSession.open}>
+            {t("importSession.title")}
+          </Button>
         </View>
       ) : null}
       {!isInitialLoad && !showLoadError && filteredAgents.length > 0 ? (
@@ -428,6 +433,7 @@ function SessionsScreenContent() {
           flat={isSearching}
         />
       ) : null}
+      {importSession.sheet}
     </View>
   );
 }

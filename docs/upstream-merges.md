@@ -1,13 +1,35 @@
 # Ingesting upstream Paseo changes
 
-Otto is a fork of [Paseo](https://github.com/getpaseo/paseo) with full upstream
-history preserved. The `upstream` remote points at the Paseo repo, so upstream
-changes are ingested with a normal `git merge` - plus a rebrand pass, because
-every upstream change that mentions "paseo" must be translated to Otto naming.
+Otto is a fork of [Paseo](https://github.com/getpaseo/paseo) with upstream
+history preserved. Integrate a frozen stable release into an isolated branch,
+starting from its architecture and understanding the reason for each change.
+Branding substitutions are a review aid, not a conflict-resolution strategy.
 
-The rebrand is purely rule-based (see `scripts/rebrand-upstream.pl`), which makes
-merges mechanical: when in doubt, take upstream's version of a hunk and re-run
-the rules on it.
+## Preserve features and reassess fixes
+
+Otto features are product contracts: provider-neutral tooling, Settings ownership
+and navigation, themes, typography, editor capabilities, and platform behavior.
+Keep these outcomes through narrow Otto-owned modules and explicit upstream hooks.
+A cache format, retry timer, inferred status, or loading workaround is an
+implementation choice. Reassess it when upstream changes its owner.
+
+For each textual conflict and clean semantic overlap:
+
+1. Read the stable source and change history to establish upstream intent.
+2. Identify the Otto behavior and its current source-backed acceptance scenario.
+3. Adopt the new upstream owner where it supplies that behavior, retiring the
+   superseded mechanism and duplicate state writers.
+4. Reapply a narrow fix only when evidence shows a remaining defect. Record
+   unresolved observations without inventing a compensating architecture.
+5. Verify the behavior through its live integration points. Tests should follow
+   current ownership; green tests, retained files, or historical counts alone do
+   not establish preservation.
+
+Chat loading, streaming, scheduling, and caching need particular scrutiny because
+layered fixes can destabilize the shared runtime. Do not remove a feature or
+weaken behavioral coverage to obtain green checks. Product tradeoffs need the
+user's decision. The historical decisions below are evidence to reassess, not
+instructions to preserve obsolete mechanisms.
 
 ## The naming map
 
@@ -76,75 +98,37 @@ commits: at the v0.2.5 baseline, main showed 442 commits and 838 overlapping
 files while the actual v0.4.0 target was 280 and 696. Size and triage the merge
 from the `--at` numbers, not the default ones.
 
-### 1. Resolve conflicts
+### 1. Resolve conflicts and clean overlaps
 
-For each conflicted file, prefer upstream's side of the hunk (it has their new
-logic), then re-apply the rebrand rules to that file:
+Use the frozen common ancestor, Otto baseline, and stable target to review each
+changed owner. Do not resolve a whole file with ours/theirs when it contains
+behavior changes. A clean auto-merge can still omit a provider mount, callback,
+protocol field, or lifecycle hook, so review those paths too.
 
-```bash
-git checkout --theirs <file>
-perl -CSD scripts/rebrand-upstream.pl <file>
-git add <file>
-```
+Keep an explicit disposition for additions, deletions, renames and retired fixes.
+Prefer upstream-owned state and small Otto-owned policy/projection modules; avoid
+parallel caches, event owners, or a replacement Settings/UI shell.
 
-Only hand-merge when Otto has made _functional_ (not naming) changes to the
-same lines.
+### 2. Review branding and compatibility boundaries
 
-### 2. Rebrand anything new
+The naming map describes Otto-owned product names. Apply substitutions only to
+reviewed paths, then inspect the result. Preserve upstream attribution, source
+links, licenses, external APIs, runtime import aliases and compatibility names.
+For example, plugin runtime aliases for `@getpaseo/*` and the manifest's
+`requirements.paseo` contract are intentional, distinct from Otto package naming.
+Do not change them merely to make a branding search empty.
 
-Upstream additions that didn't conflict can still carry paseo naming (new files,
-new env vars, new docs). Run the script over everything the merge touched:
+### 3. Audit before committing
 
-```bash
-git diff --name-only HEAD@{1} HEAD -- | xargs perl -CSD scripts/rebrand-upstream.pl
-```
+Search changed files for unintended product names, ports, orphaned consumers and
+unmounted providers. Treat matches as review candidates rather than automatic
+replacements. Keep old wire fields accepted under the protocol contract; gate new
+features once instead of implementing multiple legacy paths. Record retained
+compatibility shims with their version and removal boundary.
 
-Rename any new paseo-named files/dirs:
-
-```bash
-git ls-files | grep -i paseo   # then git mv each, applying Paseo->Otto / paseo->otto
-```
-
-### 3. Audit - must be clean before committing
-
-```bash
-git grep -ilE 'paseo|getpaseo' -- \
-  ':!LICENSE' ':!NOTICE' ':!README*' ':!CHANGELOG.md' \
-  ':!CLAUDE.md' ':!docs/upstream-merges.md' ':!docs/fork-release-guide.md' \
-  ':!scripts/rebrand-upstream.pl' \
-  ':!packages/website/src/components/landing-page.tsx' \
-  ':!packages/website/src/components/site-footer.tsx' \
-  ':!packages/website/src/routes/index.tsx' \
-  ':!packages/website/src/routes/sponsor.tsx' \
-  ':!packages/app/src/styles/theme.ts' \
-  ':!packages/app/src/utils/upstream-base-version.ts'
-```
-
-Expected output: **nothing**. The excluded files keep Paseo references on
-purpose:
-
-- `LICENSE`, `NOTICE`, and the README credits - AGPL attribution.
-- `CLAUDE.md`, `docs/upstream-merges.md`, `docs/fork-release-guide.md`, and
-  `scripts/rebrand-upstream.pl` - they document the fork relationship and the
-  rebrand rules themselves.
-- The website landing/footer/sponsor pages - public "built on Paseo" credit
-  and the sponsorship page pointing at upstream's author.
-- `packages/app/src/styles/theme.ts` - comments recording which themes are
-  inherited from upstream.
-- `packages/app/src/utils/upstream-base-version.ts` - the single source of the
-  upstream base name + version shown in Settings → About. It is Otto-only (so
-  the rebrand pass never touches it) and deliberately holds the "Paseo" literal
-  so the display code and i18n never have to. Bump its version in step 4 below.
-
-Anything outside this list must be Otto. If a merge adds a new intentional
-reference (e.g. more credit copy), add it to the exclusion list here in the
-same commit.
-
-Also check the port didn't sneak back:
-
-```bash
-git grep -n '\b6767\b' -- ':!*package-lock.json'
-```
+Review the actual imports, creation/lifecycle hooks, persistence, recovery and
+platform composition roots for every accepted feature. Compare upstream-owned
+divergence before and after extraction and explain remaining high-churn edits.
 
 And check that upstream's Hub subsystem is still inert. Hub is a **permanent
 exclusion** (see the standing decision below), but it landed anyway in the
@@ -203,7 +187,9 @@ npm run typecheck
 npm run lint
 ```
 
-Then merge the branch into `main`.
+Then complete the behavioral and platform acceptance review below. Keep the
+integration branch isolated until the user approves the concrete return-to-main
+proposal. Passing checks do not authorize merging, pushing, or publishing.
 
 ### 6. Prove no Otto module was orphaned
 

@@ -52,19 +52,22 @@ export interface AppUpdateRuntimeConfiguration {
   shouldAdmitUpdate(info: RuntimeUpdateInfo): boolean | Promise<boolean>;
   onUpdateAvailable(info: RuntimeUpdateInfo): void;
   onUpdateDownloaded(info: RuntimeUpdateInfo): void;
-  onUpdateNotAvailable(): void;
   onError(error: unknown): void;
+}
+
+export interface AppUpdateInstallRequest {
+  /** Runtime invokes this only once its platform-specific install is safe to quit. */
+  onBeforeQuit?: () => Promise<void>;
+  targetVersion: string;
+  isSilent: boolean;
+  isForceRunAfter: boolean;
 }
 
 export interface AppUpdateRuntime {
   configure(input: AppUpdateRuntimeConfiguration): void;
   checkForUpdates(): Promise<RuntimeUpdateCheckResult | null>;
-  downloadUpdate(): Promise<unknown>;
-  quitAndInstall(
-    isSilent: boolean,
-    isForceRunAfter: boolean,
-    onBeforeQuit?: () => Promise<void>,
-  ): void | Promise<void>;
+  downloadUpdate(targetVersion: string): Promise<unknown>;
+  quitAndInstall(input: AppUpdateInstallRequest): void | Promise<void>;
 }
 
 export interface AppUpdateService {
@@ -120,9 +123,11 @@ function buildCheckResult(input: {
 async function performQuitAndInstall(
   runtime: AppUpdateRuntime,
   {
+    targetVersion,
     onBeforeQuit,
     restart,
   }: {
+    targetVersion: string;
     onBeforeQuit?: () => Promise<void>;
     restart: boolean;
   },
@@ -134,7 +139,12 @@ async function performQuitAndInstall(
   // on the finish page as the only way back in. Otto has already told the user
   // it will restart itself and quit by then, so nobody is there to click Finish
   // and the update lands with the app dead. See docs/fork-release-guide.md.
-  await runtime.quitAndInstall(/* isSilent */ true, /* isForceRunAfter */ restart, onBeforeQuit);
+  await runtime.quitAndInstall({
+    targetVersion,
+    isSilent: true,
+    isForceRunAfter: restart,
+    onBeforeQuit,
+  });
 }
 
 function getErrorMessage(error: unknown): string {
@@ -160,18 +170,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
   let preparationError: { version: string; message: string } | null = null;
   let preparingUpdateVersion: string | null = null;
   let checkQueue: Promise<void> = Promise.resolve();
-  /**
-   * The version the most recent check was refused by the staged rollout, if any.
-   *
-   * The updater reports a rollout refusal as "no update available" - it has no
-   * separate signal for "exists, but you are not admitted yet". Those two are
-   * not interchangeable here: manual checks bypass the rollout on purpose, so an
-   * automatic recheck landing on a deferral must not retract an update the user
-   * has already been shown and is downloading. Set on every admission decision,
-   * cleared at the start of each check so it only ever describes that check.
-   */
-  let rolloutDeferredVersion: string | null = null;
-
   function isReadyToInstallVersion(version: string): boolean {
     return downloadedUpdateVersion === version;
   }
@@ -181,6 +179,24 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
     downloadedUpdateVersion = null;
     preparationError = null;
     preparingUpdateVersion = null;
+  }
+
+  function buildPreviouslyAdmittedUpdateResult(
+    currentVersion: string,
+    checkedInfo: RuntimeUpdateInfo,
+  ): AppUpdateCheckResult | null {
+    const info = cachedUpdateInfo;
+    if (!info || info.version === currentVersion || info.version !== checkedInfo.version) {
+      return null;
+    }
+
+    return buildCheckResult({
+      currentVersion,
+      hasUpdate: true,
+      readyToInstall: isReadyToInstallVersion(info.version),
+      info,
+      errorMessage: preparationError?.version === info.version ? preparationError.message : null,
+    });
   }
 
   function configureRuntime(releaseChannel: AppReleaseChannel, intent: AppUpdateCheckIntent): void {
@@ -201,7 +217,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
           now: deps.now(),
           bucket: await deps.bucket(),
         });
-        rolloutDeferredVersion = admitted ? null : info.version;
         return admitted;
       },
       onUpdateAvailable(info) {
@@ -223,21 +238,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
         if (preparationError?.version === info.version) {
           preparationError = null;
         }
-      },
-      onUpdateNotAvailable() {
-        // A rollout deferral arrives as this same event. Dropping the cached
-        // manifest here is what used to abandon an in-flight download.
-        // Electron-updater also emits this after it has finished downloading
-        // the offered release. That does not mean the running app is current:
-        // the downloaded installer remains the update we must offer until the
-        // app restarts into it.
-        if (
-          rolloutDeferredVersion !== null ||
-          (cachedUpdateInfo !== null && isReadyToInstallVersion(cachedUpdateInfo.version))
-        ) {
-          return;
-        }
-        clearUpdateState();
       },
       onError(error) {
         if (preparingUpdateVersion) {
@@ -261,29 +261,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
     return result;
   }
 
-  function getReadyDownloadedCheckResult(
-    currentVersion: string,
-    result: RuntimeUpdateCheckResult | null,
-  ): AppUpdateCheckResult | null {
-    const downloaded = cachedUpdateInfo;
-    if (
-      !downloaded ||
-      result?.updateInfo?.version !== downloaded.version ||
-      !isReadyToInstallVersion(downloaded.version)
-    ) {
-      return null;
-    }
-
-    return buildCheckResult({
-      currentVersion,
-      hasUpdate: true,
-      readyToInstall: true,
-      info: downloaded,
-      errorMessage:
-        preparationError?.version === downloaded.version ? preparationError.message : null,
-    });
-  }
-
   async function checkForAppUpdate({
     currentVersion,
     releaseChannel,
@@ -303,31 +280,25 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
 
     return runCheckExclusively(async () => {
       configureRuntime(releaseChannel, intent);
-      rolloutDeferredVersion = null;
 
       try {
         const result = await deps.runtime.checkForUpdates();
-        if (!result || !result.updateInfo || !result.isUpdateAvailable) {
-          // Once Electron has downloaded an update, later checks can report it
-          // as unavailable. Preserve that installer rather than turning a
-          // ready-to-install update into "You're up to date".
-          const readyDownload = getReadyDownloadedCheckResult(currentVersion, result);
-          if (readyDownload) return readyDownload;
+        if (!result || !result.updateInfo) {
+          clearUpdateState();
+          return buildCheckResult({
+            currentVersion,
+            hasUpdate: false,
+            readyToInstall: false,
+          });
+        }
 
-          // Deferred by the rollout, for the update we already validated and
-          // told the user about: keep offering it. An automatic check may add
-          // an update, never retract one - the manual check that surfaced it
-          // bypassed the rollout deliberately.
-          const deferred = cachedUpdateInfo;
-          if (deferred && rolloutDeferredVersion === deferred.version) {
-            return buildCheckResult({
-              currentVersion,
-              hasUpdate: true,
-              readyToInstall: isReadyToInstallVersion(deferred.version),
-              info: deferred,
-              errorMessage:
-                preparationError?.version === deferred.version ? preparationError.message : null,
-            });
+        if (!result.isUpdateAvailable) {
+          const admittedUpdate = buildPreviouslyAdmittedUpdateResult(
+            currentVersion,
+            result.updateInfo,
+          );
+          if (admittedUpdate) {
+            return admittedUpdate;
           }
 
           clearUpdateState();
@@ -423,7 +394,7 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       const attemptedVersion: string = preparingUpdateVersion ?? readyVersion;
       preparingUpdateVersion ??= readyVersion;
       try {
-        await deps.runtime.downloadUpdate();
+        await deps.runtime.downloadUpdate(attemptedVersion);
       } catch (error) {
         if (
           attemptedVersion !== readyVersion &&
@@ -486,7 +457,11 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
           message: "A newer update was found and will be installed later.",
         };
       }
-      await performQuitAndInstall(deps.runtime, { onBeforeQuit, restart });
+      await performQuitAndInstall(deps.runtime, {
+        targetVersion: readyVersion,
+        onBeforeQuit,
+        restart,
+      });
 
       return {
         installed: true,

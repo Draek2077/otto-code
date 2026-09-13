@@ -111,7 +111,7 @@ async function updateTrayAttention(status: FaviconStatus) {
 }
 
 export function useFaviconStatus() {
-  const { agents } = useAggregatedAgents();
+  const { agents } = useAggregatedAgents({ demand: !isNative });
   const workspaceStatuses = useWorkspaceStatusesForBadges();
   const [colorScheme, setColorScheme] = useState<ColorScheme>(getSystemColorScheme);
   const lastDockBadgeCountRef = useRef<number | undefined>(undefined);

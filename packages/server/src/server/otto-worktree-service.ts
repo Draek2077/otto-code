@@ -1,3 +1,4 @@
+import { getUntrustedWorktreeSource } from "../utils/otto-worktree-automation.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import { resolve } from "node:path";
 import {
@@ -109,7 +110,9 @@ async function createOttoWorktreeWithPriority(
     repoRoot: createdWorktree.repoRoot,
     worktree: createdWorktree.worktree,
     baseBranch: resolveIntentBaseBranch(createdWorktree.intent),
-    title: resolveFirstAgentPromptTitle(input.firstAgentContext),
+    title: input.title?.trim() || resolveFirstAgentPromptTitle(input.firstAgentContext),
+    expectsInitialAgent: Boolean(input.firstAgentContext),
+    untrustedSource: getUntrustedWorktreeSource(createdWorktree.intent),
     hidden: input.hidden ?? false,
     deps,
   });
@@ -307,6 +310,8 @@ async function upsertWorkspaceForWorktree(options: {
   inputCwd: string;
   /** The requested cwd mapped into the new worktree; may be a subdirectory of it. */
   workspaceCwd: string;
+  expectsInitialAgent?: boolean;
+  untrustedSource?: PersistedWorkspaceRecord["untrustedSource"];
   projectId?: string;
   repoRoot: string;
   worktree: WorktreeConfig;
@@ -369,12 +374,15 @@ async function upsertWorkspaceForWorktree(options: {
     }),
     title: options.title ?? null,
     hidden: options.hidden ?? false,
+    ...(options.untrustedSource ? { untrustedSource: options.untrustedSource } : {}),
     createdAt: now,
     updatedAt: now,
     archivedAt: null,
   });
 
-  await options.deps.workspaceRegistry.upsert(workspace);
+  await options.deps.workspaceRegistry.upsert(workspace, {
+    expectsInitialAgent: options.expectsInitialAgent,
+  });
   return (await options.deps.workspaceRegistry.get(workspace.workspaceId)) ?? workspace;
 }
 

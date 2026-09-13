@@ -1,0 +1,23 @@
+Otto connects your Android device to coding agents running on your computer or server. Read chats, send prompts, and answer agent questions without sitting at your desk.
+
+<b>Work with your coding environment</b>
+
+<ul>
+<li>Open projects and workspaces, and follow several agent chats</li>
+<li>Review changes, browse files, and edit code</li>
+<li>Answer questions and permission requests</li>
+<li>Use a terminal on the connected host</li>
+<li>Dictate prompts with the host's configured speech service</li>
+</ul>
+
+<b>Your host, your providers</b>
+
+Run the Otto daemon on your host and configure the providers you want to use. Otto supports coding agent CLIs and compatible cloud or local model endpoints. Available models and tools depend on that host's configuration.
+
+Connect directly to your host or use the optional end-to-end encrypted relay. Your selected model and speech providers determine where those requests are processed.
+
+Otto is a fork of Paseo with additional tools for cloud and local providers. The Android app is a client for the host; it does not install a coding agent or run a desktop development environment on your phone.
+
+Documentation: https://otto-code.me/docs
+Source and issues: https://github.com/Draek2077/otto-code
+Upstream Paseo: https://github.com/getpaseo/paseo

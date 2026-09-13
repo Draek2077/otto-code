@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useRouter, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
-import { Globe, SquarePen, SquareTerminal } from "lucide-react-native";
+import { Globe, SquarePen, SquareTerminal } from "@/components/icons/material-icons";
 import invariant from "tiny-invariant";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { resolvePluginIcon } from "@/plugins/icons";
@@ -57,6 +57,8 @@ export interface WorkspaceTabLaunchItem {
   panelKind: WorkspaceTabTarget["kind"];
   /** The compact Explorer New Tab surface may offer this supporting request. */
   explorerNewTab?: boolean;
+  /** The fixed view this item can toggle in a configuration menu, or null for launch-only items. */
+  toggleTarget: WorkspaceTabTarget | null;
   launch: (destination: WorkspaceTabLaunchDestination) => void;
 }
 
@@ -79,7 +81,7 @@ export function NewTabLauncherProvider({
   return <NewTabLauncherContext.Provider value={value}>{children}</NewTabLauncherContext.Provider>;
 }
 
-const BUILT_IN_SELECTIONS: Record<BuiltInLaunchItemId, NewTabSelection> = {
+const BUILT_IN_SELECTIONS = {
   agent: { kind: "agent" },
   terminal: { kind: "terminal" },
   changes: { kind: "target", target: { kind: "changes_tree" } },
@@ -88,7 +90,7 @@ const BUILT_IN_SELECTIONS: Record<BuiltInLaunchItemId, NewTabSelection> = {
   search: { kind: "target", target: { kind: "project_search" } },
   browser: { kind: "browser" },
   pullRequest: { kind: "target", target: { kind: "pull_request" } },
-};
+} satisfies Record<BuiltInLaunchItemId, NewTabSelection>;
 
 function getLaunchPresentation(kind: WorkspaceTabTarget["kind"]): PanelPresentation {
   const registration = getPanelRegistration(kind);
@@ -137,6 +139,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         shortcutActionId: "workspace-tab-target-agent",
         disabled: false,
         panelKind: "draft",
+        toggleTarget: null,
         launch: launchSelection(BUILT_IN_SELECTIONS.agent),
       },
       terminal: {
@@ -146,6 +149,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         shortcutActionId: "workspace-terminal-new",
         disabled: launcher.terminalDisabled,
         panelKind: "terminal",
+        toggleTarget: null,
         launch: launchSelection(BUILT_IN_SELECTIONS.terminal),
       },
       changes: {
@@ -154,6 +158,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         Icon: changesPresentation.icon,
         disabled: false,
         panelKind: "changes_tree",
+        toggleTarget: BUILT_IN_SELECTIONS.changes.target,
         hidden: !isDeveloperMode || !launcher.showChanges,
         launch: launchSelection(BUILT_IN_SELECTIONS.changes),
       },
@@ -164,6 +169,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         shortcutActionId: "workspace-tab-target-changes",
         disabled: false,
         panelKind: "working_diff",
+        toggleTarget: null,
         explorerNewTab: true,
         hidden: !isDeveloperMode || !launcher.showChanges,
         launch: launchSelection(BUILT_IN_SELECTIONS.diff),
@@ -175,6 +181,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         shortcutActionId: "workspace-tab-target-files",
         disabled: false,
         panelKind: "files",
+        toggleTarget: BUILT_IN_SELECTIONS.files.target,
         launch: launchSelection(BUILT_IN_SELECTIONS.files),
       },
       search: {
@@ -183,6 +190,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         Icon: searchPresentation.icon,
         disabled: false,
         panelKind: "project_search",
+        toggleTarget: BUILT_IN_SELECTIONS.search.target,
         explorerNewTab: true,
         // Search is available in both interface modes when the host supports it.
         hidden: !showProjectSearch,
@@ -195,6 +203,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         shortcutActionId: "workspace-tab-target-browser",
         disabled: false,
         panelKind: "browser",
+        toggleTarget: null,
         hidden: !launcher.showBrowser,
         launch: launchSelection(BUILT_IN_SELECTIONS.browser),
       },
@@ -204,6 +213,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
         Icon: pullRequestPresentation.icon,
         disabled: false,
         panelKind: "pull_request",
+        toggleTarget: null,
         hidden: !isDeveloperMode || !launcher.showPullRequest,
         launch: launchSelection(BUILT_IN_SELECTIONS.pullRequest),
       },
@@ -230,6 +240,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
           Icon: resolvePluginIcon(panel.icon),
           disabled: false,
           panelKind: "plugin",
+          toggleTarget: selection.target,
           launch: launchSelection(selection),
         });
       }
@@ -250,6 +261,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
           terminalIconKey: getTerminalProfileIcon(profile),
           disabled: launcher.terminalDisabled,
           panelKind: "terminal",
+          toggleTarget: null,
           launch: launchSelection({ kind: "terminal", profile }),
         })),
         accessory: {

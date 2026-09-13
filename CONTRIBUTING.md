@@ -10,6 +10,12 @@ Given Otto's scope, contributing to it takes a lot of context that is very hard 
 
 I pick what to build based on whether it fits the product, how many workflows it improves, whether it keeps things composable, whether we can hold the quality bar, and whether I want to build it.
 
+## Extension points
+
+Plugins can keep specialized integrations independently maintained. Start with the [plugin guide](public-docs/plugins/index.md) and [SDK guide](public-docs/sdk/index.md). If an extension point is missing, describe the workflow in [Discussions](https://github.com/Draek2077/otto-code/discussions).
+
+Otto also keeps provider-neutral capabilities in its core. Choose a narrow shared hook, adapter or plugin based on the behavior it owns. An upstream redesign is a reason to reassess an old fix, while retaining the product feature it served.
+
 ## Report bugs in GitHub issues
 
 Open an [issue](https://github.com/Draek2077/otto-code/issues). It is the only place I track things.
@@ -51,7 +57,8 @@ Here is the criteria I use to decide:
 - Links the bug it fixes, or the discussion behind it if there is one
 - Addresses bot reviews
 - Explains the problem you're solving
-- QA evidence
+- QA evidence, including loading states and interaction performance
+- Consistent behavior across affected platforms and providers
 - Automated tests
 - Screenshots or video for UI changes, on every affected platform
 - Says which platforms you tested and which you didn't
@@ -90,7 +97,7 @@ What's accepted:
 - A video of the whole interaction
 - Logs, requests, responses
 
-Bugs and features both need automated tests, and the tests have to exercise the real thing. UI changes need a video, or a screenshot if it's static.
+A bug regression test should fail on the broken behavior and pass on the repair. Bugs and features both need automated tests, and the tests have to exercise the real thing. UI changes need a video, or a screenshot if it's static.
 
 The [QA guide](docs/qa.md) covers what to check for each of these and the tooling to do it.
 

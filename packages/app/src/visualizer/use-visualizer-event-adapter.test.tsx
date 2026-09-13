@@ -91,6 +91,7 @@ const AGENT_DEFAULTS: Agent = {
   id: "agent",
   provider: "claude",
   status: "running",
+  turn: { phase: "open", turnId: null, startedAt: null, cancellationRequestId: null },
   createdAt: BASE_TIME,
   updatedAt: BASE_TIME,
   lastUserMessageAt: null,
@@ -1423,6 +1424,7 @@ describe("useVisualizerEventAdapter (stateful)", () => {
       replaceVisibleAgentIds,
       subscribe: () => () => {},
       getAgentTimelineStatus: () => "ready" as const,
+      getAgentTimelineError: () => null,
       retryVisibleAgentTimeline: vi.fn(),
     });
     setAgents([makeAgent({ id: "root-1", title: "My chat" })]);

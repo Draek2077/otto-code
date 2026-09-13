@@ -1385,3 +1385,10 @@ export function createTestAgentClients(
     opencode: new FakeAgentClient("opencode", options),
   };
 }
+
+export function createTestAgentClient(
+  provider: string,
+  options: TestAgentClientOptions = {},
+): AgentClient {
+  return new FakeAgentClient(provider, options);
+}

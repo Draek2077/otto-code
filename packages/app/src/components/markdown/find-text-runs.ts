@@ -47,6 +47,8 @@ function collectFromTokens(tokens: readonly MarkdownSourceToken[], runs: string[
 
 export interface RenderedTextRunOptions {
   text: string;
+  /** The exact parser used by this surface; documents use the shared default. */
+  markdownit?: typeof defaultMarkdownParser;
   /** Mirrors `MarkdownRenderer`'s own prop; false skips the html-ish split. */
   enableHtmlish: boolean;
   remoteImages?: HtmlishOptions["remoteImages"];
@@ -72,6 +74,7 @@ export function collectRenderedTextRuns({
   enableHtmlish,
   remoteImages,
   hasWorkspaceImages = false,
+  markdownit = defaultMarkdownParser,
 }: RenderedTextRunOptions): string[] {
   const recovered = recoverMisnestedMarkdownFence(text);
   const parts = enableHtmlish
@@ -86,7 +89,7 @@ export function collectRenderedTextRuns({
     if (part.kind !== "markdown" || part.text.length === 0) {
       continue;
     }
-    collectFromTokens(defaultMarkdownParser.parse(part.text, {}) as MarkdownSourceToken[], runs);
+    collectFromTokens(markdownit.parse(part.text, {}) as MarkdownSourceToken[], runs);
   }
   return runs;
 }

@@ -1,6 +1,10 @@
 # Adding a New Provider to Otto
 
-This guide walks through adding a new agent provider end-to-end. There are two integration patterns, and this doc covers both.
+This guide covers the built-in ACP and direct provider adapters. A provider can also be installed
+through the split plugin runtime without adding a built-in factory; see
+[plugin providers](../public-docs/plugins/v0.8/providers.md). Both enter the shared provider registry,
+catalog selection and session lifecycle. Native tool registration and the MCP adapter consume the
+same caller-filtered Otto tool catalog; a provider does not gain a separate policy owner.
 
 ## Provider-native session options
 
@@ -109,7 +113,9 @@ Existing direct providers: `claude` (in `providers/claude/agent.ts`), `codex` (`
 
 Claude first-party model metadata lives in `packages/server/src/server/agent/providers/claude/model-manifest.ts`. When adding or updating a Claude model, update that manifest only; the model picker thinking options and Claude-specific feature gates are derived from the manifest. Do not add model-specific Claude capability lists in feature code.
 
-Otto tools are not implemented as MCP tools internally. They live in a shared tool catalog under `packages/server/src/server/agent/tools/`; MCP is only the fallback adapter. A provider that can register runtime tools directly should set `supportsNativeOttoTools: true` and consume `launchContext.ottoTools` in `createSession`/`resumeSession`. When native tools are present, `AgentManager` strips the internal Otto MCP server from the provider launch config so the provider does not receive the same tools twice. Providers that only know MCP should keep `supportsMcpServers: true` and let the daemon inject `/mcp/agents`.
+Otto tools are not implemented as MCP tools internally. They live in a shared tool catalog under `packages/server/src/server/agent/tools/`; MCP is only the fallback adapter. The daemon resolves `agents.providers.<provider>.ottoTools` by the exact provider ID. The catalog policy belongs to the caller: it filters the tools exposed to the current agent. When that agent calls `create_agent`, the child receives the policy for the child provider ID; the caller's policy is not inherited.
+
+A provider that can register runtime tools directly should set `supportsNativeOttoTools: true` and consume the already-filtered `launchContext.ottoTools` in `createSession`/`resumeSession`. When native tools are present, `AgentManager` strips the internal Otto MCP server from the provider launch config so the provider does not receive the same tools twice. Providers that only know MCP should keep `supportsMcpServers: true` and let the daemon inject `/mcp/agents`; the MCP server builds the same policy-filtered catalog for that caller. Filtering is enforced at catalog registration in both paths. Browser tools remain subject to the daemon browser-tools setting and browser-host availability.
 
 ## Instruction files: `ownsContextPayload`
 
@@ -131,6 +137,8 @@ Pi model records expose input capabilities through `model.input`. Only send raw 
 
 Pi MCP support depends on the open-source `pi-mcp-adapter` extension being loaded for the agent cwd. Probe with Pi RPC `get_commands`; the adapter registers an extension command named `mcp` (often with `sourceInfo.source` containing `pi-mcp-adapter`). When Otto injects MCP servers into Pi, write a per-agent MCP config and pass it with `--mcp-config` instead of modifying user or project MCP files. Because that flag replaces the Pi global config layer, preserve the existing `<Pi agent dir>/mcp.json` in the generated file before overlaying injected servers. For local HTTP servers such as Otto's own `/mcp/agents` endpoint, explicitly disable adapter OAuth (`auth: false`, `oauth: false`) in the generated config.
 
+Pi control-plane RPCs wait 60 seconds by default. Override `params.rpcTimeoutMs` when extension or MCP startup on a slow host needs more time. Timeout errors name the pending RPC phase and report both elapsed time and the configured deadline. This setting does not govern long-running Pi compaction or Pi extension UI results. See [OMP profiles and Pi-compatible forks](custom-providers.md#omp-profiles-and-pi-compatible-forks) for OMP startup and RPC deadlines.
+
 Pi import discovery reads Pi's persisted JSONL session files because Pi RPC does not expose a recent-session listing command. Resume and full history hydration still go through `pi --mode rpc` using the session file as `nativeHandle`.
 
 OMP is a built-in Pi-compatible provider, disabled by default. It uses the `omp` command and imports terminal-started sessions from `~/.omp/agent/sessions` when enabled. Other Pi-compatible forks can still be custom providers that extend `pi`, override `command`, and set `params.sessionDir` to their JSONL session directory.
@@ -139,15 +147,17 @@ Pi and OMP currently use different RPC names for slash-command discovery. The Pi
 
 Pi RPC extension UI dialog requests (`select`, `input`, `editor`, `confirm`) are bridged into Otto question permissions and answered with `extension_ui_response`. Pi extensions such as `ask_user` may chain dialogs: for example, a `select` can be followed by an optional-comment `input`. When an `ask_user` tool call declares `allowComment: true`, Otto presents the selection and optional comment as one question permission, answers Pi's initial `select` immediately, then auto-answers the follow-up optional `input` with the comment the user already supplied (or an empty string). Preserve placeholders and optional/skip semantics for standalone optional inputs so the app can still distinguish "skip this optional input" from "cancel the whole dialog." Fire-and-forget extension UI requests such as notifications are intentionally ignored by the provider adapter unless Otto grows first-class UI for them.
 
-OpenCode MCP injection is dynamic and session-scoped. Call OpenCode's `mcp.add` endpoint with the MCP server config and do not follow it with `mcp.connect`; `connect` only toggles MCP servers already present in OpenCode's own config. New OpenCode versions return `McpServerNotFoundError`/404 for `connect` after a dynamic add because the server is not config-backed, while older versions silently swallowed the same missing-config path.
+OpenCode 1 keeps MCP and process environment outside the session boundary. Otto shares one OpenCode server for ordinary agents and installs a daemon-owned plugin through `OPENCODE_CONFIG_CONTENT`. The plugin reads the exact agent environment and caller-scoped Otto tool catalog from the daemon's private loopback bridge for each OpenCode session. Bridge context lives only in daemon memory and is removed when the Otto session closes. The content-addressed plugin artifact contains no session data or secrets.
+
+An agent with custom environment variables or user-configured MCP servers gets a dedicated OpenCode server. Keep that isolation until OpenCode exposes those values as session-owned configuration. Configure custom MCP with `mcp.add`; do not follow it with `mcp.connect`, which only toggles config-backed servers.
 
 OpenCode owns user message IDs. Do not pass Otto-generated IDs to OpenCode prompt APIs; let OpenCode create `msg*` IDs and record the user timeline item from the `message.updated` event.
 
 `AgentManager` owns the one canonical timeline row for a foreground prompt carrying a Otto `clientMessageId`. It records that row when `startTurn` accepts, with the wire `messageId` set to the same value. Provider adapters still emit their native user-message echo with the same `clientMessageId` when available; the manager records its provider identity on the internal row without changing or redispatching the wire item. If an adapter emits the echo before `startTurn` resolves, the manager records the provider identity with the row at acceptance. Provider adapters continue to own externally initiated user rows that have no Otto client identity. Do not perform global transcript text dedupe.
 
-Active-turn steering is an optional `AgentSession.steerActiveTurn` operation. The manager owns admission against its exact foreground turn, canonical user-message creation, echo reconciliation, and falls back to the normal interrupt-and-replace path only when the adapter reports `unavailable`. An adapter error leaves the steer's fate ambiguous and must surface without an interrupt or retry. Codex calls `turn/steer` with the native expected turn and Otto client user-message ID. Claude pushes an admitted steer into the exact active SDK query input; isolated control commands remain unavailable. OpenCode calls `session/prompt_async` with an OpenCode-generated message ID; the server queues the prompt while busy and the next LLM call in the same Otto turn includes it. A missing session reports `unavailable` and uses the normal interrupt fallback.
+Active-turn steering is an optional `AgentSession.steerActiveTurn` operation. The manager owns admission against its exact foreground turn, canonical user-message creation, echo reconciliation, and falls back to the normal interrupt-and-replace path only when the adapter reports `unavailable`. An adapter error leaves the steer's fate ambiguous and must surface without an interrupt or retry. Codex calls `turn/steer` with the native expected turn and Otto client user-message ID. Claude pushes an admitted steer into the exact active SDK query input; isolated control commands remain unavailable. OpenCode calls `session/prompt_async` with an OpenCode-generated message ID; the server queues the prompt while busy and the next LLM call in the same Otto turn includes it. Pi sends its native `steer` RPC, which queues the message for delivery after the in-flight assistant turn's tool calls. Slash-command inputs report `unavailable` because pi rejects extension commands on the steer path, and echo identity is correlated by message text because pi's steer RPC takes no message ID. A missing session reports `unavailable` and uses the normal interrupt fallback.
 
-A steering adapter also owes its interrupt: stopping a turn must discard the steers the provider has not read yet, or one of them resumes the turn the user just stopped. Codex clears pending input when it aborts a turn; Claude does not, so its adapter cancels the SDK messages it queued before calling `query.interrupt()`.
+A steering adapter also owes its interrupt: stopping a turn must discard the steers the provider has not read yet, or one of them resumes the turn the user just stopped. Codex clears pending input when it aborts a turn; Claude does not, so its adapter cancels the SDK messages it queued before calling `query.interrupt()`. Pi requires `clear_queue` before `abort`; older binaries without that RPC retain their native queue behavior until the pi compatibility floor reaches 0.84.4.
 
 `SteerActiveTurnOptions.clearPendingPermissions` makes permission release part of the provider contract. A provider that accepts such a steer queues it first, denies permissions blocking its delivery, and stops once the steer is read. Steers without the flag leave permissions open. A denied plan remains in the timeline because the pending card was the only other copy of its text.
 
@@ -198,7 +208,18 @@ Daemon bootstrap reconciles that ledger in the background, without blocking star
 
 ## Provider Snapshot Refresh Contract
 
-The daemon keeps provider snapshots per resolved working directory, with a separate semantic global scope for settings/provider management and requests that do not carry a cwd. Provider catalog probes receive a discriminated `FetchCatalogOptions`: `{ scope: "global", force }` for global catalog refreshes, or `{ scope: "workspace", cwd, force }` for project-scoped refreshes. Providers decide what global means for their runtime; do not infer global by comparing a cwd to the user's home directory.
+Provider snapshots are views of the catalogues needed for a target. Before looking up cached
+results or discovery in flight, the manager calls optional `AgentClient.getCatalogCacheKey(options)`.
+The provider owns equivalence: equal keys must mean the same availability, models and modes,
+including the effective configuration and execution environment. `force` does not change identity.
+Omitting the method or returning `undefined` keeps target-specific caching. Codex and Claude's
+current host clients share across directories; configured provider identities remain isolated.
+
+The key chooses storage, never execution. Availability and catalogue discovery receive the actual
+`{ scope: "global", force }` or `{ scope: "workspace", cwd, force }` request, including when another
+target can share its result. Runtime-aware adapters must use that target for both probing and key
+resolution. An explicit home-directory workspace is distinct from a semantic global request.
+Plugin callbacks follow the same contract; see [plugin providers](plugins.md#contribute-a-provider).
 
 `ProviderSnapshotManager` owns one refresh deadline per provider. The deadline starts before the
 availability check and covers that check plus the complete catalog probe. Providers that make
@@ -207,19 +228,43 @@ aborts the shared refresh signal at the deadline. Providers name active catalog 
 finish subprocess, server, or session cleanup before rejecting. Timeout errors list the operations
 that were still active when the deadline expired.
 
-Snapshot reads may probe providers only while the requested cwd scope is cold. Once an entry is warm, its `ready`, `error`, or `unavailable` state stays cached until an explicit refresh. Do not add TTL revalidation, focus-triggered refreshes, selector-open refreshes, or config-reload refreshes. Selector-open refetches may read an already-loading or stale React Query, but they must not force provider probing on their own.
+Catalogue results stay cached by identity until explicit refresh or a change to that provider's configuration.
+Keys are resolved on each read so project configuration can select a different cached catalogue.
+Selector opening may read a loading or stale query, but does not force provider probing.
 
-Capable clients receive a compact, content-addressed snapshot. Model rows derive their provider from the containing entry and reference snapshot-level thinking sets. The app persists that compact shape per server and cwd, then sends its hash on the next pull; an unchanged response carries no catalog body. Keep the legacy encoding for clients without the capability. The hash covers the complete client-visible compact snapshot, including status and `fetchedAt`, so explicit refreshes invalidate it even when the discovered catalog is otherwise equal.
+Saved provider/model choices are user intent. Catalogue failure must not erase them or substitute
+another model. Creation reads the caller's host and directory directly; an earlier global snapshot
+must not settle a project form's initial selection.
 
-Settings refresh is the user-facing "forget stale provider knowledge everywhere" action. A settings refresh clears provider snapshot caches and in-flight loads across all cwd scopes, then immediately refreshes only the global snapshot with `force: true`. Workspace snapshots are re-probed lazily on the next scoped read; do not fan out a settings refresh across every known workspace.
+The server's provider keys never cross the wire. Clients advertising `provider_snapshot_references`
+receive directory-to-hash announcements; an unknown hash uses the existing snapshot request.
+The manager detaches each fresh result once and publishes its content identity with the entry;
+readers share these values read-only. Each target keeps its published snapshot until membership,
+content or discovery freshness changes. All affected targets commit before subscribers run;
+subscriber failures are logged without changing discovery or configuration outcomes.
+The session compares both sides of a committed transition under the client's current visibility
+policy and sends only visible changes. It combines result identities with the client's encoding
+and icon policy, without traversing models. Reference hashes exclude freshness;
+legacy embedded hashes include it. Only responses that send a body compact the catalogue.
+Per-provider `fetchedAt` travels separately for reference clients and still means when discovery succeeded. `generatedAt`
+remains the time the response or announcement was generated. Refresh keeps settled entries visible
+until the next result, so unchanged discovery sends freshness without another model body.
 
-Registry/config replacement may update visible metadata such as label, description, default mode, enabled state, and provider membership, but it must not spawn provider processes. If a provider needs to be re-probed after a config change, route that through the explicit settings refresh path.
+The app's snapshot cache owns compact expansion and stores one body per server/hash, with separate
+directory/hash/freshness records under the same byte budget. Missing bodies share a React Query
+request; directory queries cancel superseded pulls before accepting pushes. Default SDK clients
+keep expanded entries and full updates. Only callers that own materialization opt into wire snapshots.
+Keep the full encoding for older clients; compact-snapshot support alone does not imply reference support.
 
-There is exactly one carve-out: a provider that is **newly registered** (no entry in any materialized snapshot) is probed in every snapshot as soon as the registry rebuild lands. This is not a cache revalidation, because there is no cached knowledge to preserve. Reconciliation can only seed a brand-new provider as `unavailable`, and the model picker hides providers in a failed state, so without the probe a freshly added provider shows its models in Settings (which refreshes the global scope explicitly) while being invisible in every workspace's picker until something unrelated forced a re-probe. The carve-out is scoped by `getUnprobedProviderIds`: a provider that already has an entry anywhere keeps its cached state.
+Settings refresh invalidates requested providers across known targets and refreshes them in their
+actual execution context, so every connected client receives the refreshed view. Discovery shares
+work by provider key and admits at most four concurrent catalogue probes per configured provider, so a stalled provider does not block discovery for others. Configuration replacement invalidates
+only changed providers; unchanged entries, clients, and discovery in flight survive. Preparation
+leaves installed reads untouched until commit. Plugin replacement uses registration runtime
+identity, so unchanged registrations and builtins keep their results. Await the refresh or warmup
+promise for completion: equal results, including equal discovery timestamps, emit no transition.
 
-A provider whose availability the daemon itself owns must also push its own re-probes. `otto-brain` is the case in the tree: the daemon starts and stops that host, so `BrainManager` calls `ProviderSnapshotManager.refreshProviderEverywhere("otto-brain")` whenever reachability changes. Without it the Providers row keeps claiming "available" after the operator stopped the host from the same screen.
-
-Boundary tests should assert observable behavior: cold reads may call provider availability/model/mode discovery for that scope; warm reads and registry replacement must not; explicit workspace refreshes affect only one cwd; settings refresh wipes all scopes but immediately refreshes only global.
+A provider whose availability the daemon itself owns must also push its own re-probes. `otto-brain` is the case in the tree: the daemon starts and stops that host, so the Brain state callback in `bootstrap.ts` calls `ProviderSnapshotManager.refreshProviderEverywhere("otto-brain")` whenever reachability changes. Without it the Providers row keeps claiming "available" after the operator stopped the host from the same screen.
 
 ---
 
@@ -613,7 +658,7 @@ Tests use `isProviderAvailable(provider)` to skip when the binary or credentials
 
 **`defaultCommand` is a tuple.** The first element is the binary name, the rest are default arguments. The base class uses this to find the executable and spawn the process.
 
-**Runtime settings can override the command.** Users can configure custom binary paths or environment variables per provider via `ProviderRuntimeSettings`. Your factory in the registry should pass `runtimeSettings?.["your-provider"]` through to the constructor.
+**Runtime settings can override the command.** Users can configure custom binary paths or environment variables per provider via `ProviderRuntimeSettings`. The registry passes the selected provider's runtime settings to its factory; pass that slice through to the constructor without indexing it by provider ID again.
 
 **Session-scoped cancellation needs a stop boundary inside the provider.** Some agents cancel the whole session rather than one turn: OpenCode's `session.abort` is the example. A cancel that is still in flight when the next run starts will kill that replacement run, which is what makes "stop, then immediately prompt again" (`replaceRunning`, `notifyOnFinish` wakes, schedules) flaky. Own this in the provider session, not in `AgentManager`:
 

@@ -28,6 +28,10 @@ test("chooses a metadata model and can return to automatic selection", async ({
   await openMetadataGenerationSettings(page);
 
   await expect(page.getByTestId("metadata-generation-settings")).toBeVisible();
+  // The section explains itself through the header's info tooltip, not a paragraph.
+  await expect(page.getByTestId("metadata-generation-settings-info")).toHaveAccessibleName(
+    "About Metadata generation",
+  );
   await expect(page.getByRole("button", { name: "Automatic", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",

@@ -1,7 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import tsConfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
+  plugins: [tsConfigPaths()],
   test: {
     alias: {
       // `cloudflare:workers` only exists inside the Workers runtime; point it

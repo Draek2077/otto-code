@@ -82,7 +82,7 @@ const DISABLED_STATUS: HubRelationshipStatus = {
   state: "not_connected",
   daemonId: null,
   hubOrigin: null,
-  scopes: [],
+  permissions: [],
   connectedAt: null,
   lastError: null,
 };
@@ -106,7 +106,15 @@ export class HubRelationshipController implements HubRelationshipManagement {
     return { ...DISABLED_STATUS };
   }
 
-  async connect(_input: { hubUrl: string; token: string }): Promise<HubRelationshipStatus> {
+  async connect(
+    _input: Parameters<HubRelationshipManagement["connect"]>[0],
+  ): Promise<HubRelationshipStatus> {
+    throw hubDisabled();
+  }
+
+  async updatePermissions(
+    _input: Parameters<HubRelationshipManagement["updatePermissions"]>[0],
+  ): Promise<HubRelationshipStatus> {
     throw hubDisabled();
   }
 
@@ -120,6 +128,12 @@ export class HubRelationshipController implements HubRelationshipManagement {
 
 export class DirectHubRelationshipRemote implements HubRelationshipRemote {
   async enroll(_input: HubEnrollment): Promise<HubEnrollmentResult> {
+    throw hubDisabled();
+  }
+
+  async updatePermissions(
+    _input: Parameters<HubRelationshipRemote["updatePermissions"]>[0],
+  ): Promise<{ permissions: string[] }> {
     throw hubDisabled();
   }
 

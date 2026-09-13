@@ -118,15 +118,16 @@ function SubagentsPillRow({
   const presentation = useMemo<WorkspaceTabPresentation>(
     () => ({
       ...buildSubagentRowPresentationData(row),
-      icon: getProviderIcon(row.provider),
+      modified: false,
+      icon: getProviderIcon(row.provider, serverId),
       provider: row.provider,
       personalitySpinner: row.kind === "otto" ? (row.personalitySpinner ?? null) : null,
     }),
-    [row],
+    [row, serverId],
   );
   const label =
     presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
-  const running = isSubagentRowRunning(row.status);
+  const running = isSubagentRowRunning(row);
   const tokenLabel = row.kind === "otto" ? formatCompactTokenCount(row.cumulativeTokens) : null;
   const toolUseLabel = row.kind === "otto" ? formatSubagentToolUseCount(row.toolUseCount) : null;
   const currentTool = row.kind === "otto" ? formatSubagentCurrentTool(row.currentTool) : null;

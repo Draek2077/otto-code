@@ -1,17 +1,11 @@
-// Specifiers a plugin author can import to reach the SDK. The daemon never resolves these
-// from disk: the compiler marks them external and the plugin subprocess hands back its own
-// runtime, so a plugin typechecks against generated declarations without installing anything.
-//
-// COMPAT(plugin-sdk-scope): @otto/plugin was the SDK name through 0.5.0-beta.1 and was never
-// published — that scope is not ours. Plugins scaffolded against that name still import it, so
-// both spellings resolve. Remove the @otto/* entries after 2026-11-19.
-export const PLUGIN_SDK_SPECIFIERS = [
-  "@otto-code/plugin",
-  "@otto-code/plugin/server",
-  "@otto/plugin",
-  "@otto/plugin/server",
-] as const;
-
-export function isPluginSdkSpecifier(name: string): boolean {
-  return (PLUGIN_SDK_SPECIFIERS as readonly string[]).includes(name);
-}
+// Shared author identities; compiler and app/server runtime maps use one table.
+export {
+  PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS,
+  PLUGIN_SDK_SPECIFIERS,
+  resolvePluginSdkSpecifier,
+  isPluginSdkSpecifier,
+  isPluginHostSdkSpecifier,
+  isPluginClientOnlySdkSpecifier,
+  isPluginServerOnlySdkSpecifier,
+  type PluginSdkNamespace,
+} from "@otto-code/plugin";

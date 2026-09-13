@@ -53,6 +53,7 @@ export interface AgentScreenMachineInput {
   isHistorySyncing: boolean;
   needsAuthoritativeSync: boolean;
   visibilityCatchUpStatus: ViewedTimelineStatus;
+  visibilityCatchUpError: string | null;
   continuity: AgentScreenContinuity;
   hasHydratedHistoryBefore: boolean;
 }
@@ -87,8 +88,7 @@ export type AgentScreenReadySyncState =
       status: "catching_up";
       ui: "overlay" | "silent";
     }
-  | { status: "sync_error"; isRetrying: boolean }
-  | { status: "sync_missing" };
+  | { status: "sync_error"; isRetrying: boolean };
 
 export type AgentScreenViewState =
   | {
@@ -120,6 +120,13 @@ function updateInitialSyncFailureMemory(args: {
     args.nextMemory.hadInitialSyncFailure = false;
   }
   if (args.input.missingAgentState.kind === "error" && !args.input.hasHydratedHistoryBefore) {
+    args.nextMemory.hadInitialSyncFailure = true;
+  }
+  if (
+    args.input.visibilityCatchUpStatus === "error" &&
+    args.input.visibilityCatchUpError &&
+    !args.input.hasHydratedHistoryBefore
+  ) {
     args.nextMemory.hadInitialSyncFailure = true;
   }
 }
@@ -181,11 +188,6 @@ function resolveAgentScreenSync(args: {
   if (input.missingAgentState.kind === "error") {
     return { status: "sync_error", isRetrying: input.visibilityCatchUpStatus === "retrying" };
   }
-  // The host answered, and the answer was that the chat is gone. That is a
-  // settled fact, not a failed attempt, so it never presents as a retry.
-  if (input.visibilityCatchUpStatus === "missing") {
-    return { status: "sync_missing" };
-  }
   if (input.visibilityCatchUpStatus === "error" || input.visibilityCatchUpStatus === "retrying") {
     return { status: "sync_error", isRetrying: input.visibilityCatchUpStatus === "retrying" };
   }
@@ -241,6 +243,21 @@ export function deriveAgentScreenViewState({
       state: {
         tag: "error",
         message: input.missingAgentState.message,
+      },
+      memory: nextMemory,
+    };
+  }
+
+  if (
+    input.visibilityCatchUpStatus === "error" &&
+    input.visibilityCatchUpError &&
+    !input.hasHydratedHistoryBefore &&
+    !nextMemory.hasRenderedReady
+  ) {
+    return {
+      state: {
+        tag: "error",
+        message: input.visibilityCatchUpError,
       },
       memory: nextMemory,
     };

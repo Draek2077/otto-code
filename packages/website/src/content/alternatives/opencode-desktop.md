@@ -19,8 +19,8 @@ Pick OpenCode Desktop if you want the OpenCode app, the OpenCode terminal workfl
 
 Pick Otto if you want:
 
-- A native iOS and Android app
-- OpenCode beside Claude Code, Codex, Copilot, Pi, and 30+ more agents
+- Android and web access from mobile devices
+- OpenCode beside Claude Code, Codex, Copilot, Pi, and additional agents through the catalog
 - First-party harnesses for Claude Code and Codex instead of one agent runtime for everything
 - A self-hosted daemon you can run on a laptop, VM, or dev server
 - GitHub PRs, checks, reviews, and merges in the app
@@ -36,7 +36,7 @@ OpenCode Desktop is the desktop app for OpenCode. OpenCode is available as a ter
 
 OpenCode is a multi-model coding agent. It can connect to many LLM providers through its own provider system, including OpenCode Zen, local models, and API providers.
 
-Otto is multi-provider at the agent harness layer. It runs OpenCode, Claude Code, Codex, and Pi natively, plus 30+ more agents through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/docs/supported-providers).
+Otto is multi-provider at the agent harness layer. It runs OpenCode, Claude Code, Codex, and Pi natively, plus additional agents through the catalog through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
 
 ## Desktop platforms
 
@@ -44,7 +44,7 @@ Both tools ship on macOS, Linux, and Windows.
 
 ## Mobile
 
-Otto ships native iOS and Android apps with the same agent workflow as the desktop app.
+Otto ships Android and web access from mobile devices with the same agent workflow as the desktop app.
 
 OpenCode Desktop is a desktop app. OpenCode also has web and share-link workflows, but not a native mobile app.
 
@@ -95,22 +95,29 @@ Otto supports dictation and realtime voice mode. Speech-to-text and text-to-spee
 
 ## Comparison
 
-|                              | Otto                                                            | OpenCode Desktop                |
-| ---------------------------- | --------------------------------------------------------------- | ------------------------------- |
-| License                      | Open source (AGPL-3.0)                                          | Open source                     |
-| Desktop platforms            | macOS, Linux, Windows                                           | macOS, Linux, Windows           |
-| Native mobile                | iOS, Android                                                    | No                              |
-| Agent harnesses              | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | OpenCode                        |
-| Multi-model support          | Through supported agent harnesses                               | Through OpenCode providers      |
-| Git worktrees                | Yes                                                             | No built-in worktree manager    |
-| Per-worktree dev server URLs | Yes                                                             | No                              |
-| Split panes and tabs         | Yes                                                             | Desktop sessions                |
-| In-app terminal              | Yes                                                             | OpenCode terminal workflow      |
-| In-app browser               | Yes                                                             | No                              |
-| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                        | GitHub integration              |
-| CLI                          | Run, `--host`, ls, send, schedule, loop                         | OpenCode CLI                    |
-| MCP server for orchestration | Yes                                                             | MCP support inside OpenCode     |
-| Local voice                  | Yes                                                             | No                              |
-| Self-hosted daemon           | Yes                                                             | OpenCode server / local runtime |
+|                              | Otto                                                    | OpenCode Desktop                |
+| ---------------------------- | ------------------------------------------------------- | ------------------------------- |
+| License                      | Open source (AGPL-3.0)                                  | Open source                     |
+| Desktop platforms            | macOS, Linux, Windows                                   | macOS, Linux, Windows           |
+| Native mobile                | Android; web app on iOS                                 | No                              |
+| Agent harnesses              | Claude Code, Codex, OpenCode, Pi + ACP catalog + custom | OpenCode                        |
+| Multi-model support          | Through supported agent harnesses                       | Through OpenCode providers      |
+| Git worktrees                | Yes                                                     | No built-in worktree manager    |
+| Per-worktree dev server URLs | Yes                                                     | No                              |
+| Split panes and tabs         | Yes                                                     | Desktop sessions                |
+| In-app terminal              | Yes                                                     | OpenCode terminal workflow      |
+| In-app browser               | Yes                                                     | No                              |
+| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                | GitHub integration              |
+| CLI                          | Run, `--host`, ls, send, schedule, loop                 | OpenCode CLI                    |
+| MCP server for orchestration | Yes                                                     | MCP support inside OpenCode     |
+| Local voice                  | Yes                                                     | No                              |
+| Self-hosted daemon           | Yes                                                     | OpenCode server / local runtime |
 
 See also: [Otto vs Codex App](/alternatives/codex-app), [Otto vs Claude Desktop](/alternatives/claude-desktop), [Otto vs OpenChamber](/alternatives/openchamber).
+
+## Application extensions
+
+[Otto plugins](/docs/plugins) extend the application through client and server APIs: providers,
+workspace panels, commands, settings, and chat components. Otto also retains its shared tools for
+cloud and local providers. Android builds and the web app are available from [Downloads](/download);
+this fork does not currently publish an iOS App Store build.

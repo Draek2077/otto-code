@@ -9,7 +9,12 @@ import { isAgentArchiving, setAgentArchiving } from "@/hooks/use-archive-agent";
 import { queryClient } from "@/data/query-client";
 import { useClearedSubagentTokensStore } from "@/subagents/cleared-subagent-tokens-store";
 import { createUserMessage } from "@/types/stream";
-import { applyAgentDirectoryDelta, replaceFetchedAgentDirectory } from "./agent-directory-sync";
+import { AgentStoreProjection } from "@/runtime/directory-sync/internal/agent-store";
+import { AgentDirectoryReplica } from "@/runtime/directory-sync/agent-replica";
+import {
+  createWorkspaceAgentVisibilitySelector,
+  workspaceAgentVisibilityEqual,
+} from "@/workspace-tabs/agent-visibility";
 
 function createAgentPayload(
   input: Partial<Omit<AgentSnapshotPayload, "labels">> & {
@@ -38,6 +43,7 @@ function createAgentPayload(
     availableModes: input.availableModes ?? [],
     pendingPermissions: input.pendingPermissions ?? [],
     persistence: input.persistence ?? null,
+    lastUsage: input.lastUsage,
     title: input.title ?? null,
     labels: input.labels ?? {},
     archivedAt: input.archivedAt ?? null,
@@ -81,79 +87,59 @@ function beginPendingSubmission(serverId: string, agentId: string): string {
   return clientMessageId;
 }
 
-function applyAgentStatus(input: {
-  serverId: string;
-  agentId: string;
-  status: AgentSnapshotPayload["status"];
-  updatedAt: string;
-  lastUserMessageAt?: string;
-}): void {
-  const agent = createAgentPayload({
-    id: input.agentId,
-    status: input.status,
-    updatedAt: input.updatedAt,
-    lastUserMessageAt: input.lastUserMessageAt ?? null,
-  });
-  applyAgentDirectoryDelta({
-    serverId: input.serverId,
-    delta: { kind: "upsert", agent, project: createEntry(agent).project },
-  });
-}
-
-describe("turn liveness authority", () => {
+describe("message submission authority", () => {
   it("normalizes old-daemon status into the shared activity replica", () => {
     const serverId = "server-turn-liveness";
     const agentId = "agent-1";
     const startedAt = "2026-07-27T10:00:01.000Z";
     const store = useSessionStore.getState();
-    store.initializeSession(serverId, null as unknown as DaemonClient);
-    applyAgentStatus({ serverId, agentId, status: "idle", updatedAt: startedAt });
-
-    applyAgentStatus({
-      serverId,
-      agentId,
-      status: "running",
-      updatedAt: "2026-07-27T10:00:02.000Z",
-      lastUserMessageAt: startedAt,
-    });
-    expect(store.getSession(serverId)?.agentTurnLiveness.get(agentId)).toEqual({
+    store.initializeSession(serverId, null);
+    const projection = new AgentStoreProjection(serverId);
+    for (const [status, updatedAt] of [
+      ["idle", startedAt],
+      ["running", "2026-07-27T10:00:02.000Z"],
+    ] as const) {
+      const agent = createAgentPayload({
+        id: agentId,
+        status,
+        updatedAt,
+        lastUserMessageAt: startedAt,
+      });
+      projection.applyDelta({ kind: "upsert", agent, project: createEntry(agent).project });
+    }
+    expect(store.getSession(serverId)?.agents.get(agentId)?.turn).toEqual({
       phase: "open",
       turnId: null,
       startedAt: new Date(startedAt),
       cancellationRequestId: null,
     });
-
-    applyAgentStatus({
-      serverId,
-      agentId,
+    const settled = createAgentPayload({
+      id: agentId,
       status: "idle",
       updatedAt: "2026-07-27T10:00:03.000Z",
     });
-
-    expect(store.getSession(serverId)?.agentTurnLiveness.has(agentId)).toBe(false);
+    projection.applyDelta({
+      kind: "upsert",
+      agent: settled,
+      project: createEntry(settled).project,
+    });
+    expect(store.getSession(serverId)?.agents.get(agentId)?.turn).toEqual({
+      phase: "idle",
+      cancellationRequestId: null,
+    });
     store.clearSession(serverId);
   });
-});
-
-describe("message submission authority", () => {
   it("does not settle a submission from an unrelated running transition", () => {
     const serverId = "server-running-is-not-submission-ack";
     const agentId = "agent-1";
     const store = useSessionStore.getState();
     store.initializeSession(serverId, null as unknown as DaemonClient);
-    applyAgentStatus({
-      serverId,
-      agentId,
-      status: "idle",
-      updatedAt: "2026-07-27T10:00:00.000Z",
-    });
     const clientMessageId = beginPendingSubmission(serverId, agentId);
-
-    applyAgentStatus({
-      serverId,
-      agentId,
-      status: "running",
-      updatedAt: "2026-07-27T10:00:01.000Z",
+    const agent = createAgentPayload({ id: agentId, status: "running" });
+    new AgentStoreProjection(serverId).applyDelta({
+      kind: "upsert",
+      agent,
+      project: createEntry(agent).project,
     });
 
     expect(useSessionStore.getState().sessions[serverId]?.messageSubmissions.get(agentId)).toEqual([
@@ -171,12 +157,6 @@ describe("message submission authority", () => {
     const agentId = "agent-1";
     const store = useSessionStore.getState();
     store.initializeSession(serverId, null as unknown as DaemonClient);
-    applyAgentStatus({
-      serverId,
-      agentId,
-      status: "idle",
-      updatedAt: "2026-07-27T10:00:00.000Z",
-    });
     const clientMessageId = beginPendingSubmission(serverId, agentId);
     store.setAgentStreamState(serverId, agentId, {
       tail: [
@@ -208,40 +188,103 @@ describe("message submission authority", () => {
   });
 });
 
-describe("repeated identical snapshots", () => {
-  // Measured 2026-08-23: a daemon re-broadcasting an unchanged 35KB running-agent
-  // snapshot every ~1.4s cost an 85-148ms frame per broadcast, all of it React
-  // re-rendering fanned out from no-op store writes. Identity preservation is
-  // what keeps those writes from happening; this pins it across the whole path.
-  it("preserves store identity when a daemon re-broadcasts an unchanged snapshot", () => {
+describe("repeated directory updates", () => {
+  it("keeps viewed content and submissions while notifying a real turn close only once", () => {
     const serverId = "server-identical-rebroadcast";
+    const agentId = "agent-1";
+    const workspaceId = "workspace-repeat";
     const store = useSessionStore.getState();
-    store.initializeSession(serverId, null as unknown as DaemonClient);
+    store.initializeSession(serverId, null);
+    const stopped: string[] = [];
+    const replica = new AgentDirectoryReplica(
+      serverId,
+      (id) => stopped.push(id),
+      () => {},
+    );
+    const agent: AgentSnapshotPayload = {
+      ...createAgentPayload({
+        id: agentId,
+        status: "running",
+        pendingPermissions: [permission("perm-1")],
+      }),
+      workspaceId,
+      activeTurn: { turnId: "turn-1", startedAt: "2026-08-23T00:00:00.000Z" },
+    };
+    const apply = (value: AgentSnapshotPayload) =>
+      replica.applyDelta({ kind: "upsert", agent: value, project: createEntry(value).project });
+    apply(agent);
+    beginPendingSubmission(serverId, agentId);
+    store.setAgentStreamState(serverId, agentId, {
+      tail: [
+        createUserMessage({
+          id: "visible-message",
+          text: "Already visible",
+          timestamp: new Date(0),
+        }),
+      ],
+    });
+    const before = store.getSession(serverId)!;
+    const selectVisibility = createWorkspaceAgentVisibilitySelector({ serverId, workspaceId });
+    const visibility = selectVisibility(useSessionStore.getState());
+    expect(visibility.autoOpenAgentIds.has(agentId)).toBe(true);
+
+    // Directory snapshots are metadata. Replaying them must not reset the
+    // independently owned viewed transcript/submission or reopen workspace tabs.
+    for (let repeat = 0; repeat < 3; repeat += 1) {
+      apply(JSON.parse(JSON.stringify(agent)) as AgentSnapshotPayload);
+      const after = store.getSession(serverId)!;
+      expect(after.agentStreamTail.get(agentId)).toBe(before.agentStreamTail.get(agentId));
+      expect(after.messageSubmissions.get(agentId)).toBe(before.messageSubmissions.get(agentId));
+      expect(
+        Array.from(after.pendingPermissions.values()).map(({ request }) => request.id),
+      ).toEqual(["perm-1"]);
+      expect(
+        workspaceAgentVisibilityEqual(visibility, selectVisibility(useSessionStore.getState())),
+      ).toBe(true);
+    }
+    expect(stopped).toEqual([]);
+
+    const settled: AgentSnapshotPayload = { ...agent, status: "idle", activeTurn: null };
+    apply(settled);
+    apply(JSON.parse(JSON.stringify(settled)) as AgentSnapshotPayload);
+    expect(stopped).toEqual([agentId]);
+    expect(store.getSession(serverId)?.messageSubmissions.get(agentId)).toBe(
+      before.messageSubmissions.get(agentId),
+    );
+    store.clearSession(serverId);
+  });
+
+  it("accepts changed title and permission contents even when updatedAt is unchanged", () => {
+    const serverId = "server-equal-timestamp-change";
+    const store = useSessionStore.getState();
+    store.initializeSession(serverId, null);
+    const replica = new AgentDirectoryReplica(
+      serverId,
+      () => {},
+      () => {},
+    );
     const agent = createAgentPayload({
       id: "agent-1",
-      status: "running",
-      lastUserMessageAt: "2026-08-23T00:00:00.000Z",
+      title: "Before",
       pendingPermissions: [permission("perm-1")],
     });
-    applyAgentDirectoryDelta({
-      serverId,
-      delta: { kind: "upsert", agent, project: createEntry(agent).project },
-    });
-    const before = useSessionStore.getState().sessions[serverId];
-
-    applyAgentDirectoryDelta({
-      serverId,
-      delta: {
-        kind: "upsert",
-        agent: { ...agent, pendingPermissions: [permission("perm-1")] },
-        project: createEntry(agent).project,
-      },
-    });
-
-    const after = useSessionStore.getState().sessions[serverId];
-    expect(after?.agents).toBe(before?.agents);
-    expect(after?.pendingPermissions).toBe(before?.pendingPermissions);
-    expect(after?.agentTurnLiveness).toBe(before?.agentTurnLiveness);
+    const apply = (value: AgentSnapshotPayload) =>
+      replica.applyDelta({ kind: "upsert", agent: value, project: createEntry(value).project });
+    apply(agent);
+    const changed: AgentSnapshotPayload = {
+      ...agent,
+      title: "After",
+      pendingPermissions: [{ ...permission("perm-1"), title: "Approve changed operation" }],
+    };
+    apply(changed);
+    expect(replica.snapshot().get(agent.id)?.title).toBe("After");
+    expect(
+      Array.from(store.getSession(serverId)!.pendingPermissions.values()).map(
+        ({ request }) => request.title,
+      ),
+    ).toEqual(["Approve changed operation"]);
+    apply({ ...changed, pendingPermissions: [] });
+    expect(store.getSession(serverId)?.pendingPermissions.size).toBe(0);
     store.clearSession(serverId);
   });
 });
@@ -253,10 +296,9 @@ describe("replaceFetchedAgentDirectory", () => {
     store.initializeSession(serverId, null as unknown as DaemonClient);
     store.setInitializingAgents(serverId, new Map([["agent", true]]));
 
-    replaceFetchedAgentDirectory({
-      serverId,
-      entries: [createEntry(createAgentPayload({ id: "agent" }))],
-    });
+    new AgentStoreProjection(serverId).replaceFetched([
+      createEntry(createAgentPayload({ id: "agent" })),
+    ]);
 
     expect(useSessionStore.getState().sessions[serverId]?.initializingAgents.get("agent")).toBe(
       true,
@@ -269,29 +311,24 @@ describe("replaceFetchedAgentDirectory", () => {
     const store = useSessionStore.getState();
     store.initializeSession(serverId, null as unknown as DaemonClient);
 
-    replaceFetchedAgentDirectory({
-      serverId,
-      entries: [
-        createEntry(
-          createAgentPayload({
-            id: "child-1",
-            labels: { [PARENT_AGENT_ID_LABEL]: "parent-a" },
-          }),
-        ),
-      ],
-    });
+    const projection = new AgentStoreProjection(serverId);
+    projection.replaceFetched([
+      createEntry(
+        createAgentPayload({
+          id: "child-1",
+          labels: { [PARENT_AGENT_ID_LABEL]: "parent-a" },
+        }),
+      ),
+    ]);
 
-    replaceFetchedAgentDirectory({
-      serverId,
-      entries: [
-        createEntry(
-          createAgentPayload({
-            id: "child-1",
-            labels: { [PARENT_AGENT_ID_LABEL]: "parent-b" },
-          }),
-        ),
-      ],
-    });
+    projection.replaceFetched([
+      createEntry(
+        createAgentPayload({
+          id: "child-1",
+          labels: { [PARENT_AGENT_ID_LABEL]: "parent-b" },
+        }),
+      ),
+    ]);
 
     expect(
       useSessionStore.getState().sessions[serverId]?.agents.get("child-1")?.parentAgentId,
@@ -312,18 +349,15 @@ describe("replaceFetchedAgentDirectory", () => {
     );
     setAgentArchiving({ queryClient, serverId, agentId, isArchiving: true });
 
-    replaceFetchedAgentDirectory({
-      serverId,
-      entries: [
-        createEntry(
-          createAgentPayload({
-            id: agentId,
-            archivedAt: null,
-            updatedAt: "2026-08-30T00:01:00.000Z",
-          }),
-        ),
-      ],
-    });
+    new AgentStoreProjection(serverId).replaceFetched([
+      createEntry(
+        createAgentPayload({
+          id: agentId,
+          archivedAt: null,
+          updatedAt: "2026-08-30T00:01:00.000Z",
+        }),
+      ),
+    ]);
 
     expect(store.getSession(serverId)?.agents.get(agentId)?.archivedAt?.toISOString()).toBe(
       "2026-08-30T00:02:00.000Z",
@@ -335,9 +369,10 @@ describe("replaceFetchedAgentDirectory", () => {
       archivedAt: "2026-08-30T00:04:00.000Z",
       updatedAt: "2026-08-30T00:04:00.000Z",
     });
-    applyAgentDirectoryDelta({
-      serverId,
-      delta: { kind: "upsert", agent: archived, project: createEntry(archived).project },
+    new AgentStoreProjection(serverId).applyDelta({
+      kind: "upsert",
+      agent: archived,
+      project: createEntry(archived).project,
     });
 
     expect(store.getSession(serverId)?.agents.get(agentId)?.archivedAt?.toISOString()).toBe(
@@ -386,7 +421,7 @@ describe("replaceFetchedAgentDirectory", () => {
       rows: [{ id: "sub-1", cumulativeTokens: 400 }],
     });
 
-    applyAgentDirectoryDelta({ serverId, delta: { kind: "remove", agentId } });
+    new AgentStoreProjection(serverId).applyDelta({ kind: "remove", agentId });
 
     const session = useSessionStore.getState().sessions[serverId];
     expect({
@@ -460,28 +495,27 @@ describe("replaceFetchedAgentDirectory", () => {
       lastUsage: { inputTokens: 10, outputTokens: 5 },
       pendingPermissions: [permission("current-permission")],
     });
-    applyAgentDirectoryDelta({
-      serverId,
-      delta: { kind: "upsert", agent: current, project: createEntry(current).project },
+    const projection = new AgentStoreProjection(serverId);
+    projection.applyDelta({
+      kind: "upsert",
+      agent: current,
+      project: createEntry(current).project,
     });
     store.flushAgentLastActivity();
     setAgentArchiving({ queryClient, serverId, agentId, isArchiving: true });
 
-    const staleResult = applyAgentDirectoryDelta({
-      serverId,
-      delta: {
-        kind: "upsert",
-        agent: {
-          ...current,
-          title: "stale",
-          status: "idle",
-          updatedAt: "2026-07-12T10:00:00.000Z",
-          lastUsage: { inputTokens: 20, outputTokens: 8 },
-          pendingPermissions: [permission("stale-permission")],
-          archivedAt: "2026-07-12T10:00:00.000Z",
-        },
-        project: createEntry(current).project,
+    const staleResult = projection.applyDelta({
+      kind: "upsert",
+      agent: {
+        ...current,
+        title: "stale",
+        status: "idle",
+        updatedAt: "2026-07-12T10:00:00.000Z",
+        lastUsage: { inputTokens: 20, outputTokens: 8 },
+        pendingPermissions: [permission("stale-permission")],
+        archivedAt: "2026-07-12T10:00:00.000Z",
       },
+      project: createEntry(current).project,
     });
     store.flushAgentLastActivity();
 
@@ -527,18 +561,15 @@ describe("replaceFetchedAgentDirectory", () => {
     );
     setAgentArchiving({ queryClient, serverId, agentId, isArchiving: true });
 
-    applyAgentDirectoryDelta({
-      serverId,
-      delta: {
-        kind: "upsert",
-        agent: createAgentPayload({
-          id: agentId,
-          archivedAt: null,
-          status: "running",
-          updatedAt: "2026-08-30T00:03:00.000Z",
-        }),
-        project: createEntry(createAgentPayload({ id: agentId })).project,
-      },
+    new AgentStoreProjection(serverId).applyDelta({
+      kind: "upsert",
+      agent: createAgentPayload({
+        id: agentId,
+        archivedAt: null,
+        status: "running",
+        updatedAt: "2026-08-30T00:03:00.000Z",
+      }),
+      project: createEntry(createAgentPayload({ id: agentId })).project,
     });
 
     expect(store.getSession(serverId)?.agents.get(agentId)?.archivedAt?.toISOString()).toBe(

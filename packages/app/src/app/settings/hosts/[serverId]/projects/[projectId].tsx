@@ -8,6 +8,7 @@ export default function SettingsHostProjectDetailRoute() {
   const params = useLocalSearchParams<{
     serverId?: string | string[];
     projectId?: string | string[];
+    setting?: string | string[];
   }>();
   const serverId = normalizeProjectSettingsRouteId(params.serverId);
   const projectId = normalizeProjectSettingsRouteId(params.projectId);
@@ -18,7 +19,10 @@ export default function SettingsHostProjectDetailRoute() {
 
   return (
     <HostRouteBootstrapBoundary>
-      <SettingsScreen view={view} />
+      <SettingsScreen
+        view={view}
+        focusSettingId={typeof params.setting === "string" ? params.setting : null}
+      />
     </HostRouteBootstrapBoundary>
   );
 }

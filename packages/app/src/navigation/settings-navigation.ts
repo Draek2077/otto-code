@@ -1,3 +1,4 @@
+import { buildPluginSettingsRoute } from "@/plugins/settings/routes";
 import { router, type Href } from "expo-router";
 import { navigateToLastWorkspace } from "@/stores/navigation-active-workspace-store";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/utils/host-routes";
 
 export type SettingsView =
+  | { kind: "plugin"; serverId: string; pluginId: string; screenId: string }
   | { kind: "root" }
   | { kind: "section"; section: SettingsSectionSlug }
   | { kind: "host"; serverId: string; section: HostSectionSlug }
@@ -19,9 +21,19 @@ export type SettingsView =
 
 /** Host search results are navigated only after the caller has selected a host. */
 export function buildSettingsSearchDestination(
-  item: { id: string; host: boolean; section: SettingsSectionSlug | HostSectionSlug },
+  item: {
+    id: string;
+    host: boolean;
+    section: SettingsSectionSlug | HostSectionSlug;
+    pluginDestination?: { serverId: string; pluginId: string; screenId: string };
+  },
   serverId: string | null,
 ): Href {
+  if (item.pluginDestination) {
+    const { serverId: host, pluginId, screenId } = item.pluginDestination;
+    const route = buildPluginSettingsRoute(host, pluginId, screenId);
+    return { ...route, params: { ...route.params, setting: item.id } };
+  }
   const target = item.host
     ? buildSettingsHostSectionRoute(serverId!, item.section as HostSectionSlug)
     : buildSettingsSectionRoute(item.section as SettingsSectionSlug, serverId ?? undefined);
@@ -32,8 +44,13 @@ export function openHostOverview(serverId: string): void {
   router.push(buildSettingsHostSectionRoute(serverId, "host"));
 }
 
-export function openProjectSettings(serverId: string, projectId: string): void {
-  router.push(buildProjectSettingsRoute(serverId, projectId));
+export function openProjectSettings(
+  serverId: string,
+  projectId: string,
+  settingId?: string | null,
+): void {
+  const route = buildProjectSettingsRoute(serverId, projectId);
+  router.push(settingId ? (`${route}?setting=${encodeURIComponent(settingId)}` as Href) : route);
 }
 
 export function returnFromSettings(view: SettingsView): void {
@@ -44,7 +61,8 @@ export function returnFromSettings(view: SettingsView): void {
     return;
   }
 
-  const parent =
-    view.kind === "project" ? buildProjectsSettingsRoute(view.serverId) : buildSettingsRoute();
+  let parent: Href = buildSettingsRoute();
+  if (view.kind === "plugin") parent = buildSettingsHostSectionRoute(view.serverId, "plugins");
+  if (view.kind === "project") parent = buildProjectsSettingsRoute(view.serverId);
   router.dismissTo(parent as Href);
 }

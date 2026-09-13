@@ -14,7 +14,7 @@ import {
   buildTerminalsQueryKey,
   TERMINALS_QUERY_STALE_TIME,
 } from "@/screens/workspace/terminals/state";
-import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
+import { WorkspaceOpenInEditorButton } from "@/workspace/open-in-editor/button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
 import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { markScriptTerminalPending } from "@/stores/script-terminal-pending-store";

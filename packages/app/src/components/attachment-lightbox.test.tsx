@@ -4,13 +4,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AttachmentMetadata } from "@/attachments/types";
-import type { createKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
-import {
-  KeyboardActionDispatcherProvider,
-  useKeyboardActionDispatcher,
-} from "@/keyboard/keyboard-action-dispatcher-context";
-import { AttachmentLightbox } from "./attachment-lightbox";
+import { AttachmentLightbox, type ImageLightboxSource } from "./attachment-lightbox";
 import { ChatImagePreview } from "./chat-image-preview";
+import { dispatchTopWebOverlayKeyDown } from "@/lib/overlay-root";
 
 const { theme, imageMetadata, useAttachmentPreviewUrlMock } = vi.hoisted(() => {
   const hoistedTheme = {
@@ -48,6 +44,11 @@ const { theme, imageMetadata, useAttachmentPreviewUrlMock } = vi.hoisted(() => {
     ),
   };
 });
+const attachmentSource: ImageLightboxSource = { type: "attachment", metadata: imageMetadata };
+const assistantImageSource: ImageLightboxSource = {
+  type: "uri",
+  uri: "blob:assistant-image",
+};
 
 vi.mock("react-native-unistyles", () => ({
   StyleSheet: {
@@ -62,12 +63,6 @@ vi.mock("react-native-unistyles", () => ({
 vi.mock("@/constants/platform", () => ({
   isWeb: true,
   isNative: false,
-}));
-
-// The keyboard-action dispatcher pulls in `use-interface-mode` only for its
-// dev-mode gate; stub it so the test doesn't drag in the settings/toast chain.
-vi.mock("@/hooks/use-interface-mode", () => ({
-  getIsDeveloperModeSnapshot: () => true,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -86,6 +81,11 @@ vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
+vi.mock("react-native-gesture-handler", () => ({
+  GestureHandlerRootView: ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", { "data-testid": "gesture-handler-root" }, children),
+}));
+
 vi.mock("@/components/icons/material-icons", () => {
   const createIcon = (name: string) => (props: Record<string, unknown>) =>
     React.createElement("span", { ...props, "data-icon": name });
@@ -94,16 +94,34 @@ vi.mock("@/components/icons/material-icons", () => {
   };
 });
 
-vi.mock("expo-image", () => ({
-  Image: (props: Record<string, unknown>) => {
-    const source = props.source as { uri?: string } | string | undefined;
-    const uri = typeof source === "string" ? source : source?.uri;
-    return React.createElement("div", {
-      "data-testid": props.testID,
-      "data-source": uri,
-      "data-style": JSON.stringify(props.style ?? null),
-      role: "img",
-    });
+vi.mock("@/components/zoomable-viewport/image", () => ({
+  ZoomableImage: (props: Record<string, unknown>) => {
+    const actions = props.actions as Array<{
+      label: string;
+      onPress: () => void;
+      testID?: string;
+    }>;
+    return React.createElement(
+      "div",
+      {
+        "data-testid": `${String(props.testID)}-image`,
+        "data-source": props.uri,
+        role: "img",
+      },
+      actions.map((action) =>
+        React.createElement(
+          "button",
+          {
+            "aria-label": action.label,
+            "data-testid": action.testID,
+            key: action.label,
+            onClick: action.onPress,
+            type: "button",
+          },
+          action.label,
+        ),
+      ),
+    );
   },
 }));
 
@@ -124,6 +142,8 @@ let container: HTMLElement | null = null;
 
 beforeEach(() => {
   const dom = new JSDOM("<!doctype html><html><body></body></html>");
+  dom.window.requestAnimationFrame = vi.fn(() => 1);
+  dom.window.cancelAnimationFrame = vi.fn();
   vi.stubGlobal("React", React);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("window", dom.window);
@@ -149,26 +169,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/**
- * The dispatcher comes from context now, so the test has to render inside the
- * provider and take the instance the provider made: dispatching on a separate
- * one would reach none of the handlers the component registered.
- */
-let keyboardActionDispatcher: ReturnType<typeof createKeyboardActionDispatcher>;
-
-function CaptureDispatcher() {
-  keyboardActionDispatcher = useKeyboardActionDispatcher();
-  return null;
-}
-
 function render(element: React.ReactElement) {
   act(() => {
-    root?.render(
-      <KeyboardActionDispatcherProvider>
-        <CaptureDispatcher />
-        {element}
-      </KeyboardActionDispatcherProvider>,
-    );
+    root?.render(element);
   });
 }
 
@@ -209,64 +212,32 @@ describe("AttachmentLightbox", () => {
     expect(queryByTestId("attachment-lightbox-image")).toBeNull();
   });
 
-  it("renders nothing when metadata is null", () => {
-    render(<AttachmentLightbox metadata={null} onClose={vi.fn()} />);
+  it("renders nothing when the source is null", () => {
+    render(<AttachmentLightbox source={null} onClose={vi.fn()} />);
 
     expect(queryByTestId("attachment-lightbox-backdrop")).toBeNull();
     expect(queryByTestId("attachment-lightbox-image")).toBeNull();
   });
 
   it("renders the image when metadata is provided", () => {
-    render(<AttachmentLightbox metadata={imageMetadata} onClose={vi.fn()} />);
+    render(<AttachmentLightbox source={attachmentSource} onClose={vi.fn()} />);
 
     const image = queryByTestId("attachment-lightbox-image");
     expect(image).not.toBeNull();
     expect(image?.getAttribute("data-source")).toBe("blob:preview");
   });
 
-  it("opens a resolved screenshot without local attachment metadata and closes on Escape", () => {
-    useAttachmentPreviewUrlMock.mockReturnValue(null);
-    const onClose = vi.fn();
-    render(
-      <AttachmentLightbox
-        metadata={null}
-        uri="https://example.com/screenshot.png"
-        onClose={onClose}
-      />,
-    );
-
-    expect(queryByTestId("attachment-lightbox-image")?.getAttribute("data-source")).toBe(
-      "https://example.com/screenshot.png",
-    );
-    act(() => {
-      expect(keyboardActionDispatcher.dispatch({ id: "agent.interrupt", scope: "global" })).toBe(
-        true,
-      );
-    });
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("fills its parent via absolute positioning so expo-image does not collapse to 0px", () => {
-    render(<AttachmentLightbox metadata={imageMetadata} onClose={vi.fn()} />);
+  it("renders a direct timeline image without resolving attachment storage", () => {
+    render(<AttachmentLightbox source={assistantImageSource} onClose={vi.fn()} />);
 
     const image = queryByTestId("attachment-lightbox-image");
-    const style = JSON.parse(image?.getAttribute("data-style") ?? "null") as {
-      position?: string;
-      top?: number;
-      left?: number;
-      right?: number;
-      bottom?: number;
-    } | null;
-    expect(style?.position).toBe("absolute");
-    expect(style?.top).toBe(0);
-    expect(style?.left).toBe(0);
-    expect(style?.right).toBe(0);
-    expect(style?.bottom).toBe(0);
+    expect(image?.getAttribute("data-source")).toBe("blob:assistant-image");
+    expect(useAttachmentPreviewUrlMock).toHaveBeenLastCalledWith(null);
   });
 
   it("calls onClose when the backdrop is pressed", () => {
     const onClose = vi.fn();
-    render(<AttachmentLightbox metadata={imageMetadata} onClose={onClose} />);
+    render(<AttachmentLightbox source={attachmentSource} onClose={onClose} />);
 
     const backdrop = queryByTestId("attachment-lightbox-backdrop");
     expect(backdrop).not.toBeNull();
@@ -277,7 +248,7 @@ describe("AttachmentLightbox", () => {
 
   it("calls onClose when the close button is pressed", () => {
     const onClose = vi.fn();
-    render(<AttachmentLightbox metadata={imageMetadata} onClose={onClose} />);
+    render(<AttachmentLightbox source={attachmentSource} onClose={onClose} />);
 
     const closeButton = document.querySelector(
       '[aria-label="Close image"][data-testid="attachment-lightbox-close"]',
@@ -290,37 +261,42 @@ describe("AttachmentLightbox", () => {
 
   it("shows error text when the preview URL resolves to null", () => {
     useAttachmentPreviewUrlMock.mockReturnValue(null);
-    render(<AttachmentLightbox metadata={imageMetadata} onClose={vi.fn()} />);
+    render(<AttachmentLightbox source={attachmentSource} onClose={vi.fn()} />);
 
     expect(queryByTestId("attachment-lightbox-image")).toBeNull();
     expect(document.body.textContent ?? "").toContain("Couldn't load image");
   });
 
-  it("closes on the interrupt action (Escape) and consumes it", () => {
+  it("closes through overlay first refusal before an earlier app shortcut listener can interrupt", () => {
     const onClose = vi.fn();
-    render(<AttachmentLightbox metadata={imageMetadata} onClose={onClose} />);
-
-    let handled = false;
-    act(() => {
-      handled = keyboardActionDispatcher.dispatch({ id: "agent.interrupt", scope: "global" });
+    const interrupt = vi.fn();
+    const appShortcut = (event: KeyboardEvent) => {
+      if (dispatchTopWebOverlayKeyDown(event)) return;
+      if (event.key === "Escape") interrupt();
+    };
+    // The app listener predates mounting the modal, as it does in the real shell.
+    window.addEventListener("keydown", appShortcut, true);
+    render(<AttachmentLightbox source={attachmentSource} onClose={onClose} />);
+    const event = new window.KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
     });
-
-    // Returning true keeps the composer's lower-priority interrupt handler from
-    // also firing, so opening an image preview never cancels the running agent.
-    expect(handled).toBe(true);
+    act(() => {
+      window.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(true);
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(interrupt).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", appShortcut, true);
   });
 
-  it("does not claim the interrupt action once closed", () => {
+  it("releases overlay first refusal once closed", () => {
     const onClose = vi.fn();
-    render(<AttachmentLightbox metadata={null} onClose={onClose} />);
-
-    let handled = false;
-    act(() => {
-      handled = keyboardActionDispatcher.dispatch({ id: "agent.interrupt", scope: "global" });
-    });
-
-    expect(handled).toBe(false);
+    render(<AttachmentLightbox source={attachmentSource} onClose={onClose} />);
+    render(<AttachmentLightbox source={null} onClose={onClose} />);
+    const event = new window.KeyboardEvent("keydown", { key: "Escape", cancelable: true });
+    expect(dispatchTopWebOverlayKeyDown(event)).toBe(false);
     expect(onClose).not.toHaveBeenCalled();
   });
 });

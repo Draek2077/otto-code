@@ -183,3 +183,59 @@ describe("provider icon size tokens", () => {
     }
   });
 });
+import { Bot } from "@/components/icons/material-icons";
+import { SvgXml } from "react-native-svg";
+import { replaceProviderSnapshotIcons } from "./provider-icon-name";
+import type { ProviderIconComponent } from "./provider-icons";
+
+function renderIcon(Component: ProviderIconComponent) {
+  if (typeof Component !== "function") throw new Error("Expected a function component");
+  const wrapped = (Component as (props: { size: number; color: string }) => ReactElement)({
+    size: 18,
+    color: "#123456",
+  });
+  const Base = wrapped.type as (props: unknown) => ReactElement;
+  return Base(wrapped.props);
+}
+
+describe("getProviderIcon", () => {
+  it("renders registered snapshot SVG metadata with the requested size and color", () => {
+    const svg = '<svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /></svg>';
+    replaceProviderSnapshotIcons("server-1", [{ provider: "rendered-provider", iconSvg: svg }]);
+
+    const rendered = renderIcon(getProviderIcon("rendered-provider", "server-1"));
+
+    expect(rendered).toMatchObject({
+      type: SvgXml,
+      props: { xml: svg, width: 18, height: 18, color: "#123456" },
+    });
+  });
+
+  it("uses the normal Bot fallback without snapshot SVG metadata", () => {
+    replaceProviderSnapshotIcons("server-1", [{ provider: "plain-provider" }]);
+
+    expect(getProviderIcon("plain-provider", "server-1")).toBe(Bot);
+  });
+});
+
+it("keeps plugin icon identity per host, updates on reload, and resolves mobile size tokens", () => {
+  const first = "<svg id='one' />";
+  const second = "<svg id='two' />";
+  replaceProviderSnapshotIcons("plugin-host-a", [{ provider: "plugin-agent", iconSvg: first }]);
+  replaceProviderSnapshotIcons("plugin-host-b", [{ provider: "plugin-agent", iconSvg: second }]);
+  const icon = getProviderIcon("plugin-agent", "plugin-host-a");
+  expect(getProviderIcon("plugin-agent", "plugin-host-a")).toBe(icon);
+  expect(getProviderIcon("plugin-agent", "plugin-host-b")).not.toBe(icon);
+  const themed = invoke(icon, { size: "md" });
+  const mapping = sizePropOf(themed).uniProps as (theme: { iconSize: Record<string, number> }) => {
+    size: number;
+  };
+  expect(mapping({ iconSize: { ...ICON_SIZE, md: 32 } })).toEqual({ size: 32 });
+  expect(getProviderIconSvg("plugin-agent", "plugin-host-a")).toBe(first);
+  replaceProviderSnapshotIcons("plugin-host-a", [{ provider: "plugin-agent", iconSvg: second }]);
+  expect(getProviderIcon("plugin-agent", "plugin-host-a")).not.toBe(icon);
+  expect(getProviderIconSvg("plugin-agent", "plugin-host-a")).toBe(second);
+  replaceProviderSnapshotIcons("plugin-host-a", []);
+  expect(getProviderIcon("plugin-agent", "plugin-host-a")).toBe(Bot);
+  expect(getProviderIconSvg("plugin-agent", "plugin-host-b")).toBe(second);
+});

@@ -1,3 +1,4 @@
+import { getUntrustedWorktreeSource } from "./otto-worktree-automation.js";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import {
@@ -193,6 +194,7 @@ export type WorktreeSource =
       changeRequestNumber: number;
       headRef: string;
       headRepositoryOwner?: string;
+      headRepository?: string;
       baseRefName: string;
       checkoutRefs?: WorktreeCheckoutRef[];
       localBranchName?: string;
@@ -1350,7 +1352,8 @@ export const createWorktree = async ({
 
   await seedOttoConfigFile({ sourceCwd: cwd, targetCwd: worktreePath });
 
-  if (runSetup) {
+  // Fork setup is deferred until its workspace records explicit approval.
+  if (runSetup && !getUntrustedWorktreeSource(source)) {
     await runWorktreeSetupCommands({
       worktreePath,
       branchName: sourcePlan.branchName,

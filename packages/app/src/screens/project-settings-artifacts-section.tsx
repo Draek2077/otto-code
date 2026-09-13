@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
@@ -57,7 +58,12 @@ export function ProjectArtifactsSection({
       <View style={settingsStyles.card}>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Artifact storage</Text>
+            <SettingsTargetText
+              settingId="host-projects-project-settings-artifacts-artifact-storage"
+              style={settingsStyles.rowTitle}
+            >
+              Artifact storage
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Choose where future Artifacts for this project are written. Existing Artifacts remain
               available in either location.

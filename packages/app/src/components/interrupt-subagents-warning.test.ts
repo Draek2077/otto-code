@@ -12,6 +12,7 @@ const AGENT_DEFAULTS: Agent = {
   id: "agent",
   provider: "claude",
   status: "idle",
+  turn: { phase: "idle", cancellationRequestId: null },
   createdAt: AGENT_TIMESTAMP,
   updatedAt: AGENT_TIMESTAMP,
   lastUserMessageAt: null,
@@ -46,7 +47,14 @@ const AGENT_DEFAULTS: Agent = {
 };
 
 function makeAgent(input: Partial<Agent> & Pick<Agent, "id">): Agent {
-  return { ...AGENT_DEFAULTS, ...input };
+  return {
+    ...AGENT_DEFAULTS,
+    turn:
+      input.status === "running"
+        ? { phase: "open", turnId: null, startedAt: null, cancellationRequestId: null }
+        : AGENT_DEFAULTS.turn,
+    ...input,
+  };
 }
 
 function setAgents(agents: Agent[]): void {

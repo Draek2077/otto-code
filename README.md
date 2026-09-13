@@ -130,8 +130,8 @@ otto ls                           # list running agents
 otto attach abc123                # stream live output
 otto send abc123 "also add tests" # follow-up task
 
-# run on a remote daemon
-otto --host workstation.local:6868 run "run the full test suite"
+# run on a remote daemon; --cwd is a path on that host
+otto --host workstation.local:6868 run --cwd /workspace "run the full test suite"
 ```
 
 See the [full CLI reference](https://otto-code.me/docs/cli) for more.
@@ -206,23 +206,16 @@ npm run typecheck
 
 ## Documentation
 
-Four trees, four audiences. This section is the entry point to all of them.
+Use the documentation tree for its intended audience:
 
-| Tree                                    | Audience                               | What it is                                                                                                                                                                                                                                                                      |
-| --------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **[`docs/`](docs/README.md)**           | Anyone building Otto                   | **The official software documentation.** How Otto works - system design, subsystem behaviour, conventions, gotchas. This is the specification we build against                                                                                                                  |
-| **[`projects/`](projects/README.md)**   | Anyone planning Otto                   | Charters for work not yet done, plus **the single open-work ledger** - the one place that says what is done and what is not                                                                                                                                                     |
-| **Otto Knowledge** (`.otto/knowledge/`) | Architects, and anyone diagnosing Otto | The system-level architecture record: durable architecture, decision, finding, project and reference pages managed through Otto Knowledge (retired from `archdocs/`). Finding pages carry the reproducible investigations - what was measured, how, and what it ruled in or out |
-| **[`CLAUDE.md`](CLAUDE.md)**            | AI coding agents                       | Working rules and constraints for agents in this repo. Deliberately **not** a documentation index - that is [`docs/README.md`](docs/README.md)                                                                                                                                  |
+| Tree                                 | Audience and purpose                                                                                                 |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| [docs/](docs/README.md)              | Engineering specification, architecture, subsystem behavior and conventions                                          |
+| [public-docs/](public-docs/index.md) | User manual published on otto-code.me                                                                                |
+| Otto Knowledge (`.otto/knowledge/`)  | Project charters, delivery history, architecture, decisions, findings and references, managed through Otto Knowledge |
+| [AGENTS.md](AGENTS.md)               | Working rules for agents; CLAUDE.md delegates to this file                                                           |
 
-The writing trees differ by **tense**: `docs/` is present (_this is how it behaves_), `projects/` is
-future (_this is what we will build_), and an Otto Knowledge finding page is past (_this is what we
-measured_). A dated measurement in `docs/` reads as a permanent fact, which is why it is recorded
-separately.
-
-User-facing product documentation is published at
-[otto-code.me/docs](https://otto-code.me/docs) and authored in `public-docs/`. It documents what Otto
-does; `docs/` documents how it is built.
+The legacy [projects/](projects/README.md) tree is a read-only migration source. Current plans and progress belong in first-class Knowledge project pages.
 
 ### Quick links into `docs/`
 
@@ -318,8 +311,7 @@ does; `docs/` documents how it is built.
 
 ## License
 
-Otto is licensed under **AGPL-3.0**, the same license as the upstream project it is
-based on. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Otto retains its **AGPL-3.0** license. The historical Paseo fork base used AGPL-3.0; the Paseo 0.8.0 intake carries Apache-2.0. See [LICENSE](LICENSE), [LICENSE-Paseo-0.8.0](LICENSE-Paseo-0.8.0) and [NOTICE](NOTICE).
 
 ## Credits & attribution
 
@@ -329,8 +321,7 @@ them in a footer.
 ### Paseo - by Mohamed Boudra
 
 Otto is a modified fork of **[Paseo](https://github.com/getpaseo)**, created by
-**Mohamed Boudra** and contributors, © 2025–present. Paseo is licensed under
-AGPL-3.0; Otto continues under the same license as required by its copyleft terms.
+**Mohamed Boudra** and contributors, © 2025 to present. The historical fork base was AGPL-3.0; Paseo 0.8.0 is Apache-2.0. Otto preserves both license texts and upstream attribution.
 
 Mo got the hard parts right before I ever showed up: agent process lifecycle, a clean
 WebSocket protocol, genuinely cross-platform clients, an end-to-end encrypted relay.

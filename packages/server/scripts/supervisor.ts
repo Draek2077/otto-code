@@ -34,6 +34,11 @@ interface SupervisorHeartbeatMessage {
   type: "otto:supervisor-heartbeat";
 }
 
+interface SupervisorGracefulShutdownMessage {
+  type: "otto:graceful-shutdown";
+  reason: string;
+}
+
 interface SupervisorOptions {
   name: string;
   startupMessage: string;
@@ -193,11 +198,14 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
       if (child !== currentChild) {
         return;
       }
-      writeLifecycleLog("Worker did not exit after SIGTERM; forcing SIGKILL", {
-        reason,
-        supervisorPid: process.pid,
-        workerPid: currentChild.pid ?? null,
-      });
+      writeLifecycleLog(
+        "Worker did not exit after graceful shutdown request; forcing process tree kill",
+        {
+          reason,
+          supervisorPid: process.pid,
+          workerPid: currentChild.pid ?? null,
+        },
+      );
       void signalProcessTree(currentChild, "SIGKILL").catch((error) => {
         writeLifecycleLog("Failed to force-kill worker process tree", {
           error: error instanceof Error ? error.message : String(error),
@@ -339,17 +347,38 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
     });
   };
 
-  const signalWorker = (signal: NodeJS.Signals, reason: string): void => {
+  const requestWorkerShutdown = (reason: string): void => {
     if (!child) {
       return;
     }
-    writeLifecycleLog("Supervisor sending signal to worker", {
+    const currentChild = child;
+    const message: SupervisorGracefulShutdownMessage = {
+      type: "otto:graceful-shutdown",
       reason,
-      signal,
+    };
+    writeLifecycleLog("Supervisor requesting graceful worker shutdown", {
+      reason,
       supervisorPid: process.pid,
-      workerPid: child.pid ?? null,
+      workerPid: currentChild.pid ?? null,
     });
-    child.kill(signal);
+    if (!currentChild.connected) {
+      writeLifecycleLog("Graceful worker shutdown IPC unavailable", {
+        reason,
+        supervisorPid: process.pid,
+        workerPid: currentChild.pid ?? null,
+      });
+      return;
+    }
+    currentChild.send?.(message, (error) => {
+      if (error) {
+        writeLifecycleLog("Graceful worker shutdown IPC send failed", {
+          error: error instanceof Error ? error.message : String(error),
+          reason,
+          supervisorPid: process.pid,
+          workerPid: currentChild.pid ?? null,
+        });
+      }
+    });
   };
 
   const requestRestart = (reason: string) => {
@@ -359,7 +388,7 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
     restarting = true;
     writeLifecycleLog("Restart requested", { reason });
     log(`${reason}. Stopping worker for restart...`);
-    signalWorker("SIGTERM", reason);
+    requestWorkerShutdown(reason);
     scheduleForceKill(reason);
   };
 
@@ -375,7 +404,7 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
       exitSupervisor(0);
       return;
     }
-    signalWorker("SIGTERM", reason);
+    requestWorkerShutdown(reason);
     scheduleForceKill(reason);
   };
 

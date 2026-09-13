@@ -1,5 +1,5 @@
 import { useMemo, useRef } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { ScrollView, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
@@ -10,6 +10,8 @@ import {
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { useSheetScrollRegion } from "@/components/use-sheet-scroll-region";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { ScrollViewportContext } from "@/components/ui/scroll-viewport-context";
+import type { ContextBridge } from "@/components/ui/isolated-bottom-sheet-modal";
 import { isWeb } from "@/constants/platform";
 
 // A tabbed dialog opens at a stable bounded height so it does not resize as the
@@ -75,6 +77,8 @@ export interface TabScrollViewProps {
 export function TabScrollView({ children, webScrollbar = true }: TabScrollViewProps) {
   const isCompact = useIsCompactFormFactor();
   const scrollRef = useRef<ScrollView>(null);
+  const contentRef = useRef<View>(null);
+  const viewport = useMemo(() => ({ scroll: scrollRef, content: contentRef }), []);
   // The fade dissolves into whichever surface the dialog paints: the mobile
   // bottom sheet is `surface0`, the desktop card `surface1`.
   const scrollRegion = useSheetScrollRegion(scrollRef, {
@@ -86,6 +90,9 @@ export function TabScrollView({ children, webScrollbar = true }: TabScrollViewPr
     <View style={styles.tabScroll}>
       <ScrollView
         ref={scrollRef}
+        // RN declares this prop non-null although it writes null during unmount.
+        // Keep the actual shared viewport ref nullable across that lifecycle.
+        innerViewRef={contentRef as RefObject<View>}
         style={styles.tabScroll}
         contentContainerStyle={styles.tabScrollContent}
         keyboardShouldPersistTaps="handled"
@@ -96,7 +103,7 @@ export function TabScrollView({ children, webScrollbar = true }: TabScrollViewPr
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={scrollRegion.showsVerticalScrollIndicator}
       >
-        {children}
+        <ScrollViewportContext.Provider value={viewport}>{children}</ScrollViewportContext.Provider>
       </ScrollView>
       {scrollRegion.decorations}
     </View>
@@ -104,6 +111,7 @@ export function TabScrollView({ children, webScrollbar = true }: TabScrollViewPr
 }
 
 export interface TabbedModalSheetProps<T extends string> {
+  contextBridge?: ContextBridge | null;
   header: SheetHeader;
   visible: boolean;
   onClose: () => void;
@@ -160,6 +168,7 @@ export function TabbedModalSheet<T extends string>({
   visible,
   onClose,
   onDismiss,
+  contextBridge,
   tabs,
   activeTab,
   onTabChange,
@@ -195,6 +204,7 @@ export function TabbedModalSheet<T extends string>({
       visible={visible}
       onClose={onClose}
       onDismiss={onDismiss}
+      contextBridge={contextBridge}
       subHeader={tabStrip}
       footer={footer}
       scrollable={false}

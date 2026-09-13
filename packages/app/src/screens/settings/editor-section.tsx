@@ -1,3 +1,4 @@
+import { SettingsTargetText, SettingsTargetScope } from "@/screens/settings-search/target";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, TextInput, View } from "react-native";
@@ -6,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { FormTextInput } from "@/components/ui/form-field";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Switch } from "@/components/ui/switch";
-import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
+import { SettingsSelectField as SelectField } from "@/screens/settings-search/fields";
+import { type SelectFieldOption } from "@/components/ui/select-field";
 import { getIsElectron, isNative } from "@/constants/platform";
 import {
   MAX_RULER_COLUMN,
@@ -127,7 +129,12 @@ function RulerColumnRow({
   return (
     <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Ruler column</Text>
+        <SettingsTargetText
+          settingId="app-editor-reading-layout-ruler-column"
+          style={settingsStyles.rowTitle}
+        >
+          Ruler column
+        </SettingsTargetText>
         <Text
           style={settingsStyles.rowHint}
         >{`Which character column the marker sits on, between ${MIN_RULER_COLUMN} and ${MAX_RULER_COLUMN}.`}</Text>
@@ -297,20 +304,22 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
   let externalEditorControl = null;
   if (externalEditorSupported) {
     externalEditorControl = (
-      <SelectField<FileEditorMode>
-        label="File editor"
-        value={settings.fileEditorMode}
-        selectedDisplay={externalEditorDisplay}
-        options={FILE_EDITOR_OPTIONS}
-        onChange={handleExternalEditorModeChange}
-        placeholder="Otto"
-        emptyText="No editor modes"
-        size="sm"
-        field={false}
-        triggerStyle={styles.externalEditorModeTrigger}
-        testID="external-file-editor-mode"
-        triggerTestID="external-file-editor-mode-trigger"
-      />
+      <SettingsTargetScope settingIds={["app-editor-editing-file-editor"]}>
+        <SelectField<FileEditorMode>
+          label="File editor"
+          value={settings.fileEditorMode}
+          selectedDisplay={externalEditorDisplay}
+          options={FILE_EDITOR_OPTIONS}
+          onChange={handleExternalEditorModeChange}
+          placeholder="Otto"
+          emptyText="No editor modes"
+          size="sm"
+          field={false}
+          triggerStyle={styles.externalEditorModeTrigger}
+          testID="external-file-editor-mode"
+          triggerTestID="external-file-editor-mode-trigger"
+        />
+      </SettingsTargetScope>
     );
   } else if (hostInfoKnown && settings.fileEditorMode !== "off") {
     externalEditorControl = (
@@ -326,7 +335,12 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
           <View style={settingsStyles.card}>
             <View style={settingsStyles.row}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>{t("settings.editor.vimKeybindings")}</Text>
+                <SettingsTargetText
+                  settingId="app-editor-editing-vim-keybindings"
+                  style={settingsStyles.rowTitle}
+                >
+                  {t("settings.editor.vimKeybindings")}
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>{t("settings.editor.vimHint")}</Text>
               </View>
               <Switch
@@ -341,7 +355,12 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
             <View style={settingsStyles.card} testID="external-file-editor-settings">
               <View style={settingsStyles.rowResponsive}>
                 <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>File editor</Text>
+                  <SettingsTargetText
+                    settingId="app-editor-editing-file-editor"
+                    style={settingsStyles.rowTitle}
+                  >
+                    File editor
+                  </SettingsTargetText>
                   <Text style={settingsStyles.rowHint}>{externalEditorHint}</Text>
                 </View>
                 {externalEditorControl}
@@ -349,7 +368,12 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
               {externalEditorSupported && settings.fileEditorMode === "custom" ? (
                 <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
                   <View style={settingsStyles.rowContent}>
-                    <Text style={settingsStyles.rowTitle}>Command</Text>
+                    <SettingsTargetText
+                      settingId="app-editor-editing-command"
+                      style={settingsStyles.rowTitle}
+                    >
+                      Command
+                    </SettingsTargetText>
                     <Text style={settingsStyles.rowHint}>
                       Use an executable and any required arguments
                     </Text>
@@ -370,9 +394,12 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
               {externalEditorSupported && settings.fileEditorMode !== "off" ? (
                 <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
                   <View style={settingsStyles.rowContent}>
-                    <Text style={settingsStyles.rowTitle}>
+                    <SettingsTargetText
+                      settingId="app-editor-editing-always-use-otto-editor-for-markdown-files"
+                      style={settingsStyles.rowTitle}
+                    >
                       Always use Otto editor for Markdown files
-                    </Text>
+                    </SettingsTargetText>
                     <Text style={settingsStyles.rowHint}>
                       Keep .md files in Otto for editing and previewing
                     </Text>
@@ -395,7 +422,12 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
           <View style={settingsStyles.card}>
             <View style={settingsStyles.row}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Leader</Text>
+                <SettingsTargetText
+                  settingId="app-editor-vim-shortcuts-leader"
+                  style={settingsStyles.rowTitle}
+                >
+                  Leader
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   Press Space, then a shortcut key in Vim normal mode
                 </Text>
@@ -423,7 +455,12 @@ export function EditorSection({ serverId }: { serverId: string | null }) {
         <View style={settingsStyles.card} testID="file-editor-settings">
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Line-length ruler</Text>
+              <SettingsTargetText
+                settingId="app-editor-reading-layout-line-length-ruler"
+                style={settingsStyles.rowTitle}
+              >
+                Line-length ruler
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 Draw a faint vertical line behind the code, marking a maximum line length.
               </Text>

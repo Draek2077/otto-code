@@ -1,3 +1,4 @@
+import { SettingsTargetLabel } from "@/screens/settings-search/target";
 import { useMemo } from "react";
 import { View, Text } from "react-native";
 import { Check } from "@/components/icons/material-icons";
@@ -49,7 +50,7 @@ export function DesktopPermissionRow({
   return (
     <View style={rowStyle}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
       </View>
       <View style={styles.permissionRowActions}>
         {isGranted ? (

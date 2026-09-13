@@ -39,6 +39,9 @@ test.describe("Subagent detach", () => {
     await expect(page.getByTestId("subagents-track-header")).toBeVisible();
     await openSubagentsTrack(page);
     await expectSubagentRowVisible(page, agents.child.id);
+    const openChild = page.getByTestId(`subagents-track-row-${agents.child.id}`);
+    await expect(openChild).toHaveAttribute("role", "button");
+    await expect(openChild.locator('button, [role="button"]')).toHaveCount(0);
 
     await detachSubagentFromTrack(page, agents.child.id);
 

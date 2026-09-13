@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
-import type { PluginSurfaceProps, PluginTheme } from "@otto-code/plugin";
+import type { PluginSurfaceProps } from "@otto-code/plugin/client";
+import type { PluginTheme } from "@otto-code/plugin";
 import { ChevronDown, X } from "lucide-react-native";
 import { useCallback, useMemo, useRef, useState, type ComponentType } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
@@ -13,6 +14,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useHostRuntimeClient, useHosts } from "@/runtime/host-runtime";
 import type { Theme } from "@/styles/theme";
 import type { ShortcutKey } from "@/utils/format-shortcut";
+import { usePluginHostNavigation } from "./host-navigation";
 import { resolvePluginIcon } from "./icons";
 import { toPluginTheme } from "./theme";
 import { useInstalledPlugin, usePluginInstallations } from "./registry";
@@ -27,8 +29,7 @@ import {
   type PluginSurfaceContributionIdentity,
 } from "./surface-contribution";
 
-// No shortcut for this button. The tooltip takes a LIST of alternative
-// chords, so an empty list is 'none' rather than 'one empty chord'.
+// Tooltips accept a list of alternative chords.
 const EMPTY_SHORTCUT_KEYS: ShortcutKey[][] = [];
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const pluginThemeMapping = (theme: Theme) => ({
@@ -68,9 +69,10 @@ function SurfaceRenderer({
   host: PluginSurfaceProps["host"];
   theme: PluginTheme;
 }) {
+  const navigation = usePluginHostNavigation(host.id);
   return (
     <PluginRuntimeBoundary plugin={plugin} runtime={runtime}>
-      <Surface theme={theme} host={host} layout={layout} />
+      <Surface theme={theme} host={host} layout={layout} navigation={navigation} />
     </PluginRuntimeBoundary>
   );
 }

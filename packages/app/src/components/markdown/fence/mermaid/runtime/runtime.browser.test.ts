@@ -29,9 +29,13 @@ function waitForRuntimeMessage(
   });
 }
 
-async function mountRuntime(): Promise<HTMLIFrameElement> {
+async function mountRuntime(size?: { width: number; height: number }): Promise<HTMLIFrameElement> {
   const frame = document.createElement("iframe");
   frame.sandbox.add("allow-scripts");
+  if (size) {
+    frame.style.width = `${size.width}px`;
+    frame.style.height = `${size.height}px`;
+  }
   const ready = waitForRuntimeMessage(frame, (message) => message.type === "bridgeReady");
   frame.srcdoc = mermaidRuntimeHtml;
   document.body.append(frame);
@@ -40,9 +44,21 @@ async function mountRuntime(): Promise<HTMLIFrameElement> {
   return frame;
 }
 
+function renderedSize(message: MermaidRuntimeMessage): { height: number; width: number } {
+  if (message.type !== "rendered") {
+    throw new Error(`Expected a rendered diagram, got ${message.type}`);
+  }
+  return { height: message.height, width: message.width };
+}
+
 function render(
   frame: HTMLIFrameElement,
-  input: { revision: number; source: string },
+  input: {
+    revision: number;
+    source: string;
+    themeKey?: string;
+    themeVariables?: Record<string, string>;
+  },
 ): Promise<MermaidRuntimeMessage> {
   const response = waitForRuntimeMessage(
     frame,
@@ -57,8 +73,8 @@ function render(
       revision: input.revision,
       source: input.source,
       colorScheme: "dark",
-      themeVariables: { darkMode: "true", primaryColor: "#27272a" },
-      themeKey: "dark test-palette",
+      themeVariables: input.themeVariables ?? { darkMode: "true", primaryColor: "#27272a" },
+      themeKey: input.themeKey ?? "dark test-palette",
       interactive: false,
     },
     "*",
@@ -104,6 +120,46 @@ describe("Mermaid sandbox runtime", () => {
       source,
       svg: expect.stringContaining("<svg"),
     });
+  });
+
+  /**
+   * The host sizes this frame from the reported size, so a size that depends on the frame feeds
+   * back: every re-render measures inside a frame the previous measurement already shrank by the
+   * container's padding, and a streaming diagram ratchets down to a few pixels.
+   */
+  it("reports the same size whatever frame the host gives it", async () => {
+    const source = "flowchart TD\nA[Start] --> B[Middle]\nB --> C[Ship]";
+    const narrowFrame = await mountRuntime({ height: 60, width: 60 });
+    const wideFrame = await mountRuntime({ height: 600, width: 900 });
+
+    const narrow = await render(narrowFrame, { revision: 1, source });
+    const wide = await render(wideFrame, { revision: 1, source });
+
+    expect(renderedSize(narrow)).toEqual(renderedSize(wide));
+  });
+
+  it("preserves a custom theme identity and readable mindmap SVG in every viewport", async () => {
+    const frame = await mountRuntime({ height: 60, width: 60 });
+    const result = await render(frame, {
+      revision: 1,
+      source: "mindmap\n  root((Otto))\n    Theme\n    Fullscreen",
+      themeKey: "warm-palette",
+      themeVariables: {
+        primaryColor: "#e9d9c4",
+        primaryTextColor: "#24201c",
+        primaryBorderColor: "#9d8971",
+        lineColor: "#62564b",
+      },
+    });
+    expect(result).toMatchObject({ type: "rendered", themeKey: "warm-palette" });
+    if (result.type !== "rendered") throw new Error("Expected a rendered diagram");
+    const document = new DOMParser().parseFromString(result.svg!, "image/svg+xml");
+    const svg = document.documentElement;
+    expect(svg.getAttribute("viewBox")).toBeTruthy();
+    expect(svg.getAttribute("style")).toContain("height: 100%");
+    expect(svg.textContent).toContain("fill: #e9d9c4 !important");
+    expect(svg.textContent).toContain("fill: #24201c !important");
+    expect(svg.textContent).not.toContain("NaN");
   });
 
   it("coalesces queued input and never reports an obsolete result", async () => {

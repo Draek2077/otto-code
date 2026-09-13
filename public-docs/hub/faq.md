@@ -1,6 +1,6 @@
 ---
 title: Hub FAQ
-description: Common questions about projects, connections, configuration, and daemons in Otto Hub.
+description: "Upstream Paseo Hub reference. Common questions about projects, connections, configuration, and daemons in Paseo Hub."
 nav: FAQ
 order: 78
 category: Hub
@@ -8,9 +8,15 @@ category: Hub
 
 # Hub FAQ
 
-## Do I need Hub to use Otto?
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
 
-No. Otto runs agents on your machines without it. Hub adds what a single daemon cannot do on its own: starting agents from external activity, versioned configuration, a shared record of what ran, and team access.
+## Can I use this with Otto?
+
+Hub is disabled in Otto. The remaining questions describe the separate upstream Paseo service.
+
+## Do I need Hub to use Paseo?
+
+No. Paseo runs agents on your machines without it. Hub adds what a single daemon cannot do on its own: starting agents from external activity, versioned configuration, a shared record of what ran, and team access.
 
 ## Can one organization connect several GitHub organizations?
 
@@ -28,11 +34,11 @@ Yes. Both run. Repositories are not owned by a project.
 
 ## Can the configuration live somewhere other than the repository being watched?
 
-Yes. `filters.repo` can name any repository the organization can reach, so a private repository can hold the `.otto` bundle for workflows that watch public repositories. Protect push access because the bundle selects the organization's connections, daemons, agents, and outputs.
+Yes. `filters.repo` can name any repository the organization can reach, so a private repository can hold the `.paseo` bundle for workflows that watch public repositories. Protect push access because the bundle selects the organization's connections, daemons, agents, and outputs.
 
 ## Where do triggers go now?
 
-Each trigger and its ordered steps live in one direct `.otto/workflows/*.yml` file. `hub.yml` contains only named environments and agents. Hub rejects monolithic `triggers` configuration instead of translating it.
+New organization triggers live in `.paseo/triggers/*.yml`. Legacy project bundles put each trigger and its ordered steps in `.paseo/workflows/*.yml`, with named environments and agents in `hub.yml`. Deploying a legacy bundle requires `--project`; the formats are not interchangeable. See [Configuration](/docs/hub/configuration).
 
 ## Can I edit configuration in the dashboard?
 
@@ -48,7 +54,7 @@ Dispatch fails and the event is recorded as failed. Nothing is queued, so trigge
 
 ## Does logging out disconnect my daemon?
 
-No. The stored CLI login is a human organization credential; the enrolled daemon has its own relationship credential. Interactive `otto hub logout` offers to disconnect a daemon related to the same Hub. Declining is normal, and JSON or noninteractive logout never disconnects unless you pass `--disconnect-daemon`.
+No. The stored CLI login is a human organization credential; the enrolled daemon has its own relationship credential. Interactive `paseo hub logout` offers to disconnect a daemon related to the same Hub. Declining is normal, and JSON or noninteractive logout never disconnects unless you pass `--disconnect-daemon`.
 
 ## Can an agent reply back to Slack or Discord?
 

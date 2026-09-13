@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
+import type { AgentTimelineItem, ToolCallDetail } from "@otto-code/protocol/agent-types";
 import {
   createUserMessage,
   hydrateStreamState,
@@ -18,23 +19,30 @@ import {
   type AgentStreamReducerEvent,
   type TimelineCursor,
 } from "./session-stream-reducers";
-import { useSessionStore, type Agent } from "@/stores/session-store";
+import { useSessionStore } from "@/stores/session-store";
+import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
+type TimelineResponseEntry = ProcessTimelineResponseInput["payload"]["entries"][number];
+
 function makeTimelineEntry(
   seq: number,
   text: string,
-  type: string = "assistant_message",
+  type: "assistant_message" | "user_message" | "reasoning" = "assistant_message",
   seqEnd = seq,
-) {
+): TimelineResponseEntry {
+  let item: AgentTimelineItem;
+  if (type === "assistant_message") item = { type, text };
+  else if (type === "user_message") item = { type, text };
+  else item = { type, text };
   return {
     seqStart: seq,
     seqEnd,
     provider: "claude",
-    item: { type, text },
+    item,
     timestamp: new Date(1000 + seq).toISOString(),
   };
 }
@@ -43,8 +51,9 @@ function makeToolCallTimelineEntry(
   seq: number,
   callId: string,
   status: "running" | "completed",
-  detail: Record<string, unknown>,
-) {
+  detail: ToolCallDetail,
+  turnId?: string,
+): TimelineResponseEntry {
   return {
     seqStart: seq,
     seqEnd: seq,
@@ -56,6 +65,24 @@ function makeToolCallTimelineEntry(
       status,
       detail,
       error: null,
+    },
+    ...(turnId ? { turnId } : {}),
+    timestamp: new Date(1000 + seq).toISOString(),
+  };
+}
+
+function makePluginTimelineEntry(seq: number, status: string): TimelineResponseEntry {
+  return {
+    seqStart: seq,
+    seqEnd: seq,
+    provider: "claude",
+    item: {
+      type: "plugin" as const,
+      id: "review-1",
+      pluginId: "review",
+      kind: "review",
+      version: 1,
+      data: { status },
     },
     timestamp: new Date(1000 + seq).toISOString(),
   };
@@ -3326,12 +3353,14 @@ describe("processTimelineResponse", () => {
 
   it("coalesces tool call lifecycle rows across the older-page prepend boundary", () => {
     const callId = "toolu_boundary";
+    const turnId = "turn-boundary";
     const currentTail = hydrateStreamState(
       [
         {
           event: {
             type: "timeline",
             provider: "claude",
+            turnId,
             item: makeToolCallTimelineEntry(3, callId, "completed", {
               type: "read",
               filePath: "/tmp/example.ts",
@@ -3359,11 +3388,17 @@ describe("processTimelineResponse", () => {
         startCursor: { seq: 1 },
         endCursor: { seq: 2 },
         entries: [
-          makeToolCallTimelineEntry(1, callId, "running", {
-            type: "unknown",
-            input: { file_path: "/tmp/example.ts" },
-            output: null,
-          }),
+          makeToolCallTimelineEntry(
+            1,
+            callId,
+            "running",
+            {
+              type: "unknown",
+              input: { file_path: "/tmp/example.ts" },
+              output: null,
+            },
+            turnId,
+          ),
         ],
       },
     });
@@ -3378,12 +3413,49 @@ describe("processTimelineResponse", () => {
       })),
     ).toEqual([
       {
-        id: `agent_tool_${callId}`,
+        id: `agent_tool_turn:${turnId}/${callId}`,
         callId,
         status: "completed",
         detailType: "read",
       },
     ]);
+  });
+
+  it("keeps the newest plugin row across the older-page prepend boundary", () => {
+    const currentTail = hydrateStreamState(
+      [
+        {
+          event: {
+            type: "timeline",
+            provider: "claude",
+            item: makePluginTimelineEntry(3, "complete").item,
+          },
+          timestamp: new Date(3000),
+        },
+      ],
+      { source: "canonical" },
+    );
+
+    const result = processTimelineResponse({
+      ...baseTimelineInput,
+      currentTail,
+      currentCursor: { epoch: "epoch-1", startSeq: 3, endSeq: 5 },
+      payload: {
+        ...baseTimelineInput.payload,
+        direction: "before",
+        epoch: "epoch-1",
+        startCursor: { seq: 1 },
+        endCursor: { seq: 2 },
+        entries: [makePluginTimelineEntry(1, "running")],
+      },
+    });
+
+    expect(result.tail).toHaveLength(1);
+    expect(result.tail[0]).toMatchObject({
+      kind: "plugin",
+      id: "review/review-1",
+      data: { status: "complete" },
+    });
   });
 
   it("removes a reconciled submitted prompt before coalescing a tool call at the pagination seam", () => {
@@ -3450,6 +3522,8 @@ describe("processTimelineResponse", () => {
 
   it("does not coalesce tool call lifecycle rows away from the prepend boundary", () => {
     const callId = "toolu_not_boundary";
+    const olderTurnId = "autonomous-turn-1";
+    const currentTurnId = "autonomous-turn-2";
     const currentTail = hydrateStreamState(
       [
         {
@@ -3460,6 +3534,7 @@ describe("processTimelineResponse", () => {
           event: {
             type: "timeline",
             provider: "claude",
+            turnId: currentTurnId,
             item: makeToolCallTimelineEntry(4, callId, "completed", {
               type: "read",
               filePath: "/tmp/example.ts",
@@ -3487,11 +3562,17 @@ describe("processTimelineResponse", () => {
         startCursor: { seq: 1 },
         endCursor: { seq: 2 },
         entries: [
-          makeToolCallTimelineEntry(1, callId, "running", {
-            type: "unknown",
-            input: { file_path: "/tmp/example.ts" },
-            output: null,
-          }),
+          makeToolCallTimelineEntry(
+            1,
+            callId,
+            "running",
+            {
+              type: "unknown",
+              input: { file_path: "/tmp/example.ts" },
+              output: null,
+            },
+            olderTurnId,
+          ),
           makeTimelineEntry(2, "older chunk "),
         ],
       },
@@ -3507,7 +3588,7 @@ describe("processTimelineResponse", () => {
     ).toEqual([
       {
         kind: "tool_call",
-        id: `agent_tool_${callId}`,
+        id: `agent_tool_turn:${olderTurnId}/${callId}`,
         status: "running",
         text: null,
       },
@@ -3519,7 +3600,7 @@ describe("processTimelineResponse", () => {
       },
       {
         kind: "tool_call",
-        id: `agent_tool_${callId}`,
+        id: `agent_tool_turn:${currentTurnId}/${callId}`,
         status: "completed",
         text: null,
       },
@@ -3711,7 +3792,9 @@ describe("processAgentStreamEvent", () => {
 
     expect([...result.tail, ...result.head]).toEqual([
       expect.objectContaining({
-        kind: "activity_log",
+        kind: "notification",
+        sourceType: "error",
+        level: "error",
         message: "2 MCP connections unavailable",
         details,
       }),
@@ -4592,93 +4675,74 @@ describe("createAgentStreamReducerQueue", () => {
   });
 });
 
-describe("queued-send idle transition regression", () => {
-  it("signals one drain for the running-to-idle completion edge", () => {
-    const serverId = "queued-send-regression";
-    const agentId = "agent-1";
-    const store = useSessionStore.getState();
-    store.initializeSession(serverId, null as never);
-    const now = new Date(1_000);
-    store.setAgents(
-      serverId,
-      () =>
-        new Map([
-          [
-            agentId,
-            { id: agentId, status: "running", updatedAt: now, lastActivityAt: now } as Agent,
-          ],
-        ]),
-    );
-    const onAgentBecameIdle = vi.fn();
-    const queue = createSessionAgentStreamReducerQueue({
-      serverId,
-      setAgentStreamState: store.setAgentStreamState,
-      setAgentTimelineCursor: store.setAgentTimelineCursor,
-      setAgents: store.setAgents,
-      recoverTimelineGap: () => undefined,
-      onAgentBecameIdle,
-    });
-
-    queue.enqueue(agentId, {
-      event: { type: "turn_completed", provider: "claude" } as AgentStreamEventPayload,
-      seq: undefined,
-      epoch: undefined,
-      timestamp: new Date(2_000),
-    });
-    queue.flushAgent(agentId);
-
-    expect(onAgentBecameIdle).toHaveBeenCalledTimes(1);
-    expect(useSessionStore.getState().sessions[serverId]?.agents.get(agentId)?.status).toBe("idle");
-
-    queue.enqueue(agentId, {
-      event: { type: "turn_completed", provider: "claude" } as AgentStreamEventPayload,
-      seq: undefined,
-      epoch: undefined,
-      timestamp: new Date(3_000),
-    });
-    queue.flushAgent(agentId);
-    expect(onAgentBecameIdle).toHaveBeenCalledTimes(1);
-    store.clearSession(serverId);
-  });
-
-  it("does not drain on a failed turn", () => {
-    const serverId = "queued-send-failure-regression";
-    const agentId = "agent-1";
-    const store = useSessionStore.getState();
-    store.initializeSession(serverId, null as never);
-    const now = new Date(1_000);
-    store.setAgents(
-      serverId,
-      () =>
-        new Map([
-          [
-            agentId,
-            { id: agentId, status: "running", updatedAt: now, lastActivityAt: now } as Agent,
-          ],
-        ]),
-    );
-    const onAgentStopped = vi.fn();
-    const queue = createSessionAgentStreamReducerQueue({
-      serverId,
-      setAgentStreamState: store.setAgentStreamState,
-      setAgentTimelineCursor: store.setAgentTimelineCursor,
-      setAgents: store.setAgents,
-      recoverTimelineGap: () => undefined,
-      onAgentBecameIdle: onAgentStopped,
-    });
-
-    queue.enqueue(agentId, {
-      event: { type: "turn_failed", provider: "claude" } as AgentStreamEventPayload,
-      seq: undefined,
-      epoch: undefined,
-      timestamp: new Date(2_000),
-    });
-    queue.flushAgent(agentId);
-
-    expect(onAgentStopped).not.toHaveBeenCalled();
-    expect(useSessionStore.getState().sessions[serverId]?.agents.get(agentId)?.status).toBe(
-      "error",
-    );
-    store.clearSession(serverId);
-  });
+describe("terminal stream queue ownership", () => {
+  it.each(["turn_completed", "turn_failed"] as const)(
+    "%s commits transcript without changing directory turn state or dispatching queued messages",
+    (type) => {
+      const serverId = `terminal-stream-${type}`;
+      const agentId = "agent-1";
+      const store = useSessionStore.getState();
+      store.initializeSession(serverId, null as never);
+      const now = new Date(1_000).toISOString();
+      const agent = normalizeAgentSnapshot(
+        {
+          id: agentId,
+          provider: "claude",
+          cwd: "/repo",
+          status: "running",
+          createdAt: now,
+          updatedAt: now,
+          lastUserMessageAt: now,
+          model: null,
+          currentModeId: null,
+          availableModes: [],
+          pendingPermissions: [],
+          persistence: null,
+          title: null,
+          labels: {},
+          capabilities: {
+            supportsStreaming: true,
+            supportsSessionPersistence: true,
+            supportsDynamicModes: true,
+            supportsMcpServers: true,
+            supportsReasoningStream: true,
+            supportsToolInvocations: true,
+          },
+          activeTurn: { turnId: "turn-1", startedAt: now },
+        },
+        serverId,
+      );
+      store.setAgents(serverId, new Map([[agentId, agent]]));
+      const queued = [{ id: "queued", text: "next", attachments: [] }];
+      store.setQueuedMessages(serverId, new Map([[agentId, queued]]));
+      const onCommitted = vi.fn();
+      const queue = createSessionAgentStreamReducerQueue({
+        serverId,
+        setAgentStreamState: store.setAgentStreamState,
+        setAgentTimelineCursor: store.setAgentTimelineCursor,
+        recoverTimelineGap: () => undefined,
+        onCommitted,
+      });
+      try {
+        queue.enqueue(agentId, {
+          event:
+            type === "turn_failed"
+              ? { type, provider: "claude", turnId: "turn-1", error: "provider failed" }
+              : { type, provider: "claude", turnId: "turn-1" },
+          seq: undefined,
+          epoch: undefined,
+          timestamp: new Date(2_000),
+        });
+        queue.flushAgent(agentId);
+        expect(onCommitted).toHaveBeenCalledExactlyOnceWith(agentId);
+        expect(useSessionStore.getState().sessions[serverId]?.agents.get(agentId)).toBe(agent);
+        expect(useSessionStore.getState().sessions[serverId]?.queuedMessages.get(agentId)).toEqual(
+          queued,
+        );
+      } finally {
+        queue.dispose({ flush: true });
+        store.clearSession(serverId);
+      }
+    },
+  );
 });

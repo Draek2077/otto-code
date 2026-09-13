@@ -1,6 +1,6 @@
 ---
 title: Hub workflows
-description: Build ordered Hub workflows with prompts, routing, outputs, and provider authority.
+description: "Upstream Paseo Hub reference. Build ordered Hub workflows with prompts, routing, outputs, and provider authority."
 nav: Workflows
 order: 64
 category: Hub
@@ -8,11 +8,15 @@ category: Hub
 
 # Hub workflows
 
-A workflow file contains one trigger and the ordered steps it starts. Files are discovered from `.otto/workflows/*.yml`.
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
+
+> **Legacy project bundles.** The examples on this page use `.paseo/hub.yml` and `.paseo/workflows/`. New organization triggers use `.paseo/triggers/`; see [Configuration](/docs/hub/configuration). The formats are separate.
+
+A workflow file contains one trigger and the ordered steps it starts. Files are discovered from `.paseo/workflows/*.yml`.
 
 ## Your first workflow
 
-Assume `.otto/hub.yml` defines an environment named `dev` and an agent named `codex`. Add `.otto/workflows/slack-help.yml`:
+Assume `.paseo/hub.yml` defines an environment named `dev` and an agent named `codex`. Add `.paseo/workflows/slack-help.yml`:
 
 ```yaml
 name: slack-help
@@ -33,13 +37,13 @@ steps:
           Answer the request. Call hub.reply once, then call hub.finish_execution.
 
           <user-prompt>
-          ${{ otto.prompt }}
+          ${{ paseo.prompt }}
           </user-prompt>
     allow_outputs:
       - { type: slack.reply, max: 1, required: true }
 ```
 
-Hub removes the mention and declared input headers before exposing the remaining text as `${{ otto.prompt }}`. The reply capability is explicit beside the Slack trigger. Discord uses `discord.reply`; GitHub uses a step-scoped [`github` block](/docs/hub/github), not `hub.reply`.
+Hub removes the mention and declared input headers before exposing the remaining text as `${{ paseo.prompt }}`. The reply capability is explicit beside the Slack trigger. Discord uses `discord.reply`; GitHub uses a step-scoped [`github` block](/docs/hub/github), not `hub.reply`.
 
 ## Choose where a step runs
 
@@ -61,15 +65,15 @@ inputs:
   repo:
     type: string
     required: true
-    choices: [otto, hub]
+    choices: [paseo, hub]
 steps:
   - id: work
-    environment: ${{ otto.inputs.repo }}
+    environment: ${{ paseo.inputs.repo }}
     max_runtime: 30m
     idle_timeout: 5m
     agent: codex
     prompt:
-      - text: ${{ otto.prompt }}
+      - text: ${{ paseo.prompt }}
 ```
 
 Activation checks every `choices` result. Environment objects are never merged or overridden by a workflow.
@@ -105,15 +109,15 @@ inputs:
     choices: [codex-safe, claude]
 steps:
   - id: work
-    environment: otto
+    environment: paseo
     max_runtime: 30m
     idle_timeout: 5m
-    agent: ${{ otto.inputs.agent }}
+    agent: ${{ paseo.inputs.agent }}
     prompt:
-      - text: ${{ otto.prompt }}
+      - text: ${{ paseo.prompt }}
 ```
 
-If `codex-safe` contains structured sandbox options in `hub.yml`, selecting it carries those options unchanged. A dynamic inline object such as `provider: ${{ otto.inputs.agent }}` is rejected.
+If `codex-safe` contains structured sandbox options in `hub.yml`, selecting it carries those options unchanged. A dynamic inline object such as `provider: ${{ paseo.inputs.agent }}` is rejected.
 
 ## Route from a classifier
 
@@ -137,13 +141,13 @@ steps:
     agent: claude
     prompt:
       - include: partials/classify.md
-      - text: ${{ otto.prompt }}
+      - text: ${{ paseo.prompt }}
     output:
       schema:
         type: object
         required: [environment, agent]
         properties:
-          environment: { enum: [otto, hub] }
+          environment: { enum: [paseo, hub] }
           agent: { enum: [codex-safe, claude] }
         additionalProperties: false
   - id: work
@@ -154,12 +158,12 @@ steps:
     prompt:
       - text: |
           Complete the request. Call hub.reply once, then call hub.finish_execution.
-      - text: ${{ otto.prompt }}
+      - text: ${{ paseo.prompt }}
     allow_outputs:
       - { type: discord.reply, max: 1, required: true }
 ```
 
-`.otto/workflows/partials/classify.md`:
+`.paseo/workflows/partials/classify.md`:
 
 ```text
 Choose one configured repository environment and one complete named agent configuration.
@@ -176,15 +180,15 @@ prompt:
   - include: partials/instructions.md
   - text: |
       Provider evidence:
-      ${{ otto.context }}
+      ${{ paseo.context }}
 
       <user-prompt>
-      ${{ otto.prompt }}
+      ${{ paseo.prompt }}
       </user-prompt>
 ```
 
-- `${{ otto.prompt }}` is normalized request text. It is always explicit in the authored prompt.
-- `${{ otto.context }}` opts this step into provider context materialization and inserts JSON. Without that expression, Hub does not fetch or inject ambient context.
+- `${{ paseo.prompt }}` is normalized request text. It is always explicit in the authored prompt.
+- `${{ paseo.context }}` opts this step into provider context materialization and inserts JSON. Without that expression, Hub does not fetch or inject ambient context.
 
 Keep untrusted request text in a clearly delimited block. A partial is instruction text, not hidden authority.
 
@@ -200,12 +204,12 @@ filters:
   from_users: [automation]
 steps:
   - id: inspect
-    environment: otto
+    environment: paseo
     max_runtime: 10m
     idle_timeout: 2m
     agent: codex-safe
     prompt:
-      - text: ${{ otto.prompt }}
+      - text: ${{ paseo.prompt }}
     output:
       schema:
         type: object
@@ -215,7 +219,7 @@ steps:
         additionalProperties: false
   - id: review
     if: ${{ steps.inspect.outputs.needs_review == true }}
-    environment: otto
+    environment: paseo
     max_runtime: 30m
     idle_timeout: 5m
     agent: claude

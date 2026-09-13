@@ -63,22 +63,11 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       // palette. Plugin contributions only promise Paseo's public roles, so
       // making their sparse colors own the scope would silently degrade Otto
       // status, terminal, usage, and code tokens.
-      syncBlackChatScopeVars();
       UnistylesRuntime.setAdaptiveThemes(false);
       UnistylesRuntime.setTheme(name);
     }
-  }, [
-    isLoading,
-    osColorScheme,
-    selected,
-    settings.colorSchemeMode,
-    settings.darkTheme,
-    settings.fontContrast,
-    settings.lightTheme,
-  ]);
-
-  useLayoutEffect(() => {
-    if (isLoading) return;
+    // A plugin palette replacement discards font/syntax overrides. Keep the
+    // stable ordering in this single lifecycle for selection and live reload.
     applyAppearance({
       uiFontFamily: settings.uiFontFamily,
       monoFontFamily: settings.monoFontFamily,
@@ -92,6 +81,12 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     syncBlackChatScopeVars();
   }, [
     isLoading,
+    osColorScheme,
+    selected,
+    settings.colorSchemeMode,
+    settings.darkTheme,
+    settings.fontContrast,
+    settings.lightTheme,
     settings.codeFontSize,
     settings.chatWidth,
     settings.contentFontSize,

@@ -20,18 +20,18 @@ Otto launches the agent CLIs you've already installed, it doesn't bundle them (s
 
 Open **Settings → your host → Providers**, tap the provider, then tap **Diagnostic**. The rows that matter:
 
-- **Resolved path** — where Otto found the binary, or `not found`.
-- **Daemon PATH** — the `PATH` Otto is searching. Compare it to `echo $PATH` in a fresh terminal.
-- **Version** — whether the binary actually runs.
+- **Resolved path** , where Otto found the binary, or `not found`.
+- **Daemon PATH** , the `PATH` Otto is searching. Compare it to `echo $PATH` in a fresh terminal.
+- **Version** , whether the binary actually runs.
 
 From a terminal or agent, request the same diagnostic from the affected daemon:
 
 ```bash
 otto provider diagnostic <provider>
-otto provider diagnostic <provider> --host <host:port> --json
+otto --host <host:port> provider diagnostic <provider> --json
 ```
 
-Use `--host` when the affected daemon is not the CLI's default local daemon.
+Use the global `--host` option when the affected daemon is not the CLI's default local daemon.
 
 `not found` together with a **Daemon PATH** that's missing your binary's directory is the common case: that directory is on your terminal's `PATH` but not on Otto's.
 
@@ -71,8 +71,8 @@ This login-shell step runs on macOS and Linux. On Windows, Otto uses the environ
 
 ## Reading the logs
 
-- **Desktop app** — the login-shell resolution is logged here. Look for `[login-shell-env]`: `applied` means it worked (it logs the `PATH` before and after); `failed; keeping inherited env` means it fell back to the stripped-down environment, with a `reason` (a timeout, a non-zero exit from your shell config, no output, …). A slow or erroring `.zshrc`/`.zprofile` is the usual cause.
-- **Daemon** — `~/.otto/daemon.log` (`$OTTO_HOME/daemon.log` if you've set a custom home).
+- **Desktop app** , the login-shell resolution is logged here. Look for `[login-shell-env]`: `applied` means it worked (it logs the `PATH` before and after); `failed; keeping inherited env` means it fell back to the stripped-down environment, with a `reason` (a timeout, a non-zero exit from your shell config, no output, …). A slow or erroring `.zshrc`/`.zprofile` is the usual cause.
+- **Daemon** , `~/.otto/daemon.log` (`$OTTO_HOME/daemon.log` if you've set a custom home).
 
 Desktop app log location:
 
@@ -96,7 +96,7 @@ Run `otto daemon restart` only when reload requests it. In the app, open **Setti
 
 ## Still stuck?
 
-- [Custom providers](/docs/custom-providers) — endpoints, profiles, binaries, ACP agents.
-- [Configuration](/docs/configuration) — `config.json`, environment variables, logging.
-- [How Otto resolves your login shell](https://github.com/Draek2077/otto-code/blob/main/packages/desktop/src/login-shell-env.ts) — the exact code that loads your shell environment.
+- [Custom providers](/docs/custom-providers) , endpoints, profiles, binaries, ACP agents.
+- [Configuration](/docs/configuration) , `config.json`, environment variables, logging.
+- [How Otto resolves your login shell](https://github.com/Draek2077/otto-code/blob/main/packages/desktop/src/login-shell-env.ts) , the exact code that loads your shell environment.
 - [Report an issue](https://github.com/Draek2077/otto-code/issues).

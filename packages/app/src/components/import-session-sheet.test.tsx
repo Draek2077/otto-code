@@ -74,6 +74,9 @@ vi.mock("@/components/ui/button", () => ({
   ),
 }));
 
+vi.mock("@/projects/host-projects", () => ({ useHostProjects: () => [] }));
+vi.mock("@/runtime/host-runtime", () => ({ useHosts: () => [] }));
+
 vi.mock("@/runtime/host-features", () => ({ useHostFeature: () => true }));
 
 vi.mock("@/components/provider-icons", () => ({
@@ -143,21 +146,33 @@ vi.mock("@/components/adaptive-modal-sheet", () => ({
     testID,
   }: {
     visible: boolean;
-    header?: { title: string; actions?: ReactNode };
+    header?: {
+      title: string;
+      actions?: ReactNode;
+      search?: { onChange: (value: string) => void; testID?: string };
+    };
     children: ReactNode;
     // Action buttons are pinned below the scroll region, not part of the body,
     // so the mock has to render the slot or every button assertion sees null.
     footer?: ReactNode;
     testID?: string;
-  }) =>
-    visible ? (
+  }) => {
+    const onSearchChange = React.useCallback(
+      (event: React.ChangeEvent<HTMLInputElement>) => header?.search?.onChange(event.target.value),
+      [header],
+    );
+    return visible ? (
       <section data-testid={testID}>
         <h1>{header?.title}</h1>
         {header?.actions}
+        {header?.search ? (
+          <input data-testid={header.search.testID} onChange={onSearchChange} />
+        ) : null}
         {children}
         {footer}
       </section>
-    ) : null,
+    ) : null;
+  },
 }));
 
 vi.mock("react-native", async () => {
@@ -1062,7 +1077,84 @@ describe("ImportSessionSheet", () => {
     expect(fetchRecentProviderSessions).toHaveBeenLastCalledWith({
       providers: ["codex"],
       cwd: "/repo/otto",
-      limit: 30,
+      limit: 45,
     });
+  });
+  it("searches only after input settles and clears batch selection for a new search", async () => {
+    const fetchRecentProviderSessions = vi.fn(async () => ({
+      requestId: "recent",
+      entries: [createProviderSessionEntry({ providerId: "codex" })],
+    }));
+    renderSheet(createRecentSessionsClient(fetchRecentProviderSessions, vi.fn()), {
+      snapshot: { supportsSnapshot: true, entries: [createSnapshotEntry("codex")] },
+    });
+    fireEvent.click(await screen.findByTestId("import-session-select-all"));
+    expect(screen.getByTestId("import-session-import-selected").hasAttribute("disabled")).toBe(
+      false,
+    );
+    fireEvent.change(screen.getByTestId("import-session-search"), {
+      target: { value: "  durable rows  " },
+    });
+    expect(fetchRecentProviderSessions).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(fetchRecentProviderSessions).toHaveBeenLastCalledWith({
+        cwd: "/repo/otto",
+        query: "durable rows",
+        providers: ["codex"],
+        limit: 15,
+      }),
+    );
+    expect(screen.getByTestId("import-session-import-selected").hasAttribute("disabled")).toBe(
+      true,
+    );
+  });
+
+  it("retries a provider-reported discovery error without losing another provider's rows", async () => {
+    const fetchRecentProviderSessions = vi.fn(async (options?: { providers?: string[] }) => ({
+      requestId: "recent",
+      entries:
+        options?.providers?.[0] === "codex"
+          ? [createProviderSessionEntry({ providerId: "codex" })]
+          : [],
+      providerErrors:
+        options?.providers?.[0] === "claude" ? [{ provider: "claude", message: "offline" }] : [],
+    }));
+    renderSheet(createRecentSessionsClient(fetchRecentProviderSessions, vi.fn()), {
+      snapshot: {
+        supportsSnapshot: true,
+        entries: [createSnapshotEntry("codex"), createSnapshotEntry("claude")],
+      },
+    });
+    await screen.findByTestId("import-session-session-codex-provider-thread-1");
+    fireEvent.click(await screen.findByTestId("import-session-retry-claude"));
+    await waitFor(() => expect(fetchRecentProviderSessions).toHaveBeenCalledTimes(3));
+    expect(fetchRecentProviderSessions).toHaveBeenLastCalledWith({
+      cwd: "/repo/otto",
+      providers: ["claude"],
+      limit: 15,
+    });
+    expect(screen.getByTestId("import-session-session-codex-provider-thread-1")).toBeTruthy();
+  });
+
+  it("keeps the smaller page selectable while loading the next page", async () => {
+    const entries = Array.from({ length: 15 }, (_, index) =>
+      createProviderSessionEntry({
+        providerId: "codex",
+        providerHandleId: String(index),
+        title: "Chat " + index,
+      }),
+    );
+    const fetchRecentProviderSessions = vi.fn((options?: { limit?: number }) =>
+      options?.limit === 45
+        ? new Promise<Awaited<ReturnType<DaemonClient["fetchRecentProviderSessions"]>>>(() => {})
+        : Promise.resolve({ requestId: "recent", entries }),
+    );
+    renderSheet(createRecentSessionsClient(fetchRecentProviderSessions, vi.fn()), {
+      snapshot: { supportsSnapshot: true, entries: [createSnapshotEntry("codex")] },
+    });
+    fireEvent.click(await screen.findByTestId("import-session-load-more"));
+    await waitFor(() => expect(fetchRecentProviderSessions).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("Chat 14")).toBeTruthy();
+    expect(screen.getByTestId("import-session-load-more").hasAttribute("disabled")).toBe(true);
   });
 });

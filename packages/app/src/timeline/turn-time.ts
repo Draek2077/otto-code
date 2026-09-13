@@ -3,9 +3,8 @@ import type { StreamItem } from "@/types/stream";
 import { startsNewTurn } from "@/agent-stream/turn-membership";
 
 export interface TurnTiming {
-  startedAt: Date;
   completedAt: Date;
-  durationMs: number;
+  durationMs: number | null;
   /** Present only for turns whose turn_completed event was observed live. */
   usage?: AgentUsage;
 }
@@ -69,13 +68,14 @@ export function deriveStreamTurnTiming(params: {
   let previousItem: StreamItem | null = null;
 
   const flushCompletedTurn = () => {
-    if (!currentUserAt || !currentLastItemAt || currentAssistantIds.length === 0) {
+    if (!currentLastItemAt || currentAssistantIds.length === 0) {
       return;
     }
     const timing: TurnTiming = {
-      startedAt: currentUserAt,
       completedAt: currentLastItemAt,
-      durationMs: Math.max(0, currentLastItemAt.getTime() - currentUserAt.getTime()),
+      durationMs: currentUserAt
+        ? Math.max(0, currentLastItemAt.getTime() - currentUserAt.getTime())
+        : null,
       ...(currentUsage ? { usage: currentUsage } : {}),
     };
     for (const id of currentAssistantIds) {
@@ -94,10 +94,6 @@ export function deriveStreamTurnTiming(params: {
       currentAssistantIds = [];
       currentUsage = undefined;
       currentStreamedChars = 0;
-    }
-    if (!currentUserAt) {
-      previousItem = item;
-      return;
     }
     currentLastItemAt = item.timestamp;
     currentStreamedChars += estimateItemStreamedChars(item);

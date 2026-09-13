@@ -1,3 +1,13 @@
+import { SettingsMenuItem } from "@/screens/settings-search/menu-item";
+import { SettingsButton, SettingsPressable } from "@/screens/settings-search/controls";
+import {
+  SettingsTargetText,
+  useRevealSettingsTarget,
+  SettingsSearchProvider,
+  useSettingsSearchRequest,
+} from "@/screens/settings-search/target";
+import { settingsTargetIdsForPersistence } from "@/screens/settings-search-catalog";
+import { SettingsAdaptiveModalSheet as AdaptiveModalSheet } from "@/screens/settings-search/sheets";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -26,11 +36,11 @@ import { ExternalLink } from "@/components/ui/external-link";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
 import { TextArea } from "@/components/ui/text-area";
-import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { ProjectEditSheet } from "@/components/project-edit-sheet";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
-import { SettingsGroup } from "@/screens/settings/settings-group";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsGroup } from "@/components/settings/headings/settings-group";
+import { SettingsSection as TargetSection } from "@/screens/settings-search/fields";
 import { settingsStyles } from "@/styles/settings";
 import { ForgeConnectionsSettings } from "@/screens/settings/forge-connections-settings";
 import { isNative } from "@/constants/platform";
@@ -69,6 +79,11 @@ import {
 } from "./project-settings-save-state";
 
 const SCRIPT_SERVICE_TYPE = "service";
+
+const PROJECT_IDENTITY_SETTINGS = [
+  "host-projects-project-settings-identity-name",
+  "host-projects-project-settings-identity-appearance",
+] as const;
 
 interface MetadataPromptField {
   titleKey: string;
@@ -335,6 +350,8 @@ function ProjectSettingsBody({
     data?.ok === true && data.hasUncommittedWorktreeSetupChanges === true;
   const readError: ProjectConfigRpcError | null = data && !data.ok ? data.error : null;
 
+  useRevealSettingsTarget(PROJECT_IDENTITY_SETTINGS, openEditSheet);
+
   const handleReload = useCallback(() => {
     void readQuery.refetch();
   }, [readQuery]);
@@ -344,7 +361,8 @@ function ProjectSettingsBody({
       <View style={styles.topBar}>
         <BackToProjectsButton serverId={selectedHost.serverId} onPress={handleBackToProjects} />
         {saveState ? (
-          <Button
+          <SettingsButton
+            settingIds={["host-projects-project-settings-actions-save"]}
             testID="save-button"
             accessibilityLabel={t("settings.project.actions.save")}
             variant="default"
@@ -356,7 +374,7 @@ function ProjectSettingsBody({
             {saveState.isSaving
               ? t("settings.project.actions.saving")
               : t("settings.project.actions.save")}
-          </Button>
+          </SettingsButton>
         ) : null}
       </View>
 
@@ -779,7 +797,8 @@ function ProjectConfigForm({
 
   const scriptsTrailing = useMemo(
     () => (
-      <Pressable
+      <SettingsPressable
+        settingIds={["host-projects-project-settings-scripts-add-script"]}
         onPress={handleAddScript}
         hitSlop={8}
         style={settingsStyles.sectionHeaderLink}
@@ -788,7 +807,7 @@ function ProjectConfigForm({
         testID="scripts-add-button"
       >
         <Plus size="sm" color={styles.iconColor.color} />
-      </Pressable>
+      </SettingsPressable>
     ),
     [handleAddScript, t],
   );
@@ -854,7 +873,8 @@ function ProjectConfigForm({
             info={t("settings.project.worktree.info")}
             testID="worktree-group"
           >
-            <SettingsSection
+            <TargetSection
+              settingIds={["host-projects-project-settings-worktree-setup-command"]}
               title={t("settings.project.worktree.setup")}
               testID="worktree-setup-section"
               trailing={setupDocsLink}
@@ -873,9 +893,10 @@ function ProjectConfigForm({
                 onChangeText={handleSetupChange}
                 placeholder="npm install"
               />
-            </SettingsSection>
+            </TargetSection>
 
-            <SettingsSection
+            <TargetSection
+              settingIds={["host-projects-project-settings-worktree-teardown-command"]}
               title={t("settings.project.worktree.teardown")}
               testID="worktree-teardown-section"
               trailing={teardownDocsLink}
@@ -888,7 +909,7 @@ function ProjectConfigForm({
                 onChangeText={handleTeardownChange}
                 placeholder="docker compose down"
               />
-            </SettingsSection>
+            </TargetSection>
           </SettingsGroup>
 
           <SettingsGroup
@@ -1035,7 +1056,15 @@ function MetadataPromptSection({ promptKey, value, onChange, flush }: MetadataPr
     [onChange, promptKey],
   );
   return (
-    <SettingsSection title={title} testID={meta.sectionTestID} flush={flush}>
+    <TargetSection
+      settingIds={settingsTargetIdsForPersistence(
+        "projects",
+        `project.metadataPrompts.${promptKey}`,
+      )}
+      title={title}
+      testID={meta.sectionTestID}
+      flush={flush}
+    >
       <SettingsTextAreaCard
         testID={meta.inputTestID}
         accessibilityLabel={title}
@@ -1043,7 +1072,7 @@ function MetadataPromptSection({ promptKey, value, onChange, flush }: MetadataPr
         onChangeText={handleChange}
         placeholder={t(meta.placeholderKey)}
       />
-    </SettingsSection>
+    </TargetSection>
   );
 }
 
@@ -1055,6 +1084,7 @@ interface ScriptRowProps {
 }
 
 function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
+  const requestedSetting = useSettingsSearchRequest();
   const { t } = useTranslation();
   const handleEdit = useCallback(() => onEdit(script), [onEdit, script]);
   const handleRemove = useCallback(() => onRemove(script), [onRemove, script]);
@@ -1062,14 +1092,18 @@ function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
 
   return (
     <View style={rowStyle} testID={`script-row-${script.id}`}>
-      <Pressable style={styles.scriptRowMain} onPress={handleEdit}>
+      <SettingsPressable
+        settingIds={["host-projects-project-settings-scripts-edit-script"]}
+        style={styles.scriptRowMain}
+        onPress={handleEdit}
+      >
         <Text style={settingsStyles.rowTitle} numberOfLines={1}>
           {script.name || t("settings.project.scripts.untitled")}
         </Text>
         <Text style={settingsStyles.rowHint} numberOfLines={1}>
           {scriptHint(script, t)}
         </Text>
-      </Pressable>
+      </SettingsPressable>
       <DropdownMenu>
         <DropdownMenuTrigger
           accessibilityLabel={t("settings.project.scripts.menuAccessibility")}
@@ -1079,16 +1113,19 @@ function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
           <MoreVertical size="sm" color={styles.chevronColor.color} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" minWidth={160}>
-          <DropdownMenuItem testID={`script-action-${script.id}-edit`} onSelect={handleEdit}>
-            {t("settings.project.scripts.actions.edit")}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            testID={`script-action-${script.id}-remove`}
-            destructive
-            onSelect={handleRemove}
-          >
-            {t("settings.project.scripts.actions.remove")}
-          </DropdownMenuItem>
+          <SettingsSearchProvider settingId={requestedSetting}>
+            <DropdownMenuItem testID={`script-action-${script.id}-edit`} onSelect={handleEdit}>
+              {t("settings.project.scripts.actions.edit")}
+            </DropdownMenuItem>
+            <SettingsMenuItem
+              settingIds={["host-projects-project-settings-scripts-delete-script"]}
+              testID={`script-action-${script.id}-remove`}
+              destructive
+              onSelect={handleRemove}
+            >
+              {t("settings.project.scripts.actions.remove")}
+            </SettingsMenuItem>
+          </SettingsSearchProvider>
         </DropdownMenuContent>
       </DropdownMenu>
     </View>
@@ -1222,7 +1259,12 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
       footer={footer}
     >
       <View style={styles.modalSection}>
-        <Text style={styles.modalLabel}>{t("settings.project.scripts.name")}</Text>
+        <SettingsTargetText
+          settingId="host-projects-project-settings-script-editor-name"
+          style={styles.modalLabel}
+        >
+          {t("settings.project.scripts.name")}
+        </SettingsTargetText>
         <TextInput
           testID="script-edit-name"
           accessibilityLabel={t("settings.project.scripts.nameAccessibility")}
@@ -1240,7 +1282,12 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
         ) : null}
       </View>
       <View style={styles.modalSection}>
-        <Text style={styles.modalLabel}>{t("settings.project.scripts.command")}</Text>
+        <SettingsTargetText
+          settingId="host-projects-project-settings-script-editor-command"
+          style={styles.modalLabel}
+        >
+          {t("settings.project.scripts.command")}
+        </SettingsTargetText>
         <TextArea
           testID="script-edit-command"
           accessibilityLabel={t("settings.project.scripts.commandAccessibility")}
@@ -1260,9 +1307,12 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
       <View style={styles.modalSection}>
         <View style={styles.serviceToggleRow}>
           <View style={styles.serviceToggleText}>
-            <Text style={styles.serviceToggleLabel}>
+            <SettingsTargetText
+              settingId="host-projects-project-settings-script-editor-service"
+              style={styles.serviceToggleLabel}
+            >
               {t("settings.project.scripts.runAsService")}
-            </Text>
+            </SettingsTargetText>
             <Text style={styles.modalHint}>{t("settings.project.scripts.serviceHint")}</Text>
           </View>
           <Switch

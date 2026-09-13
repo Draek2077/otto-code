@@ -13,7 +13,10 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
+import {
+  FlatList as SheetFlatList,
+  ScrollView as SheetScrollView,
+} from "@/components/ui/scroll-view";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
@@ -28,6 +31,7 @@ import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { RolePersonality } from "@/provider-selection/role-model-personality";
 import {
   PersonalitiesSection,
+  SelectorProviderHost,
   type SelectorProfile,
 } from "@/components/model-selector/selector-content";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
@@ -127,6 +131,7 @@ interface ModelBrowserInput {
 }
 
 export interface ModelBrowserState {
+  serverId: string | null;
   providers: ProviderSelectorProvider[];
   selectedProvider: string;
   selectedModel: string;
@@ -158,6 +163,7 @@ interface ModelBrowserProps {
 }
 
 interface ModelBrowserContentProps extends Omit<ModelBrowserProps, "state" | "scrolling"> {
+  serverId: string | null;
   view: ModelBrowserView;
   providers: ProviderSelectorProvider[];
   selectedProvider: string;
@@ -173,14 +179,16 @@ type ProviderGlyphTone = "muted" | "foreground";
 
 export function ModelProviderGlyph({
   provider,
+  serverId,
   size,
   tone = "muted",
 }: {
   provider: string;
+  serverId: string | null;
   size: IconSizeProp;
   tone?: ProviderGlyphTone;
 }) {
-  const Icon = getProviderIcon(provider);
+  const Icon = getProviderIcon(provider, serverId);
   const color =
     tone === "foreground" ? styles.providerIconForeground.color : styles.providerIconMuted.color;
   return <Icon size={size} color={color} />;
@@ -295,7 +303,14 @@ export function useModelBrowser({
     }
     return {
       title: view.providerLabel,
-      leading: <ModelProviderGlyph provider={view.providerId} size="md" tone="foreground" />,
+      leading: (
+        <ModelProviderGlyph
+          provider={view.providerId}
+          serverId={serverId}
+          size="md"
+          tone="foreground"
+        />
+      ),
       back: singleProviderView ? undefined : { onPress: handleBackToAll },
       actions: (
         <View style={styles.headerActionRow}>
@@ -350,6 +365,7 @@ export function useModelBrowser({
   );
 
   return {
+    serverId,
     providers,
     selectedProvider,
     selectedModel,
@@ -570,11 +586,13 @@ function ModelBrowserRow({
 
 function ModelRow({
   row,
+  serverId,
   isSelected,
   showProviderLabel = false,
   onPress,
 }: {
   row: ProviderSelectionModelRow;
+  serverId: string | null;
   isSelected: boolean;
   showProviderLabel?: boolean;
   onPress: () => void;
@@ -584,9 +602,9 @@ function ModelRow({
       row.provider === "otto-brain" && row.family ? (
         <ThemedBrainModelFamilyIcon family={row.family} size="sm" />
       ) : (
-        <ModelProviderGlyph provider={row.provider} size="sm" />
+        <ModelProviderGlyph provider={row.provider} serverId={serverId} size="sm" />
       ),
-    [row.family, row.provider],
+    [row.family, row.provider, serverId],
   );
 
   const description = showProviderLabel ? buildProviderQualifiedDescription(row) : row.description;
@@ -606,11 +624,13 @@ function ModelRow({
 
 function SelectableModelRow({
   row,
+  serverId,
   isSelected,
   showProviderLabel,
   onSelect,
 }: {
   row: ProviderSelectionModelRow;
+  serverId: string | null;
   isSelected: boolean;
   showProviderLabel?: boolean;
   onSelect: (provider: string, modelId: string) => void;
@@ -621,6 +641,7 @@ function SelectableModelRow({
   return (
     <ModelRow
       row={row}
+      serverId={serverId}
       isSelected={isSelected}
       showProviderLabel={showProviderLabel}
       onPress={handlePress}
@@ -634,12 +655,14 @@ function SelectableModelRow({
  * selected-row behaviour.
  */
 function PersonalityPickerContent({
+  serverId,
   rows,
   selectedProfileId,
   onSelectProfile,
   onClearProfile,
   onEditProfiles,
 }: {
+  serverId: string | null;
   rows: SelectorProfile[] | undefined;
   selectedProfileId: string | null;
   onSelectProfile?: (id: string) => void;
@@ -650,12 +673,14 @@ function PersonalityPickerContent({
     return onEditProfiles ? <CreateAgentProfileRow onPress={onEditProfiles} /> : null;
   }
   return (
-    <PersonalitiesSection
-      personalities={rows}
-      selectedProfileId={selectedProfileId}
-      onSelectProfile={onSelectProfile}
-      onClearProfile={onClearProfile}
-    />
+    <SelectorProviderHost value={serverId}>
+      <PersonalitiesSection
+        personalities={rows}
+        selectedProfileId={selectedProfileId}
+        onSelectProfile={onSelectProfile}
+        onClearProfile={onClearProfile}
+      />
+    </SelectorProviderHost>
   );
 }
 
@@ -682,9 +707,11 @@ function CreateAgentProfileRow({ onPress }: { onPress: () => void }) {
 
 function GroupProviderButton({
   provider,
+  serverId,
   onDrillDown,
 }: {
   provider: ProviderSelectorProvider;
+  serverId: string | null;
   onDrillDown: (providerId: string, providerLabel: string) => void;
 }) {
   const { t } = useTranslation();
@@ -722,8 +749,8 @@ function GroupProviderButton({
     );
   }, [selection, t]);
   const leadingSlot = useMemo(
-    () => <ModelProviderGlyph provider={provider.id} size="sm" />,
-    [provider.id],
+    () => <ModelProviderGlyph provider={provider.id} serverId={serverId} size="sm" />,
+    [provider.id, serverId],
   );
   const trailingSlot = useMemo(
     () => (
@@ -750,9 +777,11 @@ function GroupProviderButton({
 
 function GroupedProviderRows({
   providers,
+  serverId,
   onDrillDown,
 }: {
   providers: ProviderSelectorProvider[];
+  serverId: string | null;
   onDrillDown: (providerId: string, providerLabel: string) => void;
 }) {
   return (
@@ -760,7 +789,7 @@ function GroupedProviderRows({
       {providers.map((provider, index) => (
         <View key={provider.id}>
           {index > 0 ? <View style={styles.separator} /> : null}
-          <GroupProviderButton provider={provider} onDrillDown={onDrillDown} />
+          <GroupProviderButton provider={provider} serverId={serverId} onDrillDown={onDrillDown} />
         </View>
       ))}
     </View>
@@ -846,6 +875,7 @@ function IndependentProviderList({ children }: { children: React.ReactNode }) {
 
 function ModelRowList({
   rows,
+  serverId,
   selectedProvider,
   selectedModel,
   onSelect,
@@ -854,6 +884,7 @@ function ModelRowList({
   scrolling,
 }: {
   rows: ProviderSelectionModelRow[];
+  serverId: string | null;
   selectedProvider: string;
   selectedModel: string;
   onSelect: (provider: string, modelId: string) => void;
@@ -866,12 +897,13 @@ function ModelRowList({
     ({ item }: { item: ProviderSelectionModelRow }) => (
       <SelectableModelRow
         row={item}
+        serverId={serverId}
         isSelected={item.provider === selectedProvider && item.modelId === selectedModel}
         showProviderLabel={showProviderLabel}
         onSelect={onSelect}
       />
     ),
-    [onSelect, selectedModel, selectedProvider, showProviderLabel],
+    [onSelect, selectedModel, selectedProvider, showProviderLabel, serverId],
   );
   const keyExtractor = useCallback((row: ProviderSelectionModelRow) => row.favoriteKey, []);
 
@@ -881,7 +913,7 @@ function ModelRowList({
 
   if (isCompact && isNative) {
     return (
-      <BottomSheetFlatList
+      <SheetFlatList
         data={rows}
         renderItem={renderItem}
         ListHeaderComponent={header}
@@ -949,6 +981,7 @@ function ModelSearchEmptyState() {
 }
 
 function ProviderModelBrowserContent({
+  serverId,
   view,
   provider,
   personality,
@@ -963,6 +996,7 @@ function ProviderModelBrowserContent({
   isRetryingProvider,
   scrolling,
 }: {
+  serverId: string | null;
   view: Extract<ModelBrowserView, { kind: "provider" }>;
   provider: ProviderSelectorProvider | null;
   personality: RolePersonality | null;
@@ -992,6 +1026,7 @@ function ProviderModelBrowserContent({
     () =>
       normalizedQuery.length === 0 && personality ? (
         <PersonalityPickerContent
+          serverId={serverId}
           rows={providerPersonalityRows}
           selectedProfileId={personality.selectedProfileId}
           onSelectProfile={onSelectProfile}
@@ -1006,6 +1041,7 @@ function ProviderModelBrowserContent({
       onSelectProfile,
       personality,
       providerPersonalityRows,
+      serverId,
     ],
   );
 
@@ -1037,6 +1073,7 @@ function ProviderModelBrowserContent({
   }
   return (
     <ModelRowList
+      serverId={serverId}
       rows={visibleRows}
       selectedProvider={selectedProvider}
       selectedModel={selectedModel}
@@ -1048,6 +1085,7 @@ function ProviderModelBrowserContent({
 }
 
 export function ModelBrowserContent({
+  serverId,
   view,
   providers,
   selectedProvider,
@@ -1082,6 +1120,7 @@ export function ModelBrowserContent({
   if (view.kind === "provider") {
     return (
       <ProviderModelBrowserContent
+        serverId={serverId}
         view={view}
         provider={selectedViewProvider}
         personality={personality}
@@ -1113,6 +1152,7 @@ export function ModelBrowserContent({
   if (allView.kind === "searchResults") {
     return (
       <ModelRowList
+        serverId={serverId}
         rows={allView.rows}
         selectedProvider={selectedProvider}
         selectedModel={selectedModel}
@@ -1127,6 +1167,7 @@ export function ModelBrowserContent({
     <View>
       {personality ? (
         <PersonalityPickerContent
+          serverId={serverId}
           rows={personality.personalities}
           selectedProfileId={personality.selectedProfileId}
           onSelectProfile={onSelectProfile}
@@ -1141,7 +1182,11 @@ export function ModelBrowserContent({
               <Text style={styles.sectionHeadingText}>{t("modelSelector.providers")}</Text>
             </View>
           ) : null}
-          <GroupedProviderRows providers={providers} onDrillDown={onDrillDown} />
+          <GroupedProviderRows
+            serverId={serverId}
+            providers={providers}
+            onDrillDown={onDrillDown}
+          />
         </View>
       ) : null}
       {!hasResults ? <ModelSearchEmptyState /> : null}
@@ -1151,7 +1196,19 @@ export function ModelBrowserContent({
   return scrolling === "independent" ? (
     <IndependentProviderList>{allProvidersContent}</IndependentProviderList>
   ) : (
-    allProvidersContent
+    <SheetScrollView
+      style={styles.virtualizedModelList}
+      contentContainerStyle={[
+        styles.virtualizedModelListContent,
+        styles.virtualizedProviderListContent,
+      ]}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      showsVerticalScrollIndicator={false}
+      testID="compact-provider-list"
+    >
+      {allProvidersContent}
+    </SheetScrollView>
   );
 }
 
@@ -1167,6 +1224,7 @@ export function ModelBrowser({
 }: ModelBrowserProps) {
   return (
     <ModelBrowserContent
+      serverId={state.serverId}
       view={state.view}
       providers={state.providers}
       selectedProvider={state.selectedProvider}

@@ -20,6 +20,7 @@ export interface WorkspaceTabPresentation {
   kind: WorkspaceTabDescriptor["kind"];
   label: string;
   subtitle: string;
+  modified: boolean;
   titleState: "ready" | "loading";
   icon: React.ComponentType<{ size?: IconSizeProp; color?: string }>;
   statusBucket: SidebarStateBucket | null;

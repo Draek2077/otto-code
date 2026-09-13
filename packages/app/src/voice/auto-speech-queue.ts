@@ -2,7 +2,7 @@
 //
 // The composer's speaker toggle turns it on per chat (per agent). From then on
 // every assistant bubble segment from that chat is queued the moment it is FINAL
-// (the model has moved past it and the typewriter reveal has caught up) and spoken
+// (the model has moved past it, independently of visual reveal) and spoken
 // one after another. Synthesis is slower than generation, so the queue IS the
 // feature: playback falls behind and drains at its own pace instead of dropping
 // lines or talking over itself.
@@ -24,10 +24,9 @@
 //
 // Deliberately NOT gated on app/tab visibility. Auto-speech is the one feature
 // whose whole point is that you are not looking at the screen - a phone in a
-// pocket or a tab in the background must keep reading. What did stop it there
-// was upstream: the typewriter reveal's timer is throttled off screen, so
-// segments never reached full length and nothing was ever offered. That is
-// fixed where it happens, in `agent-stream/turn-reveal.ts`.
+// pocket or a tab in the background must keep reading. The headless producer
+// follows daemon turn state and completed stream segments, without waiting on
+// the visual reveal's foreground animation.
 //
 // The interruption rules, which are the whole design:
 //   * Toggling auto-speech off for a chat aborts ITS current utterance and

@@ -118,3 +118,7 @@ describe("math in the export", () => {
     expect(html).toContain("\frac{");
   });
 });
+
+it("exports authored punctuation verbatim with document extensions", () => {
+  expect(body('(c) a -- b "hello"...')).toBe("<p>(c) a -- b &quot;hello&quot;...</p>");
+});

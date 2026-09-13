@@ -469,7 +469,7 @@ describe("OpenCodeAgentClient adapter smoke tests", () => {
       {
         sessionID: "session-1",
         directory: cwd,
-        time: { archived: null },
+        time: { archived: 0 },
       },
     ]);
     expect(runtime.acquisitions.every((acquisition) => acquisition.releaseCount === 1)).toBe(true);
@@ -4521,6 +4521,7 @@ describe("OpenCode provider subagent contract", () => {
       event: {
         type: "upsert",
         id: "ses_child_registry",
+        parentSubagentId: null,
         description: "Live child",
         status: "running",
       },
@@ -5445,6 +5446,7 @@ describe("OpenCode provider subagent contract", () => {
       event: {
         type: "upsert",
         id: "ses_child_background",
+        parentSubagentId: null,
         description: "Plugin child",
         status: "running",
       },
@@ -5493,6 +5495,7 @@ describe("OpenCode provider subagent contract", () => {
         event: {
           type: "upsert",
           id: "ses_child_plugin",
+          parentSubagentId: null,
           description: "Background plugin child",
           status: "running",
         },
@@ -5736,6 +5739,7 @@ describe("OpenCode provider subagent contract", () => {
         event: {
           type: "upsert",
           id: "ses_child_rich",
+          parentSubagentId: null,
           title: "explore",
           description: "Investigate flaky test",
           status: "running",
@@ -5762,7 +5766,12 @@ describe("OpenCode provider subagent contract", () => {
       {
         type: "provider_subagent",
         provider: "opencode",
-        event: { type: "upsert", id: "ses_child_bare", status: "running" },
+        event: {
+          type: "upsert",
+          id: "ses_child_bare",
+          parentSubagentId: null,
+          status: "running",
+        },
       },
     ]);
   });
@@ -6087,12 +6096,24 @@ describe("OpenCode provider subagent contract", () => {
       {
         type: "provider_subagent",
         provider: "opencode",
-        event: { type: "upsert", id: "ses_child_a", description: "Child A", status: "completed" },
+        event: {
+          type: "upsert",
+          id: "ses_child_a",
+          parentSubagentId: null,
+          description: "Child A",
+          status: "completed",
+        },
       },
       {
         type: "provider_subagent",
         provider: "opencode",
-        event: { type: "upsert", id: "ses_child_b", description: "Child B", status: "completed" },
+        event: {
+          type: "upsert",
+          id: "ses_child_b",
+          parentSubagentId: null,
+          description: "Child B",
+          status: "completed",
+        },
       },
       {
         type: "provider_subagent",
@@ -6100,6 +6121,7 @@ describe("OpenCode provider subagent contract", () => {
         event: {
           type: "upsert",
           id: "ses_grandchild_a",
+          parentSubagentId: "ses_child_a",
           description: "Grandchild A",
           status: "completed",
         },
@@ -6162,6 +6184,7 @@ describe("OpenCode provider subagent contract", () => {
       event: {
         type: "upsert",
         id: "ses_child_with_history",
+        parentSubagentId: null,
         description: "Historical child",
         status: "completed",
         cwd: "/workspace/child",
@@ -6249,6 +6272,7 @@ describe("OpenCode provider subagent contract", () => {
       event: {
         type: "upsert",
         id: "ses_child_hydrated_facts",
+        parentSubagentId: null,
         description: "Chase the regression",
         status: "completed",
         subtitle: "claude-sonnet-5 · Max",
@@ -6468,7 +6492,7 @@ describe("OpenCode provider subagent contract", () => {
           messageID: "msg_child_prompt",
           type: "text",
           text: "Inspect the auth flow.",
-          time: { start: 1, end: 2 },
+          time: { start: 1 },
         },
       },
     });

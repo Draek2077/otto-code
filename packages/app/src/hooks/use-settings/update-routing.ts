@@ -26,6 +26,8 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "rulerColumn",
   "workspaceTitleSource",
   "sidebarWorkspaceTrailing",
+  "sidebarNavItems",
+  "pullRequestOpenLocation",
   "shortcutOverlayMode",
   "autoExpandReasoning",
   "chatMetricsBar",

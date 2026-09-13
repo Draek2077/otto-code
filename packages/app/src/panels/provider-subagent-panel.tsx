@@ -5,10 +5,20 @@ import invariant from "tiny-invariant";
 import { useShallow } from "zustand/react/shallow";
 import { AgentStreamView } from "@/agent-stream/view";
 import { getProviderIcon } from "@/components/provider-icons";
+import {
+  resolveComposerTrackControlClearance,
+  resolveComposerTrackTailClearance,
+} from "@/composer/pill-styles";
+import { ComposerTrackBar } from "@/composer/tracks";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
 import { usePaneContext } from "@/panels/pane-context";
 import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
+import { useSubagentsForParent } from "@/subagents/select";
+import { useArchiveSubagent, useStopSubagent, useClearCompletedSubagents } from "@/subagents";
+import { navigateToAgent } from "@/utils/navigate-to-agent";
+import { SubagentsTrack } from "@/subagents/track";
 import {
   providerSubagentKey,
   providerSubagentLifecycleStatus,
@@ -24,6 +34,50 @@ import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
 
 const EMPTY_PERMISSIONS = new Map<string, PendingPermission>();
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
+
+function resolveChildTrackClearance(childCount: number, isCompact: boolean) {
+  if (childCount === 0) return { tail: 0, controls: 0 };
+  return {
+    tail: resolveComposerTrackTailClearance(isCompact),
+    controls: resolveComposerTrackControlClearance(isCompact),
+  };
+}
+
+function ProviderSubagentChildTrack({
+  serverId,
+  parentAgentId,
+  rows,
+  onOpenProviderSubagent,
+}: {
+  serverId: string;
+  parentAgentId: string;
+  rows: ReturnType<typeof useSubagentsForParent>;
+  onOpenProviderSubagent: (parentAgentId: string, subagentId: string) => void;
+}) {
+  const archiveSubagent = useArchiveSubagent({ serverId });
+  const stopSubagent = useStopSubagent({ serverId });
+  const clearCompleted = useClearCompletedSubagents({ serverId, parentAgentId });
+  const openSubagent = useCallback(
+    (agentId: string) => {
+      navigateToAgent({ serverId, agentId });
+    },
+    [serverId],
+  );
+  if (rows.length === 0) return null;
+  return (
+    <ComposerTrackBar>
+      <SubagentsTrack
+        serverId={serverId}
+        rows={rows}
+        onOpenSubagent={openSubagent}
+        onOpenProviderSubagent={onOpenProviderSubagent}
+        onArchiveSubagent={archiveSubagent}
+        onStopSubagent={stopSubagent}
+        onClearCompleted={clearCompleted}
+      />
+    </ComposerTrackBar>
+  );
+}
 
 function formatProviderLabel(provider: string): string {
   return provider
@@ -52,7 +106,7 @@ function useProviderSubagentDescriptor(
     subtitle: `${formatProviderLabel(provider)} subagent`,
     tooltip: label,
     titleState: descriptor ? "ready" : "loading",
-    icon: getProviderIcon(provider),
+    icon: getProviderIcon(provider, context.serverId),
     statusBucket: descriptor
       ? deriveSidebarStateBucket({
           status: providerSubagentLifecycleStatus(descriptor.status),
@@ -64,7 +118,7 @@ function useProviderSubagentDescriptor(
 
 function ProviderSubagentPanel() {
   const { t } = useTranslation();
-  const { serverId, target, openFileInWorkspace } = usePaneContext();
+  const { serverId, target, openFileInWorkspace, openTab } = usePaneContext();
   invariant(target.kind === "provider_subagent", "ProviderSubagentPanel requires provider target");
   const key = providerSubagentKey(serverId, target.parentAgentId, target.subagentId);
   const streamId = `provider:${encodeURIComponent(target.parentAgentId)}:${encodeURIComponent(target.subagentId)}`;
@@ -85,6 +139,19 @@ function ProviderSubagentPanel() {
   // COMPAT(providerSubagents): added in v0.2.11, remove after 2027-01-12.
   const supported = serverInfo?.features?.providerSubagents === true;
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const isCompact = useIsCompactFormFactor();
+  const childRows = useSubagentsForParent({
+    serverId,
+    parentAgentId: target.parentAgentId,
+    providerParentSubagentId: target.subagentId,
+  });
+  const childTrackClearance = resolveChildTrackClearance(childRows.length, isCompact);
+  const openProviderChild = useCallback(
+    (parentAgentId: string, subagentId: string) => {
+      openTab({ kind: "provider_subagent", parentAgentId, subagentId });
+    },
+    [openTab],
+  );
 
   useEffect(() => {
     if (!client || !supported) return;
@@ -195,6 +262,14 @@ function ProviderSubagentPanel() {
         onOpenWorkspaceFile={openFileInWorkspace}
         readOnly
         historyPagination={historyPagination}
+        bottomOverlayTailClearance={childTrackClearance.tail}
+        bottomOverlayControlClearance={childTrackClearance.controls}
+      />
+      <ProviderSubagentChildTrack
+        parentAgentId={target.parentAgentId}
+        serverId={serverId}
+        rows={childRows}
+        onOpenProviderSubagent={openProviderChild}
       />
     </View>
   );

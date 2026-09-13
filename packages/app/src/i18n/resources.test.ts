@@ -160,6 +160,11 @@ describe("translation resources", () => {
     expect(es.settings.project.scripts.title).toBe("Scripts");
   });
 
+  it("uses the Russian term for continuing a session in copied commands", () => {
+    expect(ru.workspace.tabs.menu.copyResumeCommand).toBe("Копировать команду продолжения");
+    expect(ru.workspace.tabs.toasts.resumeCommandCopiedLabel).toBe("команда продолжения");
+  });
+
   it("keeps model count labels spaced around the count", () => {
     expect(ar.modelSelector.modelCountPlural).toBe("{{count}} نماذج");
     expect(es.modelSelector.modelCountPlural).toBe("{{count}} modelos");
@@ -282,6 +287,7 @@ describe("translation resources", () => {
 
   it("includes workspace and panel keys for the Batch 4A migration", () => {
     expect(en.importSession.title).toBe("Import session");
+    expect(en.importSession.chooseHostTitle).toBe("Import from host");
     expect(en.importSession.status.connectHost).toBe("Connect to a host to import sessions");
     expect(en.importSession.actions.refresh).toBe("Refresh sessions");
     expect(en.workspace.fileExplorer.sort.name).toBe("Name");
@@ -295,6 +301,9 @@ describe("translation resources", () => {
     expect(en.workspace.browser.controls.enterUrl).toBe("Enter URL");
     expect(en.workspace.terminal.hostDisconnected).toBe("Host is not connected");
     expect(en.panels.file.directoryMissing).toBe("Workspace directory not found.");
+    expect(en.openProject.tiles.importSession.description).toBe(
+      "Open a Claude Code, Codex or other session you started in a terminal",
+    );
   });
 
   it("includes workspace Git and review keys for the Batch 4B migration", () => {
@@ -305,6 +314,16 @@ describe("translation resources", () => {
     expect(en.workspace.git.diff.binaryFile).toBe("Binary file");
     expect(en.workspace.git.pr.sections.checks).toBe("Checks");
     expect(en.workspace.git.pr.actions.viewPullRequest).toBe("View");
+    expect(en.workspace.git.pr.accessibility.checkStatus).toEqual({
+      passed: "Passed",
+      failed: "Failed",
+      warning: "Warning",
+      actionRequired: "Action required",
+      manual: "Manual",
+      pending: "Pending",
+      skipped: "Skipped",
+      cancelled: "Cancelled",
+    });
     expect(en.review.comment.placeholder).toBe("Leave a comment");
   });
 
@@ -402,7 +421,6 @@ describe("translation resources", () => {
       added: "Added",
       started: "Started",
       completed: "Completed",
-      reopened: "Reopened",
     });
   });
 
@@ -433,6 +451,14 @@ describe("translation resources", () => {
     expect(en.sidebar.workspace.actions.createWorkspaceFor).toBe(
       "Create a new workspace for {{projectName}}",
     );
+    expect(en.sidebar.workspace.checks).toEqual({
+      passed: "Passed: {{count}}",
+      failed: "Failed: {{count}}",
+      warning: "Warnings: {{count}}",
+      actionRequired: "Action required: {{count}}",
+      manual: "Manual: {{count}}",
+      pending: "Pending: {{count}}",
+    });
     expect(en.sidebar.project.empty.title).toBe("No projects yet");
     expect(en.sidebar.project.empty.description).toBe("Add a project to get started");
     expect(en.settings.projectList.hostLoadFailed).toBe(
@@ -698,5 +724,27 @@ describe("translation resources", () => {
     expect(en.startup.logs.loading).toBe("Loading daemon logs...");
     expect(en.startup.logs.unavailable).toBe("No daemon logs available.");
     expect(en.startup.logs.loadFailed).toBe("Unable to load daemon logs: {{message}}");
+  });
+  it("keeps stable import, release notes and Otto sidebar discovery available in every locale", () => {
+    const keys = [
+      "importSession.chooseHostTitle",
+      "importSession.searchPlaceholder",
+      "changelog.title",
+      "changelog.openWebsite",
+      "changelog.error.title",
+      "changelog.error.description",
+      "changelog.showMore",
+      "changelog.installed",
+      "common.actions.retry",
+      "settings.plugins.screens.open",
+      "sidebar.sections.kanban",
+      "sidebar.sections.runs",
+      "settings.appearance.sidebar.workspaceActions",
+    ];
+    for (const resource of [en, ar, es, fr, ja, ko, ptBR, ru, zhCN]) {
+      const strings = flattenStrings(resource);
+      for (const key of keys) expect(strings[key], key).toBeTruthy();
+    }
+    expect(en.pairing.remoteSsh.helper).toContain("Otto daemon");
   });
 });

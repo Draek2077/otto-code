@@ -49,7 +49,7 @@ function isStoppedByParentInterrupt(row: SubagentRow): boolean {
   if (row.kind !== "otto") {
     return false;
   }
-  return row.attend === "observed" && !row.backgrounded && isSubagentRowRunning(row.status);
+  return row.attend === "observed" && !row.backgrounded && isSubagentRowRunning(row);
 }
 
 /**

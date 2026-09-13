@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
@@ -51,7 +52,12 @@ export function ProjectBrowserSection({
       <View style={settingsStyles.card}>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Browsing history</Text>
+            <SettingsTargetText
+              settingId="host-projects-project-settings-browser-browsing-history"
+              style={settingsStyles.rowTitle}
+            >
+              Browsing history
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               {supported
                 ? "Visited URLs are saved on this host for this project and suggested in the browser address bar."

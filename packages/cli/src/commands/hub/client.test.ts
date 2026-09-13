@@ -91,6 +91,66 @@ describe("Hub HTTP client", () => {
     );
   });
 
+  it("reads self-contained trigger documents for export", async () => {
+    const requests: Array<{ url: string | undefined; body: string }> = [];
+    const origin = await startServer(
+      () => ({
+        status: 200,
+        body: {
+          triggers: [
+            {
+              id: "a50e05af-4f20-4c8f-8dcc-58e5ea360663",
+              name: "slack-help",
+              enabled: true,
+              format: "single_run",
+              yaml: "name: slack-help\n",
+            },
+          ],
+        },
+      }),
+      requests,
+    );
+
+    const triggers = await new HubHttpClient().listTriggers(origin, "secret");
+
+    assert.equal(triggers[0]?.yaml, "name: slack-help\n");
+    assert.deepEqual(requests[0], { url: "/api/v1/triggers", body: "" });
+  });
+
+  it("validates and installs self-contained organization triggers", async () => {
+    const requests: Array<{ url: string | undefined; body: string }> = [];
+    const triggerId = "a50e05af-4f20-4c8f-8dcc-58e5ea360663";
+    const revisionId = "2de5b143-1c88-42db-8a8d-71ca2af97830";
+    const origin = await startServer(
+      (url) =>
+        url === "/api/v1/triggers/validate"
+          ? { status: 200, body: { name: "slack-help", valid: true } }
+          : {
+              status: 201,
+              body: { triggerId, name: "slack-help", revisionId, version: 1, active: true },
+            },
+      requests,
+    );
+    const hub = new HubHttpClient();
+    const yaml = "name: slack-help\n";
+
+    assert.deepEqual(await hub.validateTrigger(origin, "secret", yaml), {
+      name: "slack-help",
+      valid: true,
+    });
+    assert.deepEqual(await hub.installTrigger(origin, "secret", yaml), {
+      triggerId,
+      name: "slack-help",
+      revisionId,
+      version: 1,
+      active: true,
+    });
+    assert.deepEqual(requests, [
+      { url: "/api/v1/triggers/validate", body: JSON.stringify({ yaml }) },
+      { url: "/api/v1/triggers/install", body: JSON.stringify({ yaml }) },
+    ]);
+  });
+
   it("reads configuration resources in the Hub's slug vocabulary", async () => {
     const requests: Array<{ url: string | undefined; body: string }> = [];
     const origin = await startServer(
@@ -106,8 +166,9 @@ describe("Hub HTTP client", () => {
               repositories: ["Draek2077/otto-code"],
             },
           ],
-          discord: [{ slug: "otto", guildName: "Otto" }],
-          slack: [{ slug: "otto", teamName: "Otto" }],
+          discord: [{ slug: "paseo", guildName: "Paseo" }],
+          slack: [{ slug: "paseo", teamName: "Paseo" }],
+          linear: [{ slug: "paseo-linear", organizationName: "Paseo" }],
         },
       }),
       requests,
@@ -116,52 +177,25 @@ describe("Hub HTTP client", () => {
     const resources = await new HubHttpClient().listConfigurationResources(origin, "secret");
 
     assert.equal(resources.daemons[0]?.slug, "macbook");
-    assert.equal(resources.discord[0]?.slug, "otto");
+    assert.equal(resources.discord[0]?.slug, "paseo");
+    assert.equal(resources.linear[0]?.slug, "paseo-linear");
     assert.equal(requests[0]?.url, "/api/v1/configuration-resources");
   });
 
-  it("reads strict provider-native setup resources", async () => {
-    const requests: Array<{ url: string | undefined; body: string }> = [];
-    const origin = await startServer(
-      () => ({
-        status: 200,
-        body: {
-          github: [
-            {
-              slug: "Draek2077",
-              accountLogin: "Draek2077",
-              accountType: "Organization",
-              repositories: ["Draek2077/otto-code"],
-            },
-          ],
-          discord: [{ guildId: "guild-123", guildName: "Otto" }],
-          slack: [{ teamId: "team-123", teamName: "Otto" }],
-        },
-      }),
-      requests,
-    );
-
-    const resources = await new HubHttpClient().listSetupResources(origin, "secret");
-
-    assert.equal(resources.slack[0]?.teamId, "team-123");
-    assert.equal(resources.discord[0]?.guildId, "guild-123");
-    assert.deepEqual(requests[0], { url: "/api/v1/setup-resources", body: "" });
-  });
-
   it.each([
-    { github: [], discord: [], slack: [{ teamId: "team-123", teamName: "Otto", slug: "wrong" }] },
-    { github: [], discord: [], slack: [{ teamId: 123, teamName: "Otto" }] },
-  ])("rejects malformed or unknown setup resource fields", async (body) => {
+    { slug: "slack-main", teamName: "Otto", teamId: "obsolete-native-id" },
+    { slug: 123, teamName: "Otto" },
+  ])("rejects malformed or unknown configuration resource fields", async (slack) => {
     const requests: Array<{ url: string | undefined; body: string }> = [];
     const origin = await startServer(
       () => ({
         status: 200,
-        body,
+        body: { daemons: [], github: [], discord: [], slack: [slack], linear: [] },
       }),
       requests,
     );
 
-    await assert.rejects(new HubHttpClient().listSetupResources(origin, "secret"), {
+    await assert.rejects(new HubHttpClient().listConfigurationResources(origin, "secret"), {
       code: "HUB_INVALID_RESPONSE",
     });
   });

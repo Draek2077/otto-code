@@ -1,6 +1,6 @@
 ---
 title: OpenChamber Alternative With Linux, Windows, and Mobile
-description: Otto ships native iOS and Android apps, runs on macOS, Linux, and Windows, and supports 30+ agents. OpenChamber is macOS only with a PWA and is built around OpenCode.
+description: Otto ships Android and web access from mobile devices, runs on macOS, Linux, and Windows, and supports built-in and catalog providers. OpenChamber is macOS only with a PWA and is built around OpenCode.
 nav: OpenChamber
 order: 52
 ---
@@ -19,12 +19,12 @@ OpenChamber runs on macOS, around OpenCode, with a phone PWA. Otto runs OpenCode
 
 - Linux and Windows desktop
 - A native Android app
-- Many more agents than OpenCode (Claude Code, Codex, Pi, plus 30+ more via the in-app ACP catalog)
+- Many more agents than OpenCode (Claude Code, Codex, Pi, plus additional providers via the in-app ACP catalog)
 - A scriptable CLI to drive agents and connect to remote daemons
 
 ## Mobile
 
-Otto ships a native Android app with the same feature set as the desktop. Install from Google Play.
+Otto ships a native Android app for checking and continuing agent work from a phone. Install from Google Play.
 
 OpenChamber does not have a native mobile app.
 
@@ -36,7 +36,7 @@ OpenChamber ships on macOS.
 
 ## Providers
 
-Otto runs Claude Code, Codex, OpenCode, and Pi natively, plus 30+ more agents through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/docs/supported-providers).
+Otto runs Claude Code, Codex, OpenCode, and Pi natively, plus additional agents through the catalog through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
 
 OpenChamber is built around OpenCode.
 
@@ -74,20 +74,27 @@ Otto's speech-to-text and text-to-speech run locally on your device. OpenChamber
 
 ## Comparison
 
-|                              | Otto                                                            | OpenChamber       |
-| ---------------------------- | --------------------------------------------------------------- | ----------------- |
-| License                      | Open source (AGPL-3.0)                                          | Open source (MIT) |
-| Desktop platforms            | macOS, Linux, Windows                                           | macOS             |
-| Mobile                       | Native Android                                                  | PWA               |
-| Providers                    | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | OpenCode          |
-| Split panes and tabs         | Yes                                                             | No                |
-| In-app terminal              | Yes                                                             | No                |
-| In-app browser               | Yes                                                             | No                |
-| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                        | Yes               |
-| CLI                          | Run, `--host`, ls, send, schedule, loop                         | No                |
-| Git worktrees                | Yes                                                             | Yes               |
-| Per-worktree dev server URLs | Yes                                                             | No                |
-| Local voice (on-device)      | Yes                                                             | No                |
-| Self-hosted daemon           | Yes                                                             | No                |
+|                              | Otto                                                    | OpenChamber       |
+| ---------------------------- | ------------------------------------------------------- | ----------------- |
+| License                      | Open source (AGPL-3.0)                                  | Open source (MIT) |
+| Desktop platforms            | macOS, Linux, Windows                                   | macOS             |
+| Mobile                       | Native Android                                          | PWA               |
+| Providers                    | Claude Code, Codex, OpenCode, Pi + ACP catalog + custom | OpenCode          |
+| Split panes and tabs         | Yes                                                     | No                |
+| In-app terminal              | Yes                                                     | No                |
+| In-app browser               | Yes                                                     | No                |
+| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                | Yes               |
+| CLI                          | Run, `--host`, ls, send, schedule, loop                 | No                |
+| Git worktrees                | Yes                                                     | Yes               |
+| Per-worktree dev server URLs | Yes                                                     | No                |
+| Local voice (on-device)      | Yes                                                     | No                |
+| Self-hosted daemon           | Yes                                                     | No                |
 
 See also: [Otto vs Conductor](/alternatives/conductor), [Otto vs Superset](/alternatives/superset), [Otto vs Happy Coder](/alternatives/happy-coder).
+
+## Application extensions
+
+[Otto plugins](/docs/plugins) extend the application through client and server APIs: providers,
+workspace panels, commands, settings, and chat components. Otto also retains its shared tools for
+cloud and local providers. Android builds and the web app are available from [Downloads](/download);
+this fork does not currently publish an iOS App Store build.

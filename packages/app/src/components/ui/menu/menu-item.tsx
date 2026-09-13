@@ -14,6 +14,7 @@ import {
   Text,
   View,
   type GestureResponderEvent,
+  type PressableProps,
   type PressableStateCallbackType,
   type ViewStyle,
 } from "react-native";
@@ -329,6 +330,7 @@ export interface MenuItemProps {
   closeOnSelect?: boolean;
   /** Exposes the rendered row for a follow-on menu anchored to this item. */
   itemRef?: Ref<View | null>;
+  onLayout?: PressableProps["onLayout"];
   testID?: string;
   tooltip?: string;
 }
@@ -352,6 +354,7 @@ export function MenuItem({
   successLabel,
   closeOnSelect = true,
   itemRef,
+  onLayout,
   testID,
   tooltip,
 }: PropsWithChildren<MenuItemProps>): ReactElement {
@@ -440,6 +443,7 @@ export function MenuItem({
   const content = (
     <Pressable
       ref={itemRef}
+      onLayout={onLayout}
       testID={testID}
       accessibilityRole="menuitem"
       accessibilityState={accessibilityState}

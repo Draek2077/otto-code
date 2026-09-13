@@ -1,6 +1,7 @@
+import type { AgentTimelineItem } from "@otto-code/protocol/agent-types";
 import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
 import { traceCaptureSync } from "@/diagnostics/resource-report/capture-operations";
-import { selectAgentTimelineState, useSessionStore, type Agent } from "@/stores/session-store";
+import { selectAgentTimelineState, useSessionStore } from "@/stores/session-store";
 import type { AssistantMessageItem, StreamItem, TodoEntry } from "@/types/stream";
 import type { TurnLivenessTransition } from "@/timeline/turn-liveness";
 import {
@@ -11,9 +12,12 @@ import {
   mergeAgentToolCallItem,
   replaceWithCanonicalStream,
   reduceStreamUpdate,
+  streamTimelineItemIdentity,
   upsertUserMessageAcrossStream,
 } from "@/types/stream";
 
+// Ceiling for a pending commit. A frame callback normally gets there first; this
+// is the fallback for when nothing is painting.
 const AGENT_STREAM_REDUCER_FLUSH_DELAY_MS = 16 * 3;
 
 // ---------------------------------------------------------------------------
@@ -128,7 +132,7 @@ interface TimelineResponseEntry {
   collapsed?: string[];
   provider: string;
   turnId?: string;
-  item: Record<string, unknown>;
+  item: AgentTimelineItem;
   timestamp: string;
 }
 
@@ -190,8 +194,9 @@ interface TimelinePathResult {
 }
 
 function matchesProjectedRow(existing: StreamItem, incoming: StreamItem): boolean {
-  if (isAgentToolCallItem(existing) && isAgentToolCallItem(incoming)) {
-    return existing.payload.data.callId === incoming.payload.data.callId;
+  const incomingIdentity = streamTimelineItemIdentity(incoming);
+  if (incomingIdentity !== null) {
+    return streamTimelineItemIdentity(existing) === incomingIdentity;
   }
   if (existing.kind === "assistant_message" && incoming.kind === "assistant_message") {
     return (
@@ -427,7 +432,10 @@ function mergeTimelineWindow(args: {
   );
   const hydrated = hydrateStreamState(
     toHydratedEvents(timelineUnits.filter((unit) => !projected.reconciledUnits.has(unit))),
-    { source: "canonical", reservedItemIds },
+    {
+      source: "canonical",
+      reservedItemIds,
+    },
   );
   const reconciled = reconcilePromptWindowItems({
     hydrated,
@@ -516,21 +524,15 @@ function applyTimelineReplacePath(args: {
     preserveContinuity,
     toHydratedEvents,
   } = args;
-  const hydratedTail = hydrateStreamState(toHydratedEvents(timelineUnits), { source: "canonical" });
-  const canonicalAssistant = hydratedTail.at(-1);
-  const liveAssistant = currentHead.findLast(
-    (item): item is AssistantMessageItem => item.kind === "assistant_message",
-  );
-  const preservesLongerLiveAssistant =
-    canonicalAssistant?.kind === "assistant_message" &&
-    liveAssistant !== undefined &&
-    liveAssistant.text.startsWith(canonicalAssistant.text);
+  const hydratedTail = hydrateStreamState(toHydratedEvents(timelineUnits), {
+    source: "canonical",
+  });
   const { tail, head, acknowledgedClientMessageIds } = replaceWithCanonicalStream({
     canonical: hydratedTail,
     previousTail: currentTail,
     previousHead: currentHead,
     sendingClientMessageIds,
-    preserveContinuity: preserveContinuity || preservesLongerLiveAssistant,
+    preserveContinuity,
     canonicalCoverage: {
       epoch: payload.epoch,
       endSeq: payload.endCursor?.seq ?? null,
@@ -694,19 +696,8 @@ function mergePrependedCanonicalTail(olderTail: StreamItem[], currentTail: Strea
   const olderLast = olderTail.at(-1);
   const currentFirst = currentTail[0];
 
-  if (
-    olderLast &&
-    currentFirst &&
-    isAgentToolCallItem(olderLast) &&
-    isAgentToolCallItem(currentFirst) &&
-    olderLast.payload.data.callId === currentFirst.payload.data.callId
-  ) {
-    return [
-      ...olderTail.slice(0, -1),
-      mergeAgentToolCallItem(olderLast, currentFirst.payload.data, currentFirst.timestamp),
-      ...currentTail.slice(1),
-    ];
-  }
+  const identityMerge = mergeTimelineIdentityBoundary(olderTail, currentTail);
+  if (identityMerge) return identityMerge;
 
   if (olderLast?.kind !== "assistant_message" || currentFirst?.kind !== "assistant_message") {
     return [...olderTail, ...currentTail];
@@ -721,6 +712,28 @@ function mergePrependedCanonicalTail(olderTail: StreamItem[], currentTail: Strea
   }
 
   return [...olderTail.slice(0, -1), mergedAssistant, ...currentTail.slice(1)];
+}
+
+function mergeTimelineIdentityBoundary(
+  olderTail: StreamItem[],
+  currentTail: StreamItem[],
+): StreamItem[] | null {
+  const olderLast = olderTail.at(-1);
+  const currentFirst = currentTail[0];
+  if (!olderLast || !currentFirst) return null;
+  const olderIdentity = streamTimelineItemIdentity(olderLast);
+  if (olderIdentity === null || olderIdentity !== streamTimelineItemIdentity(currentFirst)) {
+    return null;
+  }
+  if (olderLast.kind === "plugin" && currentFirst.kind === "plugin") {
+    return [...olderTail.slice(0, -1), currentFirst, ...currentTail.slice(1)];
+  }
+  if (!isAgentToolCallItem(olderLast) || !isAgentToolCallItem(currentFirst)) return null;
+  return [
+    ...olderTail.slice(0, -1),
+    mergeAgentToolCallItem(olderLast, currentFirst.payload.data, currentFirst.timestamp),
+    ...currentTail.slice(1),
+  ];
 }
 
 function mergeOlderTimelinePage(input: {
@@ -865,7 +878,6 @@ function reconcileOverlappingProjectedReasoning(params: {
   head: StreamItem[];
   unit: TimelineUnit;
   currentEndSeq: number;
-  claimedThoughtIds?: Set<string>;
 }): { tail: StreamItem[]; head: StreamItem[]; reconciled: boolean } {
   const { unit } = params;
   if (
@@ -880,18 +892,11 @@ function reconcileOverlappingProjectedReasoning(params: {
 
   const projectedText = unit.event.item.text;
   const replaceIn = (items: StreamItem[]): StreamItem[] | null => {
-    const claimedIndex = items.findLastIndex(
-      (item) => item.kind === "thought" && params.claimedThoughtIds?.has(item.id) === true,
+    const index = items.findLastIndex(
+      (item) => item.kind === "thought" && projectedText.startsWith(item.text),
     );
-    const index =
-      claimedIndex >= 0
-        ? claimedIndex
-        : items.findLastIndex(
-            (item) => item.kind === "thought" && projectedText.startsWith(item.text),
-          );
     const current = items[index];
     if (!current || current.kind !== "thought") return null;
-    params.claimedThoughtIds?.add(current.id);
     const next = [...items];
     next[index] = {
       ...current,
@@ -922,8 +927,6 @@ function reconcileOverlappingProjectedStreamItems(params: {
   const reconciledUnits = new Set<TimelineUnit>();
   if (params.currentEndSeq === undefined) return { tail, head, reconciledUnits };
 
-  const claimedThoughtIds = new Set<string>();
-
   for (const unit of params.units) {
     let reconciled = reconcileOverlappingProjectedAssistant({
       tail,
@@ -938,7 +941,6 @@ function reconcileOverlappingProjectedStreamItems(params: {
         head,
         unit,
         currentEndSeq: params.currentEndSeq,
-        claimedThoughtIds,
       });
     }
     tail = reconciled.tail;
@@ -1045,7 +1047,12 @@ function applyAcceptedForwardTimelineUnits(params: {
 
   for (const unit of params.units) {
     if (reconciled.reconciledUnits.has(unit)) continue;
-    const applied = applyCanonicalForwardUnit({ tail, head, unit, epoch: params.epoch });
+    const applied = applyCanonicalForwardUnit({
+      tail,
+      head,
+      unit,
+      epoch: params.epoch,
+    });
     tail = applied.tail;
     head = applied.head;
   }
@@ -1606,7 +1613,6 @@ export function processAgentStreamEvent(
     event.type === "timeline" && seq !== undefined && epoch !== undefined
       ? { epoch, seq }
       : undefined;
-
   // ------------------------------------------------------------------
   // Apply stream event to tail/head
   // ------------------------------------------------------------------
@@ -1856,23 +1862,62 @@ export interface CreateSessionAgentStreamReducerQueueInput {
     serverId: string,
     state: (prev: Map<string, TimelineCursor>) => Map<string, TimelineCursor>,
   ) => void;
-  setAgents: (serverId: string, state: (prev: Map<string, Agent>) => Map<string, Agent>) => void;
   recoverTimelineGap: (agentId: string, cursor: { epoch: string; endSeq: number }) => void;
-  onAgentBecameIdle: (agentId: string) => void;
+  onCommitted?: (agentId: string) => void;
 }
 
+interface ScheduledReducerFlush {
+  frameId: number | null;
+  timerId: ReturnType<typeof setTimeout>;
+}
+
+const scheduledReducerFlushes = new Map<number, ScheduledReducerFlush>();
+let nextScheduledReducerFlushId = 1;
+
+function clearScheduledReducerFlush(handle: ScheduledReducerFlush): void {
+  if (handle.frameId !== null) {
+    cancelAnimationFrame(handle.frameId);
+  }
+  clearTimeout(handle.timerId);
+}
+
+// Commit deltas on a frame boundary so text lands in step with paint instead of on
+// an arbitrary timer that drifts on and off the display beat. A frame callback
+// never fires in a hidden tab, so a timer races it and wins when nothing is
+// painting — the store has to keep advancing either way.
 function scheduleAgentStreamReducerFlush(callback: () => void): number {
-  return setTimeout(callback, AGENT_STREAM_REDUCER_FLUSH_DELAY_MS) as unknown as number;
+  const id = nextScheduledReducerFlushId;
+  nextScheduledReducerFlushId += 1;
+
+  const run = () => {
+    const handle = scheduledReducerFlushes.get(id);
+    if (!handle) {
+      return;
+    }
+    scheduledReducerFlushes.delete(id);
+    clearScheduledReducerFlush(handle);
+    callback();
+  };
+
+  const timerId = setTimeout(run, AGENT_STREAM_REDUCER_FLUSH_DELAY_MS);
+  const frameId = typeof requestAnimationFrame === "function" ? requestAnimationFrame(run) : null;
+  scheduledReducerFlushes.set(id, { frameId, timerId });
+  return id;
 }
 
 function cancelAgentStreamReducerFlush(id: number) {
-  clearTimeout(id);
+  const handle = scheduledReducerFlushes.get(id);
+  if (!handle) {
+    return;
+  }
+  scheduledReducerFlushes.delete(id);
+  clearScheduledReducerFlush(handle);
 }
 
 export function createSessionAgentStreamReducerQueue(
   input: CreateSessionAgentStreamReducerQueueInput,
 ): AgentStreamReducerQueue {
-  const { serverId, setAgentStreamState, setAgentTimelineCursor, setAgents, recoverTimelineGap } =
+  const { serverId, setAgentStreamState, setAgentTimelineCursor, recoverTimelineGap, onCommitted } =
     input;
 
   return createAgentStreamReducerQueue({
@@ -1932,31 +1977,7 @@ export function createSessionAgentStreamReducerQueue(
           return next;
         });
       }
-
-      const terminal = events.findLast(
-        ({ event }) => event.type === "turn_completed" || event.type === "turn_failed",
-      );
-      if (terminal) {
-        const nextStatus = terminal.event.type === "turn_completed" ? "idle" : "error";
-        let becameIdle = false;
-        setAgents(serverId, (prev) => {
-          const current = prev.get(agentId);
-          if (!current || current.status !== "running") return prev;
-          const nextTimestamp = terminal.timestamp;
-          const next = new Map(prev);
-          next.set(agentId, {
-            ...current,
-            status: nextStatus,
-            updatedAt: new Date(Math.max(current.updatedAt.getTime(), nextTimestamp.getTime())),
-            lastActivityAt: new Date(
-              Math.max(current.lastActivityAt.getTime(), nextTimestamp.getTime()),
-            ),
-          });
-          becameIdle = nextStatus === "idle";
-          return next;
-        });
-        if (becameIdle) input.onAgentBecameIdle(agentId);
-      }
+      onCommitted?.(agentId);
     },
     handleSideEffects: (agentId, sideEffects) => {
       for (const effect of sideEffects) {

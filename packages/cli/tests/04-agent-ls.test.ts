@@ -72,8 +72,11 @@ try {
       output.toLowerCase().includes("connect") ||
       output.toLowerCase().includes("cannot");
     assert(hasError, "error message should mention connection issue");
-    assert(output.includes("--host <host:port>"), "error message should mention --host");
-    assert(output.includes("OTTO_HOST"), "error message should mention OTTO_HOST");
+    assert.match(
+      output,
+      /--host <host:port>.*OTTO_HOST/s,
+      "the recovery message should explain both remote connection inputs",
+    );
     console.log("✓ otto ls handles daemon not running\n");
   }
 
@@ -166,6 +169,33 @@ try {
     const output = result.stdout + result.stderr;
     assert(output.includes("unknown option"), "should report unknown option for --ui");
     console.log("✓ otto ls --ui is rejected\n");
+  }
+
+  // Test 10: global --host reaches the command handler
+  {
+    console.log("Test 10: global --host targets the requested daemon");
+    const host = `localhost:${port}`;
+    const result = await runLocalOtto(["--host", host, "ls"], {
+      OTTO_HOST: "localhost:1",
+      OTTO_HOME: ottoHome,
+    });
+    const output = result.stdout + result.stderr;
+    assert.notStrictEqual(result.exitCode, 0, "should fail when the selected daemon is absent");
+    assert(output.includes(host), "connection error should name the global host");
+    console.log("✓ global --host targets the requested daemon\n");
+  }
+
+  // Test 11: the last explicit --host wins
+  {
+    console.log("Test 11: the last explicit --host wins");
+    const firstHost = `localhost:${port}`;
+    const lastHost = `localhost:${port + 1}`;
+    const result = await runLocalOtto(["--host", firstHost, "ls", "--host", lastHost]);
+    const output = result.stdout + result.stderr;
+    assert.notStrictEqual(result.exitCode, 0, "should fail when the selected daemon is absent");
+    assert(output.includes(lastHost), "connection error should name the last explicit host");
+    assert(!output.includes(firstHost), "the earlier host should be fully overridden");
+    console.log("✓ the last explicit --host wins\n");
   }
 } finally {
   // Clean up temp directory

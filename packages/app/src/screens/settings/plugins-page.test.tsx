@@ -149,6 +149,15 @@ function renderPage(client: PluginClient | null): void {
   render(element);
 }
 
+vi.mock("@/plugins/settings", () => ({
+  PluginSettingsLinks: ({ serverId, pluginId }: { serverId: string; pluginId: string }) =>
+    React.createElement("span", {
+      "data-testid": "plugin-settings-links",
+      "data-server-id": serverId,
+      "data-plugin-id": pluginId,
+    }),
+}));
+
 describe("HostPluginsPage", () => {
   beforeEach(() => {
     vi.stubGlobal("React", React);
@@ -165,6 +174,19 @@ describe("HostPluginsPage", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it("binds contributed Settings links to the listed installation and host", async () => {
+    const client = createClient();
+    client.listPlugins.mockResolvedValue([plugin()]);
+    renderPage(client);
+    const links = await screen.findByTestId("plugin-settings-links");
+    expect(links.getAttribute("data-server-id")).toBe("host-a");
+    expect(links.getAttribute("data-plugin-id")).toBe("example");
+    expect(screen.getByRole("button", { name: "Logs" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Reload" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Disable" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeDefined();
   });
 
   it("renders the offline state", () => {

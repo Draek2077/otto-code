@@ -21,7 +21,7 @@ Pick Otto if you want:
 
 - Linux alongside macOS and Windows
 - A native Android app for the same agent workflow
-- Claude Code, Codex, OpenCode, Copilot, Pi, and 30+ more agents in one interface
+- Claude Code, Codex, OpenCode, Copilot, Pi, and additional agents through the catalog in one interface
 - A self-hosted daemon you can run on a laptop, VM, or dev server
 - A CLI and MCP server for scripting and multi-agent workflows
 - Open source you can audit and fork
@@ -36,7 +36,7 @@ Claude Desktop is the host app. The Code tab can run Claude Code locally, connec
 
 Claude Desktop runs Claude Code.
 
-Otto runs Claude Code too, plus Codex, OpenCode, and Pi natively, plus 30+ more agents through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/docs/supported-providers).
+Otto runs Claude Code too, plus Codex, OpenCode, and Pi natively, plus additional agents through the catalog through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
 
 ## Desktop platforms
 
@@ -95,23 +95,30 @@ Claude supports voice in Claude's own mobile and app surfaces. Claude Code itsel
 
 ## Comparison
 
-|                              | Otto                                                            | Claude Desktop                    |
-| ---------------------------- | --------------------------------------------------------------- | --------------------------------- |
-| License                      | Open source (AGPL-3.0)                                          | Not published as open source      |
-| Desktop platforms            | macOS, Linux, Windows                                           | macOS, Windows                    |
-| Native mobile                | Android                                                         | Android Claude app                |
-| Coding agents                | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | Claude Code                       |
-| General chat                 | No                                                              | Claude Chat                       |
-| Local execution              | Yes                                                             | Yes                               |
-| SSH remote execution         | Via daemon on the remote host                                   | Yes                               |
-| Git worktrees                | Yes                                                             | Yes                               |
-| Per-worktree dev server URLs | Yes                                                             | No                                |
-| Split panes and tabs         | Yes                                                             | Yes                               |
-| In-app terminal              | Yes                                                             | Yes                               |
-| In-app browser / preview     | Yes                                                             | Yes                               |
-| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                        | PR monitoring and merge workflows |
-| CLI                          | Run, `--host`, ls, send, schedule, loop                         | Claude Code CLI                   |
-| MCP server for orchestration | Yes                                                             | MCP support inside Claude Code    |
-| Self-hosted daemon           | Yes                                                             | No                                |
+|                              | Otto                                                    | Claude Desktop                    |
+| ---------------------------- | ------------------------------------------------------- | --------------------------------- |
+| License                      | Open source (AGPL-3.0)                                  | Not published as open source      |
+| Desktop platforms            | macOS, Linux, Windows                                   | macOS, Windows                    |
+| Native mobile                | Android                                                 | Android Claude app                |
+| Coding agents                | Claude Code, Codex, OpenCode, Pi + ACP catalog + custom | Claude Code                       |
+| General chat                 | No                                                      | Claude Chat                       |
+| Local execution              | Yes                                                     | Yes                               |
+| SSH remote execution         | Via daemon on the remote host                           | Yes                               |
+| Git worktrees                | Yes                                                     | Yes                               |
+| Per-worktree dev server URLs | Yes                                                     | No                                |
+| Split panes and tabs         | Yes                                                     | Yes                               |
+| In-app terminal              | Yes                                                     | Yes                               |
+| In-app browser / preview     | Yes                                                     | Yes                               |
+| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                | PR monitoring and merge workflows |
+| CLI                          | Run, `--host`, ls, send, schedule, loop                 | Claude Code CLI                   |
+| MCP server for orchestration | Yes                                                     | MCP support inside Claude Code    |
+| Self-hosted daemon           | Yes                                                     | No                                |
 
 See also: [Otto vs Codex App](/alternatives/codex-app), [Otto vs OpenCode Desktop](/alternatives/opencode-desktop), [Otto vs Conductor](/alternatives/conductor).
+
+## Application extensions
+
+[Otto plugins](/docs/plugins) extend the application through client and server APIs: providers,
+workspace panels, commands, settings, and chat components. Otto also retains its shared tools for
+cloud and local providers. Android builds and the web app are available from [Downloads](/download);
+this fork does not currently publish an iOS App Store build.

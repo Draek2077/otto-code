@@ -1,3 +1,4 @@
+import { SettingsTargetText, useRevealSettingsTarget } from "@/screens/settings-search/target";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
@@ -7,7 +8,7 @@ import { ArrowUpRight, Blocks, Check, Settings2 } from "lucide-react-native";
 import type { AgentSkillOperation, AgentSkillsStatus } from "@otto-code/protocol/messages";
 import type { TFunction } from "i18next";
 import { Button } from "@/components/ui/button";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -89,6 +90,14 @@ export function AgentSkillsSection({ serverId }: { serverId: string }) {
   );
   const handleOpen = useCallback(() => setIsChoosing(true), []);
   const handleClose = useCallback(() => setIsChoosing(false), []);
+  const revealIds = useMemo(
+    () =>
+      skills.connected && skills.supported && skills.status && !skills.isWorking
+        ? ["app-integrations-orchestration-skills-individual-skill"]
+        : [],
+    [skills.connected, skills.supported, skills.status, skills.isWorking],
+  );
+  useRevealSettingsTarget(revealIds, handleOpen);
   const handleOpenDocs = useCallback(() => {
     void openExternalUrl(SKILLS_DOCS_URL);
   }, []);
@@ -136,7 +145,12 @@ export function AgentSkillsSection({ serverId }: { serverId: string }) {
           <View style={settingsStyles.rowContent}>
             <View style={styles.rowTitleRow}>
               <ThemedBlocks size={ICON_SIZE.md} uniProps={foregroundMapping} />
-              <Text style={settingsStyles.rowTitle}>{t("settings.host.skills.title")}</Text>
+              <SettingsTargetText
+                settingId="app-integrations-orchestration-skills-orchestration-skills"
+                style={settingsStyles.rowTitle}
+              >
+                {t("settings.host.skills.title")}
+              </SettingsTargetText>
             </View>
             <Text style={settingsStyles.rowHint}>
               {state === "drift"

@@ -1901,3 +1901,26 @@ describe("otto-brain built-in provider", () => {
     );
   });
 });
+
+describe("Otto factory configuration identity", () => {
+  test("changing Brain compaction changes only Brain registry configuration", () => {
+    const first = buildProviderRegistry(logger, {
+      providerOverrides: { "otto-brain": { compaction: { keepRecentTokens: 6_000 } } },
+    });
+    const second = buildProviderRegistry(logger, {
+      providerOverrides: { "otto-brain": { compaction: { keepRecentTokens: 7_000 } } },
+    });
+    expect(first["otto-brain"]!.configuration).not.toEqual(second["otto-brain"]!.configuration);
+    expect(first.codex!.configuration).toEqual(second.codex!.configuration);
+  });
+
+  test("local tool policy identity is detached from mutable caller configuration", () => {
+    const override = { extends: "openai-compatible", maxToolRounds: 10 };
+    const first = buildProviderRegistry(logger, { providerOverrides: { local: override } });
+    const original = structuredClone(first.local!.configuration);
+    override.maxToolRounds = 20;
+    const second = buildProviderRegistry(logger, { providerOverrides: { local: override } });
+    expect(first.local!.configuration).toEqual(original);
+    expect(first.local!.configuration).not.toEqual(second.local!.configuration);
+  });
+});

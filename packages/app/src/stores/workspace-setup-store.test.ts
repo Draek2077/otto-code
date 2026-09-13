@@ -222,11 +222,12 @@ describe("workspace-setup-store", () => {
     ).toBe(true);
   });
 
-  it("seeds a setup tab only for failed setup", () => {
+  it("seeds a setup tab for failed or blocked setup", () => {
     expect(shouldSeedWorkspaceSetupTab(null)).toBe(false);
     expect(shouldSeedWorkspaceSetupTab(makeSnapshot("running"))).toBe(false);
     expect(shouldSeedWorkspaceSetupTab(makeSnapshot("completed"))).toBe(false);
     expect(shouldSeedWorkspaceSetupTab(makeSnapshot("failed", "Setup failed"))).toBe(true);
+    expect(shouldSeedWorkspaceSetupTab(makeSnapshot("blocked"))).toBe(true);
   });
 
   it("claims one failed setup surface until a later setup lifecycle begins", () => {
@@ -266,6 +267,26 @@ describe("workspace-setup-store", () => {
     expect(storedSnapshots()).toEqual([
       expect.objectContaining({ workspaceId: "42", status: "running" }),
     ]);
+  });
+
+  it("announces a blocked setup once until the workspace or host is cleared", () => {
+    const store = useWorkspaceSetupStore.getState();
+    const identity = { serverId: "blocked-host", workspaceId: "42" };
+    const push = () =>
+      store.upsertProgress({
+        serverId: identity.serverId,
+        payload: { ...makeSnapshot("blocked"), workspaceId: identity.workspaceId },
+      });
+    push();
+    expect(store.claimFailedSetupSurface(identity)).toBe(true);
+    push();
+    expect(store.claimFailedSetupSurface(identity)).toBe(false);
+    store.removeWorkspace(identity);
+    push();
+    expect(store.claimFailedSetupSurface(identity)).toBe(true);
+    store.clearServer(identity.serverId);
+    push();
+    expect(store.claimFailedSetupSurface(identity)).toBe(true);
   });
 
   it("ensureSetupStatus does not refetch while a request is in flight", async () => {

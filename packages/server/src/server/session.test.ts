@@ -1,3 +1,4 @@
+import { createAgentRequestsStub } from "./test-utils/session-stubs.js";
 import { execSync } from "child_process";
 import {
   existsSync,
@@ -25,6 +26,7 @@ import {
 import { Session } from "./session.js";
 import * as createAgentCommands from "./agent/create-agent/create.js";
 import type { ManagedAgent } from "./agent/agent-manager.js";
+import { OWNER_PERMISSIONS, type DaemonPermission } from "./authorization/index.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
 import { createPersistedProjectRecord, type PersistedProjectRecord } from "./workspace-registry.js";
@@ -45,6 +47,8 @@ import {
   asGitHubService,
   asWorkspaceGitService,
   asDaemonConfigStore,
+  findByType,
+  createProviderSnapshot,
   createProviderSnapshotManagerStub,
 } from "./test-utils/session-stubs.js";
 import { isPlatform } from "../test-utils/platform.js";
@@ -56,6 +60,7 @@ import type {
 import type { GitHubForgeSpecificStatusFacts } from "../services/github-facts.js";
 
 interface SessionHandlerInternals {
+  interruptAgentIfRunning(agentId: string): Promise<void>;
   agentUpdates: { forwardLiveAgent(agent: ManagedAgent): Promise<void> };
   handleStartSuggestedTaskRequest(
     msg: Extract<SessionInboundMessage, { type: "tasks.suggested.start.request" }>,
@@ -208,6 +213,8 @@ vi.mock("./worktree-bootstrap.js", async (importOriginal) => {
 });
 
 interface SessionForTestOptions {
+  clientId?: string;
+  permissions?: readonly DaemonPermission[];
   agentManager?: { [K in keyof SessionOptions["agentManager"]]?: unknown };
   agentStorage?: { [K in keyof SessionOptions["agentStorage"]]?: unknown };
   github?: Partial<GitHubService>;
@@ -271,37 +278,12 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
   const checkoutDiffManager = options.checkoutDiffManager ?? {
     scheduleRefreshForCwd: vi.fn(),
   };
-  // Defaults are filled in on the caller's own stub object rather than copied
-  // into a new one, so a test that asserts against the object it passed in sees
-  // the spies the harness added. Chiefly invalidateForge: every git mutation
-  // runs through GitMutationService, which invalidates the forge before forcing
-  // the refresh, so a stub carrying only getSnapshot throws on the invalidate
-  // and the forced refresh silently never happens. The same goes for
-  // invalidateAuxiliaryReads, which that path calls for the same reason.
-  const workspaceGitService = (options.workspaceGitService ?? {}) as Record<string, unknown>;
-  const workspaceGitServiceDefaults: Record<string, unknown> = {
-    getCheckoutDiff: vi.fn(),
-    getSnapshot: vi.fn(),
-    suggestBranchesForCwd: vi.fn(),
-    listStashes: vi.fn(),
-    peekSnapshot: vi.fn(),
-    validateBranchRef: vi.fn(),
-    hasLocalBranch: vi.fn(),
-    resolveRepoRemoteUrl: vi.fn(),
-    resolveRepoRoot: vi.fn(),
-    getWorkspaceGitMetadata: vi.fn(),
-    invalidateForge: vi.fn(),
-    invalidateAuxiliaryReads: vi.fn(),
-  };
-  for (const [key, value] of Object.entries(workspaceGitServiceDefaults)) {
-    if (!(key in workspaceGitService)) {
-      workspaceGitService[key] = value;
-    }
-  }
+  const workspaceGitService = fillWorkspaceGitServiceDefaults(options.workspaceGitService);
   const messages = options.messages ?? [];
 
   return new Session({
-    clientId: "test-client",
+    agentRequests: createAgentRequestsStub(),
+    clientId: options.clientId ?? "test-client",
     // Otto gates every RPC on the session's scopes, and a session constructed
     // without them throws before the first message. "*" is what the trusted
     // local transport grants, so it is the right stand-in for a harness that
@@ -404,6 +386,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     serverId: options.serverId,
     daemonVersion: options.daemonVersion,
     daemonRuntimeConfig: options.daemonRuntimeConfig,
+    permissions: options.permissions ?? OWNER_PERMISSIONS,
   });
 }
 
@@ -724,6 +707,10 @@ test("routes plugin requests and releases its owned catalog subscription on clea
     status: "running" as const,
   };
   const pluginRuntime: NonNullable<SessionOptions["pluginRuntime"]> = {
+    before: async (_name, request) => {
+      return request;
+    },
+    emit: () => {},
     listPlugins: () => [plugin],
     getLogs: () => [
       {
@@ -1693,6 +1680,100 @@ function createStoredAgentRecord(
   };
 }
 
+describe("plugin timeline append RPC", () => {
+  test("stamps the plugin identity and returns the timeline position", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const appendTimelineItem = vi.fn().mockResolvedValue({ seq: 7, epoch: "epoch-1" });
+    const session = createSessionForTest({
+      clientId: "plugin:review",
+      messages,
+      agentManager: { appendTimelineItem },
+    });
+
+    await session.handleMessage({
+      type: "agent.timeline.append.request",
+      requestId: "append-1",
+      agentId: "agent-1",
+      item: {
+        type: "plugin",
+        id: "review-1",
+        kind: "review",
+        version: 1,
+        data: { status: "running" },
+      },
+    });
+
+    expect(appendTimelineItem).toHaveBeenCalledWith("agent-1", {
+      type: "plugin",
+      id: "review-1",
+      pluginId: "review",
+      kind: "review",
+      version: 1,
+      data: { status: "running" },
+    });
+    expect(messages).toContainEqual({
+      type: "agent.timeline.append.response",
+      payload: { requestId: "append-1", seq: 7, epoch: "epoch-1" },
+    });
+  });
+
+  test("rejects append requests from non-plugin sessions", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const appendTimelineItem = vi.fn();
+    const session = createSessionForTest({ messages, agentManager: { appendTimelineItem } });
+
+    await session.handleMessage({
+      type: "agent.timeline.append.request",
+      requestId: "append-1",
+      agentId: "agent-1",
+      item: { type: "plugin", id: "review-1", kind: "review", version: 1, data: {} },
+    });
+
+    expect(appendTimelineItem).not.toHaveBeenCalled();
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        type: "rpc_error",
+        payload: expect.objectContaining({ requestId: "append-1", code: "handler_error" }),
+      }),
+    );
+  });
+
+  test("rejects plugin data larger than the append budget", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const appendTimelineItem = vi.fn();
+    const session = createSessionForTest({
+      clientId: "plugin:review",
+      messages,
+      agentManager: { appendTimelineItem },
+    });
+
+    await session.handleMessage({
+      type: "agent.timeline.append.request",
+      requestId: "append-large",
+      agentId: "agent-1",
+      item: {
+        type: "plugin",
+        id: "review-1",
+        kind: "review",
+        version: 1,
+        data: { text: "x".repeat(64 * 1024) },
+      },
+    });
+
+    expect(appendTimelineItem).not.toHaveBeenCalled();
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        type: "rpc_error",
+        payload: expect.objectContaining({
+          requestId: "append-large",
+          code: "handler_error",
+          error: expect.stringContaining("65536 bytes"),
+        }),
+      }),
+    );
+  });
+});
+
 describe("agent detach RPC", () => {
   test("detaches a stored subagent and emits the updated standalone agent", async () => {
     const messages: unknown[] = [];
@@ -2512,13 +2593,15 @@ describe("session provider refresh cwd routing", () => {
       getSnapshot,
       warmUpSnapshotForCwd,
     } = createProviderSnapshotManagerStub();
-    getSnapshot.mockReturnValue([
-      {
-        provider: "codex",
-        status: "loading",
-        enabled: true,
-      },
-    ]);
+    getSnapshot.mockReturnValue(
+      createProviderSnapshot([
+        {
+          provider: "codex",
+          status: "loading",
+          enabled: true,
+        },
+      ]),
+    );
     const session = createSessionForTest({ messages, providerSnapshotManager });
 
     await session.handleMessage({
@@ -2543,13 +2626,15 @@ describe("session provider refresh cwd routing", () => {
     const messages: unknown[] = [];
     const { manager: providerSnapshotManager, warmUpSnapshotForCwd } =
       createProviderSnapshotManagerStub();
-    providerSnapshotManager.getSnapshot = vi.fn(() => [
-      {
-        provider: "codex",
-        status: "loading",
-        enabled: false,
-      },
-    ]);
+    providerSnapshotManager.getSnapshot = vi.fn(() =>
+      createProviderSnapshot([
+        {
+          provider: "codex",
+          status: "loading",
+          enabled: false,
+        },
+      ]),
+    );
     const session = createSessionForTest({ messages, providerSnapshotManager });
 
     await session.handleMessage({
@@ -2574,13 +2659,15 @@ describe("session provider refresh cwd routing", () => {
     const messages: unknown[] = [];
     const { manager: providerSnapshotManager, warmUpSnapshotForCwd } =
       createProviderSnapshotManagerStub();
-    providerSnapshotManager.getSnapshot = vi.fn(() => [
-      {
-        provider: "codex",
-        status: "loading",
-        enabled: false,
-      },
-    ]);
+    providerSnapshotManager.getSnapshot = vi.fn(() =>
+      createProviderSnapshot([
+        {
+          provider: "codex",
+          status: "loading",
+          enabled: false,
+        },
+      ]),
+    );
     const session = createSessionForTest({ messages, providerSnapshotManager });
 
     await session.handleMessage({
@@ -2609,23 +2696,27 @@ describe("session provider refresh cwd routing", () => {
       getSnapshot,
       warmUpSnapshotForCwd,
     } = createProviderSnapshotManagerStub();
-    getSnapshot.mockReturnValueOnce([
-      {
-        provider: "codex",
-        status: "loading",
-        enabled: true,
-      },
-    ]);
-    getSnapshot.mockReturnValue([
-      {
-        provider: "codex",
-        status: "ready",
-        enabled: true,
-        models: [{ provider: "codex", id: "gpt-5.4", label: "GPT-5.4" }],
-        modes: [],
-        fetchedAt: "2026-05-28T00:00:00.000Z",
-      },
-    ]);
+    getSnapshot.mockReturnValueOnce(
+      createProviderSnapshot([
+        {
+          provider: "codex",
+          status: "loading",
+          enabled: true,
+        },
+      ]),
+    );
+    getSnapshot.mockReturnValue(
+      createProviderSnapshot([
+        {
+          provider: "codex",
+          status: "ready",
+          enabled: true,
+          models: [{ provider: "codex", id: "gpt-5.4", label: "GPT-5.4" }],
+          modes: [],
+          fetchedAt: "2026-05-28T00:00:00.000Z",
+        },
+      ]),
+    );
     warmUpSnapshotForCwd.mockReturnValue(warmupDeferred.promise);
     const session = createSessionForTest({ messages, providerSnapshotManager });
 
@@ -5106,7 +5197,11 @@ describe("session pull request timeline handling", () => {
         ],
       }),
     };
-    const session = createSessionForTest({ github, messages });
+    const gitlab = { searchIssuesAndPrs: vi.fn() };
+    const workspaceGitService = {
+      resolveForge: vi.fn().mockResolvedValue({ forge: "gitlab", service: gitlab }),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
 
     await session.handleMessage({
       type: "github_search_request",
@@ -5123,6 +5218,7 @@ describe("session pull request timeline handling", () => {
       limit: 5,
       kinds: ["github-pr"],
     });
+    expect(gitlab.searchIssuesAndPrs).not.toHaveBeenCalled();
     expect(messages).toContainEqual({
       type: "github_search_response",
       payload: {
@@ -6103,3 +6199,410 @@ describe("brain log watch", () => {
     expect(delivered).toEqual([]);
   });
 });
+
+test("provider snapshots preserve versionless visibility while capabilities update independently", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const { manager } = createProviderSnapshotManagerStub();
+  manager.getSnapshot = () =>
+    createProviderSnapshot([
+      {
+        provider: "codex",
+        status: "ready",
+        enabled: true,
+        modes: [{ id: "default", label: "Default", icon: "Sparkles" }],
+      },
+      { provider: "plugin-provider", status: "ready", enabled: true },
+    ]);
+  const session = createSessionForTest({ messages, providerSnapshotManager: manager });
+  const read = async () => {
+    messages.length = 0;
+    await session.handleMessage({
+      type: "get_providers_snapshot_request",
+      requestId: "visibility",
+    });
+    return findByType(messages, "get_providers_snapshot_response")!.payload;
+  };
+  const versionless = await read();
+  expect(versionless.entries.map((entry) => entry.provider)).toEqual(["codex"]);
+  expect(versionless.entries[0]!.modes![0]!.icon).toBe("ShieldCheck");
+  session.updateClientCapabilities({
+    [CLIENT_CAPS.customModeIcons]: true,
+    [CLIENT_CAPS.providerSnapshotReferences]: true,
+  });
+  const iconsOnly = await read();
+  expect(iconsOnly.entries.map((entry) => entry.provider)).toEqual(["codex"]);
+  expect(iconsOnly.entries[0]!.modes![0]!.icon).toBe("Sparkles");
+  expect(iconsOnly.snapshotHash).toBeUndefined();
+  session.updateAppVersion("0.1.45");
+  expect((await read()).entries.map((entry) => entry.provider)).toEqual([
+    "codex",
+    "plugin-provider",
+  ]);
+  session.updateClientCapabilities({
+    [CLIENT_CAPS.compactProviderSnapshots]: true,
+    [CLIENT_CAPS.providerSnapshotReferences]: true,
+  });
+  const references = await read();
+  expect(references.entries).toEqual([]);
+  expect(references.compactSnapshot!.entries.map((entry) => entry.provider)).toEqual([
+    "codex",
+    "plugin-provider",
+  ]);
+  expect(references.compactSnapshot!.entries[0]!.modes![0]!.icon).toBe("ShieldCheck");
+});
+
+describe("session semantic permissions", () => {
+  test("rejects an operation without its semantic permission", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({
+      permissions: ["hub.execute"],
+      messages,
+    });
+
+    await session.handleMessage({ type: "ping", requestId: "restricted-ping", clientSentAt: 42 });
+
+    expect(messages).toEqual([
+      {
+        type: "rpc_error",
+        payload: {
+          requestId: "restricted-ping",
+          requestType: "ping",
+          error: "Session is not authorized for ping",
+          code: "access_denied",
+        },
+      },
+    ]);
+  });
+
+  test("replaces a session's permissions without reconstructing the session", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({ permissions: ["hub.execute"], messages });
+
+    await session.handleMessage({
+      type: "ping",
+      requestId: "before-scope-change",
+      clientSentAt: 1,
+    });
+    session.setPermissions(["daemon.read"]);
+    await session.handleMessage({ type: "ping", requestId: "after-scope-change", clientSentAt: 2 });
+
+    expect(messages).toEqual([
+      {
+        type: "rpc_error",
+        payload: {
+          requestId: "before-scope-change",
+          requestType: "ping",
+          error: "Session is not authorized for ping",
+          code: "access_denied",
+        },
+      },
+      {
+        type: "pong",
+        payload: {
+          requestId: "after-scope-change",
+          clientSentAt: 2,
+          serverReceivedAt: expect.any(Number),
+          serverSentAt: expect.any(Number),
+        },
+      },
+    ]);
+  });
+});
+
+describe("stable session regression intake", () => {
+  test("interruptAgentIfRunning rejects when graceful cancellation is refused", async () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const session = createSessionForTest({
+      agentManager: {
+        getAgent: vi.fn(() => ({ id: agentId, provider: "codex", lifecycle: "running" })),
+        hasInFlightRun: vi.fn(() => true),
+        cancelAgentRun: vi.fn(async () => ({ status: "refused" as const })),
+      },
+    });
+
+    await expect(asSessionInternals(session).interruptAgentIfRunning(agentId)).rejects.toThrow(
+      "active run cancellation was not acknowledged",
+    );
+  });
+
+  test("cancel_agent_request reports refusal only through its response", async () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const messages: SessionOutboundMessage[] = [];
+    const getAgent = vi
+      .fn()
+      .mockReturnValueOnce({ id: agentId, provider: "codex", lifecycle: "running" })
+      .mockReturnValue(null);
+    const session = createSessionForTest({
+      messages,
+      agentManager: {
+        getAgent,
+        hasInFlightRun: vi.fn(() => true),
+        cancelAgentRun: vi.fn(async () => ({ status: "refused" as const })),
+      },
+    });
+
+    await session.handleMessage({
+      type: "cancel_agent_request",
+      agentId,
+      requestId: "cancel-refused",
+    });
+
+    expect(messages).toEqual([
+      {
+        type: "cancel_agent_response",
+        payload: {
+          requestId: "cancel-refused",
+          agentId,
+          agent: null,
+          error:
+            "Cannot stop agent 11111111-1111-4111-8111-111111111111 because its active run cancellation was not acknowledged",
+        },
+      },
+    ]);
+  });
+
+  test("legacy cancel_agent_request reports refusal through the activity log", async () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({
+      messages,
+      agentManager: {
+        getAgent: vi.fn(() => ({ id: agentId, provider: "codex", lifecycle: "running" })),
+        hasInFlightRun: vi.fn(() => true),
+        cancelAgentRun: vi.fn(async () => ({ status: "refused" as const })),
+      },
+    });
+
+    await session.handleMessage({ type: "cancel_agent_request", agentId });
+
+    expect(messages).toEqual([
+      {
+        type: "activity_log",
+        payload: {
+          id: expect.any(String),
+          timestamp: expect.any(Date),
+          type: "error",
+          content:
+            "Failed to cancel running agent on request: Cannot stop agent 11111111-1111-4111-8111-111111111111 because its active run cancellation was not acknowledged",
+        },
+      },
+    ]);
+  });
+
+  test("returns normalized repositories from the host GitHub service", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const searchRepositories = vi.fn().mockResolvedValue([
+      {
+        id: "R_paseo",
+        name: "paseo",
+        nameWithOwner: "getpaseo/paseo",
+        description: "Development environment in your pocket",
+        visibility: "public",
+        updatedAt: "2026-07-15T10:00:00Z",
+        cloneUrl: "git@github.com:getpaseo/paseo.git",
+      },
+    ]);
+    const session = createSessionForTest({ messages, github: { searchRepositories } });
+
+    await session.handleMessage({
+      type: "workspace.github.search_repositories.request",
+      query: "paseo",
+      limit: 10,
+      requestId: "req-repositories",
+    });
+
+    expect(searchRepositories).toHaveBeenCalledWith({
+      cwd: expect.any(String),
+      query: "paseo",
+      limit: 10,
+    });
+    expect(messages).toEqual([
+      {
+        type: "workspace.github.search_repositories.response",
+        payload: {
+          status: "success",
+          requestId: "req-repositories",
+          repositories: [
+            {
+              id: "R_paseo",
+              name: "paseo",
+              nameWithOwner: "getpaseo/paseo",
+              description: "Development environment in your pocket",
+              visibility: "public",
+              updatedAt: "2026-07-15T10:00:00Z",
+              cloneUrl: "git@github.com:getpaseo/paseo.git",
+            },
+          ],
+          available: true,
+          error: null,
+        },
+      },
+    ]);
+  });
+
+  test("rolls back the directory when Project registration fails", async () => {
+    const parentDirectory = realpathSync(mkdtempSync(join(tmpdir(), "paseo-project-session-")));
+    const directoryPath = join(parentDirectory, "unregistered");
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({
+      messages,
+      projectRegistry: {
+        getOrCreateActiveByRoot: vi.fn().mockRejectedValue(new Error("registry unavailable")),
+      },
+      workspaceGitService: {
+        getCheckout: vi.fn(async (cwd: string) => ({
+          cwd,
+          isGit: false as const,
+          currentBranch: null,
+          remoteUrl: null,
+          worktreeRoot: null,
+          isOttoOwnedWorktree: false as const,
+          mainRepoRoot: null,
+        })),
+      },
+    });
+
+    try {
+      await session.handleMessage({
+        type: "project.create_directory.request",
+        parentPath: parentDirectory,
+        name: "unregistered",
+        requestId: "req-registration-failure",
+      });
+
+      expect(existsSync(directoryPath)).toBe(false);
+      expect(messages).toEqual([
+        {
+          type: "project.create_directory.response",
+          payload: {
+            requestId: "req-registration-failure",
+            directoryPath,
+            project: null,
+            error: "Failed to register project: registry unavailable",
+            errorCode: "registration_failed",
+          },
+        },
+      ]);
+    } finally {
+      rmSync(parentDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test("delegates direct merge when the current change request lacks GitHub-only merge facts", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      mergePullRequest: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockResolvedValue({
+        forge: {
+          pullRequest: {
+            number: 42,
+            mergeable: "MERGEABLE",
+          },
+        },
+      }),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await session.handleMessage({
+      type: "checkout_pr_merge_request",
+      cwd: "/tmp/request-worktree",
+      mergeMethod: "squash",
+      requestId: "request-pr-merge-missing-github-facts",
+    });
+
+    expect(github.mergePullRequest).toHaveBeenCalledWith({
+      cwd: "/tmp/request-worktree",
+      prNumber: 42,
+      mergeMethod: "squash",
+      status: {
+        number: 42,
+        mergeable: "MERGEABLE",
+      },
+    });
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
+    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(1, "/tmp/request-worktree", {
+      force: true,
+      includeForge: true,
+      reason: "merge-pr-validation",
+    });
+    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(2, "/tmp/request-worktree", {
+      force: true,
+      reason: "merge-pr",
+    });
+    expect(messages).toContainEqual({
+      type: "checkout_pr_merge_response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        success: true,
+        error: null,
+        requestId: "request-pr-merge-missing-github-facts",
+      },
+    });
+  });
+
+  test("reports no remote when forge search has no resolved forge", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      searchIssuesAndPrs: vi.fn(),
+    };
+    const workspaceGitService = {
+      resolveForge: vi.fn().mockResolvedValue(null),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await session.handleMessage({
+      type: "forge.search.request",
+      cwd: "/tmp/repo",
+      query: "search",
+      limit: 5,
+      kinds: ["change_request"],
+      requestId: "request-search",
+    });
+
+    expect(github.searchIssuesAndPrs).not.toHaveBeenCalled();
+    expect(messages).toContainEqual({
+      type: "forge.search.response",
+      payload: {
+        items: [],
+        authState: "no_remote",
+        error: null,
+        requestId: "request-search",
+      },
+    });
+  });
+});
+
+function fillWorkspaceGitServiceDefaults(supplied: SessionForTestOptions["workspaceGitService"]) {
+  // Defaults are filled in on the caller's own stub object rather than copied
+  // into a new one, so a test that asserts against the object it passed in sees
+  // the spies the harness added. Chiefly invalidateForge: every git mutation
+  // runs through GitMutationService, which invalidates the forge before forcing
+  // the refresh, so a stub carrying only getSnapshot throws on the invalidate
+  // and the forced refresh silently never happens. The same goes for
+  // invalidateAuxiliaryReads, which that path calls for the same reason.
+  const workspaceGitService = (supplied ?? {}) as Record<string, unknown>;
+  const workspaceGitServiceDefaults: Record<string, unknown> = {
+    getCheckoutDiff: vi.fn(),
+    getSnapshot: vi.fn(),
+    suggestBranchesForCwd: vi.fn(),
+    listStashes: vi.fn(),
+    peekSnapshot: vi.fn(),
+    validateBranchRef: vi.fn(),
+    hasLocalBranch: vi.fn(),
+    resolveRepoRemoteUrl: vi.fn(),
+    resolveRepoRoot: vi.fn(),
+    getWorkspaceGitMetadata: vi.fn(),
+    invalidateForge: vi.fn(),
+    invalidateAuxiliaryReads: vi.fn(),
+  };
+  for (const [key, value] of Object.entries(workspaceGitServiceDefaults)) {
+    if (!(key in workspaceGitService)) {
+      workspaceGitService[key] = value;
+    }
+  }
+  return workspaceGitService;
+}

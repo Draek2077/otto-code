@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import type { ReactElement, RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Pressable, Text, View } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
-import ReanimatedAnimated from "react-native-reanimated";
-import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { createNameId } from "mnemonic-id";
+import { KeyboardTranslateView } from "@/components/keyboard-translate-view";
 import {
   Check,
   ChevronDown,
@@ -89,7 +90,6 @@ import {
   useWorkspaceDraftSubmissionStore,
   type PendingWorkspaceDraftSetup,
 } from "@/stores/workspace-draft-submission-store";
-import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
@@ -110,8 +110,13 @@ import {
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
 import { useProjectIcons } from "@/projects/icons";
 import { useDraftWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
+import { requestWorkspaceDraftAgent } from "@/composer/draft/create-agent-request";
+import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import type { MessagePayload } from "@/composer/types";
-import type { CreateOttoWorktreeInput } from "@otto-code/client/internal/daemon-client";
+import type {
+  CreateOttoWorktreeInput,
+  DaemonClient,
+} from "@otto-code/client/internal/daemon-client";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import {
@@ -148,6 +153,11 @@ import {
 import { buildNewWorkspaceProjectIconTargets } from "./new-workspace/project-icon-targets";
 import { useNewWorkspaceProjectPicker } from "./new-workspace/project-picker";
 import type { IconSizeProp } from "@/components/icons/icon-size";
+import {
+  captureWorkspaceDraftCleanup,
+  createWorkspaceAgentInBackground,
+} from "./new-workspace/background-handoff";
+import { useNewWorkspaceScreenPresence } from "./new-workspace/screen-presence";
 
 function useIsNewWorkspaceDraftHandoffActive(input: {
   draftId: string | undefined;
@@ -669,7 +679,6 @@ function NewWorkspacePickerOption({
   itemById: Map<string, PickerItem>;
   isPending: boolean;
 }) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const item = itemById.get(option.id);
   if (!item) return <View key={option.id} />;
@@ -684,7 +693,7 @@ function NewWorkspacePickerOption({
       : undefined;
 
   return (
-    <PickerOptionItem
+    <ThemedPickerOptionItem
       testID={testID}
       label={pickerItemLabel(item)}
       description={description}
@@ -695,8 +704,6 @@ function NewWorkspacePickerOption({
       isBranch={isBranch}
       trailingLabel={isBranch ? item.divergenceLabel : undefined}
       accessibilityLabel={isBranch ? item.accessibilityLabel : undefined}
-      iconColor={theme.colors.foregroundMuted}
-      iconSize={theme.iconSize.sm}
     />
   );
 }
@@ -877,10 +884,19 @@ function normalizeBranchDetails(
   return names.map((name) => ({ name, committerDate: 0 }));
 }
 
+/**
+ * "background" means the user left the New workspace screen mid-creation, so nothing navigated
+ * and the screen — if still mounted under another route — has to drop its pending state itself.
+ */
+type SubmitOutcome = "navigated" | "background";
+
 interface SubmitDraftInput {
+  clearConsumedDraft: () => void;
   serverId: string;
+  draftKey: string;
   clearDraft: (lifecycle: "sent" | "abandoned") => void;
   draftId?: string;
+  draftContextScopeKey: string | null;
   initialSetup?: WorkspaceDraftTabSetup;
   workspaceId: string;
   workspaceDirectory: string;
@@ -888,6 +904,8 @@ interface SubmitDraftInput {
   attachments: ComposerAttachment[];
   provider: AgentProvider;
   composerState: NewWorkspaceComposerState;
+  resolveClient: () => DaemonClient;
+  isStillOnCreateScreen: () => boolean;
 }
 
 type NewWorkspaceComposerState = NonNullable<
@@ -997,8 +1015,12 @@ interface CreateChatAgentInput {
     withInitialAgent: boolean;
   }) => Promise<ReturnType<typeof normalizeWorkspaceDescriptor>>;
   serverId: string;
+  draftKey: string;
   clearDraft: (lifecycle: "sent" | "abandoned") => void;
   draftId?: string;
+  draftContextScopeKey: string | null;
+  resolveClient: () => DaemonClient;
+  isStillOnCreateScreen: () => boolean;
   labels: {
     composerStateRequired: string;
     selectModel: string;
@@ -1045,26 +1067,22 @@ function buildWorkspaceDraftSetupForCreatedWorkspace(input: {
 }
 
 function buildComposerInitialValues(input: {
-  workingDir: string | undefined;
   initialSetup?: WorkspaceDraftTabSetup | null;
 }): CreateAgentInitialValues | undefined {
   if (input.initialSetup) {
     return {
-      workingDir: input.workingDir ?? input.initialSetup.cwd,
       provider: input.initialSetup.provider,
       modeId: input.initialSetup.modeId,
       model: input.initialSetup.model,
       thinkingOptionId: input.initialSetup.thinkingOptionId,
     };
   }
-  if (input.workingDir) {
-    return { workingDir: input.workingDir };
-  }
   return undefined;
 }
 
-async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
+async function runCreateChatAgent(input: CreateChatAgentInput): Promise<SubmitOutcome> {
   const { payload, composerState, ensureWorkspace, serverId, clearDraft } = input;
+  const clearConsumedDraft = captureWorkspaceDraftCleanup(input);
   const { text, attachments, cwd } = payload;
   if (!composerState) {
     throw new Error(input.labels.composerStateRequired);
@@ -1087,10 +1105,13 @@ async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
     provider,
     composerState,
   });
-  submitWorkspaceDraft({
+  return await submitWorkspaceDraft({
+    clearConsumedDraft,
     serverId,
     clearDraft,
+    draftKey: input.draftKey,
     draftId: input.draftId,
+    draftContextScopeKey: input.draftContextScopeKey,
     initialSetup,
     workspaceId: ensuredWorkspace.id,
     workspaceDirectory: ensuredWorkspace.workspaceDirectory,
@@ -1098,24 +1119,24 @@ async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
     attachments,
     provider,
     composerState,
+    resolveClient: input.resolveClient,
+    isStillOnCreateScreen: input.isStillOnCreateScreen,
   });
 }
 
 function buildComposerConfig(input: {
   serverId: string;
-  isConnected: boolean;
   workspaceDirectory: string | null;
   sourceDirectory: string | null;
   initialSetup?: WorkspaceDraftTabSetup | null;
 }): Parameters<typeof useAgentInputDraft>[0]["composer"] {
-  const { serverId, isConnected, workspaceDirectory, sourceDirectory, initialSetup } = input;
+  const { serverId, workspaceDirectory, sourceDirectory, initialSetup } = input;
   const workingDir = workspaceDirectory || sourceDirectory || undefined;
   return {
     initialServerId: serverId || null,
-    initialValues: buildComposerInitialValues({ workingDir, initialSetup }),
+    initialValues: buildComposerInitialValues({ initialSetup }),
     initialFeatureValues: initialSetup?.featureValues,
     isVisible: true,
-    onlineServerIds: isConnected && serverId ? [serverId] : [],
     lockedWorkingDir: workingDir,
     initialPersonalityId: initialSetup?.personality ?? null,
   };
@@ -1204,7 +1225,7 @@ function resolveWorkspaceDraftSubmissionConfig(input: {
   };
 }
 
-function submitWorkspaceDraft(input: SubmitDraftInput): void {
+async function submitWorkspaceDraft(input: SubmitDraftInput): Promise<SubmitOutcome> {
   const {
     serverId,
     clearDraft,
@@ -1232,6 +1253,34 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
     composerState,
     initialSetup,
   });
+  // Creation blocks on a slow daemon RPC. If the user moved on while it ran, the destination
+  // screen's draft tab will never mount to issue create_agent, so this path does it instead.
+  if (!input.isStillOnCreateScreen()) {
+    await createWorkspaceAgentInBackground({
+      clearConsumedDraft: input.clearConsumedDraft,
+      createAgent: () =>
+        requestWorkspaceDraftAgent(input.resolveClient(), {
+          workspaceId,
+          config: buildWorkspaceDraftAgentConfig({
+            provider: submission.provider,
+            cwd: submission.cwd,
+            ...(submission.modeId ? { modeId: submission.modeId } : {}),
+            ...(submission.model ? { model: submission.model } : {}),
+            ...(submission.thinkingOptionId
+              ? { thinkingOptionId: submission.thinkingOptionId }
+              : {}),
+            ...(submission.featureValues ? { featureValues: submission.featureValues } : {}),
+          }),
+          text: text.trim(),
+          clientMessageId,
+          ...(spawnProfileId ? { personality: spawnProfileId } : {}),
+          ...(wirePayload.images.length > 0 ? { images: wirePayload.images } : {}),
+          ...(wirePayload.attachments.length > 0 ? { attachments: wirePayload.attachments } : {}),
+        }),
+    });
+    return "background";
+  }
+
   useCreateFlowStore.getState().setPending({
     serverId,
     draftId,
@@ -1269,6 +1318,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): void {
   // submission, and clearing early would blank the composer while the draft is
   // still the source of truth for it.
   clearDraft("sent");
+  return "navigated";
 }
 
 function useNewWorkspaceHostSelector(input: {
@@ -1524,7 +1574,6 @@ interface NewWorkspaceFormStackInput {
 }
 
 function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactElement {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const { isCompact, isPending, project, host, isolation, base, launch } = input;
 
@@ -1547,7 +1596,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
 
   const projectControl = (
     <View style={desktopControlStyle}>
-      <ProjectPickerTrigger
+      <ThemedProjectPickerTrigger
         pickerAnchorRef={project.anchorRef}
         onPress={project.open}
         disabled={isPending}
@@ -1560,8 +1609,6 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
             ? (project.iconDataByProjectViewKey.get(project.selectedProject.viewKey) ?? null)
             : null
         }
-        iconColor={theme.colors.foregroundMuted}
-        iconSize={theme.iconSize.sm}
       />
       <Combobox
         options={project.options}
@@ -1624,7 +1671,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
 
   const isolationControl = isolation.canCreateWorktree ? (
     <View style={desktopControlStyle}>
-      <IsolationPickerTrigger
+      <ThemedIsolationPickerTrigger
         pickerAnchorRef={isolation.anchorRef}
         onPress={isolation.open}
         disabled={isPending}
@@ -1632,8 +1679,6 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
         isolation={isolation.effectiveIsolation}
         label={isolationTriggerLabel}
         tooltipLabel={t("newWorkspace.tooltips.isolation")}
-        iconColor={theme.colors.foregroundMuted}
-        iconSize={theme.iconSize.sm}
       />
       <Combobox
         options={isolation.options}
@@ -1651,7 +1696,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
 
   const baseControl = base.showRefPicker ? (
     <View style={desktopControlStyle}>
-      <RefPickerTrigger
+      <ThemedRefPickerTrigger
         pickerAnchorRef={base.anchorRef}
         onPress={base.open}
         disabled={isPending || !base.selectedSourceDirectory}
@@ -1660,8 +1705,6 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
         triggerLabel={base.triggerLabel}
         accessibilityLabel={t("newWorkspace.refPicker.startingRef")}
         tooltipLabel={t("newWorkspace.tooltips.startingRef")}
-        iconColor={theme.colors.foregroundMuted}
-        iconSize={theme.iconSize.sm}
       />
       <Combobox
         options={base.options}
@@ -1748,12 +1791,16 @@ export function NewWorkspaceScreen({
   draftId,
 }: NewWorkspaceScreenProps) {
   const queryClient = useQueryClient();
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const isCompact = useIsCompactFormFactor();
   const toast = useToast();
-  const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
+  const mergeWorkspaces = useCallback(
+    (targetServerId: string, workspaces: Iterable<WorkspaceDescriptor>) => {
+      getHostRuntimeStore().acceptWorkspaceSnapshots(targetServerId, Array.from(workspaces));
+    },
+    [],
+  );
   const {
     allHosts,
     selectedServerId,
@@ -1791,6 +1838,7 @@ export function NewWorkspaceScreen({
   const isolationPickerAnchorRef = useRef<View>(null);
   const hostPickerAnchorRef = useRef<View | null>(null);
   const isDraftHandoffActive = useIsNewWorkspaceDraftHandoffActive({ draftId, selectedServerId });
+  const isStillOnCreateScreen = useNewWorkspaceScreenPresence();
 
   // Launch target: what the composer submits to (chat agent, or a terminal
   // profile). Mirrors useWorkspaceIsolation's pattern below: the derived
@@ -1823,6 +1871,10 @@ export function NewWorkspaceScreen({
     terminalSubmitLabel,
     launchFocusKey,
   } = useTerminalComposerState({ launchTarget, terminalProfiles, terminalPromptText });
+  const terminalTextReplacement = useMemo(
+    () => ({ key: launchFocusKey, text: terminalComposerValue }),
+    [launchFocusKey, terminalComposerValue],
+  );
 
   useEffect(() => {
     const trimmed = pickerSearchQuery.trim();
@@ -1869,7 +1921,6 @@ export function NewWorkspaceScreen({
     draftKey,
     composer: buildComposerConfig({
       serverId: selectedServerId,
-      isConnected,
       workspaceDirectory: workspace?.workspaceDirectory ?? null,
       sourceDirectory: selectedSourceDirectory,
       initialSetup: forkDraftSetup?.setup,
@@ -1882,11 +1933,12 @@ export function NewWorkspaceScreen({
   const selectedItem = getSelectedPickerItem(manualPickerSelection);
 
   const withConnectedClient = useCallback(() => {
-    if (!client || !isConnected) {
+    const connectedClient = getHostRuntimeStore().getClient(selectedServerId);
+    if (!connectedClient?.isConnected) {
       throw new Error(t("newWorkspace.errors.hostDisconnected"));
     }
-    return client;
-  }, [client, isConnected, t]);
+    return connectedClient;
+  }, [selectedServerId, t]);
 
   const clientReady = isConnected && Boolean(client);
   const hasSelectedSourceDirectory = selectedSourceDirectory !== null;
@@ -2103,19 +2155,17 @@ export function NewWorkspaceScreen({
       onPress: () => void;
     }) => {
       return (
-        <IsolationOptionItem
+        <ThemedIsolationOptionItem
           optionId={option.id}
           label={option.label}
           selected={selected}
           active={active}
           disabled={isPending}
           onPress={onPress}
-          iconColor={theme.colors.foregroundMuted}
-          iconSize={theme.iconSize.sm}
         />
       );
     },
-    [isPending, theme.colors.foregroundMuted, theme.iconSize.sm],
+    [isPending],
   );
 
   const handleClearDraft = useCallback(() => {
@@ -2261,41 +2311,55 @@ export function NewWorkspaceScreen({
       await updateFormPreferences({ launchTarget });
       if (isEmptyWorkspaceSubmission(payload)) {
         setPendingAction("empty");
+        let outcome: SubmitOutcome = "background";
         await runCreateEmptyWorkspace({
           payload,
           ensureWorkspace: ensureWorkspaceForSubmit,
           serverId: selectedServerId,
-          navigate: (targetServerId, workspaceId) =>
-            navigateToWorkspace({ serverId: targetServerId, workspaceId: workspaceId }),
+          navigate: (targetServerId, workspaceId) => {
+            if (!isStillOnCreateScreen()) return;
+            outcome = "navigated";
+            navigateToWorkspace({ serverId: targetServerId, workspaceId });
+          },
         });
+        if (outcome === "background") setPendingAction(null);
         return;
       }
 
       setPendingAction("chat");
-      await runCreateChatAgent({
+      const outcome = await runCreateChatAgent({
         payload,
         composerState,
         forkDraftSetup,
         ensureWorkspace: ensureWorkspaceForSubmit,
         serverId: selectedServerId,
         clearDraft: chatDraft.clear,
+        draftKey,
         draftId,
+        draftContextScopeKey,
+        resolveClient: withConnectedClient,
+        isStillOnCreateScreen,
         labels: {
           composerStateRequired: t("newWorkspace.errors.composerStateRequired"),
           selectModel: t("newWorkspace.errors.selectModel"),
         },
       });
+      if (outcome === "background") setPendingAction(null);
     },
     [
       composerState,
+      draftContextScopeKey,
       draftId,
       chatDraft.clear,
+      draftKey,
       ensureWorkspace,
       forkDraftSetup,
+      isStillOnCreateScreen,
       launchTarget,
       selectedServerId,
       t,
       updateFormPreferences,
+      withConnectedClient,
     ],
   );
 
@@ -2400,6 +2464,7 @@ export function NewWorkspaceScreen({
       setErrorMessage(null);
       await updateFormPreferences({ launchTarget });
       setPendingAction("terminal");
+      let outcome: SubmitOutcome = "background";
       await runCreateTerminalWorkspace({
         cwd: selectedSourceDirectory ?? "",
         prompt: terminalPromptText,
@@ -2414,10 +2479,10 @@ export function NewWorkspaceScreen({
             undefined,
             { command: input.command, args: input.args, workspaceId: input.workspaceId },
           );
-          if (!createdTerminal.terminal) {
+          const terminal = createdTerminal.terminal;
+          if (!terminal) {
             throw new Error(createdTerminal.error ?? t("newWorkspace.errors.createWorktreeFailed"));
           }
-          const terminal = createdTerminal.terminal;
           const queryKey = buildTerminalsQueryKey(
             selectedServerId,
             input.workspaceDirectory,
@@ -2439,9 +2504,20 @@ export function NewWorkspaceScreen({
           withConnectedClient().sendTerminalInput(terminalId, { type: "input", data });
         },
         serverId: selectedServerId,
-        navigate: (targetServerId, workspaceId, target) =>
-          navigateToWorkspace({ serverId: targetServerId, workspaceId, target }),
+        // The terminal is spawned and fed its command before this runs, so skipping the
+        // navigation costs nothing: it is standalone, and `reconcileTabs` auto-opens standalone
+        // terminals when the workspace is next visited.
+        navigate: (targetServerId, workspaceId, target) => {
+          if (!isStillOnCreateScreen()) {
+            return;
+          }
+          outcome = "navigated";
+          navigateToWorkspace({ serverId: targetServerId, workspaceId, target });
+        },
       });
+      if (outcome === "background") {
+        setPendingAction(null);
+      }
     } catch (error) {
       const message = toErrorMessage(error);
       setPendingAction(null);
@@ -2450,6 +2526,7 @@ export function NewWorkspaceScreen({
     }
   }, [
     ensureWorkspace,
+    isStillOnCreateScreen,
     launchTarget,
     queryClient,
     selectedServerId,
@@ -2499,15 +2576,6 @@ export function NewWorkspaceScreen({
   const contentStyle = useMemo(
     () => getContentStyle({ isCompact, insetBottom: insets.bottom }),
     [isCompact, insets.bottom],
-  );
-
-  const { style: composerKeyboardStyle } = useKeyboardShiftStyle({
-    mode: "translate",
-  });
-
-  const centeredStyle = useMemo(
-    () => [styles.centered, composerKeyboardStyle],
-    [composerKeyboardStyle],
   );
 
   const agentControlsWithDisabled = useMemo(
@@ -2590,7 +2658,7 @@ export function NewWorkspaceScreen({
   const composerFooter = useMemo(
     () =>
       checkoutHintPrAttachment ? (
-        <CheckoutHintBadge
+        <ThemedCheckoutHintBadge
           label={t("newWorkspace.refPicker.checkoutHint", {
             number: checkoutHintPrAttachment.item.number,
           })}
@@ -2602,31 +2670,22 @@ export function NewWorkspaceScreen({
           })}
           onAccept={acceptCheckoutHint}
           onDismiss={dismissCheckoutHint}
-          iconColor={theme.colors.foregroundMuted}
-          iconSize={theme.iconSize.sm}
         />
       ) : undefined,
-    [
-      acceptCheckoutHint,
-      checkoutHintPrAttachment,
-      dismissCheckoutHint,
-      t,
-      theme.colors.foregroundMuted,
-      theme.iconSize.sm,
-    ],
+    [acceptCheckoutHint, checkoutHintPrAttachment, dismissCheckoutHint, t],
   );
   const screenHeaderLeft = useMemo(() => <SidebarMenuToggle />, []);
   const viewDocumentationIcon = useMemo(
-    () => <FileText size={theme.iconSize.sm} color={theme.colors.foreground} />,
-    [theme.iconSize.sm, theme.colors.foreground],
+    () => <ThemedFileText size="sm" uniProps={foregroundColorMapping} />,
+    [],
   );
   const createDocumentationIcon = useMemo(
-    () => <Robot size={theme.iconSize.sm} color={theme.colors.foreground} />,
-    [theme.iconSize.sm, theme.colors.foreground],
+    () => <ThemedRobot size="sm" uniProps={foregroundColorMapping} />,
+    [],
   );
   const startEmptyWorkspaceIcon = useMemo(
-    () => <MessageSquarePlus size={theme.iconSize.sm} color={theme.colors.foreground} />,
-    [theme.iconSize.sm, theme.colors.foreground],
+    () => <ThemedMessageSquarePlus size="sm" uniProps={foregroundColorMapping} />,
+    [],
   );
 
   return (
@@ -2634,13 +2693,14 @@ export function NewWorkspaceScreen({
       <ScreenHeader left={screenHeaderLeft} borderless />
       <View style={contentStyle}>
         <TitlebarDragRegion />
-        <ReanimatedAnimated.View style={centeredStyle}>
+        <KeyboardTranslateView style={styles.centered}>
           <View style={styles.composerTitleContainer}>
             <Text style={styles.composerTitle}>{t("newWorkspace.title")}</Text>
           </View>
           {formStack}
           {isTerminalLaunch ? (
             <Composer
+              key="terminal"
               externalKeyboardShift
               inputMode="terminal"
               readOnly={!terminalTakesPrompt}
@@ -2658,7 +2718,7 @@ export function NewWorkspaceScreen({
               blurOnSubmit={true}
               value={terminalComposerValue}
               onChangeText={setTerminalPromptText}
-              textReplacementKey={launchFocusKey}
+              textReplacement={terminalTextReplacement}
               attachments={NO_TERMINAL_ATTACHMENTS}
               onChangeAttachments={noopChangeAttachments}
               cwd={selectedSourceDirectory ?? ""}
@@ -2708,10 +2768,11 @@ export function NewWorkspaceScreen({
                 submitButtonTestID="workspace-create-submit"
                 submitIcon="return"
                 isSubmitLoading={isPending}
+                waitForForgeAutoAttachOnSubmit
                 submitBehavior="preserve-and-lock"
                 blurOnSubmit={true}
                 value={chatDraft.text}
-                textReplacementKey={chatDraft.textReplacementKey}
+                textReplacement={chatDraft.textReplacement}
                 onChangeText={chatDraft.setText}
                 attachments={chatDraft.attachments}
                 attachmentScopeKeys={visibleDraftContextScopeKeys}
@@ -2727,11 +2788,26 @@ export function NewWorkspaceScreen({
             </>
           )}
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-        </ReanimatedAnimated.View>
+        </KeyboardTranslateView>
       </View>
     </FileDropZone>
   );
 }
+
+const pickerIconMapping = (theme: Theme) => ({
+  iconColor: theme.colors.foregroundMuted,
+  iconSize: "sm" as const,
+});
+const ThemedPickerOptionItem = withUnistyles(PickerOptionItem, pickerIconMapping);
+const ThemedProjectPickerTrigger = withUnistyles(ProjectPickerTrigger, pickerIconMapping);
+const ThemedIsolationPickerTrigger = withUnistyles(IsolationPickerTrigger, pickerIconMapping);
+const ThemedRefPickerTrigger = withUnistyles(RefPickerTrigger, pickerIconMapping);
+const ThemedIsolationOptionItem = withUnistyles(IsolationOptionItem, pickerIconMapping);
+const ThemedCheckoutHintBadge = withUnistyles(CheckoutHintBadge, pickerIconMapping);
+const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const ThemedFileText = withUnistyles(FileText);
+const ThemedRobot = withUnistyles(Robot);
+const ThemedMessageSquarePlus = withUnistyles(MessageSquarePlus);
 
 const styles = StyleSheet.create((theme) => ({
   container: {

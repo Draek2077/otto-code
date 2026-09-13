@@ -22,6 +22,7 @@ import type {
   WorkspaceRegistry,
 } from "./workspace-registry.js";
 import { runWithGitCommandPriority } from "../utils/run-git-command.js";
+import { WorkspaceAutomationBlockedError } from "./workspace-automation-gate.js";
 
 export interface ActiveWorkspaceRef {
   workspaceId: string;
@@ -105,6 +106,7 @@ export interface ArchiveDependencies {
     branchName: string;
   }) => Promise<{ deleted: boolean }>;
   stopWorkspaceSetup?: (workspaceId: string) => Promise<void>;
+  assertWorkspaceAutomationAllowed?: (workspaceId: string) => Promise<void>;
   sessionLogger?: Logger;
 }
 
@@ -519,21 +521,20 @@ async function maybeRemoveDirectory(
   // sibling. Deduped by path so two records on one directory run it once, and run
   // from each record's own cwd so a nested otto.json is actually seen.
   const archivedWorkspaceIdSet = new Set(archivedWorkspaceIds);
-  const teardownCwds = uniqueFilesystemPaths(
-    target.teardownTargets
-      .filter(
-        (teardownTarget) =>
-          teardownTarget.workspaceId === null ||
-          archivedWorkspaceIdSet.has(teardownTarget.workspaceId),
-      )
-      .map((teardownTarget) => teardownTarget.cwd),
+  const teardownTargets = target.teardownTargets.filter(
+    (teardownTarget) =>
+      teardownTarget.workspaceId === null || archivedWorkspaceIdSet.has(teardownTarget.workspaceId),
   );
 
   try {
-    for (const teardownCwd of teardownCwds) {
+    const allowedTeardownTargets = await filterAllowedTeardownTargets(
+      dependencies,
+      teardownTargets,
+    );
+    for (const teardownTarget of uniqueTeardownTargets(allowedTeardownTargets)) {
       await runWorktreeTeardownCommands({
         worktreePath: backing.path,
-        teardownCwd,
+        teardownCwd: teardownTarget.cwd,
         repoRootPath: request.repoRoot ?? backing.mainRepoRoot ?? undefined,
       });
     }
@@ -661,6 +662,37 @@ async function maybeDeleteLeftoverBranch(
     );
     return null;
   }
+}
+
+async function filterAllowedTeardownTargets(
+  dependencies: ArchiveDependencies,
+  targets: Array<{ workspaceId: string | null; cwd: string }>,
+): Promise<Array<{ workspaceId: string | null; cwd: string }>> {
+  const allowed: Array<{ workspaceId: string | null; cwd: string }> = [];
+  const blockedCwds: string[] = [];
+  for (const target of targets) {
+    try {
+      if (target.workspaceId)
+        await dependencies.assertWorkspaceAutomationAllowed?.(target.workspaceId);
+      allowed.push(target);
+    } catch (error) {
+      if (!(error instanceof WorkspaceAutomationBlockedError)) throw error;
+      blockedCwds.push(target.cwd);
+    }
+  }
+  return allowed.filter(
+    (target) => !blockedCwds.some((cwd) => createRealpathAwarePathMatcher(cwd)(target.cwd)),
+  );
+}
+
+function uniqueTeardownTargets<T extends { cwd: string }>(targets: T[]): T[] {
+  const unique: T[] = [];
+  for (const candidate of targets) {
+    if (!unique.some((existing) => createRealpathAwarePathMatcher(existing.cwd)(candidate.cwd))) {
+      unique.push(candidate);
+    }
+  }
+  return unique;
 }
 
 export type ArchiveWorkspaceContentsDependencies = Pick<

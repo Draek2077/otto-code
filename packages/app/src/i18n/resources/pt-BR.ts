@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ptBR: TranslationResources = {
@@ -20,6 +20,10 @@ export const ptBR: TranslationResources = {
       retry: "Tentar novamente",
       search: "Buscar",
       select: "Selecionar",
+
+      selectAll: "Selecionar tudo",
+
+      copyLine: "Copiar linha",
     },
     placeholders: {
       search: "Buscar...",
@@ -45,6 +49,8 @@ export const ptBR: TranslationResources = {
       daemonClientDisconnected: "O cliente do daemon está desconectado",
       noFileFound: "Nenhum arquivo encontrado para {{token}}",
       unexpectedDictationError: "Ocorreu um erro inesperado ao processar o ditado.",
+
+      unableToCopy: "Não foi possível copiar",
     },
     connectionStatus: {
       online: "Online",
@@ -475,6 +481,8 @@ export const ptBR: TranslationResources = {
       question: "Como você quer prosseguir?",
       proposedPlan: "Plano proposto",
     },
+
+    messageCapped: "Esta mensagem foi truncada ({{bytes}} bytes).",
   },
   agentPanel: {
     states: {
@@ -622,6 +630,8 @@ export const ptBR: TranslationResources = {
       resetZoom: "Redefinir visualização",
       viewSource: "Ver fonte",
       viewDiagram: "Ver diagrama",
+
+      fullscreen: "Tela cheia",
     },
     actions: {
       copyCode: "Copiar código",
@@ -726,6 +736,8 @@ export const ptBR: TranslationResources = {
       failedAll: "Não foi possível carregar sessões recentes.",
       failedProviders: "Não foi possível carregar sessões de {{providers}}.",
       failedImport: "Não foi possível importar a sessão selecionada.",
+
+      failedProvider: "Não foi possível carregar as sessões de {{provider}}",
     },
     actions: {
       selectAll: "Selecionar todas as exibidas",
@@ -734,6 +746,8 @@ export const ptBR: TranslationResources = {
       loadMore: "Carregar mais",
 
       refresh: "Atualizar sessões",
+
+      showAll: "Mostrar tudo",
     },
     preview: {
       untitledSession: "Sessão sem título",
@@ -743,10 +757,21 @@ export const ptBR: TranslationResources = {
       noRecent: "Nenhuma sessão recente para importar.",
       alreadyImported: "Todas as sessões recentes já foram importadas.",
       noProviderSessions: "Nenhuma sessão de {{provider}} encontrada.",
+
+      noMatches: "Nenhuma sessão corresponde à sua busca.",
     },
     row: {
       importing: "Importando...",
     },
+
+    scope: {
+      host: "Sessões em {{host}}",
+      workspace: "Este workspace",
+    },
+
+    searchPlaceholder: "Buscar sessões...",
+
+    chooseHostTitle: en.importSession.chooseHostTitle,
   },
   workspace: {
     moveChat: {
@@ -893,12 +918,16 @@ export const ptBR: TranslationResources = {
         completed: "Configuração concluída",
         failed: "Falha na configuração",
         workspace: "Configuração do Workspace",
+
+        blocked: "Configuração bloqueada",
       },
       status: {
         running: "Em execução",
         completed: "Concluído",
         failed: "Falhou",
         waiting: "Aguardando saída da configuração",
+
+        blocked: "Bloqueado",
       },
       waiting: "Configurando workspace...",
       empty: {
@@ -910,6 +939,14 @@ export const ptBR: TranslationResources = {
       },
       log: {
         noOutput: "Nenhuma saída",
+      },
+
+      blocked: {
+        title: "A configuração não foi executada",
+        description:
+          "Este PR vem de {{repository}}, um repositório diferente. A configuração e os scripts podem executar código que você não revisou.",
+        run: "Executar configuração",
+        runFailed: "Falha ao executar a configuração do workspace",
       },
     },
     browser: {
@@ -932,6 +969,10 @@ export const ptBR: TranslationResources = {
         screenshotCopied: "Captura copiada para a área de transferência",
         elementCopied: "Elemento copiado para a área de transferência",
         screenshotFailed: "Não foi possível copiar a captura",
+
+        selectorFailed: "Não foi possível iniciar o seletor de elemento",
+
+        selectorLoading: "Aguarde o carregamento da página terminar",
       },
       annotate: {
         title: "Anotar elemento",
@@ -1208,6 +1249,8 @@ export const ptBR: TranslationResources = {
         public: "Proxy reverso",
         otto: "Memorable",
         direct: "Direta",
+
+        paseo: "Memorable",
       },
     },
     git: {
@@ -1484,6 +1527,8 @@ export const ptBR: TranslationResources = {
         expandAllFiles: "Expandir todos os arquivos",
         seeUncommittedChanges: "Ver alterações sem commit",
         seeCommittedChanges: "Ver alterações com commit",
+
+        modifiedFile: "Modificado",
       },
       commit: {
         type: {
@@ -1587,6 +1632,17 @@ export const ptBR: TranslationResources = {
         accessibility: {
           pullRequest: "Pull request nº {{number}}",
           pullRequest_mr: "Merge request !{{number}}",
+
+          checkStatus: {
+            passed: "Aprovado",
+            failed: "Falhou",
+            warning: "Aviso",
+            actionRequired: "Ação necessária",
+            manual: "Manual",
+            pending: "Pendente",
+            skipped: "Ignorado",
+            cancelled: "Cancelado",
+          },
         },
         states: {
           draft: "Rascunho",
@@ -1657,6 +1713,8 @@ export const ptBR: TranslationResources = {
         cancel: "Cancelar",
         failed: "Falha ao descartar alterações",
       },
+
+      openIn: "Abrir no {{target}}",
     },
     tree: {
       showFolderTree: "Mostrar árvore de pastas",
@@ -1721,6 +1779,10 @@ export const ptBR: TranslationResources = {
       sessions: "Histórico",
       schedules: "Agendamentos",
       artifacts: "Artefatos",
+
+      search: "Buscar",
+      kanban: "Kanban",
+      runs: "Fluxos de trabalho",
     },
     worktreeSetup: {
       title: "Configurar scripts de worktree",
@@ -1809,6 +1871,15 @@ export const ptBR: TranslationResources = {
         hostDisconnected: "Host não está conectado",
         hideFailed: "Falha ao ocultar workspace",
         archiveFailed: "Falha ao arquivar workspace",
+      },
+
+      checks: {
+        passed: "Aprovados: {{count}}",
+        failed: "Falhas: {{count}}",
+        warning: "Avisos: {{count}}",
+        actionRequired: "Ação necessária: {{count}}",
+        manual: "Manuais: {{count}}",
+        pending: "Pendentes: {{count}}",
       },
     },
     pinned: {
@@ -2429,6 +2500,8 @@ export const ptBR: TranslationResources = {
     stashRestored: "Alterações em stash restauradas",
     switchInProgress: "Troca de branch em andamento",
     checkedOutElsewhere: "Já em uso em outro Workspace",
+
+    triggerTooltip: "Trocar branch do workspace",
   },
   agentAutocomplete: {
     searchingWorkspace: "Buscando workspace...",
@@ -2613,6 +2686,14 @@ export const ptBR: TranslationResources = {
     searchAllPlaceholder: "Buscar em todos os modelos...",
     searchPlaceholder: "Buscar modelos...",
     openProviderSettings: "Abrir configurações de {{provider}}",
+
+    editProfilesCount: "Editar perfis ({{count}})",
+
+    editProfileLabel: "Editar {{name}}",
+
+    createProfileFromModel: "Criar perfil a partir deste modelo",
+
+    model: "Modelo",
   },
   providerCatalog: {
     title: "Adicionar provedor",
@@ -2660,6 +2741,11 @@ export const ptBR: TranslationResources = {
       pasteLink: {
         title: "Colar link de pareamento",
         description: "Conexão relay criptografada.",
+      },
+
+      remoteSsh: {
+        title: "SSH remoto",
+        description: "Conecte-se pelo cliente SSH do desktop.",
       },
     },
     direct: {
@@ -2764,6 +2850,24 @@ export const ptBR: TranslationResources = {
       securityWarning:
         "Trate este link de pareamento como uma senha. Qualquer pessoa com o link pode acessar este daemon.",
     },
+
+    remoteSsh: {
+      title: "SSH remoto",
+      helper: "Conecte-se a um daemon Otto no host remoto.",
+      fields: {
+        target: "Host SSH",
+      },
+      actions: {
+        cancel: "Cancelar",
+        connect: "Conectar",
+        connecting: "Conectando...",
+      },
+      errors: {
+        targetRequired: "O host SSH é obrigatório",
+        invalidTarget: "Insira um host ssh:// válido",
+        failedToConnect: "Não foi possível conectar por SSH. {{detail}}",
+      },
+    },
   },
   realtimeVoice: {
     actions: {
@@ -2793,6 +2897,8 @@ export const ptBR: TranslationResources = {
     inOtto: "No Otto",
     externalBrowser: "Navegador externo",
     dontAskAgain: "Não perguntar novamente",
+
+    inPaseo: "No Otto",
   },
   downloads: {
     requestTokenFailed: "Falha ao solicitar token de download.",
@@ -2858,6 +2964,8 @@ export const ptBR: TranslationResources = {
     },
     archiveFinishedAction: "Arquivar subagentes concluídos",
     archiveFinishedTooltip: "Arquivar concluídos",
+
+    archiveFinishedRetry: "Tentar novamente ({{failed}}/{{total}})",
   },
   observedSubagents: {
     readOnlyTitle: "Subagente observado · somente leitura",
@@ -3260,6 +3368,8 @@ export const ptBR: TranslationResources = {
       label: "Arquivos",
       subtitle: "Arquivos do espaço de trabalho",
       tooltip: "Explorar arquivos do espaço de trabalho",
+
+      chooseFile: "Escolha um arquivo",
     },
     search: {
       label: "Pesquisar",
@@ -3306,6 +3416,11 @@ export const ptBR: TranslationResources = {
       other: "called Otto {{count}} times",
     },
     and: "and",
+
+    paseoCalls: {
+      one: "chamou o Otto {{count}} vez",
+      other: "chamou o Otto {{count}} vezes",
+    },
   },
   renameModal: {
     rename: "Renomear",
@@ -3419,6 +3534,8 @@ export const ptBR: TranslationResources = {
       storage: "Armazenamento",
       terminals: "Terminais",
       host: "Visão geral",
+
+      plugins: "Plugins",
     },
     plugins: pluginSettings["pt-BR"],
     metadataGeneration: {
@@ -3637,6 +3754,8 @@ export const ptBR: TranslationResources = {
         alertTitle: "Erro",
         alertMessage: "Não foi possível abrir o diálogo de confirmação da atualização.",
       },
+
+      whatsNewHint: "Notas de versão de cada release",
     },
     appearance: {
       theme: {
@@ -3805,6 +3924,16 @@ export const ptBR: TranslationResources = {
         codeSizeAccessibility: "Tamanho da fonte de código",
         terminalSize: "Tamanho do terminal",
         terminalSizeAccessibility: "Tamanho da fonte do terminal",
+
+        codeSizeHint: "Usado em código, diffs e saída do terminal",
+
+        contentSizeAccessibility: "Tamanho da fonte do conteúdo",
+
+        contentSizeHint: "Usado no texto do chat e no Markdown renderizado",
+
+        contentSize: "Tamanho do conteúdo",
+
+        interfaceSizeHint: "Usado na navegação, nos controles e nos rótulos",
       },
       syntax: {
         title: "Sintaxe",
@@ -3816,6 +3945,14 @@ export const ptBR: TranslationResources = {
       },
       detailLevel: {
         title: "Nível de detalhe",
+      },
+
+      sidebar: {
+        title: "Barra lateral",
+        description: "Escolha quais itens aparecem no topo da barra lateral e em que ordem",
+        moveUp: "Mover para cima",
+        moveDown: "Mover para baixo",
+        workspaceActions: "Ações do cabeçalho de espaços de trabalho",
       },
     },
     shortcuts: {
@@ -4016,6 +4153,8 @@ export const ptBR: TranslationResources = {
       badges: {
         relay: "Relay",
         local: "Local",
+
+        remoteSsh: "SSH remoto",
       },
       connections: {
         title: "Conexões",
@@ -4703,6 +4842,7 @@ export const ptBR: TranslationResources = {
         destinations: {
           main: "Main panel",
           side: "On the side",
+          explorer: "Barra lateral do Explorador",
         },
         sources: {
           explorerFiles: {
@@ -4732,6 +4872,11 @@ export const ptBR: TranslationResources = {
           changesLinks: {
             label: "Opening Changes from an agent",
             description: "Open diff stats and review attachments beside the conversation",
+          },
+          diffs: {
+            label: "Abrir uma diferença",
+            description:
+              "Abra diferenças do Explorador e de conversas com agentes ao lado do seu trabalho",
           },
         },
       },
@@ -4849,6 +4994,17 @@ export const ptBR: TranslationResources = {
       deleteMessage_other: "Isso remove a etiqueta de {{count}} workspaces neste host.",
       offline: "Este host está offline.",
       updateHost: "Atualize este host para gerenciar etiquetas.",
+    },
+  },
+
+  changelog: {
+    title: "Novidades",
+    installed: "Instalada",
+    showMore: "Mostrar mais",
+    openWebsite: "Changelog completo",
+    error: {
+      title: "Não foi possível carregar o changelog",
+      description: "Verifique sua conexão e tente novamente.",
     },
   },
 };

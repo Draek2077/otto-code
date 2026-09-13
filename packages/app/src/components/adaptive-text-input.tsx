@@ -1,9 +1,6 @@
 import React, { forwardRef, useCallback, useEffect, useRef } from "react";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { isNative } from "@/constants/platform";
 import { createControlGeometry } from "@/components/ui/control-geometry";
-import { useBottomSheetInput } from "@/components/ui/bottom-sheet-input-context";
 import {
   EditingTextInput,
   type EditingTextInputHandle,
@@ -30,8 +27,6 @@ const ThemedTextInput = withUnistyles(EditingTextInput, (theme) => ({
 
 export const AdaptiveTextInput = forwardRef<EditingTextInputHandle, AdaptiveTextInputProps>(
   function AdaptiveTextInputInner(props, ref) {
-    const isMobile = useIsCompactFormFactor();
-    const inBottomSheet = useBottomSheetInput();
     const { initialValue, resetKey, style, onChangeText, ...inputProps } = props;
     const inputRef = useRef<EditingTextInputHandle | null>(null);
     const replacementTextRef = useRef(initialValue ?? "");
@@ -59,7 +54,6 @@ export const AdaptiveTextInput = forwardRef<EditingTextInputHandle, AdaptiveText
         initialValue={initialValue}
         onChangeText={onChangeText}
         style={[styles.outline, style, styles.text]}
-        variant={isMobile && isNative && inBottomSheet ? "bottom-sheet" : "default"}
       />
     );
   },

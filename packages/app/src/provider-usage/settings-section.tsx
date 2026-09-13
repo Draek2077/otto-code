@@ -1,3 +1,5 @@
+import { SettingsButton } from "@/screens/settings-search/controls";
+import { SettingsTargetScope, SettingsTargetLabel } from "@/screens/settings-search/target";
 import { RefreshCw } from "@/components/icons/material-icons";
 import { useMemo } from "react";
 import { Text, View } from "react-native";
@@ -5,7 +7,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { settingsStyles } from "@/styles/settings";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { providerUsageCopy } from "./copy";
 import { ProviderUsageList } from "./list";
 import type { ProviderUsageView } from "./types";
@@ -21,7 +23,8 @@ export function ProviderUsageSettingsSection({
 
   const refreshButton = useMemo(
     () => (
-      <Button
+      <SettingsButton
+        settingIds={["host-usage-usage-refresh"]}
         variant="ghost"
         size="sm"
         leftIcon={RefreshCw}
@@ -30,7 +33,7 @@ export function ProviderUsageSettingsSection({
         accessibilityLabel={providerUsageCopy.refresh}
       >
         {busy ? providerUsageCopy.refreshing : providerUsageCopy.refresh}
-      </Button>
+      </SettingsButton>
     ),
     [busy, onRefresh],
   );
@@ -79,7 +82,11 @@ function ProviderUsageBody({
     );
   }
 
-  return <ProviderUsageList providers={view.payload.providers} />;
+  return (
+    <SettingsTargetScope settingIds={["host-usage-usage-provider-usage"]}>
+      <ProviderUsageList providers={view.payload.providers} Label={SettingsTargetLabel} />
+    </SettingsTargetScope>
+  );
 }
 
 const styles = StyleSheet.create((theme) => ({

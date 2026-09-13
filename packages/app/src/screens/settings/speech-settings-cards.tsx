@@ -1,3 +1,8 @@
+import {
+  SettingsTargetText,
+  SettingsTargetScope,
+  SettingsTargetLabel,
+} from "@/screens/settings-search/target";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Pressable, Text, TextInput, View, type PressableStateCallbackType } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -233,7 +238,7 @@ function ToggleRow({ title, hint, value, onValueChange, testID, bordered }: Togg
   return (
     <View style={bordered ? ROW_WITH_BORDER_STYLE : settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
       <Switch
@@ -284,7 +289,7 @@ function PickerRow({ label, value, options, onChange, testID, trailing }: Picker
   return (
     <View style={ROW_WITH_BORDER_STYLE}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{label}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{label}</SettingsTargetLabel>
       </View>
       {trailing}
       <View ref={anchorRef} collapsable={false} style={styles.triggerAnchor}>
@@ -330,7 +335,7 @@ function SpeedRow({ label, value, onChange, testID }: SpeedRowProps) {
   return (
     <View style={ROW_RESPONSIVE_WITH_BORDER}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{label}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{label}</SettingsTargetLabel>
       </View>
       <SegmentedControl
         size="sm"
@@ -392,27 +397,33 @@ function DictationCard({ speech, options, apply }: SpeechCardProps) {
 
   return (
     <View style={settingsStyles.card} testID="host-speech-dictation-card">
-      <ToggleRow
-        title={t("settings.host.speech.dictation.title")}
-        hint={t("settings.host.speech.dictation.hint")}
-        value={enabled}
-        onValueChange={onEnabled}
-        testID="host-speech-dictation-switch"
-      />
-      <PickerRow
-        label={t("settings.host.speech.dictation.engine")}
-        value={stt.engine}
-        options={engineOptions}
-        onChange={onEngine}
-        testID="host-speech-dictation-engine"
-      />
-      <PickerRow
-        label={t("settings.host.speech.dictation.model")}
-        value={stt.model}
-        options={modelOptions}
-        onChange={onModel}
-        testID="host-speech-dictation-model"
-      />
+      <SettingsTargetScope settingIds={["host-agents-dictation-dictation"]}>
+        <ToggleRow
+          title={t("settings.host.speech.dictation.title")}
+          hint={t("settings.host.speech.dictation.hint")}
+          value={enabled}
+          onValueChange={onEnabled}
+          testID="host-speech-dictation-switch"
+        />
+      </SettingsTargetScope>
+      <SettingsTargetScope settingIds={["host-agents-dictation-engine"]}>
+        <PickerRow
+          label={t("settings.host.speech.dictation.engine")}
+          value={stt.engine}
+          options={engineOptions}
+          onChange={onEngine}
+          testID="host-speech-dictation-engine"
+        />
+      </SettingsTargetScope>
+      <SettingsTargetScope settingIds={["host-agents-dictation-model"]}>
+        <PickerRow
+          label={t("settings.host.speech.dictation.model")}
+          value={stt.model}
+          options={modelOptions}
+          onChange={onModel}
+          testID="host-speech-dictation-model"
+        />
+      </SettingsTargetScope>
     </View>
   );
 }
@@ -523,63 +534,79 @@ function VoiceModeCard({
 
   return (
     <View style={settingsStyles.card} testID="host-speech-voice-mode-card">
-      <ToggleRow
-        title={t("settings.host.speech.voiceMode.title")}
-        hint={t("settings.host.speech.voiceMode.hint")}
-        value={enabled}
-        onValueChange={onEnabled}
-        testID="host-speech-voice-mode-switch"
-      />
-      <PickerRow
-        label={t("settings.host.speech.voiceMode.sttEngine")}
-        value={stt.engine}
-        options={engineOptions}
-        onChange={onSttEngine}
-        testID="host-speech-voice-stt-engine"
-      />
-      <PickerRow
-        label={t("settings.host.speech.voiceMode.sttModel")}
-        value={stt.model}
-        options={sttModelOptions}
-        onChange={onSttModel}
-        testID="host-speech-voice-stt-model"
-      />
-      <PickerRow
-        label={t("settings.host.speech.voiceMode.ttsEngine")}
-        value={tts.engine}
-        options={ttsEngineOptions}
-        onChange={onTtsEngine}
-        testID="host-speech-voice-tts-engine"
-      />
-      <PickerRow
-        label={t("settings.host.speech.voiceMode.ttsModel")}
-        value={tts.model}
-        options={ttsModelOptions}
-        onChange={onTtsModel}
-        testID="host-speech-voice-tts-model"
-      />
-      <PickerRow
-        label={t("settings.host.speech.voiceMode.voice")}
-        value={tts.voice}
-        options={voiceOptions}
-        onChange={onVoice}
-        testID="host-speech-voice-tts-voice"
-        trailing={voicePreview}
-      />
-      <SpeedRow
-        label={t("settings.host.speech.voiceMode.speed")}
-        value={tts.speed}
-        onChange={onSpeed}
-        testID="host-speech-voice-tts-speed"
-      />
-      <ToggleRow
-        title={t("settings.host.speech.voiceMode.thinkingTone")}
-        hint={t("settings.host.speech.voiceMode.thinkingToneHint")}
-        value={appSettings.voiceThinkingTone}
-        onValueChange={onThinkingTone}
-        testID="host-speech-voice-thinking-tone-switch"
-        bordered
-      />
+      <SettingsTargetScope settingIds={["host-agents-voice-voice-mode"]}>
+        <ToggleRow
+          title={t("settings.host.speech.voiceMode.title")}
+          hint={t("settings.host.speech.voiceMode.hint")}
+          value={enabled}
+          onValueChange={onEnabled}
+          testID="host-speech-voice-mode-switch"
+        />
+      </SettingsTargetScope>
+      <SettingsTargetScope settingIds={["host-agents-voice-speech-to-text-engine"]}>
+        <PickerRow
+          label={t("settings.host.speech.voiceMode.sttEngine")}
+          value={stt.engine}
+          options={engineOptions}
+          onChange={onSttEngine}
+          testID="host-speech-voice-stt-engine"
+        />
+      </SettingsTargetScope>
+      <SettingsTargetScope settingIds={["host-agents-voice-speech-to-text-model"]}>
+        <PickerRow
+          label={t("settings.host.speech.voiceMode.sttModel")}
+          value={stt.model}
+          options={sttModelOptions}
+          onChange={onSttModel}
+          testID="host-speech-voice-stt-model"
+        />
+      </SettingsTargetScope>
+      <SettingsTargetScope settingIds={["host-agents-voice-text-to-speech-engine"]}>
+        <PickerRow
+          label={t("settings.host.speech.voiceMode.ttsEngine")}
+          value={tts.engine}
+          options={ttsEngineOptions}
+          onChange={onTtsEngine}
+          testID="host-speech-voice-tts-engine"
+        />
+      </SettingsTargetScope>
+      <SettingsTargetScope settingIds={["host-agents-voice-text-to-speech-model"]}>
+        <PickerRow
+          label={t("settings.host.speech.voiceMode.ttsModel")}
+          value={tts.model}
+          options={ttsModelOptions}
+          onChange={onTtsModel}
+          testID="host-speech-voice-tts-model"
+        />
+      </SettingsTargetScope>
+      <SettingsTargetScope settingIds={["host-agents-voice-voice"]}>
+        <PickerRow
+          label={t("settings.host.speech.voiceMode.voice")}
+          value={tts.voice}
+          options={voiceOptions}
+          onChange={onVoice}
+          testID="host-speech-voice-tts-voice"
+          trailing={voicePreview}
+        />
+      </SettingsTargetScope>
+      <SettingsTargetScope settingIds={["host-agents-voice-speaking-speed"]}>
+        <SpeedRow
+          label={t("settings.host.speech.voiceMode.speed")}
+          value={tts.speed}
+          onChange={onSpeed}
+          testID="host-speech-voice-tts-speed"
+        />
+      </SettingsTargetScope>
+      <SettingsTargetScope settingIds={["host-agents-voice-thinking-tone"]}>
+        <ToggleRow
+          title={t("settings.host.speech.voiceMode.thinkingTone")}
+          hint={t("settings.host.speech.voiceMode.thinkingToneHint")}
+          value={appSettings.voiceThinkingTone}
+          onValueChange={onThinkingTone}
+          testID="host-speech-voice-thinking-tone-switch"
+          bordered
+        />
+      </SettingsTargetScope>
       {showError ? (
         <ErrorRow message={t("settings.host.speech.saveError")} testID="host-speech-save-error" />
       ) : null}
@@ -622,7 +649,12 @@ function OpenAiKeyCard({
     <View style={settingsStyles.card} testID="host-speech-openai-key-card">
       <View style={settingsStyles.rowResponsive}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.host.speech.openaiKey.title")}</Text>
+          <SettingsTargetText
+            settingId="host-agents-openai-openai-api-key"
+            style={settingsStyles.rowTitle}
+          >
+            {t("settings.host.speech.openaiKey.title")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>{t("settings.host.speech.openaiKey.hint")}</Text>
         </View>
         <TextInput

@@ -162,7 +162,6 @@ export class ManualDownloadUpdateRuntime implements AppUpdateRuntime {
     const release = pickRelease(releases, configuration.releaseChannel, hasDownloadableAsset);
     if (!release) {
       this.latestKnownVersion = null;
-      configuration.onUpdateNotAvailable();
       return null;
     }
 
@@ -174,7 +173,6 @@ export class ManualDownloadUpdateRuntime implements AppUpdateRuntime {
     this.latestKnownVersion = info.version;
 
     if (compareVersions(info.version, this.options.currentVersion()) <= 0) {
-      configuration.onUpdateNotAvailable();
       return { isUpdateAvailable: false, updateInfo: info };
     }
 

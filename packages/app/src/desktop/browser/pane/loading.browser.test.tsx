@@ -107,6 +107,7 @@ function BrowserTab({
       ...descriptor,
       key: "tab",
       kind: "browser",
+      modified: false,
       subtitle: descriptor.subtitle ?? "",
     }),
     [descriptor],

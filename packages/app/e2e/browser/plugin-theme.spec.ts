@@ -1,3 +1,4 @@
+import { pluginRequirements } from "../support/helpers/plugin-fixture";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -50,11 +51,28 @@ const LATTE_MUTED_FOREGROUND = "rgb(108, 111, 133)";
 test("applies a contributed theme and falls back when its plugin is gone", async ({
   page,
 }, testInfo) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "@otto:app-settings",
+      JSON.stringify({
+        colorSchemeMode: "dark",
+        darkTheme: "obsidian",
+        uiFontSize: 20,
+        contentFontSize: 23,
+        codeFontSize: 15,
+        syntaxTheme: "dracula",
+        ...JSON.parse(localStorage.getItem("@otto:app-settings") ?? "{}"),
+      }),
+    );
+  });
   const directory = await mkdtemp(path.join(tmpdir(), "otto-plugin-theme-e2e-"));
   const client = await connectNewWorkspaceDaemonClient({ ownProjects: false });
   const previousConfig = await client.getDaemonConfig();
-  await writeFile(path.join(directory, "otto-plugin.json"), JSON.stringify({ id: PLUGIN_ID }));
-  await writeFile(path.join(directory, "index.ts"), PLUGIN_SOURCE);
+  await writeFile(
+    path.join(directory, "otto-plugin.json"),
+    JSON.stringify({ id: PLUGIN_ID, requirements: pluginRequirements }),
+  );
+  await writeFile(path.join(directory, "index.client.ts"), PLUGIN_SOURCE);
 
   try {
     await client.patchDaemonConfig({ pluginsEnabled: true });
@@ -63,8 +81,9 @@ test("applies a contributed theme and falls back when its plugin is gone", async
     await expect(page.getByTestId("settings-sidebar")).toBeVisible();
     await openSettingsSection(page, "appearance");
 
-    const sectionTitle = page.getByText("Theme", { exact: true }).first();
-    await page.getByLabel("Theme: System", { exact: true }).click();
+    const sectionTitle = page.getByText("Fonts", { exact: true }).first();
+    const themeTrigger = page.getByLabel("Plugin theme", { exact: true });
+    await themeTrigger.click();
     const mochaItem = page.getByText("Catppuccin Mocha", { exact: true });
     await expect(mochaItem).toBeVisible({ timeout: 30_000 });
     await page.screenshot({
@@ -75,13 +94,15 @@ test("applies a contributed theme and falls back when its plugin is gone", async
 
     await test.step("a contributed light theme uses the light palette", async () => {
       await page.getByText("Catppuccin Latte", { exact: true }).click();
-      await expect(page.getByLabel("Theme: Catppuccin Latte", { exact: true })).toBeVisible();
+      await expect(themeTrigger).toContainText("Catppuccin Latte");
+      await expect(sectionTitle).toHaveCSS("font-size", "15px");
       await expect(sectionTitle).toHaveCSS("color", LATTE_MUTED_FOREGROUND);
-      await page.getByLabel("Theme: Catppuccin Latte", { exact: true }).click();
+      await themeTrigger.click();
     });
 
     await mochaItem.click();
-    await expect(page.getByLabel("Theme: Catppuccin Mocha", { exact: true })).toBeVisible();
+    await expect(themeTrigger).toContainText("Catppuccin Mocha");
+    await expect(sectionTitle).toHaveCSS("font-size", "15px");
     await expect(sectionTitle).toHaveCSS("color", MOCHA_MUTED_FOREGROUND);
     await page.screenshot({
       path: testInfo.outputPath("plugin-theme-applied.png"),
@@ -90,18 +111,46 @@ test("applies a contributed theme and falls back when its plugin is gone", async
 
     await test.step("the selection survives a reload", async () => {
       await page.reload();
-      await expect(page.getByLabel("Theme: Catppuccin Mocha", { exact: true })).toBeVisible({
+      await expect(themeTrigger).toContainText("Catppuccin Mocha", {
         timeout: 30_000,
       });
       await expect(sectionTitle).toHaveCSS("color", MOCHA_MUTED_FOREGROUND);
     });
 
+    await test.step("reloading the palette retains independent typography preferences", async () => {
+      await writeFile(
+        path.join(directory, "index.client.ts"),
+        PLUGIN_SOURCE.replace("#a6adc8", "#b0b0d0"),
+      );
+      await client.reloadPlugin(PLUGIN_ID);
+      await expect(sectionTitle).toHaveCSS("color", "rgb(176, 176, 208)");
+      await expect(sectionTitle).toHaveCSS("font-size", "15px");
+      await expect(page.getByRole("slider", { name: "Interface font size" })).toHaveAttribute(
+        "aria-valuenow",
+        "20",
+      );
+      await expect(page.getByRole("slider", { name: "Content size" })).toHaveAttribute(
+        "aria-valuenow",
+        "23",
+      );
+      expect(
+        await page.evaluate(() => {
+          const { uiFontSize, contentFontSize, codeFontSize, syntaxTheme } = JSON.parse(
+            localStorage.getItem("@otto:app-settings") ?? "{}",
+          );
+          return { uiFontSize, contentFontSize, codeFontSize, syntaxTheme };
+        }),
+      ).toEqual({ uiFontSize: 20, contentFontSize: 23, codeFontSize: 15, syntaxTheme: "dracula" });
+    });
+
     await test.step("removing the plugin falls back to the default theme", async () => {
       await client.removePlugin(PLUGIN_ID);
-      await expect(page.getByLabel("Theme: System", { exact: true })).toBeVisible({
+      await expect(page.getByLabel("Theme: Obsidian", { exact: true })).toBeVisible({
         timeout: 30_000,
       });
-      await expect(sectionTitle).not.toHaveCSS("color", MOCHA_MUTED_FOREGROUND);
+      await expect(themeTrigger).toHaveCount(0);
+      await expect(sectionTitle).toHaveCSS("color", "rgb(166, 166, 166)");
+      await expect(sectionTitle).toHaveCSS("font-size", "15px");
       await page.screenshot({
         path: testInfo.outputPath("plugin-theme-fallback.png"),
         fullPage: true,

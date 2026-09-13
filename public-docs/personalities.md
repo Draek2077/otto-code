@@ -25,7 +25,7 @@ Each personality bundles a **brain** and an **identity**:
 - one or more **roles** (see below),
 - an **identity**: a name, two spinner colors, and an optional **voice** for spoken replies.
 
-You manage personalities in **Host settings → Agents → Agent personalities**. Each row shows the name, its provider·model·roles, and a live preview of its spinner colors, with add / edit / delete and a "Used N times" counter.
+You manage personalities in **Settings → your host → Teams**, below the team editor. Each row shows the name, its provider·model·roles, and a live preview of its spinner colors, with add / edit / delete and a "Used N times" counter.
 
 ## Roles
 

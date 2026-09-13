@@ -1713,7 +1713,42 @@ export class CheckoutSession {
 
     try {
       const resolvedCwd = expandTilde(cwd);
-      const result = await this.github.searchIssuesAndPrs({
+      // COMPAT(githubSearchRpc): the legacy github_search RPC is GitHub by
+      // definition; forge.search.* shipped in v0.2.0-beta.1 and resolves the
+      // cwd's forge. Remove after 2027-01-17 once the supported client floor
+      // is >= v0.2.0.
+      const resolvedForge =
+        msg.type === "github_search_request"
+          ? { forge: "github", service: this.github }
+          : await this.workspaceGitService.resolveForge(resolvedCwd);
+      if (!resolvedForge) {
+        if (msg.type === "github_search_request") {
+          this.host.emit({
+            type: "github_search_response",
+            payload: {
+              items: [],
+              featuresEnabled: false,
+              authState: "no_remote",
+              githubFeaturesEnabled: false,
+              error: null,
+              requestId,
+            },
+          });
+          return;
+        }
+        this.host.emit({
+          type: "forge.search.response",
+          payload: {
+            items: [],
+            authState: "no_remote",
+            error: null,
+            requestId,
+          },
+        });
+        return;
+      }
+      const { service } = resolvedForge;
+      const result = await service.searchIssuesAndPrs({
         cwd: resolvedCwd,
         query,
         limit,

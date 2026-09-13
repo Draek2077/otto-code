@@ -1,12 +1,16 @@
 ---
 title: How Hub works
-description: How a provider event reaches a workflow and a Otto daemon.
+description: "Upstream Paseo Hub reference. How a provider event reaches a workflow and a Paseo daemon."
 nav: How it works
 order: 62
 category: Hub
 ---
 
 # How Hub works
+
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
+
+> **Legacy project bundles.** The examples on this page use `.paseo/hub.yml` and `.paseo/workflows/`. New organization triggers use `.paseo/triggers/`; see [Configuration](/docs/hub/configuration). The formats are separate.
 
 Hub connects the places where requests arrive to the machines where your agents run.
 
@@ -19,21 +23,21 @@ GitHub / Slack / Discord / manual request
                 workflow
           runs ordered agent steps
                     ↓
-             Otto daemon
+             Paseo daemon
              starts the agent
 ```
 
 ## The pieces
 
 - A **connection** lets Hub receive events from GitHub, Slack, or Discord.
-- A **daemon** is a registered machine running the Otto daemon.
+- A **daemon** is a registered machine running the Paseo daemon.
 - A **project** groups one configuration with the connections and daemons it uses.
 - An **environment** names where a workflow step runs: a daemon, its working directory, and an optional worktree.
 - A **trigger** says which provider event can start a workflow and which events are allowed through.
 - A **workflow** is the ordered set of steps that runs after a trigger matches.
 - A **step** starts one agent execution, with its own prompt, agent selection, credentials, reply capabilities, and limits.
 
-The configuration lives in `.otto/hub.yml` plus convention-discovered `.otto/workflows/*.yml` files when the project uses a GitHub source. A project has one active configuration revision at a time.
+The configuration lives in `.paseo/hub.yml` plus convention-discovered `.paseo/workflows/*.yml` files when the project uses a GitHub source. A project has one active configuration revision at a time.
 
 ## From event to agent
 
@@ -55,7 +59,7 @@ When Hub syncs the bundle, it validates every source file and resolves its refer
 - `environment.daemon` must match a registered daemon's friendly slug.
 - Step ids, expressions, input filters, output schemas, and durations must be valid.
 - Every finite environment or named-agent result must exist and validate.
-- Prompt partials must resolve below `.otto/workflows/partials/` at the exact commit.
+- Prompt partials must resolve below `.paseo/workflows/partials/` at the exact commit.
 
 If activation fails, Hub keeps the previous active revision. The Configuration tab shows the failed sync and its validation error; Activity continues to reflect the last active revision.
 

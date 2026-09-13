@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Text, View } from "react-native";
@@ -11,7 +12,7 @@ import {
   SpeakerNotes,
 } from "@/components/icons/material-icons";
 import { settingsStyles } from "@/styles/settings";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -85,9 +86,12 @@ export function CommandLineIntegrationSection() {
           <View style={settingsStyles.rowContent}>
             <View style={styles.rowTitleRow}>
               <Terminal size={theme.iconSize.md} color={theme.colors.foreground} />
-              <Text style={settingsStyles.rowTitle}>
+              <SettingsTargetText
+                settingId="app-integrations-integrations-command-line"
+                style={settingsStyles.rowTitle}
+              >
                 {t("settings.integrations.commandLine.title")}
-              </Text>
+              </SettingsTargetText>
             </View>
             <Text style={settingsStyles.rowHint}>
               {t("settings.integrations.commandLine.description")}
@@ -243,7 +247,12 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
               <View style={settingsStyles.rowContent}>
                 <View style={styles.rowTitleRow}>
                   <SpeakerNotes size={theme.iconSize.md} color={theme.colors.foreground} />
-                  <Text style={settingsStyles.rowTitle}>Meeting transcription</Text>
+                  <SettingsTargetText
+                    settingId="app-integrations-meetings-meeting-transcription"
+                    style={settingsStyles.rowTitle}
+                  >
+                    Meeting transcription
+                  </SettingsTargetText>
                 </View>
                 <Text style={settingsStyles.rowHint}>
                   Transcribe meetings locally on this computer and show its title-bar control.
@@ -260,7 +269,12 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
             <>
               <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
                 <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>Transcript delivery</Text>
+                  <SettingsTargetText
+                    settingId="app-integrations-meetings-transcript-delivery"
+                    style={settingsStyles.rowTitle}
+                  >
+                    Transcript delivery
+                  </SettingsTargetText>
                   <Text style={settingsStyles.rowHint}>{meetingTranscriptDeliveryHint}</Text>
                 </View>
                 <View style={ACTIONS_ROW_STYLE}>
@@ -301,7 +315,12 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
               </View>
               <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
                 <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>Local speech recognition model</Text>
+                  <SettingsTargetText
+                    settingId="app-integrations-meetings-local-speech-recognition-model"
+                    style={settingsStyles.rowTitle}
+                  >
+                    Local speech recognition model
+                  </SettingsTargetText>
                   <Text style={settingsStyles.rowHint}>{zoomRecorderModelHint}</Text>
                 </View>
                 <View style={ACTIONS_ROW_STYLE}>
@@ -323,7 +342,12 @@ export function IntegrationsSection(props: { serverId: string | null; isLocalDae
             </>
             <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Adapter</Text>
+                <SettingsTargetText
+                  settingId="app-integrations-meetings-adapter"
+                  style={settingsStyles.rowTitle}
+                >
+                  Adapter
+                </SettingsTargetText>
               </View>
               <DropdownMenu>
                 <DropdownMenuTrigger

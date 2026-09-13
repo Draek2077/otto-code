@@ -1,7 +1,7 @@
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import type { OttoApi } from "@otto-code/client";
-import { OttoApiProvider } from "@otto-code/plugin/host";
-import { useOtto } from "@otto-code/plugin";
+import { OttoApiProvider } from "@otto-code/plugin/client/host";
+import { useOtto } from "@otto-code/plugin/client";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";

@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
@@ -268,7 +269,12 @@ function ZoomTeamChatUnavailableCard() {
       <View style={settingsStyles.card}>
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Chat</Text>
+            <SettingsTargetText
+              settingId="app-integrations-chat-chat"
+              style={settingsStyles.rowTitle}
+            >
+              Chat
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>Update this host to configure Chat.</Text>
           </View>
         </View>
@@ -325,7 +331,12 @@ function ZoomTeamChatConnectionCard(props: {
           <View style={settingsStyles.rowContent}>
             <View style={styles.rowTitleRow}>
               <ThemedChat uniProps={chatForegroundMapping} />
-              <Text style={settingsStyles.rowTitle}>Chat</Text>
+              <SettingsTargetText
+                settingId="app-integrations-chat-chat"
+                style={settingsStyles.rowTitle}
+              >
+                Chat
+              </SettingsTargetText>
             </View>
             <Text style={settingsStyles.rowHint}>Show Chat in the title bar.</Text>
           </View>
@@ -339,7 +350,12 @@ function ZoomTeamChatConnectionCard(props: {
         </View>
         <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Adapter</Text>
+            <SettingsTargetText
+              settingId="app-integrations-chat-adapter"
+              style={settingsStyles.rowTitle}
+            >
+              Adapter
+            </SettingsTargetText>
           </View>
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -360,7 +376,12 @@ function ZoomTeamChatConnectionCard(props: {
         {adapter === "zoom" ? (
           <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Zoom Team Chat</Text>
+              <SettingsTargetText
+                settingId="app-integrations-chat-zoom-team-chat"
+                style={settingsStyles.rowTitle}
+              >
+                Zoom Team Chat
+              </SettingsTargetText>
               <Text style={isError ? settingsStyles.rowError : settingsStyles.rowHint}>
                 {status}
               </Text>

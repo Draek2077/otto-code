@@ -99,6 +99,7 @@ function Download() {
                 )}
               </PillGroup>
             </PlatformRow>
+            <p className="text-xs text-muted-foreground">Requires macOS 13 or newer</p>
             {(urls.macDmgArm64 || urls.macDmgX64) && (
               <div className="flex flex-col gap-2">
                 <p className="text-sm text-muted-foreground">{MAC_UNSIGNED_NOTE}</p>

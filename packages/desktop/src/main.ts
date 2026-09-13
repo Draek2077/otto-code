@@ -14,6 +14,7 @@ import {
   app,
   autoUpdater as electronAutoUpdater,
   BrowserWindow,
+  ClipboardItem,
   clipboard,
   Menu,
   ipcMain,
@@ -65,7 +66,8 @@ import {
   registerNotificationHandlers,
   ensureNotificationCenterRegistration,
 } from "./features/notifications.js";
-import { registerOpenerHandlers } from "./features/opener.js";
+import { createExternalUrlOpener } from "./features/opener.js";
+import { createBrowserCaptureService } from "./features/browser-capture.js";
 import { registerEditorTargetHandlers } from "./features/editor-targets/ipc.js";
 import { resolveDesktopWindowChromeMode, windowChromeModeArgument } from "./window/chrome.js";
 import { resolveAppIconPath } from "./features/stamped-icon.js";
@@ -125,6 +127,11 @@ import {
 } from "@otto-code/protocol/agent-deep-link";
 import { AgentNavigationInbox, parseAgentDeepLinkFromArgv } from "./agent-navigation.js";
 import { PendingOpenProjectStore } from "./pending-open-project-store.js";
+import {
+  createDesktopWindowOwner,
+  type DesktopWindowOwner,
+  type OwnedDesktopWindow,
+} from "./window/desktop-window-owner.js";
 import { getDesktopSettingsStore } from "./settings/desktop-settings-electron.js";
 import { clampWindowStateToWorkAreas, createWindowStateStore } from "./settings/window-state.js";
 import {
@@ -203,6 +210,12 @@ const UPDATE_QUIT_DEADLINE_MS = 5_000;
 const DESKTOP_SMOKE_ENV = "OTTO_DESKTOP_SMOKE";
 const DESKTOP_SMOKE_STOP_REQUEST = "otto-smoke-stop";
 app.setName(APP_NAME);
+log.info("[desktop] app startup", {
+  version: app.getVersion(),
+  platform: process.platform,
+  arch: process.arch,
+  isPackaged: app.isPackaged,
+});
 
 // Windows identifies notification senders and routes toast clicks by
 // AppUserModelID, not app.getName(). Without one, Windows falls back to
@@ -555,6 +568,7 @@ let pendingAgentNavigation = parseAgentDeepLinkFromArgv(process.argv);
 // in-app "Open in new window" action) land on the right project without
 // racing a global.
 const pendingOpenProjectStore = new PendingOpenProjectStore();
+let desktopWindowOwner: DesktopWindowOwner<AgentDeepLinkTarget>;
 
 if (OTTO_DEBUG) {
   log.info("[open-project] argv:", process.argv);
@@ -594,39 +608,6 @@ ipcMain.handle("otto:agent-navigation:ready", (event) => {
   requireTrustedMainRenderer(event);
   return agentNavigationInbox.windowReady(event.sender.id);
 });
-
-function normalizeBrowserCaptureRect(
-  rect: unknown,
-): { x: number; y: number; width: number; height: number } | null {
-  if (!rect || typeof rect !== "object") {
-    return null;
-  }
-  const candidate = rect as Record<string, unknown>;
-  const x = candidate.x;
-  const y = candidate.y;
-  const width = candidate.width;
-  const height = candidate.height;
-  if (
-    typeof x !== "number" ||
-    typeof y !== "number" ||
-    typeof width !== "number" ||
-    typeof height !== "number" ||
-    !Number.isFinite(x) ||
-    !Number.isFinite(y) ||
-    !Number.isFinite(width) ||
-    !Number.isFinite(height) ||
-    width <= 0 ||
-    height <= 0
-  ) {
-    return null;
-  }
-  return {
-    x: Math.max(0, Math.round(x)),
-    y: Math.max(0, Math.round(y)),
-    width: Math.round(width),
-    height: Math.round(height),
-  };
-}
 
 ipcMain.handle("otto:browser:register-attached", (event, rawInput: unknown) => {
   requireTrustedMainRenderer(event);
@@ -788,75 +769,33 @@ ipcMain.handle("otto:browser:clear-profile", async (event, rawLegacyBrowserIds: 
   });
 });
 
-ipcMain.handle("otto:browser:capture-element", async (event, browserId: unknown, rect: unknown) => {
-  requireTrustedMainRenderer(event);
-  if (typeof browserId !== "string" || browserId.trim().length === 0) {
-    return null;
-  }
-  const contents = getOttoBrowserWebContentsForHostWindow(browserId, event.sender.id);
-  if (!contents || contents.isDestroyed()) {
-    return null;
-  }
-  const captureRect = normalizeBrowserCaptureRect(rect);
-  if (!captureRect) {
-    return null;
-  }
-  try {
-    // capturePage expects an integer rect in CSS pixels relative to the
-    // guest viewport, which matches getBoundingClientRect() on the page.
-    const image = await contents.capturePage(captureRect);
-    if (image.isEmpty()) {
-      return null;
-    }
-    return image.toDataURL();
-  } catch (error) {
-    log.warn("[browser-capture] capture-element.failed", {
-      browserId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return null;
-  }
+const browserCapture = createBrowserCaptureService<Electron.NativeImage>({
+  findGuest: getOttoBrowserWebContentsForHostWindow,
+  decodeImage: (dataUrl) => nativeImage.createFromDataURL(dataUrl),
+  clipboard: {
+    write: async ({ text, image }) => {
+      const items: Record<string, string | Blob> = {};
+      if (text) items["text/plain"] = text;
+      if (image) {
+        const png = image.toPNG();
+        const bytes = new Uint8Array(png.byteLength);
+        bytes.set(png);
+        items["image/png"] = new Blob([bytes], { type: "image/png" });
+      }
+      await clipboard.write([new ClipboardItem(items)]);
+    },
+  },
+  warn: (event, details) => log.warn(`[browser-capture] ${event}`, details),
 });
 
-ipcMain.handle("otto:browser:copy-element", (event, payload: unknown): boolean => {
+ipcMain.handle("otto:browser:capture-element", (event, browserId: unknown, rect: unknown) => {
   requireTrustedMainRenderer(event);
-  if (!payload || typeof payload !== "object") {
-    return false;
-  }
-  const { text, imageDataUrl } = payload as { text?: unknown; imageDataUrl?: unknown };
-  const copyText = typeof text === "string" && text.length > 0 ? text : null;
+  return browserCapture.capture({ browserId, hostWebContentsId: event.sender.id, rect });
+});
 
-  // Resolve the image first so we can write the clipboard exactly once and
-  // avoid flashing an intermediate text-only state.
-  let image: Electron.NativeImage | null = null;
-  if (typeof imageDataUrl === "string" && imageDataUrl.startsWith("data:image")) {
-    try {
-      const candidate = nativeImage.createFromDataURL(imageDataUrl);
-      if (!candidate.isEmpty()) {
-        image = candidate;
-      }
-    } catch (error) {
-      log.warn("[browser-capture] copy-element.image-failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  // Writing from the main process avoids the renderer's navigator.clipboard
-  // NotAllowedError, which fires when focus is inside the guest <webview>.
-  if (copyText && image) {
-    clipboard.write({ text: copyText, image });
-    return true;
-  }
-  if (image) {
-    clipboard.writeImage(image);
-    return true;
-  }
-  if (copyText) {
-    clipboard.writeText(copyText);
-    return true;
-  }
-  return false;
+ipcMain.handle("otto:browser:copy-element", (event, payload: unknown) => {
+  requireTrustedMainRenderer(event);
+  return browserCapture.copy(payload);
 });
 
 protocol.registerSchemesAsPrivileged([
@@ -923,7 +862,7 @@ function showMostRecentWindowOrCreateOne(): void {
     existing.focus();
     return;
   }
-  void createWindow({ restoreWindowState: true }).catch((error) => {
+  void desktopWindowOwner.openPrimary().catch((error) => {
     log.error("[tray] failed to create window from tray", error);
   });
 }
@@ -975,7 +914,8 @@ async function getEffectiveAppIconPath(): Promise<string | null> {
 }
 
 async function applyAppIcon(): Promise<void> {
-  if (process.platform !== "darwin") {
+  // Packaged apps keep the bundle icon and its macOS system appearance.
+  if (app.isPackaged || process.platform !== "darwin") {
     return;
   }
 
@@ -1002,11 +942,10 @@ function getWorkAreasPrimaryFirst(): Electron.Rectangle[] {
 
 async function createWindow(
   options: {
-    pendingOpenProjectPath?: string | null;
-    pendingOpenTarget?: OpenTarget | null;
-    restoreWindowState?: boolean;
-    /** Route to land on instead of "/" - an agent deep link that had no window to focus. */
     initialRoute?: string | null;
+    restoreWindowState?: boolean;
+    onCreated?: (webContentsId: number) => void;
+    onClosed?: (webContentsId: number) => void;
   } = {},
 ): Promise<BrowserWindow> {
   const iconPath = await getEffectiveAppIconPath();
@@ -1048,17 +987,14 @@ async function createWindow(
   applyDesktopWindowChromeMode({ win: mainWindow, mode: DESKTOP_WINDOW_CHROME_MODE });
 
   const webContentsId = mainWindow.webContents.id;
-  pendingOpenProjectStore.set(webContentsId, options.pendingOpenProjectPath);
-  pendingOpenProjectStore.setTarget(webContentsId, options.pendingOpenTarget);
-  // A full-document navigation tears down the renderer's listeners, so the
-  // window stops being deliverable until it reports ready again.
+  options.onCreated?.(webContentsId);
   mainWindow.webContents.on("did-start-navigation", (_event, _url, isSameDocument, isMainFrame) => {
     if (isMainFrame && !isSameDocument) {
       agentNavigationInbox.windowLoading(webContentsId);
     }
   });
   mainWindow.on("closed", () => {
-    pendingOpenProjectStore.delete(webContentsId);
+    options.onClosed?.(webContentsId);
     clearPendingWindowReveal(webContentsId);
     agentNavigationInbox.removeWindow(webContentsId);
     unregisterOttoBrowserHost(webContentsId);
@@ -1327,6 +1263,43 @@ async function createWindow(
   return mainWindow;
 }
 
+function ownedDesktopWindow(win: BrowserWindow): OwnedDesktopWindow<AgentDeepLinkTarget> {
+  return {
+    webContentsId: win.webContents.id,
+    isDestroyed: () => win.isDestroyed(),
+    isVisible: () => win.isVisible(),
+    isMinimized: () => win.isMinimized(),
+    restore: () => win.restore(),
+    show: () => win.show(),
+    focus: () => win.focus(),
+    sendAgent: (target) => win.webContents.send("otto:event:open-agent", target),
+  };
+}
+
+desktopWindowOwner = createDesktopWindowOwner<AgentDeepLinkTarget>(
+  {
+    async create(input) {
+      const win = await createWindow({
+        initialRoute: input.initialRoute,
+        restoreWindowState: input.restoreWindowState,
+        onCreated: input.onCreated,
+        onClosed: input.onClosed,
+      });
+      return ownedDesktopWindow(win);
+    },
+    windows: () => BrowserWindow.getAllWindows().map(ownedDesktopWindow),
+    focusedWindow: () => {
+      const win = BrowserWindow.getFocusedWindow();
+      if (!win) return null;
+      return ownedDesktopWindow(win);
+    },
+    agentRoute: buildAgentDeepLinkRoute,
+    deliverAgent: (webContentsId, target) =>
+      agentNavigationInbox.deliverOrQueue(webContentsId, target),
+  },
+  pendingOpenProjectStore,
+);
+
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
@@ -1342,51 +1315,6 @@ const bootstrapComplete = new Promise<void>((resolve) => {
   resolveBootstrapComplete = resolve;
 });
 
-let agentNavigationWindowCreation: Promise<BrowserWindow> | null = null;
-
-// Bring an agent link to the front. With no usable window (all closed, or the
-// app was launched by the link itself) this mints one already pointed at the
-// agent route, and serialises concurrent links onto that single creation so a
-// burst of links cannot open a window each.
-function focusExistingWindowOnAgent(target: AgentDeepLinkTarget): void {
-  const windows = BrowserWindow.getAllWindows();
-  const mainWindow =
-    BrowserWindow.getFocusedWindow() ?? windows.find((window) => window.isVisible()) ?? windows[0];
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    if (!agentNavigationWindowCreation) {
-      const creation = createWindow({
-        initialRoute: buildAgentDeepLinkRoute(target),
-        restoreWindowState: true,
-      });
-      agentNavigationWindowCreation = creation;
-      void creation
-        .catch((error) => log.error("[window] failed to create window for agent link", error))
-        .finally(() => {
-          if (agentNavigationWindowCreation === creation) {
-            agentNavigationWindowCreation = null;
-          }
-        });
-      return;
-    }
-
-    void agentNavigationWindowCreation
-      .then(() => focusExistingWindowOnAgent(target))
-      .catch((error) => log.error("[window] failed to deliver queued agent link", error));
-    return;
-  }
-
-  if (mainWindow.isMinimized()) {
-    mainWindow.restore();
-  }
-  mainWindow.show();
-  mainWindow.focus();
-
-  const deliverable = agentNavigationInbox.deliverOrQueue(mainWindow.webContents.id, target);
-  if (deliverable) {
-    mainWindow.webContents.send("otto:event:open-agent", deliverable);
-  }
-}
-
 function receiveAgentDeepLink(input: string): void {
   const target = parseAgentDeepLink(input);
   if (!target) {
@@ -1394,7 +1322,9 @@ function receiveAgentDeepLink(input: string): void {
   }
 
   if (bootstrapIsComplete) {
-    focusExistingWindowOnAgent(target);
+    void desktopWindowOwner
+      .openOrFocusAgent(target)
+      .catch((error) => log.error("[window] failed to route agent link", error));
     return;
   }
 
@@ -1405,7 +1335,9 @@ function receiveAgentDeepLink(input: string): void {
       return undefined;
     }
     pendingAgentNavigation = null;
-    focusExistingWindowOnAgent(target);
+    void desktopWindowOwner
+      .openOrFocusAgent(target)
+      .catch((error) => log.error("[window] failed to route queued agent link", error));
     return undefined;
   });
 }
@@ -1463,7 +1395,9 @@ function setupSingleInstanceLock(): boolean {
     // open-project path below can mint a second one.
     const agentTarget = parseAgentDeepLinkFromArgv(commandLine);
     if (agentTarget) {
-      void bootstrapComplete.then(() => focusExistingWindowOnAgent(agentTarget));
+      void bootstrapComplete
+        .then(() => desktopWindowOwner.openOrFocusAgent(agentTarget))
+        .catch((error) => log.error("[window] failed to route second-instance agent link", error));
       return;
     }
 
@@ -1486,7 +1420,7 @@ function setupSingleInstanceLock(): boolean {
     // window rather than focusing the existing one. Wait for bootstrap (not just
     // app.whenReady) so the protocol + IPC handlers exist before the window loads.
     void bootstrapComplete
-      .then(() => createWindow({ pendingOpenProjectPath: openProjectPath }))
+      .then(() => desktopWindowOwner.openAdditional({ pendingProjectPath: openProjectPath }))
       .catch((error) => {
         log.error("[window] failed to create window from second-instance", error);
       });
@@ -1605,7 +1539,7 @@ async function bootstrap(): Promise<void> {
   await applyAppIcon();
   setupApplicationMenu({
     onNewWindow: () => {
-      void createWindow().catch((error) => {
+      void desktopWindowOwner.openAdditional().catch((error) => {
         log.error("[window] failed to create window from menu", error);
       });
     },
@@ -1645,7 +1579,11 @@ async function bootstrap(): Promise<void> {
   registerDialogHandlers();
   registerPrintToPdfHandlers();
   registerNotificationHandlers();
-  registerOpenerHandlers();
+  const openExternalUrl = createExternalUrlOpener({ open: shell.openExternal });
+  ipcMain.handle("otto:opener:openUrl", (event, value: unknown) => {
+    requireTrustedMainRenderer(event);
+    return openExternalUrl(value);
+  });
   registerEditorTargetHandlers();
   registerWakeWordHandlers();
   registerZoomRecorderHandlers({
@@ -1661,8 +1599,8 @@ async function bootstrap(): Promise<void> {
       options && typeof options === "object" && "pendingOpenProjectPath" in options
         ? (options as { pendingOpenProjectPath?: unknown }).pendingOpenProjectPath
         : null;
-    await createWindow({
-      pendingOpenProjectPath: typeof pendingPath === "string" ? pendingPath : null,
+    await desktopWindowOwner.openAdditional({
+      pendingProjectPath: typeof pendingPath === "string" ? pendingPath : null,
     });
   });
 
@@ -1678,11 +1616,10 @@ async function bootstrap(): Promise<void> {
   // delivered afterwards, so the window never paints the default route first.
   const initialAgentNavigation = pendingAgentNavigation;
   pendingAgentNavigation = null;
-  await createWindow({
+  await desktopWindowOwner.openPrimary({
     initialRoute: initialAgentNavigation ? buildAgentDeepLinkRoute(initialAgentNavigation) : null,
-    pendingOpenProjectPath,
+    pendingProjectPath: pendingOpenProjectPath,
     pendingOpenTarget,
-    restoreWindowState: true,
   });
   pendingOpenProjectPath = null;
   pendingOpenTarget = null;
@@ -1697,13 +1634,13 @@ async function bootstrap(): Promise<void> {
   if (pendingAgentNavigation) {
     const target = pendingAgentNavigation;
     pendingAgentNavigation = null;
-    focusExistingWindowOnAgent(target);
+    await desktopWindowOwner.openOrFocusAgent(target);
   }
 
-  app.on("activate", async () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      await createWindow({ restoreWindowState: true });
-    }
+  app.on("activate", () => {
+    void desktopWindowOwner.restoreWhenActivated().catch((error) => {
+      console.error("Failed to restore a desktop window after activation", error);
+    });
   });
 }
 
@@ -1830,7 +1767,10 @@ const quitLifecycle = createQuitLifecycle({
 });
 
 // electron-updater forwards this event through Electron's built-in autoUpdater.
-electronAutoUpdater.on("before-quit-for-update", quitLifecycle.handleBeforeQuitForUpdate);
+electronAutoUpdater.on("before-quit-for-update", () => {
+  log.info("[auto-updater] before-quit-for-update", { currentVersion: app.getVersion() });
+  quitLifecycle.handleBeforeQuitForUpdate();
+});
 app.on("before-quit", quitLifecycle.handleBeforeQuit);
 registerExternalQuitSignals({ signals: process, quit: () => app.quit() });
 

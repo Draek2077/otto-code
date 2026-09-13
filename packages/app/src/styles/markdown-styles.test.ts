@@ -3,25 +3,42 @@ import { createCompactMarkdownStyles, createMarkdownStyles } from "./markdown-st
 import { darkTheme } from "./theme";
 
 describe("createMarkdownStyles", () => {
-  // Otto sizes chat prose at the interface size, not the document `content`
-  // size: the transcript is a working surface. List markers ride the same step
-  // so a bullet lines up with the text it introduces.
-  it("uses the interface size for conversation prose and list markers", () => {
-    const styles = createMarkdownStyles(darkTheme);
-    const proseLineHeight = Math.round(darkTheme.fontSize.sm * 1.4);
+  it("uses independent content size for conversation prose, tables and list markers", () => {
+    const theme = {
+      ...darkTheme,
+      fontSize: { ...darkTheme.fontSize, sm: 12, base: 14, content: 21, code: 15 },
+    };
+    const styles = createMarkdownStyles(theme);
+    const proseLineHeight = Math.round(21 * 1.4);
 
     expect(styles.body).toMatchObject({
-      fontSize: darkTheme.fontSize.sm,
+      fontSize: 21,
+      lineHeight: proseLineHeight,
+    });
+    expect(styles.text).toMatchObject({
+      fontSize: 21,
       lineHeight: proseLineHeight,
     });
     expect(styles.bullet_list_icon).toMatchObject({
-      fontSize: darkTheme.fontSize.sm,
+      fontSize: 21,
       lineHeight: proseLineHeight,
     });
     expect(styles.ordered_list_icon).toMatchObject({
-      fontSize: darkTheme.fontSize.sm,
+      fontSize: 21,
       lineHeight: proseLineHeight,
     });
+    expect(styles.th.fontSize).toBe(21);
+    expect(styles.td.fontSize).toBe(21);
+    expect(styles.alertTitle.fontSize).toBe(21);
+    expect(styles.code_inline.fontSize).toBe(15);
+    expect(styles.code_block.fontSize).toBe(15);
+    expect(styles.fence.fontSize).toBe(15);
+    expect(
+      createMarkdownStyles({
+        ...theme,
+        fontSize: { ...theme.fontSize, sm: 20, base: 22, xl: 28, code: 18 },
+      }).body,
+    ).toEqual(styles.body);
   });
 
   it("applies shrink-and-wrap constraints to long markdown text and links", () => {
@@ -135,9 +152,65 @@ describe("createMarkdownStyles", () => {
     };
     const styles = createMarkdownStyles(largeContentTheme);
 
-    expect(styles.heading1.lineHeight).toBeGreaterThan(styles.heading1.fontSize);
-    expect(styles.heading2.lineHeight).toBeGreaterThan(styles.heading2.fontSize);
-    expect(styles.heading3.lineHeight).toBeGreaterThan(styles.heading3.fontSize);
+    const initial = createMarkdownStyles(darkTheme);
+    const changedInterface = createMarkdownStyles({
+      ...largeContentTheme,
+      fontSize: { ...largeContentTheme.fontSize, base: 22, xl: 28, "3xl": 36, code: 18 },
+    });
+    for (const key of [
+      "heading1",
+      "heading2",
+      "heading3",
+      "heading4",
+      "heading5",
+      "heading6",
+    ] as const) {
+      expect(styles[key].fontSize).toBeGreaterThan(initial[key].fontSize);
+      expect(styles[key].lineHeight).toBeGreaterThan(styles[key].fontSize);
+      expect(changedInterface[key]).toEqual(styles[key]);
+      expect(styles[key].marginTop).toBe(initial[key].marginTop);
+      expect(styles[key].marginBottom).toBe(initial[key].marginBottom);
+      expect(styles[key]).not.toHaveProperty("borderBottomWidth");
+    }
+    // Otto keeps its 3xl/2xl/xl heading tiers instead of upstream's larger tiers.
+    expect(styles.heading1).toMatchObject({ fontSize: 34, lineHeight: 42 });
+    expect(styles.heading2).toMatchObject({ fontSize: 29, lineHeight: 37 });
+    expect(styles.heading3).toMatchObject({ fontSize: 26, lineHeight: 34 });
+  });
+
+  it("keeps compact summary text and headings independent of content size", () => {
+    const theme = {
+      ...darkTheme,
+      fontSize: { ...darkTheme.fontSize, sm: 18, base: 20, lg: 23, xl: 25, content: 24, code: 15 },
+    };
+    const styles = createCompactMarkdownStyles(theme);
+    const changedContent = createCompactMarkdownStyles({
+      ...theme,
+      fontSize: { ...theme.fontSize, content: 12 },
+    });
+    expect(changedContent).toEqual(styles);
+    for (const key of ["body", "text", "bullet_list_icon", "ordered_list_icon"] as const) {
+      expect(styles[key]).toMatchObject({ fontSize: 18, lineHeight: 25 });
+    }
+    for (const key of ["th", "td", "alertTitle"] as const) {
+      expect(styles[key].fontSize).toBe(18);
+    }
+    expect(styles.heading1.fontSize).toBe(25);
+    expect(styles.heading2.fontSize).toBe(23);
+    expect(styles.heading3.fontSize).toBe(20);
+    for (const key of [
+      "heading1",
+      "heading2",
+      "heading3",
+      "heading4",
+      "heading5",
+      "heading6",
+    ] as const) {
+      expect(styles[key].lineHeight).toBeGreaterThan(styles[key].fontSize);
+    }
+    for (const key of ["code_inline", "code_block", "fence"] as const) {
+      expect(styles[key].fontSize).toBe(15);
+    }
   });
 
   // Otto's blockquote is a rounded card with an accent rule down its left edge,

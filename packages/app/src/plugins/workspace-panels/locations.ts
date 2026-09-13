@@ -1,4 +1,7 @@
-import type { PluginPanelLocation, PluginWorkspacePanelContribution } from "@otto-code/plugin";
+import type {
+  PluginPanelLocation,
+  PluginWorkspacePanelContribution,
+} from "@otto-code/plugin/client";
 import type { PaneHost } from "@/panels/panel-manifest";
 import { panelSupportsHost } from "@/panels/panel-manifest";
 import type { PluginWorkspaceTabTarget, WorkspaceTabTarget } from "@/workspace-tabs/model";

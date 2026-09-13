@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createAppUpdateService,
+  type AppUpdateInstallRequest,
   type AppUpdateRuntime,
   type AppUpdateRuntimeConfiguration,
   type RuntimeUpdateInfo,
+  type RuntimeUpdateCheckResult,
 } from "./app-update-service";
 
 class FakeAppUpdateRuntime implements AppUpdateRuntime {
@@ -27,9 +29,10 @@ class FakeAppUpdateRuntime implements AppUpdateRuntime {
   } | null = null;
   checkCount = 0;
   downloadCallCount = 0;
+  requestedDownloadVersions: string[] = [];
   downloadedVersions: string[] = [];
   installedVersions: string[] = [];
-  installModes: Array<{ isSilent: boolean; isForceRunAfter: boolean }> = [];
+  installModes: Array<{ targetVersion: string; isSilent: boolean; isForceRunAfter: boolean }> = [];
 
   configure(input: AppUpdateRuntimeConfiguration): void {
     this.configuration = input;
@@ -127,16 +130,12 @@ class FakeAppUpdateRuntime implements AppUpdateRuntime {
     const admitted = await this.gate(result.updateInfo);
     const isUpdateAvailable = result.isUpdateAvailable && admitted;
     this.downloadableUpdate = isUpdateAvailable ? result.updateInfo : null;
-    // electron-updater has no separate "deferred by rollout" signal: a refused
-    // admission is reported as update-not-available, same as being up to date.
-    if (!isUpdateAvailable) {
-      this.configuration?.onUpdateNotAvailable();
-    }
     return { ...result, isUpdateAvailable };
   }
 
-  async downloadUpdate(): Promise<void> {
+  async downloadUpdate(targetVersion: string): Promise<void> {
     this.downloadCallCount += 1;
+    this.requestedDownloadVersions.push(targetVersion);
     if (this.activeDownload) {
       return this.activeDownload.promise;
     }
@@ -145,15 +144,16 @@ class FakeAppUpdateRuntime implements AppUpdateRuntime {
     }
   }
 
-  async quitAndInstall(
-    isSilent: boolean,
-    isForceRunAfter: boolean,
-    onBeforeQuit?: () => Promise<void>,
-  ): Promise<void> {
+  async quitAndInstall({
+    targetVersion,
+    isSilent,
+    isForceRunAfter,
+    onBeforeQuit,
+  }: AppUpdateInstallRequest): Promise<void> {
     await onBeforeQuit?.();
     if (this.downloadedUpdate) {
       this.installedVersions.push(this.downloadedUpdate.version);
-      this.installModes.push({ isSilent, isForceRunAfter });
+      this.installModes.push({ targetVersion, isSilent, isForceRunAfter });
     }
   }
 }
@@ -285,6 +285,76 @@ describe("app update service", () => {
     expect(result.latestVersion).toBe("1.2.3");
   });
 
+  it("keeps a manually admitted update after a rollout-gated automatic recheck", async () => {
+    const { runtime, service } = createService();
+    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+
+    await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+    runtime.finishUpdateDownload(rolledOutUpdate);
+
+    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+    const result = await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "automatic",
+    });
+
+    expect(result).toMatchObject({
+      hasUpdate: true,
+      readyToInstall: true,
+      latestVersion: "1.2.4",
+    });
+  });
+
+  it("keeps preparing a manually admitted update after a rollout-gated automatic recheck", async () => {
+    const { runtime, service } = createService();
+    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+
+    await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+
+    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+    const result = await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "automatic",
+    });
+
+    expect(result).toMatchObject({
+      hasUpdate: true,
+      readyToInstall: false,
+      latestVersion: "1.2.4",
+    });
+  });
+
+  it("clears a cached update when the manifest no longer contains it", async () => {
+    const { runtime, service } = createService();
+    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
+
+    await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "manual",
+    });
+    runtime.finishUpdateDownload(rolledOutUpdate);
+
+    runtime.nextCheck(null);
+    const result = await service.checkForAppUpdate({
+      currentVersion: "1.2.3",
+      releaseChannel: "stable",
+      intent: "automatic",
+    });
+
+    expect(result.hasUpdate).toBe(false);
+  });
+
   it("waits for an automatic poll before starting a manual rollout-bypassing check", async () => {
     const { runtime, service } = createService();
     const automaticCheck = runtime.deferNextCheck();
@@ -394,7 +464,9 @@ describe("app update service", () => {
 
     expect(installed).toBe(true);
     expect(runtime.installedVersions).toEqual(["1.2.5"]);
-    expect(runtime.installModes).toEqual([{ isSilent: true, isForceRunAfter: false }]);
+    expect(runtime.installModes).toEqual([
+      { targetVersion: "1.2.5", isSilent: true, isForceRunAfter: false },
+    ]);
   });
 
   it("does not install an older download while its replacement is still rolling out", async () => {
@@ -501,7 +573,9 @@ describe("app update service", () => {
     // Silent even when restarting: the assisted NSIS installer only honors
     // --force-run on a silent install, so a wizard here would strand the user
     // on the finish page with the app already quit.
-    expect(runtime.installModes).toEqual([{ isSilent: true, isForceRunAfter: true }]);
+    expect(runtime.installModes).toEqual([
+      { targetVersion: "1.2.5", isSilent: true, isForceRunAfter: true },
+    ]);
   });
 
   it.each([false, true])(
@@ -558,6 +632,7 @@ describe("app update service", () => {
 
     expect(result.installed).toBe(true);
     expect(runtime.downloadedVersions).toEqual(["1.2.4", "1.2.5"]);
+    expect(runtime.requestedDownloadVersions).toEqual(["1.2.5"]);
     expect(runtime.installedVersions).toEqual(["1.2.5"]);
   });
 

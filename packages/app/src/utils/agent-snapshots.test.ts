@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
 import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
-import { normalizeAgentActiveTurn, normalizeAgentSnapshot } from "./agent-snapshots";
+import { normalizeAgentSnapshot, projectAgentSnapshot } from "./agent-snapshots";
 
 function createSnapshot(
   input: Partial<Omit<AgentSnapshotPayload, "labels">> & {
@@ -37,41 +37,45 @@ function createSnapshot(
 }
 
 describe("normalizeAgentSnapshot", () => {
-  it("normalizes identified and legacy active turns separately from the agent replica", () => {
-    const startedAt = "2026-07-31T12:00:00.000Z";
-    const identified = createSnapshot({
+  it("round-trips identified active turns through the canonical snapshot boundary", () => {
+    const snapshot = createSnapshot({
       status: "running",
-      activeTurn: { turnId: "turn-1", startedAt },
+      activeTurn: { turnId: "turn-1", startedAt: "2026-07-31T12:00:00.000Z" },
     });
-    expect(normalizeAgentActiveTurn(identified, new Date(startedAt))).toEqual({
-      turnId: "turn-1",
-      startedAt: new Date(startedAt),
+    expect(projectAgentSnapshot(normalizeAgentSnapshot(snapshot, "server-1"))).toMatchObject({
+      status: "running",
+      activeTurn: snapshot.activeTurn,
     });
-
-    const legacy = createSnapshot({ status: "running", lastUserMessageAt: startedAt });
-    expect(normalizeAgentActiveTurn(legacy, new Date(startedAt))).toEqual({
-      turnId: null,
-      startedAt: new Date(startedAt),
-    });
-
-    expect(normalizeAgentSnapshot(identified, "server-1")).not.toHaveProperty("activeTurn");
   });
 
-  it("ignores a stale activeTurn on a snapshot whose status is no longer running", () => {
-    // A daemon without the projection gate keeps re-broadcasting the settled
-    // turn's identity on idle snapshots; honoring it re-opened the busy
-    // spinner forever after the turn completed.
-    const stale = createSnapshot({
-      status: "idle",
-      activeTurn: { turnId: "foreground-turn-1", startedAt: "2026-07-31T12:00:00.000Z" },
+  it("normalizes identified and legacy active turns at the snapshot boundary", () => {
+    const startedAt = "2026-07-31T12:00:00.000Z";
+    expect(
+      normalizeAgentSnapshot(
+        createSnapshot({
+          status: "running",
+          activeTurn: { turnId: "turn-1", startedAt },
+        }),
+        "server-1",
+      ).turn,
+    ).toEqual({
+      phase: "open",
+      turnId: "turn-1",
+      startedAt: new Date(startedAt),
+      cancellationRequestId: null,
     });
-    expect(normalizeAgentActiveTurn(stale, null)).toBeNull();
 
-    const failed = createSnapshot({
-      status: "error",
-      activeTurn: { turnId: "foreground-turn-1", startedAt: "2026-07-31T12:00:00.000Z" },
+    expect(
+      normalizeAgentSnapshot(
+        createSnapshot({ status: "running", lastUserMessageAt: startedAt }),
+        "server-1",
+      ).turn,
+    ).toEqual({
+      phase: "open",
+      turnId: null,
+      startedAt: new Date(startedAt),
+      cancellationRequestId: null,
     });
-    expect(normalizeAgentActiveTurn(failed, null)).toBeNull();
   });
 
   it("derives parentAgentId from the parent label while preserving labels", () => {
@@ -181,3 +185,22 @@ const IDENTITY_KEYS = [
   "agentProfileName",
   "agentProfileSpinner",
 ] as const;
+
+it.each(["idle", "error", "running"] as const)(
+  "uses explicit turn authority independently of %s status",
+  (status) => {
+    const snapshot = createSnapshot({
+      status,
+      activeTurn: { turnId: "autonomous", startedAt: null },
+    });
+    expect(normalizeAgentSnapshot(snapshot, "host").turn).toEqual({
+      phase: "open",
+      turnId: "autonomous",
+      startedAt: null,
+      cancellationRequestId: null,
+    });
+    expect(normalizeAgentSnapshot({ ...snapshot, activeTurn: null }, "host").turn.phase).toBe(
+      "idle",
+    );
+  },
+);

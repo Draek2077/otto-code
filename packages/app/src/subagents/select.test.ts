@@ -18,6 +18,7 @@ const AGENT_DEFAULTS: Agent = {
   id: "agent",
   provider: "codex",
   status: "idle",
+  turn: { phase: "idle", cancellationRequestId: null },
   createdAt: AGENT_TIMESTAMP,
   updatedAt: AGENT_TIMESTAMP,
   lastUserMessageAt: null,
@@ -52,7 +53,14 @@ const AGENT_DEFAULTS: Agent = {
 };
 
 function makeAgent(input: Partial<Agent> & Pick<Agent, "id">): Agent {
-  return { ...AGENT_DEFAULTS, ...input };
+  return {
+    ...AGENT_DEFAULTS,
+    turn:
+      input.status === "running"
+        ? { phase: "open", turnId: null, startedAt: null, cancellationRequestId: null }
+        : AGENT_DEFAULTS.turn,
+    ...input,
+  };
 }
 
 function setAgents(agents: Agent[]): void {
@@ -151,6 +159,54 @@ describe("selectSubagentsForParent", () => {
       ),
     ).toEqual([]);
     expect(useProviderSubagentStore.getState().descriptors.size).toBe(1);
+  });
+
+  it("places nested provider children only beneath their direct provider parent", () => {
+    const store = useProviderSubagentStore.getState();
+    const base = {
+      parentAgentId: "parent-a",
+      provider: "claude" as const,
+      title: "general-purpose",
+      subtitle: null,
+      status: "running" as const,
+      createdAt: "2026-09-04T10:00:00.000Z",
+      updatedAt: "2026-09-04T10:00:00.000Z",
+      toolCallId: null,
+    };
+    store.applyUpdate(SERVER_ID, {
+      kind: "upsert",
+      subagent: { ...base, id: "direct", description: "Direct", parentSubagentId: null },
+    });
+    store.applyUpdate(SERVER_ID, {
+      kind: "upsert",
+      subagent: {
+        ...base,
+        id: "nested",
+        description: "Nested",
+        parentSubagentId: "direct",
+      },
+    });
+
+    expect(
+      selectProviderSubagentsForParent(
+        useProviderSubagentStore.getState(),
+        { serverId: SERVER_ID, parentAgentId: "parent-a" },
+        true,
+        true,
+      ).map((row) => row.id),
+    ).toEqual(["direct"]);
+    expect(
+      selectProviderSubagentsForParent(
+        useProviderSubagentStore.getState(),
+        {
+          serverId: SERVER_ID,
+          parentAgentId: "parent-a",
+          providerParentSubagentId: "direct",
+        },
+        true,
+        true,
+      ).map((row) => row.id),
+    ).toEqual(["nested"]);
   });
 
   it("returns only non-archived children for the requested parent", () => {
@@ -325,6 +381,7 @@ describe("selectSubagentsForParent", () => {
         description: null,
         subtitle: null,
         status: "running",
+        turn: { phase: "open", turnId: null, startedAt: null, cancellationRequestId: null },
         requiresAttention: true,
         createdAt,
         updatedAt: AGENT_TIMESTAMP,
@@ -359,6 +416,7 @@ describe("selectSubagentsForParent", () => {
       "subtitle",
       "title",
       "toolUseCount",
+      "turn",
       "updatedAt",
     ]);
     expect(rows[0]).not.toHaveProperty("onOpen");
@@ -550,6 +608,7 @@ describe("provider and observed subagent reconciliation", () => {
       useProviderSubagentStore.getState(),
       { serverId: SERVER_ID, parentAgentId: "parent" },
       true,
+      false,
       new Set(shadowedIds),
     );
 
@@ -646,4 +705,33 @@ describe("hasRunningObservedSubagent", () => {
 
     expect(hasRunningObservedSubagent(agents, "parent")).toBe(true);
   });
+});
+
+it("honors normalized turn authority for observed fan-out waiting", () => {
+  setAgents([
+    makeAgent({ id: "parent" }),
+    makeAgent({
+      id: "child",
+      parentAgentId: "parent",
+      attend: "observed",
+      status: "running",
+      turn: { phase: "idle", cancellationRequestId: null },
+    }),
+  ]);
+  expect(
+    hasRunningObservedSubagent(useSessionStore.getState().sessions[SERVER_ID]!.agents, "parent"),
+  ).toBe(false);
+  setAgents([
+    makeAgent({ id: "parent" }),
+    makeAgent({
+      id: "child",
+      parentAgentId: "parent",
+      attend: "observed",
+      status: "idle",
+      turn: { phase: "open", turnId: "active", startedAt: null, cancellationRequestId: null },
+    }),
+  ]);
+  expect(
+    hasRunningObservedSubagent(useSessionStore.getState().sessions[SERVER_ID]!.agents, "parent"),
+  ).toBe(true);
 });

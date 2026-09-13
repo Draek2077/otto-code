@@ -39,10 +39,6 @@ jobs:
   format:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      # This job never executes Electron. Skipping the hosted binary avoids
-      # unrelated npm ci failures when Electron's CDN returns 504.
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -64,14 +60,12 @@ jobs:
       # rejected the file, every push since produced zero jobs and a 0s
       # failure, and nothing said so louder than a red X.
       - name: Validate CI workflow
-        run: node --test scripts/ci-workflow.test.mjs scripts/ci-diagnose.test.mjs scripts/browser-download.test.mjs
+        run: node --test scripts/ci-workflow.test.mjs scripts/ci-diagnose.test.mjs scripts/browser-download.test.mjs scripts/daemon-launch-contract.test.mjs scripts/sync-fdroid-changelogs.test.mjs
 
   lint:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -103,8 +97,8 @@ jobs:
       - name: Check merge integration entry points
         run: >-
           node scripts/merge-orphan-guard.mjs --integrations
-          --before b6735559a98d0143d0127814696f35a091860845
-          --at 20d7efc46a316f5a274b9943a5c43b0322269825
+          --before f152f0069bb84444386caff7dd5d58148b77875a
+          --at b8e24677e12b226c7c38c1c3a40649daa9f1152f
           --after HEAD --json
 
       - name: Lint lockfile
@@ -120,8 +114,6 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -157,8 +149,6 @@ jobs:
     # here until GitHub's 360-minute default. Windows runs the unit suite once
     # on a single worker, then the integration suite.
     timeout-minutes: ${{ matrix.os == 'windows-latest' && 60 || 30 }}
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -292,8 +282,6 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -318,8 +306,6 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -359,8 +345,6 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -373,6 +357,15 @@ jobs:
         run: node scripts/npm-retry.mjs ci
       - name: Build client dependencies
         run: npm run build:client
+
+      - name: Build plugin SDK
+        run: npm run build:plugin
+
+      - name: Run plugin SDK tests
+        run: npm run test --workspace=@otto-code/plugin
+
+      - name: Typecheck plugin examples
+        run: npm run typecheck --workspace=@otto-code/plugin
 
       - name: Run protocol tests
         run: npm run test --workspace=@otto-code/protocol
@@ -409,7 +402,6 @@ jobs:
     # stays well above that so a genuinely hung suite still cannot run for hours.
     timeout-minutes: 65
     env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       # Stay below `timeout-minutes` above. When a shard runs past the job cap the
       # runner SIGKILLs it, and a killed shard reports nothing at all: you learn it
       # was cancelled and not one word about which tests failed. That is how this
@@ -478,8 +470,6 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -506,8 +496,6 @@ jobs:
     runs-on: ubuntu-latest
     name: cli-tests (shard ${{ matrix.shard }}/3)
     timeout-minutes: 25
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v7.0.1
 

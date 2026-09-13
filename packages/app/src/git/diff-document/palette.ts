@@ -15,6 +15,11 @@ export function createDiffPalette(theme: Theme): DiffPalette {
     deletionBackground: hexColorWithAlpha(theme.colors.statusDanger, 0.1),
     emptyBackground: theme.colors.surface0,
     selection: theme.colors.terminal.blue,
+    headerActiveSurface: theme.colors.surface1,
+    headerBorder: theme.colors.borderAccent,
+    statusSuccess: theme.colors.statusSuccess,
+    statusDanger: theme.colors.statusDanger,
+    statusWarning: theme.colors.statusWarning,
     // The theme's map is a closed set of highlight styles intersected with the
     // diff backgrounds, so it has no index signature; the palette reads it by
     // token name. Spreading gives the open map that lookup needs.
@@ -35,6 +40,11 @@ export function retainDiffPalette(previous: DiffPalette, next: DiffPalette): Dif
     previous.deletionBackground !== next.deletionBackground ||
     previous.emptyBackground !== next.emptyBackground ||
     previous.selection !== next.selection ||
+    previous.headerActiveSurface !== next.headerActiveSurface ||
+    previous.headerBorder !== next.headerBorder ||
+    previous.statusSuccess !== next.statusSuccess ||
+    previous.statusDanger !== next.statusDanger ||
+    previous.statusWarning !== next.statusWarning ||
     !sameColorMap(previous.syntax, next.syntax)
   ) {
     return next;

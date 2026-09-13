@@ -1,64 +1,88 @@
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Image as ExpoImage } from "expo-image";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { StyleSheet } from "react-native-unistyles";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { X } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
-import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
-import type { KeyboardActionId } from "@/keyboard/keyboard-action-dispatcher";
-import type { Theme } from "@/styles/theme";
+import { isNative, isWeb } from "@/constants/platform";
+import { SPACING } from "@/styles/theme";
+import { WindowChromeRootRegion } from "@/utils/window-chrome";
+import { ZoomableImage } from "@/components/zoomable-viewport/image";
+import type { ViewportSize } from "@/components/zoomable-viewport/geometry";
+import { useGlobalWebOverlayLayer, useWebOverlayRegistration } from "@/lib/overlay-root";
 
-const ThemedX = withUnistyles(X);
-const closeIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-
-// Stable reference so the handler doesn't re-register every render.
-const LIGHTBOX_KEYBOARD_ACTIONS: readonly KeyboardActionId[] = ["agent.interrupt"];
+export type ImageLightboxSource =
+  | { type: "attachment"; metadata: AttachmentMetadata }
+  | { type: "uri"; uri: string; contentSize?: ViewportSize };
 
 interface AttachmentLightboxProps {
-  metadata: AttachmentMetadata | null;
-  /** A resolved URI borrowed from a mounted thumbnail, which owns its lifetime. */
-  uri?: string | null;
+  source: ImageLightboxSource | null;
   onClose: () => void;
 }
 
-export function AttachmentLightbox({ metadata, uri, onClose }: AttachmentLightboxProps) {
+const ModalRoot = isNative ? GestureHandlerRootView : View;
+const LIGHTBOX_FIT = { padding: SPACING[4], maxWidth: 960, maxHeight: 640 };
+
+export function AttachmentLightbox({ source, onClose }: AttachmentLightboxProps) {
   const { t } = useTranslation();
-  const attachmentUrl = useAttachmentPreviewUrl(uri ? null : metadata);
-  const url = uri ?? attachmentUrl;
-  const visible = Boolean(metadata || uri);
+  const insets = useSafeAreaInsets();
+  const metadata = source?.type === "attachment" ? source.metadata : null;
+  const attachmentUrl = useAttachmentPreviewUrl(metadata);
+  const url = source?.type === "uri" ? source.uri : attachmentUrl;
+  const contentSize = source?.type === "uri" ? source.contentSize : undefined;
   const [errored, setErrored] = useState(false);
-  const keyboardHandlerId = useId();
+  const modalLayer = useGlobalWebOverlayLayer("modal", isWeb && source !== null);
 
   useEffect(() => {
     setErrored(false);
-  }, [metadata?.id, uri]);
+  }, [metadata?.id, url]);
 
-  // Close on Escape by claiming `agent.interrupt` at a priority above the
-  // composer's (100–200). The global shortcut listener runs in the capture
-  // phase, so a plain window `keydown` listener here would fire only after the
-  // composer had already cancelled the running agent - the exact bug this
-  // replaces. Routing through the dispatcher makes precedence explicit and
-  // order-independent. Only the open lightbox is `enabled`, so stacked
-  // instances (one per message) never contend.
-  const handleInterrupt = useCallback((): boolean => {
-    onClose();
-    return true;
-  }, [onClose]);
-  useKeyboardActionHandler({
-    handlerId: keyboardHandlerId,
-    actions: LIGHTBOX_KEYBOARD_ACTIONS,
-    enabled: visible,
-    priority: 1000,
-    handle: handleInterrupt,
+  const handleWebOverlayKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return false;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+      return true;
+    },
+    [onClose],
+  );
+  const setWebOverlayScope = useWebOverlayRegistration({
+    active: isWeb && source !== null,
+    layer: modalLayer,
+    onKeyDown: handleWebOverlayKeyDown,
   });
 
-  const handleImageError = useCallback(() => setErrored(true), []);
-  const noopPress = useCallback(() => {}, []);
-  const imageSource = useMemo(() => ({ uri: url ?? "" }), [url]);
+  const contentLayerStyle = useMemo(
+    () => [
+      styles.contentLayer,
+      {
+        paddingTop: insets.top,
+        paddingRight: insets.right,
+        paddingBottom: insets.bottom,
+        paddingLeft: insets.left,
+      },
+    ],
+    [insets.bottom, insets.left, insets.right, insets.top],
+  );
+  const actions = useMemo(
+    () => [
+      {
+        icon: X,
+        label: t("message.attachments.closeImage"),
+        onPress: onClose,
+        testID: "attachment-lightbox-close",
+      },
+    ],
+    [onClose, t],
+  );
 
-  if (!visible) {
+  const handleImageError = useCallback(() => setErrored(true), []);
+
+  if (!source) {
     return null;
   }
 
@@ -66,63 +90,47 @@ export function AttachmentLightbox({ metadata, uri, onClose }: AttachmentLightbo
 
   return (
     <Modal transparent animationType="fade" statusBarTranslucent visible onRequestClose={onClose}>
-      <View style={styles.root}>
-        <Pressable
-          testID="attachment-lightbox-backdrop"
-          accessibilityRole="button"
-          accessibilityLabel={t("message.attachments.dismissImage")}
-          onPress={onClose}
-          style={styles.backdrop}
-        />
-        <View style={styles.contentLayer}>
-          <View style={styles.imageArea}>
-            {hasError ? (
-              <Text style={styles.errorText}>{t("message.attachments.imageLoadFailed")}</Text>
-            ) : (
-              // The frame is the box the image actually occupies (bounded by
-              // imageArea's padding, not the screen) - the close button anchors
-              // to its corner so it sits on the image instead of the window
-              // corner, where it collided with the OS titlebar controls.
-              <View style={styles.imageFrame}>
-                <Pressable onPress={noopPress} style={styles.imagePressable}>
-                  <ExpoImage
-                    testID="attachment-lightbox-image"
-                    source={imageSource}
-                    contentFit="contain"
+      <ModalRoot style={styles.root}>
+        <WindowChromeRootRegion corners="both">
+          <View ref={setWebOverlayScope} style={styles.root}>
+            <Pressable
+              testID="attachment-lightbox-backdrop"
+              accessibilityRole="button"
+              accessibilityLabel={t("message.attachments.dismissImage")}
+              onPress={onClose}
+              style={styles.backdrop}
+            />
+            <View pointerEvents="box-none" style={contentLayerStyle}>
+              <View pointerEvents="box-none" style={styles.imageArea}>
+                {hasError ? (
+                  <Text style={styles.errorText}>{t("message.attachments.imageLoadFailed")}</Text>
+                ) : (
+                  <ZoomableImage
+                    accessibilityLabel={t("composer.attachments.openImage")}
+                    actions={actions}
+                    contentSize={contentSize}
+                    fit={LIGHTBOX_FIT}
                     onError={handleImageError}
-                    style={imageFillStyle}
+                    onPressOutsideContent={onClose}
+                    style={styles.imageViewport}
+                    testID="attachment-lightbox"
+                    uri={url}
                   />
-                </Pressable>
-                <Pressable
-                  testID="attachment-lightbox-close"
-                  accessibilityRole="button"
-                  accessibilityLabel={t("message.attachments.closeImage")}
-                  hitSlop={8}
-                  onPress={onClose}
-                  style={styles.closeButton}
-                >
-                  <ThemedX size="md" uniProps={closeIconColor} />
-                </Pressable>
+                )}
               </View>
-            )}
+            </View>
           </View>
-        </View>
-      </View>
+        </WindowChromeRootRegion>
+      </ModalRoot>
     </Modal>
   );
 }
 
-const imageFillStyle = {
-  position: "absolute",
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-} as const;
-
 const styles = StyleSheet.create((theme) => ({
   root: {
     flex: 1,
+    minHeight: 0,
+    minWidth: 0,
   },
   backdrop: {
     position: "absolute",
@@ -138,44 +146,19 @@ const styles = StyleSheet.create((theme) => ({
     left: 0,
     right: 0,
     bottom: 0,
-    pointerEvents: "box-none",
   },
   imageArea: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: theme.spacing[4],
-    pointerEvents: "box-none",
   },
-  imageFrame: {
+  imageViewport: {
     flex: 1,
     width: "100%",
     alignSelf: "center",
-    maxWidth: 960,
-    maxHeight: 640,
-    position: "relative",
-  },
-  imagePressable: {
-    flex: 1,
   },
   errorText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
-  },
-  closeButton: {
-    position: "absolute",
-    // Let the badge straddle the image corner by the same amount on both
-    // axes, without pulling it far into the surrounding dark margin.
-    top: -8,
-    right: -8,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.colors.surface2,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1,
   },
 }));

@@ -46,6 +46,7 @@ class AudioEngine (context: Context) {
     @Volatile private var captureGeneration = 0
     @Volatile private var wakeWordDetectionActive = false
     private var speakerDevice: AudioDeviceInfo? = null
+    private var communicationRouteActive = false
     private var bridgeWindowStartedAtMs = System.currentTimeMillis()
     private var micEvents = 0
     private var micBytes = 0L
@@ -94,25 +95,26 @@ class AudioEngine (context: Context) {
     @SuppressLint("NewApi")
     private fun initializeAudio(context:Context) {
         audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        activateCommunicationRoute()
         if (!requestAudioFocus()) {
             handleAudioFocusBlocked()
         }
-
-        // Route audio to external device if connected, otherwise route to speaker
-        updateAudioRouting()
 
         // Listen for changes in audio routing
         audioManager.registerAudioDeviceCallback(object:android.media.AudioDeviceCallback(){
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
                 Log.d("AudioEngine", "onAudioDevicesAdded")
                 super.onAudioDevicesAdded(addedDevices)
-                updateAudioRouting()
+                if (communicationRouteActive) {
+                    updateAudioRouting()
+                }
             }
             override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
                 Log.d("AudioEngine", "onAudioDevicesRemoved")
                 super.onAudioDevicesRemoved(removedDevices)
-                updateAudioRouting()
+                if (communicationRouteActive) {
+                    updateAudioRouting()
+                }
             }
         }, null)
 
@@ -181,14 +183,33 @@ class AudioEngine (context: Context) {
         }
     }
 
+    @SuppressLint("NewApi")
+    private fun activateCommunicationRoute() {
+        communicationRouteActive = true
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        updateAudioRouting()
+    }
+
+    @SuppressLint("NewApi")
+    private fun releaseCommunicationRoute() {
+        communicationRouteActive = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            audioManager.clearCommunicationDevice()
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = false
+        }
+        audioManager.mode = AudioManager.MODE_NORMAL
+    }
+
     /**
-     * Give audio focus back once we are neither recording nor playing. The focus request is
-     * AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE, so holding it after a dictation turn leaves the
-     * user's music paused indefinitely.
+     * Give the complete communication session back once we are neither recording nor playing.
+     * Focus pauses the user's music, while MODE_IN_COMMUNICATION and the selected communication
+     * device can leave Bluetooth earbuds on their narrow-band call route after capture stops.
      */
     @SuppressLint("NewApi")
     fun releaseAudioSession() {
-        if (isRecording || isPlaying) {
+        if (captureActive || isRecording || isPlaying) {
             return
         }
         audioFocusRequest?.let { request ->
@@ -198,6 +219,7 @@ class AudioEngine (context: Context) {
         if (::audioTrack.isInitialized) {
             audioTrack.pause()
         }
+        releaseCommunicationRoute()
     }
 
     /**
@@ -221,6 +243,7 @@ class AudioEngine (context: Context) {
         if (audioFocusRequest != null) {
             return
         }
+        activateCommunicationRoute()
         requestAudioFocus()
         if (::audioTrack.isInitialized) {
             audioTrack.play()
@@ -289,6 +312,7 @@ class AudioEngine (context: Context) {
         if (::audioTrack.isInitialized) {
             audioTrack.pause()
         }
+        releaseCommunicationRoute()
         audioSampleQueue.clear()
         isPlaying = false
         isRecordingBeforePause = false
@@ -309,6 +333,7 @@ class AudioEngine (context: Context) {
     @SuppressLint("MissingPermission")
     private fun startCapture(): Boolean {
         if (captureActive) return true
+        activateCommunicationRoute()
         if (!requestAudioFocus()) {
             handleAudioFocusBlocked()
             return false
@@ -572,6 +597,7 @@ class AudioEngine (context: Context) {
         if (!wasRecordingBeforePause && !isPlaying) {
             return
         }
+        activateCommunicationRoute()
         if (!requestAudioFocus()) {
             handleAudioFocusBlocked()
             return
@@ -612,13 +638,11 @@ class AudioEngine (context: Context) {
         stopRecording()
         stopCapture()
         audioTrack.stop()
-        audioManager.mode = AudioManager.MODE_NORMAL
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            audioManager.clearCommunicationDevice()
-        }
+        releaseCommunicationRoute()
         audioFocusRequest?.let { request ->
             audioManager.abandonAudioFocusRequest(request)
         }
+        audioFocusRequest = null
         executorServiceMicrophone.shutdownNow()
         executorServiceHandoff.shutdownNow()
     }

@@ -1,3 +1,5 @@
+import { settingsTargetIdsForPersistence } from "@/screens/settings-search-catalog";
+import { SettingsTargetScope, SettingsTargetLabel } from "@/screens/settings-search/target";
 // Otto Tools categorized settings - daemon-wide, per-group gating of the Otto
 // tool catalog on the MCP (Claude) path, plus the daemon-wide agent-behavior
 // and metadata-generation toggles. All of these are daemon settings, so they
@@ -116,7 +118,7 @@ function ToggleRowView(props: {
   return (
     <View style={withBorder ? ROW_WITH_BORDER : settingsStyles.row} testID={testID}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{title}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
         <Text style={settingsStyles.rowHint}>{description}</Text>
         {errorText ? <Text style={settingsStyles.rowError}>{errorText}</Text> : null}
       </View>
@@ -162,17 +164,22 @@ function ToolGroupToggleRow(props: {
     },
     [mutation, config, meta.group],
   );
+  let persistence = `mcp.toolGroups.${meta.group}`;
+  if (meta.group === "browser") persistence = "browserTools.control";
+  if (meta.group === "preview") persistence = "browserTools.preview";
   return (
-    <ToggleRowView
-      title={meta.label}
-      description={meta.description}
-      value={isToolGroupEnabled(config, meta.group)}
-      onValueChange={onValueChange}
-      disabled={mutation.isPending || !masterEnabled}
-      errorText={toErrorMessage(mutation.error)}
-      withBorder
-      testID={`host-page-otto-tool-group-${meta.group}`}
-    />
+    <SettingsTargetScope settingIds={settingsTargetIdsForPersistence("tools", persistence)}>
+      <ToggleRowView
+        title={meta.label}
+        description={meta.description}
+        value={isToolGroupEnabled(config, meta.group)}
+        onValueChange={onValueChange}
+        disabled={mutation.isPending || !masterEnabled}
+        errorText={toErrorMessage(mutation.error)}
+        withBorder
+        testID={`host-page-otto-tool-group-${meta.group}`}
+      />
+    </SettingsTargetScope>
   );
 }
 
@@ -193,16 +200,20 @@ function AgentBehaviorToggleRow(props: {
     [mutation, meta.key],
   );
   return (
-    <ToggleRowView
-      title={meta.label}
-      description={meta.description}
-      value={isAgentBehaviorEnabled(config, meta.key)}
-      onValueChange={onValueChange}
-      disabled={mutation.isPending}
-      errorText={toErrorMessage(mutation.error)}
-      withBorder={withBorder}
-      testID={`host-page-agent-behavior-${meta.key}`}
-    />
+    <SettingsTargetScope
+      settingIds={settingsTargetIdsForPersistence("agents", `agentBehaviors.${meta.key}`)}
+    >
+      <ToggleRowView
+        title={meta.label}
+        description={meta.description}
+        value={isAgentBehaviorEnabled(config, meta.key)}
+        onValueChange={onValueChange}
+        disabled={mutation.isPending}
+        errorText={toErrorMessage(mutation.error)}
+        withBorder={withBorder}
+        testID={`host-page-agent-behavior-${meta.key}`}
+      />
+    </SettingsTargetScope>
   );
 }
 
@@ -219,16 +230,18 @@ function MetadataGenerationEnabledRow(props: {
     [mutation],
   );
   return (
-    <ToggleRowView
-      title="Metadata generation"
-      description="Let the daemon generate chat titles and other structured metadata. Costs extra tokens."
-      value={isMetadataGenerationEnabled(config)}
-      onValueChange={onValueChange}
-      disabled={mutation.isPending}
-      errorText={toErrorMessage(mutation.error)}
-      withBorder={false}
-      testID="host-page-metadata-generation-enabled"
-    />
+    <SettingsTargetScope settingIds={["host-metadata-metadata-behavior-metadata-generation"]}>
+      <ToggleRowView
+        title="Metadata generation"
+        description="Let the daemon generate chat titles and other structured metadata. Costs extra tokens."
+        value={isMetadataGenerationEnabled(config)}
+        onValueChange={onValueChange}
+        disabled={mutation.isPending}
+        errorText={toErrorMessage(mutation.error)}
+        withBorder={false}
+        testID="host-page-metadata-generation-enabled"
+      />
+    </SettingsTargetScope>
   );
 }
 
@@ -245,16 +258,18 @@ function PreferWriterPersonalitiesRow(props: {
     [mutation],
   );
   return (
-    <ToggleRowView
-      title="Prefer Writer profiles"
-      description="Route metadata generation to a role-matched Writer profile instead of the cheap default tier."
-      value={isPreferWriterProfiles(config)}
-      onValueChange={onValueChange}
-      disabled={mutation.isPending || !isMetadataGenerationEnabled(config)}
-      errorText={toErrorMessage(mutation.error)}
-      withBorder
-      testID="host-page-metadata-generation-prefer-writer"
-    />
+    <SettingsTargetScope settingIds={["host-metadata-metadata-behavior-prefer-writer-profiles"]}>
+      <ToggleRowView
+        title="Prefer Writer profiles"
+        description="Route metadata generation to a role-matched Writer profile instead of the cheap default tier."
+        value={isPreferWriterProfiles(config)}
+        onValueChange={onValueChange}
+        disabled={mutation.isPending || !isMetadataGenerationEnabled(config)}
+        errorText={toErrorMessage(mutation.error)}
+        withBorder
+        testID="host-page-metadata-generation-prefer-writer"
+      />
+    </SettingsTargetScope>
   );
 }
 
@@ -271,17 +286,19 @@ function OttoToolsMasterRow(props: { serverId: string; enabled: boolean }) {
     [mutation],
   );
   return (
-    <ToggleRowView
-      title={t("settings.host.orchestration.enableTools.title")}
-      description={t("settings.host.orchestration.enableTools.hint")}
-      value={enabled}
-      onValueChange={onValueChange}
-      disabled={mutation.isPending}
-      errorText={toErrorMessage(mutation.error)}
-      withBorder={false}
-      accessibilityLabel={t("settings.host.orchestration.enableTools.accessibilityLabel")}
-      testID="host-page-inject-mcp-card"
-    />
+    <SettingsTargetScope settingIds={["host-tools-otto-tools-enable-otto-tools"]}>
+      <ToggleRowView
+        title={t("settings.host.orchestration.enableTools.title")}
+        description={t("settings.host.orchestration.enableTools.hint")}
+        value={enabled}
+        onValueChange={onValueChange}
+        disabled={mutation.isPending}
+        errorText={toErrorMessage(mutation.error)}
+        withBorder={false}
+        accessibilityLabel={t("settings.host.orchestration.enableTools.accessibilityLabel")}
+        testID="host-page-inject-mcp-card"
+      />
+    </SettingsTargetScope>
   );
 }
 
@@ -298,17 +315,19 @@ function BrowserToolsMasterRow(props: { serverId: string; enabled: boolean; with
     [mutation],
   );
   return (
-    <ToggleRowView
-      title={BROWSER_TOOLS_TITLE}
-      description={BROWSER_TOOLS_WARNING}
-      value={enabled}
-      onValueChange={onValueChange}
-      disabled={mutation.isPending}
-      errorText={toErrorMessage(mutation.error)}
-      withBorder={withBorder}
-      accessibilityLabel="Enable browser tools"
-      testID="host-page-browser-tools-card"
-    />
+    <SettingsTargetScope settingIds={["host-tools-browser-tools-browser-tools"]}>
+      <ToggleRowView
+        title={BROWSER_TOOLS_TITLE}
+        description={BROWSER_TOOLS_WARNING}
+        value={enabled}
+        onValueChange={onValueChange}
+        disabled={mutation.isPending}
+        errorText={toErrorMessage(mutation.error)}
+        withBorder={withBorder}
+        accessibilityLabel="Enable browser tools"
+        testID="host-page-browser-tools-card"
+      />
+    </SettingsTargetScope>
   );
 }
 

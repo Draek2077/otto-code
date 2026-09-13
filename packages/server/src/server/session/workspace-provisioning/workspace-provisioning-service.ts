@@ -1,3 +1,5 @@
+import type { PluginLifecycle } from "../../plugins/lifecycle/index.js";
+import { describeHookWorkspace } from "../../plugins/lifecycle/index.js";
 import { basename, resolve } from "node:path";
 import type { Logger } from "pino";
 import {
@@ -21,6 +23,7 @@ import {
 } from "../../otto-worktree-service.js";
 import { deriveProjectGroupingDisplayName, deriveProjectKey } from "../../project-key.js";
 import { areEquivalentPaths, createRealpathAwarePathMatcher } from "../../../utils/path.js";
+import type { UntrustedWorkspaceSource } from "../../workspace-automation-gate.js";
 
 export interface ResolveOrCreateWorkspaceIdInput {
   createdWorktree: CreateOttoWorktreeWorkflowResult | null;
@@ -49,6 +52,7 @@ export interface CreateWorktreeWorkspaceInput {
   baseBranch: string | null;
   title: string | null;
   expectsInitialAgent?: boolean;
+  untrustedSource?: UntrustedWorkspaceSource;
 }
 
 export interface WorkspaceProvisioningService {
@@ -57,6 +61,11 @@ export interface WorkspaceProvisioningService {
     operation: (workspace: PersistedWorkspaceRecord) => Promise<T>,
   ): Promise<ImportWorkspaceResult<T>>;
   findOrCreateWorkspaceForDirectory(cwd: string): Promise<PersistedWorkspaceRecord>;
+  reattachOwnedWorktreeForDirectory(input: {
+    cwd: string;
+    repoRoot?: string;
+    projectId?: string;
+  }): Promise<PersistedWorkspaceRecord>;
   resolveOrCreateWorkspaceIdForCreateAgent(input: ResolveOrCreateWorkspaceIdInput): Promise<string>;
   createWorkspaceForDirectory(
     cwd: string,
@@ -95,6 +104,7 @@ export function createWorkspaceProvisioningService(deps: {
   projectRegistry: ProjectRegistry;
   workspaceGitService: Pick<WorkspaceGitService, "getCheckout" | "getSnapshot" | "peekSnapshot">;
   logger: Logger;
+  lifecycle?: PluginLifecycle;
 }): WorkspaceProvisioningService {
   const { serverId, workspaceRegistry, projectRegistry, workspaceGitService, logger } = deps;
 
@@ -120,18 +130,28 @@ export function createWorkspaceProvisioningService(deps: {
       };
     }
 
-    const projectsBeforeImport = await projectRegistry.list();
-    const workspace = await createWorkspaceForDirectory(input.cwd);
+    const [projectsBeforeImport, workspacesBeforeImport] = await Promise.all([
+      projectRegistry.list(),
+      workspaceRegistry.list(),
+    ]);
+    const workspace = await findOrCreateWorkspaceForDirectory(input.cwd);
+    const createdWorkspace = workspacesBeforeImport.some(
+      (candidate) => candidate.workspaceId === workspace.workspaceId,
+    )
+      ? null
+      : workspace;
     const previousProject =
       projectsBeforeImport.find((project) => project.projectId === workspace.projectId) ?? null;
 
     try {
       return {
         value: await operation(workspace),
-        createdWorkspace: workspace,
+        createdWorkspace,
       };
     } catch (error) {
-      await rollbackFailedImportWorkspace(workspace, previousProject);
+      if (createdWorkspace) {
+        await rollbackFailedImportWorkspace(createdWorkspace, previousProject);
+      }
       throw error;
     }
   }
@@ -164,16 +184,6 @@ export function createWorkspaceProvisioningService(deps: {
   async function findOrCreateProjectForDirectory(cwd: string): Promise<PersistedProjectRecord> {
     const rootPath = resolve(cwd);
     const checkout = await workspaceGitService.getCheckout(rootPath);
-    // A git worktree belongs to its main repo's project, whether Otto cut it or
-    // the user did by hand. Otto-created worktrees already group this way via
-    // resolveSourceProjectForWorktree; without this, opening an external
-    // worktree directory stood it up as its own project next to the repo.
-    if (checkout.mainRepoRoot && !areEquivalentPaths(checkout.mainRepoRoot, rootPath)) {
-      return resolveSourceProjectForWorktree({
-        sourceCwd: checkout.mainRepoRoot,
-        repoRoot: checkout.mainRepoRoot,
-      });
-    }
     const timestamp = new Date().toISOString();
     return projectRegistry.getOrCreateActiveByRoot({
       rootPath,
@@ -266,6 +276,7 @@ export function createWorkspaceProvisioningService(deps: {
       updatedAt: timestamp,
     });
     await workspaceRegistry.upsert(workspace, context);
+    deps.lifecycle?.emit("workspace.created", { workspace: describeHookWorkspace(workspace) });
     return workspace;
   }
 
@@ -296,10 +307,12 @@ export function createWorkspaceProvisioningService(deps: {
       title: input.title,
       createdAt: timestamp,
       updatedAt: timestamp,
+      ...(input.untrustedSource ? { untrustedSource: input.untrustedSource } : {}),
     });
     await workspaceRegistry.upsert(workspace, {
       expectsInitialAgent: input.expectsInitialAgent,
     });
+    deps.lifecycle?.emit("workspace.created", { workspace: describeHookWorkspace(workspace) });
     return workspace;
   }
 
@@ -344,6 +357,37 @@ export function createWorkspaceProvisioningService(deps: {
     return refreshProjectKind(project);
   }
 
+  // Otto's explicit Reattach action retains source-project placement. Generic
+  // directory opening allocates the selected exact root instead.
+  async function reattachOwnedWorktreeForDirectory(input: {
+    cwd: string;
+    repoRoot?: string;
+    projectId?: string;
+  }): Promise<PersistedWorkspaceRecord> {
+    const cwd = resolve(input.cwd);
+    const existing = (await workspaceRegistry.list())
+      .filter((workspace) => areEquivalentPaths(workspace.cwd, cwd))
+      .sort(
+        (left, right) =>
+          Number(Boolean(left.archivedAt)) - Number(Boolean(right.archivedAt)) ||
+          Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
+          left.workspaceId.localeCompare(right.workspaceId),
+      )[0];
+    if (existing) {
+      if (!(await projectRegistry.get(existing.projectId))) {
+        await recreateMissingProjectForWorkspace(existing);
+      }
+      return ensureWorkspaceRecordUnarchived(existing);
+    }
+    const repoRoot = input.repoRoot ? resolve(input.repoRoot) : cwd;
+    const project = await resolveSourceProjectForWorktree({
+      sourceCwd: repoRoot,
+      repoRoot,
+      projectId: input.projectId,
+    });
+    return createWorkspaceForDirectory(cwd, null, project.projectId);
+  }
+
   async function findOrCreateWorkspaceForDirectory(cwd: string): Promise<PersistedWorkspaceRecord> {
     const normalizedCwd = resolve(cwd);
     const workspaces = await workspaceRegistry.list();
@@ -376,14 +420,6 @@ export function createWorkspaceProvisioningService(deps: {
       // leaves the archived pair alone - restoring ownership is the agent-restore
       // path's job, not this one. See the S6/S11 invariants in
       // session.workspace-resolution-invariants.test.ts.
-      if (!project) {
-        // The workspace outlived its project record entirely. Rebuild the parent
-        // it points at rather than falling through: allocating a fresh project
-        // leaves the original workspace orphaned forever and stands a duplicate
-        // up on the same directory.
-        await recreateMissingProjectForWorkspace(archived);
-        return ensureWorkspaceRecordUnarchived(archived);
-      }
     }
     return createWorkspaceForDirectory(normalizedCwd);
   }
@@ -526,6 +562,7 @@ export function createWorkspaceProvisioningService(deps: {
   return {
     runInImportWorkspace,
     findOrCreateWorkspaceForDirectory,
+    reattachOwnedWorktreeForDirectory,
     resolveOrCreateWorkspaceIdForCreateAgent,
     createWorkspaceForDirectory,
     createWorkspaceForWorktree,

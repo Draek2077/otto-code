@@ -18,9 +18,9 @@ export interface PrepareWorkspaceTabDeps {
     workspaceKey: string;
     target: WorkspaceTabTarget;
     intent: "reveal";
+    pin?: boolean;
     placement?: WorkspaceTabPlacement;
   }) => string | null;
-  pinAgent: (workspaceKey: string, agentId: string) => void;
 }
 
 export interface NavigateToPreparedWorkspaceTabDeps extends PrepareWorkspaceTabDeps {
@@ -45,11 +45,13 @@ export function prepareWorkspaceTab(
       workspaceId: input.workspaceId,
     }) ?? "";
 
-  deps.openTab({ workspaceKey: key, target, intent: "reveal", placement: input.placement });
-
-  if (input.pin && target.kind === "agent") {
-    deps.pinAgent(key, target.agentId);
-  }
+  deps.openTab({
+    workspaceKey: key,
+    target,
+    intent: "reveal",
+    pin: input.pin === true && target.kind === "agent",
+    placement: input.placement,
+  });
 
   return buildHostWorkspaceRoute(input.serverId, input.workspaceId);
 }

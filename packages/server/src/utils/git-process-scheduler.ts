@@ -1,3 +1,5 @@
+import { setImmediate as scheduleImmediate } from "node:timers";
+
 export interface GitProcessPolicy {
   maxProcessesPerSecond: number;
   maxProcessConcurrency: number;
@@ -51,6 +53,7 @@ export class GitProcessScheduler {
   private running = 0;
   private waiting = 0;
   private rateTimer: NodeJS.Timeout | null = null;
+  private drainScheduled = false;
 
   constructor(readonly policy: GitProcessPolicy) {
     this.availableStarts = policy.maxProcessesPerSecond;
@@ -78,25 +81,45 @@ export class GitProcessScheduler {
       const queue =
         options?.priority === "high" ? this.highPriorityQueue : this.normalPriorityQueue;
       queue.push(admit);
-      this.drain();
+      if (this.admitted === 0 && !this.drainScheduled) {
+        this.drainOne();
+      } else {
+        this.scheduleDrain();
+      }
     });
   }
 
-  private drain(): void {
-    this.refillStarts();
-    while (this.admitted < this.policy.maxProcessConcurrency) {
-      if (this.availableStarts <= 0) {
-        this.scheduleRateDrain();
-        return;
-      }
-      const admit = this.highPriorityQueue.shift() ?? this.normalPriorityQueue.shift();
-      if (!admit) {
-        return;
-      }
-      this.admitted += 1;
-      this.availableStarts -= 1;
-      queueMicrotask(admit);
+  private scheduleDrain(): void {
+    if (this.drainScheduled || this.admitted >= this.policy.maxProcessConcurrency) {
+      return;
     }
+    if (this.highPriorityQueue.length === 0 && this.normalPriorityQueue.length === 0) {
+      return;
+    }
+    this.drainScheduled = true;
+    scheduleImmediate(() => this.drainOne());
+  }
+
+  private drainOne(): void {
+    this.drainScheduled = false;
+    if (this.admitted >= this.policy.maxProcessConcurrency) {
+      return;
+    }
+    this.refillStarts();
+    if (this.availableStarts <= 0) {
+      this.scheduleRateDrain();
+      return;
+    }
+    const admit = this.highPriorityQueue.shift() ?? this.normalPriorityQueue.shift();
+    if (!admit) {
+      return;
+    }
+    this.admitted += 1;
+    this.availableStarts -= 1;
+    admit();
+    // Spawning can be synchronous and expensive on a throttled host. Let timers,
+    // sockets, and child exits run before admitting another Git process.
+    this.scheduleDrain();
   }
 
   private refillStarts(now = Date.now()): void {
@@ -117,7 +140,7 @@ export class GitProcessScheduler {
     const delay = Math.max(1, Math.ceil(this.nextRefillAtMs - Date.now()));
     this.rateTimer = setTimeout(() => {
       this.rateTimer = null;
-      this.drain();
+      this.scheduleDrain();
     }, delay);
   }
 
@@ -137,7 +160,7 @@ export class GitProcessScheduler {
     } finally {
       this.running = Math.max(0, this.running - 1);
       this.admitted = Math.max(0, this.admitted - 1);
-      this.drain();
+      this.scheduleDrain();
     }
   }
 }

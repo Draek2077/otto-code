@@ -517,27 +517,42 @@ describe("daemon-manager commands", () => {
       ),
     });
   });
+
+  it("exposes updater diagnostics through the desktop command boundary", () => {
+    const diagnostics = createDaemonCommandHandlers().desktop_update_diagnostics();
+
+    expect(diagnostics).toMatchObject({
+      platform: process.platform,
+      currentVersion: "1.2.3",
+    });
+  });
 });
 
 describe("daemon-manager IPC trust boundary", () => {
-  it("does not dispatch a command from an untrusted renderer", async () => {
-    const trustedSender = {} as Electron.WebContents;
-    const untrustedSender = {} as Electron.WebContents;
-    registerDaemonManager({ isTrustedSender: (sender) => sender === trustedSender });
+  it.each(["desktop_get_runtime_info", "open_local_daemon_transport"])(
+    "does not dispatch %s from an untrusted renderer",
+    async (command) => {
+      const trustedSender = {} as Electron.WebContents;
+      const untrustedSender = {} as Electron.WebContents;
+      registerDaemonManager({ isTrustedSender: (sender) => sender === trustedSender });
 
-    const invokeHandler = mocks.ipcHandle.mock.calls.find(
-      ([channel]) => channel === "otto:invoke",
-    )?.[1] as
-      | ((
-          event: { sender: Electron.WebContents },
-          command: string,
-          args?: Record<string, unknown>,
-        ) => Promise<unknown>)
-      | undefined;
+      const invokeHandler = mocks.ipcHandle.mock.calls.find(
+        ([channel]) => channel === "otto:invoke",
+      )?.[1] as
+        | ((
+            event: { sender: Electron.WebContents },
+            command: string,
+            args?: Record<string, unknown>,
+          ) => Promise<unknown>)
+        | undefined;
 
-    expect(invokeHandler).toBeTypeOf("function");
-    await expect(
-      invokeHandler!({ sender: untrustedSender }, "desktop_get_runtime_info"),
-    ).rejects.toThrow("Rejected IPC from an untrusted renderer.");
-  });
+      expect(invokeHandler).toBeTypeOf("function");
+      await expect(
+        invokeHandler!({ sender: untrustedSender }, command, {
+          sessionId: "rejected-ssh",
+          target: { transportType: "ssh", host: "remote" },
+        }),
+      ).rejects.toThrow("Rejected IPC from an untrusted renderer.");
+    },
+  );
 });

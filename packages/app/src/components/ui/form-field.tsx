@@ -5,6 +5,7 @@ import {
   useState,
   type ForwardedRef,
   type ReactNode,
+  type ComponentType,
 } from "react";
 import {
   Pressable,
@@ -13,6 +14,7 @@ import {
   View,
   type PressableStateCallbackType,
   type TextStyle,
+  type TextProps,
   type ViewStyle,
 } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -25,7 +27,9 @@ import {
 } from "@/components/ui/control-geometry";
 import { useControlStatePreview } from "@/components/ui/control-state-preview";
 
-interface FieldProps {
+export interface FieldProps {
+  /** A presentation owner may attach label semantics without changing field geometry. */
+  Label?: ComponentType<TextProps>;
   label: string;
   children: ReactNode;
   hint?: string;
@@ -33,7 +37,7 @@ interface FieldProps {
   testID?: string;
 }
 
-export function Field({ label, children, hint, error, testID }: FieldProps) {
+export function Field({ label, children, hint, error, testID, Label = Text }: FieldProps) {
   const hintTestID = useMemo(() => (testID ? `${testID}-hint` : undefined), [testID]);
   const errorTestID = useMemo(() => (testID ? `${testID}-error` : undefined), [testID]);
   const subtext = useMemo(() => {
@@ -56,7 +60,7 @@ export function Field({ label, children, hint, error, testID }: FieldProps) {
 
   return (
     <View style={styles.container} testID={testID}>
-      <Text style={styles.label}>{label}</Text>
+      <Label style={styles.label}>{label}</Label>
       {children}
       {subtext}
     </View>

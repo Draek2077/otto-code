@@ -257,17 +257,21 @@ describe("createWebStreamStrategy", () => {
     expect(renderLiveHeadRow).toHaveBeenCalledTimes(2);
   });
 
-  it("rerenders a stable mounted-history row when its revision changes", () => {
+  it("rerenders only the history row whose content revision changed", () => {
     const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
     const viewportRef = React.createRef<StreamViewportHandle>();
-    const historyMounted = [userMessage(1)];
-    let label = "initial";
-    const renderHistoryMountedRow = vi.fn(() => <div>{label}</div>);
+    const host = userMessage(1);
+    const other = userMessage(2);
+    const renderCountById = new Map<string, number>();
+    const HistoryRow = React.memo(function HistoryRow({ item }: { item: StreamItem }) {
+      renderCountById.set(item.id, (renderCountById.get(item.id) ?? 0) + 1);
+      return <div>{item.id}</div>;
+    });
     const renderInput: StreamRenderInput = {
       agentId: "agent",
       segments: {
         historyVirtualized: [],
-        historyMounted,
+        historyMounted: [host, other],
         liveHead: [],
       },
       boundary: {
@@ -277,7 +281,7 @@ describe("createWebStreamStrategy", () => {
       },
       renderers: {
         ...createRenderers(vi.fn()),
-        renderHistoryMountedRow,
+        renderHistoryMountedRow: (item) => <HistoryRow item={item} />,
       },
       listEmptyComponent: null,
       viewportRef,
@@ -293,40 +297,32 @@ describe("createWebStreamStrategy", () => {
       baseListContentContainerStyle: null,
       forwardListContentContainerStyle: null,
     };
+    const unrevised = {
+      contentById: new Set<string>(),
+      displayStateById: new Set<string>(),
+      globalDisplayState: false,
+    };
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
 
     act(() => {
-      root?.render(
-        strategy.render({
-          ...renderInput,
-          historyRowRevision: {
-            contentById: new Set(),
-            displayStateById: new Set(),
-            globalDisplayState: false,
-          },
-        }),
-      );
+      root?.render(strategy.render({ ...renderInput, historyRowRevision: unrevised }));
     });
-    expect(container.textContent).toContain("initial");
+    expect(renderCountById.get(host.id)).toBe(1);
+    expect(renderCountById.get(other.id)).toBe(1);
 
-    label = "revised";
     act(() => {
       root?.render(
         strategy.render({
           ...renderInput,
-          historyRowRevision: {
-            contentById: new Set(),
-            displayStateById: new Set(),
-            globalDisplayState: false,
-          },
+          historyRowRevision: { ...unrevised, contentById: new Set([host.id]) },
         }),
       );
     });
 
-    expect(container.textContent).toContain("revised");
-    expect(renderHistoryMountedRow).toHaveBeenCalledTimes(2);
+    expect(renderCountById.get(host.id)).toBe(2);
+    expect(renderCountById.get(other.id)).toBe(1);
   });
 
   it("keeps a row mounted when it moves from the live head into mounted history", () => {

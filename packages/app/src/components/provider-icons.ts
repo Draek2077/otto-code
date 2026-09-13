@@ -99,12 +99,13 @@ const BUILTIN_PROVIDER_SVGS: Record<string, string> = {
 };
 
 const catalogIconComponents = new Map<string, ProviderIconComponent>();
+const snapshotIconComponents = new Map<string, { svg: string; component: ProviderIconComponent }>();
 
-function createCatalogIcon(provider: string, iconSvg: string): ProviderIconComponent {
+function createSvgIcon(provider: string, iconSvg: string): ProviderIconComponent {
   // Token-sized for the same reason as ProviderBrainIcon: catalog marks reach
   // the chip through the same `size="md"` token path, and a raw string would
   // otherwise become a literal `width="md"` on the SVG.
-  function CatalogProviderIconBase({ size = 16, color }: { size?: number; color?: string }) {
+  function SvgProviderIconBase({ size = 16, color }: { size?: number; color?: string }) {
     return createElement(SvgXml, {
       xml: iconSvg,
       width: size,
@@ -112,12 +113,9 @@ function createCatalogIcon(provider: string, iconSvg: string): ProviderIconCompo
       color,
     });
   }
-  CatalogProviderIconBase.displayName = `CatalogProviderIconBase(${provider})`;
-  const CatalogProviderIcon = withIconSizeToken(
-    CatalogProviderIconBase,
-    `CatalogProviderIcon(${provider})`,
-  );
-  return CatalogProviderIcon;
+  SvgProviderIconBase.displayName = `SvgProviderIconBase(${provider})`;
+  const SvgProviderIcon = withIconSizeToken(SvgProviderIconBase, `SvgProviderIcon(${provider})`);
+  return SvgProviderIcon;
 }
 
 function getCatalogProviderIcon(provider: string): ProviderIconComponent {
@@ -129,22 +127,31 @@ function getCatalogProviderIcon(provider: string): ProviderIconComponent {
   if (!iconSvg) {
     return Bot;
   }
-  const icon = createCatalogIcon(provider, iconSvg);
+  const icon = createSvgIcon(provider, iconSvg);
   catalogIconComponents.set(provider, icon);
   return icon;
 }
 
-export function getProviderIcon(provider: string): ProviderIconComponent {
+function getSnapshotProviderIcon(provider: string, svg: string): ProviderIconComponent {
+  const cached = snapshotIconComponents.get(provider);
+  if (cached?.svg === svg) return cached.component;
+  const component = createSvgIcon(provider, svg);
+  snapshotIconComponents.set(provider, { svg, component });
+  return component;
+}
+
+export function getProviderIcon(provider: string, serverId?: string | null): ProviderIconComponent {
   const appIcon = APP_PROVIDER_ICONS[provider];
-  if (appIcon) {
-    return appIcon;
-  }
-  const name = resolveProviderIconName(provider);
+  if (appIcon) return appIcon;
+  const name = resolveProviderIconName(provider, serverId);
   if (name.kind === "builtin") {
     return BUILTIN_PROVIDER_ICONS[name.id];
   }
   if (name.kind === "catalog") {
     return getCatalogProviderIcon(name.id);
+  }
+  if (name.kind === "svg") {
+    return getSnapshotProviderIcon(`${serverId}:${provider}`, name.svg);
   }
   return Bot;
 }
@@ -156,17 +163,18 @@ export function getProviderIcon(provider: string): ProviderIconComponent {
  * The returned SVG uses `fill="currentColor"` so the caller can control color, or
  * strip it for mask use where color is irrelevant.
  */
-export function getProviderIconSvg(provider: string): string {
+export function getProviderIconSvg(provider: string, serverId?: string | null): string {
   const appSvg = APP_PROVIDER_SVGS[provider];
   if (appSvg) {
     return appSvg;
   }
-  const name = resolveProviderIconName(provider);
+  const name = resolveProviderIconName(provider, serverId);
   if (name.kind === "builtin") {
     return BUILTIN_PROVIDER_SVGS[name.id] ?? MATERIAL_SYMBOL_SVGS.Bot;
   }
   if (name.kind === "catalog") {
     return CATALOG_ICON_SVGS.get(name.id) ?? MATERIAL_SYMBOL_SVGS.Bot;
   }
+  if (name.kind === "svg") return name.svg;
   return MATERIAL_SYMBOL_SVGS.Bot;
 }

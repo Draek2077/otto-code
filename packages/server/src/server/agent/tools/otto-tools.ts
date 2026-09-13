@@ -1,3 +1,6 @@
+import { assertWorkspaceAutomationAllowedForWorkspace } from "../../workspace-automation-gate.js";
+import { isOttoToolEnabled } from "../otto-tool-policy.js";
+import type { ProviderOttoToolsPolicy } from "@otto-code/protocol/provider-config";
 import { toProviderSummary } from "./provider-summary.js";
 import { z } from "zod";
 import { ensureValidJson } from "../../json-utils.js";
@@ -232,6 +235,7 @@ export interface OttoToolHostDependencies {
   // explicit title. Absent when structured generation isn't wired.
   scheduleAutoTitle?: CreateAgentCommandDependencies["scheduleAutoTitle"];
   browserToolsEnabled?: boolean;
+  ottoToolPolicy?: ProviderOttoToolsPolicy;
   browserToolsBroker?: BrowserToolsBroker | null;
   previewDevServers?: DevServerManager | null;
   /**
@@ -1256,6 +1260,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool handlers are schema-validated at registration boundaries.
     handler: (input: any, context: OttoToolExecutionContext) => Promise<OttoToolResult>,
   ) => {
+    if (!isOttoToolEnabled(options.ottoToolPolicy, name, config.source)) return;
     // Per-group gating: a tool whose group is disabled is never registered, so
     // both the MCP path and any future catalog consumer inherit the filter.
     if (config.source !== "connector" && !isToolGroupEnabled(name)) {
@@ -1282,23 +1287,28 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       handler: handler as OttoToolDefinition["handler"],
     });
   };
-  const toCatalog = (): OttoToolCatalog => ({
-    tools,
-    getTool(name: string): OttoToolDefinition | undefined {
-      return tools.get(name);
-    },
-    async executeTool(
-      name: string,
-      input: unknown,
-      context: OttoToolExecutionContext = {},
-    ): Promise<OttoToolResult> {
-      const tool = tools.get(name);
-      if (!tool) {
-        throw new Error(`Otto tool not found: ${name}`);
-      }
-      return tool.handler(await parseToolInput(tool, input), context);
-    },
-  });
+  const toCatalog = (): OttoToolCatalog => {
+    // Graph-defined output/query tools intentionally sit outside the built-in enable/group switch.
+    // A provider's explicit name deny still applies to those independent registration paths.
+    for (const name of options.ottoToolPolicy?.disabledTools ?? []) tools.delete(name);
+    return {
+      tools,
+      getTool(name: string): OttoToolDefinition | undefined {
+        return tools.get(name);
+      },
+      async executeTool(
+        name: string,
+        input: unknown,
+        context: OttoToolExecutionContext = {},
+      ): Promise<OttoToolResult> {
+        const tool = tools.get(name);
+        if (!tool) {
+          throw new Error(`Otto tool not found: ${name}`);
+        }
+        return tool.handler(await parseToolInput(tool, input), context);
+      },
+    };
+  };
 
   if (options.architecturalViews && callerAgentId) {
     const architecturalViews = options.architecturalViews;
@@ -6384,6 +6394,11 @@ function archiveWorktreeDependencies(
     findWorkspaceIdForCwd: options.findWorkspaceIdForCwd,
     listActiveWorkspaces: options.listActiveWorkspaces,
     archiveWorkspaceRecord: options.archiveWorkspaceRecord,
+    assertWorkspaceAutomationAllowed: async (workspaceId) => {
+      if (!options.workspaceRegistry)
+        throw new Error("Workspace registry is required to approve repository automation");
+      await assertWorkspaceAutomationAllowedForWorkspace(options.workspaceRegistry, workspaceId);
+    },
     emitWorkspaceUpdatesForWorkspaceIds: options.emitWorkspaceUpdatesForWorkspaceIds,
     markWorkspaceArchiving: options.markWorkspaceArchiving,
     clearWorkspaceArchiving: options.clearWorkspaceArchiving,

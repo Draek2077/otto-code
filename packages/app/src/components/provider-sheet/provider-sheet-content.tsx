@@ -1,14 +1,20 @@
+import type { RefObject } from "react";
+import { SettingsButton } from "@/screens/settings-search/controls";
+import { SettingsAdaptiveModalSheet as AdaptiveModalSheet } from "@/screens/settings-search/sheets";
+import { settingsTargetIdsForPersistence } from "@/screens/settings-search-catalog";
+import {
+  useSettingsTarget,
+  SettingsTargetText,
+  SettingsTargetScope,
+  SettingsTargetLabel,
+} from "@/screens/settings-search/target";
 import { Check, FileText, Plus, RotateCw, Search, Trash2 } from "@/components/icons/material-icons";
 import type { TFunction } from "i18next";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import {
-  AdaptiveModalSheet,
-  AdaptiveTextInput,
-  type SheetHeader,
-} from "@/components/adaptive-modal-sheet";
+import { AdaptiveTextInput, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
@@ -38,9 +44,10 @@ import {
 } from "@otto-code/protocol/provider-config";
 import { Switch } from "@/components/ui/switch";
 import { NumberStepperField } from "@/components/ui/number-stepper-field";
-import { Field } from "@/components/ui/form-field";
+import { SettingsField as Field } from "@/screens/settings-search/fields";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
+import { SettingsSelectField as SelectField } from "@/screens/settings-search/fields";
+import { type SelectFieldOption } from "@/components/ui/select-field";
 import { type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { TextFieldPicker, type ComboboxOption } from "@/components/ui/text-field-picker";
 
@@ -120,6 +127,8 @@ const ThemedModelVisibilityCheck = withUnistyles(Check, (theme) => ({
   color: theme.colors.accentForeground,
 }));
 
+const MODEL_VISIBILITY_TARGETS = ["host-providers-models-model-visibility"];
+
 export function ModelVisibilityCheckbox({
   modelId,
   visible,
@@ -131,6 +140,7 @@ export function ModelVisibilityCheckbox({
   disabled: boolean;
   onChange: (modelId: string, visible: boolean) => void;
 }) {
+  const { node, handleLayout } = useSettingsTarget(MODEL_VISIBILITY_TARGETS, undefined);
   const { t } = useTranslation();
   const accessibilityState = useMemo(() => ({ checked: visible, disabled }), [disabled, visible]);
   const checkboxStyle = useMemo(
@@ -145,6 +155,8 @@ export function ModelVisibilityCheckbox({
 
   return (
     <Pressable
+      ref={node as RefObject<View | null>}
+      onLayout={handleLayout}
       accessibilityRole="checkbox"
       accessibilityLabel={t("settings.providers.models.visibilityLabel", { id: modelId })}
       accessibilityState={accessibilityState}
@@ -218,20 +230,22 @@ export function ModelTierSelect({
     [modelId, onChange],
   );
   return (
-    <SelectField<ModelTier | "unknown">
-      field={false}
-      size="sm"
-      label="Model tier"
-      value={tier ?? "unknown"}
-      selectedDisplay={display}
-      options={MODEL_TIER_OPTIONS}
-      onChange={handleChange}
-      placeholder="Unknown"
-      emptyText="Unknown"
-      disabled={disabled}
-      testID={`model-tier-${modelId}`}
-      triggerTestID={`model-tier-trigger-${modelId}`}
-    />
+    <SettingsTargetScope settingIds={["host-providers-models-model-tier"]}>
+      <SelectField<ModelTier | "unknown">
+        field={false}
+        size="sm"
+        label="Model tier"
+        value={tier ?? "unknown"}
+        selectedDisplay={display}
+        options={MODEL_TIER_OPTIONS}
+        onChange={handleChange}
+        placeholder="Unknown"
+        emptyText="Unknown"
+        disabled={disabled}
+        testID={`model-tier-${modelId}`}
+        triggerTestID={`model-tier-trigger-${modelId}`}
+      />
+    </SettingsTargetScope>
   );
 }
 
@@ -252,9 +266,9 @@ export function ModelRowText({
       <TooltipTrigger asChild>
         <View style={sheetStyles.modelRowText}>
           <View style={sheetStyles.modelFieldRow}>
-            <Text style={sheetStyles.modelTitle} numberOfLines={1}>
+            <SettingsTargetLabel style={sheetStyles.modelTitle} numberOfLines={1}>
               {label}
-            </Text>
+            </SettingsTargetLabel>
           </View>
           <View style={sheetStyles.modelFieldRow}>
             <Text
@@ -270,7 +284,7 @@ export function ModelRowText({
       </TooltipTrigger>
       <TooltipContent side="top" align="start" offset={4} maxWidth={480}>
         <View style={sheetStyles.modelTooltip}>
-          <Text style={sheetStyles.modelTooltipTitle}>{label}</Text>
+          <SettingsTargetLabel style={sheetStyles.modelTooltipTitle}>{label}</SettingsTargetLabel>
           <Text style={sheetStyles.modelTooltipMono} dataSet={CODE_SURFACE_DATASET}>
             {id}
           </Text>
@@ -577,7 +591,12 @@ export function ProviderConnectionSection({
     <View style={sheetStyles.section}>
       <View style={sheetStyles.connectionCard}>
         <View style={sheetStyles.formGroup}>
-          <Text style={sheetStyles.formLabel}>{t("settings.providers.connection.baseUrl")}</Text>
+          <SettingsTargetText
+            settingId="host-providers-connection-server-url"
+            style={sheetStyles.formLabel}
+          >
+            {t("settings.providers.connection.baseUrl")}
+          </SettingsTargetText>
           <TextFieldPicker
             value={baseUrl}
             onChange={handleBaseUrlChange}
@@ -587,17 +606,23 @@ export function ProviderConnectionSection({
           />
           {savedMatch ? (
             <View style={sheetStyles.formActions}>
-              <Button
+              <SettingsButton
+                settingIds={["host-providers-connection-forget-saved-endpoint"]}
                 variant="ghost"
                 size="sm"
                 onPress={handleForget}
                 testID="provider-connection-forget-endpoint"
               >
                 {t("settings.providers.connection.forget")}
-              </Button>
+              </SettingsButton>
             </View>
           ) : null}
-          <Text style={sheetStyles.formLabel}>{t("settings.providers.connection.apiKey")}</Text>
+          <SettingsTargetText
+            settingId="host-providers-connection-api-key"
+            style={sheetStyles.formLabel}
+          >
+            {t("settings.providers.connection.apiKey")}
+          </SettingsTargetText>
           <AdaptiveTextInput
             initialValue={apiKey}
             resetKey={`connection-key-${provider}`}
@@ -684,7 +709,12 @@ function ToolGroupToggleRow({
   const handleChange = useCallback((next: boolean) => onToggle(group, next), [group, onToggle]);
   return (
     <View style={sheetStyles.toolGroupRow}>
-      <Text style={sheetStyles.toolGroupLabel}>{label}</Text>
+      <SettingsTargetText
+        settingId={settingsTargetIdsForPersistence("providers", `provider.toolGroups.${group}`)}
+        style={sheetStyles.toolGroupLabel}
+      >
+        {label}
+      </SettingsTargetText>
       <Switch
         value={enabled}
         onValueChange={handleChange}
@@ -1030,25 +1060,30 @@ export function ProviderAgentsSection({
     <View style={sheetStyles.section}>
       <View style={sheetStyles.connectionCard}>
         <View style={sheetStyles.formGroup}>
-          <SelectField
-            label={t("settings.providers.agents.compactionLabel")}
-            hint={t("settings.providers.agents.compactionHint")}
-            value={level}
-            selectedDisplay={selectedDisplay}
-            options={levelOptions}
-            onChange={handleLevelChange}
-            placeholder={t("settings.providers.agents.compactionLabel")}
-            emptyText={t("settings.providers.agents.compactionLabel")}
-            disabled={saving}
-            size="sm"
-            testID="provider-compaction-level"
-            triggerTestID="provider-compaction-level-trigger"
-          />
+          <SettingsTargetScope settingIds={["host-providers-agents-default-auto-compact"]}>
+            <SelectField
+              label={t("settings.providers.agents.compactionLabel")}
+              hint={t("settings.providers.agents.compactionHint")}
+              value={level}
+              selectedDisplay={selectedDisplay}
+              options={levelOptions}
+              onChange={handleLevelChange}
+              placeholder={t("settings.providers.agents.compactionLabel")}
+              emptyText={t("settings.providers.agents.compactionLabel")}
+              disabled={saving}
+              size="sm"
+              testID="provider-compaction-level"
+              triggerTestID="provider-compaction-level-trigger"
+            />
+          </SettingsTargetScope>
           <View style={sheetStyles.toolGroupRow}>
             <View style={sheetStyles.switchLabelGroup}>
-              <Text style={sheetStyles.formLabel}>
+              <SettingsTargetText
+                settingId="host-providers-agents-show-selector"
+                style={sheetStyles.formLabel}
+              >
                 {t("settings.providers.agents.showSelectorLabel")}
-              </Text>
+              </SettingsTargetText>
               <Text style={sheetStyles.mutedText}>
                 {t("settings.providers.agents.showSelectorDescription")}
               </Text>
@@ -1061,20 +1096,24 @@ export function ProviderAgentsSection({
             />
           </View>
           {supportsMaxToolRounds ? (
-            <SelectField<number>
-              label={t("settings.providers.agents.maxToolRoundsLabel")}
-              hint={t("settings.providers.agents.maxToolRoundsHint")}
-              value={maxToolRounds}
-              selectedDisplay={maxToolRoundsDisplay}
-              options={maxToolRoundsOptions}
-              onChange={handleMaxToolRoundsChange}
-              placeholder={t("settings.providers.agents.maxToolRoundsLabel")}
-              emptyText={t("settings.providers.agents.maxToolRoundsLabel")}
-              disabled={saving}
-              size="sm"
-              testID="provider-max-tool-rounds"
-              triggerTestID="provider-max-tool-rounds-trigger"
-            />
+            <SettingsTargetScope
+              settingIds={["host-providers-agents-max-tool-call-rounds-per-turn"]}
+            >
+              <SelectField<number>
+                label={t("settings.providers.agents.maxToolRoundsLabel")}
+                hint={t("settings.providers.agents.maxToolRoundsHint")}
+                value={maxToolRounds}
+                selectedDisplay={maxToolRoundsDisplay}
+                options={maxToolRoundsOptions}
+                onChange={handleMaxToolRoundsChange}
+                placeholder={t("settings.providers.agents.maxToolRoundsLabel")}
+                emptyText={t("settings.providers.agents.maxToolRoundsLabel")}
+                disabled={saving}
+                size="sm"
+                testID="provider-max-tool-rounds"
+                triggerTestID="provider-max-tool-rounds-trigger"
+              />
+            </SettingsTargetScope>
           ) : (
             <Text style={sheetStyles.mutedText}>
               {t("settings.providers.agents.maxToolRoundsRequiresUpdate")}
@@ -1084,9 +1123,12 @@ export function ProviderAgentsSection({
             <>
               <View style={sheetStyles.toolGroupRow}>
                 <View style={sheetStyles.switchLabelGroup}>
-                  <Text style={sheetStyles.formLabel}>
+                  <SettingsTargetText
+                    settingId="host-providers-agents-action-breaker"
+                    style={sheetStyles.formLabel}
+                  >
                     {t("settings.providers.agents.actionBreakerLabel")}
-                  </Text>
+                  </SettingsTargetText>
                   <Text style={sheetStyles.mutedText}>
                     {t("settings.providers.agents.actionBreakerHint")}
                   </Text>
@@ -1099,22 +1141,28 @@ export function ProviderAgentsSection({
                 />
               </View>
               {actionBreaker.enabled ? (
-                <Field
-                  label={t("settings.providers.agents.actionBreakerThresholdLabel")}
-                  hint={t("settings.providers.agents.actionBreakerThresholdHint")}
+                <SettingsTargetScope
+                  settingIds={["host-providers-agents-action-breaker-threshold"]}
                 >
-                  <NumberStepperField
-                    size="sm"
-                    testID="provider-action-breaker-threshold"
-                    accessibilityLabel={t("settings.providers.agents.actionBreakerThresholdLabel")}
-                    value={String(actionBreaker.threshold)}
-                    onChangeText={handleActionBreakerThresholdText}
-                    min={2}
-                    max={100}
-                    decrementLabel={t("settings.providers.agents.actionBreakerThresholdDecrease")}
-                    incrementLabel={t("settings.providers.agents.actionBreakerThresholdIncrease")}
-                  />
-                </Field>
+                  <Field
+                    label={t("settings.providers.agents.actionBreakerThresholdLabel")}
+                    hint={t("settings.providers.agents.actionBreakerThresholdHint")}
+                  >
+                    <NumberStepperField
+                      size="sm"
+                      testID="provider-action-breaker-threshold"
+                      accessibilityLabel={t(
+                        "settings.providers.agents.actionBreakerThresholdLabel",
+                      )}
+                      value={String(actionBreaker.threshold)}
+                      onChangeText={handleActionBreakerThresholdText}
+                      min={2}
+                      max={100}
+                      decrementLabel={t("settings.providers.agents.actionBreakerThresholdDecrease")}
+                      incrementLabel={t("settings.providers.agents.actionBreakerThresholdIncrease")}
+                    />
+                  </Field>
+                </SettingsTargetScope>
               ) : null}
             </>
           ) : (
@@ -1125,9 +1173,12 @@ export function ProviderAgentsSection({
           {supportsMidSessionUpdates ? (
             <View style={sheetStyles.toolGroupRow}>
               <View style={sheetStyles.switchLabelGroup}>
-                <Text style={sheetStyles.formLabel}>
+                <SettingsTargetText
+                  settingId="host-providers-agents-mid-session-context-updates"
+                  style={sheetStyles.formLabel}
+                >
                   {t("settings.providers.agents.midSessionUpdatesLabel")}
-                </Text>
+                </SettingsTargetText>
                 <Text style={sheetStyles.mutedText}>
                   {t("settings.providers.agents.midSessionUpdatesHint")}
                 </Text>
@@ -1222,7 +1273,8 @@ export function ProviderRemoveSection({
 
   return (
     <View style={sheetStyles.removeRow}>
-      <Button
+      <SettingsButton
+        settingIds={["host-providers-danger-zone-remove-provider"]}
         variant="outline"
         size="sm"
         leftIcon={removeIcon}
@@ -1232,7 +1284,7 @@ export function ProviderRemoveSection({
         testID="provider-remove-button"
       >
         {t("settings.providers.remove.button")}
-      </Button>
+      </SettingsButton>
       {!supportsRemove ? (
         <Text style={sheetStyles.mutedText}>{t("settings.providers.remove.requiresUpdate")}</Text>
       ) : null}
@@ -1306,7 +1358,8 @@ export function ModelsTabActions({
         </Text>
       ) : null}
       <View style={actionsStyle}>
-        <Button
+        <SettingsButton
+          settingIds={["host-providers-models-add-model"]}
           variant="secondary"
           size="sm"
           leftIcon={Plus}
@@ -1314,8 +1367,9 @@ export function ModelsTabActions({
           style={buttonStyle}
         >
           {t("settings.providers.models.addModel")}
-        </Button>
-        <Button
+        </SettingsButton>
+        <SettingsButton
+          settingIds={["host-providers-models-diagnostics"]}
           variant="secondary"
           size="sm"
           leftIcon={FileText}
@@ -1323,8 +1377,9 @@ export function ModelsTabActions({
           style={buttonStyle}
         >
           {t("settings.providers.diagnostic.button")}
-        </Button>
-        <Button
+        </SettingsButton>
+        <SettingsButton
+          settingIds={["host-providers-models-refresh-models"]}
           variant="default"
           size="sm"
           leftIcon={modelsRefreshing ? undefined : RotateCw}
@@ -1335,7 +1390,7 @@ export function ModelsTabActions({
           {modelsRefreshing
             ? t("settings.providers.diagnostic.refreshing")
             : t("settings.providers.diagnostic.refresh")}
-        </Button>
+        </SettingsButton>
       </View>
     </View>
   );

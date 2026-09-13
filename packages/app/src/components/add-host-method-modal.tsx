@@ -1,11 +1,19 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { QrCode, Link2, ClipboardPaste } from "@/components/icons/material-icons";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { QrCode, Link2, ClipboardPaste, Terminal } from "@/components/icons/material-icons";
 import { AdaptiveModalSheet, type SheetHeader } from "./adaptive-modal-sheet";
 import { isFdroidBuild } from "@/constants/build-profile";
 import { isNative } from "@/constants/platform";
+import { isElectronRuntime } from "@/desktop/host";
+import type { Theme } from "@/styles/theme";
+
+const ThemedQrCode = withUnistyles(QrCode);
+const ThemedLink2 = withUnistyles(Link2);
+const ThemedClipboardPaste = withUnistyles(ClipboardPaste);
+const ThemedTerminal = withUnistyles(Terminal);
+const foregroundIconMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 
 const styles = StyleSheet.create((theme) => ({
   option: {
@@ -39,6 +47,7 @@ export interface AddHostMethodModalProps {
   visible: boolean;
   onClose: () => void;
   onDirectConnection: () => void;
+  onRemoteSsh: () => void;
   onScanQr: () => void;
   onPasteLink: () => void;
 }
@@ -47,10 +56,10 @@ export function AddHostMethodModal({
   visible,
   onClose,
   onDirectConnection,
+  onRemoteSsh,
   onScanQr,
   onPasteLink,
 }: AddHostMethodModalProps) {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const header = useMemo<SheetHeader>(() => ({ title: t("pairing.connectionMethods.title") }), [t]);
 
@@ -61,6 +70,10 @@ export function AddHostMethodModal({
   const handleScan = useCallback(() => {
     onScanQr();
   }, [onScanQr]);
+
+  const handleRemoteSsh = useCallback(() => {
+    onRemoteSsh();
+  }, [onRemoteSsh]);
 
   const handlePaste = useCallback(() => {
     onPasteLink();
@@ -80,7 +93,7 @@ export function AddHostMethodModal({
         accessibilityLabel={t("pairing.connectionMethods.direct.title")}
         testID="add-host-method-direct"
       >
-        <Link2 size="mdPlus" color={theme.colors.foreground} />
+        <ThemedLink2 size="mdPlus" uniProps={foregroundIconMapping} />
         <View style={styles.optionBody}>
           <Text style={styles.optionText}>{t("pairing.connectionMethods.direct.title")}</Text>
           <Text style={styles.optionSubtext}>
@@ -89,6 +102,24 @@ export function AddHostMethodModal({
         </View>
       </Pressable>
 
+      {isElectronRuntime() ? (
+        <Pressable
+          style={styles.option}
+          onPress={handleRemoteSsh}
+          accessibilityRole="button"
+          accessibilityLabel={t("pairing.connectionMethods.remoteSsh.title")}
+          testID="add-host-method-remote-ssh"
+        >
+          <ThemedTerminal size="mdPlus" uniProps={foregroundIconMapping} />
+          <View style={styles.optionBody}>
+            <Text style={styles.optionText}>{t("pairing.connectionMethods.remoteSsh.title")}</Text>
+            <Text style={styles.optionSubtext}>
+              {t("pairing.connectionMethods.remoteSsh.description")}
+            </Text>
+          </View>
+        </Pressable>
+      ) : null}
+
       {isNative && !isFdroidBuild ? (
         <Pressable
           style={styles.option}
@@ -96,7 +127,7 @@ export function AddHostMethodModal({
           accessibilityRole="button"
           accessibilityLabel={t("pairing.connectionMethods.scanQr.title")}
         >
-          <QrCode size="mdPlus" color={theme.colors.foreground} />
+          <ThemedQrCode size="mdPlus" uniProps={foregroundIconMapping} />
           <View style={styles.optionBody}>
             <Text style={styles.optionText}>{t("pairing.connectionMethods.scanQr.title")}</Text>
             <Text style={styles.optionSubtext}>
@@ -113,7 +144,7 @@ export function AddHostMethodModal({
         accessibilityLabel={t("pairing.connectionMethods.pasteLink.title")}
         testID="add-host-method-pair-link"
       >
-        <ClipboardPaste size="mdPlus" color={theme.colors.foreground} />
+        <ThemedClipboardPaste size="mdPlus" uniProps={foregroundIconMapping} />
         <View style={styles.optionBody}>
           <Text style={styles.optionText}>{t("pairing.connectionMethods.pasteLink.title")}</Text>
           <Text style={styles.optionSubtext}>

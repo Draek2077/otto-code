@@ -49,6 +49,7 @@ import {
   type BrainProviderEndpointResolver,
 } from "./otto/provider-factories.js";
 import { OpenCodeAgentClient } from "./providers/opencode-agent.js";
+import type { OpenCodeBridge } from "./providers/opencode/bridge.js";
 import { OmpAgentClient } from "./providers/omp/agent.js";
 import type { OmpRuntime } from "./providers/omp/runtime.js";
 import { PiRpcAgentClient } from "./providers/pi/agent.js";
@@ -76,6 +77,9 @@ export type { AgentProviderDefinition };
 export { AGENT_PROVIDER_DEFINITIONS, getAgentProviderDefinition };
 
 export interface ProviderDefinition extends AgentProviderDefinition {
+  /** Effective inputs after overrides and inheritance; plugin registrations are owned separately. */
+  configuration: Omit<ResolvedProvider, "createBaseClient" | "contract"> | null;
+  iconSvg?: string;
   enabled: boolean;
   /**
    * The id of another *registered* provider this one extends (e.g. a Z.AI
@@ -126,6 +130,7 @@ export interface BuildProviderRegistryOptions {
    * CLI) leaves the provider registered but permanently unavailable.
    */
   brainEndpoint?: BrainProviderEndpointResolver;
+  openCodeBridge?: OpenCodeBridge;
 }
 
 export type { BrainProviderEndpointResolver } from "./otto/provider-factories.js";
@@ -135,6 +140,7 @@ interface ProviderClientFactoryOptions extends Pick<
   BuildProviderRegistryOptions,
   "workspaceGitService" | "managedProcesses" | "ompRuntime" | "connectors" | "brainEndpoint"
 > {
+  openCodeBridge?: OpenCodeBridge;
   providerParams?: unknown;
   providerOverride?: ProviderOverride;
   customProvider?: {
@@ -152,6 +158,8 @@ type ProviderClientFactory = (
 
 interface ResolvedProvider {
   definition: AgentProviderDefinition;
+  /** Otto factory inputs are otherwise hidden in createBaseClient closures. */
+  ottoConfiguration?: ProviderOverride;
   runtimeSettings?: ProviderRuntimeSettings;
   profileModels: ProviderProfileModel[];
   additionalModels: ProviderProfileModel[];
@@ -234,6 +242,7 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
   opencode: (logger, runtimeSettings, options) =>
     new OpenCodeAgentClient(logger, runtimeSettings, {
       managedProcesses: options?.managedProcesses,
+      bridge: options?.openCodeBridge,
     }),
   pi: (logger, runtimeSettings, options) =>
     new PiRpcAgentClient({
@@ -593,7 +602,8 @@ function wrapClientProvider(
           };
         }
       : undefined,
-    isAvailable: (signal) => inner.isAvailable(signal),
+    getCatalogCacheKey: inner.getCatalogCacheKey?.bind(inner),
+    isAvailable: (signal, options) => inner.isAvailable(signal, options),
     getDiagnostic: inner.getDiagnostic?.bind(inner),
   };
 }
@@ -628,8 +638,10 @@ function createRegistryEntry(
 
   const hasStaticModes = resolved.definition.modes.length > 0;
 
+  const { createBaseClient: _createBaseClient, contract: _contract, ...configuration } = resolved;
   return {
     ...resolved.definition,
+    configuration,
     enabled: resolved.enabled,
     derivedFromProviderId: resolved.derivedFromProviderId,
     optionsSchema: resolved.contract.optionsSchema,
@@ -725,7 +737,12 @@ function buildResolvedBuiltinProviders(
   runtimeSettings: AgentProviderRuntimeSettingsMap | undefined,
   options: Pick<
     BuildProviderRegistryOptions,
-    "workspaceGitService" | "managedProcesses" | "ompRuntime" | "connectors" | "brainEndpoint"
+    | "workspaceGitService"
+    | "managedProcesses"
+    | "ompRuntime"
+    | "connectors"
+    | "brainEndpoint"
+    | "openCodeBridge"
   >,
   isDev: boolean,
 ): Map<string, ResolvedProvider> {
@@ -745,6 +762,7 @@ function buildResolvedBuiltinProviders(
 
     resolvedProviders.set(definition.id, {
       definition: applyOverrideToDefinition(definition, override),
+      ottoConfiguration: override ? structuredClone(override) : undefined,
       runtimeSettings: mergedRuntimeSettings,
       profileModels: override?.models ?? [],
       additionalModels: override?.additionalModels ?? [],
@@ -759,6 +777,7 @@ function buildResolvedBuiltinProviders(
           ompRuntime: options.ompRuntime,
           connectors: options.connectors,
           brainEndpoint: options.brainEndpoint,
+          openCodeBridge: options.openCodeBridge,
           providerParams: override?.params,
           providerOverride: override,
         }),
@@ -774,7 +793,7 @@ function addDerivedProviders(
   providerOverrides: Record<string, ProviderOverride>,
   options: Pick<
     BuildProviderRegistryOptions,
-    "managedProcesses" | "connectors" | "workspaceGitService"
+    "managedProcesses" | "connectors" | "workspaceGitService" | "openCodeBridge"
   >,
 ): void {
   for (const [providerId, override] of Object.entries(providerOverrides)) {
@@ -805,6 +824,7 @@ function addDerivedProviders(
           },
           override,
         ),
+        ottoConfiguration: structuredClone(override),
         runtimeSettings: toRuntimeSettings(override),
         profileModels: override.models ?? [],
         additionalModels: override.additionalModels ?? [],
@@ -866,6 +886,7 @@ function addDerivedProviders(
 
     resolvedProviders.set(providerId, {
       definition: createDerivedDefinition(providerId, baseDefinition, override),
+      ottoConfiguration: structuredClone(override),
       runtimeSettings: mergedRuntimeSettings,
       profileModels: override.models ?? [],
       additionalModels: override.additionalModels ?? [],
@@ -876,6 +897,7 @@ function addDerivedProviders(
       createBaseClient: (logger) =>
         baseFactory(logger, mergedRuntimeSettings, {
           managedProcesses: options.managedProcesses,
+          openCodeBridge: options.openCodeBridge,
           providerParams,
           customProvider: {
             id: providerId,
@@ -909,6 +931,7 @@ function resolveOpenAICompatProvider(
       },
       override,
     ),
+    ottoConfiguration: structuredClone(override),
     runtimeSettings: toRuntimeSettings(override),
     profileModels: override.models ?? [],
     additionalModels: override.additionalModels ?? [],
@@ -937,6 +960,7 @@ export function buildProviderRegistry(
       ompRuntime: options?.ompRuntime,
       connectors: options?.connectors,
       brainEndpoint: options?.brainEndpoint,
+      openCodeBridge: options?.openCodeBridge,
     },
     options?.isDev === true,
   );
@@ -944,6 +968,7 @@ export function buildProviderRegistry(
     managedProcesses: options?.managedProcesses,
     connectors: options?.connectors,
     workspaceGitService: options?.workspaceGitService,
+    openCodeBridge: options?.openCodeBridge,
   });
 
   return Object.fromEntries(

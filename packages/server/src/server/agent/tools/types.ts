@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { ProviderOttoToolsPolicy } from "@otto-code/protocol/provider-config";
 
 export interface OttoToolExecutionContext {
   signal?: AbortSignal;
@@ -40,6 +41,7 @@ export interface OttoToolRuntimeContext {
   callerAgentId?: string;
   /** Daemon-resolved launch cwd; the agent may not be registered yet. */
   callerCwd?: string;
+  ottoToolPolicy?: ProviderOttoToolsPolicy;
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
 }

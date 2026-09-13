@@ -158,8 +158,8 @@ test("merge integration checks use full history and the checked-out candidate", 
     "guard tests and the candidate check must execute after parser dependencies are installed",
   );
   const guard = steps[guardIndex];
-  assert.match(guard, /--before b6735559a98d0143d0127814696f35a091860845/);
-  assert.match(guard, /--at 20d7efc46a316f5a274b9943a5c43b0322269825/);
+  assert.match(guard, /--before f152f0069bb84444386caff7dd5d58148b77875a/);
+  assert.match(guard, /--at b8e24677e12b226c7c38c1c3a40649daa9f1152f/);
   assert.match(guard, /--after HEAD --json/);
   for (const step of [steps[testsIndex], guard]) {
     assert.doesNotMatch(
@@ -210,4 +210,17 @@ test("no workflow key is declared without a value", () => {
     [],
     "a mapping key with no value makes GitHub reject the entire workflow at startup",
   );
+});
+
+test("plugin contracts run in the required SDK job", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const job = /\n  sdk-tests:\r?\n([\s\S]*?)(?=\n  [a-z0-9-]+:|$)/.exec(workflow)?.[1] ?? "";
+  for (const command of [
+    "npm run build:plugin",
+    "npm run test --workspace=@otto-code/plugin",
+    "npm run typecheck --workspace=@otto-code/plugin",
+  ]) {
+    assert.ok(job.includes(command), command);
+  }
+  assert.doesNotMatch(job, /continue-on-error:|needs\.changes/);
 });

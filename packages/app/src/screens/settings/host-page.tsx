@@ -1,3 +1,5 @@
+import { SettingsButton } from "@/screens/settings-search/controls";
+import { SettingsTargetText, SettingsTargetScope } from "@/screens/settings-search/target";
 import {
   ArrowDown,
   ArrowUp,
@@ -24,7 +26,8 @@ import {
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Button } from "@/components/ui/button";
-import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
+import { SettingsSelectField as SelectField } from "@/screens/settings-search/fields";
+import { type SelectFieldOption } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
 import {
   ProfileDraft,
@@ -135,6 +138,9 @@ function formatHostConnectionLabel(connection: HostConnection, t: TFunction): st
   if (connection.type === "directSocket" || connection.type === "directPipe") {
     return `${t("settings.host.badges.local")} (${connection.path})`;
   }
+  if (connection.type === "remoteSsh") {
+    return `${t("settings.host.badges.remoteSsh")} (${connection.host})`;
+  }
   return `TCP (${connection.endpoint})`;
 }
 
@@ -154,6 +160,12 @@ function formatActiveConnectionBadge(
     return {
       icon: <Monitor size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
       text: t("settings.host.badges.local"),
+    };
+  }
+  if (activeConnection.type === "remoteSsh") {
+    return {
+      icon: <Globe size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
+      text: t("settings.host.badges.remoteSsh"),
     };
   }
   return {
@@ -707,20 +719,25 @@ function ConnectionRow({
   return (
     <View style={rowStyle}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle} numberOfLines={1}>
+        <SettingsTargetText
+          settingId="host-connections-connections-on-this-device-saved-connection"
+          style={settingsStyles.rowTitle}
+          numberOfLines={1}
+        >
           {title}
-        </Text>
+        </SettingsTargetText>
       </View>
       <View style={CONNECTION_TRAILING_STYLE}>
         <Text style={latencyTextStyle}>{latencyText}</Text>
-        <Button
+        <SettingsButton
+          settingIds={["host-connections-connections-on-this-device-remove-connection"]}
           variant="ghost"
           size="sm"
           textStyle={destructiveTextStyle}
           onPress={handlePressRemove}
         >
           {t("settings.host.connections.removeAction")}
-        </Button>
+        </SettingsButton>
       </View>
     </View>
   );
@@ -873,7 +890,12 @@ function RestartDaemonCard({ host }: { host: HostProfile }) {
     <View style={settingsStyles.card} testID="host-page-restart-card">
       <View style={settingsStyles.rowResponsive}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.host.daemon.restart.title")}</Text>
+          <SettingsTargetText
+            settingId="host-host-danger-zone-restart-daemon"
+            style={settingsStyles.rowTitle}
+          >
+            {t("settings.host.daemon.restart.title")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>{t("settings.host.daemon.restart.hint")}</Text>
         </View>
         <Button
@@ -1101,7 +1123,12 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
     <View style={settingsStyles.card} testID="host-page-update-card">
       <View style={settingsStyles.rowResponsive}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.host.daemon.update.title")}</Text>
+          <SettingsTargetText
+            settingId="host-host-updates-update-daemon"
+            style={settingsStyles.rowTitle}
+          >
+            {t("settings.host.daemon.update.title")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             {t(
               desktopManaged
@@ -1153,7 +1180,12 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
   return (
     <View style={settingsStyles.row} testID="host-page-auto-archive-merged-workspaces-card">
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Archive merged PR workspaces</Text>
+        <SettingsTargetText
+          settingId="host-workspaces-workspaces-archive-merged-pr-workspaces"
+          style={settingsStyles.rowTitle}
+        >
+          Archive merged PR workspaces
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           Automatically archive clean Otto workspaces after their pull request is merged
         </Text>
@@ -1228,7 +1260,12 @@ function GitFetchCard({ serverId }: { serverId: string }) {
         testID="host-page-git-fetch-card"
       >
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Fetch active workspaces automatically</Text>
+          <SettingsTargetText
+            settingId="host-workspaces-workspaces-fetch-active-workspaces-automatically"
+            style={settingsStyles.rowTitle}
+          >
+            Fetch active workspaces automatically
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             Fetch origin and prune removed remote branches while a workspace is active
           </Text>
@@ -1243,24 +1280,31 @@ function GitFetchCard({ serverId }: { serverId: string }) {
       {gitFetch.enabled ? (
         <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Fetch interval</Text>
+            <SettingsTargetText
+              settingId="host-workspaces-workspaces-fetch-interval"
+              style={settingsStyles.rowTitle}
+            >
+              Fetch interval
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Choose how often Otto checks active repositories.
             </Text>
           </View>
-          <SelectField<60 | 180 | 300 | 600 | 900 | 1_800 | 3_600>
-            field={false}
-            size="sm"
-            label="Fetch interval"
-            value={gitFetch.intervalSeconds}
-            selectedDisplay={selectedFetchInterval}
-            options={GIT_FETCH_INTERVAL_OPTIONS}
-            onChange={handleFetchIntervalChange}
-            placeholder="Every 3 minutes"
-            emptyText="No fetch intervals available."
-            triggerStyle={styles.rowPickerTrigger}
-            triggerTestID="host-page-git-fetch-interval"
-          />
+          <SettingsTargetScope settingIds={["host-workspaces-workspaces-fetch-interval"]}>
+            <SelectField<60 | 180 | 300 | 600 | 900 | 1_800 | 3_600>
+              field={false}
+              size="sm"
+              label="Fetch interval"
+              value={gitFetch.intervalSeconds}
+              selectedDisplay={selectedFetchInterval}
+              options={GIT_FETCH_INTERVAL_OPTIONS}
+              onChange={handleFetchIntervalChange}
+              placeholder="Every 3 minutes"
+              emptyText="No fetch intervals available."
+              triggerStyle={styles.rowPickerTrigger}
+              triggerTestID="host-page-git-fetch-interval"
+            />
+          </SettingsTargetScope>
         </View>
       ) : null}
     </>
@@ -1307,7 +1351,12 @@ function ProjectKnowledgeStoreLocationCard({ serverId }: { serverId: string }) {
       testID="host-page-project-knowledge-store-card"
     >
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Store project Knowledge on this host</Text>
+        <SettingsTargetText
+          settingId="host-workspaces-workspaces-store-project-knowledge-on-this-host"
+          style={settingsStyles.rowTitle}
+        >
+          Store project Knowledge on this host
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           Keep new projects&apos; Knowledge pages with the daemon instead of in an .otto folder in
           the repository, so nothing has to be gitignored. Projects that already have Knowledge in
@@ -1360,7 +1409,12 @@ function ProjectArtifactStoreLocationCard({ serverId }: { serverId: string }) {
       testID="host-page-project-artifact-store-card"
     >
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Store project Artifacts on this host</Text>
+        <SettingsTargetText
+          settingId="host-workspaces-workspaces-store-project-artifacts-on-this-host"
+          style={settingsStyles.rowTitle}
+        >
+          Store project Artifacts on this host
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           Keep future Artifacts with this daemon instead of in the project&apos;s .otto folder.
           Existing Artifacts remain available wherever they were created.
@@ -1407,7 +1461,12 @@ function ProjectWorkflowStoreLocationCard({ serverId }: { serverId: string }) {
       testID="host-page-project-workflow-store-card"
     >
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Store project Workflows on this host</Text>
+        <SettingsTargetText
+          settingId="host-workspaces-workspaces-store-project-workflows-on-this-host"
+          style={settingsStyles.rowTitle}
+        >
+          Store project Workflows on this host
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           Choose where new Workflow definitions, templates, and run snapshots are written. Existing
           Workflow material stays available in its original location.
@@ -1452,7 +1511,12 @@ function HideMergeIntoBaseActionCard({ serverId }: { serverId: string }) {
       testID="host-page-hide-merge-into-base-action-card"
     >
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Hide merge into base branch</Text>
+        <SettingsTargetText
+          settingId="host-workspaces-workspaces-hide-merge-into-base-branch"
+          style={settingsStyles.rowTitle}
+        >
+          Hide merge into base branch
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           Remove the &quot;Merge into base&quot; action from the source control menu, for a
           pull-request-only workflow
@@ -1491,7 +1555,12 @@ function EnableTerminalAgentHooksCard({ serverId }: { serverId: string }) {
     <View style={settingsStyles.card} testID="host-page-terminal-agent-hooks-card">
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Enable terminal agent hooks</Text>
+          <SettingsTargetText
+            settingId="host-terminals-terminal-agents-enable-terminal-agent-hooks"
+            style={settingsStyles.rowTitle}
+          >
+            Enable terminal agent hooks
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             Get notifications and status from terminal agents. This installs hooks in your agent
             config files.
@@ -1589,9 +1658,12 @@ function AppendSystemPromptCard({ serverId }: { serverId: string }) {
     <>
       <View style={settingsStyles.rowResponsive} testID="host-page-append-system-prompt-card">
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>
+          <SettingsTargetText
+            settingId="host-agents-agents-system-prompt"
+            style={settingsStyles.rowTitle}
+          >
             {t("settings.host.orchestration.systemPrompt.title")}
-          </Text>
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             {t("settings.host.orchestration.systemPrompt.hint")}
           </Text>
@@ -1645,7 +1717,12 @@ function PairDeviceRow({ serverId }: { serverId: string }) {
         testID="host-page-pair-device-row"
       >
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.host.pairDevices.rowTitle")}</Text>
+          <SettingsTargetText
+            settingId="host-pair-device-pair-a-device-pair-a-device"
+            style={settingsStyles.rowTitle}
+          >
+            {t("settings.host.pairDevices.rowTitle")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>{t("settings.host.pairDevices.rowHint")}</Text>
         </View>
         <ChevronRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
@@ -1817,7 +1894,8 @@ function RemoveHostSection({
                 : t("settings.host.daemon.remove.hint")}
             </Text>
           </View>
-          <Button
+          <SettingsButton
+            settingIds={["host-host-danger-zone-remove-host"]}
             variant="outline"
             size="sm"
             leftIcon={removeIcon}
@@ -1826,7 +1904,7 @@ function RemoveHostSection({
             testID="host-page-remove-host-button"
           >
             {t("settings.host.connections.removeAction")}
-          </Button>
+          </SettingsButton>
         </View>
       </View>
 
@@ -1953,7 +2031,8 @@ function TerminalProfileRow({
           accessibilityLabel={t("settings.host.terminalProfiles.moveDown")}
           testID={`terminal-profile-move-down-${profile.id}`}
         />
-        <Button
+        <SettingsButton
+          settingIds={["host-terminals-terminal-profiles-edit-profile"]}
           variant="ghost"
           size="sm"
           leftIcon={editProfileIcon}
@@ -1961,7 +2040,8 @@ function TerminalProfileRow({
           accessibilityLabel={t("settings.host.terminalProfiles.editProfile")}
           testID={`terminal-profile-edit-${profile.id}`}
         />
-        <Button
+        <SettingsButton
+          settingIds={["host-terminals-terminal-profiles-delete-profile"]}
           variant="ghost"
           size="sm"
           leftIcon={removeProfileIcon}
@@ -2127,7 +2207,8 @@ function TerminalProfilesSection({ serverId }: { serverId: string }) {
 
   const addButton = useMemo(
     () => (
-      <Button
+      <SettingsButton
+        settingIds={["host-terminals-terminal-profiles-add-profile"]}
         variant="ghost"
         size="sm"
         leftIcon={addProfileIcon}
@@ -2249,20 +2330,24 @@ function WindowsTerminalShellSection({ serverId }: { serverId: string }) {
             <Text style={settingsStyles.rowTitle}>Shell</Text>
             <Text style={settingsStyles.rowHint}>Used for new terminal sessions.</Text>
           </View>
-          <SelectField<WindowsTerminalShell["id"]>
-            field={false}
-            size="sm"
-            label="Default terminal shell"
-            value={selectedShell ?? null}
-            selectedDisplay={selectedDisplay}
-            options={shellOptions}
-            onChange={selectShell}
-            placeholder="System default"
-            emptyText="No terminal shells detected."
-            disabled={isSaving}
-            triggerStyle={styles.rowPickerTrigger}
-            triggerTestID="windows-terminal-shell-select"
-          />
+          <SettingsTargetScope
+            settingIds={["host-terminals-default-terminal-shell-default-terminal-shell"]}
+          >
+            <SelectField<WindowsTerminalShell["id"]>
+              field={false}
+              size="sm"
+              label="Default terminal shell"
+              value={selectedShell ?? null}
+              selectedDisplay={selectedDisplay}
+              options={shellOptions}
+              onChange={selectShell}
+              placeholder="System default"
+              emptyText="No terminal shells detected."
+              disabled={isSaving}
+              triggerStyle={styles.rowPickerTrigger}
+              triggerTestID="windows-terminal-shell-select"
+            />
+          </SettingsTargetScope>
         </View>
       </View>
     </SettingsSection>
@@ -2306,7 +2391,12 @@ function TerminalAppearanceSection({ serverId }: { serverId: string }) {
       <View style={settingsStyles.card} testID="terminal-title-settings-card">
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Auto title</Text>
+            <SettingsTargetText
+              settingId="host-terminals-terminal-appearance-auto-title"
+              style={settingsStyles.rowTitle}
+            >
+              Auto title
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Show the active shell or command. Turn off to keep the stable default name.
             </Text>
@@ -2321,7 +2411,12 @@ function TerminalAppearanceSection({ serverId }: { serverId: string }) {
         {mode === "auto" ? (
           <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Include paths in executable titles</Text>
+              <SettingsTargetText
+                settingId="host-terminals-terminal-appearance-include-paths-in-executable-titles"
+                style={settingsStyles.rowTitle}
+              >
+                Include paths in executable titles
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>Off keeps titles concise, such as cmd.exe.</Text>
             </View>
             <Switch value={includePaths} onValueChange={setIncludePaths} disabled={isSaving} />

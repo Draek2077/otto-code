@@ -1,6 +1,6 @@
 ---
 title: Connectivity
-description: Connect a Otto client to your daemon through the relay or Tailscale.
+description: Connect an Otto client to your daemon through SSH, the relay, or Tailscale.
 nav: Connectivity
 order: 4
 category: Getting started
@@ -8,12 +8,44 @@ category: Getting started
 
 # Connectivity
 
-Your Otto app connects to the daemon running on your computer or server. You can connect through the Otto relay or directly with Tailscale.
+Your Otto app connects to the daemon running on your computer or server. Otto Desktop and the CLI can tunnel through SSH. Mobile clients can connect through the Otto relay or directly with Tailscale.
 
-This is client-to-daemon transport. If you are looking for the service that starts agents from GitHub, Slack, and Discord events, that is [Hub](/docs/hub).
+This is client-to-daemon transport. The separate [Paseo Hub reference](/docs/hub) describes upstream event-driven automation. Hub is disabled in Otto.
 
+- [SSH](#ssh)
 - [Otto relay](#otto-relay)
 - [Tailscale](#tailscale)
+
+## SSH
+
+SSH transport connects to an existing daemon through your local OpenSSH client. It does not install, start, or configure Otto on the remote host.
+
+Before connecting:
+
+1. Start the Otto daemon on the remote host.
+2. Confirm `ssh user@host` works with a key or SSH agent. Otto uses non-interactive SSH and follows your OpenSSH config.
+
+The CLI accepts an SSH URI as its host:
+
+```bash
+otto --host ssh://user@host ls -a
+```
+
+The daemon is expected at `127.0.0.1:6868` on the remote host. The port in the SSH URL is the SSH server port:
+
+```bash
+otto --host ssh://user@host:2222 ls -a
+```
+
+Set a different remote daemon port with `daemonPort`:
+
+```bash
+otto --host 'ssh://user@host?daemonPort=7777' ls -a
+```
+
+Put `--host` before the command. `otto daemon status` checks only the local daemon; use `otto --host ssh://user@host ls` to verify a remote connection. `otto --host ssh://user@host run --cwd /path/on/remote ...` requires a working directory that exists on the remote host.
+
+In Otto Desktop, open **Settings → Add host → Remote SSH** and enter the same `ssh://` destination.
 
 ## Otto relay
 
@@ -89,6 +121,8 @@ If the host was already paired through the relay, Otto adds the direct connectio
 
 ## Troubleshooting
 
+- **SSH authentication failed:** Run `ssh user@host` in a terminal and fix the key, agent, host key, or `~/.ssh/config` entry there. Otto does not prompt for SSH passwords.
+- **SSH connects but Otto is refused:** Run `otto daemon status` on the remote host. SSH transport does not start the daemon.
 - **Connection timed out:** Check that Tailscale is connected on both devices and that you used the daemon machine's Tailscale IP.
 - **Connection refused:** Run `otto daemon status` and confirm the daemon is running on the configured IP and port.
 - **Config change has no effect:** Run `otto reload`. `daemon.listen` is a startup setting, so restart when the command reports it.

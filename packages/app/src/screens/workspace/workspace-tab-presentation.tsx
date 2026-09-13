@@ -15,6 +15,7 @@ import {
   type WorkspaceTabPresentation,
 } from "@/screens/workspace/workspace-tab-icon";
 import type { Theme } from "@/styles/theme";
+import { usePanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { compactUp } from "@/styles/theme";
 
 export { WorkspaceTabIcon };
@@ -67,15 +68,15 @@ function WorkspaceTabPresentationResolverInner({
     tabId: tab.tabId,
   });
 
+  const attributes = usePanelInstanceAttributes({ serverId, workspaceId, tabId: tab.tabId });
   const presentation = useMemo(
     () => ({
       key: tab.key,
       kind: tab.kind,
       label: descriptor.label,
       subtitle: descriptor.subtitle,
-      tooltip: descriptor.subtitle
-        ? `${descriptor.label} - ${descriptor.subtitle}`
-        : descriptor.label,
+      tooltip: descriptor.tooltip,
+      modified: attributes.modified,
       titleState: descriptor.titleState,
       icon: descriptor.icon,
       statusBucket: descriptor.statusBucket,
@@ -84,6 +85,8 @@ function WorkspaceTabPresentationResolverInner({
       busyLoader: descriptor.busyLoader,
     }),
     [
+      attributes.modified,
+      descriptor.tooltip,
       descriptor.icon,
       descriptor.label,
       descriptor.statusBucket,

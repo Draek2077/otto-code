@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 /**
  * The Knowledge-location section of Project Settings.
  *
@@ -138,9 +139,12 @@ export function ProjectKnowledgeSection({
       <View style={settingsStyles.card}>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>
+            <SettingsTargetText
+              settingId="host-projects-project-settings-knowledge-store-location"
+              style={settingsStyles.rowTitle}
+            >
               {t("settings.project.knowledge.locationTitle")}
-            </Text>
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               {t("settings.project.knowledge.locationHint")}
             </Text>

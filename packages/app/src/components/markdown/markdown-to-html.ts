@@ -1,9 +1,9 @@
-import MarkdownIt from "markdown-it";
+import { createMarkdownParser } from "@/utils/markdown-parser";
+import { applyOttoDocumentMarkdownExtensions } from "./otto/parser-extensions";
 import { renderToString } from "katex";
-import { applyFootnotes } from "./footnotes";
-import { applyMath, MATH_BLOCK_TOKEN, MATH_INLINE_TOKEN } from "./math";
-import { ALERT_ATTRIBUTE, applyGithubAlerts } from "./github-alerts";
-import { applyTaskListMarkers, TASK_STATE_ATTRIBUTE } from "./task-lists";
+import { MATH_BLOCK_TOKEN, MATH_INLINE_TOKEN } from "./math";
+import { ALERT_ATTRIBUTE } from "./github-alerts";
+import { TASK_STATE_ATTRIBUTE } from "./task-lists";
 
 /**
  * Export a markdown document as one standalone HTML file.
@@ -32,11 +32,7 @@ export interface MarkdownHtmlDocument {
 }
 
 /** Embedded HTML is translated on the way in, never passed through. See docs/markdown-rendering.md. */
-const exportParser = applyMath(
-  applyFootnotes(
-    applyGithubAlerts(applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true }))),
-  ),
-);
+const exportParser = applyOttoDocumentMarkdownExtensions(createMarkdownParser({ linkify: true }));
 
 /**
  * Math is rendered to MathML at export time, so the saved file needs no script

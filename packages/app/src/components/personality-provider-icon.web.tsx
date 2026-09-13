@@ -19,12 +19,13 @@ import type { PersonalityProviderIconProps } from "@/components/personality-prov
  */
 function PersonalityProviderIconBase({
   provider,
+  serverId,
   size,
   glowA = GLOW_DEFAULT_A,
   glowB = GLOW_DEFAULT_B,
 }: PersonalityProviderIconProps) {
   const gradientId = `personality-icon-${useId().replace(/:/g, "")}`;
-  const svgSource = useMemo(() => getProviderIconSvg(provider), [provider]);
+  const svgSource = getProviderIconSvg(provider, serverId);
 
   const maskStyle = useMemo(() => {
     const encoded = encodeURIComponent(

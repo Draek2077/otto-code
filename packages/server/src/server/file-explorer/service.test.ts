@@ -1,6 +1,7 @@
 import {
   appendFile,
   chmod,
+  link,
   mkdir,
   mkdtemp,
   readFile,
@@ -568,9 +569,17 @@ describe("file explorer service", () => {
     try {
       await writeFile(path.join(root, "source.txt"), "source", "utf8");
       await writeFile(path.join(root, "existing.txt"), "existing", "utf8");
+      await link(path.join(root, "source.txt"), path.join(root, "source-link.txt"));
 
       await expect(
         renameExplorerEntry({ root, relativePath: "source.txt", newRelativePath: "existing.txt" }),
+      ).resolves.toEqual({ status: "exists" });
+      await expect(
+        renameExplorerEntry({
+          root,
+          relativePath: "source.txt",
+          newRelativePath: "source-link.txt",
+        }),
       ).resolves.toEqual({ status: "exists" });
       await expect(
         renameExplorerEntry({

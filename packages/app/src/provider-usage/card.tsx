@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { Text, View } from "react-native";
+import { useMemo, type ComponentType } from "react";
+import { Text, View, type TextProps } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { getProviderIcon } from "@/components/provider-icons";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -43,9 +43,11 @@ function footerText(usage: ProviderUsage): string | null {
 export function ProviderUsageCard({
   usage,
   compact = false,
+  Label = Text,
 }: {
   usage: ProviderUsage;
   compact?: boolean;
+  Label?: ComponentType<TextProps>;
 }) {
   const status = statusText(usage);
   const footer = footerText(usage);
@@ -69,9 +71,9 @@ export function ProviderUsageCard({
     <View style={containerStyle}>
       <View style={styles.header}>
         <ThemedProviderUsageIcon iconKey={usage.providerId} uniProps={mutedIconColor} />
-        <Text style={styles.name} numberOfLines={1}>
+        <Label style={styles.name} numberOfLines={1}>
           {usage.displayName}
-        </Text>
+        </Label>
         {usage.planLabel ? <StatusBadge label={usage.planLabel} variant="muted" /> : null}
         <View style={styles.headerSpacer} />
         {status ? (

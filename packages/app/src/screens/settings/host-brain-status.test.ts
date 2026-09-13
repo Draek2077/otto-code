@@ -49,11 +49,19 @@ describe("Host Brain connection status", () => {
         model: "Qwen",
       } as BrainHostStatus),
     ).toEqual([
-      { title: "Configured endpoint", value: "https://brain.example.test:443" },
-      { title: "Detected endpoint", value: "https://brain.tail.test:8443" },
-      { title: "Version", value: "0.8.15" },
-      { title: "State", value: "running" },
-      { title: "Model", value: "Qwen" },
+      {
+        id: "configured-endpoint",
+        title: "Configured endpoint",
+        value: "https://brain.example.test:443",
+      },
+      {
+        id: "detected-endpoint",
+        title: "Detected endpoint",
+        value: "https://brain.tail.test:8443",
+      },
+      { id: "version", title: "Version", value: "0.8.15" },
+      { id: "state", title: "State", value: "running" },
+      { id: "model", title: "Model", value: "Qwen" },
     ]);
   });
 

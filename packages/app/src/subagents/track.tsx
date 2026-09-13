@@ -71,10 +71,11 @@ export interface SubagentsTrackProps {
 
 const SUBAGENTS_LIST_MAX_HEIGHT = 200;
 
-function buildRowPresentation(row: SubagentRow): WorkspaceTabPresentation {
+function buildRowPresentation(row: SubagentRow, serverId: string): WorkspaceTabPresentation {
   return {
     ...buildSubagentRowPresentationData(row),
-    icon: getProviderIcon(row.provider),
+    modified: false,
+    icon: getProviderIcon(row.provider, serverId),
     // Personality-spawned subagents keep their identity colors on the glyph
     // and busy loader; rows without one fall back to the plain themed icon.
     personalitySpinner: row.kind === "otto" ? (row.personalitySpinner ?? null) : null,
@@ -342,17 +343,18 @@ function SubagentsTrackRow({
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
   const [hovered, setHovered] = useState(false);
-  const presentation = useMemo(() => buildRowPresentation(row), [row]);
+  const [pressed, setPressed] = useState(false);
+  const presentation = useMemo(() => buildRowPresentation(row, serverId), [row, serverId]);
   const displayLabel =
     presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
-  const rowAction = resolveSubagentRowAction(row.status);
+  const rowAction = resolveSubagentRowAction(row);
   const tokenLabel = row.kind === "otto" ? formatCompactTokenCount(row.cumulativeTokens) : null;
   // Liveness readouts, in the same order Claude's own background-task panel
   // uses: elapsed · tokens · tool uses · current tool. Each is null when the
   // provider doesn't report it, so the row degrades to what it can honestly say.
   const toolUseLabel = row.kind === "otto" ? formatSubagentToolUseCount(row.toolUseCount) : null;
   const currentToolLabel = row.kind === "otto" ? formatSubagentCurrentTool(row.currentTool) : null;
-  const isRunning = isSubagentRowRunning(row.status);
+  const isRunning = isSubagentRowRunning(row);
   const frozenElapsed = formatSubagentElapsed(row);
   // The two row kinds open onto different things. An Otto subagent is a real
   // agent and routes by agent id; a provider subagent only exists inside its
@@ -380,6 +382,8 @@ function SubagentsTrackRow({
   }, [onDetachSubagent, row.id]);
   const handlePointerEnter = useCallback(() => setHovered(true), []);
   const handlePointerLeave = useCallback(() => setHovered(false), []);
+  const handlePressIn = useCallback(() => setPressed(true), []);
+  const handlePressOut = useCallback(() => setPressed(false), []);
   const actionsAlwaysVisible = isNative || isCompact;
   const actionsVisible = actionsAlwaysVisible || hovered;
   // Observed subagents have no runtime to detach - hide the action for them.
@@ -390,64 +394,67 @@ function SubagentsTrackRow({
     // Wrapper View handles hover so moving the pointer between the row and
     // the archive button doesn't drop the hover state - the same pattern
     // used by sidebar workspace rows.
-    <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
+    <View
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
+      style={hovered || pressed ? styles.rowActive : styles.row}
+    >
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={displayLabel}
         testID={`subagents-track-row-${row.id}`}
         onPress={handlePress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={styles.rowOpen}
       >
-        {({ pressed }) => (
-          <View style={hovered || pressed ? styles.rowActive : styles.row}>
-            <WorkspaceTabIcon presentation={presentation} active />
-            <Text style={styles.rowLabel} numberOfLines={1}>
-              {displayLabel}
-            </Text>
-            <SubagentElapsed
-              rowId={row.id}
-              startedAt={row.createdAt}
-              isRunning={isRunning}
-              frozenElapsed={frozenElapsed}
-            />
-            {tokenLabel ? (
-              <Text
-                style={styles.rowTokens}
-                numberOfLines={1}
-                testID={`subagents-track-tokens-${row.id}`}
-              >
-                {tokenLabel}
-              </Text>
-            ) : null}
-            {toolUseLabel ? (
-              <Text
-                style={styles.rowMeta}
-                numberOfLines={1}
-                testID={`subagents-track-tool-uses-${row.id}`}
-              >
-                {toolUseLabel}
-              </Text>
-            ) : null}
-            {currentToolLabel ? (
-              <Text
-                style={styles.rowCurrentTool}
-                numberOfLines={1}
-                testID={`subagents-track-current-tool-${row.id}`}
-              >
-                {currentToolLabel}
-              </Text>
-            ) : null}
-            <SubagentRowActions
-              rowId={row.id}
-              displayLabel={displayLabel}
-              visible={row.kind === "provider" || actionsVisible}
-              rowAction={rowAction}
-              onDetachPress={detachHandler ? handleDetachPress : undefined}
-              onArchivePress={handleArchivePress}
-              onStopPress={handleStopPress}
-            />
-          </View>
-        )}
+        <WorkspaceTabIcon presentation={presentation} active />
+        <Text style={styles.rowLabel} numberOfLines={1}>
+          {displayLabel}
+        </Text>
+        <SubagentElapsed
+          rowId={row.id}
+          startedAt={row.createdAt}
+          isRunning={isRunning}
+          frozenElapsed={frozenElapsed}
+        />
+        {tokenLabel ? (
+          <Text
+            style={styles.rowTokens}
+            numberOfLines={1}
+            testID={`subagents-track-tokens-${row.id}`}
+          >
+            {tokenLabel}
+          </Text>
+        ) : null}
+        {toolUseLabel ? (
+          <Text
+            style={styles.rowMeta}
+            numberOfLines={1}
+            testID={`subagents-track-tool-uses-${row.id}`}
+          >
+            {toolUseLabel}
+          </Text>
+        ) : null}
+        {currentToolLabel ? (
+          <Text
+            style={styles.rowCurrentTool}
+            numberOfLines={1}
+            testID={`subagents-track-current-tool-${row.id}`}
+          >
+            {currentToolLabel}
+          </Text>
+        ) : null}
       </Pressable>
+      <SubagentRowActions
+        rowId={row.id}
+        displayLabel={displayLabel}
+        visible={row.kind === "provider" || actionsVisible}
+        rowAction={rowAction}
+        onDetachPress={detachHandler ? handleDetachPress : undefined}
+        onArchivePress={handleArchivePress}
+        onStopPress={handleStopPress}
+      />
     </View>
   );
 }
@@ -660,6 +667,18 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
     backgroundColor: theme.colors.surface2,
+  },
+  rowOpen: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    // Keep the full-height/leading row hit area while actions remain siblings.
+    marginVertical: -theme.spacing[2],
+    paddingVertical: theme.spacing[2],
+    marginLeft: -theme.spacing[3],
+    paddingLeft: theme.spacing[3],
   },
   rowLabel: {
     flex: 1,

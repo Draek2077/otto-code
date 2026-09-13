@@ -364,31 +364,38 @@ If we ever need to avoid the transition entirely, store at least the theme prefe
 
 ## Runtime Theme Patching For User Preferences
 
-Appearance settings (UI/mono font family, font sizes, syntax-highlight theme) are applied by patching every registered theme at runtime with `UnistylesRuntime.updateTheme(name, updater)` - not by threading preference reads through components. `applyAppearance` in `packages/app/src/screens/settings/appearance/apply-appearance.ts` runs from a `ProvidersWrapper` effect on settings load/change and loops `ALL_THEME_KEYS`, returning `{ ...theme, fontFamily, fontSize, lineHeight, colors.syntax }`.
-Appearance settings (theme, UI/mono font family, font sizes, syntax-highlight theme) are owned by `packages/app/src/appearance`. Its provider subscribes once and synchronizes Unistyles when settings or plugin contributions change. `applyAppearance` patches every key in `REGISTERED_THEMES`, returning `{ ...theme, fontFamily, fontSize, lineHeight, colors.syntax }`.
+Appearance settings are owned by `packages/app/src/appearance/provider.tsx`.
+Its single layout effect synchronizes palette selection and then applies user
+font, syntax, width and compact preferences through `appearance/apply.ts`.
+`applyAppearance` updates each key in `REGISTERED_THEMES`, with the active key
+first. Tracked `StyleSheet.create` styles and `withUnistyles` mappings consume
+those theme values; screens do not need a second settings subscription.
 
-This works without `useUnistyles()` because every consumer already reads these tokens through `StyleSheet.create((theme) => …)` (or the `withUnistyles`/`uniProps` path for the markdown renderer), so patching the theme repaints tracked views through the native ShadowRegistry with no React re-render.
+### Adaptive mirrors and reserved theme keys
 
-### Only two registered theme keys: `light`/`dark` as repaintable mirrors
+`styles/unistyles.ts` registers `REGISTERED_THEMES`: `light`, `dark`, `black`,
+`pluginLight` and `pluginDark`. Only `light` and `dark` participate in adaptive
+mode. `appearance/color-scheme.ts` repaints these mirrors from the user's
+per-spectrum variant selections before changing pinned/adaptive mode. Named Otto
+palettes remain data, rather than separate adaptive keys, so System mode keeps
+both selected variants.
 
-Only two Unistyles theme keys are ever registered (`packages/app/src/styles/unistyles.ts`'s `StyleSheet.configure({ themes: { light, dark } })`) - not one key per named variant (Meadow, Ember, Slate, ...). This is a hard constraint, not a style choice: `schemeToTheme()` inside `react-native-unistyles` hardcodes the literal strings `'light'`/`'dark'`, and `UnistylesRuntime.setAdaptiveThemes(true)` always resolves to `setTheme(schemeToTheme(colorScheme))` - adaptive mode can only ever toggle between whatever is registered under those two literal keys, never an arbitrary named theme.
-
-Otto's appearance settings let a user pick a specific variant per spectrum (e.g. Meadow for light, Ember for dark) and have System mode auto-swap between those two specific picks as the OS scheme flips. The only way to make that work is to keep the `light`/`dark` keys perpetually repainted with `colors`/`shadow` copied from whichever variant is the user's current pick - `packages/app/src/screens/settings/appearance/apply-color-scheme.ts`'s `applyColorScheme` does this, sourcing from the 15 named variant objects in `theme.ts` (`meadowTheme`, `darkGhosttyTheme`, etc.), which are exported as plain data and never passed to `StyleSheet.configure` themselves. This repaint runs regardless of which mode is active (explicit Light/Dark or System), so switching modes back and forth never loses or resets a per-spectrum pick, and there's no staleness window - do not "simplify" this by re-registering variant keys individually; it would break System mode's ability to target an arbitrary variant.
-
-**Always repaint before switching adaptive/pinned state, never after** - `applyColorScheme` repaints both mirrors first, then calls `setAdaptiveThemes`/`setTheme`, so there is no frame where a mirror still shows a stale variant.
+The `black` key supplies the optional chat canvas scope and stays independent of
+a plugin's sparse public palette. `pluginLight` and `pluginDark` are reserved
+slots for contributed themes. Replacing either slot discards its previous font
+and syntax patch, so the same appearance lifecycle applies preferences after
+palette selection, including a live reload under the same plugin identity.
 
 Gotchas:
 
 - **Patch all registered themes, not just the active one.** The active theme can change and adaptive mode can flip light/dark; patching every key keeps the active key current and makes ordering vs `setTheme`/`setAdaptiveThemes` irrelevant. The effect depends on the settings values (not on the resolved theme), so it cannot loop.
 - **Narrow the discriminated union before spreading.** `updateTheme`'s updater returns the theme union; spreading the union widens `colorScheme` to `"light" | "dark"`, which is assignable to neither concrete member. Branch on `t.colorScheme` so each branch spreads a single narrowed theme type (no `as`). Both `applyAppearance` and `applyColorScheme` need this.
 - **`colors.syntax` is owned by `applyAppearance`, not `applyColorScheme`.** When repainting `colors` from a variant's source palette, carry the mirror's _existing_ `colors.syntax` forward (`{ ...source.colors, syntax: t.colors.syntax }`) instead of the source variant's own syntax value, so the two patchers stay commutative regardless of call order.
-- **`lineHeight.diff` is the code/diff line-height axis** - it is coupled to the code-font-size control (≈ `codeFontSize * 1.5`). Do NOT use it for prose. Markdown body line-height scales with the UI ramp (`Math.round(theme.fontSize.base * 1.4)`); routing prose through `lineHeight.diff` clips text at small code sizes.
-- **Patch all themes, not just the active one.** The active theme can change and adaptive mode can flip light/dark; patching every key keeps the active key current and makes ordering vs `setTheme`/`setAdaptiveThemes` irrelevant. The effect depends on the settings values (not on `theme`), so it cannot loop.
+- **`lineHeight.diff` is the code/diff axis.** It follows the code size; prose uses the line height belonging to its own font role. The shared Markdown body/text currently derive line height from `theme.fontSize.sm`. Do not route prose through the code axis.
 - **The reserved plugin keys are the exception to that ordering.** A plugin-contributed theme is rebuilt from its palette, which discards the appearance patch, so the appearance provider writes the matching light or dark slot before applying font and syntax preferences. See [plugins.md](plugins.md).
-- **Narrow the discriminated union before spreading.** `updateTheme`'s updater returns the theme union; spreading the union widens `colorScheme` to `"light" | "dark"`, which is assignable to neither concrete member. Branch on `t.colorScheme` so each branch spreads a single narrowed theme type (no `as`).
-- **`lineHeight.diff` is the code/diff line-height axis** — it is coupled to the code-font-size control (≈ `codeFontSize * 1.5`). Do NOT use it for prose. Markdown body line-height scales with content size (`Math.round(theme.fontSize.content * 1.4)`); routing prose through `lineHeight.diff` clips text at small code sizes.
 - **High-churn draft values** (live-while-typing in the appearance preview) bypass the theme: apply them as inline styles marked with `inlineUnistylesStyle` so per-keystroke values don't grow the `#unistyles-web` CSS registry.
-- **The app shell uses one `AppearanceStyleBoundary`.** Runtime-patched numeric theme values are baked into Unistyles web classes rather than CSS variables, while parsed/memoized content also does not naturally re-run when appearance tokens change. The boundary sits below stable runtime providers in `app/_layout.tsx` and remounts the visual shell once. `applyAppearance` patches the active theme before inactive registry entries so its subscribers receive the committed values in the same update. Do not add local appearance keys or nested boundaries.
+- **Web numeric appearance tokens need a render; native tracked styles update in place.** On web, string tokens such as colors become CSS variables, but numeric tokens (font sizes, line heights) are baked into generated classes. `AppearanceStyleBoundary` remounts web shell chrome and explorer content to refresh those classes. Native sidebars and explorer hosts stay outside appearance keys: their gesture refs outlive detached dependents until Gesture Handler's passive cleanup, so remounting a related gesture can query an unmounted view. Their tracked native styles and existing themed leaf props update without replacing the gesture hosts or draggable lists. Parsed PR markdown uses its own `withUnistyles` style mapping.
+- **Appearance keys belong below native lifetime owners.** `ThemedStack` wraps screen content through `screenLayout`, preserving navigator identity; nested navigators are listed in `nestedNavigatorScreens` and own their own screen boundaries. The remaining shell surfaces retain their appearance refresh separately from native panel hosts. A key above a native stack can detach its screen container inside a FragmentManager transaction during settings hydration. Keep both navigators and retained panel gesture hosts outside those keys. `applyAppearance` patches the active theme before inactive registry entries so subscribers receive the committed values in the same update. Do not add local appearance keys or a boundary above a navigator.
 - **Dynamic font tokens stay widened.** `fontFamily`, `fontSize`, and `lineHeight` on `commonTheme` are annotated `string`/`number` (not narrowed by `as const`) so the updater's return assigns; the platform default stacks live in `DEFAULT_UI_FONT_STACK` / `DEFAULT_MONO_FONT_STACK`.
 
 ## `ScopedTheme` Does Not Own A Long-Lived Chat Canvas
@@ -423,6 +430,20 @@ If you scope another subtree to a named theme on web, reuse `BlackChatScope`'s p
 Upstream `withUnistyles` (v3.2.4) merges the wrapper's full props - including the `uniProps` function itself - into the props spread onto the wrapped component. On web that forwards `uniProps` all the way to a DOM element, and React logs ``React does not recognize the `uniProps` prop on a DOM element`` for every `uniProps` callsite on screen. Harmless on native (RN drops unknown props) but it floods the web console - including the console channel browser-based verification tooling reads.
 
 Fixed by `patches/react-native-unistyles+3.2.4.patch` (applied via `scripts/postinstall-patches.mjs`), which strips `uniProps` from the pass-through props in the web `withUnistyles` before merging. When bumping the unistyles version, re-check whether upstream fixed this; if not, re-create the patch (`npx patch-package react-native-unistyles`) and update the filename in `patches/`.
+
+## Patching The Web Runtime
+
+The current patch includes web registry cleanup and `uniProps` stripping. The registry uses weak finalizer bookkeeping and numeric reference counts; it does not change chat theme scoping.
+
+When backporting a Unistyles web fix, patch the TypeScript source and both
+shipped JavaScript builds. Native Metro resolves the package's `react-native`
+export to `src`, but browser and Electron Metro resolve its `browser` export to
+`lib/module`; CommonJS consumers use `lib/commonjs`. A source-only patch leaves
+Electron running the old code.
+
+Register every dependency patch in `scripts/postinstall-patches.mjs`. A file in
+`patches/` is inert unless that script knows which installed package activates
+it.
 
 ## Debugging
 

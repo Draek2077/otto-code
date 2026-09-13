@@ -1,5 +1,7 @@
+import { projectTimelineSyncFailure } from "@/timeline/otto/missing-agent";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { isExternalPreviewServerId } from "@otto-code/protocol/messages";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import type { TFunction } from "i18next";
 import {
   Architecture,
@@ -21,7 +23,6 @@ import React, {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type LayoutChangeEvent } from "react-native";
-import ReanimatedAnimated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
@@ -36,6 +37,7 @@ import { architecturalViewAuthoringBrowserId } from "@/architectural-views/brows
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ObservedSubagentCallout } from "@/components/observed-subagent-callout";
 import { BlackChatScope } from "@/components/black-chat-scope";
+import { KeyboardDock } from "@/components/keyboard-dock";
 import {
   resolveBlackChatCanvasStyle,
   useBlackChatScope,
@@ -91,7 +93,6 @@ import {
   resolveHistoryDeleteUnsupportedDialog,
 } from "@/history/delete-dialogs";
 import { isHistoryDeleteSupported } from "@/history/use-history-delete-feature";
-import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { useContainerHeight } from "@/hooks/use-container-height";
@@ -112,6 +113,7 @@ import { i18n } from "@/i18n/i18next";
 import { resolveAgentTabTitle } from "@/panels/agent-tab-title";
 import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { RenderProfile } from "@/utils/render-profiler";
+import { useHasPluginComposerPills } from "@/plugins";
 import { buildDraftPanelDescriptor } from "@/panels/draft-panel-descriptor";
 import {
   type HostRuntimeConnectionStatus,
@@ -159,6 +161,7 @@ import {
 } from "@/subagents";
 import { useAutoClearCompletedSubagentsSetting } from "@/hooks/use-auto-clear-completed-subagents";
 import { SubagentsTrack } from "@/subagents/track";
+import { OttoPluginComposerTrack } from "@/composer/otto/plugin-controls";
 import { AgentTracks } from "@/panels/agent-tracks";
 import { ChatMetricsBar } from "@/subagents/chat-metrics-bar";
 import {
@@ -195,6 +198,7 @@ import {
   contextMenuAnchorFromEvent,
 } from "@/components/ui/context-menu";
 import { ChatContextMenu, type ChatContextMenuHandle } from "@/chat/context-menu";
+import type { ViewedTimelineStatus, ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
@@ -254,6 +258,15 @@ function resolveChatAgentFromSession(
   if (!agentId) return null;
   const session = state.sessions[serverId];
   return session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId) ?? null;
+}
+
+function readViewedTimelineError(input: {
+  agentId: string | undefined;
+  status: ViewedTimelineStatus;
+  sync: ViewedTimelineUiBridge | null;
+}): string | null {
+  if (!input.agentId || input.status !== "error" || !input.sync) return null;
+  return input.sync.getAgentTimelineError(input.agentId);
 }
 
 const EMPTY_CHAT_AGENT_STATE: ChatAgentSelectedState = {
@@ -412,11 +425,7 @@ export function storeFetchedAgentDetail(input: {
   const store = useSessionStore.getState();
 
   if (shouldStoreFetchedAgentInActiveDirectory(hydrated)) {
-    store.setAgents(input.serverId, (previous) => {
-      const next = new Map(previous);
-      next.set(hydrated.id, hydrated);
-      return next;
-    });
+    getHostRuntimeStore().acceptAgentSnapshot(input.serverId, hydrated);
   } else {
     store.setAgentDetails(input.serverId, (previous) => {
       const next = new Map(previous);
@@ -485,7 +494,9 @@ function useAgentPanelDescriptor(
     fallbackLabel: i18n.t("workspace.tabs.fallback.agent"),
   });
   const isArchitecturalViewAuthoring = Boolean(target.architecturalViewDraft);
-  const icon = isArchitecturalViewAuthoring ? Architecture : getProviderIcon(provider);
+  const icon = isArchitecturalViewAuthoring
+    ? Architecture
+    : getProviderIcon(provider, context.serverId);
   let subtitle = "Agent";
   if (isArchitecturalViewAuthoring) {
     subtitle = "Interactive View authoring";
@@ -1400,6 +1411,11 @@ function ChatAgentContent({
   // that is not on screen. Not date-bound: it clears if hidden panes ever need
   // to surface catch-up state, which today they do not.
   const visibilityCatchUpStatus = isPaneVisible ? timelineStatus : "ready";
+  const visibilityCatchUpError = readViewedTimelineError({
+    agentId,
+    status: visibilityCatchUpStatus,
+    sync: viewedTimelineSync,
+  });
   const hasActiveCreateHandoff = useCreateFlowStore((state) =>
     findActiveCreateHandoff({ pendingByDraftId: state.pendingByDraftId, serverId, agentId }),
   );
@@ -1428,9 +1444,6 @@ function ChatAgentContent({
     clearOnAgentBlurRef.current = attentionController.clearOnAgentBlur;
   }, [attentionController.clearOnAgentBlur]);
 
-  const { style: animatedKeyboardStyle } = useKeyboardShiftStyle({
-    mode: "translate",
-  });
   const shouldPresentReconnectToast =
     isPaneVisible && connectionStatus !== "online" && connectionStatus !== "idle";
 
@@ -1643,6 +1656,7 @@ function ChatAgentContent({
       isArchivingCurrentAgent,
       isHistorySyncing,
       needsAuthoritativeSync,
+      visibilityCatchUpError,
       continuity,
       hasHydratedHistoryBefore,
       isArchived: agentState.archivedAt != null,
@@ -1665,6 +1679,10 @@ function ChatAgentContent({
       }),
     [effectiveAgent?.id],
   );
+
+  const handleRewindComplete = useCallback(() => {
+    streamViewRef.current?.scrollToBottom("rewind");
+  }, []);
 
   const handleComposerHeightChange = useCallback(
     (_height: number) => {
@@ -1722,7 +1740,12 @@ function ChatAgentContent({
       }
       return;
     }
-    if (!isConnected || !hasSession) {
+    if (
+      !isPaneVisible ||
+      !isConnected ||
+      !hasSession ||
+      (viewedTimelineSync && visibilityCatchUpStatus !== "ready")
+    ) {
       return;
     }
     if (missingAgentState.kind !== "idle") {
@@ -1733,7 +1756,7 @@ function ChatAgentContent({
     setMissingAgentState({ kind: "resolving" });
     const attemptToken = ++initAttemptTokenRef.current;
 
-    ensureAgentIsInitialized(agentId)
+    Promise.resolve()
       .then(async () => {
         if (attemptToken !== initAttemptTokenRef.current) {
           return;
@@ -1776,22 +1799,20 @@ function ChatAgentContent({
     agentState.id,
     agentId,
     client,
-    ensureAgentIsInitialized,
+    isPaneVisible,
     hasSession,
     isConnected,
     missingAgentState.kind,
     serverId,
+    viewedTimelineSync,
+    visibilityCatchUpStatus,
   ]);
-
-  const animatedContentStyle = useMemo(
-    () => [styles.content, animatedKeyboardStyle],
-    [animatedKeyboardStyle],
-  );
 
   const retryAgentLoad = useCallback(() => {
     setMissingAgentState({ kind: "idle" });
-    if (agentState.id) ensureInitializedWithSyncErrorHandling("entry");
-  }, [agentState.id, ensureInitializedWithSyncErrorHandling]);
+    if (!agentId || !viewedTimelineSync) return;
+    viewedTimelineSync.retryVisibleAgentTimeline(agentId);
+  }, [agentId, viewedTimelineSync]);
   const retryTimelineSync = useCallback(() => {
     if (agentId) viewedTimelineSync?.retryVisibleAgentTimeline(agentId);
   }, [agentId, viewedTimelineSync]);
@@ -1812,13 +1833,12 @@ function ChatAgentContent({
     viewState.tag === "ready" &&
     viewState.sync.status === "catching_up" &&
     viewState.sync.ui === "overlay";
-  const showHistorySyncError = viewState.tag === "ready" && viewState.sync.status === "sync_error";
-  const isRetryingHistorySync =
-    viewState.tag === "ready" &&
-    viewState.sync.status === "sync_error" &&
-    viewState.sync.isRetrying;
-  const showHistorySyncMissing =
-    viewState.tag === "ready" && viewState.sync.status === "sync_missing";
+  const { showHistorySyncMissing, showHistorySyncError, isRetryingHistorySync } =
+    projectTimelineSyncFailure(
+      viewState.tag === "ready" ? viewState.sync : undefined,
+      visibilityCatchUpError,
+      agentId,
+    );
 
   return (
     <ChatAgentReadyContent
@@ -1834,14 +1854,14 @@ function ChatAgentContent({
       toast={toastState}
       dismiss={dismissToast}
       streamViewRef={streamViewRef}
-      animatedContentStyle={animatedContentStyle}
       handleComposerHeightChange={handleComposerHeightChange}
       handleMessageSent={handleMessageSent}
+      handleRewindComplete={handleRewindComplete}
       showHistorySyncOverlay={showHistorySyncOverlay}
       showHistorySyncError={showHistorySyncError}
+      showHistorySyncMissing={showHistorySyncMissing}
       isRetryingHistorySync={isRetryingHistorySync}
       retryTimelineSync={retryTimelineSync}
-      showHistorySyncMissing={showHistorySyncMissing}
       cwd={agentCwd}
       onAttentionInputFocus={attentionController.clearOnInputFocus}
       onAttentionPromptSend={attentionController.clearOnPromptSend}
@@ -1863,14 +1883,14 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   toast,
   dismiss,
   streamViewRef,
-  animatedContentStyle,
   handleComposerHeightChange,
   handleMessageSent,
+  handleRewindComplete,
   showHistorySyncOverlay,
   showHistorySyncError,
+  showHistorySyncMissing,
   isRetryingHistorySync,
   retryTimelineSync,
-  showHistorySyncMissing,
   cwd,
   onAttentionInputFocus,
   onAttentionPromptSend,
@@ -1888,14 +1908,14 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   toast: ToastState | null;
   dismiss: () => void;
   streamViewRef: React.RefObject<AgentStreamViewHandle | null>;
-  animatedContentStyle: object[];
   handleComposerHeightChange: (height: number) => void;
   handleMessageSent: () => void;
+  handleRewindComplete: () => void;
   showHistorySyncOverlay: boolean;
   showHistorySyncError: boolean;
+  showHistorySyncMissing: boolean;
   isRetryingHistorySync: boolean;
   retryTimelineSync: () => void;
-  showHistorySyncMissing: boolean;
   cwd: string;
   onAttentionInputFocus: () => void;
   onAttentionPromptSend: () => void;
@@ -1967,16 +1987,22 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       />
     </RenderProfile>
   );
-  const streamContent = (
-    <ReanimatedAnimated.View style={animatedContentStyle}>
-      {streamSection}
-      {!agentState.archivedAt &&
-      !isArchivingCurrentAgent &&
-      subagentTrackPresentation === "pills" &&
-      workspaceId ? (
+  let composerTrack: ReactNode = null;
+  if (!agentState.archivedAt && !isArchivingCurrentAgent && workspaceId) {
+    composerTrack =
+      subagentTrackPresentation === "pills" ? (
         <AgentTracks serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
-      ) : null}
-    </ReanimatedAnimated.View>
+      ) : (
+        <OttoPluginComposerTrack serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
+      );
+  }
+  const streamContent = (
+    <View style={styles.content}>
+      {streamSection}
+      {/* Absolute pill rails anchor to the transcript, above the separately
+          docked composer. Mounting a rail in the input area covers its toolbar. */}
+      {composerTrack}
+    </View>
   );
   const contentContainer = (
     <View style={styles.contentContainer}>
@@ -2031,13 +2057,21 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         />
       ) : null}
 
-      {/* The host has answered and the chat is not there. Nothing is being
-              retried, so the copy does not pretend otherwise. */}
       {showHistorySyncMissing ? (
         <SidebarCallout
           title={t("agentPanel.states.timelineAgentMissing")}
           variant="error"
           testID="agent-timeline-sync-missing"
+          actions={[
+            {
+              label: isRetryingHistorySync
+                ? t("agentPanel.states.timelineSyncRetrying")
+                : t("common.actions.retry"),
+              onPress: retryTimelineSync,
+              disabled: isRetryingHistorySync,
+              testID: "agent-timeline-sync-retry",
+            },
+          ]}
         />
       ) : null}
 
@@ -2068,6 +2102,39 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       <ToastViewport toast={toast} onDismiss={dismiss} placement="panel" />
     </FileDropZone>
   );
+
+  return (
+    <ChatAgentPaneFrame
+      serverId={serverId}
+      agentId={agentId}
+      onRewindComplete={handleRewindComplete}
+      style={[styles.root, resolveBlackChatCanvasStyle(isBlackChat)]}
+      onLayout={onPaneLayout}
+      isArchivingCurrentAgent={isArchivingCurrentAgent}
+    >
+      {chatSurface}
+    </ChatAgentPaneFrame>
+  );
+});
+
+function ChatAgentPaneFrame({
+  serverId,
+  agentId,
+  onRewindComplete,
+  style,
+  onLayout,
+  isArchivingCurrentAgent,
+  children,
+}: {
+  serverId: string;
+  agentId: string;
+  onRewindComplete: () => void;
+  style: React.ComponentProps<typeof View>["style"];
+  onLayout: React.ComponentProps<typeof View>["onLayout"];
+  isArchivingCurrentAgent: boolean;
+  children: React.ReactNode;
+}) {
+  const { t } = useTranslation();
   const archivingOverlay = isArchivingCurrentAgent ? (
     <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
       <ThemedActivityIndicator size="large" uniProps={foregroundColorMapping} />
@@ -2075,17 +2142,19 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       <Text style={styles.archivingSubtitle}>{t("agentPanel.states.archivingSubtitle")}</Text>
     </View>
   ) : null;
-
   return (
-    <AgentComposerDraftProvider serverId={serverId} agentId={agentId}>
-      {/* oxlint-disable-next-line react/jsx-max-depth -- chat and archive overlays are sibling surfaces. */}
-      <View style={[styles.root, resolveBlackChatCanvasStyle(isBlackChat)]} onLayout={onPaneLayout}>
-        {chatSurface}
+    <AgentComposerDraftProvider
+      serverId={serverId}
+      agentId={agentId}
+      onRewindComplete={onRewindComplete}
+    >
+      <View style={style} onLayout={onLayout}>
+        <KeyboardDock style={styles.container}>{children}</KeyboardDock>
         {archivingOverlay}
       </View>
     </AgentComposerDraftProvider>
   );
-});
+}
 
 const AgentStreamSection = memo(function AgentStreamSection({
   streamViewRef,
@@ -2157,10 +2226,16 @@ const AgentStreamSection = memo(function AgentStreamSection({
   // Only the compact pill rail floats over the transcript. Panels and
   // background-task cards take ordinary composer-layout space, so reserving an
   // overlay inset for them leaves a false blank band at the transcript tail.
+  const hasPluginComposerPills = useHasPluginComposerPills(
+    serverId,
+    workspaceId ?? "",
+    agentId ?? "",
+  );
   const hasVisibleComposerTracks =
     hasActiveComposer &&
-    subagentTrackPresentation === "pills" &&
-    (trackSubagentRows.length > 0 || hasAgentTasks || hasWorkspaceDiffStat);
+    (hasPluginComposerPills ||
+      (subagentTrackPresentation === "pills" &&
+        (trackSubagentRows.length > 0 || hasAgentTasks || hasWorkspaceDiffStat)));
   const bottomOverlayTailClearance = hasVisibleComposerTracks
     ? resolveComposerTrackTailClearance(isCompactFormFactor)
     : 0;
@@ -2685,10 +2760,6 @@ function ActiveAgentComposer({
     ],
   );
 
-  const { style: composerKeyboardStyle } = useKeyboardShiftStyle({
-    mode: "translate",
-  });
-
   const visualizerBackground = useChatVisualizerBackground();
   // The composer gutter is an opaque `surface0` band spanning the pane, so it
   // is a chat canvas in its own right and needs the same authoritative black
@@ -2699,9 +2770,8 @@ function ActiveAgentComposer({
       styles.inputAreaWrapper,
       resolveBlackChatCanvasStyle(isBlackChat),
       visualizerBackground && styles.transparentCanvas,
-      composerKeyboardStyle,
     ],
-    [composerKeyboardStyle, isBlackChat, visualizerBackground],
+    [isBlackChat, visualizerBackground],
   );
 
   return (
@@ -2709,7 +2779,7 @@ function ActiveAgentComposer({
     // component re-renders on its own (draft text, queue, subagent rows) and
     // would otherwise re-register all of its chrome against the app theme.
     <ChatThemeScope>
-      <ReanimatedAnimated.View style={inputAreaStyle} onLayout={onInputAreaLayout}>
+      <View style={inputAreaStyle} onLayout={onInputAreaLayout}>
         {/* Topmost card in the fanned stack (highest), yet painted first so it sits
           BEHIND every flyout below it and the composer - see RateLimitWarningTrack. */}
         {/* Mounted above the usage warning: highest in the fan, painted furthest
@@ -2753,11 +2823,12 @@ function ActiveAgentComposer({
         <View style={styles.composerLayer}>
           <Composer
             agentId={agentId}
+            workspaceId={workspaceId}
             serverId={serverId}
             externalKeyboardShift
             isPaneFocused={isPaneFocused}
             value={agentInputDraft.text}
-            textReplacementKey={agentInputDraft.textReplacementKey}
+            textReplacement={agentInputDraft.textReplacement}
             onChangeText={agentInputDraft.setText}
             replaceText={agentInputDraft.replaceText}
             attachments={agentInputDraft.attachments}
@@ -2777,7 +2848,7 @@ function ActiveAgentComposer({
             viewportHeight={viewportHeight}
           />
         </View>
-      </ReanimatedAnimated.View>
+      </View>
     </ChatThemeScope>
   );
 }
@@ -2862,6 +2933,8 @@ const styles = StyleSheet.create((theme) => ({
   root: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
+    // KeyboardDock translates the chat surface while the keyboard moves; clip it at the header edge.
+    overflow: "hidden",
   },
   container: {
     flex: 1,
@@ -2879,6 +2952,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   inputAreaWrapper: {
+    flexShrink: 1,
     width: "100%",
     backgroundColor: theme.colors.surface0,
   },

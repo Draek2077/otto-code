@@ -1,6 +1,6 @@
 ---
 title: Discord triggers
-description: Configure Discord mentions and replies in one workflow file.
+description: "Upstream Paseo Hub reference. Configure Discord mentions and replies in one workflow file."
 nav: Discord
 order: 69
 category: Hub
@@ -8,9 +8,13 @@ category: Hub
 
 # Discord triggers
 
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
+
+> **Legacy project bundles.** The examples on this page use `.paseo/hub.yml` and `.paseo/workflows/`. New organization triggers use `.paseo/triggers/`; see [Configuration](/docs/hub/configuration). The formats are separate.
+
 `discord.mention` fires when the bot or a managed role is mentioned in a guild channel or thread.
 
-`.otto/workflows/discord-help.yml`:
+`.paseo/workflows/discord-help.yml`:
 
 ```yaml
 name: discord-help
@@ -29,7 +33,7 @@ steps:
     prompt:
       - text: |
           Answer with hub.reply, then call hub.finish_execution.
-          ${{ otto.prompt }}
+          ${{ paseo.prompt }}
     allow_outputs:
       - { type: discord.reply, max: 1, required: true }
 ```
@@ -38,7 +42,7 @@ Discord filters use IDs, not server names, display names, or Hub connection slug
 
 The reply posts in the triggering thread or channel. `discord.reply` grants `hub.reply`, but does not rewrite the prompt. A Discord trigger grants no GitHub credential; add a [`github` block](/docs/hub/github) to the step that needs one.
 
-Leading declared inputs follow the mention. Hub exposes the remaining text as `${{ otto.prompt }}`. See [Workflows](/docs/hub/workflows).
+Leading declared inputs follow the mention. Hub exposes the remaining text as `${{ paseo.prompt }}`. See [Workflows](/docs/hub/workflows).
 
 ## Find your Discord IDs
 

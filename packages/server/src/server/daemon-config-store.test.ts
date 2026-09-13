@@ -398,6 +398,48 @@ describe("DaemonConfigStore", () => {
     });
   });
 
+  test("patch persists provider Otto-tool policy without changing availability", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+    writeFileSync(
+      path.join(ottoHome, "config.json"),
+      JSON.stringify({ agents: { providers: { claude: { enabled: false } } } }),
+    );
+    const store = new DaemonConfigStore(ottoHome, {
+      mcp: { injectIntoAgents: true },
+      browserTools: { enabled: false },
+      providers: { claude: { enabled: false } },
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+    });
+
+    store.patch({
+      providers: {
+        claude: {
+          ottoTools: { enabled: true, disabledTools: ["list_agents"] },
+        },
+      },
+    });
+    store.patch({
+      providers: {
+        claude: {
+          ottoTools: { disabledTools: ["create_agent"] },
+        },
+      },
+    });
+
+    expect(store.get().providers.claude).toEqual({
+      enabled: false,
+      ottoTools: { enabled: true, disabledTools: ["create_agent"] },
+    });
+    expect(loadPersistedConfig(ottoHome).agents?.providers?.claude).toEqual({
+      enabled: false,
+      ottoTools: { enabled: true, disabledTools: ["create_agent"] },
+    });
+  });
+
   test("persists a remote-host edit without clearing its masked authorization", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
     tempDirs.push(ottoHome);
@@ -1709,6 +1751,7 @@ describe("DaemonConfigStore reload", () => {
     options: {
       overrideControlledPaths?: string[];
       initialPersisted?: PersistedConfig;
+      startupDefaults?: boolean;
     } = {},
   ) {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-reload-"));
@@ -1721,11 +1764,20 @@ describe("DaemonConfigStore reload", () => {
     }
     const persisted = loadPersistedConfig(ottoHome);
     const relayEnabledFallback = persisted.daemon?.relay?.enabled === undefined;
-    const initialMutable = reloadableConfig(persisted, { relayEnabledFallback });
+    const resolveMutable = (snapshot: PersistedConfig) => ({
+      ...reloadableConfig(snapshot, { relayEnabledFallback }),
+      ...(options.startupDefaults
+        ? {
+            agentProfiles: snapshot.daemon?.agentProfiles ?? [...DEFAULT_AGENT_PROFILES],
+            agentTeams: snapshot.agents?.agentTeams ?? { teams: [...DEFAULT_AGENT_TEAMS] },
+          }
+        : {}),
+    });
+    const initialMutable = resolveMutable(persisted);
     const store = new DaemonConfigStore(ottoHome, initialMutable, undefined, {
       reloadSource: {
         resolve: (nextPersisted) => {
-          const mutable = reloadableConfig(nextPersisted, { relayEnabledFallback });
+          const mutable = resolveMutable(nextPersisted);
           if (options.overrideControlledPaths?.includes("daemon.relay.enabled")) {
             mutable.relay = initialMutable.relay;
           }
@@ -1968,6 +2020,86 @@ describe("DaemonConfigStore reload", () => {
     });
   });
 
+  function initializeRoster(store: DaemonConfigStore): void {
+    store.seedDefaultProfilesIfAbsent(DEFAULT_AGENT_PROFILES);
+    store.importLegacyPersonalitiesIfNeeded();
+    store.seedDefaultTeamsIfAbsent(DEFAULT_AGENT_TEAMS);
+  }
+
+  test("startup roster seeds are active baseline values, so plugin toggles need no restart", () => {
+    const { store, ottoHome } = createReloadableStore({ startupDefaults: true });
+    initializeRoster(store);
+    expect(store.get().agentProfiles?.map(({ id }) => id)).toEqual(
+      DEFAULT_AGENT_PROFILES.map(({ id }) => id),
+    );
+    expect(store.get().agentTeams?.teams).toEqual(DEFAULT_AGENT_TEAMS);
+    expect(store.reload()).toEqual({
+      appliedPaths: [],
+      restartRequiredPaths: [],
+      overrideControlledPaths: [],
+    });
+    const seeded = loadPersistedConfig(ottoHome);
+    expect(seeded.daemon?.agentProfilesImportedPersonalities).toBe(true);
+    expect(seeded.agents?.agentTeams?.teams).toEqual(DEFAULT_AGENT_TEAMS);
+    writeConfig(ottoHome, { ...seeded, pluginsEnabled: true });
+    expect(store.reload()).toEqual({
+      appliedPaths: ["pluginsEnabled"],
+      restartRequiredPaths: [],
+      overrideControlledPaths: [],
+    });
+  });
+
+  test("legacy Personality import keeps identity and team membership without a restart requirement", () => {
+    const legacy = [...DEFAULT_AGENT_PROFILES].slice(0, 2);
+    const teams = [...DEFAULT_AGENT_TEAMS];
+    const { store, ottoHome } = createReloadableStore({
+      startupDefaults: true,
+      initialPersisted: {
+        version: 1,
+        agents: { agentPersonalities: { personalities: legacy }, agentTeams: { teams } },
+      },
+    });
+    initializeRoster(store);
+    expect(store.get().agentProfiles?.map(({ id }) => id)).toEqual(legacy.map(({ id }) => id));
+    expect(loadPersistedConfig(ottoHome).agents?.agentTeams?.teams).toEqual(teams);
+    // The live imported roster and persisted canonical roster must agree before reload.
+    expect(JSON.stringify(store.get().agentProfiles)).toBe(
+      JSON.stringify(loadPersistedConfig(ottoHome).daemon?.agentProfiles),
+    );
+    expect(store.reload()).toEqual({
+      appliedPaths: [],
+      restartRequiredPaths: [],
+      overrideControlledPaths: [],
+    });
+    store.patch({ agentProfiles: [], agentTeams: { teams: [] } });
+    initializeRoster(store);
+    expect(loadPersistedConfig(ottoHome).daemon?.agentProfiles).toEqual([]);
+    expect(loadPersistedConfig(ottoHome).agents?.agentTeams?.teams).toEqual([]);
+  });
+
+  test("startup seeds do not absorb unrelated external edits or launch override edits", () => {
+    const { store, ottoHome } = createReloadableStore({
+      startupDefaults: true,
+      overrideControlledPaths: ["daemon.relay.endpoint"],
+    });
+    const beforeSeed = loadPersistedConfig(ottoHome);
+    writeConfig(ottoHome, {
+      ...beforeSeed,
+      daemon: {
+        ...beforeSeed.daemon,
+        listen: "127.0.0.1:7777",
+        relay: { ...beforeSeed.daemon?.relay, endpoint: "relay.example.test:443" },
+      },
+    });
+    initializeRoster(store);
+    expect(store.reload()).toEqual({
+      appliedPaths: [],
+      restartRequiredPaths: ["daemon.listen"],
+      overrideControlledPaths: ["daemon.relay.endpoint"],
+    });
+    expect(store.reload().restartRequiredPaths).toEqual(["daemon.listen"]);
+  });
+
   test("a no-op reload returns empty path lists", () => {
     const { store } = createReloadableStore();
     expect(store.reload()).toEqual({
@@ -1975,5 +2107,129 @@ describe("DaemonConfigStore reload", () => {
       restartRequiredPaths: [],
       overrideControlledPaths: [],
     });
+  });
+});
+
+describe("stable provider removal regression intake", () => {
+  const tempDirs: string[] = [];
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    }
+  });
+
+  test("patch removes deleted providers from metadata generation", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const configPath = path.join(ottoHome, "config.json");
+    writeFileSync(
+      configPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          agents: {
+            providers: {
+              gemini: {
+                extends: "acp",
+                label: "Gemini",
+                command: ["gemini", "--acp"],
+              },
+              claude: {
+                enabled: false,
+              },
+            },
+            metadataGeneration: {
+              providers: [
+                { provider: "gemini", model: "flash" },
+                { provider: "claude", model: "haiku" },
+              ],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {
+          gemini: {},
+          claude: { enabled: false },
+        },
+        metadataGeneration: {
+          providers: [
+            { provider: "gemini", model: "flash" },
+            { provider: "claude", model: "haiku" },
+          ],
+        },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+    );
+
+    const next = store.patch({ removeProviders: ["gemini"] });
+
+    expect(next.metadataGeneration.providers).toEqual([{ provider: "claude", model: "haiku" }]);
+    const persisted = loadPersistedConfig(ottoHome);
+    expect(persisted.agents?.metadataGeneration).toEqual({
+      providers: [{ provider: "claude", model: "haiku" }],
+    });
+  });
+
+  test("patch persists provider removal when in-memory config is already clean", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const configPath = path.join(ottoHome, "config.json");
+    writeFileSync(
+      configPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          agents: {
+            providers: {
+              gemini: {
+                extends: "acp",
+                label: "Gemini",
+                command: ["gemini", "--acp"],
+              },
+            },
+            metadataGeneration: {
+              providers: [{ provider: "gemini", model: "flash" }],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+    );
+
+    const next = store.patch({ removeProviders: ["gemini"] });
+
+    expect(next.providers.gemini).toBeUndefined();
+    const persisted = loadPersistedConfig(ottoHome);
+    expect(persisted.agents?.providers).toBeUndefined();
+    expect(persisted.agents?.metadataGeneration).toEqual({ providers: [] });
   });
 });

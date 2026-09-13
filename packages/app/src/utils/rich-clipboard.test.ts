@@ -150,3 +150,12 @@ describe("writeMarkdownToRichClipboard", () => {
     expect(clipboard.richWrites).toEqual([]);
   });
 });
+
+it("keeps task and math source in the lightweight rich clipboard profile", () => {
+  const source = '- [x] done\n\n$x^2$ (c) "literal"';
+  const content = createMarkdownClipboardContent(source);
+  expect(content.plainText).toBe(source);
+  expect(content.html).toContain("[x] done");
+  expect(content.html).toContain("$x^2$ (c) &quot;literal&quot;");
+  expect(content.html).not.toContain("<math");
+});

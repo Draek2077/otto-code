@@ -1,3 +1,19 @@
+import type { RefObject } from "react";
+import {
+  TEAM_SETTINGS_TABS,
+  TEAM_SETTINGS_TARGETS,
+  settingsEditorTab,
+} from "@/screens/settings-search/nested-editor-targets";
+import {
+  useSettingsTarget,
+  useRevealSettingsTarget,
+  useSettingsSearchRequest,
+} from "@/screens/settings-search/target";
+import {
+  SettingsTargetText,
+  SettingsTargetScope,
+  SettingsTargetLabel,
+} from "@/screens/settings-search/target";
 // Agent Teams editor - named, per-host groupings of agent personalities that
 // act as switchable operating templates: which personalities are on deck plus
 // a shared team prompt stacked ahead of each member's personality prompt at
@@ -28,7 +44,7 @@ import { Button } from "@/components/ui/button";
 import { ColorWheelPicker } from "@/components/ui/color-wheel-picker";
 import { type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { TextArea } from "@/components/ui/text-area";
-import { TabbedModalSheet } from "@/components/ui/tabbed-modal-sheet";
+import { SettingsTabbedModalSheet as TabbedModalSheet } from "@/screens/settings-search/sheets";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
@@ -162,7 +178,10 @@ const FLEX_1 = { flex: 1 } as const;
 // personalities editor / file-view-mode-bar).
 type ThemedIcon = typeof ThemedPlus;
 
+const NO_SETTINGS_TARGETS: readonly string[] = [];
+
 interface IconButtonProps {
+  settingIds?: readonly string[];
   Icon: ThemedIcon;
   label: string;
   onPress: () => void;
@@ -172,6 +191,7 @@ interface IconButtonProps {
 }
 
 function IconButton({
+  settingIds = NO_SETTINGS_TARGETS,
   Icon,
   label,
   onPress,
@@ -179,6 +199,7 @@ function IconButton({
   destructive = false,
   testID,
 }: IconButtonProps): ReactElement {
+  const { node, handleLayout } = useSettingsTarget(settingIds, undefined);
   const [hovered, setHovered] = useState(false);
   const handleHoverIn = useCallback(() => setHovered(true), []);
   const handleHoverOut = useCallback(() => setHovered(false), []);
@@ -200,6 +221,8 @@ function IconButton({
   return (
     <Tooltip delayDuration={300}>
       <TooltipTrigger
+        anchorRef={node as RefObject<View | null>}
+        onLayout={handleLayout}
         accessibilityRole="button"
         accessibilityLabel={label}
         disabled={disabled}
@@ -212,7 +235,7 @@ function IconButton({
         <Icon uniProps={mapping} />
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
-        <Text style={styles.tooltipText}>{label}</Text>
+        <SettingsTargetLabel style={styles.tooltipText}>{label}</SettingsTargetLabel>
       </TooltipContent>
     </Tooltip>
   );
@@ -390,6 +413,7 @@ export function AgentTeamsSection({ serverId }: { serverId: string }): ReactElem
       <IconButton
         Icon={ThemedPlus}
         label="Add team"
+        settingIds={["host-teams-agent-teams-add-team"]}
         onPress={handleAdd}
         disabled={!isConnected || !config || personalities.length === 0}
         testID="agent-teams-add-button"
@@ -607,12 +631,14 @@ function TeamRow({
       <IconButton
         Icon={ThemedPencil}
         label="Edit team"
+        settingIds={["host-teams-agent-teams-edit-team"]}
         onPress={handleEdit}
         testID={`agent-team-edit-${team.id}`}
       />
       <IconButton
         Icon={ThemedTrash}
         label="Delete team"
+        settingIds={["host-teams-agent-teams-delete-team"]}
         destructive
         onPress={handleRemove}
         testID={`agent-team-remove-${team.id}`}
@@ -698,6 +724,14 @@ function TeamEditModal({
   const [draft, setDraft] = useState<TeamDraft>(initialDraft);
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<TeamEditorTab>("identity");
+  const requestedSetting = useSettingsSearchRequest();
+  useRevealSettingsTarget(
+    TEAM_SETTINGS_TARGETS,
+    useCallback(() => {
+      const tab = settingsEditorTab(TEAM_SETTINGS_TABS, requestedSetting);
+      if (tab !== null) setActiveTab(tab);
+    }, [requestedSetting]),
+  );
   const [memberQuery, setMemberQuery] = useState("");
 
   const header = useMemo(() => ({ title }), [title]);
@@ -826,7 +860,9 @@ function TeamEditModal({
       <>
         {activeTab === "identity" ? (
           <>
-            <FieldLabel label="Name" />
+            <SettingsTargetScope settingIds={["host-teams-identity-name-2"]}>
+              <FieldLabel label="Name" />
+            </SettingsTargetScope>
             <TextInput
               value={draft.name}
               onChangeText={setName}
@@ -844,7 +880,9 @@ function TeamEditModal({
               </Text>
             ) : null}
 
-            <FieldLabel label="Team prompt" />
+            <SettingsTargetScope settingIds={["host-teams-identity-team-prompt"]}>
+              <FieldLabel label="Team prompt" />
+            </SettingsTargetScope>
             <TextArea
               value={draft.teamPrompt}
               onChangeText={setPrompt}
@@ -926,7 +964,7 @@ function MemberSearchField({
 // ---------------------------------------------------------------------------
 
 function FieldLabel({ label }: { label: string }): ReactElement {
-  return <Text style={styles.fieldLabel}>{label}</Text>;
+  return <SettingsTargetLabel style={styles.fieldLabel}>{label}</SettingsTargetLabel>;
 }
 
 const AVATAR_WHEEL_SIZE = 120;
@@ -950,7 +988,9 @@ function AvatarColorField({
   return (
     <View style={styles.avatarField}>
       <View style={styles.avatarHeader}>
-        <FieldLabel label="Team color" />
+        <SettingsTargetScope settingIds={["host-teams-appearance-team-color"]}>
+          <FieldLabel label="Team color" />
+        </SettingsTargetScope>
         <View style={swatchStyle} />
       </View>
       <View style={styles.avatarControls}>
@@ -1095,9 +1135,13 @@ function MemberRow({ personality, entries, checked, onToggle }: MemberRowProps):
         glowB={personality.spinner?.glowB}
       />
       <View style={infoStyle}>
-        <Text style={settingsStyles.rowTitle} numberOfLines={1}>
+        <SettingsTargetText
+          settingId="host-teams-members-team-member"
+          style={settingsStyles.rowTitle}
+          numberOfLines={1}
+        >
           {personality.name}
-        </Text>
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint} numberOfLines={1}>
           {memberModelSummary}
         </Text>

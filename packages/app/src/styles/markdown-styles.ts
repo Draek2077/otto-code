@@ -1,4 +1,4 @@
-import type { Theme } from "./theme";
+import { FONT_SIZE, type Theme } from "./theme";
 import { isWeb } from "@/constants/platform";
 import { themeColorRef } from "./theme-color-ref";
 
@@ -22,9 +22,21 @@ const webSelectableTextStyle = isWeb ? { userSelect: "text" as const } : {};
  *
  * Usage:
  *   const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
- *   <Markdown style={markdownStyles}>{content}</Markdown>
+ *   <Markdown style={markdownStyles} markdownit={parser}>{content}</Markdown>
+ *
+ * Always pass `markdownit` from `@/utils/markdown-parser`. Omit it and
+ * react-native-markdown-display builds its own parser with `typographer: true`,
+ * which rewrites a literal `(c)` as ©.
  */
 export function createMarkdownStyles(theme: Theme) {
+  return createMarkdownStylesForSize(theme, theme.fontSize.content, theme.fontSize.content);
+}
+
+function createMarkdownStylesForSize(theme: Theme, proseSize: number, headingSize: number) {
+  // Keep Otto's heading tiers and rhythm while following the selected prose
+  // owner. Compact summaries supply UI sizes; ordinary Markdown supplies content.
+  const headingMetric = (size: number) => Math.round((size * headingSize) / FONT_SIZE.base);
+  const proseLineHeight = Math.round(proseSize * 1.4);
   return {
     // =========================================================================
     // BASE STYLES
@@ -33,10 +45,8 @@ export function createMarkdownStyles(theme: Theme) {
     body: {
       ...webSelectableTextStyle,
       color: themeColorRef(theme, "foreground"),
-      // Prose matches the UI's own text size (sidebar rows, tab titles), not
-      // fontSize.base - chat is a working surface, not a document.
-      fontSize: theme.fontSize.sm,
-      lineHeight: Math.round(theme.fontSize.sm * 1.4),
+      fontSize: proseSize,
+      lineHeight: proseLineHeight,
       flexShrink: 1,
       minWidth: 0,
       width: "100%" as const,
@@ -45,8 +55,8 @@ export function createMarkdownStyles(theme: Theme) {
     text: {
       ...webSelectableTextStyle,
       color: themeColorRef(theme, "foreground"),
-      fontSize: theme.fontSize.sm,
-      lineHeight: Math.round(theme.fontSize.sm * 1.4),
+      fontSize: proseSize,
+      lineHeight: proseLineHeight,
       flexShrink: 1,
       minWidth: 0,
       overflowWrap: "anywhere" as const,
@@ -73,62 +83,62 @@ export function createMarkdownStyles(theme: Theme) {
     // lines that read as a glitch.
     heading1: {
       ...webSelectableTextStyle,
-      fontSize: theme.fontSize["3xl"],
+      fontSize: headingMetric(FONT_SIZE["3xl"]),
       fontWeight: theme.fontWeight.bold,
       color: themeColorRef(theme, "foreground"),
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[3],
-      lineHeight: 32,
+      lineHeight: headingMetric(32),
     },
 
     heading2: {
       ...webSelectableTextStyle,
-      fontSize: theme.fontSize["2xl"],
+      fontSize: headingMetric(FONT_SIZE["2xl"]),
       fontWeight: theme.fontWeight.bold,
       color: themeColorRef(theme, "foreground"),
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[3],
-      lineHeight: 28,
+      lineHeight: headingMetric(28),
     },
 
     heading3: {
       ...webSelectableTextStyle,
-      fontSize: theme.fontSize.xl,
+      fontSize: headingMetric(FONT_SIZE.xl),
       fontWeight: theme.fontWeight.semibold,
       color: themeColorRef(theme, "foreground"),
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[2],
-      lineHeight: 26,
+      lineHeight: headingMetric(26),
     },
 
     heading4: {
       ...webSelectableTextStyle,
-      fontSize: theme.fontSize.lg,
+      fontSize: headingMetric(FONT_SIZE.lg),
       fontWeight: theme.fontWeight.semibold,
       color: themeColorRef(theme, "foreground"),
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[2],
-      lineHeight: 24,
+      lineHeight: headingMetric(24),
     },
 
     heading5: {
       ...webSelectableTextStyle,
-      fontSize: theme.fontSize.base,
+      fontSize: headingMetric(FONT_SIZE.base),
       fontWeight: theme.fontWeight.semibold,
       color: themeColorRef(theme, "foreground"),
       marginTop: theme.spacing[2],
       marginBottom: theme.spacing[1],
-      lineHeight: 22,
+      lineHeight: headingMetric(22),
     },
 
     heading6: {
       ...webSelectableTextStyle,
-      fontSize: theme.fontSize.base,
+      fontSize: headingMetric(FONT_SIZE.base),
       fontWeight: theme.fontWeight.semibold,
       color: themeColorRef(theme, "foregroundMuted"),
       marginTop: theme.spacing[2],
       marginBottom: theme.spacing[1],
-      lineHeight: 20,
+      lineHeight: headingMetric(20),
       textTransform: "uppercase" as const,
       letterSpacing: 0.5,
     },
@@ -250,7 +260,7 @@ export function createMarkdownStyles(theme: Theme) {
       backgroundColor: themeColorRef(theme, "surface2"),
       fontWeight: theme.fontWeight.semibold,
       color: themeColorRef(theme, "foreground"),
-      fontSize: theme.fontSize.sm,
+      fontSize: proseSize,
       textAlign: "left" as const,
     },
 
@@ -266,7 +276,7 @@ export function createMarkdownStyles(theme: Theme) {
       borderRightWidth: 1,
       borderColor: themeColorRef(theme, "border"),
       color: themeColorRef(theme, "foreground"),
-      fontSize: theme.fontSize.sm,
+      fontSize: proseSize,
       flex: 1,
     },
 
@@ -316,17 +326,17 @@ export function createMarkdownStyles(theme: Theme) {
       ...webSelectableTextStyle,
       color: themeColorRef(theme, "foregroundMuted"),
       marginRight: 4,
-      fontSize: theme.fontSize.sm,
-      lineHeight: 20,
+      fontSize: proseSize,
+      lineHeight: proseLineHeight,
     },
 
     ordered_list_icon: {
       ...webSelectableTextStyle,
       color: themeColorRef(theme, "foregroundMuted"),
       marginRight: 4,
-      fontSize: theme.fontSize.sm,
+      fontSize: proseSize,
       fontWeight: theme.fontWeight.normal,
-      lineHeight: 20,
+      lineHeight: proseLineHeight,
       minWidth: 12,
     },
 
@@ -357,7 +367,7 @@ export function createMarkdownStyles(theme: Theme) {
     alertWarning: { borderLeftColor: themeColorRef(theme, "statusWarning") },
     alertCaution: { borderLeftColor: themeColorRef(theme, "destructive") },
     alertTitle: {
-      fontSize: theme.fontSize.sm,
+      fontSize: proseSize,
       fontWeight: "600",
       marginBottom: theme.spacing[1],
     },
@@ -406,23 +416,21 @@ export function createMarkdownStyles(theme: Theme) {
  * like thought bubbles, tooltips, or side panels.
  */
 export function createCompactMarkdownStyles(theme: Theme) {
-  const baseStyles = createMarkdownStyles(theme);
+  // Resolve all text leaves, list markers, tables and lower headings from the
+  // UI owner together. Overriding only body lets nested text retain content size.
+  const baseStyles = createMarkdownStylesForSize(theme, theme.fontSize.sm, theme.fontSize.base);
+  const headingLineHeight = (size: number) =>
+    Math.round((size * theme.fontSize.base) / FONT_SIZE.base);
 
   return {
     ...baseStyles,
-
-    body: {
-      ...baseStyles.body,
-      fontSize: theme.fontSize.sm,
-      lineHeight: 20,
-    },
 
     heading1: {
       ...baseStyles.heading1,
       fontSize: theme.fontSize.xl,
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[2],
-      lineHeight: 26,
+      lineHeight: headingLineHeight(26),
     },
 
     heading2: {
@@ -430,7 +438,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.lg,
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[2],
-      lineHeight: 24,
+      lineHeight: headingLineHeight(24),
     },
 
     heading3: {
@@ -438,7 +446,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.base,
       marginTop: theme.spacing[2],
       marginBottom: theme.spacing[1],
-      lineHeight: 22,
+      lineHeight: headingLineHeight(22),
     },
 
     paragraph: {

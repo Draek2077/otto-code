@@ -10,6 +10,11 @@ export interface WorkspaceAgentActivity {
   hasActiveChat: boolean;
 }
 
+function workspaceAgentStatus(agent: Agent): Agent["status"] {
+  if (agent.turn.phase === "open") return "running";
+  return agent.status === "running" ? "idle" : agent.status;
+}
+
 export function buildWorkspaceAgentActivityIndex(
   agents: ReadonlyMap<string, Agent>,
   previous?: ReadonlyMap<string, WorkspaceAgentActivity>,
@@ -24,7 +29,7 @@ export function buildWorkspaceAgentActivityIndex(
     }
 
     const status = deriveSidebarStateBucket({
-      status: agent.status,
+      status: workspaceAgentStatus(agent),
       pendingPermissionCount: agent.pendingPermissions.length,
       requiresAttention: agent.requiresAttention,
       attentionReason: agent.attentionReason,

@@ -4,6 +4,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 
 const connection = vi.hoisted(() => ({ connected: true, supported: true }));
@@ -14,6 +15,18 @@ vi.mock("@/runtime/host-runtime", () => ({
 
 vi.mock("@/runtime/host-features", () => ({
   useHostFeature: () => connection.supported,
+}));
+
+vi.mock("./client-runtime", () => ({
+  createPluginClientRuntime: () => ({
+    otto: {},
+    rpc: async () => undefined,
+    openSettings() {},
+    openSurface() {},
+    openPanel() {},
+    addComposerPill: () => ({ update() {}, remove() {} }),
+    addHeaderButton: () => ({ update() {}, remove() {} }),
+  }),
 }));
 
 import { PluginCatalogSync } from "./catalog-sync";
@@ -27,9 +40,17 @@ function bundle(): string {
 }
 
 const unsubscribe = vi.fn();
+const subscribeStatus = vi.fn<
+  (
+    type: "status",
+    handler: (message: Extract<SessionOutboundMessage, { type: "status" }>) => void,
+  ) => () => void
+>(() => unsubscribe);
 const catalogClient = {
-  getPluginCatalog: vi.fn(async () => [{ id: "example", clientBundle: bundle() }]),
-  on: vi.fn(() => unsubscribe),
+  getPluginCatalog: vi.fn(async () => [
+    { id: "example", requirements: { paseo: ">=0.8.0" }, clientBundle: bundle() },
+  ]),
+  on: subscribeStatus,
 } as unknown as DaemonClient;
 
 describe("PluginCatalogSync", () => {
@@ -43,7 +64,7 @@ describe("PluginCatalogSync", () => {
     connection.supported = true;
     unsubscribe.mockReset();
     vi.mocked(catalogClient.getPluginCatalog).mockClear();
-    vi.mocked(catalogClient.on).mockClear();
+    subscribeStatus.mockClear();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -63,6 +84,31 @@ describe("PluginCatalogSync", () => {
       await Promise.resolve();
     });
   }
+
+  it("invalidates settings without reloading the plugin or discarding its query state", async () => {
+    await renderSync();
+    const plugin = pluginRegistry.getSnapshot()[0]!;
+    plugin.queryClient.setQueryData(["draft"], "unsaved");
+    const invalidate = vi.spyOn(plugin.queryClient, "invalidateQueries");
+    const callback = subscribeStatus.mock.calls.find(([name]) => name === "status")?.[1];
+    expect(callback).toBeDefined();
+    if (!callback) throw new Error("Expected status subscription");
+    act(() => {
+      callback({
+        type: "status",
+        payload: {
+          status: "plugin_settings_changed",
+          pluginId: "example",
+          settingsId: "preferences",
+        },
+      });
+    });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["plugin-settings", "preferences"] });
+    expect(pluginRegistry.getSnapshot()[0]).toBe(plugin);
+    expect(plugin.queryClient.getQueryData(["draft"])).toBe("unsaved");
+    expect(catalogClient.getPluginCatalog).toHaveBeenCalledTimes(1);
+    expect(Reflect.get(globalThis, "__catalogSyncCleanups")).toBeUndefined();
+  });
 
   it("tears down through disconnect and unmount boundaries exactly once each", async () => {
     await renderSync();

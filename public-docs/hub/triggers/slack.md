@@ -1,6 +1,6 @@
 ---
 title: Slack triggers
-description: Configure Slack mentions and thread replies in one workflow file.
+description: "Upstream Paseo Hub reference. Configure Slack mentions and thread replies in one workflow file."
 nav: Slack
 order: 68
 category: Hub
@@ -8,9 +8,13 @@ category: Hub
 
 # Slack triggers
 
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
+
+> **Legacy project bundles.** The examples on this page use `.paseo/hub.yml` and `.paseo/workflows/`. New organization triggers use `.paseo/triggers/`; see [Configuration](/docs/hub/configuration). The formats are separate.
+
 `slack.mention` fires when the bot is mentioned in a channel where it is present. Direct messages, slash commands, and interactive components do not produce this trigger.
 
-`.otto/workflows/slack-help.yml`:
+`.paseo/workflows/slack-help.yml`:
 
 ```yaml
 name: slack-help
@@ -29,7 +33,7 @@ steps:
     prompt:
       - text: |
           Answer with hub.reply, then call hub.finish_execution.
-          ${{ otto.prompt }}
+          ${{ paseo.prompt }}
     allow_outputs:
       - { type: slack.reply, max: 1, required: true }
 ```
@@ -41,10 +45,10 @@ The reply posts in the triggering thread. A root message gets a thread; a thread
 Leading declared inputs follow the mention:
 
 ```text
-@Otto repo=project agent=claude investigate the failed sync
+@Paseo repo=project agent=claude investigate the failed sync
 ```
 
-Hub consumes consecutive declared headers and exposes the remainder as `${{ otto.prompt }}`. See [Workflows](/docs/hub/workflows).
+Hub consumes consecutive declared headers and exposes the remainder as `${{ paseo.prompt }}`. See [Workflows](/docs/hub/workflows).
 
 ## Find your Slack IDs
 

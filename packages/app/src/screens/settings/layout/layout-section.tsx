@@ -1,10 +1,16 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
+import { settingsTargetIdsForPersistence } from "@/screens/settings-search-catalog";
 import { Fragment, useCallback } from "react";
 import { Text, View, type PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
-import { useAppSettings, type OpenInSidePanePreferences } from "@/hooks/use-settings";
+import {
+  useAppSettings,
+  type OpenInSidePanePreferences,
+  type PullRequestOpenLocation,
+} from "@/hooks/use-settings";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 
@@ -18,7 +24,7 @@ const SOURCES = [
   "changesLinks",
 ] as const satisfies readonly (keyof OpenInSidePanePreferences)[];
 
-type OpenDestination = "main" | "side";
+type OpenDestination = PullRequestOpenLocation;
 
 function destinationTriggerStyle({
   pressed,
@@ -30,11 +36,13 @@ function destinationTriggerStyle({
 function LayoutPreferenceRow({
   source,
   value,
+  pullRequestDestination,
   first,
   onDestinationChange,
 }: {
   source: keyof OpenInSidePanePreferences;
   value: boolean;
+  pullRequestDestination?: PullRequestOpenLocation;
   first: boolean;
   onDestinationChange: (
     source: keyof OpenInSidePanePreferences,
@@ -42,7 +50,7 @@ function LayoutPreferenceRow({
   ) => void;
 }) {
   const { t } = useTranslation();
-  const destination: OpenDestination = value ? "side" : "main";
+  const destination: OpenDestination = pullRequestDestination ?? (value ? "side" : "main");
   const destinationLabel = t(`settings.layout.openInSidePane.destinations.${destination}`);
   const selectMain = useCallback(
     () => onDestinationChange(source, "main"),
@@ -52,11 +60,24 @@ function LayoutPreferenceRow({
     () => onDestinationChange(source, "side"),
     [onDestinationChange, source],
   );
+  const selectExplorer = useCallback(
+    () => onDestinationChange(source, "explorer"),
+    [onDestinationChange, source],
+  );
   const label = t(`settings.layout.openInSidePane.sources.${source}.label`);
   return (
     <View style={[settingsStyles.row, first ? null : settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{label}</Text>
+        <SettingsTargetText
+          settingId={
+            source === "pullRequests"
+              ? "app-layout-open-location-pull-requests"
+              : settingsTargetIdsForPersistence("layout", `openInSidePane.${source}`)
+          }
+          style={settingsStyles.rowTitle}
+        >
+          {label}
+        </SettingsTargetText>
       </View>
       <DropdownMenu>
         <DropdownTrigger
@@ -73,6 +94,11 @@ function LayoutPreferenceRow({
           <DropdownMenuItem selected={destination === "side"} onSelect={selectSide}>
             {t("settings.layout.openInSidePane.destinations.side")}
           </DropdownMenuItem>
+          {source === "pullRequests" ? (
+            <DropdownMenuItem selected={destination === "explorer"} onSelect={selectExplorer}>
+              {t("settings.layout.openInSidePane.destinations.explorer")}
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </View>
@@ -84,11 +110,12 @@ export function LayoutSection() {
   const { settings, updateSettings } = useAppSettings();
   const handleDestinationChange = useCallback(
     (source: keyof OpenInSidePanePreferences, destination: OpenDestination) => {
-      void updateSettings({
-        openInSidePane: { ...settings.openInSidePane, [source]: destination === "side" },
-      });
+      void updateSettings((current) => ({
+        openInSidePane: { ...current.openInSidePane, [source]: destination === "side" },
+        ...(source === "pullRequests" ? { pullRequestOpenLocation: destination } : {}),
+      }));
     },
-    [settings.openInSidePane, updateSettings],
+    [updateSettings],
   );
   return (
     <SettingsSection title={t("settings.layout.openInSidePane.title")}>
@@ -98,6 +125,9 @@ export function LayoutSection() {
             <LayoutPreferenceRow
               source={source}
               value={settings.openInSidePane[source]}
+              pullRequestDestination={
+                source === "pullRequests" ? settings.pullRequestOpenLocation : undefined
+              }
               first={index === 0}
               onDestinationChange={handleDestinationChange}
             />

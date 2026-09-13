@@ -19,7 +19,8 @@ interface ClaudeModelManifestEntry {
   aliases?: readonly string[];
   label: string;
   description: string;
-  isDefault?: boolean;
+  defaultPriority?: number;
+  minimumClaudeCodeVersion?: string;
   contextWindowMaxTokens?: number;
   effortLevels?: readonly ClaudeEffortLevel[];
   supportsFastMode?: boolean;
@@ -88,7 +89,8 @@ export const CLAUDE_MODEL_MANIFEST = [
     // COMPAT(claudeFable5OneMillionId): added in v0.3.0, remove after 2027-02-06 once pre-v0.3.0 app preferences are outside support.
     aliases: ["claude-fable-5[1m]"],
     label: "Fable 5",
-    description: "Fable 5 · Most powerful model",
+    description: "Fable 5 · Previous release",
+    minimumClaudeCodeVersion: "2.1.169",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
     // Thinking is always on for Fable 5: an explicit `{type: "disabled"}` is a
@@ -100,7 +102,8 @@ export const CLAUDE_MODEL_MANIFEST = [
     id: "claude-opus-5",
     label: "Opus 5",
     description: "Opus 5 · Latest release",
-    isDefault: true,
+    defaultPriority: 2,
+    minimumClaudeCodeVersion: "2.1.219",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
     supportsFastMode: true,
@@ -110,6 +113,7 @@ export const CLAUDE_MODEL_MANIFEST = [
     id: "claude-opus-4-8",
     label: "Opus 4.8",
     description: "Opus 4.8 · Previous release",
+    defaultPriority: 1,
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
     supportsFastMode: true,
@@ -224,28 +228,70 @@ function buildThinkingOptions(
   return options;
 }
 
-export function getClaudeManifestModels(): AgentModelDefinition[] {
-  return CLAUDE_MODEL_MANIFEST.map((model) => {
+export function getClaudeManifestModels(claudeCodeVersion?: string): AgentModelDefinition[] {
+  const availableModels = (CLAUDE_MODEL_MANIFEST as readonly ClaudeModelManifestEntry[]).filter(
+    (model) => isModelAvailableInClaudeCode(model, claudeCodeVersion),
+  );
+  const defaultModel = availableModels.reduce<ClaudeModelManifestEntry | undefined>(
+    (selected, candidate) =>
+      (candidate.defaultPriority ?? 0) > (selected?.defaultPriority ?? 0) ? candidate : selected,
+    undefined,
+  );
+  const definitions: AgentModelDefinition[] = [];
+  for (const model of availableModels) {
     const thinkingOptions = buildThinkingOptions(
-      "effortLevels" in model ? model.effortLevels : undefined,
-      !("supportsThinkingOff" in model) || model.supportsThinkingOff !== false,
+      model.effortLevels,
+      model.supportsThinkingOff !== false,
     );
-    return {
+    const definition: AgentModelDefinition = {
       provider: "claude",
       id: model.id,
       label: model.label,
       description: model.description,
-      ...("isDefault" in model && model.isDefault ? { isDefault: true } : {}),
-      ...(model.contextWindowMaxTokens !== undefined
-        ? { contextWindowMaxTokens: model.contextWindowMaxTokens }
-        : {}),
-      ...(thinkingOptions ? { thinkingOptions } : {}),
-      // Only the model-intrinsic "never" tier is stamped on the wire: it is
-      // deterministic (no env/auth dependence), so clients can hide Auto for
-      // it up front. Auth-path-dependent tiers stay a session-level check.
-      ...(model.autoModeSupport === "none" ? { supportsAutoMode: false } : {}),
     };
-  });
+    if (model === defaultModel) definition.isDefault = true;
+    if (model.contextWindowMaxTokens !== undefined) {
+      definition.contextWindowMaxTokens = model.contextWindowMaxTokens;
+    }
+    if (thinkingOptions) definition.thinkingOptions = thinkingOptions;
+    // Only model-intrinsic impossibility goes on the wire. Auth-dependent
+    // Auto support remains the existing session-level policy.
+    if (model.autoModeSupport === "none") definition.supportsAutoMode = false;
+    definitions.push(definition);
+  }
+  return definitions;
+}
+
+function isModelAvailableInClaudeCode(
+  model: ClaudeModelManifestEntry,
+  claudeCodeVersion: string | undefined,
+): boolean {
+  if (!model.minimumClaudeCodeVersion || claudeCodeVersion === undefined) {
+    return true;
+  }
+  return compareVersions(claudeCodeVersion, model.minimumClaudeCodeVersion) >= 0;
+}
+
+function compareVersions(left: string, right: string): number {
+  const leftParts = parseClaudeCodeVersion(left);
+  const rightParts = parseClaudeCodeVersion(right);
+  if (!leftParts || !rightParts) {
+    return -1;
+  }
+  for (let index = 0; index < leftParts.length; index += 1) {
+    const difference = leftParts[index] - rightParts[index];
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return 0;
+}
+
+export function parseClaudeCodeVersion(value: string): [number, number, number] | null {
+  const match =
+    value.match(/\b(\d+)\.(\d+)\.(\d+)\s+\(Claude Code\)/i) ??
+    value.match(/\b(\d+)\.(\d+)\.(\d+)\b/);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
 export function isClaudeManifestModelId(modelId: string): boolean {
@@ -319,7 +365,7 @@ export function normalizeClaudeManifestModelId(value: string | null | undefined)
   }
 
   const singleSegmentMatch = trimmed.match(
-    /^(?:claude[-_ ])?(fable|opus|sonnet|haiku)[-_ ]+(\d+)(\[1m\])?(?:[-_ ]+\d{8})?$/i,
+    /^(?:claude[-_ ])?(fable|opus|sonnet|haiku)[-_ ]+(\d+)(?:\[1m\])?(?:[-_ ]+\d{8})?(?:\[1m\])?$/i,
   );
   if (singleSegmentMatch) {
     return normalizeSingleSegmentClaudeModelId(
@@ -330,7 +376,7 @@ export function normalizeClaudeManifestModelId(value: string | null | undefined)
   }
 
   const runtimeMatch = trimmed.match(
-    /^(?:claude[-_ ])?(fable|opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(\[1m\])?(?:[-_ ]+\d{8})?$/i,
+    /^(?:claude[-_ ])?(fable|opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(?:\[1m\])?(?:[-_ ]+\d{8})?(?:\[1m\])?$/i,
   );
   if (!runtimeMatch) {
     return null;
@@ -340,7 +386,7 @@ export function normalizeClaudeManifestModelId(value: string | null | undefined)
     runtimeMatch[1],
     runtimeMatch[2],
     runtimeMatch[3],
-    Boolean(runtimeMatch[4]),
+    trimmed.toLowerCase().includes("[1m]"),
   );
 }
 
@@ -385,7 +431,7 @@ export function normalizeClaudeRuntimeModelId(value: string | null | undefined):
     runtimeMatch[1],
     runtimeMatch[2],
     runtimeMatch[3],
-    Boolean(runtimeMatch[4]),
+    trimmed.toLowerCase().includes("[1m]"),
   );
 }
 

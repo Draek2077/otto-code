@@ -137,6 +137,7 @@ publish:
   repo: otto-code
 mac:
   artifactName: "Otto-${version}-${arch}.${ext}"
+  minimumSystemVersion: "13.0.0"
   category: public.app-category.developer-tools
   icon: assets/icon.icns
   hardenedRuntime: true

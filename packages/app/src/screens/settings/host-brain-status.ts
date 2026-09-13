@@ -40,18 +40,25 @@ export function formatBrainStatusVram(bytes: number | null | undefined): string 
 export function buildBrainStatusDetails(
   brain: MutableBrainConfig,
   status: BrainHostStatus | null,
-): Array<{ title: string; value: string }> {
-  const details = [{ title: "Configured endpoint", value: formatConfiguredBrainEndpoint(brain) }];
+): Array<{ id: string; title: string; value: string }> {
+  const details = [
+    {
+      id: "configured-endpoint",
+      title: "Configured endpoint",
+      value: formatConfiguredBrainEndpoint(brain),
+    },
+  ];
   if (!status) return details;
 
   const detectedEndpoint = formatDetectedBrainEndpoint(status);
-  if (detectedEndpoint) details.push({ title: "Detected endpoint", value: detectedEndpoint });
-  if (status.version) details.push({ title: "Version", value: status.version });
-  if (status.state) details.push({ title: "State", value: status.state });
+  if (detectedEndpoint)
+    details.push({ id: "detected-endpoint", title: "Detected endpoint", value: detectedEndpoint });
+  if (status.version) details.push({ id: "version", title: "Version", value: status.version });
+  if (status.state) details.push({ id: "state", title: "State", value: status.state });
   const model = status.model ?? status.modelId;
-  if (model) details.push({ title: "Model", value: model });
+  if (model) details.push({ id: "model", title: "Model", value: model });
   const vram = formatBrainStatusVram(status.vramBytes);
-  if (vram) details.push({ title: "VRAM", value: vram });
+  if (vram) details.push({ id: "vram", title: "VRAM", value: vram });
   return details;
 }
 

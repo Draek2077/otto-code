@@ -803,9 +803,11 @@ function savedWorkflowEmptyText(supported: boolean): string {
 function ScheduleModelTriggerLeading({
   selectedPersonality,
   selectedProvider,
+  serverId,
 }: {
   selectedPersonality: NonNullable<RolePersonality["personalities"]>[number] | null;
   selectedProvider: AgentProvider | null;
+  serverId: string | null;
 }): ReactElement {
   // A role-slot entry wears its neutral role glyph rather than the current
   // holder's colored provider icon: selecting it means "the role".
@@ -817,13 +819,14 @@ function ScheduleModelTriggerLeading({
     return (
       <PersonalityProviderIcon
         provider={selectedPersonality.provider}
+        serverId={serverId}
         size="md"
         glowA={selectedPersonality.glowA}
         glowB={selectedPersonality.glowB}
       />
     );
   }
-  return <ProviderGlyph provider={selectedProvider} />;
+  return <ProviderGlyph provider={selectedProvider} serverId={serverId} />;
 }
 
 function ScheduleCreateTargetPicker({
@@ -1015,9 +1018,10 @@ function ScheduleTargetFields({
       <ScheduleModelTriggerLeading
         selectedPersonality={selectedPersonality}
         selectedProvider={state.selectedProvider}
+        serverId={state.selectedServerId}
       />
     ),
-    [selectedPersonality, state.selectedProvider],
+    [selectedPersonality, state.selectedProvider, state.selectedServerId],
   );
   const renderModelTrigger = useCallback(
     ({
@@ -1384,11 +1388,17 @@ function ThinkingOptionItem({
   );
 }
 
-function ProviderGlyph({ provider }: { provider: string | null }): ReactElement | null {
+function ProviderGlyph({
+  provider,
+  serverId,
+}: {
+  provider: string | null;
+  serverId: string | null;
+}): ReactElement | null {
   if (!provider) {
     return null;
   }
-  const Icon = getProviderIcon(provider);
+  const Icon = getProviderIcon(provider, serverId);
   return <Icon size="md" color={styles.providerIcon.color} />;
 }
 

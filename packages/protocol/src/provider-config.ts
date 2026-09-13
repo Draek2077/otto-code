@@ -36,6 +36,11 @@ export const ProviderRuntimeSettingsSchema = z.object({
   disallowedTools: z.array(z.string()).optional(),
 });
 
+export const ProviderOttoToolsPolicySchema = z.object({
+  enabled: z.boolean().optional(),
+  disabledTools: z.array(z.string()).optional(),
+});
+
 const ProviderProfileThinkingOptionSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -610,6 +615,7 @@ export const ProviderOverrideSchema = z.object({
    * not own (every ACP/CLI provider) are unaffected either way.
    */
   midSessionContextUpdates: z.boolean().optional(),
+  ottoTools: ProviderOttoToolsPolicySchema.optional(),
   enabled: z.boolean().optional(),
   order: z.number().optional(),
 });
@@ -702,6 +708,7 @@ export type ConnectorsConfig = z.infer<typeof ConnectorsConfigSchema>;
 export type McpToolPermissionMode = (typeof MCP_TOOL_PERMISSION_MODES)[number];
 export type ProviderCommand = z.infer<typeof ProviderCommandSchema>;
 export type ProviderRuntimeSettings = z.infer<typeof ProviderRuntimeSettingsSchema>;
+export type ProviderOttoToolsPolicy = z.infer<typeof ProviderOttoToolsPolicySchema>;
 export type ProviderProfileModel = z.infer<typeof ProviderProfileModelSchema>;
 export type ProviderOverride = z.infer<typeof ProviderOverrideSchema>;
 export type ProviderOverrides = z.infer<typeof ProviderOverridesSchema>;

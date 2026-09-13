@@ -1,6 +1,11 @@
+import { fileURLToPath } from "node:url";
+import {
+  createWorkspaceFileObserver,
+  createWorkspaceWatcherCanary,
+} from "../test-utils/workspace-file-observer.js";
+import { createFileObserver, type FileObserver } from "./file-observer/index.js";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve as resolvePath } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -20,13 +25,15 @@ import {
   type CheckoutStatusGit,
   type PullRequestStatusResult,
 } from "../utils/checkout-git.js";
-import { runGitCommand as runGitCommandReal } from "../utils/run-git-command.js";
+import {
+  runGitCommand as runGitCommandReal,
+  snapshotGitCommandRuntimeMetrics,
+} from "../utils/run-git-command.js";
 import {
   WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS,
   WorkspaceGitServiceImpl,
   type WorkspaceGitRuntimeSnapshot,
 } from "./workspace-git-service.js";
-import { isPlatform } from "../test-utils/platform.js";
 
 const REPO_CWD = resolvePath("/tmp/repo");
 
@@ -37,13 +44,6 @@ function createLogger() {
     warn: vi.fn(),
   };
   return logger;
-}
-
-function createWatcher() {
-  return {
-    close: vi.fn(),
-    on: vi.fn().mockReturnThis(),
-  };
 }
 
 function createDeferred<T>() {
@@ -81,6 +81,8 @@ function createCheckoutFacts(
     ottoWorktree: { isOttoOwnedWorktree: false },
     storedBaseRef: null,
     resolvedBaseRef: "main",
+    baseSource: null,
+    upstreamStatus: null,
     mainRepoRoot: null,
     comparisonBaseRef: null,
     branchRemoteName: null,
@@ -101,6 +103,8 @@ function createCheckoutStatus(
     currentBranch: "main",
     isDirty: false,
     baseRef: "main",
+    baseSource: null,
+    upstreamRef: null,
     aheadBehind: { ahead: 0, behind: 0 },
     aheadOfOrigin: 0,
     behindOfOrigin: 0,
@@ -164,6 +168,8 @@ function createSnapshot(
       isOttoOwnedWorktree: false,
       isDirty: false,
       baseRef: "main",
+      baseSource: null,
+      upstreamRef: null,
       aheadBehind: { ahead: 0, behind: 0 },
       aheadOfOrigin: 0,
       behindOfOrigin: 0,
@@ -275,21 +281,25 @@ interface CreateServiceOptions {
   hasOriginRemote?: ReturnType<typeof vi.fn>;
   runGitFetch?: ReturnType<typeof vi.fn>;
   runGitCommand?: ReturnType<typeof vi.fn>;
-  watch?: ReturnType<typeof vi.fn>;
-  readdir?: ReturnType<typeof vi.fn>;
+  subscribe?: ReturnType<typeof vi.fn>;
+  fileObserver?: FileObserver;
   now?: () => Date;
 }
 
 function buildDefaultServiceDeps() {
   return {
-    watch: (() => createWatcher()) as never,
-    readdir: vi.fn(async () => []),
+    subscribe: createWorkspaceFileObserver().subscribe,
+    createWatcherLivenessCanary: createWorkspaceWatcherCanary,
     getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutFacts(cwd)),
-    getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
-    getCheckoutShortstat: vi.fn(async () => ({
-      additions: 1,
-      deletions: 0,
-    })),
+    getCheckoutStatus: vi.fn<typeof import("../utils/checkout-git.js").getCheckoutStatus>(
+      async (cwd: string) => createCheckoutStatus(cwd),
+    ),
+    getCheckoutShortstat: vi.fn<typeof import("../utils/checkout-git.js").getCheckoutShortstat>(
+      async () => ({
+        additions: 1,
+        deletions: 0,
+      }),
+    ),
     getCheckoutUncommittedShortstat: vi.fn(async () => ({
       additions: 1,
       deletions: 0,
@@ -303,7 +313,7 @@ function buildDefaultServiceDeps() {
     github: createGitHubServiceStub(),
     resolveAbsoluteGitDir: vi.fn(async () => join(REPO_CWD, ".git")),
     hasOriginRemote: vi.fn(async () => false),
-    runGitFetch: vi.fn(async () => {}),
+    runGitFetch: vi.fn(async () => ({ changes: [], error: null })),
     runGitCommand: vi.fn(async () => ({
       stdout: `${REPO_CWD}\n`,
       stderr: "",
@@ -320,12 +330,26 @@ function buildServiceDeps(options?: CreateServiceOptions) {
 }
 
 function createService(options?: CreateServiceOptions) {
-  const { github, ...rest } = buildServiceDeps(options);
+  const { github, fileObserver, ...rest } = buildServiceDeps(options);
   return new WorkspaceGitServiceImpl({
     logger: createLogger() as never,
+    fileObserver,
     ottoHome: "/tmp/otto-test",
     deps: {
       ...rest,
+      ...(fileObserver ? { subscribe: fileObserver.subscribe.bind(fileObserver) } : {}),
+      getCheckoutWorktreeState: vi.fn(async (cwd, context) => {
+        const status = await rest.getCheckoutStatus(cwd, context);
+        if (!status.isGit) throw new Error("Expected a git checkout");
+        return {
+          isDirty: status.isDirty,
+          diffStat: await rest.getCheckoutShortstat(cwd, context, { force: true }),
+        };
+      }),
+      getCheckoutRefDerivedState: vi.fn(async (_cwd, facts, current) => ({
+        ...current,
+        upstreamStatus: facts.upstreamStatus,
+      })),
       // A `github` option has to land on forgeOverrides, which is where the
       // forge resolver looks. Left at the top level it becomes an ignored
       // `deps.github` and the resolver builds a real GitHub service, so every
@@ -359,6 +383,48 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
 
     service.dispose();
+  });
+
+  test("attributes Git commands submitted by a workspace refresh", async () => {
+    const tempDir = realpathSync(mkdtempSync(join(tmpdir(), "workspace-git-provenance-")));
+    const repoDir = join(tempDir, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    execFileSync("git", ["init", "-b", "main"], { cwd: repoDir, stdio: "pipe" });
+    writeFileSync(join(repoDir, "tracked.txt"), "tracked\n");
+    execFileSync("git", ["add", "tracked.txt"], { cwd: repoDir, stdio: "pipe" });
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "user.name=Paseo Test",
+        "-c",
+        "user.email=paseo@example.test",
+        "commit",
+        "-m",
+        "initial",
+      ],
+      { cwd: repoDir, stdio: "pipe" },
+    );
+    snapshotGitCommandRuntimeMetrics();
+    const service = createService({
+      getCheckoutSnapshotFacts: getCheckoutSnapshotFactsUncached as never,
+      getCheckoutStatus: getCheckoutStatusUncached as never,
+    });
+
+    try {
+      await service.getSnapshot(repoDir, { force: true, reason: "provenance-test" });
+
+      const metrics = snapshotGitCommandRuntimeMetrics();
+      expect(metrics.submitted).toBeGreaterThan(0);
+      expect(metrics.provenanceTop).toEqual([
+        ["workspace-refresh:provenance-test", metrics.submitted],
+      ]);
+    } finally {
+      service.dispose();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   test("getSnapshot cold-loads when no snapshot exists yet with one shell burst", async () => {
@@ -882,6 +948,8 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
         stderr: "",
       })),
       resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
+      resolveRepoSlug: async () => null,
       now: () => nowMs,
     });
     const getCurrentPullRequestStatus = github.getCurrentPullRequestStatus.bind(github);
@@ -903,6 +971,9 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, listener);
     await flushPromises();
     await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() => {
+      expect(githubReadCalls).toContainEqual({ reason: "self-heal-github", tickMs: 0 });
+    });
     await flushPromises();
     const gitReadsAfterInitialSnapshot = getCheckoutStatus.mock.calls.length;
 
@@ -989,6 +1060,8 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
         stderr: "",
       })),
       resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
+      resolveRepoSlug: async () => null,
       now: () => nowMs,
     });
     const getCurrentPullRequestStatus = github.getCurrentPullRequestStatus.bind(github);
@@ -1708,14 +1781,16 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
     service.dispose();
   });
 
-  // POSIX-only: this asserts Linux working-tree walker behavior around ignored directories.
-  test.skipIf(isPlatform("win32"))(
+  test.skipIf(process.platform !== "linux")(
     "Linux working tree walker excludes gitignored directories",
     async () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, "platform", { configurable: true, value: "linux" });
-
-      const tempDir = realpathSync(mkdtempSync(join(tmpdir(), "workspace-git-service-ignored-")));
+      vi.useRealTimers();
+      const scratch = join(
+        fileURLToPath(new URL("../../../../.tmp/", import.meta.url)),
+        "workspace-git-ignored",
+      );
+      mkdirSync(scratch, { recursive: true });
+      const tempDir = realpathSync(mkdtempSync(join(scratch, "repo-")));
       const repoDir = join(tempDir, "repo");
       mkdirSync(join(repoDir, "ignored", "deep"), { recursive: true });
       mkdirSync(join(repoDir, "kept"), { recursive: true });
@@ -1724,35 +1799,47 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
       writeFileSync(join(repoDir, "ignored", "log.txt"), "noise\n");
       writeFileSync(join(repoDir, "ignored", "deep", "log.txt"), "noise\n");
       writeFileSync(join(repoDir, "kept", "file.txt"), "keep\n");
-
-      const watchedPaths: string[] = [];
-      const watchSpy = (watchPath: string) => {
-        watchedPaths.push(watchPath);
-        return { close: vi.fn(), on: vi.fn().mockReturnThis() };
-      };
-
+      const observer = createFileObserver();
+      const observedPaths: string[] = [];
+      const subscribe = recordObservedPaths(observer, observedPaths);
       const service = createService({
-        watch: watchSpy as never,
-        readdir: readdir as never,
+        fileObserver: {
+          ...observer,
+          subscribe,
+          getDiagnostics: () => observer.getDiagnostics(),
+          close: () => observer.close(),
+        },
         runGitCommand: runGitCommandReal as never,
         getCheckoutSnapshotFacts: getCheckoutSnapshotFactsUncached as never,
         getCheckoutStatus: getCheckoutStatusUncached as never,
         resolveAbsoluteGitDir: resolveAbsoluteGitDirReal as never,
       });
-
+      const listener = vi.fn();
       try {
-        const subscription = await service.requestWorkingTreeWatch(repoDir, vi.fn());
-
-        const ignoredRoot = join(repoDir, "ignored");
-        expect(watchedPaths.filter((path) => path.startsWith(ignoredRoot))).toEqual([]);
-        expect(watchedPaths).toContain(repoDir);
-        expect(watchedPaths).toContain(join(repoDir, "kept"));
-
+        const subscription = await service.requestWorkingTreeWatch(repoDir, listener);
+        expect(subscribe).toHaveBeenCalledWith(
+          repoDir,
+          expect.any(Function),
+          expect.objectContaining({ ignore: expect.arrayContaining([join(repoDir, "ignored")]) }),
+        );
+        const baseline = listener.mock.calls.length;
+        writeFileSync(join(repoDir, "ignored", "deep", "log.txt"), "ignored churn\n");
+        // The positive control waits for real observer delivery. The ignored change
+        // happened first and must not be delivered during the same observation window.
+        writeFileSync(join(repoDir, "kept", "file.txt"), "visible change\n");
+        await expect.poll(() => listener.mock.calls.length).toBeGreaterThan(baseline);
+        expect(observedPaths).toContain(join(repoDir, "kept", "file.txt"));
+        expect(observedPaths.filter((file) => file.startsWith(join(repoDir, "ignored")))).toEqual(
+          [],
+        );
+        // One worktree root and its kept child; metadata has its own subscription.
+        const worktreeSubscribe = subscribe.mock.calls.find(([root]) => root === repoDir);
+        expect(worktreeSubscribe).toBeDefined();
+        expect(observer.getDiagnostics().nativeHandleCount).toBeGreaterThanOrEqual(2);
         subscription.unsubscribe();
       } finally {
-        service.dispose();
+        await service.dispose();
         rmSync(tempDir, { recursive: true, force: true });
-        Object.defineProperty(process, "platform", { configurable: true, value: originalPlatform });
       }
     },
   );
@@ -1788,11 +1875,11 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
         baseline.set(cwd, callsForCwd(getCheckoutStatus, cwd));
       }
 
-      // Two self-heal windows. The active workspace refreshes; the dormant one must not
-      // spend a single git invocation.
+      // Two observation reensure windows. Healthy watchers spend no Git commands,
+      // including the active workspace; focus catch-up is covered below.
       await advance(WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS * 2 + 5_000);
 
-      expect(callsForCwd(getCheckoutStatus, active)).toBeGreaterThan(baseline.get(active) ?? 0);
+      expect(callsForCwd(getCheckoutStatus, active)).toBe(baseline.get(active) ?? 0);
       expect(callsForCwd(getCheckoutStatus, background)).toBe(baseline.get(background) ?? 0);
     } finally {
       service.dispose();
@@ -1882,16 +1969,7 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
   // the inode, so after the first checkout the watcher held an unlinked file and went deaf.
   // Switching branches in a terminal then never reached the Changes sidebar.
   test("watches the git directory for HEAD changes, not the HEAD file", async () => {
-    const watched: { path: string; listener: (event: string, filename: string | null) => void }[] =
-      [];
-    const watchSpy = (
-      path: string,
-      _options: unknown,
-      listener: (event: string, filename: string | null) => void,
-    ) => {
-      watched.push({ path, listener });
-      return { close: vi.fn(), on: vi.fn().mockReturnThis() };
-    };
+    const watcher = createWorkspaceFileObserver();
     // Status is re-measured by every refresh, so it is the honest probe for "the watcher
     // reached the workspace"; the facts read behind it is cached and answers once.
     const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
@@ -1907,7 +1985,7 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
     };
 
     const service = createService({
-      watch: watchSpy as never,
+      subscribe: watcher.subscribe,
       getCheckoutStatus: getCheckoutStatus as never,
       now: () => new Date(clockMs),
     });
@@ -1916,25 +1994,30 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
       service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
       await advance(100);
 
-      const watchedPaths = watched.map((entry) => entry.path);
+      const watchedPaths = watcher.records.map((entry) => entry.directory);
       expect(watchedPaths).toContain(join(REPO_CWD, ".git"));
-      expect(watchedPaths).toContain(join(REPO_CWD, ".git", "refs", "heads"));
+      // A single recursive metadata subscription covers refs as well as HEAD.
+      expect(watchedPaths.filter((directory) => directory === join(REPO_CWD, ".git"))).toHaveLength(
+        1,
+      );
       expect(watchedPaths).not.toContain(join(REPO_CWD, ".git", "HEAD"));
 
-      const gitDirWatch = watched.find((entry) => entry.path === join(REPO_CWD, ".git"));
+      const gitDirWatch = watcher.records.find(
+        (entry) => entry.directory === join(REPO_CWD, ".git"),
+      );
       expect(gitDirWatch).toBeDefined();
 
       // The rest of `.git`'s churn must not schedule a refresh, or every git command in
       // the workspace would cost a snapshot.
       const baseline = getCheckoutStatus.mock.calls.length;
-      gitDirWatch?.listener("change", "index.lock");
+      gitDirWatch?.callback(null, [{ type: "update", path: join(REPO_CWD, ".git", "index.lock") }]);
       // Comfortably past both the watch debounce and the internal min-gap that coalesces
       // non-forced refreshes, and well short of the 60s self-heal that would refresh anyway.
       await advance(5_000);
       expect(getCheckoutStatus.mock.calls.length).toBe(baseline);
 
       // A HEAD rename is the branch switch, and it must land.
-      gitDirWatch?.listener("rename", "HEAD");
+      gitDirWatch?.callback(null, [{ type: "update", path: join(REPO_CWD, ".git", "HEAD") }]);
       await advance(5_000);
       expect(getCheckoutStatus.mock.calls.length).toBeGreaterThan(baseline);
     } finally {
@@ -2005,3 +2088,19 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
     service.dispose();
   });
 });
+
+function recordObservedPaths(
+  observer: ReturnType<typeof createFileObserver>,
+  observedPaths: string[],
+) {
+  return vi.fn<typeof observer.subscribe>(async (directory, callback, options) =>
+    observer.subscribe(
+      directory,
+      (error, events) => {
+        for (const event of events) observedPaths.push(event.path);
+        callback(error, events);
+      },
+      options,
+    ),
+  );
+}

@@ -6,6 +6,7 @@ import {
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
 import { type ConnectorAuthState, type ConnectorConfig } from "@otto-code/protocol/provider-config";
 import {
+  AgentProfileSchema,
   MutableDaemonConfigSchema,
   MutableDaemonConfigPatchSchema,
 } from "@otto-code/protocol/messages";
@@ -346,9 +347,19 @@ export function applyMutableProviderConfigToOverrides(
 
   const nextOverrides: Record<string, ProviderOverride> = { ...baseOverrides };
   for (const [providerId, providerConfig] of Object.entries(mutableProviders ?? {})) {
+    const previousOverride = nextOverrides[providerId];
+    const parsedOverride = ProviderOverrideSchema.strip().parse(providerConfig);
     nextOverrides[providerId] = {
-      ...nextOverrides[providerId],
-      ...ProviderOverrideSchema.strip().parse(providerConfig),
+      ...previousOverride,
+      ...parsedOverride,
+      ...(parsedOverride.ottoTools
+        ? {
+            ottoTools: {
+              ...previousOverride?.ottoTools,
+              ...parsedOverride.ottoTools,
+            },
+          }
+        : {}),
     };
   }
 
@@ -364,7 +375,7 @@ export class DaemonConfigStore {
   private readonly fieldChangeHandlers = new Map<string, Set<FieldChangeHandler>>();
   private readonly relayEnabledMutable: boolean;
   private readonly reloadSource: DaemonConfigReloadSource | undefined;
-  private readonly startupPersisted: PersistedConfig;
+  private startupPersisted: PersistedConfig;
   private lastKnownPersisted: PersistedConfig;
 
   constructor(
@@ -412,17 +423,10 @@ export class DaemonConfigStore {
     ) {
       return;
     }
-    savePersistedConfig(
-      this.ottoHome,
-      {
-        ...persisted,
-        daemon: {
-          ...persisted.daemon,
-          agentProfiles: [...defaults],
-        },
-      },
-      this.logger,
-    );
+    this.persistStartupInitialization(persisted, (snapshot) => ({
+      ...snapshot,
+      daemon: { ...snapshot.daemon, agentProfiles: [...defaults] },
+    }));
     this.logger?.info(`Seeded ${defaults.length} default agent profiles`);
   }
 
@@ -450,22 +454,23 @@ export class DaemonConfigStore {
     const existing = persisted.daemon?.agentProfiles ?? [];
     const existingIds = new Set(existing.map((profile) => profile.id));
     const imported = legacy.filter((personality) => !existingIds.has(personality.id));
-    savePersistedConfig(
-      this.ottoHome,
-      {
-        ...persisted,
-        daemon: {
-          ...persisted.daemon,
-          ...(imported.length > 0 ? { agentProfiles: [...existing, ...imported] } : {}),
-          agentProfilesImportedPersonalities: true,
-        },
-      },
-      this.logger,
+    // The legacy schema emits a different key order. Use the canonical profile shape
+    // for memory and persistence so reload's serialized comparison sees the same value.
+    const mergedProfiles = [...existing, ...imported].map((profile) =>
+      AgentProfileSchema.parse(profile),
     );
+    this.persistStartupInitialization(persisted, (snapshot) => ({
+      ...snapshot,
+      daemon: {
+        ...snapshot.daemon,
+        ...(imported.length > 0 ? { agentProfiles: mergedProfiles } : {}),
+        agentProfilesImportedPersonalities: true,
+      },
+    }));
     if (imported.length > 0) {
       this.current = {
         ...this.current,
-        agentProfiles: [...existing, ...imported],
+        agentProfiles: mergedProfiles,
       };
       this.logger?.info(`Imported ${imported.length} agent personalities into agent profiles`);
     }
@@ -485,20 +490,25 @@ export class DaemonConfigStore {
     if (persisted.agents?.agentTeams !== undefined) {
       return;
     }
-    savePersistedConfig(
-      this.ottoHome,
-      {
-        ...persisted,
-        agents: {
-          ...persisted.agents,
-          agentTeams: {
-            teams: [...defaults],
-          },
-        },
-      },
-      this.logger,
-    );
+    this.persistStartupInitialization(persisted, (snapshot) => ({
+      ...snapshot,
+      agents: { ...snapshot.agents, agentTeams: { teams: [...defaults] } },
+    }));
     this.logger?.info(`Seeded ${defaults.length} default agent teams`);
+  }
+
+  /** Startup seeds are already active; advance only their owned fields in both baselines. */
+  private persistStartupInitialization(
+    persisted: PersistedConfig,
+    initialize: (snapshot: PersistedConfig) => PersistedConfig,
+  ): void {
+    const nextPersisted = initialize(persisted);
+    const startupNext = initialize(this.startupPersisted);
+    const knownNext = initialize(this.lastKnownPersisted);
+    savePersistedConfig(this.ottoHome, nextPersisted, this.logger);
+    // Do not absorb unrelated external edits from the latest disk snapshot.
+    this.startupPersisted = startupNext;
+    this.lastKnownPersisted = knownNext;
   }
 
   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {

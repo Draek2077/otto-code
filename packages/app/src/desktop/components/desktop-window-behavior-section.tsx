@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -89,7 +90,12 @@ export function DesktopWindowBehaviorSection() {
       <View style={settingsStyles.card}>
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("desktop.window.trayIcon.title")}</Text>
+            <SettingsTargetText
+              settingId="app-general-window-show-tray-icon"
+              style={settingsStyles.rowTitle}
+            >
+              {t("desktop.window.trayIcon.title")}
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>{t("desktop.window.trayIcon.hint")}</Text>
           </View>
           <Switch
@@ -103,9 +109,12 @@ export function DesktopWindowBehaviorSection() {
           <>
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>
+                <SettingsTargetText
+                  settingId="app-general-window-minimize-to-tray-on-close"
+                  style={settingsStyles.rowTitle}
+                >
                   {t("desktop.window.minimizeToTray.title")}
-                </Text>
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   {t("desktop.window.minimizeToTray.hint")}
                 </Text>
@@ -119,9 +128,12 @@ export function DesktopWindowBehaviorSection() {
             </View>
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>
+                <SettingsTargetText
+                  settingId="app-general-window-start-minimized-to-tray"
+                  style={settingsStyles.rowTitle}
+                >
                   {t("desktop.window.startMinimized.title")}
-                </Text>
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   {t("desktop.window.startMinimized.hint")}
                 </Text>
@@ -137,7 +149,12 @@ export function DesktopWindowBehaviorSection() {
         )}
         <View style={ROW_WITH_BORDER_STYLE}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("desktop.window.warnBeforeQuit.title")}</Text>
+            <SettingsTargetText
+              settingId="app-general-window-warn-before-quitting"
+              style={settingsStyles.rowTitle}
+            >
+              {t("desktop.window.warnBeforeQuit.title")}
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>{t("desktop.window.warnBeforeQuit.hint")}</Text>
           </View>
           <Switch
@@ -150,9 +167,12 @@ export function DesktopWindowBehaviorSection() {
         {settings.quit.warnBeforeQuit ? (
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>
+              <SettingsTargetText
+                settingId="app-general-window-only-warn-for-active-agents"
+                style={settingsStyles.rowTitle}
+              >
                 {t("desktop.window.onlyWarnForActiveAgents.title")}
-              </Text>
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 {t("desktop.window.onlyWarnForActiveAgents.hint")}
               </Text>

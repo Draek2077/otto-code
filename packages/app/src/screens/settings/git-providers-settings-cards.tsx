@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useEffect, useState } from "react";
 import { Text, TextInput, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
@@ -74,9 +75,12 @@ function GitHubProviderCard({ serverId }: { serverId: string }) {
         <View style={styles.providerHeading}>
           <GitHubIcon size="lg" color={styles.iconColor.color} />
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>
+            <SettingsTargetText
+              settingId="host-workspaces-github-github-authorization"
+              style={settingsStyles.rowTitle}
+            >
               {t("settings.host.gitProviders.github.name")}
-            </Text>
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               {t("settings.host.gitProviders.github.hint")}
             </Text>
@@ -90,9 +94,12 @@ function GitHubProviderCard({ serverId }: { serverId: string }) {
           create a working token before the board fails to load. */}
       <View style={styles.borderedRow}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>
+          <SettingsTargetText
+            settingId="host-workspaces-github-required-scopes"
+            style={settingsStyles.rowTitle}
+          >
             {t("settings.host.gitProviders.github.scopesTitle")}
-          </Text>
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             {t("settings.host.gitProviders.github.scopesHint")}
           </Text>
@@ -234,9 +241,12 @@ function AtlassianProviderCard({ serverId }: { serverId: string }) {
         <View style={styles.providerHeading}>
           <BitbucketIcon size="lg" color={styles.iconColor.color} />
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>
+            <SettingsTargetText
+              settingId="host-workspaces-atlassian-atlassian-authorization"
+              style={settingsStyles.rowTitle}
+            >
               {t("settings.host.gitProviders.atlassian.name")}
-            </Text>
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               {t("settings.host.gitProviders.atlassian.hint")}
             </Text>
@@ -248,9 +258,12 @@ function AtlassianProviderCard({ serverId }: { serverId: string }) {
       </View>
       <View style={styles.borderedRow}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>
+          <SettingsTargetText
+            settingId="host-workspaces-atlassian-email"
+            style={settingsStyles.rowTitle}
+          >
             {t("settings.host.gitProviders.atlassian.email")}
-          </Text>
+          </SettingsTargetText>
         </View>
         <TextInput
           value={emailDraft}
@@ -270,9 +283,12 @@ function AtlassianProviderCard({ serverId }: { serverId: string }) {
       </View>
       <View style={styles.borderedRow}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>
+          <SettingsTargetText
+            settingId="host-workspaces-atlassian-api-token"
+            style={settingsStyles.rowTitle}
+          >
             {t("settings.host.gitProviders.atlassian.apiToken")}
-          </Text>
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             {t("settings.host.gitProviders.atlassian.apiTokenHint")}
           </Text>
@@ -295,9 +311,12 @@ function AtlassianProviderCard({ serverId }: { serverId: string }) {
       </View>
       <View style={styles.borderedRow}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>
+          <SettingsTargetText
+            settingId="host-workspaces-atlassian-jira-site"
+            style={settingsStyles.rowTitle}
+          >
             {t("settings.host.gitProviders.atlassian.jiraSiteUrl")}
-          </Text>
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             {t("settings.host.gitProviders.atlassian.jiraSiteUrlHint")}
           </Text>
@@ -320,9 +339,12 @@ function AtlassianProviderCard({ serverId }: { serverId: string }) {
       </View>
       <View style={styles.borderedRow}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>
+          <SettingsTargetText
+            settingId="host-workspaces-atlassian-required-scopes"
+            style={settingsStyles.rowTitle}
+          >
             {t("settings.host.gitProviders.atlassian.scopesTitle")}
-          </Text>
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             {t("settings.host.gitProviders.atlassian.scopesHint")}
           </Text>

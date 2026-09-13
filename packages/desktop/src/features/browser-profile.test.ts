@@ -159,7 +159,7 @@ describe("clearOttoBrowserProfile", () => {
           "localstorage",
           "serviceworkers",
           "cachestorage",
-          "websql",
+          "shadercache",
         ],
       },
     ]);

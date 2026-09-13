@@ -59,6 +59,19 @@ const sessionMock = vi.hoisted(() => {
     clearAgentTimelineSubscription = vi.fn();
     getClientActivity = vi.fn(() => null);
     getSessionId = vi.fn(() => "mock-session-id");
+    setRpcScopes = vi.fn((scopes: readonly string[]) => {
+      this.args.scopes = scopes;
+    });
+    setPermissions = vi.fn((permissions: readonly string[]) => {
+      this.args.permissions = permissions;
+    });
+    getPermissions = vi.fn(() => this.args.permissions as string[]);
+    allowsInbound = vi.fn(() => true);
+    allowsPermission = vi.fn(() => true);
+    publish = vi.fn((message: unknown) => {
+      const onMessage = this.args.onMessage as ((message: unknown) => void) | undefined;
+      onMessage?.(message);
+    });
     resetPeakInflight = vi.fn(() => {});
     getRuntimeMetrics = vi.fn(() => ({
       checkoutDiffTargetCount: 0,
@@ -99,7 +112,7 @@ vi.mock("./push/index.js", () => ({
 
 import { z } from "zod";
 import { VoiceAssistantWebSocketServer } from "./websocket-server";
-import { parseServerInfoStatusPayload } from "./messages.js";
+import { DAEMON_PERMISSIONS, parseServerInfoStatusPayload } from "./messages.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 
 interface WebSocketServerInternals {
@@ -677,6 +690,46 @@ describe("relay external socket reconnect behavior", () => {
     await server.close();
   });
 
+  test("isolates resumable sessions by principal while sharing hello bootstrap", async () => {
+    const server = createServer();
+    const clientId = "shared-client-id";
+    const ownerSocket = new MockSocket();
+    const hubSocket = new MockSocket();
+
+    const ownerInfo = await attachRelayAndHello({ server, socket: ownerSocket, clientId });
+    await server.attachExternalSocket(
+      hubSocket,
+      { transport: "hub", hubDaemonId: "daemon-1" },
+      { principalId: "hub:daemon-1", permissions: ["hub.execute"], scopes: ["hub.execution.*"] },
+    );
+    hubSocket.emit("message", JSON.stringify(createHelloMessage(clientId)));
+    const hubEnvelope = parseSentEnvelope(hubSocket.sent[0]);
+    const hubInfo = parseServerInfoStatusPayload(hubEnvelope.message?.payload);
+
+    expect(sessionMock.instances).toHaveLength(2);
+    expect(ownerInfo.permissions).toEqual(DAEMON_PERMISSIONS);
+    expect(hubInfo?.permissions).toEqual(["hub.execute"]);
+    expect(sessionMock.instances[0].args.scopes).toEqual(["*"]);
+    expect(sessionMock.instances[1].args.scopes).toEqual(["hub.execution.*"]);
+    const resumedHubSocket = new MockSocket();
+    await server.attachExternalSocket(
+      resumedHubSocket,
+      { transport: "hub", hubDaemonId: "daemon-1" },
+      {
+        principalId: "hub:daemon-1",
+        permissions: [],
+        scopes: [],
+      },
+    );
+    resumedHubSocket.emit("message", JSON.stringify(createHelloMessage(clientId)));
+    expect(sessionMock.instances).toHaveLength(2);
+    expect(sessionMock.instances[1].args.scopes).toEqual([]);
+    expect(sessionMock.instances[1].args.permissions).toEqual([]);
+    expect(sessionMock.instances[0].args.scopes).toEqual(["*"]);
+    expect(sessionMock.instances[0].args.permissions).toEqual(DAEMON_PERMISSIONS);
+    await server.close();
+  });
+
   test("rejects session messages before hello", async () => {
     const server = createServer();
     const socket = new MockSocket();
@@ -980,9 +1033,11 @@ describe("relay external socket reconnect behavior", () => {
     expect(serverInfo.features?.canonicalSubmittedPrompts).toBe(true);
     expect(serverInfo.features?.providersSnapshotCwd).toBe(true);
     expect(serverInfo.features?.pluginLogs).toBe(true);
+    expect(serverInfo.features?.workspaceMarkUnread).toBe(true);
     expect(serverInfo.features?.["terminal-input-mode-replay"]).toBe(true);
     expect(serverInfo.features?.["terminal-size-ownership"]).toBe(true);
     expect(serverInfo.features?.agentTurnIdentity).toBeUndefined();
+    expect(serverInfo.permissions).toEqual(DAEMON_PERMISSIONS);
     await server.close();
   });
 

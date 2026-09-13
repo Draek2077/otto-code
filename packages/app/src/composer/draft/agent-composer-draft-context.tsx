@@ -11,15 +11,21 @@ export function AgentComposerDraftProvider({
   serverId,
   agentId,
   children,
+  onRewindComplete,
 }: {
   serverId: string;
   agentId: string;
   children: ReactNode;
+  onRewindComplete: () => void;
 }) {
   const draft = useAgentInputDraft({ draftKey: buildDraftStoreKey({ serverId, agentId }) });
   return (
     <AgentComposerDraftContext.Provider value={draft}>
-      <RewindComposerRestoreProvider text={draft.text} setText={draft.setText}>
+      <RewindComposerRestoreProvider
+        text={draft.text}
+        setText={draft.replaceText}
+        onRewindComplete={onRewindComplete}
+      >
         {children}
       </RewindComposerRestoreProvider>
     </AgentComposerDraftContext.Provider>

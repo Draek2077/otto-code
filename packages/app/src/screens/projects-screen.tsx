@@ -1,3 +1,4 @@
+import { useSettingsSearchRequest } from "@/screens/settings-search/target";
 import { useCallback, useMemo } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -23,6 +24,7 @@ interface HostProject {
 
 export default function ProjectsScreen({ serverId }: ProjectsScreenProps) {
   const { t } = useTranslation();
+  const settingId = useSettingsSearchRequest();
   const { projects, hostErrors, isLoading } = useProjects();
   const hostProjects = useMemo<HostProject[]>(
     () =>
@@ -72,6 +74,7 @@ export default function ProjectsScreen({ serverId }: ProjectsScreenProps) {
         {hostProjects.map(({ project, host }, index) => (
           <ProjectRow
             key={host.projectId}
+            settingId={settingId}
             project={project}
             host={host}
             isFirst={index === 0}
@@ -100,20 +103,21 @@ function HostErrorsBanner({ errors }: { errors: ProjectHostError[] }) {
 }
 
 interface ProjectRowProps {
+  settingId: string | null;
   project: ProjectSummary;
   host: ProjectHostEntry;
   isFirst: boolean;
   iconDataUri: string | null;
 }
 
-function ProjectRow({ project, host, isFirst, iconDataUri }: ProjectRowProps) {
+function ProjectRow({ project, host, isFirst, iconDataUri, settingId }: ProjectRowProps) {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const { viewKey } = project;
   const { projectName } = host;
   const handleNavigate = useCallback(() => {
-    openProjectSettings(host.serverId, host.projectId);
-  }, [host.projectId, host.serverId]);
+    openProjectSettings(host.serverId, host.projectId, settingId);
+  }, [host.projectId, host.serverId, settingId]);
 
   const rowStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) => [

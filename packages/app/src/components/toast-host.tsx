@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import {
   useIsCompactFormFactor,
@@ -19,7 +19,8 @@ import {
   HEADER_TOP_PADDING_MOBILE,
 } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
-import { AlertTriangle, CheckCircle2 } from "@/components/icons/material-icons";
+import type { Theme } from "@/styles/theme";
+import { AlertTriangle, CheckCircle2, Info } from "@/components/icons/material-icons";
 import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
@@ -27,7 +28,7 @@ import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { resolveExplorerSidebarWidth } from "@/components/explorer-sidebar-layout";
 
-export type ToastVariant = "default" | "success" | "error";
+export type ToastVariant = "default" | "info" | "success" | "warning" | "error";
 
 export interface ToastShowOptions {
   icon?: ReactNode;
@@ -55,14 +56,23 @@ export interface ToastApi {
 
 type ToastViewportPlacement = "app-shell" | "panel";
 
+const ThemedCheckCircle = withUnistyles(CheckCircle2);
+const ThemedAlertTriangle = withUnistyles(AlertTriangle);
+const ThemedInfo = withUnistyles(Info);
+const copiedIconProps = (theme: Theme) => ({ color: theme.colors.foreground });
+const successIconProps = (theme: Theme) => ({ color: theme.colors.primary });
+const infoIconProps = (theme: Theme) => ({ color: theme.colors.statusInfo });
+const warningIconProps = (theme: Theme) => ({ color: theme.colors.statusWarning });
+const errorIconProps = (theme: Theme) => ({ color: theme.colors.destructive });
+
 const DEFAULT_DURATION_MS = 2200;
+const TOAST_MAX_WIDTH = 480;
 
 export function useToastHost(): {
   api: ToastApi;
   toast: ToastState | null;
   dismiss: () => void;
 } {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const [toast, setToast] = useState<ToastState | null>(null);
   const idRef = useRef(0);
@@ -102,11 +112,11 @@ export function useToastHost(): {
       copied: (label?: string) =>
         show(label ? t("common.states.copiedLabel", { label }) : t("common.states.copied"), {
           variant: "success",
-          icon: <CheckCircle2 size="mdPlus" color={theme.colors.foreground} />,
+          icon: <ThemedCheckCircle size="mdPlus" uniProps={copiedIconProps} />,
         }),
       error: (message: string) => show(message, { variant: "error", durationMs: 3200 }),
     }),
-    [show, theme.colors.foreground, t],
+    [show, t],
   );
 
   const dismiss = useCallback(() => {
@@ -173,7 +183,6 @@ export function ToastViewport({
   onDismiss: () => void;
   placement?: ToastViewportPlacement;
 }) {
-  const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
   const isMobile = useIsCompactFormFactor();
   const regionInsets = useContentRegionInsets(placement);
@@ -283,39 +292,28 @@ export function ToastViewport({
 
   const headerHeight = isMobile ? HEADER_INNER_HEIGHT_MOBILE : HEADER_INNER_HEIGHT;
   const headerTopPadding = isMobile ? HEADER_TOP_PADDING_MOBILE : 0;
-  const topOffset =
-    placement === "app-shell"
-      ? insets.top + headerTopPadding + headerHeight + theme.spacing[2]
-      : theme.spacing[3];
 
   const toastVariant = toast?.variant;
   const toastAnimatedStyle = useMemo(
     () => [
       styles.toast,
+      styles.placement(placement, insets.top + headerTopPadding + headerHeight),
       toastVariant === "success" ? styles.toastSuccess : null,
       toastVariant === "error" ? styles.toastError : null,
+      toastVariant === "warning" ? styles.toastWarning : null,
+      toastVariant === "info" ? styles.toastInfo : null,
       {
-        marginTop: topOffset,
         opacity,
         transform: [{ translateY }],
       },
     ],
-    [toastVariant, topOffset, opacity, translateY],
+    [toastVariant, placement, insets.top, headerTopPadding, headerHeight, opacity, translateY],
   );
   const toastMessageStyle = useMemo(
     () => [styles.message, toastVariant === "error" ? styles.messageError : null],
     [toastVariant],
   );
-  const containerStyle = useMemo(
-    () => [
-      styles.container,
-      {
-        left: regionInsets.left + theme.spacing[4],
-        right: regionInsets.right + theme.spacing[4],
-      },
-    ],
-    [regionInsets.left, regionInsets.right, theme.spacing],
-  );
+  const containerStyle = styles.container(regionInsets.left, regionInsets.right);
 
   if (!toast) {
     return null;
@@ -323,32 +321,38 @@ export function ToastViewport({
 
   let defaultIcon: ReactNode = null;
   if (toast.variant === "success") {
-    defaultIcon = <CheckCircle2 size="mdPlus" color={theme.colors.primary} />;
+    defaultIcon = <ThemedCheckCircle size="mdPlus" uniProps={successIconProps} />;
+  } else if (toast.variant === "info") {
+    defaultIcon = <ThemedInfo size="mdPlus" uniProps={infoIconProps} />;
+  } else if (toast.variant === "warning") {
+    defaultIcon = <ThemedAlertTriangle size="mdPlus" uniProps={warningIconProps} />;
   } else if (toast.variant === "error") {
-    defaultIcon = <AlertTriangle size="mdPlus" color={theme.colors.destructive} />;
+    defaultIcon = <ThemedAlertTriangle size="mdPlus" uniProps={errorIconProps} />;
   }
   const icon = toast.icon ?? defaultIcon;
 
   const content = (
     <View style={containerStyle} pointerEvents="box-none">
-      <Animated.View
-        testID={toast.testID ?? "app-toast"}
-        onPointerEnter={isWeb ? pauseDismiss : undefined}
-        onPointerLeave={isWeb ? resumeDismiss : undefined}
-        style={toastAnimatedStyle}
-        accessibilityRole="alert"
-      >
-        {icon ? <View style={styles.iconSlot}>{icon}</View> : null}
-        {typeof toast.content === "string" ? (
-          <Text testID="app-toast-message" style={toastMessageStyle}>
-            {toast.content}
-          </Text>
-        ) : (
-          <View testID="app-toast-message" style={styles.contentSlot}>
-            {toast.content}
-          </View>
-        )}
-      </Animated.View>
+      <View style={styles.widthBoundary} pointerEvents="box-none">
+        <Animated.View
+          testID={toast.testID ?? "app-toast"}
+          onPointerEnter={isWeb ? pauseDismiss : undefined}
+          onPointerLeave={isWeb ? resumeDismiss : undefined}
+          style={toastAnimatedStyle}
+          accessibilityRole="alert"
+        >
+          {icon ? <View style={styles.iconSlot}>{icon}</View> : null}
+          {typeof toast.content === "string" ? (
+            <Text testID="app-toast-message" style={toastMessageStyle}>
+              {toast.content}
+            </Text>
+          ) : (
+            <View testID="app-toast-message" style={styles.contentSlot}>
+              {toast.content}
+            </View>
+          )}
+        </Animated.View>
+      </View>
     </View>
   );
 
@@ -361,18 +365,25 @@ export function ToastViewport({
 
 const styles = StyleSheet.create((theme) => ({
   // `left`/`right` are supplied at render time from the content-region insets.
-  container: {
+  container: (left: number, right: number) => ({
+    left: left + theme.spacing[4],
+    right: right + theme.spacing[4],
     position: "absolute",
     top: 0,
     zIndex: OVERLAY_Z.toast,
     alignItems: "center",
+  }),
+  placement: (placement: ToastViewportPlacement, shellTop: number) => ({
+    marginTop: placement === "app-shell" ? shellTop + theme.spacing[2] : theme.spacing[3],
+  }),
+  widthBoundary: {
+    width: "92%",
+    maxWidth: TOAST_MAX_WIDTH,
+    alignItems: "center",
   },
   toast: {
     alignSelf: "center",
-    // Belt-and-braces with the container's `alignItems`: RN-web honours auto
-    // margins, so the toast stays centered even if a parent stretches it.
-    marginHorizontal: "auto",
-    maxWidth: "92%",
+    maxWidth: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
@@ -389,6 +400,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   toastError: {
     borderColor: theme.colors.destructive,
+  },
+  toastWarning: {
+    borderColor: theme.colors.statusWarning,
+  },
+  toastInfo: {
+    borderColor: theme.colors.statusInfo,
   },
   iconSlot: {
     alignItems: "center",

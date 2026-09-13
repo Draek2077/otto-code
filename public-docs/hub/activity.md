@@ -1,12 +1,14 @@
 ---
 title: Hub activity
-description: Read what Hub did with an event, tell a filtered event from an unrouted one, and debug a trigger that did nothing.
+description: "Upstream Paseo Hub reference. Read what Hub did with an event, tell a filtered event from an unrouted one, and debug a trigger that did nothing."
 nav: Activity
 order: 72
 category: Hub
 ---
 
 # Hub activity
+
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
 
 Every event Hub accepts is recorded, whether or not it ran anything. That record is how you debug a trigger.
 

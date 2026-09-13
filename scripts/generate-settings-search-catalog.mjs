@@ -74,7 +74,11 @@ function readExistingIds() {
     exact.set(`${routeIdentity}\u0000${description}`, id);
     relaxedCandidates.set(routeIdentity, [...(relaxedCandidates.get(routeIdentity) ?? []), id]);
   }
-  const relaxed = new Map([...relaxedCandidates].filter(([, ids]) => ids.length === 1));
+  const relaxed = new Map(
+    [...relaxedCandidates]
+      .filter(([, ids]) => ids.length === 1)
+      .map(([identity, ids]) => [identity, ids[0]]),
+  );
   return { exact, relaxed };
 }
 

@@ -53,6 +53,7 @@ function deriveBitbucketMergeCapability(bitbucket: BitbucketMergeFacts): MergeCa
 
 export const bitbucketCloudForgeLogic = {
   id: "bitbucket-cloud",
+  referencePaths: [{ kind: "change_request", infix: "/pull-requests/" }],
   facts: defineForgeFacts({
     family: "bitbucket",
     schema: BitbucketMergeFactsSchema,

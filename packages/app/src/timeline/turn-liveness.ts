@@ -57,8 +57,6 @@ export interface TurnPresentation {
 export function resolveTurnPresentation(
   liveness: TurnLiveness,
   hasActiveSubmission: boolean,
-  isAgentRunning = false,
-  fallbackStartedAt: Date | null = null,
 ): TurnPresentation {
   if (liveness.phase === "open") {
     return {
@@ -69,13 +67,9 @@ export function resolveTurnPresentation(
     };
   }
   return {
-    // Some hosts can publish the agent's running status before the active-turn
-    // snapshot, or omit that optional snapshot entirely. Keep the conversation
-    // working indicator mounted through that handoff instead of letting it
-    // disappear as soon as the optimistic submission is acknowledged.
-    isActive: hasActiveSubmission || isAgentRunning,
+    isActive: hasActiveSubmission,
     isCancelling: liveness.cancellationRequestId !== null,
-    startedAt: isAgentRunning || hasActiveSubmission ? fallbackStartedAt : null,
+    startedAt: null,
     turnId: null,
   };
 }
@@ -96,21 +90,13 @@ function openTurn(current: TurnLiveness, activeTurn: ActiveTurnIdentity): TurnLi
     current.phase === "open" &&
     ((activeTurn.turnId !== null && current.turnId === activeTurn.turnId) ||
       (activeTurn.turnId === null && current.turnId === null));
-  const startedAt = sameTurn ? (current.startedAt ?? activeTurn.startedAt) : activeTurn.startedAt;
-  const cancellationRequestId =
-    sameTurn || current.phase === "idle" ? current.cancellationRequestId : null;
-  // A re-broadcast snapshot of an already-open turn must not mint a new object:
-  // the map wrapper's identity check is what keeps the session store from
-  // publishing a no-op write to every subscriber once per snapshot.
-  if (
-    current.phase === "open" &&
-    current.turnId === activeTurn.turnId &&
-    current.startedAt === startedAt &&
-    current.cancellationRequestId === cancellationRequestId
-  ) {
-    return current;
-  }
-  return { phase: "open", turnId: activeTurn.turnId, startedAt, cancellationRequestId };
+  return {
+    phase: "open",
+    turnId: activeTurn.turnId,
+    startedAt: sameTurn ? (current.startedAt ?? activeTurn.startedAt) : activeTurn.startedAt,
+    cancellationRequestId:
+      sameTurn || current.phase === "idle" ? current.cancellationRequestId : null,
+  };
 }
 
 export function reduceTurnLiveness(
@@ -135,5 +121,17 @@ export function reduceTurnLiveness(
 
   const activeTurn = transition.type === "snapshot" ? transition.activeTurn : transition.turn;
   if (!activeTurn) return TURN_LIVENESS_IDLE;
+  // COMPAT(agentTurnIdentity): added in v0.2.6, remove after 2027-01-31 once daemon floor >= v0.2.6.
+  // A legacy running snapshot has no identity to supersede a turn observed on
+  // the stream. Explicit null still closes above; an identified snapshot may
+  // replace the turn below. Keep this normalization shared by all consumers.
+  if (
+    transition.type === "snapshot" &&
+    activeTurn.turnId === null &&
+    current.phase === "open" &&
+    current.turnId !== null
+  ) {
+    return current;
+  }
   return openTurn(current, activeTurn);
 }

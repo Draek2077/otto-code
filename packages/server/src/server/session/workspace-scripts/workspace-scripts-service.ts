@@ -79,6 +79,7 @@ export function createWorkspaceScriptsService(deps: {
   logger: pino.Logger;
   emit: (message: SessionOutboundMessage) => void;
   spawnWorkspaceScript: (options: SpawnWorkspaceScriptOptions) => Promise<WorktreeScriptResult>;
+  assertAutomationAllowed: (workspaceId: string) => Promise<void>;
 }): WorkspaceScriptsService {
   const {
     serviceProxy,
@@ -95,6 +96,7 @@ export function createWorkspaceScriptsService(deps: {
     logger,
     emit,
     spawnWorkspaceScript,
+    assertAutomationAllowed,
   } = deps;
 
   function resolveGitMetadata(
@@ -239,6 +241,7 @@ export function createWorkspaceScriptsService(deps: {
   async function launchProcess(input: { workspaceId: string; scriptName: string }) {
     const available = requireAvailable();
     const workspace = await getWorkspace(input.workspaceId);
+    await assertAutomationAllowed(workspace.workspaceId);
     const project = await projectRegistry.get(workspace.projectId);
     const gitMetadata = resolveGitMetadata(workspace, project);
     const resolvedScript = await resolveDiscoveredScript(workspace.cwd, input.scriptName);

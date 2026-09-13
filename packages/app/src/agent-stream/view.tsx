@@ -11,14 +11,12 @@ import React, {
   forwardRef,
   memo,
   useCallback,
-  useDeferredValue,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ComponentProps,
   type ReactNode,
 } from "react";
@@ -41,7 +39,7 @@ import {
   AssistantMessage,
   SpeakMessage,
   UserMessage,
-  ActivityLog,
+  Notification,
   ToolCall,
   TodoListCard,
   CompactionMarker,
@@ -61,6 +59,7 @@ import type {
 } from "@otto-code/protocol/agent-types";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
 import { useSessionStore } from "@/stores/session-store";
+import { useRevealedText } from "@/hooks/use-revealed-text";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
 import { useSettings } from "@/hooks/use-settings";
@@ -92,16 +91,7 @@ import {
 } from "./turn-footer";
 import { resolveBottomOverlayTailInset } from "./bottom-overlay-inset";
 import { layoutStream, type StreamLayoutItem } from "./layout";
-import {
-  clampRevealBudget,
-  computeLiveTurnReveal,
-  findTurnBoundary,
-  getGrowingAssistantItemId,
-  type TurnRevealSpan,
-  type TurnRevealTicker,
-  StreamResumeGate,
-  useTurnRevealTicker,
-} from "./turn-reveal";
+
 import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
@@ -136,6 +126,8 @@ import { revealDirectoryInFiles, revealFileInFiles } from "@/git/changes-reveal"
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
 import { useStreamHistoryWindow } from "./use-stream-history-window";
+import { PluginTimelineItemView, useInstalledTimelineTransform } from "@/plugins/timeline";
+import { projectPluginTimelineItems } from "@/plugins/timeline/projection";
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -255,6 +247,22 @@ function renderListEmptyComponent(input: {
   );
 }
 
+// History rows sit inside FlatList cells that rerender on every data change (RN recreates each
+// CellRenderer with a fresh ref and, in a newest-first list, a shifted index). This boundary is
+// what stops that churn: a row renders again only when its stream item identity, its layout item
+// identity, or the renderer itself changes. Item identity is the revision signal the strategy
+// already uses (`useRevisedHistoryRows` clones items whose content or display state changed).
+const HistoryStreamRow = memo(function HistoryStreamRow({
+  layoutItem,
+  renderStreamItem,
+}: {
+  item: StreamItem;
+  layoutItem: StreamLayoutItem;
+  renderStreamItem: (layoutItem: StreamLayoutItem) => ReactNode;
+}) {
+  return <>{renderStreamItem(layoutItem)}</>;
+});
+
 function renderHistoryStreamItem(input: {
   item: StreamItem;
   layoutItemById: Map<string, StreamLayoutItem>;
@@ -264,7 +272,13 @@ function renderHistoryStreamItem(input: {
   if (!layoutItem) {
     return null;
   }
-  return input.renderStreamItem(layoutItem);
+  return (
+    <HistoryStreamRow
+      item={input.item}
+      layoutItem={layoutItem}
+      renderStreamItem={input.renderStreamItem}
+    />
+  );
 }
 
 function renderLiveHeadStreamItem(input: {
@@ -378,23 +392,6 @@ const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
 
 const EMPTY_STREAM_HEAD: StreamItem[] = [];
 const EMPTY_SEARCH_ITEM_IDS = new Set<string>();
-
-/** Isolates each assistant row from the shared live-turn reveal ticker. */
-function RevealedAssistantMessage({
-  ticker,
-  span,
-  ...messageProps
-}: ComponentProps<typeof AssistantMessage> & {
-  ticker: TurnRevealTicker;
-  span: TurnRevealSpan | undefined;
-}) {
-  const revealBudget = useSyncExternalStore(
-    ticker.subscribe,
-    () => (span ? clampRevealBudget(ticker.getRevealed(), span) : undefined),
-    () => span?.length,
-  );
-  return <AssistantMessage {...messageProps} revealBudget={revealBudget} />;
-}
 
 function useRetainedValue<T>(value: T, active: boolean): T {
   const retainedRef = useRef(value);
@@ -518,6 +515,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandAllCommand, setExpandAllCommand] = useState<ExpandAllCommand | null>(null);
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
+    const transformTimelineItem = useInstalledTimelineTransform(resolvedServerId);
 
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);
     const sessionStreamHead = useSessionStore((state) =>
@@ -714,32 +712,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveTurnPresentation = useRetainedValue(turnPresentation, isStreamVisible);
     const isTurnActive = effectiveTurnPresentation.isActive;
 
-    // Keep the live flush interruptible while every stream-derived consumer reads
-    // the same resume-gated pair. Returning to a hidden stream snaps to current data
-    // instead of replaying the away-period backlog.
-    const deferredStreamItems = useDeferredValue(effectiveStreamItems);
-    const deferredStreamHead = useDeferredValue(effectiveStreamHead);
-    const deferredTurnPresentation = useDeferredValue(effectiveTurnPresentation);
-    const urgentStreamUpdate = useMemo(
-      () =>
-        pendingMessageSubmissions.length > 0 ||
-        deferredTurnPresentation !== effectiveTurnPresentation,
-      [pendingMessageSubmissions.length, deferredTurnPresentation, effectiveTurnPresentation],
-    );
-    const streamResumeGateRef = useRef(new StreamResumeGate(isStreamVisible));
-    const displayedStream = streamResumeGateRef.current.select({
-      visible: isStreamVisible,
-      // Submitting clears the composer and marks the turn active synchronously.
-      // Paint its prompt in that same update, then hold the fresh stream until
-      // deferral catches up so acknowledgement cannot briefly remove the row.
-      urgent: urgentStreamUpdate,
-      currentTail: effectiveStreamItems,
-      currentHead: effectiveStreamHead,
-      deferredTail: deferredStreamItems,
-      deferredHead: deferredStreamHead,
-    });
-    const displayedStreamItems = displayedStream.tail;
-    const displayedStreamHead = displayedStream.head;
+    const displayedStreamItems = effectiveStreamItems;
+    const displayedStreamHead = effectiveStreamHead;
 
     // Keep retained history outside the 48ms live-head flush path.
     const preparedToolCallHistory = useMemo(
@@ -763,21 +737,35 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         toolCallDetailLevel,
       ],
     );
-    const { revealLoadedHistory, loadOlder, isLoadingOlder, hasOlder, progressKey } =
-      useAgentStreamHistoryPagination({
-        serverId: resolvedServerId,
-        agentId,
-        toast,
-        historyPagination,
-        items: projectedToolCalls.tail,
-      });
+    const projectedPlugins = useMemo(
+      () => ({
+        tail: projectPluginTimelineItems(projectedToolCalls.tail, transformTimelineItem),
+        head: projectPluginTimelineItems(projectedToolCalls.head, transformTimelineItem),
+      }),
+      [projectedToolCalls.head, projectedToolCalls.tail, transformTimelineItem],
+    );
+    const {
+      historyWindowStart,
+      revealLoadedHistory,
+      loadOlder,
+      isLoadingOlder,
+      hasOlder,
+      progressKey,
+    } = useAgentStreamHistoryPagination({
+      serverId: resolvedServerId,
+      agentId,
+      toast,
+      historyPagination,
+      items: projectedPlugins.tail,
+    });
 
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
         isTurnActive,
         activeTurnStartedAt: effectiveTurnPresentation.startedAt,
-        tail: projectedToolCalls.tail,
-        head: projectedToolCalls.head,
+        tail: projectedPlugins.tail,
+        historyStart: historyWindowStart,
+        head: projectedPlugins.head,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
         groupConsecutiveActions,
@@ -786,8 +774,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     }, [
       isMobile,
       isTurnActive,
-      projectedToolCalls.head,
-      projectedToolCalls.tail,
+      projectedPlugins.head,
+      projectedPlugins.tail,
+      historyWindowStart,
       effectiveTurnPresentation.startedAt,
       groupConsecutiveActions,
       pinnedMountedWindowStartId,
@@ -947,44 +936,24 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       ],
     );
 
-    const settledTurnKeyRef = useRef<string | null>(null);
-    const liveTurnReveal = useMemo(() => {
-      if (!isTurnActive) {
-        settledTurnKeyRef.current = findTurnBoundary([
-          ...displayedStreamItems,
-          ...(displayedStreamHead ?? EMPTY_STREAM_HEAD),
-        ]).turnKey;
-      }
-      return computeLiveTurnReveal({
-        running: isTurnActive,
-        tail: displayedStreamItems,
-        head: displayedStreamHead ?? EMPTY_STREAM_HEAD,
-        settledTurnKey: settledTurnKeyRef.current,
-      });
-    }, [displayedStreamHead, displayedStreamItems, isTurnActive]);
-    const revealTicker = useTurnRevealTicker({
-      turnKey: liveTurnReveal.turnKey,
-      target: liveTurnReveal.totalChars,
-      enabled: isTurnActive,
-      visible: isStreamVisible,
-      dataSettled: displayedStream.dataSettled,
-    });
-    const liveTurnTailItemId = useMemo(
-      () =>
-        getGrowingAssistantItemId(
-          [...displayedStreamItems, ...(displayedStreamHead ?? EMPTY_STREAM_HEAD)],
-          liveTurnReveal,
-        ),
-      [displayedStreamHead, displayedStreamItems, liveTurnReveal],
-    );
+    const liveTurnTailItemId = useMemo(() => {
+      const last = (displayedStreamHead?.length ? displayedStreamHead : displayedStreamItems).at(
+        -1,
+      );
+      return isTurnActive &&
+        last?.kind === "assistant_message" &&
+        effectiveTurnPresentation.turnId !== null &&
+        last.turnId === effectiveTurnPresentation.turnId
+        ? last.id
+        : undefined;
+    }, [displayedStreamHead, displayedStreamItems, effectiveTurnPresentation.turnId, isTurnActive]);
 
     const renderAssistantMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "assistant_message" }>) => {
-        const revealSpan = liveTurnReveal.spans.get(item.id);
         return (
-          <RevealedAssistantMessage
-            ticker={revealTicker}
-            span={revealSpan}
+          <AssistantMessage
+            occurrenceKey={`${agentId}:${item.id}`}
+            revealActive={isStreamVisible}
             message={item.text}
             findQuery={messageFindQuery}
             findActiveMatchIndex={getActiveFindMatchIndex(item)}
@@ -1006,11 +975,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         agentId,
         client,
         getActiveFindMatchIndex,
-        liveTurnReveal,
         liveTurnTailItemId,
         messageFindQuery,
         resolvedServerId,
-        revealTicker,
+        isStreamVisible,
         workspaceRoot,
       ],
     );
@@ -1018,20 +986,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const renderThoughtItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
         return (
-          <ToolCallSlot
+          <ThoughtSlot
             itemId={item.id}
             onInlineDetailsExpandedChangeByItemId={setInlineDetailsExpanded}
-            toolName="thinking"
-            args={item.text}
-            status={item.status === "ready" ? "completed" : "executing"}
+            text={item.text}
+            status={item.status}
             isLastInSequence={layoutItem.isLastInToolSequence}
             defaultExpanded={autoExpandReasoning}
-            forceInline={autoExpandReasoning}
+            revealActive={isStreamVisible}
             expandAllCommand={expandAllCommand}
           />
         );
       },
-      [autoExpandReasoning, expandAllCommand, setInlineDetailsExpanded],
+      [autoExpandReasoning, expandAllCommand, isStreamVisible, setInlineDetailsExpanded],
     );
 
     const renderSingleToolCallItem = useCallback(
@@ -1094,9 +1061,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [context.cwd, setInlineDetailsExpanded, handleToolCallOpenFile],
     );
 
+    // Read through a stable event so live group updates do not change the renderer identity
+    // every tick; history hosts whose group changed are revised through `historyRowRevision`.
+    const getToolCallGroup = useStableEvent((hostId: string) =>
+      projectedToolCalls.groupsByHostId.get(hostId),
+    );
     const renderToolCallItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "tool_call" }>) => {
-        const group = projectedToolCalls.groupsByHostId.get(item.id);
+        const group = getToolCallGroup(item.id);
         if (!group) {
           return renderSingleToolCallItem(
             item,
@@ -1133,9 +1105,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         );
       },
       [
-        projectedToolCalls.groupsByHostId,
         expandedToolCallGroupIds,
         expandAllCommand,
+        getToolCallGroup,
         renderSingleToolCallItem,
         setToolCallGroupExpanded,
       ],
@@ -1170,15 +1142,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               />
             );
 
-          case "activity_log":
+          case "notification":
             return (
-              <ActivityLog
-                type={item.activityType}
-                message={item.message}
-                details={item.details}
-                timestamp={item.timestamp.getTime()}
-                metadata={item.metadata}
-              />
+              <Notification level={item.level} message={item.message} details={item.details} />
             );
 
           case "todo_list":
@@ -1191,6 +1157,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 trigger={item.trigger}
                 preTokens={item.preTokens}
               />
+            );
+
+          case "plugin":
+            return (
+              <PluginTimelineItemView agentId={agentId} item={item} serverId={resolvedServerId} />
             );
 
           default:
@@ -1206,6 +1177,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         renderToolCallItem,
         renderUserMessageItem,
         setInlineDetailsExpanded,
+        agentId,
+        resolvedServerId,
       ],
     );
 
@@ -1408,8 +1381,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [expandedToolCallGroupIds, historyContentRevision, isMobile],
     );
     const liveHeadRowRevision = useMemo(
-      () => ({ expandedToolCallGroupIds, searchState }),
-      [expandedToolCallGroupIds, searchState],
+      () => ({
+        expandedToolCallGroupIds,
+        searchState,
+        expandAllCommand,
+        autoExpandReasoning,
+        isStreamVisible,
+      }),
+      [
+        expandedToolCallGroupIds,
+        searchState,
+        expandAllCommand,
+        autoExpandReasoning,
+        isStreamVisible,
+      ],
     );
     const scrollToBottomOverlay =
       !isNearBottom || isTimelineDetached ? (
@@ -1631,6 +1616,48 @@ interface ToolCallSlotProps extends Omit<
 > {
   itemId: string;
   onInlineDetailsExpandedChangeByItemId: (itemId: string, expanded: boolean) => void;
+}
+
+interface ThoughtSlotProps {
+  itemId: string;
+  onInlineDetailsExpandedChangeByItemId: (itemId: string, expanded: boolean) => void;
+  text: string;
+  status: Extract<StreamItem, { kind: "thought" }>["status"];
+  isLastInSequence: boolean;
+  defaultExpanded: boolean;
+  revealActive: boolean;
+  expandAllCommand?: ExpandAllCommand | null;
+}
+
+// Reasoning text is paced the same way assistant text is; see @/hooks/use-revealed-text.
+function ThoughtSlot({
+  itemId,
+  onInlineDetailsExpandedChangeByItemId,
+  text,
+  status,
+  isLastInSequence,
+  defaultExpanded,
+  revealActive,
+  expandAllCommand,
+}: ThoughtSlotProps) {
+  const revealedText = useRevealedText(
+    text,
+    status === "ready" ? "complete" : "streaming",
+    revealActive,
+  );
+  return (
+    <ToolCallSlot
+      itemId={itemId}
+      onInlineDetailsExpandedChangeByItemId={onInlineDetailsExpandedChangeByItemId}
+      toolName="thinking"
+      args={revealedText}
+      status={status === "ready" ? "completed" : "executing"}
+      isLastInSequence={isLastInSequence}
+      defaultExpanded={defaultExpanded}
+      forceInline={defaultExpanded}
+      expandAllCommand={expandAllCommand}
+    />
+  );
 }
 
 function ToolCallSlot({

@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,6 +12,13 @@ export interface E2EWorker {
   close(): Promise<void>;
 }
 
+export interface E2EWorkerOptions {
+  forkProviders?: string[];
+  injectPaseoTools?: boolean;
+  daemonConfig?: Record<string, unknown>;
+  environment?: Record<string, string>;
+}
+
 function resolveOptionalHome(value: string | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
@@ -22,7 +29,16 @@ async function createFakeEditorBin(): Promise<string> {
   const binDir = await mkdtemp(path.join(tmpdir(), "otto-e2e-editor-bin-"));
   let realGhPath = "";
   try {
-    realGhPath = execSync("which gh").toString().trim();
+    const locator = process.platform === "win32" ? "where.exe" : "which";
+    const candidates = execFileSync(locator, ["gh"], { encoding: "utf8" })
+      .split(/\r?\n/u)
+      .map((candidate) => candidate.trim())
+      .filter(Boolean);
+    realGhPath =
+      candidates.find(
+        (candidate) =>
+          process.platform !== "win32" || !/\.(?:cmd|bat)$/iu.test(path.extname(candidate)),
+      ) ?? "";
   } catch {
     // The local GitHub fixture remains usable without a system gh binary.
   }
@@ -68,31 +84,33 @@ if (origin === fixtureRemote) {
     process.exit(0);
   }
   if (command === "pr list" || command === "pr view") {
+    const isFork = args.includes("2");
     const pr = {
-      number: 1,
+      number: isFork ? 2 : 1,
       title: "Use pasted PR as start ref",
-      url: "https://github.com/otto-e2e/local-fixture/pull/1",
+      url: "https://github.com/otto-e2e/local-fixture/pull/" + (isFork ? 2 : 1),
       state: "OPEN",
       body: null,
       labels: [],
       baseRefName: "main",
-      headRefName: "pr-branch-1",
+      headRefName: isFork ? "pr-branch-2" : "pr-branch-1",
       updatedAt: "2026-01-01T00:00:00Z"
     };
     process.stdout.write(JSON.stringify(command === "pr list" ? [pr] : pr));
     process.exit(0);
   }
   if (command === "api graphql" && args.some((arg) => arg.includes("PullRequestCheckoutTarget"))) {
+    const isFork = args.some((arg) => arg === "number=2");
     process.stdout.write(JSON.stringify({
       data: { repository: { pullRequest: {
-        number: 1,
+        number: isFork ? 2 : 1,
         baseRefName: "main",
-        headRefName: "pr-branch-1",
-        isCrossRepository: false,
-        headRepositoryOwner: { login: "otto-e2e" },
+        headRefName: isFork ? "pr-branch-2" : "pr-branch-1",
+        isCrossRepository: isFork,
+        headRepositoryOwner: { login: isFork ? "fork-owner" : "otto-e2e" },
         headRepository: {
-          sshUrl: "git@github.com:otto-e2e/local-fixture.git",
-          url: fixtureRemote
+          sshUrl: isFork ? "git@github.com:fork-owner/local-fixture.git" : "git@github.com:otto-e2e/local-fixture.git",
+          url: isFork ? "https://github.com/fork-owner/local-fixture" : fixtureRemote
         }
       } } }
     }));
@@ -209,7 +227,7 @@ async function enableDemoCaptureTools(targetHome: string): Promise<void> {
 
 export async function startE2EWorker(
   workerIndex: number,
-  options: { forkProviders?: string[] } = {},
+  options: E2EWorkerOptions = {},
 ): Promise<E2EWorker> {
   const requestedRoot = resolveOptionalHome(process.env.E2E_OTTO_HOME);
   const ottoHome = requestedRoot
@@ -224,6 +242,17 @@ export async function startE2EWorker(
   try {
     await applyMetadataFork(ottoHome, options.forkProviders ?? []);
     await clearStarterPersonalities(ottoHome);
+    // Worker-scoped fixture config lets a spec exercise provider discovery without
+    // reading the developer's provider state or sharing configuration with other specs.
+    if (options.daemonConfig) {
+      await writeFile(
+        path.join(ottoHome, "config.json"),
+        `${JSON.stringify(options.daemonConfig, null, 2)}\n`,
+      );
+    }
+    if (options.injectPaseoTools) {
+      await enablePaseoTools(ottoHome);
+    }
     await enableDemoCaptureTools(ottoHome);
     const localAiConfig = readLocalAiEnv();
     if (localAiConfig) {
@@ -245,6 +274,7 @@ export async function startE2EWorker(
         // extend whichever key the parent process actually has.
         [pathKey]: `${fakeEditorBin}${path.delimiter}${process.env[pathKey] ?? ""}`,
         OTTO_E2E_EDITOR_RECORD_PATH: editorRecordPath,
+        ...options.environment,
       },
     });
 
@@ -274,4 +304,29 @@ export async function startE2EWorker(
     if (!preserveHome) await rm(ottoHome, { recursive: true, force: true });
     throw error;
   }
+}
+
+async function enablePaseoTools(paseoHome: string): Promise<void> {
+  const configPath = path.join(paseoHome, "config.json");
+  const existing = existsSync(configPath)
+    ? JSON.parse(await readFile(configPath, "utf8"))
+    : { version: 1 };
+  await writeFile(
+    configPath,
+    `${JSON.stringify(
+      {
+        ...existing,
+        daemon: {
+          ...existing.daemon,
+          mcp: {
+            ...existing.daemon?.mcp,
+            enabled: true,
+            injectIntoAgents: true,
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }

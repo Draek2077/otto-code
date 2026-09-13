@@ -24,11 +24,12 @@ import { compactUp, type Theme } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
+import { openChangelog } from "@/changelog";
 import { openExternalUrl } from "@/utils/open-external-url";
 
 const DISCORD_URL = "https://discord.gg/Cwjm93KfK";
 const GITHUB_ISSUE_URL = "https://github.com/Draek2077/otto-code/issues/new";
-const CHANGELOG_URL = "https://otto-code.me/changelog";
+
 const ThemedActivity = withUnistyles(Activity);
 const ThemedCircleHelp = withUnistyles(CircleHelp);
 const ThemedGift = withUnistyles(Gift);
@@ -94,10 +95,6 @@ export function SidebarHelpMenu() {
 
   const openGitHubIssue = useCallback(() => {
     void openExternalUrl(GITHUB_ISSUE_URL);
-  }, []);
-
-  const openChangelog = useCallback(() => {
-    void openExternalUrl(CHANGELOG_URL);
   }, []);
 
   return (

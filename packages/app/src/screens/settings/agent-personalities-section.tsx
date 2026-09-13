@@ -1,3 +1,20 @@
+import { SettingsButton } from "@/screens/settings-search/controls";
+import type { RefObject } from "react";
+import {
+  PERSONALITY_SETTINGS_TABS,
+  PERSONALITY_SETTINGS_TARGETS,
+  settingsEditorTab,
+} from "@/screens/settings-search/nested-editor-targets";
+import {
+  useSettingsTarget,
+  useRevealSettingsTarget,
+  useSettingsSearchRequest,
+} from "@/screens/settings-search/target";
+import {
+  SettingsTargetText,
+  SettingsTargetScope,
+  SettingsTargetLabel,
+} from "@/screens/settings-search/target";
 // Agent Personalities editor - the per-host roster of named agent templates
 // (provider->model, canonical effort, mode, personality prompt, roles, and two
 // spinner colors). Lives in the host settings "Agents" section.
@@ -55,7 +72,7 @@ import { Button } from "@/components/ui/button";
 import { ColorWheelPicker } from "@/components/ui/color-wheel-picker";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { type SegmentedControlOption } from "@/components/ui/segmented-control";
-import { TabbedModalSheet } from "@/components/ui/tabbed-modal-sheet";
+import { SettingsTabbedModalSheet as TabbedModalSheet } from "@/screens/settings-search/sheets";
 import { Switch } from "@/components/ui/switch";
 import { TextArea } from "@/components/ui/text-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -192,6 +209,13 @@ const EDITOR_TABS: SegmentedControlOption<EditorTab>[] = [
   { value: "model", label: "Model" },
   { value: "voice", label: "Voice" },
 ];
+
+const CUE_SETTINGS_TARGETS: Record<CueMoment, string> = {
+  join: "host-teams-voice-starting-cue-lines",
+  thinking: "host-teams-voice-thinking-cue-lines",
+  waiting: "host-teams-voice-waiting-cue-lines",
+  done: "host-teams-voice-completed-cue-lines",
+};
 
 const CUE_KIND_LABELS: Record<CueMoment, string> = {
   join: "Starting",
@@ -357,7 +381,10 @@ const FLEX_1 = { flex: 1 } as const;
 
 type ThemedIcon = typeof ThemedPlus;
 
+const NO_SETTINGS_TARGETS: readonly string[] = [];
+
 interface IconButtonProps {
+  settingIds?: readonly string[];
   Icon: ThemedIcon;
   label: string;
   onPress: () => void;
@@ -367,6 +394,7 @@ interface IconButtonProps {
 }
 
 function IconButton({
+  settingIds = NO_SETTINGS_TARGETS,
   Icon,
   label,
   onPress,
@@ -374,6 +402,7 @@ function IconButton({
   destructive = false,
   testID,
 }: IconButtonProps): ReactElement {
+  const { node, handleLayout } = useSettingsTarget(settingIds, undefined);
   const [hovered, setHovered] = useState(false);
   const handleHoverIn = useCallback(() => setHovered(true), []);
   const handleHoverOut = useCallback(() => setHovered(false), []);
@@ -395,6 +424,8 @@ function IconButton({
   return (
     <Tooltip delayDuration={300}>
       <TooltipTrigger
+        anchorRef={node as RefObject<View | null>}
+        onLayout={handleLayout}
         accessibilityRole="button"
         accessibilityLabel={label}
         disabled={disabled}
@@ -407,7 +438,7 @@ function IconButton({
         <Icon uniProps={mapping} />
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
-        <Text style={styles.tooltipText}>{label}</Text>
+        <SettingsTargetLabel style={styles.tooltipText}>{label}</SettingsTargetLabel>
       </TooltipContent>
     </Tooltip>
   );
@@ -693,6 +724,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
       <IconButton
         Icon={ThemedPlus}
         label="Add profile"
+        settingIds={["host-teams-agent-personalities-add-personality"]}
         onPress={handleAdd}
         disabled={!isConnected || !config}
         testID="agent-personalities-add-button"
@@ -925,12 +957,14 @@ function PersonalityRow({
       <IconButton
         Icon={ThemedPencil}
         label="Edit profile"
+        settingIds={["host-teams-agent-personalities-edit-personality"]}
         onPress={handleEdit}
         testID={`agent-personality-edit-${personality.id}`}
       />
       <IconButton
         Icon={ThemedTrash}
         label="Delete profile"
+        settingIds={["host-teams-agent-personalities-delete-personality"]}
         destructive
         onPress={handleRemove}
         testID={`agent-personality-remove-${personality.id}`}
@@ -1041,6 +1075,14 @@ function PersonalityEditModal({
   const canGenerateProfile = usePersonalityProfileFeature(serverId);
   const client = useHostRuntimeClient(serverId);
   const [activeTab, setActiveTab] = useState<EditorTab>("identity");
+  const requestedSetting = useSettingsSearchRequest();
+  useRevealSettingsTarget(
+    PERSONALITY_SETTINGS_TARGETS,
+    useCallback(() => {
+      const tab = settingsEditorTab(PERSONALITY_SETTINGS_TABS, requestedSetting);
+      if (tab !== null) setActiveTab(tab);
+    }, [requestedSetting]),
+  );
   const [isGeneratingCues, setIsGeneratingCues] = useState(false);
   // Human-readable failure notice for the last generation attempt (partial or
   // total), cleared when a new generation starts. Any result that lands after
@@ -1535,7 +1577,9 @@ function PersonalityEditModal({
       <>
         {activeTab === "identity" ? (
           <>
-            <FieldLabel label="Name" />
+            <SettingsTargetScope settingIds={["host-teams-identity-name"]}>
+              <FieldLabel label="Name" />
+            </SettingsTargetScope>
             <TextInput
               value={draft.name}
               onChangeText={setName}
@@ -1565,19 +1609,24 @@ function PersonalityEditModal({
               onGlowBChange={setGlowB}
             />
 
-            <AgentProfileAppearanceField
-              label="Appearance"
-              icon={draft.icon}
-              color={draft.color}
-              onChange={setAppearance}
-              testID="agent-personality-appearance"
-            />
+            <SettingsTargetScope settingIds={["host-teams-identity-appearance"]}>
+              <AgentProfileAppearanceField
+                label="Appearance"
+                Label={SettingsTargetLabel}
+                icon={draft.icon}
+                color={draft.color}
+                onChange={setAppearance}
+                testID="agent-personality-appearance"
+              />
+            </SettingsTargetScope>
           </>
         ) : null}
 
         {activeTab === "personality" ? (
           <>
-            <FieldLabel label="Profile prompt" />
+            <SettingsTargetScope settingIds={["host-teams-personality-personality-prompt"]}>
+              <FieldLabel label="Profile prompt" />
+            </SettingsTargetScope>
             <TextArea
               value={draft.personalityPrompt}
               onChangeText={setPrompt}
@@ -1594,7 +1643,9 @@ function PersonalityEditModal({
               onGenerate={handleGenerateProfile}
             />
 
-            <FieldLabel label="Notes" />
+            <SettingsTargetScope settingIds={["host-teams-personality-notes"]}>
+              <FieldLabel label="Notes" />
+            </SettingsTargetScope>
             <TextArea
               value={draft.notes}
               onChangeText={setNotes}
@@ -1606,7 +1657,12 @@ function PersonalityEditModal({
 
             <View style={styles.toggleRow}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Respect global append prompt</Text>
+                <SettingsTargetText
+                  settingId="host-teams-personality-respect-global-append-prompt"
+                  style={settingsStyles.rowTitle}
+                >
+                  Respect global append prompt
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   When off, the personality prompt stands alone (no host-wide append stacked on
                   top).
@@ -1623,7 +1679,12 @@ function PersonalityEditModal({
             {memorySupported ? (
               <View style={styles.toggleRow}>
                 <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>Remember lessons</Text>
+                  <SettingsTargetText
+                    settingId="host-teams-personality-remember-lessons"
+                    style={settingsStyles.rowTitle}
+                  >
+                    Remember lessons
+                  </SettingsTargetText>
                   <Text style={settingsStyles.rowHint}>
                     {lessonCount > 0
                       ? `${lessonCount === 1 ? "1 lesson" : `${lessonCount} lessons`} remembered so far. ` +
@@ -1640,35 +1701,43 @@ function PersonalityEditModal({
 
         {activeTab === "model" ? (
           <>
-            <PickerRow
-              label="Provider"
-              value={draft.provider}
-              options={providerOptions}
-              onChange={handleProviderChange}
-              testID="agent-personality-provider-picker"
-            />
-            <PickerRow
-              label="Model"
-              value={draft.model}
-              options={modelOptions}
-              onChange={setModel}
-              testID="agent-personality-model-picker"
-            />
-            <PickerRow
-              label="Mode"
-              value={draft.modeId}
-              options={modeOptions}
-              onChange={setMode}
-              displayLabel={modeDisplayLabel}
-              testID="agent-personality-mode-picker"
-            />
-            <PickerRow
-              label="Effort"
-              value={draft.effort}
-              options={effortOptions}
-              onChange={setEffort}
-              testID="agent-personality-effort-picker"
-            />
+            <SettingsTargetScope settingIds={["host-teams-model-provider"]}>
+              <PickerRow
+                label="Provider"
+                value={draft.provider}
+                options={providerOptions}
+                onChange={handleProviderChange}
+                testID="agent-personality-provider-picker"
+              />
+            </SettingsTargetScope>
+            <SettingsTargetScope settingIds={["host-teams-model-model"]}>
+              <PickerRow
+                label="Model"
+                value={draft.model}
+                options={modelOptions}
+                onChange={setModel}
+                testID="agent-personality-model-picker"
+              />
+            </SettingsTargetScope>
+            <SettingsTargetScope settingIds={["host-teams-model-mode"]}>
+              <PickerRow
+                label="Mode"
+                value={draft.modeId}
+                options={modeOptions}
+                onChange={setMode}
+                displayLabel={modeDisplayLabel}
+                testID="agent-personality-mode-picker"
+              />
+            </SettingsTargetScope>
+            <SettingsTargetScope settingIds={["host-teams-model-effort"]}>
+              <PickerRow
+                label="Effort"
+                value={draft.effort}
+                options={effortOptions}
+                onChange={setEffort}
+                testID="agent-personality-effort-picker"
+              />
+            </SettingsTargetScope>
             {providerFeatures.features.map((feature) => (
               <PersonalityFeatureRow
                 key={feature.id}
@@ -1682,14 +1751,16 @@ function PersonalityEditModal({
         {activeTab === "voice" ? (
           <>
             {showVoice ? (
-              <PickerRow
-                label="Voice"
-                value={encodeVoice(draft.voice)}
-                options={voiceOptions}
-                onChange={setVoice}
-                testID="agent-personality-voice-picker"
-                trailing={voicePreview}
-              />
+              <SettingsTargetScope settingIds={["host-teams-voice-voice"]}>
+                <PickerRow
+                  label="Voice"
+                  value={encodeVoice(draft.voice)}
+                  options={voiceOptions}
+                  onChange={setVoice}
+                  testID="agent-personality-voice-picker"
+                  trailing={voicePreview}
+                />
+              </SettingsTargetScope>
             ) : null}
             <VoiceCuesEditor
               cues={draft.voiceCues}
@@ -1713,7 +1784,7 @@ function PersonalityEditModal({
 // ---------------------------------------------------------------------------
 
 function FieldLabel({ label }: { label: string }): ReactElement {
-  return <Text style={styles.fieldLabel}>{label}</Text>;
+  return <SettingsTargetLabel style={styles.fieldLabel}>{label}</SettingsTargetLabel>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1748,7 +1819,8 @@ function ProfileGeneratorField({
         agent better at the roles you gave it, and to work well with the rest of the team. Edit
         anything you like afterwards.
       </Text>
-      <Button
+      <SettingsButton
+        settingIds={["host-teams-personality-generate-with-ai"]}
         variant="secondary"
         size="sm"
         leftIcon={Robot}
@@ -1757,7 +1829,7 @@ function ProfileGeneratorField({
         testID="agent-personality-generate-profile"
       >
         {isGenerating ? "Writing profile…" : "Generate with AI"}
-      </Button>
+      </SettingsButton>
       {error ? (
         <Text style={styles.fieldError} testID="agent-personality-profile-gen-error">
           {error}
@@ -1824,7 +1896,9 @@ function CueGroupEditor({
   const handleAdd = useCallback(() => onAddLine(kind), [kind, onAddLine]);
   return (
     <View style={styles.cueGroup}>
-      <FieldLabel label={CUE_KIND_LABELS[kind]} />
+      <SettingsTargetScope settingIds={[CUE_SETTINGS_TARGETS[kind]]}>
+        <FieldLabel label={CUE_KIND_LABELS[kind]} />
+      </SettingsTargetScope>
       <Text style={styles.fieldHint}>{CUE_KIND_HINTS[kind]}</Text>
       {lines.map((line, index) => (
         <CueLineRow
@@ -1873,7 +1947,8 @@ function VoiceCuesEditor({
         Voice cues). Left empty, a set is generated for you on save.
       </Text>
       {canGenerate ? (
-        <Button
+        <SettingsButton
+          settingIds={["host-teams-voice-generate-cues-with-ai"]}
           variant="secondary"
           size="sm"
           leftIcon={Robot}
@@ -1882,7 +1957,7 @@ function VoiceCuesEditor({
           testID="agent-personality-generate-cues"
         >
           {isGenerating ? "Writing all four moments…" : "Generate with AI"}
-        </Button>
+        </SettingsButton>
       ) : null}
       {error ? (
         <Text style={styles.fieldError} testID="agent-personality-cue-gen-error">
@@ -1940,19 +2015,26 @@ function PersonalityFeatureRow({
 
   if (feature.type === "select") {
     return (
-      <PickerRow
-        label={feature.label}
-        value={feature.value ?? ""}
-        options={options}
-        onChange={handleChange}
-        testID={`agent-personality-feature-${feature.id}`}
-      />
+      <SettingsTargetScope settingIds={["host-teams-model-provider-feature-override"]}>
+        <PickerRow
+          label={feature.label}
+          value={feature.value ?? ""}
+          options={options}
+          onChange={handleChange}
+          testID={`agent-personality-feature-${feature.id}`}
+        />
+      </SettingsTargetScope>
     );
   }
   return (
     <View style={styles.toggleRow}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{feature.label}</Text>
+        <SettingsTargetText
+          settingId="host-teams-model-provider-feature-override"
+          style={settingsStyles.rowTitle}
+        >
+          {feature.label}
+        </SettingsTargetText>
         {feature.description ? (
           <Text style={settingsStyles.rowHint}>{feature.description}</Text>
         ) : null}
@@ -2001,7 +2083,7 @@ function PickerRow({
   return (
     <View style={styles.pickerRow}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{label}</Text>
+        <SettingsTargetLabel style={settingsStyles.rowTitle}>{label}</SettingsTargetLabel>
       </View>
       {trailing}
       <View ref={anchorRef} collapsable={false} style={styles.triggerAnchor}>
@@ -2048,7 +2130,9 @@ function RolesField({ roles, onToggle, onSetAll }: RolesFieldProps): ReactElemen
   return (
     <View style={styles.rolesField}>
       <View style={styles.rolesHeader}>
-        <FieldLabel label="Roles" />
+        <SettingsTargetScope settingIds={["host-teams-identity-roles"]}>
+          <FieldLabel label="Roles" />
+        </SettingsTargetScope>
         <Button
           variant="ghost"
           size="sm"
@@ -2122,18 +2206,22 @@ function SpinnerField({
         <BlobLoader size="lg" glowA={glowA} glowB={glowB} />
       </View>
       <View style={styles.spinnerWheels}>
-        <ColorInput
-          label="Glow A"
-          value={glowA}
-          onChange={onGlowAChange}
-          testID="agent-personality-glow-a-input"
-        />
-        <ColorInput
-          label="Glow B"
-          value={glowB}
-          onChange={onGlowBChange}
-          testID="agent-personality-glow-b-input"
-        />
+        <SettingsTargetScope settingIds={["host-teams-identity-glow-a"]}>
+          <ColorInput
+            label="Glow A"
+            value={glowA}
+            onChange={onGlowAChange}
+            testID="agent-personality-glow-a-input"
+          />
+        </SettingsTargetScope>
+        <SettingsTargetScope settingIds={["host-teams-identity-glow-b"]}>
+          <ColorInput
+            label="Glow B"
+            value={glowB}
+            onChange={onGlowBChange}
+            testID="agent-personality-glow-b-input"
+          />
+        </SettingsTargetScope>
       </View>
     </View>
   );
@@ -2160,7 +2248,7 @@ function ColorInput({ label, value, onChange, testID }: ColorInputProps): ReactE
   );
   return (
     <View style={styles.colorInputColumn}>
-      <Text style={styles.colorInputLabel}>{label}</Text>
+      <SettingsTargetLabel style={styles.colorInputLabel}>{label}</SettingsTargetLabel>
       <ColorWheelPicker
         value={value}
         onChange={onChange}

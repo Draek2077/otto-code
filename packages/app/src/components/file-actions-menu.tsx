@@ -5,6 +5,7 @@ import {
   Copy,
   CopyPlus,
   Download,
+  ExternalLink,
   FilePlus,
   FolderOpen,
   FolderPlus,
@@ -52,6 +53,8 @@ interface FileActionsContextMenuContentProps {
   fileExists?: boolean;
   /** Opens the file according to its source's preferred main/side placement. */
   onEditFile?: () => void;
+  onOpenInEditor?: () => void;
+  editorTargetName?: string;
   onOpenToSide?: () => void;
   /** Rendered above the actions, separated: the explorer shows file size and
    *  modified time here. */
@@ -84,6 +87,8 @@ export function FileActionsContextMenuContent({
   fileKind,
   fileExists = true,
   onEditFile,
+  onOpenInEditor,
+  editorTargetName,
   onOpenToSide,
   header,
   onCopyPath,
@@ -103,6 +108,19 @@ export function FileActionsContextMenuContent({
   testIDPrefix,
 }: FileActionsContextMenuContentProps): ReactElement | null {
   const { t } = useTranslation();
+  const openInEditorAction = useMemo<FileAction | null>(
+    () =>
+      fileKind === "directory" && onOpenInEditor && editorTargetName
+        ? {
+            key: "open-in-editor",
+            group: "open",
+            label: t("workspace.fileActions.openIn", { target: editorTargetName }),
+            icon: ExternalLink,
+            onSelect: onOpenInEditor,
+          }
+        : null,
+    [editorTargetName, fileKind, onOpenInEditor, t],
+  );
   const actions = useMemo<FileAction[]>(() => {
     const availableFile = fileKind === "file" && fileExists;
     const specs: Array<FileAction | null> = [
@@ -166,6 +184,7 @@ export function FileActionsContextMenuContent({
             group: "manage",
           }
         : null,
+      openInEditorAction,
       onCopyPath
         ? {
             key: "copy-path",
@@ -244,6 +263,7 @@ export function FileActionsContextMenuContent({
     onEditFile,
     onNewFile,
     onNewFolder,
+    openInEditorAction,
     onOpenToSide,
     onRename,
     onReveal,

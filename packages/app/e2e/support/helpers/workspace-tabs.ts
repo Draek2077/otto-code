@@ -102,17 +102,17 @@ export async function openChangesTreePanel(page: Page): Promise<void> {
   });
 }
 
-export async function openChangesPanel(page: Page): Promise<void> {
+export async function openChangesPanel(page: Page, timeout = 30_000): Promise<void> {
   await openChangesTreePanel(page);
   await showChangesFileTree(page);
   const changedFile = page
     .locator('[data-testid^="diff-tree-file-"][data-testid$="-toggle"]')
     .filter({ visible: true })
     .first();
-  await expect(changedFile).toBeVisible({ timeout: 30_000 });
+  await expect(changedFile).toBeVisible({ timeout });
   await changedFile.click();
   await expect(visibleTestId(page, "working-diff-panel").first()).toBeVisible({
-    timeout: 30_000,
+    timeout,
   });
 }
 

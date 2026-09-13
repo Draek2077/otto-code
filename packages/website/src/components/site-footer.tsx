@@ -49,7 +49,7 @@ export function SiteFooter({ width = "default" }: SiteFooterProps) {
               href="/hub"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
-              Hub
+              Hub reference
             </a>
             <a
               href="/docs/cli"
@@ -134,12 +134,12 @@ export function SiteFooter({ width = "default" }: SiteFooterProps) {
               GitHub
             </a>
             <a
-              href="https://github.com/Draek2077/otto-code"
+              href="https://github.com/getpaseo/paseo"
               target="_blank"
               rel="noopener noreferrer"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
-              Otto (upstream)
+              Paseo (upstream)
             </a>
           </div>
         </div>

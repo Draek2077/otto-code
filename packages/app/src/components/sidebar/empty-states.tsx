@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { Plus } from "lucide-react-native";
+import { Import, Plus } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -37,7 +37,13 @@ export function SidebarFilterEmptyState() {
   );
 }
 
-export function SidebarProjectEmptyState({ onAddProject }: { onAddProject?: () => void }) {
+export function SidebarProjectEmptyState({
+  onAddProject,
+  onImportSession,
+}: {
+  onAddProject?: () => void;
+  onImportSession?: () => void;
+}) {
   const { t } = useTranslation();
 
   return (
@@ -47,6 +53,11 @@ export function SidebarProjectEmptyState({ onAddProject }: { onAddProject?: () =
       <Button variant="ghost" size="sm" leftIcon={Plus} onPress={onAddProject}>
         {t("sidebar.actions.addProject")}
       </Button>
+      {onImportSession ? (
+        <Button variant="ghost" size="sm" leftIcon={Import} onPress={onImportSession}>
+          {t("importSession.title")}
+        </Button>
+      ) : null}
     </View>
   );
 }

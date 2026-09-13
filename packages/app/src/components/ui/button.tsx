@@ -197,6 +197,7 @@ const styles = StyleSheet.create((theme) => {
 });
 
 export function Button({
+  ref,
   children,
   variant = "secondary",
   size = "md",
@@ -212,6 +213,7 @@ export function Button({
   ...props
 }: PropsWithChildren<
   Omit<PressableProps, "style"> & {
+    ref?: React.Ref<View>;
     variant?: ButtonVariant;
     size?: ButtonSize;
     leftIcon?: LeftIcon;
@@ -310,6 +312,7 @@ export function Button({
   return (
     <Pressable
       {...props}
+      ref={ref}
       accessibilityRole={accessibilityRole ?? "button"}
       accessibilityState={accessibilityState}
       disabled={isDisabled}

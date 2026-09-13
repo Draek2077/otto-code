@@ -1,11 +1,12 @@
+import {
+  SettingsButton,
+  SettingsEditingTextInput as TextInput,
+} from "@/screens/settings-search/controls";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchQuery } from "@/data/query";
-import {
-  EditingTextInput as TextInput,
-  type EditingTextInputHandle,
-} from "@/components/ui/text-input";
+import { type EditingTextInputHandle } from "@/components/ui/text-input";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   ForgeConnection,
@@ -19,6 +20,45 @@ import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { invalidateCheckoutGitQueriesForServer } from "@/git/query-keys";
+
+const FORGE_TARGET_IDS = {
+  addConnection: [
+    "host-workspaces-git-connections-add-connection",
+    "host-projects-project-settings-git-connections-add-connection",
+  ],
+  connection: [
+    "host-workspaces-git-connections-connection",
+    "host-projects-project-settings-git-connections-connection",
+  ],
+  provider: [
+    "host-workspaces-git-connections-provider",
+    "host-projects-project-settings-git-connections-provider",
+  ],
+  name: [
+    "host-workspaces-git-connections-connection-name",
+    "host-projects-project-settings-git-connections-connection-name",
+  ],
+  host: [
+    "host-workspaces-git-connections-git-server-hostname",
+    "host-projects-project-settings-git-connections-git-server-hostname",
+  ],
+  method: [
+    "host-workspaces-git-connections-credential-method",
+    "host-projects-project-settings-git-connections-credential-method",
+  ],
+  account: [
+    "host-workspaces-git-connections-account",
+    "host-projects-project-settings-git-connections-account",
+  ],
+  teaLogin: [
+    "host-workspaces-git-connections-saved-tea-login-name",
+    "host-projects-project-settings-git-connections-saved-tea-login-name",
+  ],
+  token: [
+    "host-workspaces-git-connections-api-token",
+    "host-projects-project-settings-git-connections-api-token",
+  ],
+} as const;
 
 const PROVIDERS = [
   { id: "github", label: "GitHub", host: "github.com" },
@@ -173,14 +213,15 @@ function ConnectionsContent({ serverId, projectId }: { serverId: string; project
             project={!!projectId}
           />
         ) : (
-          <Button
+          <SettingsButton
+            settingIds={FORGE_TARGET_IDS.addConnection}
             size="sm"
             variant="secondary"
             disabled={busy || !overview}
             onPress={addConnection}
           >
             Add connection
-          </Button>
+          </SettingsButton>
         )}
       </View>
     </View>
@@ -261,6 +302,7 @@ function ConnectionBinding({
         {PROVIDERS.find((p) => p.id === forge)?.label ?? forge} · {host}
       </Text>
       <ConnectionChoice
+        settingIds={FORGE_TARGET_IDS.connection}
         label="Connection"
         value={selected?.connectionId ?? "inherit"}
         options={choices}
@@ -308,24 +350,38 @@ function SavedConnection({
           {connection.account} · {connection.host}
         </Text>
       </View>
-      <Button size="sm" variant="secondary" disabled={busy} onPress={edit}>
+      <SettingsButton
+        settingIds={["host-workspaces-git-connections-reconnect"]}
+        size="sm"
+        variant="secondary"
+        disabled={busy}
+        onPress={edit}
+      >
         Reconnect
-      </Button>
-      <Button size="sm" variant="destructive" disabled={busy} onPress={remove}>
+      </SettingsButton>
+      <SettingsButton
+        settingIds={["host-workspaces-git-connections-remove"]}
+        size="sm"
+        variant="destructive"
+        disabled={busy}
+        onPress={remove}
+      >
         Remove
-      </Button>
+      </SettingsButton>
     </View>
   );
 }
 
 function ConnectionChoice({
   label,
+  settingIds,
   value,
   options,
   onSelect,
   disabled,
 }: {
   label: string;
+  settingIds: readonly string[];
   value: string;
   options: { id: string; label: string }[];
   onSelect: (value: string) => void;
@@ -341,9 +397,15 @@ function ConnectionChoice({
         onSelect={onSelect}
         searchable={false}
       >
-        <Button variant="secondary" size="sm" disabled={disabled} accessibilityLabel={label}>
+        <SettingsButton
+          settingIds={settingIds}
+          variant="secondary"
+          size="sm"
+          disabled={disabled}
+          accessibilityLabel={label}
+        >
           {options.find((o) => o.id === value)?.label ?? label}
-        </Button>
+        </SettingsButton>
       </Combobox>
     </View>
   );
@@ -427,6 +489,7 @@ function ConnectionForm({
         {connection ? `Reconnect ${connection.label}` : "Add connection"}
       </Text>
       <ConnectionChoice
+        settingIds={FORGE_TARGET_IDS.provider}
         label="Provider"
         value={forge}
         options={PROVIDERS}
@@ -434,6 +497,7 @@ function ConnectionForm({
         onSelect={changeProvider}
       />
       <TextInput
+        settingIds={FORGE_TARGET_IDS.name}
         accessibilityLabel="Connection name"
         placeholder="Connection name, e.g. Work"
         style={styles.input}
@@ -442,6 +506,7 @@ function ConnectionForm({
         editable={!busy}
       />
       <TextInput
+        settingIds={FORGE_TARGET_IDS.host}
         key={`host:${forge}`}
         accessibilityLabel="Git server hostname"
         placeholder="Git server, e.g. github.com"
@@ -453,6 +518,7 @@ function ConnectionForm({
         editable={!busy && !connection}
       />
       <ConnectionChoice
+        settingIds={FORGE_TARGET_IDS.method}
         label="Credential method"
         value={method}
         options={methods}
@@ -461,6 +527,7 @@ function ConnectionForm({
       />
       {(method === "cli" || forge === "bitbucket-cloud") && (
         <TextInput
+          settingIds={tea ? FORGE_TARGET_IDS.teaLogin : FORGE_TARGET_IDS.account}
           key={`account:${forge}`}
           accessibilityLabel={tea ? "Saved tea login name" : "Account"}
           placeholder={forge === "bitbucket-cloud" ? "Atlassian account email" : "Saved login name"}
@@ -474,6 +541,7 @@ function ConnectionForm({
       )}
       {method === "token" && (
         <TextInput
+          settingIds={FORGE_TARGET_IDS.token}
           ref={secretInput}
           accessibilityLabel="API token"
           placeholder="API token"

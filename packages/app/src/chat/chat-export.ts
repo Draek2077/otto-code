@@ -10,8 +10,10 @@ function itemLabel(item: StreamItem): string {
       return item.text;
     case "thought":
       return item.text;
-    case "activity_log":
-      return item.message;
+    case "notification":
+      return [item.message, ...(item.details ?? [])].join("\n");
+    case "plugin":
+      return JSON.stringify(item.data, null, 2);
     case "todo_list":
       return item.items
         .map((entry) => `${entry.completed ? "[x]" : "[ ]"} ${entry.text}`)
@@ -37,8 +39,10 @@ function itemRole(item: StreamItem): string {
       return "Tool";
     case "todo_list":
       return "Todo list";
-    case "activity_log":
-      return "Activity";
+    case "notification":
+      return "Notification";
+    case "plugin":
+      return item.itemKind;
     case "action_group":
       return "Actions";
     case "compaction":

@@ -79,7 +79,6 @@ function configuration(
     shouldAdmitUpdate: () => true,
     onUpdateAvailable: vi.fn(),
     onUpdateDownloaded: vi.fn(),
-    onUpdateNotAvailable: vi.fn(),
     onError: vi.fn(),
     ...overrides,
   };
@@ -110,13 +109,11 @@ describe("ManualDownloadUpdateRuntime", () => {
   });
 
   it("reports nothing when already on the newest release", async () => {
-    const onUpdateNotAvailable = vi.fn();
-    const runtime = runtimeWith("0.6.4", [release({ tag_name: "v0.6.4" })], {
-      onUpdateNotAvailable,
+    const runtime = runtimeWith("0.6.4", [release({ tag_name: "v0.6.4" })]);
+    expect(await runtime.checkForUpdates()).toMatchObject({
+      isUpdateAvailable: false,
+      updateInfo: { version: "0.6.4" },
     });
-
-    expect((await runtime.checkForUpdates())?.isUpdateAvailable).toBe(false);
-    expect(onUpdateNotAvailable).toHaveBeenCalled();
   });
 
   it("never offers a downgrade", async () => {

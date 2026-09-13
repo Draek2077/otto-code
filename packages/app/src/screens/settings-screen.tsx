@@ -1,3 +1,13 @@
+import {
+  SettingsSearchContent,
+  SettingsTarget,
+  SettingsTargetText,
+} from "@/screens/settings-search/target";
+import { pluginSettingsSearchId } from "@/screens/settings-search/plugin-projection";
+import { WhatsNewRow } from "@/screens/settings/otto-whats-new-row";
+import { usePluginSettingsHeader } from "@/screens/settings/otto-plugin-settings-header";
+import { PluginSettingsContent } from "@/plugins/settings";
+import { AddRemoteSshHostModal } from "@/components/add-remote-ssh-host-modal";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import {
@@ -15,7 +25,11 @@ import {
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useRouter } from "expo-router";
-import { buildSettingsSearchDestination } from "@/navigation/settings-navigation";
+import {
+  buildSettingsSearchDestination,
+  returnFromSettings,
+  type SettingsView,
+} from "@/navigation/settings-navigation";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -198,7 +212,7 @@ import { rememberLastSettingsView } from "@/stores/last-settings-view";
 // Matches MIN_CHAT_WIDTH in left-sidebar.tsx so both sidebars clamp the shared
 // panel-store width identically.
 import { SettingsSearchOverview } from "@/screens/settings-search-overview";
-import { SETTINGS_SEARCH_ITEMS, type SettingsSearchItem } from "@/screens/settings-search-catalog";
+import { type SettingsSearchItem } from "@/screens/settings-search-catalog";
 import type { IconSizeProp } from "@/components/icons/icon-size";
 
 const MIN_SETTINGS_CONTENT_WIDTH = 400;
@@ -207,11 +221,7 @@ const MIN_SETTINGS_CONTENT_WIDTH = 400;
 // View model
 // ---------------------------------------------------------------------------
 
-export type SettingsView =
-  | { kind: "root" }
-  | { kind: "section"; section: SettingsSectionSlug }
-  | { kind: "host"; serverId: string; section: HostSectionSlug }
-  | { kind: "project"; serverId: string; projectId: string };
+export type { SettingsView } from "@/navigation/settings-navigation";
 
 // Counts mounted SettingsScreen instances. Navigating between settings route
 // groups (app section ↔ host section ↔ projects) replaces one SettingsScreen
@@ -232,6 +242,8 @@ function settingsViewKey(view: SettingsView): string {
       return `host:${view.serverId}:${view.section}`;
     case "project":
       return `project:${view.serverId}:${view.projectId}`;
+    case "plugin":
+      return `plugin:${view.serverId}:${view.pluginId}:${view.screenId}`;
     default:
       return view.kind;
   }
@@ -716,9 +728,12 @@ function GeneralSection({
         <View style={settingsStyles.card}>
           <View style={settingsStyles.rowResponsive}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>
+              <SettingsTargetText
+                settingId="app-general-general-interface-mode"
+                style={settingsStyles.rowTitle}
+              >
                 {t("settings.general.interfaceMode.label")}
-              </Text>
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>{t(interfaceModeDescriptionKey)}</Text>
             </View>
             <SegmentedControl
@@ -730,9 +745,12 @@ function GeneralSection({
           </View>
           <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>
+              <SettingsTargetText
+                settingId="app-general-general-app-starts-on"
+                style={settingsStyles.rowTitle}
+              >
                 {t("settings.general.appStartScreen.label")}
-              </Text>
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>{t(appStartScreenDescriptionKey)}</Text>
             </View>
             <SegmentedControl
@@ -745,7 +763,12 @@ function GeneralSection({
           </View>
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.general.language.label")}</Text>
+              <SettingsTargetText
+                settingId="app-general-general-language"
+                style={settingsStyles.rowTitle}
+              >
+                {t("settings.general.language.label")}
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 {t("settings.general.language.description")}
               </Text>
@@ -774,9 +797,12 @@ function GeneralSection({
           {isDesktopApp ? (
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>
+                <SettingsTargetText
+                  settingId="app-general-general-service-urls"
+                  style={settingsStyles.rowTitle}
+                >
                   {t("settings.general.serviceUrls.label")}
-                </Text>
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   {t("settings.general.serviceUrls.description")}
                 </Text>
@@ -804,7 +830,12 @@ function GeneralSection({
           {isDesktopApp ? (
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>{t("settings.general.openLinks.label")}</Text>
+                <SettingsTargetText
+                  settingId="app-general-general-open-links"
+                  style={settingsStyles.rowTitle}
+                >
+                  {t("settings.general.openLinks.label")}
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   {t("settings.general.openLinks.description")}
                 </Text>
@@ -831,9 +862,12 @@ function GeneralSection({
           ) : null}
           <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>
+              <SettingsTargetText
+                settingId="app-general-general-workspaces-kept-loaded"
+                style={settingsStyles.rowTitle}
+              >
                 {t("settings.general.mountedWorkspaceLimit.label")}
-              </Text>
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 {t("settings.general.mountedWorkspaceLimit.description")}
               </Text>
@@ -853,9 +887,12 @@ function GeneralSection({
           </View>
           <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>
+              <SettingsTargetText
+                settingId="app-general-general-tabs-kept-loaded"
+                style={settingsStyles.rowTitle}
+              >
                 {t("settings.general.mountedTabLimit.label")}
-              </Text>
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 {t("settings.general.mountedTabLimit.description", {
                   auto: autoMountedTabLimit,
@@ -881,9 +918,12 @@ function GeneralSection({
           {interfaceModeValue === "developer" ? (
             <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>
+                <SettingsTargetText
+                  settingId="app-general-general-terminal-scrollback"
+                  style={settingsStyles.rowTitle}
+                >
                   {t("settings.general.terminalScrollback.label")}
-                </Text>
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   {t("settings.general.terminalScrollback.description")}
                 </Text>
@@ -908,9 +948,12 @@ function GeneralSection({
           <View style={settingsStyles.card}>
             <View style={settingsStyles.rowResponsive}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>
+                <SettingsTargetText
+                  settingId="app-general-preview-preview-server-on-tab-close"
+                  style={settingsStyles.rowTitle}
+                >
                   {t("settings.general.previewServerCloseBehavior.label")}
-                </Text>
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   {t("settings.general.previewServerCloseBehavior.description")}
                 </Text>
@@ -924,9 +967,12 @@ function GeneralSection({
             </View>
             <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>
+                <SettingsTargetText
+                  settingId="app-general-preview-auto-start-on-restore"
+                  style={settingsStyles.rowTitle}
+                >
                   {t("settings.preview.autoStartOnRestore.label")}
-                </Text>
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   {t("settings.preview.autoStartOnRestore.description")}
                 </Text>
@@ -989,7 +1035,12 @@ function ChatSection({
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Suggested tasks</Text>
+              <SettingsTargetText
+                settingId="app-chat-agent-behavior-suggested-tasks"
+                style={settingsStyles.rowTitle}
+              >
+                Suggested tasks
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 Show a card when an agent proposes follow-up work you can start later.
               </Text>
@@ -1004,7 +1055,12 @@ function ChatSection({
           {settings.suggestedTasksEnabled ? (
             <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Suggested tasks default</Text>
+                <SettingsTargetText
+                  settingId="app-chat-agent-behavior-suggested-tasks-default"
+                  style={settingsStyles.rowTitle}
+                >
+                  Suggested tasks default
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>{suggestedTasksDefaultModeDescription}</Text>
               </View>
               <SegmentedControl
@@ -1018,7 +1074,12 @@ function ChatSection({
           ) : null}
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
+              <SettingsTargetText
+                settingId="app-chat-agent-behavior-default-send"
+                style={settingsStyles.rowTitle}
+              >
+                {t("settings.general.defaultSend.label")}
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>{t(sendBehaviorDescriptionKey)}</Text>
             </View>
             <SegmentedControl
@@ -1030,7 +1091,12 @@ function ChatSection({
           </View>
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>AI prompt suggestions</Text>
+              <SettingsTargetText
+                settingId="app-chat-agent-behavior-ai-prompt-suggestions"
+                style={settingsStyles.rowTitle}
+              >
+                AI prompt suggestions
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 After a turn, show the agent&apos;s predicted next prompt as ghost text in the
                 message box; press Tab to accept it.
@@ -1046,7 +1112,12 @@ function ChatSection({
           {settings.promptSuggestionsEnabled ? (
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Follow prompt suggestions</Text>
+                <SettingsTargetText
+                  settingId="app-chat-agent-behavior-follow-prompt-suggestions"
+                  style={settingsStyles.rowTitle}
+                >
+                  Follow prompt suggestions
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   Send the predicted next prompt automatically instead of waiting for Tab, stopping
                   after {FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE} in a row until you send one
@@ -1064,7 +1135,12 @@ function ChatSection({
           ) : null}
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Plan rate-limit warnings</Text>
+              <SettingsTargetText
+                settingId="app-chat-agent-behavior-plan-rate-limit-warnings"
+                style={settingsStyles.rowTitle}
+              >
+                Plan rate-limit warnings
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 Show a warning above the message box when your Claude plan usage nears or hits a
                 rate limit.
@@ -1079,7 +1155,12 @@ function ChatSection({
           </View>
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Context weight warnings</Text>
+              <SettingsTargetText
+                settingId="app-chat-agent-behavior-context-weight-warnings"
+                style={settingsStyles.rowTitle}
+              >
+                Context weight warnings
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 Show a warning above the message box when this project&apos;s context takes a large
                 share of the model window.
@@ -1094,7 +1175,12 @@ function ChatSection({
           </View>
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Auto-clear completed sub-agents</Text>
+              <SettingsTargetText
+                settingId="app-chat-agent-behavior-auto-clear-completed-sub-agents"
+                style={settingsStyles.rowTitle}
+              >
+                Auto-clear completed sub-agents
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 Remove finished sub-agents from a chat&apos;s track once they settle. Their token
                 totals stay counted in the track header.
@@ -1109,7 +1195,12 @@ function ChatSection({
           </View>
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Auto-clear completed background tasks</Text>
+              <SettingsTargetText
+                settingId="app-chat-agent-behavior-auto-clear-completed-background-tasks"
+                style={settingsStyles.rowTitle}
+              >
+                Auto-clear completed background tasks
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 Remove finished background shell tasks from a chat&apos;s track once they settle.
                 Their output stays in the chat.
@@ -1124,7 +1215,12 @@ function ChatSection({
           </View>
           <View style={ROW_WITH_BORDER_STYLE}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Auto-clear failed background tasks</Text>
+              <SettingsTargetText
+                settingId="app-chat-agent-behavior-auto-clear-failed-background-tasks"
+                style={settingsStyles.rowTitle}
+              >
+                Auto-clear failed background tasks
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 Do the same for background shell tasks that failed. Off by default, so tidying away
                 the ones that succeeded never sweeps a failure you have not read.
@@ -1143,7 +1239,12 @@ function ChatSection({
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Pin task list</Text>
+              <SettingsTargetText
+                settingId="app-chat-task-list-pin-task-list"
+                style={settingsStyles.rowTitle}
+              >
+                Pin task list
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 Float the agent&apos;s task checklist at the top of the chat so it stays in view
                 instead of scrolling away inline.
@@ -1159,7 +1260,12 @@ function ChatSection({
           {settings.pinnedTaskListEnabled ? (
             <View style={ROW_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>Auto-dismiss when done</Text>
+                <SettingsTargetText
+                  settingId="app-chat-task-list-auto-dismiss-when-done"
+                  style={settingsStyles.rowTitle}
+                >
+                  Auto-dismiss when done
+                </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
                   Close the pinned task list automatically a moment after every task completes,
                   instead of leaving it up for you to dismiss.
@@ -1227,9 +1333,12 @@ function DiagnosticsSection({
         {isNative ? (
           <View style={settingsStyles.row} testID="legacy-terminal-renderer-row">
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>
+              <SettingsTargetText
+                settingId="app-diagnostics-diagnostics-use-legacy-terminal-renderer"
+                style={settingsStyles.rowTitle}
+              >
                 {t("settings.diagnostics.legacyTerminalRenderer.label")}
-              </Text>
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 {t("settings.diagnostics.legacyTerminalRenderer.description")}
               </Text>
@@ -1246,7 +1355,12 @@ function DiagnosticsSection({
         ) : null}
         <View style={settingsStyles.rowResponsive} testID="app-diagnostic-row">
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.diagnostics.app.rowTitle")}</Text>
+            <SettingsTargetText
+              settingId="app-diagnostics-diagnostics-app-diagnostic"
+              style={settingsStyles.rowTitle}
+            >
+              {t("settings.diagnostics.app.rowTitle")}
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>{t("settings.diagnostics.app.rowHint")}</Text>
           </View>
           <Button variant="secondary" size="sm" onPress={handleOpenDiagnostic}>
@@ -1255,7 +1369,12 @@ function DiagnosticsSection({
         </View>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Performance monitoring</Text>
+            <SettingsTargetText
+              settingId="app-diagnostics-diagnostics-performance-monitoring"
+              style={settingsStyles.rowTitle}
+            >
+              Performance monitoring
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Record frame timing, retained state and daemon traffic so the app diagnostic can show
               what grows over a long session. Local only - nothing is sent anywhere.
@@ -1270,7 +1389,12 @@ function DiagnosticsSection({
         </View>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Show Metrics footer on all pages</Text>
+            <SettingsTargetText
+              settingId="app-diagnostics-diagnostics-show-metrics-footer-on-all-pages"
+              style={settingsStyles.rowTitle}
+            >
+              Show Metrics footer on all pages
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               Move the client performance metrics strip from the Metrics page to the bottom of the
               whole app.
@@ -1286,7 +1410,12 @@ function DiagnosticsSection({
         </View>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.diagnostics.testAudio")}</Text>
+            <SettingsTargetText
+              settingId="app-diagnostics-diagnostics-test-audio"
+              style={settingsStyles.rowTitle}
+            >
+              {t("settings.diagnostics.testAudio")}
+            </SettingsTargetText>
             {playbackTestResult ? (
               <Text style={settingsStyles.rowHint}>{playbackTestResult}</Text>
             ) : null}
@@ -1327,7 +1456,12 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.about.appVersion")}</Text>
+              <SettingsTargetText
+                settingId="app-about-about-app-version"
+                style={settingsStyles.rowTitle}
+              >
+                {t("settings.about.appVersion")}
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>{t("settings.about.thisDevice")}</Text>
             </View>
             <View style={styles.aboutVersionColumn}>
@@ -1340,6 +1474,7 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
               </Text>
             </View>
           </View>
+          <WhatsNewRow />
           {isDesktopApp ? <DesktopAppUpdateRow /> : null}
           <SetupWizardRerunRow />
           <ThirdPartyCreditsRow />
@@ -1365,7 +1500,12 @@ function SetupWizardRerunRow() {
   return (
     <View style={ROW_WITH_BORDER_STYLE}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.about.resetWizard.label")}</Text>
+        <SettingsTargetText
+          settingId="app-about-setup-reset-first-time-wizard"
+          style={settingsStyles.rowTitle}
+        >
+          {t("settings.about.resetWizard.label")}
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>{t("settings.about.resetWizard.description")}</Text>
       </View>
       <Button variant="secondary" size="sm" onPress={handlePress} testID="settings-reset-wizard">
@@ -1383,7 +1523,12 @@ function ThirdPartyCreditsRow() {
   return (
     <View style={ROW_WITH_BORDER_STYLE}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.about.credits.title")}</Text>
+        <SettingsTargetText
+          settingId="app-about-credits-third-party-credits"
+          style={settingsStyles.rowTitle}
+        >
+          {t("settings.about.credits.title")}
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>
           {t("settings.about.credits.visualizer", {
             name: VISUALIZER_UPSTREAM_NAME,
@@ -1481,7 +1626,12 @@ function HostVersionRow({
           <Text style={settingsStyles.rowHint}>{t("settings.about.versionDiffers")}</Text>
         ) : null}
       </View>
-      <Text style={valueStyle}>{valueText}</Text>
+      <SettingsTargetText
+        settingId="app-about-connected-hosts-connected-host-version"
+        style={valueStyle}
+      >
+        {valueText}
+      </SettingsTargetText>
     </View>
   );
 }
@@ -1566,7 +1716,12 @@ function DesktopAppUpdateRow() {
     <>
       <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.about.releaseChannel.label")}</Text>
+          <SettingsTargetText
+            settingId="app-about-updates-release-channel"
+            style={settingsStyles.rowTitle}
+          >
+            {t("settings.about.releaseChannel.label")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             {t("settings.about.releaseChannel.description")}
           </Text>
@@ -1580,7 +1735,12 @@ function DesktopAppUpdateRow() {
       </View>
       <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.about.updates.label")}</Text>
+          <SettingsTargetText
+            settingId="app-about-updates-app-updates"
+            style={settingsStyles.rowTitle}
+          >
+            {t("settings.about.updates.label")}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>{statusText}</Text>
           {readyUpdateVersion ? (
             <Text style={settingsStyles.rowHint}>
@@ -1902,6 +2062,7 @@ function SettingsSidebar({
   let selectedHostSection: HostSectionSlug | null = null;
   if (view.kind === "host") selectedHostSection = view.section;
   if (view.kind === "project") selectedHostSection = "projects";
+  if (view.kind === "plugin") selectedHostSection = "plugins";
   // Matches the workspace left sidebar's trimmed spacer so the top menu rows of
   // the two sidebars stay vertically aligned when navigating between them.
   const paddingTopStyle = useMemo(
@@ -2079,45 +2240,6 @@ export interface SettingsScreenProps {
   focusSettingId?: string | null;
 }
 
-function SettingsSearchFocus({ settingId }: { settingId: string | null }) {
-  useEffect(() => {
-    if (!isWeb || !settingId) return;
-    const item = SETTINGS_SEARCH_ITEMS.find((candidate) => candidate.id === settingId);
-    if (!item) return;
-
-    const frame = requestAnimationFrame(() => {
-      // Settings rows predate the catalog and do not all expose a shared ref.
-      // The exact visible label is the durable common affordance across those
-      // rows, so make that canonical label the focus target while preserving
-      // each row's existing ownership and component implementation.
-      const labels = Array.from(document.querySelectorAll<HTMLElement>("span, p, div")).filter(
-        (element) => isExactSettingsLabel(element, item.title),
-      );
-      const label =
-        labels.find((element) => element.parentElement?.textContent?.includes(item.description)) ??
-        labels[0];
-      if (!label) return;
-      const target = label.parentElement?.textContent?.includes(item.description)
-        ? label.parentElement
-        : label;
-      target.dataset.settingsSearchTarget = item.id;
-      target.tabIndex = -1;
-      target.scrollIntoView({ block: "center", behavior: "smooth" });
-      target.focus({ preventScroll: true });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [settingId]);
-
-  return null;
-}
-
-function isExactSettingsLabel(element: HTMLElement, title: string): boolean {
-  return (
-    element.textContent?.trim() === title &&
-    !Array.from(element.children).some((child) => child.textContent === title)
-  );
-}
-
 function DesktopIntegrationsContent(props: {
   isDesktopApp: boolean;
   serverId: string | null;
@@ -2161,6 +2283,7 @@ export default function SettingsScreen({
   const isDeveloperMode = (settings.interfaceMode ?? "developer") === "developer";
   const [isAddHostMethodVisible, setIsAddHostMethodVisible] = useState(false);
   const [isDirectHostVisible, setIsDirectHostVisible] = useState(false);
+  const [isRemoteSshVisible, setIsRemoteSshVisible] = useState(false);
   const [isPasteLinkVisible, setIsPasteLinkVisible] = useState(false);
   const [isPlaybackTestRunning, setIsPlaybackTestRunning] = useState(false);
   const [playbackTestResult, setPlaybackTestResult] = useState<string | null>(null);
@@ -2192,17 +2315,19 @@ export default function SettingsScreen({
   );
   const handleContentSizeChange = useCallback(
     (width: number, height: number) => {
-      retainedScroll.onContentSizeChange(width, height);
+      if (!focusSettingId) retainedScroll.onContentSizeChange(width, height);
       webScrollbar.onContentSizeChange(width, height);
     },
-    [retainedScroll, webScrollbar],
+    [focusSettingId, retainedScroll, webScrollbar],
   );
   const hosts = useHosts();
   const localServerId = useLocalDaemonServerId();
   const sortedHosts = useSortedHosts(hosts, localServerId);
   const lastWorkspaceSelection = useLastWorkspaceSelection();
   const routedSettingsHostServerId =
-    view.kind === "host" || view.kind === "project" ? view.serverId : null;
+    view.kind === "host" || view.kind === "project" || view.kind === "plugin"
+      ? view.serverId
+      : null;
   const [selectedSettingsHostServerId, setSelectedSettingsHostServerId] = useState<string | null>(
     routedSettingsHostServerId ?? preferredHostServerId ?? lastWorkspaceSelection?.serverId ?? null,
   );
@@ -2238,7 +2363,7 @@ export default function SettingsScreen({
   }, [hosts, localServerId]);
 
   useEffect(() => {
-    if (view.kind === "host" || view.kind === "project") {
+    if (view.kind === "host" || view.kind === "project" || view.kind === "plugin") {
       setSelectedSettingsHostServerId(view.serverId);
       return;
     }
@@ -2256,7 +2381,8 @@ export default function SettingsScreen({
   // The host the four sections scope to: the host on the active view, otherwise
   // the picker choice, otherwise the local daemon, otherwise the first host.
   const activeHostServerId = useMemo(() => {
-    if (view.kind === "host" || view.kind === "project") return view.serverId;
+    if (view.kind === "host" || view.kind === "project" || view.kind === "plugin")
+      return view.serverId;
     return (
       knownSelectedSettingsHostServerId ?? knownLocalServerId ?? sortedHosts[0]?.serverId ?? null
     );
@@ -2453,11 +2579,13 @@ export default function SettingsScreen({
   const closeAddConnectionFlow = useCallback(() => {
     setIsAddHostMethodVisible(false);
     setIsDirectHostVisible(false);
+    setIsRemoteSshVisible(false);
     setIsPasteLinkVisible(false);
   }, []);
 
   const goBackToAddConnectionMethods = useCallback(() => {
     setIsDirectHostVisible(false);
+    setIsRemoteSshVisible(false);
     setIsPasteLinkVisible(false);
     setIsAddHostMethodVisible(true);
   }, []);
@@ -2477,6 +2605,11 @@ export default function SettingsScreen({
   const handleSelectDirectConnection = useCallback(() => {
     setIsAddHostMethodVisible(false);
     setIsDirectHostVisible(true);
+  }, []);
+
+  const handleSelectRemoteSsh = useCallback(() => {
+    setIsAddHostMethodVisible(false);
+    setIsRemoteSshVisible(true);
   }, []);
 
   const handleSelectPasteLink = useCallback(() => {
@@ -2561,8 +2694,11 @@ export default function SettingsScreen({
   const handleSelectHost = useCallback(
     (serverId: string) => {
       setSelectedSettingsHostServerId(serverId);
-      if (view.kind === "project") {
-        const target = buildSettingsHostSectionRoute(serverId, "projects");
+      if (view.kind === "project" || view.kind === "plugin") {
+        const target = buildSettingsHostSectionRoute(
+          serverId,
+          view.kind === "plugin" ? "plugins" : "projects",
+        );
         if (isCompactLayout) {
           router.push(target);
         } else {
@@ -2625,13 +2761,18 @@ export default function SettingsScreen({
   }, [router]);
 
   const detailProjectServerId = view.kind === "project" ? view.serverId : null;
+  const detailPluginView = view.kind === "plugin" ? view : null;
   const handleBackFromDetail = useCallback(() => {
+    if (detailPluginView) {
+      returnFromSettings(detailPluginView);
+      return;
+    }
     if (detailProjectServerId) {
       router.navigate(buildSettingsHostSectionRoute(detailProjectServerId, "projects"));
       return;
     }
     handleBackToRoot();
-  }, [detailProjectServerId, handleBackToRoot, router]);
+  }, [detailPluginView, detailProjectServerId, handleBackToRoot, router]);
 
   const handleBackToWorkspace = useCallback(() => {
     guardProjectSettingsExit(() => {
@@ -2666,11 +2807,13 @@ export default function SettingsScreen({
     };
   }, []);
 
+  const pluginSettingsHeader = usePluginSettingsHeader(view, t("settings.title"));
   const detailHeader = ((): {
     title: string;
     Icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
     titleAccessory?: ReactNode;
   } | null => {
+    if (view.kind === "plugin") return pluginSettingsHeader;
     if (view.kind === "host") {
       const item = HOST_SECTION_ITEMS.find((s) => s.id === view.section);
       if (!item) return null;
@@ -2689,9 +2832,23 @@ export default function SettingsScreen({
 
   // oxlint-disable-next-line complexity -- one exhaustive switch owns the typed Settings route.
   const renderedContent = (() => {
+    if (view.kind === "plugin") {
+      return (
+        <SettingsTarget
+          settingId={pluginSettingsSearchId(view.serverId, view.pluginId, view.screenId)}
+        >
+          <PluginSettingsContent
+            serverId={view.serverId}
+            pluginId={view.pluginId}
+            screenId={view.screenId}
+          />
+        </SettingsTarget>
+      );
+    }
     if (view.kind === "root") {
       return (
         <SettingsSearchOverview
+          serverId={activeHostServerId}
           onSelectItem={handleSelectSearchItem}
           isDeveloperMode={isDeveloperMode}
         />
@@ -2813,7 +2970,6 @@ export default function SettingsScreen({
   // caught error and re-attempts the render.
   const content = (
     <SettingsContentErrorBoundary resetKey={settingsViewKey(view)}>
-      <SettingsSearchFocus settingId={focusSettingId} />
       {renderedContent}
     </SettingsContentErrorBoundary>
   );
@@ -2832,11 +2988,18 @@ export default function SettingsScreen({
         visible={isAddHostMethodVisible}
         onClose={closeAddConnectionFlow}
         onDirectConnection={handleSelectDirectConnection}
+        onRemoteSsh={handleSelectRemoteSsh}
         onPasteLink={handleSelectPasteLink}
         onScanQr={handleScanQr}
       />
       <AddHostModal
         visible={isDirectHostVisible}
+        onClose={closeAddConnectionFlow}
+        onCancel={goBackToAddConnectionMethods}
+        onSaved={handleHostAdded}
+      />
+      <AddRemoteSshHostModal
+        visible={isRemoteSshVisible}
         onClose={closeAddConnectionFlow}
         onCancel={goBackToAddConnectionMethods}
         onSaved={handleHostAdded}
@@ -2866,7 +3029,11 @@ export default function SettingsScreen({
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={!showWebScrollbar}
           >
-            <View style={styles.content}>
+            <SettingsSearchContent
+              style={styles.content}
+              settingId={focusSettingId}
+              scroll={retainedScroll.ref}
+            >
               {content}
               <View style={styles.rootBrowseSidebar}>
                 <SettingsSidebar
@@ -2882,7 +3049,7 @@ export default function SettingsScreen({
                   layout="mobile"
                 />
               </View>
-            </View>
+            </SettingsSearchContent>
           </ScrollView>
           {webScrollbar.overlay}
         </View>
@@ -2910,7 +3077,13 @@ export default function SettingsScreen({
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={!showWebScrollbar}
           >
-            <View style={styles.content}>{content}</View>
+            <SettingsSearchContent
+              style={styles.content}
+              settingId={focusSettingId}
+              scroll={retainedScroll.ref}
+            >
+              {content}
+            </SettingsSearchContent>
           </ScrollView>
           {webScrollbar.overlay}
         </View>
@@ -2943,7 +3116,13 @@ export default function SettingsScreen({
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={!showWebScrollbar}
       >
-        <View style={styles.content}>{content}</View>
+        <SettingsSearchContent
+          style={styles.content}
+          settingId={focusSettingId}
+          scroll={retainedScroll.ref}
+        >
+          {content}
+        </SettingsSearchContent>
       </ScrollView>
       {webScrollbar.overlay}
     </View>

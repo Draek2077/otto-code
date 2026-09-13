@@ -1,4 +1,5 @@
 import * as React from "react";
+import type { DesktopPlatform, VisitorPlatform } from "~/platform";
 
 export function releaseBase(version: string) {
   return `https://github.com/Draek2077/otto-code/releases/download/v${version}`;
@@ -48,10 +49,7 @@ export const MAC_QUARANTINE_COMMAND = "xattr -dr com.apple.quarantine /Applicati
 export const MAC_NO_AUTOUPDATE_NOTE =
   "These builds don't auto-update. Otto will tell you when a new version is out. Download it here and replace the app.";
 
-type Platform = "mac-silicon" | "mac-intel" | "windows" | "linux";
-
-export interface DownloadOption {
-  platform: Platform;
+export interface PrimaryDownload {
   label: string;
   href: string;
   icon: (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
@@ -63,75 +61,32 @@ export interface DownloadOption {
   openInPage?: boolean;
 }
 
-// A mac entry only appears when that release actually carries the artifact, so
-// callers must still handle a detected platform with no matching option.
-export function getDownloadOptions(release: ReleaseAssetInfo): DownloadOption[] {
+// Both Mac architectures deliberately open the notes page: Otto's builds are unsigned,
+// and User-Agent cannot reliably distinguish Intel from Apple Silicon.
+export function getDesktopDownload(
+  release: ReleaseAssetInfo,
+  platform: DesktopPlatform,
+): PrimaryDownload {
   const urls = downloadUrls(release);
-  const options: DownloadOption[] = [];
-
-  // Both mac entries land on the download page rather than the .dmg: the
-  // unsigned build needs its first-launch steps in view, and arch detection is
-  // a guess (see useDetectedPlatform), so the page lets people pick.
-  if (urls.macDmgArm64) {
-    options.push({
-      platform: "mac-silicon",
-      label: "macOS",
-      href: "/download",
-      icon: AppleIcon,
-      openInPage: true,
-    });
+  switch (platform) {
+    case "windows":
+      return { label: "Windows", href: urls.windowsExeX64, icon: WindowsIcon };
+    case "linux":
+      return { label: "Linux", href: urls.linuxAppImage, icon: LinuxIcon };
+    case "mac":
+      return { label: "macOS", href: "/download", icon: AppleIcon, openInPage: true };
   }
-  if (urls.macDmgX64) {
-    options.push({
-      platform: "mac-intel",
-      label: "macOS",
-      href: "/download",
-      icon: AppleIcon,
-      openInPage: true,
-    });
-  }
-
-  options.push(
-    {
-      platform: "windows",
-      label: "Windows",
-      href: urls.windowsExeX64,
-      icon: WindowsIcon,
-    },
-    {
-      platform: "linux",
-      label: "Linux",
-      href: urls.linuxAppImage,
-      icon: LinuxIcon,
-    },
-  );
-
-  return options;
 }
 
-export function useDetectedPlatform(): Platform {
-  const [platform, setPlatform] = React.useState<Platform>("mac-silicon");
-
-  React.useEffect(() => {
-    const ua = navigator.userAgent.toLowerCase();
-    if (ua.includes("win")) {
-      setPlatform("windows");
-    } else if (ua.includes("linux")) {
-      setPlatform("linux");
-    } else if (ua.includes("mac")) {
-      // Apple Silicon can't be detected from navigator.platform: Safari reports
-      // "MacIntel" on every Mac, and Chrome/Edge do too. userAgentData is the
-      // only honest signal, and only Chromium exposes it, so we identify Intel
-      // when it says so and default to Silicon everywhere else, which is both
-      // the majority of Macs and the safer miss (the download page lists both).
-      const isIntel =
-        (navigator as unknown as { userAgentData?: { architecture?: string } }).userAgentData
-          ?.architecture === "x86";
-      setPlatform(isIntel ? "mac-intel" : "mac-silicon");
-    }
-  }, []);
-
-  return platform;
+/** Otto's published distribution differs from Paseo's App Store/Play Store release channels. */
+export function getPrimaryDownload(
+  release: ReleaseAssetInfo,
+  platform: VisitorPlatform,
+): PrimaryDownload {
+  if (platform === "ios") return { label: "Web app", href: webAppUrl, icon: GlobeIcon };
+  if (platform === "android")
+    return { label: "Android", href: downloadUrls(release).androidApk, icon: AndroidIcon };
+  return getDesktopDownload(release, platform);
 }
 
 export function AppleIcon(props: React.SVGProps<SVGSVGElement>) {

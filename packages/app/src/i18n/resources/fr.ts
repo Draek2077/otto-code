@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const fr: TranslationResources = {
@@ -20,6 +20,10 @@ export const fr: TranslationResources = {
       retry: "Réessayer",
       search: "Rechercher",
       select: "Sélectionner",
+
+      selectAll: "Tout sélectionner",
+
+      copyLine: "Copier la ligne",
     },
     placeholders: {
       search: "Recherche...",
@@ -46,6 +50,8 @@ export const fr: TranslationResources = {
       noFileFound: "Aucun fichier trouvé pour{{token}}",
       unexpectedDictationError:
         "Une erreur inattendue s'est produite lors du traitement de la dictée.",
+
+      unableToCopy: "Impossible de copier",
     },
     connectionStatus: {
       online: "En ligne",
@@ -477,6 +483,8 @@ export const fr: TranslationResources = {
       question: "Comment souhaitez-vous procéder?",
       proposedPlan: "Plan proposé",
     },
+
+    messageCapped: "Ce message a été tronqué ({{bytes}} octets).",
   },
   agentPanel: {
     states: {
@@ -623,6 +631,8 @@ export const fr: TranslationResources = {
       resetZoom: "Réinitialiser la vue",
       viewSource: "Afficher la source",
       viewDiagram: "Afficher le diagramme",
+
+      fullscreen: "Plein écran",
     },
     actions: {
       copyCode: "Copier le code",
@@ -727,6 +737,8 @@ export const fr: TranslationResources = {
       failedAll: "Impossible de charger les sessions récentes.",
       failedProviders: "Impossible de charger les sessions pour{{providers}}.",
       failedImport: "Impossible d'importer la session sélectionnée.",
+
+      failedProvider: "Impossible de charger les sessions {{provider}}",
     },
     actions: {
       selectAll: "Tout sélectionner dans la liste",
@@ -735,6 +747,8 @@ export const fr: TranslationResources = {
       loadMore: "Afficher plus",
 
       refresh: "Sessions de rafraîchissement",
+
+      showAll: "Tout afficher",
     },
     preview: {
       untitledSession: "Séance sans titre",
@@ -744,10 +758,21 @@ export const fr: TranslationResources = {
       noRecent: "Aucune session récente à importer.",
       alreadyImported: "Toutes les sessions récentes sont déjà importées.",
       noProviderSessions: "Aucune session{{provider}}trouvée.",
+
+      noMatches: "Aucune session ne correspond à votre recherche.",
     },
     row: {
       importing: "Importation...",
     },
+
+    scope: {
+      host: "Sessions sur {{host}}",
+      workspace: "Cet espace de travail",
+    },
+
+    searchPlaceholder: "Rechercher des sessions...",
+
+    chooseHostTitle: en.importSession.chooseHostTitle,
   },
   workspace: {
     moveChat: {
@@ -894,12 +919,16 @@ export const fr: TranslationResources = {
         completed: "Configuration terminée",
         failed: "Échec de l'installation",
         workspace: "Configuration du Workspace",
+
+        blocked: "Configuration bloquée",
       },
       status: {
         running: "En cours d'exécution",
         completed: "Complété",
         failed: "Échoué",
         waiting: "En attente de la sortie de configuration",
+
+        blocked: "Bloqué",
       },
       waiting: "Configuration de l'espace de travail...",
       empty: {
@@ -911,6 +940,14 @@ export const fr: TranslationResources = {
       },
       log: {
         noOutput: "Aucune sortie",
+      },
+
+      blocked: {
+        title: "La configuration n’a pas été exécutée",
+        description:
+          "Cette PR provient de {{repository}}, un dépôt différent. Sa configuration et ses scripts pourraient exécuter du code que vous n’avez pas examiné.",
+        run: "Exécuter la configuration",
+        runFailed: "Échec de la configuration de l’espace de travail",
       },
     },
     browser: {
@@ -933,6 +970,10 @@ export const fr: TranslationResources = {
         screenshotCopied: "Capture d'écran copiée dans le presse-papiers",
         elementCopied: "Élément copié dans le presse-papiers",
         screenshotFailed: "Impossible de copier la capture",
+
+        selectorFailed: "Impossible de démarrer le sélecteur d’élément",
+
+        selectorLoading: "Attendez la fin du chargement de la page",
       },
       annotate: {
         title: "Annoter l'élément",
@@ -1212,6 +1253,8 @@ export const fr: TranslationResources = {
         public: "Proxy inverse",
         otto: "Memorable",
         direct: "Directe",
+
+        paseo: "Memorable",
       },
     },
     git: {
@@ -1501,6 +1544,8 @@ export const fr: TranslationResources = {
         expandAllFiles: "Développer tous les fichiers",
         seeUncommittedChanges: "Voir les modifications non validées",
         seeCommittedChanges: "Voir les modifications validées",
+
+        modifiedFile: "Modifié",
       },
       commit: {
         type: {
@@ -1604,6 +1649,17 @@ export const fr: TranslationResources = {
         accessibility: {
           pullRequest: "Demande de tirage #{{number}}",
           pullRequest_mr: "Demande de fusion !{{number}}",
+
+          checkStatus: {
+            passed: "Réussi",
+            failed: "Échec",
+            warning: "Avertissement",
+            actionRequired: "Action requise",
+            manual: "Manuel",
+            pending: "En attente",
+            skipped: "Ignoré",
+            cancelled: "Annulé",
+          },
         },
         states: {
           draft: "Brouillon",
@@ -1674,6 +1730,8 @@ export const fr: TranslationResources = {
         cancel: "Annuler",
         failed: "Échec de l'abandon des modifications",
       },
+
+      openIn: "Ouvrir dans {{target}}",
     },
     tree: {
       showFolderTree: "Afficher l'arborescence des dossiers",
@@ -1738,6 +1796,10 @@ export const fr: TranslationResources = {
       sessions: "Historique",
       schedules: "Planifications",
       artifacts: "Artéfacts",
+
+      search: "Rechercher",
+      kanban: "Kanban",
+      runs: "Workflows",
     },
     worktreeSetup: {
       title: "Configurer les scripts d'arbre de travail",
@@ -1826,6 +1888,15 @@ export const fr: TranslationResources = {
         hostDisconnected: "Hostn'est pas connecté",
         hideFailed: "Échec du masquage de l'espace de travail",
         archiveFailed: "Échec de l'archivage de l'espace de travail",
+      },
+
+      checks: {
+        passed: "Réussis : {{count}}",
+        failed: "Échecs : {{count}}",
+        warning: "Avertissements : {{count}}",
+        actionRequired: "Action requise : {{count}}",
+        manual: "Manuels : {{count}}",
+        pending: "En attente : {{count}}",
       },
     },
     pinned: {
@@ -2457,6 +2528,8 @@ export const fr: TranslationResources = {
     stashRestored: "Modifications cachées restaurées",
     switchInProgress: "Changement de branche en cours",
     checkedOutElsewhere: "Déjà extraite dans un autre Workspace",
+
+    triggerTooltip: "Changer la branche de l’espace de travail",
   },
   agentAutocomplete: {
     searchingWorkspace: "Recherche dans l'espace de travail...",
@@ -2642,6 +2715,14 @@ export const fr: TranslationResources = {
     searchAllPlaceholder: "Rechercher dans tous les modèles...",
     searchPlaceholder: "Rechercher des modèles...",
     openProviderSettings: "Ouvrir les paramètres{{provider}}",
+
+    editProfilesCount: "Modifier les profils ({{count}})",
+
+    editProfileLabel: "Modifier {{name}}",
+
+    createProfileFromModel: "Créer un profil à partir de ce modèle",
+
+    model: "Modèle",
   },
   providerCatalog: {
     title: "Ajouter un fournisseur",
@@ -2689,6 +2770,11 @@ export const fr: TranslationResources = {
       pasteLink: {
         title: "Coller le lien d'association",
         description: "Connexion relais cryptée.",
+      },
+
+      remoteSsh: {
+        title: "SSH distant",
+        description: "Connectez-vous avec le client SSH de bureau.",
       },
     },
     direct: {
@@ -2793,6 +2879,24 @@ export const fr: TranslationResources = {
       securityWarning:
         "Traitez ce lien d’association comme un mot de passe. Toute personne qui le possède peut accéder à ce daemon.",
     },
+
+    remoteSsh: {
+      title: "SSH distant",
+      helper: "Connectez-vous à un daemon Otto sur l’hôte distant.",
+      fields: {
+        target: "Hôte SSH",
+      },
+      actions: {
+        cancel: "Annuler",
+        connect: "Connecter",
+        connecting: "Connexion...",
+      },
+      errors: {
+        targetRequired: "L’hôte SSH est requis",
+        invalidTarget: "Saisissez un hôte ssh:// valide",
+        failedToConnect: "Connexion SSH impossible. {{detail}}",
+      },
+    },
   },
   realtimeVoice: {
     actions: {
@@ -2822,6 +2926,8 @@ export const fr: TranslationResources = {
     inOtto: "Dans Otto",
     externalBrowser: "Navigateur externe",
     dontAskAgain: "Ne demande plus",
+
+    inPaseo: "DansOtto",
   },
   downloads: {
     requestTokenFailed: "Échec de la demande du jeton de téléchargement.",
@@ -2887,6 +2993,8 @@ export const fr: TranslationResources = {
     },
     archiveFinishedAction: "Archiver les sous-agents terminés",
     archiveFinishedTooltip: "Archiver les terminés",
+
+    archiveFinishedRetry: "Réessayer ({{failed}}/{{total}})",
   },
   observedSubagents: {
     readOnlyTitle: "Sous-agent observé · lecture seule",
@@ -3293,6 +3401,8 @@ export const fr: TranslationResources = {
       label: "Fichiers",
       subtitle: "Fichiers de l’espace de travail",
       tooltip: "Parcourir les fichiers de l’espace de travail",
+
+      chooseFile: "Choisissez un fichier",
     },
     search: {
       label: "Recherche",
@@ -3340,6 +3450,11 @@ export const fr: TranslationResources = {
       other: "called Otto {{count}} times",
     },
     and: "and",
+
+    paseoCalls: {
+      one: "a appelé Otto {{count}} fois",
+      other: "a appelé Otto {{count}} fois",
+    },
   },
   renameModal: {
     rename: "Rebaptiser",
@@ -3453,6 +3568,8 @@ export const fr: TranslationResources = {
       storage: "Stockage",
       terminals: "Terminaux",
       host: "Aperçu",
+
+      plugins: "Plugins",
     },
     plugins: pluginSettings.fr,
     metadataGeneration: {
@@ -3673,6 +3790,8 @@ export const fr: TranslationResources = {
         alertTitle: "Erreur",
         alertMessage: "Impossible d'ouvrir la boîte de dialogue de confirmation de mise à jour.",
       },
+
+      whatsNewHint: "Notes de version pour chaque release",
     },
     appearance: {
       theme: {
@@ -3842,6 +3961,16 @@ export const fr: TranslationResources = {
         codeSizeAccessibility: "Taille de la police du code",
         terminalSize: "Taille du terminal",
         terminalSizeAccessibility: "Taille de la police du terminal",
+
+        codeSizeHint: "Utilisée pour le code, les diffs et la sortie du terminal",
+
+        contentSizeAccessibility: "Taille de police du contenu",
+
+        contentSizeHint: "Utilisée pour le texte du chat et le Markdown rendu",
+
+        contentSize: "Taille du contenu",
+
+        interfaceSizeHint: "Utilisée pour la navigation, les contrôles et les libellés",
       },
       syntax: {
         title: "Syntaxe",
@@ -3853,6 +3982,14 @@ export const fr: TranslationResources = {
       },
       detailLevel: {
         title: "Niveau de détail",
+      },
+
+      sidebar: {
+        title: "Barre latérale",
+        description: "Choisissez les éléments affichés en haut de la barre latérale et leur ordre",
+        moveUp: "Déplacer vers le haut",
+        moveDown: "Déplacer vers le bas",
+        workspaceActions: "Actions de l’en-tête des espaces de travail",
       },
     },
     shortcuts: {
@@ -4053,6 +4190,8 @@ export const fr: TranslationResources = {
       badges: {
         relay: "Relais",
         local: "Locale",
+
+        remoteSsh: "SSH distant",
       },
       connections: {
         title: "Relations",
@@ -4749,6 +4888,7 @@ export const fr: TranslationResources = {
         destinations: {
           main: "Main panel",
           side: "On the side",
+          explorer: "Barre latérale de l’Explorateur",
         },
         sources: {
           explorerFiles: {
@@ -4778,6 +4918,11 @@ export const fr: TranslationResources = {
           changesLinks: {
             label: "Opening Changes from an agent",
             description: "Open diff stats and review attachments beside the conversation",
+          },
+          diffs: {
+            label: "Ouvrir une différence",
+            description:
+              "Ouvrez les différences de l’Explorateur et des conversations d’agent à côté de votre travail",
           },
         },
       },
@@ -4895,6 +5040,17 @@ export const fr: TranslationResources = {
       deleteMessage_other: "Cela retire l’étiquette de {{count}} espaces de travail sur cet hôte.",
       offline: "Cet hôte est hors ligne.",
       updateHost: "Mettez à jour cet hôte pour gérer les étiquettes.",
+    },
+  },
+
+  changelog: {
+    title: "Nouveautés",
+    installed: "Installée",
+    showMore: "Afficher plus",
+    openWebsite: "Journal des modifications complet",
+    error: {
+      title: "Impossible de charger le journal des modifications",
+      description: "Vérifiez votre connexion et réessayez.",
     },
   },
 };

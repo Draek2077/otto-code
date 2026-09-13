@@ -39,6 +39,7 @@ function createAgent(input: Partial<Agent> & Pick<Agent, "id">): Agent {
     attentionReason: null,
     attentionTimestamp: null,
     ...rest,
+    turn: rest.turn ?? { phase: "idle", cancellationRequestId: null },
   };
 }
 

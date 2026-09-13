@@ -1,13 +1,13 @@
-import { useCallback, useMemo } from "react";
+import { createContext, useContext, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  FlatList,
   View,
   Text,
   Pressable,
   type GestureResponderEvent,
   type PressableStateCallbackType,
 } from "react-native";
+import { FlatList } from "@/components/ui/scroll-view";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb as platformIsWeb } from "@/constants/platform";
@@ -162,6 +162,11 @@ const favoriteStarMapping =
       color: hovered ? theme.colors.foregroundMuted : theme.colors.border,
     };
   };
+// The selector is one host-scoped presentation tree, including its portal body.
+// Icons read the existing snapshot registry; this context carries only host identity.
+export const SelectorProviderHostContext = createContext<string | null>(null);
+export const SelectorProviderHost = SelectorProviderHostContext.Provider;
+
 type ProviderGlyphTone = "muted" | "foreground";
 export function ProviderGlyph({
   provider,
@@ -172,7 +177,8 @@ export function ProviderGlyph({
   size: IconSizeProp;
   tone?: ProviderGlyphTone;
 }) {
-  const Icon = getProviderIcon(provider);
+  const serverId = useContext(SelectorProviderHostContext);
+  const Icon = getProviderIcon(provider, serverId);
   const color =
     tone === "foreground" ? styles.providerIconForeground.color : styles.providerIconMuted.color;
   return <Icon size={size} color={color} />;
@@ -196,6 +202,7 @@ export function TriggerLeadingIcon({
   family?: string | null;
   size: IconSizeProp;
 }) {
+  const serverId = useContext(SelectorProviderHostContext);
   // A role-slot entry (Team's <Role>) wears its neutral role glyph, not the
   // current holder's colored provider icon.
   if (personality?.roleIcon) {
@@ -209,6 +216,7 @@ export function TriggerLeadingIcon({
     return (
       <PersonalityProviderIcon
         provider={provider}
+        serverId={serverId}
         size={size}
         glowA={personality.glowA}
         glowB={personality.glowB}
@@ -236,6 +244,7 @@ export type SelectorView =
   | { kind: "provider"; providerId: string; providerLabel: string }
   | { kind: "personalityGroup"; sectionKey: string; sectionLabel: string };
 interface SelectorContentProps {
+  serverId?: string | null;
   view: SelectorView;
   providers: ProviderSelectorProvider[];
   selectedProvider: string;
@@ -595,6 +604,7 @@ function ProviderErrorEmptyState({
 // A role-slot entry (Team's <Role>) shows a neutral role glyph so it reads as
 // picking a role; a concrete personality keeps its colored provider glyph.
 function PersonalityRowIcon({ personality }: { personality: SelectorProfile }) {
+  const serverId = useContext(SelectorProviderHostContext);
   if (personality.roleIcon) {
     const RoleIcon = personality.roleIcon;
     return <RoleIcon size="md" color={styles.providerIconForeground.color} />;
@@ -602,6 +612,7 @@ function PersonalityRowIcon({ personality }: { personality: SelectorProfile }) {
   return (
     <PersonalityProviderIcon
       provider={personality.provider}
+      serverId={serverId}
       size="md"
       glowA={personality.glowA}
       glowB={personality.glowB}

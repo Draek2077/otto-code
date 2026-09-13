@@ -68,7 +68,12 @@ The tempting alternative - several lightweight workspaces over one checkout inst
 
 **Schedule runs never reveal onto an occupied directory.** Per-run workspaces are minted `hidden: true` and are exempt from the guard - an exemption granted on the promise that the record stays invisible. `revealScheduleRunWorkspace` keeps that promise: if a visible workspace already backs the directory it **reattaches** the finished run (agents move to the occupant, the transient record is archived) instead of revealing a duplicate. The run is over by the time either caller reaches it - post-run disposal, or interrupted-run recovery at startup - so nothing is mid-flight, and the outcome stays visible in the workspace the user already has open. Worktree-isolation runs get a fresh directory and always take the plain reveal path.
 
-**Still open - pre-guard duplicates are never reconciled.** `WorkspaceReconciliationService` merges duplicate _projects_ by root but has no workspace-level equivalent, and preserves every workspace during a project merge. Deliberately deferred: no standing duplicates have been observed since the reveal path was fixed, and a rule that migrates agents and archives workspace records is not worth building against zero data. Same-`cwd` siblings therefore still exist on disk, which is why per-`workspaceId` scoping stays load-bearing (see `workspace-same-cwd-isolation.e2e.test.ts`, whose seeded duplicates are now the only way to reach that state).
+**Pre-guard duplicates are not automatically reconciled.** `WorkspaceReconciliationService`
+refreshes project kind/key and workspace placement from each exact project root. It does not merge
+project identities, move workspaces between projects, or deduplicate workspace records. Older or
+explicitly seeded same-`cwd` records therefore still require per-`workspaceId` isolation; see
+`workspace-same-cwd-isolation.e2e.test.ts`. This contract does not assert that the current host has
+duplicate records or authorize migrating agents between them.
 
 Full reasoning and evidence: `archive/projects/duplicate-base-workspaces/` - archived, closed, **do not re-open**.
 

@@ -8,6 +8,7 @@ import {
   shouldMountStartupRuntime,
   shouldRunStartupGiveUpTimer,
   startHostRuntimeBootstrap,
+  bindHostRuntimeAppState,
 } from "./host-runtime-bootstrap";
 
 function createFakeStore() {
@@ -624,4 +625,37 @@ describe("resolveHostIndexRoute", () => {
       }),
     ).toEqual("/h/server-saved/workspace/workspace-a");
   });
+});
+
+describe("host runtime app lifecycle", () => {
+  it.each(["inactive", "background"] as const)(
+    "applies initial visibility and forwards lifecycle changes when mounted %s",
+    (currentState) => {
+      const visibility: boolean[] = [];
+      let listener: ((state: "active" | "inactive" | "background") => void) | undefined;
+      let subscribed = true;
+      const dispose = bindHostRuntimeAppState(
+        { setAppVisible: (visible) => visibility.push(visible) },
+        {
+          currentState,
+          addEventListener: (_event, handler) => {
+            listener = handler;
+            return {
+              remove: () => {
+                subscribed = false;
+              },
+            };
+          },
+        },
+      );
+      expect(visibility).toEqual([false]);
+      listener?.("active");
+      listener?.("inactive");
+      listener?.("background");
+      listener?.("active");
+      expect(visibility).toEqual([false, true, false, false, true]);
+      dispose();
+      expect(subscribed).toBe(false);
+    },
+  );
 });

@@ -1,6 +1,6 @@
 ---
 title: Orchestration
-description: Give any coding agent control of Otto so it can launch and coordinate agents from other providers.
+description: Coordinate agents across providers and machines, delegate work, and keep tasks moving with schedules and heartbeats.
 nav: Overview
 order: 30
 category: Orchestration
@@ -10,17 +10,50 @@ category: Orchestration
 
 Otto orchestration gives a coding agent control of the Otto daemon. The agent can discover every provider and model you have configured, create workspaces, launch other agents, send them follow-ups, and create heartbeats or schedules. The same work stays visible in the Otto app.
 
-## Native subagents vs Otto subagents
+## What your agents can do
 
-The most important difference from native subagents is that **Otto subagents can cross provider boundaries**.
+- **Choose providers and models:** launch other agents using any provider and model configured on the host.
+- **Delegate and parallelize:** split research, implementation, and review between agents, including agents from different providers.
+- **Communicate with each other:** agents can [send prompts to other agents by ID](/docs/orchestration-workflows#send-a-prompt-to-another-agent) to ask questions, share findings, or request work.
+- **Coordinate ongoing work:** check progress, stop tasks, and collect results.
+- **Create workspaces and worktrees:** give independent changes their own [working directories](/docs/worktrees).
+- **Work across machines:** use the [CLI](/docs/cli#connecting-to-a-remote-daemon) to launch and manage agents on another reachable Otto host.
+- **Choose by specialty:** use [Personalities](/docs/personalities) and their notes to select settings for UI work, planning, or reviews.
+- **Create schedules:** run a prompt in a new agent at [specified times](/docs/schedules).
+- **Create heartbeats:** prompt the same agent periodically to [continue its task](/docs/orchestration-workflows#keep-an-agent-working-with-a-heartbeat).
 
-```text
-Claude Code (Fable 5) => Codex (GPT-5.6)
-Codex (GPT-5.6) => Grok Build
-Cursor => Claude Code (Fable 5)
+## Get started
+
+Use built-in Otto tools or the CLI. Both let an agent launch and coordinate workers.
+
+### Built-in Otto tools (MCP)
+
+Enable Otto tools so agents running inside Otto can manage agents and workspaces on their host directly.
+
+1. Open **Settings → your host → Agents**.
+2. Turn on **Enable Otto tools**. Tool injection is off by default.
+3. Start a new agent, or reload an existing agent so it receives the tools.
+4. Ask:
+
+> Use Otto to launch a second agent to review this branch. Have it report potential bugs without changing files, then summarize its findings.
+
+The worker appears in the **Subagents track** near the composer. Open it to follow the conversation. Your main agent receives a notification when the worker finishes, and you can keep talking while it works.
+
+See the [MCP reference](/docs/mcp) for tool configuration and the full catalog. [Orchestration skills](/docs/skills) are optional reusable workflows.
+
+### CLI
+
+Agents with shell access can also use the Otto CLI. This route does not require enabling tool injection. With Otto installed, a running host, and Codex configured:
+
+```bash
+otto run --provider codex --background \
+  "Review this branch without changing files"
+otto ls -a
 ```
 
-Native subagents belong to one provider. Claude Code launches Claude Code subagents; Codex launches Codex subagents. They are useful when the parent provider can handle the whole task itself.
+The first command starts a worker and returns immediately; the second lists agents from active workspaces, including archived agents. When an Otto agent runs the command, the worker becomes its subagent in the same workspace. From your own terminal, it starts in a new local workspace.
+
+## Native subagents and Otto subagents
 
 Otto subagents are full agents managed by the Otto daemon. The orchestrator can choose any configured provider and model, keep the worker in the current workspace, or place it in another workspace created for the task. Use them when you want one model to plan, another to implement, and another to review.
 
@@ -32,11 +65,9 @@ Otto subagents are full agents managed by the Otto daemon. The orchestrator can 
 | Where you inspect it | Read-only timeline in the Subagents track | Full agent session in the Subagents track          |
 | Best for             | Fast, provider-native delegation          | Cross-provider work and explicit workspace control |
 
-## Try it
+Save launch settings and identity as a [Personality](/docs/personalities), then select it when creating a chat.
 
-Open **Settings → your host → Agents**, then turn on **Enable Otto tools**. Start a new agent, or reload an existing one so it receives the tools.
-
-Then ask naturally:
+## Go further
 
 ```text
 Stay as the orchestrator. Use Otto to find my available Codex models, then
@@ -46,7 +77,7 @@ it to implement the parser change, run the focused tests, and report back here.
 
 The orchestrator discovers the provider and model IDs, starts the worker, and receives a notification when it finishes. You can keep talking to the orchestrator in the meantime.
 
-Agent creation has one default: when an agent creates another agent without a workspace ID, the new agent is its subagent in the same workspace. Passing a workspace ID changes where the subagent works, not who its parent is.
+The `create_chat` tool requires explicit relationship and workspace choices. A subagent remains attached to its parent even in another workspace; a detached root starts independently. The CLI uses the calling agent context for its defaults, as described above.
 
 ## Where the work appears
 
@@ -57,9 +88,9 @@ Both kinds of subagent appear there:
 - **Otto subagents** open as full agent sessions. You can talk to them directly, change their settings, or archive them.
 - **Native provider subagents** open as read-only timelines. You can inspect their work, but their provider owns their lifecycle.
 
-A cross-workspace subagent still belongs to its parent's Subagents track. Otto also opens its workspace so the work is not hidden in an otherwise empty workspace. If you want to turn any subagent into a top-level agent, detach it manually in the app or with `otto agent detach`; detachment is not an agent-creation mode.
+A cross-workspace subagent still belongs to its parent's Subagents track. Otto also opens its workspace so the work is not hidden in an otherwise empty workspace. To turn an existing subagent into a top-level agent, detach it in the app or with `otto agent detach`. You can also create an independent chat by choosing a detached relationship at creation.
 
-If an agent says background work is running but the track is empty, update Otto. Provider-created subagent timelines require Otto 0.1.107 or newer.
+Native subagent visibility depends on the provider reporting those sessions and the connected host supporting observed subagents.
 
 ## Keep an agent working with a heartbeat
 

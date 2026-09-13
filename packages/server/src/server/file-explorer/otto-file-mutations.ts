@@ -306,11 +306,16 @@ export async function renameExplorerEntry({
   let isCaseOnlyRename = false;
   try {
     const destinationStats = await fs.lstat(destination.resolvedPath);
+    const hasStableFileIds = hasFileIdentity(stats, destinationStats);
+    const sameEntry = hasStableFileIds
+      ? stats.dev === destinationStats.dev && stats.ino === destinationStats.ino
+      : !stats.isSymbolicLink() &&
+        !destinationStats.isSymbolicLink() &&
+        (await fs.realpath(source.resolvedPath)) === (await fs.realpath(destination.resolvedPath));
     isCaseOnlyRename =
       (process.platform === "win32" || process.platform === "darwin") &&
       source.resolvedPath.toLocaleLowerCase() === destination.resolvedPath.toLocaleLowerCase() &&
-      stats.dev === destinationStats.dev &&
-      stats.ino === destinationStats.ino;
+      sameEntry;
     if (!isCaseOnlyRename) {
       return { status: "exists" };
     }
@@ -334,6 +339,10 @@ export async function renameExplorerEntry({
     to: destination.relativePath,
     kind: stats.isDirectory() ? "directory" : "file",
   };
+}
+
+function hasFileIdentity(source: Stats, destination: Stats): boolean {
+  return source.dev !== 0 || source.ino !== 0 || destination.dev !== 0 || destination.ino !== 0;
 }
 
 async function isGitTracked(root: string, relativePath: string): Promise<boolean> {

@@ -1,8 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { evaluatePluginClientBundle } from "./evaluate";
+import type { PluginTimelineTransformerContribution } from "@otto-code/plugin/client";
+import { runPluginClientBundle, type PluginClientRuntime } from "./evaluate";
+
+const runtime = {
+  otto: {},
+  async rpc() {},
+  openSettings() {},
+  openSurface() {},
+  openPanel() {},
+  addHeaderButton() {
+    return { update() {}, remove() {} };
+  },
+  addComposerPill() {
+    return { update() {}, remove() {} };
+  },
+} as unknown as PluginClientRuntime;
+
+function evaluatePluginClientBundle(id: string, source: string) {
+  return runPluginClientBundle(id, source, runtime);
+}
 
 function bundle(body: string): string {
-  return `(function() {
+  return `(function(require) {
     const module = { exports: {} };
     module.exports.default = function(plugin) { ${body}; return function() {}; };
     return module.exports;
@@ -10,6 +29,192 @@ function bundle(body: string): string {
 }
 
 describe("evaluatePluginClientBundle", () => {
+  it("releases button registrations when client setup throws", () => {
+    let active = 0;
+    function addButton() {
+      active++;
+      return {
+        update() {},
+        remove() {
+          active--;
+        },
+      };
+    }
+    expect(() =>
+      runPluginClientBundle(
+        "failed-buttons",
+        bundle(`
+      plugin.addHeaderButton({ id: "header", workspaceId: "workspace", button: { title: "Header", icon: "Scan", behavior: { kind: "action", onPress() {} } } });
+      plugin.addComposerPill({ id: "pill", workspaceId: "workspace", agentId: "agent", button: { title: "Pill", icon: "Scan", behavior: { kind: "action", onPress() {} } } });
+      throw new Error("Setup failed");
+    `),
+        { ...runtime, addHeaderButton: addButton, addComposerPill: addButton },
+      ),
+    ).toThrow("Setup failed");
+    expect(active).toBe(0);
+  });
+
+  it("accepts memoized settings screens", () => {
+    const plugin = evaluatePluginClientBundle(
+      "settings",
+      bundle(`
+        const Component = require("react").memo(function Settings() { return null; });
+        plugin.addSettingsScreen({ id: "display", title: "Display", icon: "Settings", Component });
+      `),
+    );
+    expect(plugin.settingsScreens.map((screen) => screen.id)).toEqual(["display"]);
+  });
+
+  it("returns idempotent removers for every client registration", () => {
+    let pillCount = 0;
+    const plugin = runPluginClientBundle(
+      "removals",
+      bundle(`
+        function Component() { return null; }
+        const schema = { safeParse(value) { return { success: true, data: value }; } };
+        globalThis.__pluginRemovals = [
+          plugin.addSurface("main", Component),
+          plugin.addSettingsScreen({ id: "display", title: "Display", icon: "Settings", Component }),
+          plugin.addSidebarItem({ id: "main", title: "Main", icon: "Blocks", surface: "main" }),
+          plugin.addWorkspacePanel({ id: "panel", title: "Panel", icon: "Blocks", context: "workspace", Component }),
+          plugin.addCommandCenterItem({ id: "command", title: "Command", icon: "Blocks", context: "global", onSelect() {} }),
+          plugin.addSlashCommand({ name: "review", description: "Review", argumentHint: "", context: "workspace", onSubmit() {} }),
+          plugin.addComposerPill({ id: "pill", workspaceId: "workspace", agentId: "agent", button: { title: "Pill", icon: "Scan", behavior: { kind: "action", onPress() {} } } }).remove,
+          plugin.addAttachmentSource({ id: "issues", title: "Issues", icon: "Blocks", pickerTitle: "Attach issue", searchPlaceholder: "Search", search: { name: "issues.search", input: {}, output: {} } }),
+          plugin.addTheme({ id: "night", name: "Night", appearance: "dark", colors: { background: "#000", foreground: "#fff", raised: "#111", control: "#222", border: "#333", mutedForeground: "#aaa", ring: "#555" } }),
+          plugin.addTimelineTransformer({ id: "transformer", query: { itemType: "tool_call" }, transform() { return { items: [] }; } }),
+          plugin.addTimelineRenderer({ kind: "card", version: 1, schema, Component }),
+        ];
+      `),
+      {
+        ...runtime,
+        addComposerPill() {
+          pillCount += 1;
+          return {
+            update() {},
+            remove() {
+              pillCount -= 1;
+            },
+          };
+        },
+      },
+    );
+    const removals = Reflect.get(globalThis, "__pluginRemovals") as Array<() => void>;
+
+    expect(
+      [
+        plugin.surfaces,
+        plugin.settingsScreens,
+        plugin.sidebarItems,
+        plugin.workspacePanels,
+        plugin.commandCenterItems,
+        plugin.clientSlashCommands,
+        plugin.attachmentSources,
+        plugin.themes,
+        plugin.timelineTransformers,
+        plugin.timelineRenderers,
+      ].every((items) => items.length === 1),
+    ).toBe(true);
+    expect(pillCount).toBe(1);
+    for (const remove of removals) {
+      remove();
+      remove();
+    }
+    expect(
+      [
+        plugin.surfaces,
+        plugin.settingsScreens,
+        plugin.sidebarItems,
+        plugin.workspacePanels,
+        plugin.commandCenterItems,
+        plugin.clientSlashCommands,
+        plugin.attachmentSources,
+        plugin.themes,
+        plugin.timelineTransformers,
+        plugin.timelineRenderers,
+      ].every((items) => items.length === 0),
+    ).toBe(true);
+    expect(pillCount).toBe(0);
+    Reflect.deleteProperty(globalThis, "__pluginRemovals");
+  });
+
+  it("collects timeline transformers and renderers", () => {
+    const plugin = evaluatePluginClientBundle(
+      "reports",
+      bundle(`
+        function Card() { return null; }
+        const schema = { safeParse(value) { return { success: true, data: value }; } };
+        plugin.addTimelineTransformer({
+          id: "test-report",
+          query: { itemType: "tool_call" },
+          transform() { return { items: [] }; },
+        });
+        plugin.addTimelineRenderer({
+          kind: "test-report",
+          version: 1,
+          schema,
+          Component: Card,
+        });
+      `),
+    );
+
+    expect(plugin.timelineTransformers.map(({ id, query }) => ({ id, query }))).toEqual([
+      { id: "test-report", query: { itemType: "tool_call" } },
+    ]);
+    expect(plugin.timelineRenderers.map(({ kind, version }) => ({ kind, version }))).toEqual([
+      { kind: "test-report", version: 1 },
+    ]);
+  });
+
+  it("accepts notification transformers without granting custom-plugin row transforms", () => {
+    const plugin = evaluatePluginClientBundle(
+      "notices",
+      bundle(`
+      plugin.addTimelineTransformer({
+        id: "notice", query: { itemType: "notification" },
+        transform({ item }) { return { items: [{ type: "plugin", kind: "notice", version: 1, data: { message: item.message } }] }; },
+      });
+    `),
+    );
+    const transformer = plugin.timelineTransformers.find(
+      (candidate): candidate is PluginTimelineTransformerContribution<"notification"> =>
+        candidate.query.itemType === "notification",
+    );
+    expect(transformer?.query.itemType).toBe("notification");
+    if (!transformer) throw new Error("Expected notification transformer");
+    expect(
+      transformer.transform({
+        item: { type: "notification", level: "info", message: "Provider notice" },
+        phase: "complete",
+      }),
+    ).toEqual({
+      items: [{ type: "plugin", kind: "notice", version: 1, data: { message: "Provider notice" } }],
+    });
+    expect(() =>
+      evaluatePluginClientBundle(
+        "custom",
+        bundle(`
+      plugin.addTimelineTransformer({ id: "custom", query: { itemType: "plugin" }, transform() { return { items: [] }; } });
+    `),
+      ),
+    ).toThrow("invalid item type: plugin");
+  });
+
+  it("rejects unknown timeline item types", () => {
+    expect(() =>
+      evaluatePluginClientBundle(
+        "reports",
+        bundle(`
+          plugin.addTimelineTransformer({
+            id: "bad-query",
+            query: { itemType: "settled" },
+            transform() { return { items: [] }; },
+          });
+        `),
+      ),
+    ).toThrow("Timeline transformer bad-query has invalid item type: settled");
+  });
+
   it("collects a surface and its sidebar placement", () => {
     const plugin = evaluatePluginClientBundle(
       "example",
@@ -169,6 +374,18 @@ describe("evaluatePluginClientBundle", () => {
     ).toThrow("Duplicate Command Center item: review");
   });
 
+  it("runs the client entry with the full runtime context", () => {
+    const plugin = evaluatePluginClientBundle(
+      "review",
+      bundle(`
+        if (!plugin.otto || !plugin.rpc || !plugin.openSurface || !plugin.openPanel || !plugin.addComposerPill) {
+          throw new Error("missing client runtime");
+        }
+      `),
+    );
+    expect(plugin.id).toBe("review");
+  });
+
   it("rejects duplicate attachment source ids", () => {
     expect(() =>
       evaluatePluginClientBundle(
@@ -290,11 +507,88 @@ describe("evaluatePluginClientBundle", () => {
     ).toThrow("must return a cleanup function");
   });
 
-  it("resolves @otto-code/plugin/server for shared RPC contracts", () => {
+  it("provides the host Icon component through @otto-code/plugin/client/react-native", () => {
     const plugin = evaluatePluginClientBundle(
       "example",
       `(function(require) {
-        const { defineRpc, defineAttachmentSource } = require("@otto-code/plugin/server");
+        const { Icon } = require("@otto-code/plugin/client/react-native");
+        const module = { exports: {} };
+        module.exports.default = function(plugin) {
+          plugin.addSurface("main", function Surface() {
+            return Icon({ name: "Settings", size: 18, color: "#123456" });
+          });
+          return function() {};
+        };
+        return module.exports;
+      })`,
+    );
+
+    const Component = plugin.surfaces[0]?.Component;
+    expect(Component).toBeTypeOf("function");
+    const element = (Component as (props: never) => { props: unknown })({} as never);
+    expect(element).toMatchObject({ props: { size: 18, color: "#123456" } });
+  });
+
+  it("provides Paseo UI through @otto-code/plugin/client/react-native", () => {
+    const plugin = evaluatePluginClientBundle(
+      "example",
+      `(function(require) {
+        const { Icon, Modal, useToast } = require("@otto-code/plugin/client/react-native");
+        const module = { exports: {} };
+        module.exports.default = function(plugin) {
+          if (typeof Icon !== "function" || typeof Modal !== "function" || typeof Modal.Content !== "function" || typeof useToast !== "function") {
+            throw new Error("React Native plugin UI is incomplete");
+          }
+          plugin.addSurface("main", function Surface() { return null; });
+          return function() {};
+        };
+        return module.exports;
+      })`,
+    );
+
+    expect(plugin.surfaces.map((surface) => surface.id)).toEqual(["main"]);
+  });
+
+  it("keeps shared and client runtime exports separate", () => {
+    expect(() =>
+      evaluatePluginClientBundle(
+        "example",
+        `(function(require) {
+      const shared = require("@otto-code/plugin");
+      const client = require("@otto-code/plugin/client");
+      for (const name of ["useOtto", "useRpc", "useSettings", "useAgent", "useWorkspace"]) {
+        if (name in shared || typeof client[name] !== "function") throw new Error(name);
+      }
+      if ("Icon" in shared || typeof shared.PluginAttachmentItemSchema.parse !== "function") throw new Error("shared exports");
+      return { default() { return () => {}; } };
+    })`,
+      ),
+    ).not.toThrow();
+  });
+
+  it.each([
+    "@otto-code/plugin/server",
+    "@otto-code/plugin/server/provider",
+    "@otto-code/plugin/server/acp",
+    "@otto-code/plugin/client/host",
+    "@otto-code/plugin/react-native",
+    "@otto-code/plugin/ui",
+    "@otto-code/plugin/host",
+    "@paseo/plugin",
+  ])("rejects %s in the client loader", (specifier) => {
+    expect(() =>
+      evaluatePluginClientBundle(
+        "example",
+        `(function(require) { require("${specifier}"); return {}; })`,
+      ),
+    ).toThrow("not available in plugin client code");
+  });
+
+  it("resolves shared RPC helpers from @otto-code/plugin", () => {
+    const plugin = evaluatePluginClientBundle(
+      "example",
+      `(function(require) {
+        const { defineRpc, defineAttachmentSource } = require("@otto-code/plugin");
         const search = defineRpc({ name: "issues.search", input: {}, output: {} });
         const module = { exports: {} };
         module.exports.default = function(plugin) {
@@ -341,3 +635,26 @@ describe("evaluatePluginClientBundle", () => {
     ).toThrow("setup exploded");
   });
 });
+
+it("shares SDK modules, hooks and callback API identity across both author namespaces", () => {
+  evaluatePluginClientBundle(
+    "aliases",
+    bundle(`
+    const own = require("@otto-code/plugin/client");
+    const upstream = require("@getpaseo/plugin/client");
+    if (own !== upstream || own.useOtto !== upstream.usePaseo) throw new Error("duplicate runtime");
+    if (plugin.otto !== plugin.paseo) throw new Error("duplicate API");
+    for (const suffix of ["", "/client/ui", "/client/react-native"]) {
+      if (require("@otto-code/plugin" + suffix) !== require("@getpaseo/plugin" + suffix)) throw new Error("duplicate module");
+    }
+  `),
+  );
+});
+it.each(["/server", "/server/provider", "/server/acp", "/client/host", "/host", "/unknown"])(
+  "rejects upstream private/server/unknown client imports: %s",
+  (suffix) => {
+    expect(() =>
+      evaluatePluginClientBundle("boundary", bundle(`require("@getpaseo/plugin${suffix}")`)),
+    ).toThrow("not available");
+  },
+);

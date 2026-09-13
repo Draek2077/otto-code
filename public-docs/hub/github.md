@@ -1,12 +1,16 @@
 ---
 title: GitHub access
-description: Grant one workflow step a scoped GitHub token and git setup.
+description: "Upstream Paseo Hub reference. Grant one workflow step a scoped GitHub token and git setup."
 nav: GitHub access
 order: 65
 category: Hub
 ---
 
 # GitHub access
+
+> **Upstream reference.** This page describes Paseo Hub as documented with Paseo v0.8.0. Hub is disabled in Otto; these commands require a separate Paseo installation and Hub service. Package names, configuration expressions and service addresses below belong to Paseo. They are not Otto hosting or installation instructions. See the [reference overview](/docs/hub).
+
+> **Legacy project bundles.** The examples on this page use `.paseo/hub.yml` and `.paseo/workflows/`. New organization triggers use `.paseo/triggers/`; see [Configuration](/docs/hub/configuration). The formats are separate.
 
 A trigger grants no GitHub credential. Put a `github` block on the step that needs repository authority:
 
@@ -16,7 +20,7 @@ on: github.issue_comment
 max_runtime: 2h
 filters:
   repo: example/project
-  contains: "@otto"
+  contains: "@paseo"
   from_users: [maintainer]
 steps:
   - id: implement
@@ -34,10 +38,10 @@ steps:
       - text: |
           Implement the request, push a branch, and open a pull request with gh.
           Call hub.finish_execution when done.
-          ${{ otto.prompt }}
+          ${{ paseo.prompt }}
 ```
 
-The agent can use `git` and `gh` within the declared repositories and permissions. Hub mints the token when the step starts and revokes it when execution ends.
+The agent can use `git` and `gh` within the declared repositories and permissions. See [agent continuation](/docs/hub/configuration/hub-yml#agent-continuation) for the token lifecycle when requests continue an agent.
 
 ## Fields
 
@@ -70,7 +74,7 @@ Connection values for other integrations remain explicit step environment values
 
 ```yaml
 env:
-  SOME_TOKEN: "${{ otto.connections.some-connection.token }}"
+  SOME_TOKEN: "${{ paseo.connections.some-connection.token }}"
 ```
 
-Hub resolves the value for the step and does not persist it. See [Hub security](/docs/hub/security) for provider and host boundaries.
+Hub resolves the value when it prepares the agent's environment. See [Hub security](/docs/hub/security) for provider and host boundaries.

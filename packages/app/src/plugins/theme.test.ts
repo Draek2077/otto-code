@@ -18,7 +18,7 @@ const MOCHA: PluginThemeContribution = {
     border: "#45475a",
     accent: "#cba6f7",
     mutedForeground: "#a6adc8",
-    ring: "#6c7086",
+    ring: "#d4d4d8",
   },
 };
 
@@ -39,7 +39,7 @@ const LATTE: PluginThemeContribution = {
     border: "#ccd0da",
     accent: "#8839ef",
     mutedForeground: "#6c6f85",
-    ring: "#9ca0b0",
+    ring: "#4c4f69",
   },
 };
 
@@ -50,12 +50,16 @@ function installed(serverId: string, themes: PluginThemeContribution[]): Install
     serverId,
     clientBundle: serverId,
     queryClient: new QueryClient(),
+    settingsScreens: [],
     surfaces: [],
     sidebarItems: [],
     workspacePanels: [],
     commandCenterItems: [],
+    clientSlashCommands: [],
     attachmentSources: [],
     themes,
+    timelineTransformers: [],
+    timelineRenderers: [],
   };
 }
 
@@ -64,10 +68,15 @@ describe("toPluginTheme", () => {
     expect(toPluginTheme(lightTheme)).toEqual({
       colors: {
         surface0: lightTheme.colors.surface0,
+        surface1: lightTheme.colors.surface1,
+        surface2: lightTheme.colors.surface2,
+        border: lightTheme.colors.border,
         foreground: lightTheme.colors.foreground,
         foregroundMuted: lightTheme.colors.foregroundMuted,
         accent: lightTheme.colors.accent,
         accentForeground: lightTheme.colors.accentForeground,
+        statusSuccess: lightTheme.colors.statusSuccess,
+        statusWarning: lightTheme.colors.statusWarning,
         statusDanger: lightTheme.colors.statusDanger,
       },
     });
@@ -91,10 +100,6 @@ describe("plugin theme palettes", () => {
       accent: "#cba6f7",
       accentBright: "#cba6f7",
       accentForeground: "#1e1e2e",
-      // Otto derives focus rings from the accent ladder, so the semantic `ring`
-      // token is not the contributed one - the plugin's ring lands on surface4,
-      // foregroundExtraMuted, and terminalBrightBlack instead. See
-      // `plugins/themes/index.ts`.
       ring: "#d4d4d8",
       terminal: {
         background: "#1e1e2e",
@@ -136,7 +141,6 @@ describe("plugin theme palettes", () => {
       foreground: "#4c4f69",
       border: "#ccd0da",
       accent: "#8839ef",
-      // As above: the light ladder derives its ring from the theme's own ink.
       ring: "#4c4f69",
       terminal: {
         background: "#eff1f5",

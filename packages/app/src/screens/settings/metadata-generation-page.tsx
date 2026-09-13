@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -111,15 +112,19 @@ export function MetadataGenerationPage({ serverId }: { serverId: string }) {
   return (
     <SettingsSection
       title={t("settings.metadataGeneration.title")}
+      info={t("settings.metadataGeneration.description")}
       testID="metadata-generation-settings"
     >
       <View style={settingsStyles.card}>
         <MetadataGenerationRows serverId={serverId} />
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>
+            <SettingsTargetText
+              settingId="host-metadata-metadata-generation-model-selection"
+              style={settingsStyles.rowTitle}
+            >
               {t("settings.metadataGeneration.selection")}
-            </Text>
+            </SettingsTargetText>
             <Text style={settingsStyles.rowHint}>
               {mode === "automatic"
                 ? t("settings.metadataGeneration.automaticHint")
@@ -137,7 +142,12 @@ export function MetadataGenerationPage({ serverId }: { serverId: string }) {
         {mode === "preferred" ? (
           <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.metadataGeneration.model")}</Text>
+              <SettingsTargetText
+                settingId="host-metadata-metadata-generation-model"
+                style={settingsStyles.rowTitle}
+              >
+                {t("settings.metadataGeneration.model")}
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
                 {t("settings.metadataGeneration.fallbackHint")}
               </Text>

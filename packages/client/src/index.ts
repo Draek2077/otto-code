@@ -1,3 +1,5 @@
+import type { DaemonClientConfig } from "./daemon-client.js";
+import type { AgentPermissionResponse } from "@otto-code/protocol/agent-types";
 import type {
   AgentSnapshotPayload,
   CreateAgentRequestMessage,
@@ -5,14 +7,19 @@ import type {
   FetchWorkspacesResponseMessage,
   GetProvidersSnapshotResponseMessage,
   ListAvailableProvidersResponse,
+  ListCommandsResponse,
   ListProviderFeaturesRequestMessage,
   ListProviderFeaturesResponseMessage,
   ListProviderModelsResponseMessage,
+  ProjectListRequestMessage,
+  ProjectListResponseMessage,
   ListProviderModesResponseMessage,
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
   ProviderDiagnosticResponseMessage,
+  ProviderUsageListResponseMessage,
   ProjectPlacementPayload,
+  WorkspaceProjectDescriptorPayload,
   RefreshProvidersSnapshotResponseMessage,
   SendAgentMessageRequest,
   SessionOutboundMessage,
@@ -20,6 +27,23 @@ import type {
   WorkspaceCreateRequest,
 } from "@otto-code/protocol/messages";
 import { DaemonClient } from "./daemon-client.js";
+import {
+  createTerminalActions,
+  type PaseoTerminalActions as OttoTerminalActions,
+  type PaseoWorkspaceTerminalActions as OttoWorkspaceTerminalActions,
+} from "./terminals/index.js";
+export type {
+  PaseoTerminal as OttoTerminal,
+  PaseoTerminalActions as OttoTerminalActions,
+  PaseoTerminalHandle as OttoTerminalHandle,
+  PaseoTerminalCreateOptions as OttoTerminalCreateOptions,
+  PaseoTerminalListOptions as OttoTerminalListOptions,
+  PaseoTerminalListResult as OttoTerminalListResult,
+  PaseoTerminalCaptureOptions as OttoTerminalCaptureOptions,
+  PaseoTerminalCaptureResult as OttoTerminalCaptureResult,
+  PaseoWorkspaceTerminalActions as OttoWorkspaceTerminalActions,
+} from "./terminals/index.js";
+import type { PluginTimelineItem } from "@otto-code/protocol/agent-types";
 import type {
   FetchAgentsEntry,
   FetchAgentsOptions,
@@ -70,6 +94,7 @@ export interface OttoLogger {
 }
 
 export interface OttoClientConfig {
+  capabilities?: DaemonClientConfig["capabilities"];
   url: string;
   clientId?: string;
   appVersion?: string;
@@ -95,6 +120,16 @@ export interface OttoClientConfig {
 export type OttoWorkspace = WorkspaceDescriptorPayload;
 export type OttoAgent = AgentSnapshotPayload;
 export type OttoAgentListOptions = FetchAgentsOptions;
+export type OttoProject = WorkspaceProjectDescriptorPayload;
+export type OttoProjectListOptions = Omit<ProjectListRequestMessage, "type" | "requestId"> & {
+  requestId?: string;
+};
+export type OttoProjectListResult = ProjectListResponseMessage["payload"];
+export type OttoProjectUpdate = Extract<
+  SessionOutboundMessage,
+  { type: "project.update" }
+>["payload"];
+export type OttoProjectUpdateHandler = (update: OttoProjectUpdate) => void;
 
 export interface OttoAgentListResult {
   requestId: string;
@@ -145,6 +180,7 @@ export interface OttoWorkspaceHandle {
   readonly agents: {
     create(options: OttoWorkspaceAgentCreateOptions): Promise<OttoAgentHandle>;
   };
+  readonly terminals: OttoWorkspaceTerminalActions;
   current(): OttoWorkspace | null;
   refresh(options?: { requestId?: string }): Promise<OttoWorkspace | null>;
   setTitle(title: string | null, requestId?: string): Promise<{ title: string | null }>;
@@ -156,6 +192,11 @@ export interface OttoWorkspaceHandle {
    * the daemon should start streaming workspace directory updates.
    */
   subscribe(handler: (update: OttoWorkspaceUpdate) => void): () => void;
+}
+
+export interface OttoProjectActions {
+  list(options?: OttoProjectListOptions): Promise<OttoProjectListResult>;
+  subscribe(handler: OttoProjectUpdateHandler): () => void;
 }
 
 export interface OttoWorkspaceActions {
@@ -236,6 +277,18 @@ export interface OttoAgentRunOptions extends OttoAgentSendOptions {
 }
 
 export type OttoAgentRunResult = WaitForFinishResult;
+export type OttoAgentPermissionResponse = AgentPermissionResponse;
+
+export interface OttoAgentRespondToPermissionOptions {
+  requestId: string;
+  response: OttoAgentPermissionResponse;
+}
+
+export interface OttoAgentCommandsOptions {
+  requestId?: string;
+}
+
+export type OttoAgentCommandsResult = ListCommandsResponse["payload"];
 
 export type OttoAgentUpdate = Extract<SessionOutboundMessage, { type: "agent_update" }>["payload"];
 
@@ -243,7 +296,17 @@ export type OttoAgentStream = Extract<SessionOutboundMessage, { type: "agent_str
 
 export type OttoAgentUpdateHandler = (update: OttoAgentUpdate) => void;
 
+export type OttoAgentTimelineEvent =
+  | OttoAgentStream
+  | {
+      agentId: string;
+      event: { type: "replacement"; epoch: string };
+    };
+
+export type OttoAgentTimelineSubscription = ReturnType<DaemonClient["subscribeAgentTimeline"]>;
+
 export interface OttoAgentTimelineHandle {
+  append(item: Omit<PluginTimelineItem, "pluginId">): Promise<{ seq: number; epoch: string }>;
   /**
    * Fetches a fresh timeline page through the existing daemon RPC. If the daemon
    * includes an agent snapshot in the response, the parent handle is updated to
@@ -251,25 +314,52 @@ export interface OttoAgentTimelineHandle {
    */
   refetch(options?: OttoAgentTimelineRefetchOptions): Promise<FetchAgentTimelinePayload>;
   /**
-   * Local listener for agent_stream events matching this handle id. It does not
-   * retain timeline entries or own application cache state.
+   * Subscribe to this agent and restore demand after reconnect. A replacement
+   * event invalidates previously fetched history; refetch the page you need.
+   * Await the returned unsubscribe function's `ready` promise before starting
+   * work that must be observed. It rejects if establishment fails.
    */
-  subscribe(handler: (event: OttoAgentStream) => void): () => void;
+  subscribe(handler: (event: OttoAgentTimelineEvent) => void): OttoAgentTimelineSubscription;
 }
 
 export interface OttoAgentHandle {
   readonly id: string;
+  /**
+   * `workspaceId` through `archivedAt` mirror the last snapshot this handle
+   * observed. A handle from `ref()` reads `null` for all of them until
+   * `refresh()`, `run()`, `waitForFinish()`, a timeline refetch, or
+   * `subscribe()` delivers a snapshot. Optional snapshot values also read as
+   * `null`; use `current()` when you need to distinguish those states.
+   */
   readonly workspaceId: string | null;
   readonly cwd: string | null;
   readonly status: OttoAgent["status"] | null;
+  readonly capabilities: OttoAgent["capabilities"] | null;
+  readonly availableModes: OttoAgent["availableModes"] | null;
+  readonly pendingPermissions: OttoAgent["pendingPermissions"] | null;
+  readonly activeTurn: NonNullable<OttoAgent["activeTurn"]> | null;
+  readonly lastUsage: NonNullable<OttoAgent["lastUsage"]> | null;
+  readonly lastError: NonNullable<OttoAgent["lastError"]> | null;
+  readonly features: NonNullable<OttoAgent["features"]> | null;
+  readonly runtimeInfo: NonNullable<OttoAgent["runtimeInfo"]> | null;
+  readonly archivedAt: NonNullable<OttoAgent["archivedAt"]> | null;
   readonly timeline: OttoAgentTimelineHandle;
   current(): OttoAgent | null;
   refresh(requestId?: string): Promise<OttoAgentRefetchResult | null>;
   send(text: string, options?: OttoAgentSendOptions): Promise<void>;
+  respondToPermission(options: OttoAgentRespondToPermissionOptions): Promise<void>;
   /** Sends a prompt and resolves when that turn finishes or needs attention. */
   run(text: string, options?: OttoAgentRunOptions): Promise<OttoAgentRunResult>;
   /** Waits for the current turn, including one started with `prompt`. */
   waitForFinish(timeoutMs?: number): Promise<OttoAgentRunResult>;
+  /**
+   * Asks the running session for the slash commands and skills it actually
+   * loaded. Providers answer from the live session, so this sees built-in and
+   * bundled entries that no directory scan can find. The payload carries its own
+   * `error` string; a provider that cannot answer reports it there rather than
+   * rejecting.
+   */
+  commands(options?: OttoAgentCommandsOptions): Promise<OttoAgentCommandsResult>;
   archive(): Promise<{ archivedAt: string }>;
   detach(): Promise<void>;
   subscribe(handler: (update: OttoAgentUpdate) => void): () => void;
@@ -305,6 +395,10 @@ export type OttoProviderSnapshotUpdate = Extract<
 >["payload"];
 export type OttoProviderRefreshResult = RefreshProvidersSnapshotResponseMessage["payload"];
 export type OttoProviderDiagnosticResult = ProviderDiagnosticResponseMessage["payload"];
+export type OttoProviderUsageResult = ProviderUsageListResponseMessage["payload"];
+export interface OttoProviderUsageOptions {
+  requestId?: string;
+}
 
 export interface OttoProviderListOptions {
   cwd?: string;
@@ -343,6 +437,7 @@ export interface OttoProviderActions {
     provider: OttoAgentProvider,
     options?: { requestId?: string },
   ): Promise<OttoProviderDiagnosticResult>;
+  listUsage(options?: OttoProviderUsageOptions): Promise<OttoProviderUsageResult>;
   subscribe(handler: (update: OttoProviderSnapshotUpdate) => void): () => void;
 }
 
@@ -367,7 +462,9 @@ export interface OttoConfigActions {
 }
 
 export interface OttoApi {
+  readonly terminals: OttoTerminalActions;
   readonly workspaces: OttoWorkspaceActions;
+  readonly projects: OttoProjectActions;
   readonly agents: OttoAgentActions;
   readonly providers: OttoProviderActions;
   readonly config: OttoConfigActions;
@@ -421,9 +518,24 @@ export function createOttoApi(daemonClient: DaemonClient): OttoApi {
     });
     return createAgentHandle(agent);
   };
-  const createWorkspaceHandle = createWorkspaceHandleFactory(daemonClient, createAgent);
+  const terminals = createTerminalActions(daemonClient, async (workspaceId) => {
+    const workspace = await createWorkspaceHandle(workspaceId).refresh();
+    if (!workspace?.workspaceDirectory) {
+      throw new Error(`Workspace ${workspaceId} is not active or has no available directory`);
+    }
+    return workspace.workspaceDirectory;
+  });
+  const createWorkspaceHandle = createWorkspaceHandleFactory(daemonClient, createAgent, terminals);
 
   return {
+    terminals,
+    projects: {
+      list: (options) => daemonClient.listProjects(options),
+      subscribe: (handler) =>
+        daemonClient.on("project.update", (message) => {
+          handler(message.payload);
+        }),
+    },
     workspaces: {
       list: (options) => daemonClient.fetchWorkspaces(options),
       ref: (workspace) => createWorkspaceHandle(workspace),
@@ -464,6 +576,7 @@ export function createOttoApi(daemonClient: DaemonClient): OttoApi {
       waitForReady: (options) => waitForProvidersReady(daemonClient, options),
       refresh: (options) => daemonClient.refreshProvidersSnapshot(options),
       diagnostic: (provider, options) => daemonClient.getProviderDiagnostic(provider, options),
+      listUsage: (options) => listProviderUsage(daemonClient, options),
       subscribe: (handler) =>
         daemonClient.on("providers_snapshot_update", (message) => {
           handler(message.payload);
@@ -486,6 +599,7 @@ type CreateAgent = (
 function createWorkspaceHandleFactory(
   daemonClient: DaemonClient,
   createAgent: CreateAgent,
+  terminals: OttoTerminalActions,
 ): WorkspaceHandleFactory {
   return (workspace) => {
     const id = typeof workspace === "string" ? workspace : workspace.id;
@@ -537,6 +651,10 @@ function createWorkspaceHandleFactory(
           );
         },
       },
+      terminals: {
+        create: (options) => terminals.create({ ...options, workspaceId: id }),
+        list: (options) => terminals.list({ ...options, workspaceId: id }),
+      },
       current: () => current,
       refresh,
       setTitle: (title, requestId) => daemonClient.setWorkspaceTitle(id, title, requestId),
@@ -571,6 +689,7 @@ function createAgentHandleFactory(daemonClient: DaemonClient): AgentHandleFactor
     const handle: OttoAgentHandle = {
       id,
       timeline: {
+        append: (item) => daemonClient.appendAgentTimelineItem(id, item),
         refetch: async (options) => {
           const result = await daemonClient.fetchAgentTimeline(id, options);
           if (result.agent) {
@@ -579,10 +698,15 @@ function createAgentHandleFactory(daemonClient: DaemonClient): AgentHandleFactor
           return result;
         },
         subscribe: (handler) =>
-          daemonClient.on("agent_stream", (message) => {
-            if (message.payload.agentId === id) {
-              handler(message.payload);
-            }
+          daemonClient.subscribeAgentTimeline(id, (message) => {
+            handler(
+              message.type === "agent_stream"
+                ? message.payload
+                : {
+                    agentId: message.payload.agentId,
+                    event: { type: "replacement", epoch: message.payload.epoch },
+                  },
+            );
           }),
       },
       get workspaceId() {
@@ -594,11 +718,41 @@ function createAgentHandleFactory(daemonClient: DaemonClient): AgentHandleFactor
       get status() {
         return current?.status ?? null;
       },
+      get capabilities() {
+        return current?.capabilities ?? null;
+      },
+      get availableModes() {
+        return current?.availableModes ?? null;
+      },
+      get pendingPermissions() {
+        return current?.pendingPermissions ?? null;
+      },
+      get activeTurn() {
+        return current?.activeTurn ?? null;
+      },
+      get lastUsage() {
+        return current?.lastUsage ?? null;
+      },
+      get lastError() {
+        return current?.lastError ?? null;
+      },
+      get features() {
+        return current?.features ?? null;
+      },
+      get runtimeInfo() {
+        return current?.runtimeInfo ?? null;
+      },
+      get archivedAt() {
+        return current?.archivedAt ?? null;
+      },
       current: () => current,
       refresh: async (requestId) => {
         const result = await daemonClient.fetchAgent({ agentId: id, requestId });
         current = result?.agent ?? null;
         return result;
+      },
+      respondToPermission: async ({ requestId, response }) => {
+        await daemonClient.respondToPermission(id, requestId, response);
       },
       run: async (text, options) => {
         const { timeoutMs, ...sendOptions } = options ?? {};
@@ -625,6 +779,7 @@ function createAgentHandleFactory(daemonClient: DaemonClient): AgentHandleFactor
       send: async (text, options) => {
         await daemonClient.sendAgentMessage(id, text, options);
       },
+      commands: (options) => daemonClient.listCommands({ agentId: id, ...options }),
       archive: async () => {
         const result = await daemonClient.archiveAgent(id);
         if (current) {
@@ -684,6 +839,17 @@ function parseProviderModel(selection: string): { provider: string; model: strin
     provider: selection.slice(0, separator),
     model: selection.slice(separator + 1),
   };
+}
+
+function listProviderUsage(
+  daemonClient: DaemonClient,
+  options?: OttoProviderUsageOptions,
+): Promise<OttoProviderUsageResult> {
+  // COMPAT(providerUsageList): added in v0.1.98, remove after 2027-02-28 once daemon floor >= v0.1.98.
+  if (daemonClient.getLastServerInfoMessage()?.features?.providerUsageList !== true) {
+    return Promise.reject(new Error("Update the host to list provider usage."));
+  }
+  return daemonClient.listProviderUsage(options);
 }
 
 function waitForProvidersReady(

@@ -1,9 +1,11 @@
+import { assertWorkspaceAutomationAllowedForWorkspace } from "./workspace-automation-gate.js";
 import {
   GoogleConnectorAuthorization,
   loadGoogleOAuthRegistration,
   GOOGLE_CONNECTOR_INTEGRATION_ID,
 } from "./connectors/google-connector-authorization.js";
 import { GoogleConnectorService } from "./connectors/google-connector-service.js";
+import { describeHookWorkspace } from "./plugins/lifecycle/index.js";
 import express from "express";
 import { CommunicationsService } from "./communications/communications-service.js";
 import {
@@ -216,8 +218,9 @@ import { DevServerManager } from "./preview/dev-server-manager.js";
 import { BrainManager } from "./brain/brain-manager.js";
 import { BrainOpsManager } from "./brain/brain-ops-manager.js";
 import type { OttoToolRuntimeContext } from "./agent/tools/types.js";
-import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { OTTO_BRAIN_PROVIDER_ID } from "./agent/provider-registry.js";
+import { createAgentProviderRuntime } from "./agent/provider-runtime.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import {
@@ -258,6 +261,7 @@ import {
   resolveConfigFromPersisted,
   type CliConfigOverrides,
 } from "./config.js";
+import { resolveOttoToolPolicy } from "./agent/otto-tool-policy.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
 import { DaemonConfigOttoToolGroupsPolicy } from "./agent/tools/tool-groups-policy.js";
@@ -365,9 +369,10 @@ import {
 import { DirectHubRelationshipRemote, type HubRelationshipRemote } from "./hub-disabled.js";
 import { DaemonExecutions } from "./hub-disabled.js";
 import { PluginService } from "./plugins/index.js";
+import { ManagedPluginSources } from "./plugins/managed-source.js";
 
-const MAX_MCP_DEBUG_BATCH_ITEMS = 10;
-const REDACTED_LOG_VALUE = "[redacted]";
+const MCP_DEBUG_BATCH_LIMIT = 10;
+const MCP_DEBUG_SECRET = "[redacted]";
 const DOWNLOAD_OPEN_FLAGS =
   process.platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW;
 
@@ -465,35 +470,28 @@ export function createTerminalActivityRouteHandler(
   };
 }
 
-function summarizeAgentMcpDebugMessage(body: unknown): Record<string, unknown> {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return {
-      type: body === null ? "null" : typeof body,
-    };
+function describeMcpRequest(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { shape: value === null ? "null" : typeof value };
   }
-
-  const record = body as Record<string, unknown>;
-  const method = typeof record.method === "string" ? record.method : undefined;
+  const request = value as Record<string, unknown>;
   return {
-    type: "object",
-    ...(typeof record.jsonrpc === "string" ? { jsonrpc: record.jsonrpc } : {}),
-    ...(method ? { method } : {}),
-    hasId: Object.prototype.hasOwnProperty.call(record, "id"),
-    hasParams: Object.prototype.hasOwnProperty.call(record, "params"),
+    shape: "request",
+    ...(typeof request.jsonrpc === "string" ? { jsonrpc: request.jsonrpc } : {}),
+    ...(typeof request.method === "string" ? { method: request.method } : {}),
+    hasId: "id" in request,
+    hasParams: "params" in request,
   };
 }
 
-function summarizeAgentMcpDebugBody(body: unknown): Record<string, unknown> {
-  if (!Array.isArray(body)) {
-    return summarizeAgentMcpDebugMessage(body);
-  }
-
-  const messages = body.slice(0, MAX_MCP_DEBUG_BATCH_ITEMS).map(summarizeAgentMcpDebugMessage);
+function describeMcpDebugPayload(value: unknown): Record<string, unknown> {
+  if (!Array.isArray(value)) return describeMcpRequest(value);
+  const sampled = value.slice(0, MCP_DEBUG_BATCH_LIMIT).map(describeMcpRequest);
   return {
-    type: "batch",
-    count: body.length,
-    messages,
-    ...(body.length > messages.length ? { omitted: body.length - messages.length } : {}),
+    shape: "batch",
+    count: value.length,
+    sampled,
+    ...(sampled.length < value.length ? { skipped: value.length - sampled.length } : {}),
   };
 }
 
@@ -1104,7 +1102,7 @@ export async function createOttoDaemon(
   rootLogger: Logger,
   dependencies: OttoDaemonDependencies = {},
 ): Promise<OttoDaemon> {
-  configureGitProcessPolicy(config.git ?? resolveGitProcessPolicy({ env: process.env }));
+  configureGitProcessPolicy(config.git);
   const logger = rootLogger.child({ module: "bootstrap" });
   const obsoleteTimelineDirectory = path.join(config.ottoHome, "agent-timelines");
   await rm(obsoleteTimelineDirectory, { recursive: true, force: true }).catch((error) => {
@@ -1167,7 +1165,10 @@ export async function createOttoDaemon(
   const ottoToolGroupsPolicy = new DaemonConfigOttoToolGroupsPolicy(daemonConfigStore);
   const browserToolsBroker = new BrowserToolsBroker({});
   const previewDevServers = new DevServerManager({ logger });
-  const pluginRuntime = new PluginService(logger, daemonConfigStore);
+  const pluginRuntime = new PluginService(logger, daemonConfigStore, daemonVersion, {
+    managedSources: new ManagedPluginSources(config.ottoHome),
+    settingsDirectory: path.join(config.ottoHome, "plugin-settings"),
+  });
 
   const serverId = getOrCreateServerId(config.ottoHome, { logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.ottoHome, logger);
@@ -1283,7 +1284,7 @@ export async function createOttoDaemon(
     serviceProxy,
     onChange: createScriptStatusEmitter({
       sessions: () =>
-        wsServer?.listTrustedSessions().map((session) => ({
+        wsServer?.listSessions().map((session) => ({
           emit: (message) => session.emitServerMessage(message),
         })) ?? [],
       serviceProxy,
@@ -1612,7 +1613,15 @@ export async function createOttoDaemon(
     );
   });
 
+  workspaceRegistry.subscribeToMutations((mutation) => {
+    if (mutation.kind === "archive" && mutation.workspace) {
+      pluginRuntime.emit("workspace.archived", {
+        workspace: describeHookWorkspace(mutation.workspace),
+      });
+    }
+  });
   const workspaceProvisioning = createWorkspaceProvisioningService({
+    lifecycle: pluginRuntime,
     serverId,
     projectRegistry,
     workspaceRegistry,
@@ -1719,21 +1728,24 @@ export async function createOttoDaemon(
     },
   });
 
-  const providerSnapshotLogger = logger.child({ module: "provider-snapshot-manager" });
-  const providerSnapshotManager = new ProviderSnapshotManager({
-    logger: providerSnapshotLogger,
-    refreshTimeoutMs: config.providerCatalogRefreshTimeoutMs,
-    runtimeSettings: config.agentProviderSettings,
-    providerOverrides: config.providerOverrides,
-    workspaceGitService,
-    managedProcesses,
-    isDev: config.isDev === true,
-    extraClients: config.agentClients,
-    modelTierOverrides: daemonConfigStore.get().modelTierOverrides,
-    modelVisibilityOverrides: daemonConfigStore.get().modelVisibilityOverrides,
-    connectors: daemonConfigStore.get().connectors,
-    brainEndpoint: () => brainManager.getProviderEndpoint(),
+  const agentProviderRuntime = await createAgentProviderRuntime({
+    ottoHome: config.ottoHome,
+    logger,
+    snapshotManager: {
+      refreshTimeoutMs: config.providerCatalogRefreshTimeoutMs,
+      runtimeSettings: config.agentProviderSettings,
+      providerOverrides: config.providerOverrides,
+      workspaceGitService,
+      managedProcesses,
+      isDev: config.isDev === true,
+      extraClients: config.agentClients,
+      modelTierOverrides: daemonConfigStore.get().modelTierOverrides,
+      modelVisibilityOverrides: daemonConfigStore.get().modelVisibilityOverrides,
+      connectors: daemonConfigStore.get().connectors,
+      brainEndpoint: () => brainManager.getProviderEndpoint(),
+    },
   });
+  const providerSnapshotManager = agentProviderRuntime.snapshotManager;
   providerSnapshotManagerRef = providerSnapshotManager;
   daemonConfigStore.onFieldChange("catalogRefreshTimeoutMs", (value) => {
     providerSnapshotManager.setRefreshTimeoutMs(typeof value === "number" ? value : undefined);
@@ -1752,6 +1764,7 @@ export async function createOttoDaemon(
     logger,
   });
   const agentManager = new AgentManager({
+    pluginLifecycle: pluginRuntime,
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
@@ -1796,8 +1809,17 @@ export async function createOttoDaemon(
     onActivity: recordActivity,
     onUsageEvent: (event) => usageLogStore.append(event),
     mcpAuthToken: agentMcpAuthToken,
+    resolveOttoToolPolicy: (provider) =>
+      resolveOttoToolPolicy(provider, daemonConfigStore.get().providers),
     logger,
   });
+  const syncPluginProviders = () => {
+    agentManager.updateProviderRegistry(
+      providerSnapshotManager.replacePluginProviders(pluginRuntime.getProviderRegistrations()),
+    );
+  };
+  const unsubscribePluginProviders =
+    pluginRuntime.subscribeProviderRegistrations(syncPluginProviders);
 
   const detachAgentStoragePersistence = attachAgentStoragePersistence(
     logger,
@@ -1830,7 +1852,7 @@ export async function createOttoDaemon(
     onWorkspaceArchived: teardownArchivedWorkspaceRuntime,
     onWorkspacesChanged: async (workspaceIds) => {
       await fanOutReconciledWorkspaceUpdates({
-        sessions: wsServer?.listTrustedSessions() ?? [],
+        sessions: wsServer?.listSessions() ?? [],
         workspaceIds,
         logger,
       });
@@ -1903,20 +1925,20 @@ export async function createOttoDaemon(
   };
   const markWorkspaceArchivingExternal = (workspaceIds: Iterable<string>, archivingAt: string) => {
     const workspaceIdList = Array.from(workspaceIds);
-    for (const session of wsServer?.listTrustedSessions() ?? []) {
+    for (const session of wsServer?.listSessions() ?? []) {
       session.markWorkspaceArchivingForExternalMutation(workspaceIdList, archivingAt);
     }
   };
   const clearWorkspaceArchivingExternal = (workspaceIds: Iterable<string>) => {
     const workspaceIdList = Array.from(workspaceIds);
-    for (const session of wsServer?.listTrustedSessions() ?? []) {
+    for (const session of wsServer?.listSessions() ?? []) {
       session.clearWorkspaceArchivingForExternalMutation(workspaceIdList);
     }
   };
   const emitWorkspaceUpdatesExternal = async (workspaceIds: Iterable<string>) => {
     const workspaceIdList = Array.from(workspaceIds);
     await Promise.all(
-      (wsServer?.listTrustedSessions() ?? []).map((session) =>
+      (wsServer?.listSessions() ?? []).map((session) =>
         session.emitWorkspaceUpdatesForExternalWorkspaceIds(workspaceIdList),
       ),
     );
@@ -2046,7 +2068,7 @@ export async function createOttoDaemon(
         warmWorkspaceGitData: async (workspace) => {
           await Promise.all(
             wsServer
-              ?.listTrustedSessions()
+              ?.listSessions()
               .map((session) => session.warmWorkspaceGitDataForWorkspace(workspace)) ?? [],
           );
         },
@@ -2058,6 +2080,8 @@ export async function createOttoDaemon(
         cacheWorkspaceSetupSnapshot: () => {},
         startWorkspaceSetup: (workspaceId, operation) =>
           workspaceSetupRuntime.start(workspaceId, operation),
+        assertWorkspaceAutomationAllowed: (guardedWorkspaceId) =>
+          assertWorkspaceAutomationAllowedForWorkspace(workspaceRegistry, guardedWorkspaceId),
         emit: emitExternalSessionMessage,
         sessionLogger: logger,
         terminalManager,
@@ -2107,6 +2131,8 @@ export async function createOttoDaemon(
         killTerminalsForWorkspace: (workspaceIdToKill) =>
           killTerminalsForWorkspace({ terminalManager, sessionLogger: logger }, workspaceIdToKill),
         stopWorkspaceSetup: (workspaceIdToStop) => workspaceSetupRuntime.stop(workspaceIdToStop),
+        assertWorkspaceAutomationAllowed: (guardedWorkspaceId) =>
+          assertWorkspaceAutomationAllowedForWorkspace(workspaceRegistry, guardedWorkspaceId),
         sessionLogger: logger,
       },
       { scope: { kind: "workspace", workspaceId }, requestId },
@@ -2145,7 +2171,30 @@ export async function createOttoDaemon(
     createDaemonId: dependencies.createHubDaemonId,
     attachSocket: async (socket, options) => {
       if (!wsServer) throw new Error("WebSocket server is not running");
-      await wsServer.attachHubSocket(socket, options);
+      await wsServer.attachExternalSocket(
+        socket,
+        { transport: "hub", hubDaemonId: options.daemonId },
+        {
+          principalId: options.principalId,
+          // Legacy Hub sessions keep their execution-only RPC ceiling. Modern
+          // sessions are bounded by the explicit semantic permissions below.
+          scopes: options.sessionProtocol === "legacy" ? ["hub.execution.*"] : ["*"],
+          permissions: options.permissions,
+          hubExecutionAgents: options.agents,
+        },
+        options.sessionProtocol === "legacy"
+          ? {
+              type: "hello",
+              clientId: `hub:${options.daemonId}`,
+              clientType: "hub",
+              protocolVersion: 1,
+            }
+          : undefined,
+      );
+    },
+    updateAttachedPermissions: (principalId, permissions) => {
+      if (!wsServer) throw new Error("WebSocket server is not running");
+      wsServer.updatePrincipalPermissions(principalId, permissions);
     },
     createExecutionAgents: (daemonId) =>
       new DaemonExecutions({
@@ -2252,6 +2301,8 @@ export async function createOttoDaemon(
             workspaceIdToKill,
           ),
         stopWorkspaceSetup: (workspaceIdToStop) => workspaceSetupRuntime.stop(workspaceIdToStop),
+        assertWorkspaceAutomationAllowed: (guardedWorkspaceId) =>
+          assertWorkspaceAutomationAllowedForWorkspace(workspaceRegistry, guardedWorkspaceId),
         sessionLogger: logger,
       },
       {
@@ -2462,6 +2513,9 @@ export async function createOttoDaemon(
         payload: { artifact },
       });
     },
+    ottoToolPolicy:
+      runtime.ottoToolPolicy ??
+      (runtime.callerAgentId ? agentManager.getOttoToolPolicy(runtime.callerAgentId) : undefined),
     ottoHome: config.ottoHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,
@@ -2487,8 +2541,16 @@ export async function createOttoDaemon(
   };
   const createAgentToolCatalog = async (runtime: OttoToolRuntimeContext) =>
     createOttoToolCatalog(await createAgentToolDependencies(runtime));
+  const setAgentProviderToolsEnabled = (enabled: boolean) => {
+    // The bridge advertises a static manifest. Agent-bound execution still uses
+    // the asynchronous catalog with its current connector and workspace grants.
+    agentProviderRuntime.setOttoToolCatalog(
+      enabled ? createOttoToolCatalog(createAgentToolHostDependencies({})) : null,
+    );
+  };
   agentManager.setOttoToolCatalogFactory(createAgentToolCatalog);
   agentManager.setOttoToolsEnabled(config.mcpInjectIntoAgents !== false);
+  setAgentProviderToolsEnabled(config.mcpEnabled !== false && config.mcpInjectIntoAgents !== false);
 
   let mcpEnabled = config.mcpEnabled ?? true;
   let agentMcpBaseUrl: string | null = null;
@@ -2504,7 +2566,10 @@ export async function createOttoDaemon(
 
     const createAgentMcpSession = async (callerAgentId?: string) => {
       const agentMcpServer = await createAgentMcpServer(
-        await createAgentToolDependencies({ callerAgentId }),
+        await createAgentToolDependencies({
+          callerAgentId,
+          ottoToolPolicy: callerAgentId ? agentManager.getOttoToolPolicy(callerAgentId) : undefined,
+        }),
       );
 
       // Stateless mode: each HTTP request builds a fresh server + transport that is
@@ -2557,8 +2622,8 @@ export async function createOttoDaemon(
             method: req.method,
             url: req.originalUrl,
             sessionId: req.header("mcp-session-id"),
-            authorization: req.header("authorization") ? REDACTED_LOG_VALUE : undefined,
-            body: summarizeAgentMcpDebugBody(req.body),
+            authorization: req.header("authorization") ? MCP_DEBUG_SECRET : undefined,
+            body: describeMcpDebugPayload(req.body),
           },
           "Agent MCP request",
         );
@@ -2692,19 +2757,18 @@ export async function createOttoDaemon(
             agentMcpBaseUrl =
               !mcpEnabled || config.mcpInjectIntoAgents === false ? null : mcpBaseUrl;
             agentManager.setMcpBaseUrl(agentMcpBaseUrl);
-            agentManager.setOttoToolsEnabled(config.mcpInjectIntoAgents !== false);
             agentManager.setOttoToolsEnabled(mcpEnabled && config.mcpInjectIntoAgents !== false);
             daemonConfigStore.onFieldChange("mcp.enabled", (value) => {
               mcpEnabled = value !== false;
               const inject = daemonConfigStore.get().mcp.injectIntoAgents !== false;
               agentManager.setMcpBaseUrl(mcpEnabled && inject ? mcpBaseUrl : null);
               agentManager.setOttoToolsEnabled(mcpEnabled && inject);
+              setAgentProviderToolsEnabled(mcpEnabled && inject);
             });
             daemonConfigStore.onFieldChange("mcp.injectIntoAgents", (value) => {
-              agentManager.setMcpBaseUrl(value ? mcpBaseUrl : null);
-              agentManager.setOttoToolsEnabled(value !== false);
               agentManager.setMcpBaseUrl(mcpEnabled && value ? mcpBaseUrl : null);
               agentManager.setOttoToolsEnabled(mcpEnabled && value !== false);
+              setAgentProviderToolsEnabled(mcpEnabled && value !== false);
             });
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
@@ -2961,8 +3025,10 @@ export async function createOttoDaemon(
       speechService.start();
       scriptHealthMonitor.start();
     } catch (error) {
+      unsubscribePluginProviders();
       await pluginRuntime.stopAllPlugins().catch(() => undefined);
       await serviceProxy.stopStandalone().catch(() => undefined);
+      await agentProviderRuntime.shutdown().catch(() => undefined);
       if (mainStarted) {
         httpServer.closeAllConnections();
         await new Promise<void>((resolve) => httpServer.close(() => resolve()));
@@ -2977,6 +3043,7 @@ export async function createOttoDaemon(
     await googleConnectors.close();
     await orchestrationSkills.dispose();
     await pluginRuntime.stopAllPlugins();
+    unsubscribePluginProviders();
     await hubRelationships.stop();
     workspaceReconciliation.dispose();
     scriptHealthMonitor.stop();
@@ -2999,7 +3066,7 @@ export async function createOttoDaemon(
     // daemon exit dropped up to WRITE_COALESCE_MS of appended rows. `flush()` was
     // always documented as the graceful-shutdown hook; nothing called it.
     await usageLogStore.flush().catch(() => undefined);
-    await providerSnapshotManager.shutdown();
+    await agentProviderRuntime.shutdown();
     terminalManager.killAll();
     unsubscribeSpeechConfigChange();
     unsubscribeGitHostingConfigChange();

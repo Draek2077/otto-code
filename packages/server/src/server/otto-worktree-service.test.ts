@@ -610,6 +610,71 @@ test("does not mark GitHub PR checkout worktrees as eligible for first-agent ren
   ).toBe("pr-123");
 });
 
+test.each([false, true])(
+  "persists fork provenance only for cross-repository workspaces (fork=%s)",
+  async (isCrossRepository) => {
+    const { repoDir, tempDir } = createGitHubPrRemoteRepo();
+    cleanupPaths.push(tempDir);
+    writeFileSync(
+      path.join(repoDir, "otto.json"),
+      JSON.stringify({
+        worktree: { setup: ["node -e \"require('fs').writeFileSync('setup-ran', 'yes')\""] },
+      }),
+    );
+    const deps = createDeps();
+    const checkoutTarget = await deps.github.getPullRequestCheckoutTarget({
+      cwd: repoDir,
+      number: 123,
+    });
+    deps.github.getPullRequestCheckoutTarget = async () => ({
+      ...checkoutTarget,
+      isCrossRepository,
+      headOwnerLogin: isCrossRepository ? "contributor" : null,
+      headRepositoryUrl: isCrossRepository ? "https://github.com/contributor/repo" : null,
+    });
+    deps.workspaceGitService.resolveForge = async () => ({
+      forge: "github",
+      host: "github.com",
+      service: deps.github,
+    });
+    const upsert = vi.spyOn(deps.workspaceRegistry, "upsert");
+    const created = await createOttoWorktree(
+      {
+        cwd: repoDir,
+        action: "checkout",
+        githubPrNumber: 123,
+        title: "  Review contributor change  ",
+        firstAgentContext: { prompt: "Inspect this change" },
+        runSetup: true,
+        ottoHome: path.join(tempDir, ".otto"),
+      },
+      deps,
+    );
+    expect(existsSync(path.join(created.worktree.worktreePath, "setup-ran"))).toBe(
+      !isCrossRepository,
+    );
+    expect(created.workspace.title).toBe("Review contributor change");
+    expect(created.workspace.cwd).toBe(created.worktree.worktreePath);
+    expect(created.workspace.untrustedSource).toEqual(
+      isCrossRepository
+        ? {
+            kind: "change_request",
+            forge: "github",
+            number: 123,
+            headRepository: "contributor/repo",
+          }
+        : undefined,
+    );
+    expect(deps.workspaces.get(created.workspace.workspaceId)?.untrustedSource).toEqual(
+      created.workspace.untrustedSource,
+    );
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: created.workspace.workspaceId }),
+      { expectsInitialAgent: true },
+    );
+  },
+);
+
 test("does not mutate registries or broadcast when core worktree creation fails", async () => {
   const tempDir = mkdtempSync(path.join(tmpdir(), "otto-worktree-service-"));
   cleanupPaths.push(tempDir);

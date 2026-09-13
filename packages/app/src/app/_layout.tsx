@@ -23,7 +23,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useWindowDimensions, View } from "react-native";
+import { AppState, useWindowDimensions, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -42,6 +42,7 @@ import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-
 import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { ChangelogHost } from "@/changelog";
 import { AppDiagnosticHost } from "@/components/app-diagnostic-host";
 import {
   ShortcutDiscoveryOverlay,
@@ -53,6 +54,7 @@ import { QuitConfirmListener } from "@/desktop/components/quit-confirm-listener"
 import { LeftSidebar } from "@/components/left-sidebar";
 import { DesktopWindowControls } from "@/components/desktop/window-controls";
 import { SidebarModelProvider } from "@/components/sidebar/sidebar-model";
+import { WorkspaceRenameHost } from "@/components/workspace-rename-host";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
 import { RootErrorBoundary } from "@/components/root-error-boundary";
@@ -85,6 +87,7 @@ import {
   shouldRunStartupGiveUpTimer,
   startDaemonIfGateAllows,
   startHostRuntimeBootstrap,
+  bindHostRuntimeAppState,
   type StartupBlocker,
 } from "@/navigation/host-runtime-bootstrap";
 import { registerWorkspaceRouteNavigationRef } from "@/navigation/workspace-route-navigation";
@@ -110,7 +113,7 @@ import { useOpenProject } from "@/hooks/use-open-project";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { useOpenAgentListGesture } from "@/mobile-panels/gestures";
-import { MobilePanelsProvider } from "@/mobile-panels/provider";
+import { MobilePanelsProvider, useIsMobilePanelActive } from "@/mobile-panels/provider";
 import { I18nProvider } from "@/i18n/provider";
 import {
   KeyboardActionDispatcherProvider,
@@ -135,7 +138,7 @@ import {
   useHosts,
 } from "@/runtime/host-runtime";
 import { getDaemonStartService } from "@/runtime/daemon-start-service";
-import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
+import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { LightThemeName, DarkThemeName } from "@/styles/theme";
@@ -423,6 +426,11 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   const [daemonStartGatePending, setDaemonStartGatePending] = useState(shouldUseDesktopDaemon);
   useEffect(() => {
     const store = getHostRuntimeStore();
+    return bindHostRuntimeAppState(store, AppState);
+  }, []);
+
+  useEffect(() => {
+    const store = getHostRuntimeStore();
     const daemonStartService = getDaemonStartService({ store });
     startHostRuntimeBootstrap({
       store,
@@ -675,12 +683,15 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       keyboardShortcutsEnabled={keyboardShortcutsEnabled}
     />
   );
-
+  let themedSidebarChrome = sidebarChrome;
+  if (isWeb) {
+    themedSidebarChrome = <AppearanceStyleBoundary>{sidebarChrome}</AppearanceStyleBoundary>;
+  }
   const workspaceChrome = (
     <View style={rowStyle}>
       {!isCompactLayout ? (
         <WindowChromeRegion corners={appChromeLayout.sidebarCorners}>
-          {sidebarChrome}
+          {themedSidebarChrome}
         </WindowChromeRegion>
       ) : null}
       {usesCompactExplorerHost ? (
@@ -700,33 +711,41 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     </View>
   );
 
+  // Native panel gesture hosts outlive appearance keys, like native navigators.
+  // Their tracked styles update in place; web numeric styles still need remounting.
   const surface = (
     <View style={layoutStyles.surfaceFill}>
       {workspaceChrome}
-      <DesktopWindowControls />
-      <FloatingPanelPortalHost />
-      {isCompactLayout ? sidebarChrome : null}
-      <DownloadToast />
-      <RosettaCalloutSource />
-      <UpdateCalloutSource />
-      <LegacyAgentSkillsMigration />
-      <WorktreeSetupCalloutSource />
-      <CommandCenterRootActions />
-      <CommandCenterWorkspaceActions />
-      <PluginCommandCenterActions />
-      <CommandCenter />
-      <AddProjectFlowHost />
-      <HostChooserModal />
-      <ProviderSettingsHost />
-      <WorkspaceSetupDialog />
-      <WorkspacePinShortcutHandler />
-      <KeyboardShortcutsDialog />
-      <AppDiagnosticHost />
-      <ShortcutDiscoveryOverlay />
-      <ConfirmDialogHost />
-      <QuitConfirmListener />
-      <QuittingOverlay />
-      <TutorialController />
+      <AppearanceStyleBoundary>
+        <DesktopWindowControls />
+        <FloatingPanelPortalHost />
+      </AppearanceStyleBoundary>
+      {isCompactLayout ? themedSidebarChrome : null}
+      <AppearanceStyleBoundary>
+        <DownloadToast />
+        <RosettaCalloutSource />
+        <UpdateCalloutSource />
+        <LegacyAgentSkillsMigration />
+        <WorktreeSetupCalloutSource />
+        <CommandCenterRootActions />
+        <CommandCenterWorkspaceActions />
+        <PluginCommandCenterActions />
+        <CommandCenter />
+        <AddProjectFlowHost />
+        <HostChooserModal />
+        <ProviderSettingsHost />
+        <WorkspaceSetupDialog />
+        <WorkspacePinShortcutHandler />
+        <WorkspaceRenameHost />
+        <ChangelogHost />
+        <KeyboardShortcutsDialog />
+        <AppDiagnosticHost />
+        <ShortcutDiscoveryOverlay />
+        <ConfirmDialogHost />
+        <QuitConfirmListener />
+        <QuittingOverlay />
+        <TutorialController />
+      </AppearanceStyleBoundary>
     </View>
   );
 
@@ -764,9 +783,9 @@ function SidebarChrome({
   keyboardShortcutsEnabled: boolean;
 }) {
   const isCompactLayout = useIsCompactFormFactor();
-  const isOpen = usePanelStore((state) =>
-    selectIsAgentListOpen(state, { isCompact: isCompactLayout }),
-  );
+  const isMobileActive = useIsMobilePanelActive("agent-list");
+  const isDesktopOpen = usePanelStore((state) => state.desktop.agentListOpen);
+  const isOpen = isCompactLayout ? isMobileActive : isDesktopOpen;
   return (
     <SidebarModelProvider active={showSidebar && isOpen}>
       {showSidebar ? <LeftSidebar /> : null}
@@ -814,21 +833,19 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
           <OfferLinkListener upsertDaemonFromOfferUrl={upsertConnectionFromOfferUrl} />
           <HostSessionManager />
           <FaviconStatusSync />
-          <AppearanceStyleBoundary>
-            {/* Agent voice cues are a notification channel, so playback lives here -
+          {/* Agent voice cues are a notification channel, so playback lives here -
           app-global, above the router - and is independent of the Visualizer
           entirely. Headless: it fires the cue audio and renders nothing. */}
-            <AgentVoiceCuesHost />
-            {/* Auto-speech reads incoming replies aloud. Headless, and mounted here
+          <AgentVoiceCuesHost />
+          {/* Auto-speech reads incoming replies aloud. Headless, and mounted here
           for the same two reasons as the cues: the shared audio engine resolves
           inside VoiceProvider, and a route change must not cut a queue short. */}
-            <AutoSpeechHost />
-            <ZoomRecorderHost />
-            {/* Headless: binds the resource monitor started above the router to the
+          <AutoSpeechHost />
+          <ZoomRecorderHost />
+          {/* Headless: binds the resource monitor started above the router to the
           `resourceMonitorEnabled` setting, so the telemetry can be turned off. */}
-            <ResourceMonitorHost />
-            {children}
-          </AppearanceStyleBoundary>
+          <ResourceMonitorHost />
+          {children}
         </VoiceProvider>
       </AppearanceProvider>
     </ChatRenderSettingsProvider>
@@ -1288,11 +1305,15 @@ const ROOT_STACK_SCREEN_OPTIONS = {
   headerShown: false,
   animation: "none" as const,
 };
+const ROOT_STACK_NESTED_NAVIGATOR_SCREENS = ["h/[serverId]", "settings/hosts/[serverId]"] as const;
 
 function RootStack() {
   const storeReady = useStoreReady();
   return (
-    <ThemedStack screenOptions={ROOT_STACK_SCREEN_OPTIONS}>
+    <ThemedStack
+      screenOptions={ROOT_STACK_SCREEN_OPTIONS}
+      nestedNavigatorScreens={ROOT_STACK_NESTED_NAVIGATOR_SCREENS}
+    >
       <Stack.Screen name="index" />
       <Stack.Protected guard={storeReady}>
         <Stack.Screen name="welcome" />

@@ -65,7 +65,7 @@ const EXPECTED_CLAUDE_MODELS = [
   {
     id: "claude-fable-5",
     model: "Fable 5",
-    descriptionFragment: "Most powerful",
+    descriptionFragment: "Previous release",
   },
   {
     id: "claude-opus-5",
@@ -168,18 +168,9 @@ async function runProviderModelsJson(provider: string): Promise<ProviderModel[]>
 }
 
 function assertClaudeModels(data: ProviderModel[]): void {
-  assert.strictEqual(
-    data.length,
-    EXPECTED_CLAUDE_CATALOG_MODELS.length,
-    "claude output should match the current catalog size",
-  );
-
   const byId = new Map(data.map((model) => [model.id, model]));
-  const ids = [...byId.keys()].sort();
-  const expectedIds = EXPECTED_CLAUDE_CATALOG_MODELS.map((model) => model.id).sort();
 
   assert.strictEqual(byId.size, data.length, "claude model IDs should be unique");
-  assert.deepStrictEqual(ids, expectedIds, "claude IDs should match the current catalog");
 
   for (const expectedModel of EXPECTED_CLAUDE_CATALOG_MODELS) {
     const actualModel = byId.get(expectedModel.id);
@@ -194,6 +185,18 @@ function assertClaudeModels(data: ProviderModel[]): void {
       `${expectedModel.id} description should mention ${expectedModel.descriptionFragment}`,
     );
   }
+
+  const fable51Index = data.findIndex((model) => model.id === "claude-fable-5-1");
+  const fable5Index = data.findIndex((model) => model.id === "claude-fable-5");
+  assert.strictEqual(
+    fable5Index,
+    fable51Index + 1,
+    "Fable models should stay adjacent and newest-first",
+  );
+  assert(
+    !byId.has("claude-fable-5[1m]"),
+    "compatibility-only Fable aliases should not appear in CLI output",
+  );
 }
 
 try {
@@ -418,20 +421,10 @@ try {
     const result = await ctx.otto(["provider", "models", "claude", "--quiet"]);
     assert.strictEqual(result.exitCode, 0, "should exit 0");
     const lines = result.stdout.trim().split("\n").filter(Boolean);
-    assert.strictEqual(
-      lines.length,
-      EXPECTED_CLAUDE_CATALOG_MODELS.length,
-      "should have one line per Claude catalog model",
-    );
     assert.deepStrictEqual(
-      [...lines].sort(),
-      [...claudeModelIdsFromJson].sort(),
-      "--quiet should print the same model IDs returned by --json",
-    );
-    assert.deepStrictEqual(
-      [...lines].sort(),
-      EXPECTED_CLAUDE_CATALOG_MODELS.map((model) => model.id).sort(),
-      "--quiet should print the current Claude catalog IDs",
+      lines,
+      claudeModelIdsFromJson,
+      "--quiet should print the same ordered model IDs returned by --json",
     );
     assert(
       claudeModelsFromJson.some((m) => m.id === "claude-sonnet-5"),

@@ -9,6 +9,7 @@ import { ChevronDown } from "@/components/icons/material-icons";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
 import { type Theme } from "@/styles/theme";
 import { Combobox, type ComboboxOption, type ComboboxProps } from "@/components/ui/combobox";
@@ -27,6 +28,7 @@ import {
   DESKTOP_PROVIDER_VIEW_MIN_HEIGHT,
   HeaderSettingsIcon,
   ProviderGlyph,
+  SelectorProviderHost,
   ThemedBoxes,
   TriggerLeadingIcon,
   foregroundMapping,
@@ -162,6 +164,7 @@ export function CombinedModelSelector({
   triggerLoading = false,
 }: CombinedModelSelectorProps) {
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const anchorRef = useRef<View>(null);
   // Live icon size - the static ICON_SIZE import never sees the compact
   // doubling, which would leave this trigger's glyph half the size of the
@@ -665,7 +668,7 @@ export function CombinedModelSelector({
   }
 
   return (
-    <>
+    <SelectorProviderHost value={serverId}>
       {renderSelectorTrigger()}
       <Combobox
         options={EMPTY_COMBOBOX_OPTIONS}
@@ -680,11 +683,16 @@ export function CombinedModelSelector({
         desktopFixedHeight={desktopFixedHeight}
         desktopChildrenScrollEnabled={selectorScrollEnabled(view, searchQuery)}
         header={sheetHeader}
-        mobileChildrenScrollEnabled={selectorScrollEnabled(view, searchQuery, isNative)}
+        mobileChildrenScrollEnabled={selectorScrollEnabled(
+          view,
+          searchQuery,
+          isNative && isCompact,
+        )}
         mobileChildrenContentContainerStyle={styles.mobileBrowserContent}
       >
         {isContentReady ? (
           <SelectorContent
+            serverId={serverId}
             view={view}
             providers={displayProviders}
             selectedProvider={selectedProvider}
@@ -710,7 +718,7 @@ export function CombinedModelSelector({
           </View>
         )}
       </Combobox>
-    </>
+    </SelectorProviderHost>
   );
 }
 

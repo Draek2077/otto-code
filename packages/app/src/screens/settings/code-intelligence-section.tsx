@@ -1,3 +1,4 @@
+import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -162,7 +163,12 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row} testID="lsp-master-toggle">
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.host.code.enabled")}</Text>
+              <SettingsTargetText
+                settingId="host-code-code-intelligence-enable-code-intelligence"
+                style={settingsStyles.rowTitle}
+              >
+                {t("settings.host.code.enabled")}
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>{t("settings.host.code.enabledHint")}</Text>
             </View>
             <Switch
@@ -232,7 +238,12 @@ function CsharpProjectScopeRow(props: {
   return (
     <View style={ROW_WITH_BORDER} testID="lsp-csharp-scope">
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.host.code.csharpScope")}</Text>
+        <SettingsTargetText
+          settingId="host-code-code-intelligence-c-project-loading"
+          style={settingsStyles.rowTitle}
+        >
+          {t("settings.host.code.csharpScope")}
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>{t("settings.host.code.csharpScopeHint")}</Text>
       </View>
       <SegmentedControl
@@ -271,7 +282,12 @@ function SolutionManagementRow(props: {
   return (
     <View style={ROW_WITH_BORDER} testID="dotnet-solution-toggle">
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{t("settings.host.code.solution")}</Text>
+        <SettingsTargetText
+          settingId="host-code-code-intelligence-microsoft-net-solution-management"
+          style={settingsStyles.rowTitle}
+        >
+          {t("settings.host.code.solution")}
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>{t("settings.host.code.solutionHint")}</Text>
       </View>
       <Switch
@@ -348,7 +364,12 @@ function LanguageRow(props: {
       testID={`lsp-language-${language.id}`}
     >
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{language.id}</Text>
+        <SettingsTargetText
+          settingId="host-code-languages-language"
+          style={settingsStyles.rowTitle}
+        >
+          {language.id}
+        </SettingsTargetText>
         <Text style={settingsStyles.rowHint}>{describeAvailability(language, t)}</Text>
         {/* The resolved binary, so "found" names the toolchain it found rather than
             asserting it. Absent when nothing resolved, since there is no path to show. */}
@@ -621,7 +642,9 @@ function RunningServerRow(props: {
 
   return (
     <View style={TABLE_ROW_WITH_BORDER}>
-      <Text style={CELL_SERVER}>{entry.serverId}</Text>
+      <SettingsTargetText settingId="host-code-running-servers-language-server" style={CELL_SERVER}>
+        {entry.serverId}
+      </SettingsTargetText>
       <Text style={CELL_ROOT} numberOfLines={1} ellipsizeMode="head">
         {entry.rootPath}
       </Text>

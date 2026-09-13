@@ -67,9 +67,20 @@ export interface DiffPalette {
   deletionBackground: string;
   emptyBackground: string;
   selection: string;
+  headerActiveSurface: string;
+  headerBorder: string;
+  statusSuccess: string;
+  statusDanger: string;
+  statusWarning: string;
   // Looked up by token name at paint time, so this stays an open string map
   // rather than the theme's closed set of highlight styles.
   syntax: Record<string, string>;
+}
+
+export interface DiffHeaderTypography {
+  family: string;
+  size: number;
+  statSize: number;
 }
 
 export interface DiffTokenRun {
@@ -158,6 +169,7 @@ export interface DiffDocumentModel {
   layout: "unified" | "split";
   wrapLines: boolean;
   viewportWidth: number;
+  reviewGeometryKey: string;
 }
 
 export interface TextMeasurer {
@@ -176,6 +188,7 @@ export interface BuildDiffDocumentModelInput {
   palette: DiffPalette;
   reviewActions?: InlineReviewActions;
   labels: { binary: string; tooLarge: string };
+  materializationWindow?: { top: number; height: number };
   /** A geometry-compatible model whose unchanged file measurements may be reused. */
   reuseFrom?: readonly DiffDocumentModel[];
 }
@@ -214,6 +227,7 @@ export type DiffScrollAnchor =
 
 export type DiffSurfaceProps = DiffDocumentProps & {
   palette: DiffPalette;
+  headerTypography: DiffHeaderTypography;
   collapsedFilePaths: ReadonlySet<string>;
   onToggleFile: (path: string) => void;
   selectedPath: string | null;

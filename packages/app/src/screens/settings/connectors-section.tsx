@@ -1,3 +1,9 @@
+import { CONNECTOR_PICKER_TARGETS } from "@/screens/settings-search/nested-editor-targets";
+import {
+  SettingsTarget,
+  SettingsTargetText,
+  useRevealSettingsTarget,
+} from "@/screens/settings-search/target";
 // Connectors settings - daemon-wide MCP servers surfaced as named, toggle-able
 // integrations. This section is the ledger of what you have added and whether
 // it is on: one card per connector, a global enable switch, and an expandable
@@ -71,7 +77,12 @@ function ConnectorToolRow(props: {
   return (
     <View style={styles.toolRow} testID={`connectors-tool-${connector.id}-${toolName}`}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{toolName}</Text>
+        <SettingsTargetText
+          settingId="host-tools-connector-editor-connector-tool"
+          style={settingsStyles.rowTitle}
+        >
+          {toolName}
+        </SettingsTargetText>
         {description ? <Text style={settingsStyles.rowHint}>{description}</Text> : null}
       </View>
       <Switch
@@ -173,7 +184,7 @@ function ConnectorCard(props: {
 
   return (
     <View style={settingsStyles.card} testID={`connectors-card-${connector.id}`}>
-      <View style={settingsStyles.row}>
+      <SettingsTarget settingId="host-tools-connector-editor-enabled" style={settingsStyles.row}>
         <ConnectorIdentity
           id={connector.builtin ?? connector.id}
           label={connector.label ?? connector.id}
@@ -192,7 +203,7 @@ function ConnectorCard(props: {
           accessibilityLabel={`Enable ${connector.label ?? connector.id}`}
           testID={`connectors-card-${connector.id}-switch`}
         />
-      </View>
+      </SettingsTarget>
 
       <GoogleConnectorAuth serverId={serverId} connector={connector} onChanged={refreshTools} />
       <View style={connectorStyles.borderedRow}>
@@ -242,6 +253,13 @@ export function ConnectorsSection({ serverId }: { serverId: string }) {
 
   const handleOpenAdd = useCallback(() => setAddOpen(true), []);
   const handleCloseAdd = useCallback(() => setAddOpen(false), []);
+  // Browsing is presentation only. Installing, authorizing and custom entry remain explicit.
+  useRevealSettingsTarget(
+    CONNECTOR_PICKER_TARGETS,
+    useCallback(() => {
+      if (isConnected && hasFeature) setAddOpen(true);
+    }, [isConnected, hasFeature]),
+  );
 
   const connectors = getConnectors(config);
   const enabledCount = connectors.filter(isConnectorEnabled).length;

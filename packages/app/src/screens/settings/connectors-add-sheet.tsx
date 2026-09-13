@@ -1,3 +1,11 @@
+import { CONNECTOR_CATALOG_TARGETS } from "@/screens/settings-search/nested-editor-targets";
+import { SettingsButton } from "@/screens/settings-search/controls";
+import { SettingsAdaptiveModalSheet as AdaptiveModalSheet } from "@/screens/settings-search/sheets";
+import {
+  SettingsTarget,
+  SettingsTargetText,
+  useSettingsSearchRequest,
+} from "@/screens/settings-search/target";
 // The add-a-connector surface: a dialog on desktop, a bottom sheet on mobile.
 // It owns the whole catalog (search, audience filter, category groups, the
 // per-entry install flow) plus the by-hand escape hatch, so the settings
@@ -16,7 +24,6 @@ import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
 import { signInGoogleConnector } from "./connectors-google-sign-in";
 import {
-  AdaptiveModalSheet,
   SHEET_HORIZONTAL_PADDING_SCALE,
   type SheetHeader,
 } from "@/components/adaptive-modal-sheet";
@@ -63,6 +70,8 @@ const CATALOG_FILTERS: { key: CatalogFilter; label: string }[] = [
 
 // Stable empty reference for the closed sheet, so re-rendering the settings
 // page behind it does not hand the body a fresh array every time.
+const CATALOG_SETTINGS_TARGETS = Object.values(CONNECTOR_CATALOG_TARGETS);
+
 const NO_GROUPS: ReturnType<typeof groupCatalogByCategory> = [];
 
 function slugify(value: string): string {
@@ -137,11 +146,16 @@ function CatalogEntryRow(props: {
   const { entry, installed, onSelect } = props;
   const handlePress = useCallback(() => onSelect(entry), [onSelect, entry]);
   return (
-    <View style={settingsStyles.row} testID={`connectors-catalog-entry-${entry.id}`}>
+    <SettingsTarget
+      settingId={CONNECTOR_CATALOG_TARGETS[entry.id] ?? []}
+      style={settingsStyles.row}
+      testID={`connectors-catalog-entry-${entry.id}`}
+    >
       <ConnectorIdentity id={entry.id} label={entry.label}>
         <Text style={settingsStyles.rowHint}>{entry.description}</Text>
       </ConnectorIdentity>
-      <Button
+      <SettingsButton
+        settingIds={["host-tools-connectors-catalog-connector"]}
         onPress={handlePress}
         variant={installed ? "secondary" : "default"}
         size="sm"
@@ -149,8 +163,8 @@ function CatalogEntryRow(props: {
         testID={`connectors-catalog-entry-${entry.id}-add`}
       >
         {installed ? "Added" : setupSummary(entry)}
-      </Button>
-    </View>
+      </SettingsButton>
+    </SettingsTarget>
   );
 }
 
@@ -367,7 +381,12 @@ function ManualConnectorForm(props: { serverId: string; config: MutableDaemonCon
     <View testID="connectors-manual-form">
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Name</Text>
+          <SettingsTargetText
+            settingId="host-tools-connector-editor-name"
+            style={settingsStyles.rowTitle}
+          >
+            Name
+          </SettingsTargetText>
           {duplicate ? (
             <Text style={settingsStyles.rowError}>A connector named “{id}” already exists.</Text>
           ) : null}
@@ -388,7 +407,12 @@ function ManualConnectorForm(props: { serverId: string; config: MutableDaemonCon
 
       <View style={connectorStyles.borderedRow}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Transport</Text>
+          <SettingsTargetText
+            settingId="host-tools-connector-editor-transport"
+            style={settingsStyles.rowTitle}
+          >
+            Transport
+          </SettingsTargetText>
         </View>
         <View style={connectorStyles.chipRow}>
           {TRANSPORTS.map((option) => (
@@ -404,7 +428,16 @@ function ManualConnectorForm(props: { serverId: string; config: MutableDaemonCon
 
       <View style={connectorStyles.borderedRow}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{transport === "stdio" ? "Command" : "URL"}</Text>
+          <SettingsTargetText
+            settingId={
+              transport === "stdio"
+                ? "host-tools-connector-editor-command"
+                : "host-tools-connector-editor-url"
+            }
+            style={settingsStyles.rowTitle}
+          >
+            {transport === "stdio" ? "Command" : "URL"}
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             {transport === "stdio"
               ? "The executable and its arguments, e.g. npx -y @acme/mcp-server."
@@ -443,7 +476,12 @@ function ManualConnectorForm(props: { serverId: string; config: MutableDaemonCon
 
       <View style={connectorStyles.borderedRow}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Token</Text>
+          <SettingsTargetText
+            settingId="host-tools-connector-editor-token"
+            style={settingsStyles.rowTitle}
+          >
+            Token
+          </SettingsTargetText>
           <Text style={settingsStyles.rowHint}>
             Optional. Sent as API_KEY for stdio, or as a bearer token for http and sse.
           </Text>
@@ -496,12 +534,19 @@ interface AddConnectorSheetProps {
  * itself is one card per category, rows divided by a hairline.
  */
 export function AddConnectorSheet({ serverId, config, visible, onClose }: AddConnectorSheetProps) {
+  const settingId = useSettingsSearchRequest();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<CatalogFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [openCount, setOpenCount] = useState(0);
   const wasVisible = useRef(visible);
+  useEffect(() => {
+    if (!visible || settingId === null || !CATALOG_SETTINGS_TARGETS.includes(settingId)) return;
+    setQuery("");
+    setFilter("all");
+    setOpenCount((count) => count + 1);
+  }, [visible, settingId]);
 
   // Reopening starts over: a stale search, an expanded row, or a half-filled
   // by-hand form are all answers to the last visit, not this one.
@@ -532,11 +577,11 @@ export function AddConnectorSheet({ serverId, config, visible, onClose }: AddCon
         onChange: setQuery,
         resetKey: `connectors:${openCount}`,
         placeholder: "Search connectors",
-        autoFocus: isWeb,
+        autoFocus: isWeb && settingId === null,
         testID: "connectors-catalog-search",
       },
     }),
-    [openCount],
+    [openCount, settingId],
   );
 
   const subHeader = useMemo(
@@ -632,14 +677,15 @@ export function AddConnectorSheet({ serverId, config, visible, onClose }: AddCon
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowHint}>{KNOWN_ABSENT_NOTE}</Text>
             </View>
-            <Button
+            <SettingsButton
+              settingIds={["host-tools-connectors-custom-connector"]}
               onPress={toggleManual}
               variant="secondary"
               size="sm"
               testID="connectors-manual-toggle"
             >
               {manualOpen ? "Close" : "Add custom"}
-            </Button>
+            </SettingsButton>
           </View>
           {manualOpen ? <ManualConnectorForm serverId={serverId} config={config} /> : null}
         </View>

@@ -98,7 +98,6 @@ import {
   toolbarLabelTriggerStyle,
 } from "@/components/ui/toolbar-label-trigger";
 import { FOCUSED_PANE_PLACEMENT, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { usePanelStore } from "@/stores/panel-store";
 import type { WorkspaceTabPlacement } from "@/stores/workspace-layout-actions";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
@@ -109,10 +108,10 @@ import { DiffTooLargeState } from "@/git/diff-too-large-state";
 import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
 import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
 import { openExternalUrl } from "@/utils/open-external-url";
-import { openPreferredWorkspaceTarget } from "@/workspace-tabs/open-beside";
-import type { OpenInSidePanePreferences } from "@/hooks/use-settings";
 import { DiffBaseSwitcher } from "@/git/diff-base-switcher";
 import type { CheckoutBaseSource } from "@otto-code/protocol/messages";
+import { openWorkspacePullRequest } from "@/workspace-tabs/open-supporting-view";
+import type { PullRequestOpenLocation } from "@/hooks/use-settings";
 
 export type { GitActionId, GitAction, GitActions } from "@/git/policy";
 
@@ -640,7 +639,9 @@ function buildChangesHeaderModel(input: BuildChangesHeaderModelInput): {
 // inherit their surface from the pane host and never infer it from this presentation.
 function ChangesHeader({ compact, repository, comparison }: ChangesHeaderProps) {
   if (comparison.mode.kind === "diff") {
-    return <ChangesDiffOnlyToolbar compact={compact} mode={comparison.mode} />;
+    return (
+      <ChangesDiffOnlyToolbar compact={compact} mode={comparison.mode} comparison={comparison} />
+    );
   }
   return (
     <View>
@@ -653,13 +654,25 @@ function ChangesHeader({ compact, repository, comparison }: ChangesHeaderProps) 
 function ChangesDiffOnlyToolbar({
   compact,
   mode,
+  comparison,
 }: {
   compact: boolean;
+  comparison: Pick<
+    ChangesComparisonToolbarModel,
+    "diffMode" | "committedDescription" | "onSelectUncommitted" | "onSelectBase"
+  >;
   mode: Extract<ChangesToolbarMode, { kind: "diff" }>;
 }) {
   return (
     <ChangesToolbarRow compact={compact} testID="changes-header">
-      <ChangesToolbarLeading />
+      <ChangesToolbarLeading>
+        <DiffModeMenu
+          diffMode={comparison.diffMode}
+          committedDescription={comparison.committedDescription}
+          onSelectUncommitted={comparison.onSelectUncommitted}
+          onSelectBase={comparison.onSelectBase}
+        />
+      </ChangesToolbarLeading>
       <ChangesToolbarTrailing>
         <ChangesToolbarActions mode={mode} compact={compact} />
       </ChangesToolbarTrailing>
@@ -1139,25 +1152,6 @@ function ChangesDiffOptions({ options }: { options: ChangesToolbarDiffOptions })
 
 const ThemedRotateCw = withUnistyles(RotateCw);
 
-function computeEmptyMessage(
-  hideWhitespace: boolean,
-  diffMode: "uncommitted" | "base",
-  baseRefLabel: string,
-  labels: {
-    hiddenWhitespace: string;
-    uncommitted: string;
-    againstBase: (baseRefLabel: string) => string;
-  },
-): string {
-  if (hideWhitespace) {
-    return labels.hiddenWhitespace;
-  }
-  if (diffMode === "uncommitted") {
-    return labels.uncommitted;
-  }
-  return labels.againstBase(baseRefLabel);
-}
-
 interface DiffBodyContentProps {
   isStatusLoading: boolean;
   statusErrorMessage: string | null;
@@ -1305,7 +1299,7 @@ type ForgeSetupAction = "install_cli" | "sign_in" | null;
 
 // Drive the onboarding callout from the forge's auth state so the message names
 // the exact next step (install the CLI vs sign in) for whichever forge backs the
-// workspace — GitHub included. GitLab additionally requires the host to advertise
+// workspace â€” GitHub included. GitLab additionally requires the host to advertise
 // GitLab support, matching the rest of the GitLab UI.
 function computeForgeSetupAction(input: {
   forge: Forge;
@@ -1346,7 +1340,7 @@ function buildForgeSetupMessage(input: {
   }
   const { brandLabel, signInCli } = getForgePresentation(input.forge);
   // A forge with no known CLI (an unknown/third-party forge rendered neutrally)
-  // has no install/sign-in command to interpolate — show neutral guidance
+  // has no install/sign-in command to interpolate â€” show neutral guidance
   // rather than the GitLab-specific callout or a null command.
   if (signInCli === null) {
     return input.t("workspace.git.forgeSetup.generic", { brand: brandLabel });
@@ -1622,13 +1616,13 @@ function useDiffTabNavigation({
   workspaceId,
   cwd,
   isMobile,
-  openInSidePane,
+  pullRequestOpenLocation,
 }: {
   serverId: string;
   workspaceId?: string | null;
   cwd: string;
   isMobile: boolean;
-  openInSidePane: OpenInSidePanePreferences;
+  pullRequestOpenLocation: PullRequestOpenLocation;
 }) {
   const openTab = useWorkspaceLayoutStore((state) => state.openTab);
   const openWorkspaceTab = useCallback(
@@ -1640,7 +1634,6 @@ function useDiffTabNavigation({
     () => buildWorkspaceTabPersistenceKey({ serverId, workspaceId: workspaceId ?? cwd }),
     [cwd, serverId, workspaceId],
   );
-  const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
   const openDiff = useCallback(() => {
     if (!persistenceKey || isMobile) {
       return;
@@ -1657,15 +1650,13 @@ function useDiffTabNavigation({
   );
   const openPullRequest = useCallback(() => {
     if (!persistenceKey) return;
-    openPreferredWorkspaceTarget({
+    openWorkspacePullRequest({
       isCompact: isMobile,
       workspaceKey: persistenceKey,
-      target: { kind: "pull_request" },
-      source: "pullRequests",
-      preferences: openInSidePane,
+      checkout: { serverId, cwd, isGit: true },
+      destination: pullRequestOpenLocation,
     });
-    if (isMobile) showMobileAgent();
-  }, [isMobile, openInSidePane, persistenceKey, showMobileAgent]);
+  }, [cwd, isMobile, persistenceKey, pullRequestOpenLocation, serverId]);
   return {
     openDiff,
     openCommit,
@@ -1748,7 +1739,7 @@ export function ChangesSurface({
     workspaceId,
     cwd,
     isMobile,
-    openInSidePane: appSettings.openInSidePane,
+    pullRequestOpenLocation: appSettings.pullRequestOpenLocation,
   });
   const refreshSupported = useSessionStore(
     (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutRefresh === true,
@@ -2031,11 +2022,7 @@ export function ChangesSurface({
         : null,
     [defaultPaneId, serverId, workspaceId],
   );
-  const emptyMessage = computeEmptyMessage(preferences.hideWhitespace, diffMode, baseRefLabel, {
-    hiddenWhitespace: t("workspace.git.diff.emptyHiddenWhitespace"),
-    uncommitted: t("workspace.git.diff.emptyUncommitted"),
-    againstBase: (label) => t("workspace.git.diff.emptyAgainstBase", { baseRef: label }),
-  });
+  const emptyMessage = t("diffViewer.empty");
   const emptyAction = computeChangesEmptyAction({
     hideWhitespace: preferences.hideWhitespace,
     diffMode,

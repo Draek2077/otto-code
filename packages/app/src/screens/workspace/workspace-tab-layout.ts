@@ -1,7 +1,5 @@
 import { WORKSPACE_TABS_RAIL_MAX_WIDTH } from "@/constants/layout";
 
-export type WorkspaceTabCloseButtonPolicy = "all";
-
 // Shared tab-chip metrics for the vertical rail's content-driven width.
 export const TAB_ICON_WIDTH = 14;
 // Mirrors the chip's paddingHorizontal (theme.spacing[2] in styles.tab) -
@@ -27,6 +25,8 @@ export const TAB_MIN_WIDTH = 100;
 // the tab metrics still read as one set.
 export const RAIL_TAB_MAX_WIDTH = WORKSPACE_TABS_RAIL_MAX_WIDTH;
 
+export type WorkspaceTabCloseButtonPolicy = "all";
+
 export interface WorkspaceTabLayoutMetrics {
   rowHorizontalInset: number;
   actionsReservedWidth: number;
@@ -34,11 +34,15 @@ export interface WorkspaceTabLayoutMetrics {
   tabGap: number;
   minTabWidth: number;
   maxTabWidth: number;
+  tabIconWidth: number;
+  tabContentGap: number;
+  tabHorizontalPadding: number;
+  closeButtonWidth: number;
 }
 
 export interface WorkspaceTabLayoutInput {
   viewportWidth: number;
-  tabCount: number;
+  tabLabelWidths: number[];
   metrics: WorkspaceTabLayoutMetrics;
 }
 
@@ -53,7 +57,17 @@ export interface WorkspaceTabLayoutResult {
   requiresHorizontalScrollFallback: boolean;
 }
 
-export function clamp(value: number, min: number, max: number): number {
+export function retainWorkspaceTabMeasuredWidth(
+  currentWidth: number,
+  measuredWidth: number,
+): number {
+  if (measuredWidth <= 0 || Math.abs(currentWidth - measuredWidth) <= 1) {
+    return currentWidth;
+  }
+  return measuredWidth;
+}
+
+function clamp(value: number, min: number, max: number): number {
   if (value < min) {
     return min;
   }
@@ -66,7 +80,7 @@ export function clamp(value: number, min: number, max: number): number {
 export function computeWorkspaceTabLayout(
   input: WorkspaceTabLayoutInput,
 ): WorkspaceTabLayoutResult {
-  const { tabCount } = input;
+  const tabCount = input.tabLabelWidths.length;
   if (tabCount === 0) {
     return {
       items: [],
@@ -82,24 +96,38 @@ export function computeWorkspaceTabLayout(
   const rowOverhead =
     input.metrics.rowPaddingHorizontal * 2 + Math.max(tabCount - 1, 0) * input.metrics.tabGap;
   const availableTabsWidth = Math.max(0, availableWidth - rowOverhead);
+  const tabChromeWidth =
+    input.metrics.tabIconWidth +
+    input.metrics.tabContentGap +
+    input.metrics.tabHorizontalPadding * 2 +
+    input.metrics.closeButtonWidth;
+  const naturalWidths = input.tabLabelWidths.map((labelWidth) =>
+    clamp(tabChromeWidth + labelWidth, input.metrics.minTabWidth, input.metrics.maxTabWidth),
+  );
+  const naturalTotalWidth = naturalWidths.reduce((total, width) => total + width, 0);
   const minimumTotalWidth = input.metrics.minTabWidth * tabCount;
   const requiresHorizontalScrollFallback = availableTabsWidth < minimumTotalWidth;
-  // The strip owns a finite slot for every visible tab. Allocate that measured
-  // space evenly, then bound it by the readable minimum and sensible maximum.
-  // Sizing from fallback labels here is wrong: agent descriptors resolve below
-  // this component, so their labels look like the generic "Agent" placeholder
-  // and tabs stay stuck at the floor in a wide pane.
-  const widthPerTab = clamp(
-    availableTabsWidth / tabCount,
-    input.metrics.minTabWidth,
-    input.metrics.maxTabWidth,
+
+  let resolvedWidths = naturalWidths;
+  if (requiresHorizontalScrollFallback) {
+    resolvedWidths = Array.from({ length: tabCount }, () => input.metrics.minTabWidth);
+  } else if (naturalTotalWidth > availableTabsWidth) {
+    const widthToRemove = naturalTotalWidth - availableTabsWidth;
+    const shrinkCapacity = naturalTotalWidth - minimumTotalWidth;
+    const shrinkRatio = widthToRemove / shrinkCapacity;
+    resolvedWidths = naturalWidths.map(
+      (width) => width - (width - input.metrics.minTabWidth) * shrinkRatio,
+    );
+  }
+
+  const roundedWidths = resolvedWidths.map((width) =>
+    Math.round(clamp(width, input.metrics.minTabWidth, input.metrics.maxTabWidth)),
   );
-  const roundedWidths = Array.from({ length: tabCount }, () => Math.round(widthPerTab));
 
   return {
     items: roundedWidths.map((width) => ({
       width,
-      showLabel: true,
+      showLabel: width > tabChromeWidth,
     })),
     closeButtonPolicy: "all",
     requiresHorizontalScrollFallback,
@@ -119,7 +147,7 @@ export interface WorkspaceTabRailWidthInput {
 }
 
 // The vertical rail's counterpart to computeWorkspaceTabLayout: instead of
-// dividing a measured viewport width across every tab, it sizes to content -
+// fitting labels into a horizontal viewport, it sizes to content -
 // every tab in the rail shares one width, wide enough for the widest current
 // label (so short labels don't waste rail space) but never past `maxTabWidth`
 // (RAIL_TAB_MAX_WIDTH for the rail; longer labels beyond that just truncate
@@ -139,12 +167,33 @@ export function computeWorkspaceTabRailWidth(input: WorkspaceTabRailWidthInput):
   return Math.round(clamp(naturalWidth, input.metrics.minTabWidth, input.metrics.maxTabWidth));
 }
 
-export function retainWorkspaceTabMeasuredWidth(
-  currentWidth: number,
-  measuredWidth: number,
-): number {
-  if (measuredWidth <= 0 || Math.abs(currentWidth - measuredWidth) <= 1) {
-    return currentWidth;
+export const TAB_MODIFIED_DOT_SIZE = 8;
+export const TAB_LABEL_LAYOUT_ALLOWANCE = 4;
+export interface WorkspaceTabLabel {
+  key: string;
+  label: string;
+  modified: boolean;
+}
+
+export interface WorkspaceTabLabelMeasurement {
+  label: string;
+  width: number;
+}
+
+export function completeWorkspaceTabLabelWidths(
+  labels: WorkspaceTabLabel[],
+  measurements: Map<string, WorkspaceTabLabelMeasurement>,
+): number[] | null {
+  const widths: number[] = [];
+  for (const { key, label, modified } of labels) {
+    const measurement = measurements.get(key);
+    if (!measurement || measurement.label !== label || measurement.width <= 0) {
+      return null;
+    }
+    // The modified dot sits in the content row, so a modified tab needs that much more width
+    // before its label starts truncating.
+    const modifiedAllowance = modified ? TAB_CONTENT_GAP + TAB_MODIFIED_DOT_SIZE : 0;
+    widths.push(measurement.width + TAB_LABEL_LAYOUT_ALLOWANCE + modifiedAllowance);
   }
-  return measuredWidth;
+  return widths;
 }

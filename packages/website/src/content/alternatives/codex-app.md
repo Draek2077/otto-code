@@ -21,7 +21,7 @@ Pick Otto if you want:
 
 - Linux alongside macOS and Windows
 - A native Android app
-- Codex, Claude Code, OpenCode, Copilot, Pi, and 30+ more agents in one interface
+- Codex, Claude Code, OpenCode, Copilot, Pi, and additional agents through the catalog in one interface
 - A self-hosted daemon you can run on a laptop, VM, or dev server
 - A CLI and MCP server for scripting and multi-agent workflows
 - Open source you can audit and fork
@@ -36,7 +36,7 @@ Codex App is a desktop app for Codex. It can run local and worktree threads on y
 
 Codex App runs Codex.
 
-Otto runs Codex too, plus Claude Code, OpenCode, and Pi natively, plus 30+ more agents through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/docs/supported-providers).
+Otto runs Codex too, plus Claude Code, OpenCode, and Pi natively, plus additional agents through the catalog through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
 
 ## Desktop platforms
 
@@ -89,21 +89,28 @@ Otto supports dictation and realtime voice mode. Speech-to-text and text-to-spee
 
 ## Comparison
 
-|                              | Otto                                                            | Codex App                    |
-| ---------------------------- | --------------------------------------------------------------- | ---------------------------- |
-| License                      | Open source (AGPL-3.0)                                          | Not published as open source |
-| Desktop platforms            | macOS, Linux, Windows                                           | macOS, Windows               |
-| Native mobile                | Android                                                         | No                           |
-| Providers                    | Codex, Claude Code, OpenCode, Pi + 30+ via ACP catalog + custom | Codex                        |
-| Local execution              | Yes                                                             | Yes                          |
-| Git worktrees                | Yes                                                             | Yes                          |
-| Per-worktree dev server URLs | Yes                                                             | No                           |
-| In-app terminal              | Yes                                                             | Yes                          |
-| In-app browser               | Yes                                                             | Yes                          |
-| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                        | Commit, push, PR             |
-| CLI                          | Run, `--host`, ls, send, schedule, loop                         | Codex CLI                    |
-| MCP server for orchestration | Yes                                                             | MCP support inside Codex     |
-| Voice                        | Dictation and realtime voice                                    | Dictation                    |
-| Self-hosted daemon           | Yes                                                             | No                           |
+|                              | Otto                                                    | Codex App                    |
+| ---------------------------- | ------------------------------------------------------- | ---------------------------- |
+| License                      | Open source (AGPL-3.0)                                  | Not published as open source |
+| Desktop platforms            | macOS, Linux, Windows                                   | macOS, Windows               |
+| Native mobile                | Android                                                 | No                           |
+| Providers                    | Codex, Claude Code, OpenCode, Pi + ACP catalog + custom | Codex                        |
+| Local execution              | Yes                                                     | Yes                          |
+| Git worktrees                | Yes                                                     | Yes                          |
+| Per-worktree dev server URLs | Yes                                                     | No                           |
+| In-app terminal              | Yes                                                     | Yes                          |
+| In-app browser               | Yes                                                     | Yes                          |
+| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                | Commit, push, PR             |
+| CLI                          | Run, `--host`, ls, send, schedule, loop                 | Codex CLI                    |
+| MCP server for orchestration | Yes                                                     | MCP support inside Codex     |
+| Voice                        | Dictation and realtime voice                            | Dictation                    |
+| Self-hosted daemon           | Yes                                                     | No                           |
 
-See also: [Otto vs Claude Desktop](/alternatives/claude-desktop), [Otto vs OpenCode Desktop](/alternatives/opencode-desktop), [Supported providers](/docs/supported-providers).
+See also: [Otto vs Claude Desktop](/alternatives/claude-desktop), [Otto vs OpenCode Desktop](/alternatives/opencode-desktop), [Supported providers](/agents).
+
+## Application extensions
+
+[Otto plugins](/docs/plugins) extend the application through client and server APIs: providers,
+workspace panels, commands, settings, and chat components. Otto also retains its shared tools for
+cloud and local providers. Android builds and the web app are available from [Downloads](/download);
+this fork does not currently publish an iOS App Store build.

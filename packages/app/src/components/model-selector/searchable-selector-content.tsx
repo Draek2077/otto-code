@@ -1,6 +1,9 @@
 import type { ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable } from "react-native";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { isNative } from "@/constants/platform";
+import { resolveModelBrowserScrolling } from "../model-browser-view";
 import { ModelBrowserContent } from "../model-browser";
 import { HeaderSettingsIcon, iconButtonStyle, SelectorContent } from "./selector-content";
 import type { SelectorView } from "./selector-content";
@@ -10,9 +13,11 @@ export function selectorScrollEnabled(view: SelectorView, query: string, native 
 }
 
 export function SearchableSelectorContent(props: ComponentProps<typeof SelectorContent>) {
+  const isCompact = useIsCompactFormFactor();
   if (props.view.kind === "all" && props.searchQuery.trim()) {
     return (
       <ModelBrowserContent
+        serverId={props.serverId ?? null}
         view={props.view}
         providers={props.providers}
         selectedProvider={props.selectedProvider}
@@ -22,7 +27,7 @@ export function SearchableSelectorContent(props: ComponentProps<typeof SelectorC
         personality={null}
         onSelect={props.onSelect}
         onDrillDown={props.onDrillDown}
-        scrolling="independent"
+        scrolling={resolveModelBrowserScrolling({ isNative, isCompact })}
       />
     );
   }

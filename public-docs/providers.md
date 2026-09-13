@@ -8,7 +8,7 @@ category: Providers
 
 # Providers
 
-Otto doesn't ship its own coding agent. It launches and supervises **existing CLIs you've already installed and authenticated**, Claude Code, Codex, OpenCode, Cursor, Gemini, and the rest. Your subscriptions, your config, your skills, your MCP servers all stay intact. Otto adds the assistant environment on top: a UI, a CLI, a relay, orchestration, browser-verified previews, and artifacts, the same tooling for every provider, cloud or local.
+Otto can launch and supervise **existing CLIs you've already installed and authenticated**, including Claude Code, Codex, OpenCode, Cursor, and Gemini. It also provides its own agent loop for model servers, described below. Your subscriptions, your config, your skills, your MCP servers all stay intact. Otto adds the assistant environment on top: a UI, a CLI, a relay, orchestration, browser-verified previews, and artifacts, the same tooling for every provider, cloud or local.
 
 ## Mental model
 
@@ -26,6 +26,10 @@ Either way, **you install the underlying CLI**. Otto runs it as a subprocess. Th
 Not every model worth running has a CLI in front of it. Local inference servers, LM Studio, Ollama, vLLM, llama.cpp, expose an HTTP API instead, and plenty of hosted gateways speak the same shape. For these, Otto skips the subprocess entirely and talks to the endpoint itself, the daemon becomes the agent loop, not just a supervisor around one.
 
 This isn't a replacement for CLI-based providers, it's for the case CLI adapters don't cover: a model with no CLI at all, usually because it's running locally on your own hardware. See [Local models](/docs/local-models) for how the mechanism works and [Custom providers](/docs/custom-providers#openai-compatible-local-models) for the config reference.
+
+## Plugin providers
+
+A trusted plugin can register a complete provider, including model discovery, sessions, permissions, timeline rows, persistence, and recovery. Its registered provider appears alongside built-in providers. Otto keeps host-owned tools and MCP available through the shared provider boundaries; individual provider capabilities still determine which session operations are supported. See [Plugin providers](/docs/plugins/v0.8/providers) for the authoring contract.
 
 ## Where to go next
 

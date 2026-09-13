@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
@@ -20,6 +20,10 @@ export const ko: TranslationResources = {
       retry: "다시 시도",
       search: "검색",
       select: "선택",
+
+      selectAll: "모두 선택",
+
+      copyLine: "줄 복사",
     },
     placeholders: {
       search: "검색...",
@@ -45,6 +49,8 @@ export const ko: TranslationResources = {
       daemonClientDisconnected: "데몬 클라이언트 연결이 끊어졌습니다",
       noFileFound: "{{token}}에 해당하는 파일을 찾을 수 없습니다",
       unexpectedDictationError: "받아쓰기를 처리하는 중 예기치 않은 오류가 발생했습니다.",
+
+      unableToCopy: "복사할 수 없습니다",
     },
     connectionStatus: {
       online: "온라인",
@@ -475,6 +481,8 @@ export const ko: TranslationResources = {
       question: "어떻게 진행할까요?",
       proposedPlan: "제안된 계획",
     },
+
+    messageCapped: "이 메시지는 길이 제한으로 잘렸습니다({{bytes}}바이트).",
   },
   agentPanel: {
     states: {
@@ -620,6 +628,8 @@ export const ko: TranslationResources = {
       resetZoom: "보기 초기화",
       viewSource: "소스 보기",
       viewDiagram: "다이어그램 보기",
+
+      fullscreen: "전체 화면",
     },
     actions: {
       copyCode: "코드 복사",
@@ -723,6 +733,8 @@ export const ko: TranslationResources = {
       failedAll: "최근 세션을 불러올 수 없습니다.",
       failedProviders: "{{providers}}의 세션을 불러올 수 없습니다.",
       failedImport: "선택한 세션을 가져올 수 없습니다.",
+
+      failedProvider: "{{provider}} 세션을 불러올 수 없습니다",
     },
     actions: {
       selectAll: "표시된 항목 모두 선택",
@@ -731,6 +743,8 @@ export const ko: TranslationResources = {
       loadMore: "더 불러오기",
 
       refresh: "세션 새로고침",
+
+      showAll: "전체 표시",
     },
     preview: {
       untitledSession: "제목 없는 세션",
@@ -740,10 +754,21 @@ export const ko: TranslationResources = {
       noRecent: "가져올 최근 세션이 없습니다.",
       alreadyImported: "최근 세션이 모두 이미 가져와졌습니다.",
       noProviderSessions: "{{provider}} 세션을 찾을 수 없습니다.",
+
+      noMatches: "검색과 일치하는 세션이 없습니다.",
     },
     row: {
       importing: "가져오는 중...",
     },
+
+    scope: {
+      host: "{{host}}의 세션",
+      workspace: "이 워크스페이스",
+    },
+
+    searchPlaceholder: "세션 검색...",
+
+    chooseHostTitle: en.importSession.chooseHostTitle,
   },
   workspace: {
     moveChat: {
@@ -889,12 +914,16 @@ export const ko: TranslationResources = {
         completed: "설정 완료",
         failed: "설정 실패",
         workspace: "워크스페이스 설정",
+
+        blocked: "설정 차단됨",
       },
       status: {
         running: "실행 중",
         completed: "완료됨",
         failed: "실패함",
         waiting: "설정 출력을 기다리는 중",
+
+        blocked: "차단됨",
       },
       waiting: "워크스페이스 설정 중...",
       empty: {
@@ -906,6 +935,14 @@ export const ko: TranslationResources = {
       },
       log: {
         noOutput: "출력 없음",
+      },
+
+      blocked: {
+        title: "설정이 실행되지 않았습니다",
+        description:
+          "이 PR은 다른 저장소인 {{repository}}에서 왔습니다. 설정과 스크립트가 검토하지 않은 코드를 실행할 수 있습니다.",
+        run: "설정 실행",
+        runFailed: "워크스페이스 설정 실행 실패",
       },
     },
     browser: {
@@ -928,6 +965,10 @@ export const ko: TranslationResources = {
         screenshotCopied: "스크린샷을 클립보드에 복사했습니다.",
         elementCopied: "요소를 클립보드에 복사했습니다.",
         screenshotFailed: "스크린샷을 복사할 수 없습니다.",
+
+        selectorFailed: "요소 선택기를 시작할 수 없습니다.",
+
+        selectorLoading: "페이지 로딩이 끝날 때까지 기다려 주세요.",
       },
       annotate: {
         title: "요소에 주석 달기",
@@ -1204,6 +1245,8 @@ export const ko: TranslationResources = {
         public: "역방향 프록시",
         otto: "간편 주소",
         direct: "직접",
+
+        paseo: "간편 주소",
       },
     },
     git: {
@@ -1467,6 +1510,8 @@ export const ko: TranslationResources = {
         expandAllFiles: "모든 파일 확장",
         seeUncommittedChanges: "커밋되지 않은 변경 사항 보기",
         seeCommittedChanges: "커밋된 변경 사항 보기",
+
+        modifiedFile: "수정됨",
       },
       commit: {
         type: {
@@ -1570,6 +1615,17 @@ export const ko: TranslationResources = {
         accessibility: {
           pullRequest: "풀 리퀘스트 #{{number}}",
           pullRequest_mr: "병합 요청 !{{number}}",
+
+          checkStatus: {
+            passed: "통과",
+            failed: "실패",
+            warning: "경고",
+            actionRequired: "조치 필요",
+            manual: "수동",
+            pending: "대기 중",
+            skipped: "건너뜀",
+            cancelled: "취소됨",
+          },
         },
         states: {
           draft: "초안",
@@ -1640,6 +1696,8 @@ export const ko: TranslationResources = {
         cancel: "취소",
         failed: "변경 사항을 버리지 못했습니다",
       },
+
+      openIn: "{{target}}에서 열기",
     },
     tree: {
       showFolderTree: "폴더 트리 표시",
@@ -1704,6 +1762,10 @@ export const ko: TranslationResources = {
       sessions: "기록",
       schedules: "일정",
       artifacts: "Artifacts",
+
+      search: "검색",
+      kanban: "칸반",
+      runs: "워크플로",
     },
     worktreeSetup: {
       title: "워크트리 스크립트 설정",
@@ -1792,6 +1854,15 @@ export const ko: TranslationResources = {
         hostDisconnected: "호스트가 연결되어 있지 않습니다",
         hideFailed: "워크스페이스를 숨기지 못했습니다",
         archiveFailed: "워크스페이스를 보관하지 못했습니다.",
+      },
+
+      checks: {
+        passed: "통과: {{count}}개",
+        failed: "실패: {{count}}개",
+        warning: "경고: {{count}}개",
+        actionRequired: "조치 필요: {{count}}개",
+        manual: "수동: {{count}}개",
+        pending: "대기 중: {{count}}개",
       },
     },
     pinned: {
@@ -2410,6 +2481,8 @@ export const ko: TranslationResources = {
     stashRestored: "스태시된 변경 사항이 복원되었습니다",
     switchInProgress: "Branch switch in progress",
     checkedOutElsewhere: "Checked out in another workspace",
+
+    triggerTooltip: "워크스페이스 브랜치 전환",
   },
   agentAutocomplete: {
     searchingWorkspace: "워크스페이스 검색 중...",
@@ -2591,6 +2664,14 @@ export const ko: TranslationResources = {
     searchAllPlaceholder: "모든 모델 검색...",
     searchPlaceholder: "모델 검색...",
     openProviderSettings: "{{provider}} 설정 열기",
+
+    editProfilesCount: "프로필 편집 ({{count}})",
+
+    editProfileLabel: "{{name}} 편집",
+
+    createProfileFromModel: "이 모델에서 프로필 만들기",
+
+    model: "모델",
   },
   providerCatalog: {
     title: "프로바이더 추가",
@@ -2638,6 +2719,11 @@ export const ko: TranslationResources = {
       pasteLink: {
         title: "페어링 링크 붙여넣기",
         description: "암호화된 릴레이 연결.",
+      },
+
+      remoteSsh: {
+        title: "원격 SSH",
+        description: "데스크톱 SSH 클라이언트를 통해 연결합니다.",
       },
     },
     direct: {
@@ -2740,6 +2826,24 @@ export const ko: TranslationResources = {
       securityWarning:
         "이 페어링 링크는 비밀번호처럼 취급하세요. 링크를 가진 사람은 누구나 이 데몬에 접근할 수 있습니다.",
     },
+
+    remoteSsh: {
+      title: "원격 SSH",
+      helper: "원격 호스트에서 실행 중인 Otto 데몬에 연결합니다.",
+      fields: {
+        target: "SSH 호스트",
+      },
+      actions: {
+        cancel: "취소",
+        connect: "연결",
+        connecting: "연결 중...",
+      },
+      errors: {
+        targetRequired: "SSH 호스트가 필요합니다",
+        invalidTarget: "유효한 ssh:// 호스트를 입력하세요",
+        failedToConnect: "SSH로 연결할 수 없습니다. {{detail}}",
+      },
+    },
   },
   realtimeVoice: {
     actions: {
@@ -2769,6 +2873,8 @@ export const ko: TranslationResources = {
     inOtto: "Otto에서",
     externalBrowser: "외부 브라우저",
     dontAskAgain: "다시 묻지 않기",
+
+    inPaseo: "Otto에서",
   },
   downloads: {
     requestTokenFailed: "다운로드 토큰을 요청하지 못했습니다.",
@@ -2834,6 +2940,8 @@ export const ko: TranslationResources = {
     },
     archiveFinishedAction: "완료된 하위 에이전트 보관",
     archiveFinishedTooltip: "아카이브 완료",
+
+    archiveFinishedRetry: "다시 시도 ({{failed}}/{{total}})",
   },
   observedSubagents: {
     readOnlyTitle: "Observed subagent · read-only",
@@ -3230,6 +3338,8 @@ export const ko: TranslationResources = {
       label: "파일",
       subtitle: "워크스페이스 파일",
       tooltip: "워크스페이스 파일 탐색",
+
+      chooseFile: "파일 선택",
     },
     search: {
       label: "검색",
@@ -3276,6 +3386,11 @@ export const ko: TranslationResources = {
       other: "Otto를 {{count}}회 호출함",
     },
     and: "그리고",
+
+    paseoCalls: {
+      one: "Otto를 {{count}}회 호출함",
+      other: "Otto를 {{count}}회 호출함",
+    },
   },
   renameModal: {
     rename: "이름 변경",
@@ -3389,6 +3504,8 @@ export const ko: TranslationResources = {
       storage: "Storage",
       terminals: "터미널",
       host: "개요",
+
+      plugins: "플러그인",
     },
     plugins: pluginSettings.ko,
     metadataGeneration: {
@@ -3604,6 +3721,8 @@ export const ko: TranslationResources = {
         alertTitle: "오류",
         alertMessage: "업데이트 확인 대화 상자를 열 수 없습니다.",
       },
+
+      whatsNewHint: "모든 버전의 릴리스 노트",
     },
     appearance: {
       theme: {
@@ -3772,6 +3891,16 @@ export const ko: TranslationResources = {
         codeSizeAccessibility: "코드 글꼴 크기",
         terminalSize: "Terminal size",
         terminalSizeAccessibility: "Terminal font size",
+
+        codeSizeHint: "코드, diff 및 터미널 출력에 사용됩니다",
+
+        contentSizeAccessibility: "콘텐츠 글꼴 크기",
+
+        contentSizeHint: "채팅 텍스트와 렌더링된 Markdown에 사용됩니다",
+
+        contentSize: "콘텐츠 크기",
+
+        interfaceSizeHint: "탐색, 컨트롤 및 레이블에 사용됩니다",
       },
       syntax: {
         title: "구문",
@@ -3783,6 +3912,14 @@ export const ko: TranslationResources = {
       },
       detailLevel: {
         title: "세부 수준",
+      },
+
+      sidebar: {
+        title: "사이드바",
+        description: "사이드바 상단에 표시할 항목과 순서를 선택하세요",
+        moveUp: "위로 이동",
+        moveDown: "아래로 이동",
+        workspaceActions: "작업 공간 헤더 작업",
       },
     },
     shortcuts: {
@@ -3981,6 +4118,8 @@ export const ko: TranslationResources = {
       badges: {
         relay: "릴레이",
         local: "로컬",
+
+        remoteSsh: "원격 SSH",
       },
       connections: {
         title: "연결",
@@ -4660,6 +4799,7 @@ export const ko: TranslationResources = {
         destinations: {
           main: "Main panel",
           side: "On the side",
+          explorer: "탐색기 사이드바",
         },
         sources: {
           explorerFiles: {
@@ -4689,6 +4829,10 @@ export const ko: TranslationResources = {
           changesLinks: {
             label: "Opening Changes from an agent",
             description: "Open diff stats and review attachments beside the conversation",
+          },
+          diffs: {
+            label: "차이 열기",
+            description: "탐색기와 에이전트 대화의 차이를 작업 옆에 엽니다",
           },
         },
       },
@@ -4806,6 +4950,17 @@ export const ko: TranslationResources = {
       deleteMessage_other: "이 호스트의 워크스페이스 {{count}}개에서 레이블을 제거합니다.",
       offline: "이 호스트는 오프라인입니다.",
       updateHost: "레이블을 관리하려면 호스트를 업데이트하세요.",
+    },
+  },
+
+  changelog: {
+    title: "새로운 소식",
+    installed: "설치됨",
+    showMore: "더 보기",
+    openWebsite: "전체 변경 내역",
+    error: {
+      title: "변경 내역을 불러오지 못했습니다",
+      description: "연결을 확인한 후 다시 시도하세요.",
     },
   },
 };

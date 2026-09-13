@@ -1,3 +1,16 @@
+import type { RefObject } from "react";
+import { SettingsButton } from "@/screens/settings-search/controls";
+import {
+  PROVIDER_SETTINGS_TABS,
+  PROVIDER_SETTINGS_TARGETS,
+  settingsEditorTab,
+} from "@/screens/settings-search/nested-editor-targets";
+import {
+  useSettingsTarget,
+  useRevealSettingsTarget,
+  useSettingsSearchRequest,
+} from "@/screens/settings-search/target";
+import { SettingsAdaptiveModalSheet as AdaptiveModalSheet } from "@/screens/settings-search/sheets";
 import * as Clipboard from "expo-clipboard";
 import { AlertTriangle, Copy, RotateCw } from "@/components/icons/material-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,7 +24,6 @@ import {
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import {
-  AdaptiveModalSheet,
   SHEET_HORIZONTAL_PADDING_SCALE,
   type SheetHeader,
 } from "@/components/adaptive-modal-sheet";
@@ -139,7 +151,8 @@ function ModelVisibilityToolbar({
         })}
       </Text>
       <View style={sheetStyles.modelVisibilityActions}>
-        <Button
+        <SettingsButton
+          settingIds={["host-providers-models-show-all"]}
           variant="outline"
           size="xs"
           onPress={onShowAll}
@@ -147,8 +160,9 @@ function ModelVisibilityToolbar({
           testID="provider-models-show-all"
         >
           {t("settings.providers.models.showAll")}
-        </Button>
-        <Button
+        </SettingsButton>
+        <SettingsButton
+          settingIds={["host-providers-models-hide-all"]}
           variant="outline"
           size="xs"
           onPress={onHideAll}
@@ -156,7 +170,7 @@ function ModelVisibilityToolbar({
           testID="provider-models-hide-all"
         >
           {t("settings.providers.models.hideAll")}
-        </Button>
+        </SettingsButton>
       </View>
     </View>
   );
@@ -200,6 +214,8 @@ function DiscoveredModelRow({
   );
 }
 
+const REMOVE_MODEL_TARGETS = ["host-providers-models-remove-model"];
+
 function CustomModelRow({
   model,
   showVisibility,
@@ -216,6 +232,7 @@ function CustomModelRow({
   onDelete: (modelId: string) => void;
 }) {
   const { t } = useTranslation();
+  const { node, handleLayout } = useSettingsTarget(REMOVE_MODEL_TARGETS, undefined);
   const handleDelete = useCallback(() => onDelete(model.id), [model.id, onDelete]);
   const deleteButtonStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -238,6 +255,8 @@ function CustomModelRow({
       ) : null}
       <ModelRowText label={model.label} id={model.id} />
       <Pressable
+        ref={node as RefObject<View | null>}
+        onLayout={handleLayout}
         onPress={handleDelete}
         disabled={deleting}
         hitSlop={8}
@@ -774,6 +793,14 @@ export function ProviderDiagnosticSheet({
   // Falls back to the first tab until the user picks one, or if a config
   // refresh drops the selected tab (e.g. the provider loses its connection).
   const currentTab = resolveCurrentTab(activeTab, tabOptions);
+  const requestedSetting = useSettingsSearchRequest();
+  useRevealSettingsTarget(
+    PROVIDER_SETTINGS_TARGETS,
+    useCallback(() => {
+      const tab = settingsEditorTab(PROVIDER_SETTINGS_TABS, requestedSetting);
+      if (tab !== null && tabOptions.some((option) => option.value === tab)) setActiveTab(tab);
+    }, [requestedSetting, tabOptions]),
+  );
 
   const q = query.trim();
   const filteredDiscovered = useMemo(

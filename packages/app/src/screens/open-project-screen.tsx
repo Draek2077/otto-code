@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type ComponentType, type Ref } from "react";
+import {
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type Ref,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useRouter } from "expo-router";
 import { FolderOpen, Inbox, Plug, Smartphone } from "@/components/icons/material-icons";
 import { OttoLogoWink } from "@/components/icons/otto-logo";
@@ -10,6 +18,7 @@ import { CommunityLinks } from "@/components/community-links";
 import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
+import { useImportSession } from "@/hooks/use-import-session";
 import { useHostChooser } from "@/hosts/host-chooser";
 import { usePanelStore } from "@/stores/panel-store";
 import {
@@ -21,13 +30,9 @@ import {
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
-import { buildHostAgentDetailRoute, buildSettingsHostSectionRoute } from "@/utils/host-routes";
-import { ImportSessionSheet } from "@/components/import-session-sheet";
-import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
-import { useOpenProject } from "@/hooks/use-open-project";
-import type { Href } from "expo-router";
 import type { KeyboardActionId } from "@/keyboard/actions";
 import type { IconSizeProp } from "@/components/icons/icon-size";
 
@@ -51,13 +56,10 @@ export function OpenProjectScreen() {
   const router = useRouter();
   const openDesktopAgentList = usePanelStore((s) => s.openDesktopAgentList);
   const openProjectPicker = useOpenProjectPicker();
+  const importSession = useImportSession();
   const chooseHost = useHostChooser();
   const localServerId = useLocalDaemonServerId();
-  const [importServerId, setImportServerId] = useState<string | null>(null);
-  const importClient = useHostRuntimeClient(importServerId ?? "");
-  const openImportedProject = useOpenProject(importServerId);
   const [isPairDeviceOpen, setIsPairDeviceOpen] = useState(false);
-  const [isImportSheetOpen, setIsImportSheetOpen] = useState(false);
 
   const quotes = t("openProject.quotes", { returnObjects: true }) as HomeQuote[];
   const quote = quotes[getSessionQuoteIndex(quotes.length)];
@@ -73,30 +75,6 @@ export function OpenProjectScreen() {
 
   const handleOpenPairDevice = useCallback(() => setIsPairDeviceOpen(true), []);
   const handleClosePairDevice = useCallback(() => setIsPairDeviceOpen(false), []);
-
-  const handleOpenImportSession = useCallback(() => {
-    chooseHost({
-      title: "Import from host",
-      onChooseHost: (serverId) => {
-        setImportServerId(serverId);
-        setIsImportSheetOpen(true);
-      },
-    });
-  }, [chooseHost]);
-  const handleCloseImportSession = useCallback(() => setIsImportSheetOpen(false), []);
-
-  const handleImported = useCallback(
-    (agent: { id: string; cwd: string }) => {
-      if (!importServerId) return;
-      void (async () => {
-        const result = await openImportedProject(agent.cwd);
-        if (result.ok) {
-          router.push(buildHostAgentDetailRoute(importServerId, agent.id) as Href);
-        }
-      })();
-    },
-    [importServerId, openImportedProject, router],
-  );
 
   // Web gets the themed overlay scrollbar (auto-hiding, no gutter) at every
   // width; native keeps its own indicator, which already auto-hides.
@@ -152,7 +130,7 @@ export function OpenProjectScreen() {
                 icon={Inbox}
                 title={t("openProject.tiles.importSession.title")}
                 description={t("openProject.tiles.importSession.description")}
-                onPress={handleOpenImportSession}
+                onPress={importSession.open}
                 testID="open-project-import-session"
               />
               <HomeTile
@@ -185,13 +163,7 @@ export function OpenProjectScreen() {
         onClose={handleClosePairDevice}
         testID="open-project-pair-device-modal"
       />
-      <ImportSessionSheet
-        visible={isImportSheetOpen}
-        client={importClient}
-        serverId={importServerId}
-        onClose={handleCloseImportSession}
-        onImported={handleImported}
-      />
+      {importSession.sheet}
     </View>
   );
 }
@@ -218,12 +190,16 @@ function HomeTile({
   shortcutDiscoveryAction,
   accent,
 }: HomeTileProps) {
-  const { theme } = useUnistyles();
+  const ThemedIcon = useMemo(
+    () =>
+      withUnistyles(Icon, (theme) => ({
+        color: accent ? theme.colors.accent : theme.colors.foregroundMuted,
+      })),
+    [Icon, accent],
+  );
   const [hovered, setHovered] = useState(false);
   const handleHoverIn = useCallback(() => setHovered(true), []);
   const handleHoverOut = useCallback(() => setHovered(false), []);
-
-  const iconColor = accent ? theme.colors.accent : theme.colors.foregroundMuted;
 
   const pressableStyle = useCallback(
     ({ pressed }: { pressed: boolean }) => [
@@ -243,7 +219,7 @@ function HomeTile({
       testID={testID}
       style={pressableStyle}
     >
-      <Icon size={theme.iconSize.lg} color={iconColor} />
+      <ThemedIcon size="lg" />
       <View style={styles.tileText}>
         <Text style={styles.tileTitle}>{title}</Text>
         <Text style={styles.tileDescription}>{description}</Text>

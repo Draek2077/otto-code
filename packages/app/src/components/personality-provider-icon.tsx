@@ -7,6 +7,7 @@ import { getProviderIcon } from "@/components/provider-icons";
 
 export interface PersonalityProviderIconProps {
   provider: string;
+  serverId?: string | null;
   size: number;
   /** Personality spinner colors - the gradient's two stops. Default to the
    * shared glow pair when a personality has no custom colors. */
@@ -23,11 +24,12 @@ export interface PersonalityProviderIconProps {
  */
 function PersonalityProviderIconBase({
   provider,
+  serverId,
   size,
   glowA = GLOW_DEFAULT_A,
   glowB = GLOW_DEFAULT_B,
 }: PersonalityProviderIconProps) {
-  const Icon = getProviderIcon(provider);
+  const Icon = getProviderIcon(provider, serverId);
   const containerStyle = useMemo(() => ({ width: size, height: size }), [size]);
   const maskElement = useMemo(() => <Icon size={size} color="#000000" />, [Icon, size]);
   return (

@@ -13,6 +13,7 @@ import {
 import {
   createAppUpdateService,
   type AppUpdateCheckResult,
+  type AppUpdateInstallRequest,
   type AppUpdateInstallResult,
   type AppUpdateRuntime,
   type AppUpdateRuntimeConfiguration,
@@ -46,6 +47,48 @@ export function isLinuxDebUpdateInstalling(): boolean {
 
 const UPDATE_CHANNEL_NOT_PUBLISHED_CODE = "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND";
 const loggedUpdaterErrors = new WeakSet<object>();
+
+interface AppUpdateLogSink {
+  info(message: string, details: object): void;
+}
+
+interface AppUpdateCheckLogDetails {
+  currentVersion: string;
+  releaseChannel: AppReleaseChannel;
+  intent: AppUpdateCheckIntent;
+}
+
+interface AppUpdateCheckCompletedLogDetails extends AppUpdateCheckLogDetails {
+  targetVersion: string;
+  hasUpdate: boolean;
+  readyToInstall: boolean;
+  errorMessage: string | null;
+}
+
+export function createAppUpdateLifecycleLogger(logger: AppUpdateLogSink) {
+  return {
+    checkStarted(details: AppUpdateCheckLogDetails): void {
+      logger.info("[auto-updater] check started", details);
+    },
+    checkCompleted(details: AppUpdateCheckCompletedLogDetails): void {
+      logger.info("[auto-updater] check completed", details);
+    },
+    updateAvailable(targetVersion: string): void {
+      logger.info("[auto-updater] update available", { targetVersion });
+    },
+    updateDownloaded(targetVersion: string): void {
+      logger.info("[auto-updater] update downloaded", { targetVersion });
+    },
+    downloadRequested(targetVersion: string): void {
+      logger.info("[auto-updater] download requested", { targetVersion });
+    },
+    quitAndInstallRequested(details: AppUpdateInstallRequest): void {
+      logger.info("[auto-updater] quitAndInstall requested", details);
+    },
+  };
+}
+
+const updateLifecycleLog = createAppUpdateLifecycleLogger(log);
 
 function isUpdateChannelNotPublished(error: unknown): boolean {
   return (
@@ -199,17 +242,15 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     };
 
     autoUpdater.on("update-available", (info) => {
-      log.info("[auto-updater] update available", { version: info.version });
-      input.onUpdateAvailable(info as RuntimeUpdateInfo);
+      const updateInfo = info as RuntimeUpdateInfo;
+      updateLifecycleLog.updateAvailable(updateInfo.version);
+      input.onUpdateAvailable(updateInfo);
     });
     autoUpdater.on("update-downloaded", (info) => {
       this.downloadedFile = info.downloadedFile;
-      log.info("[auto-updater] update downloaded", { version: info.version });
-      input.onUpdateDownloaded(info as RuntimeUpdateInfo);
-    });
-    autoUpdater.on("update-not-available", () => {
-      log.info("[auto-updater] no update available");
-      input.onUpdateNotAvailable();
+      const updateInfo = info as RuntimeUpdateInfo;
+      updateLifecycleLog.updateDownloaded(updateInfo.version);
+      input.onUpdateDownloaded(updateInfo);
     });
     autoUpdater.on("error", (error) => {
       if (this.installAttempt) this.installAttempt.error = error;
@@ -237,16 +278,17 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     }
   }
 
-  downloadUpdate(): Promise<unknown> {
-    log.info("[auto-updater] downloading update");
+  downloadUpdate(targetVersion: string): Promise<unknown> {
+    updateLifecycleLog.downloadRequested(targetVersion);
     return autoUpdater.downloadUpdate();
   }
 
-  async quitAndInstall(
-    isSilent: boolean,
-    isForceRunAfter: boolean,
-    onBeforeQuit?: () => Promise<void>,
-  ): Promise<void> {
+  async quitAndInstall({
+    targetVersion,
+    isSilent,
+    isForceRunAfter,
+    onBeforeQuit,
+  }: AppUpdateInstallRequest): Promise<void> {
     if (process.platform === "linux" && autoUpdater instanceof DebUpdater) {
       if (installingLinuxDeb) throw new Error("A Debian update installation is already running.");
       if (!this.downloadedFile) throw new Error("The downloaded Debian package path is missing.");
@@ -279,6 +321,11 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     )
       await onBeforeQuit?.();
     autoUpdater.autoRunAppAfterInstall = isForceRunAfter;
+    updateLifecycleLog.quitAndInstallRequested({
+      targetVersion,
+      isSilent,
+      isForceRunAfter,
+    });
     log.info("[auto-updater] handing downloaded update to installer", {
       isSilent,
       isForceRunAfter,
@@ -349,7 +396,22 @@ export async function checkForAppUpdate({
   releaseChannel: AppReleaseChannel;
   intent: AppUpdateCheckIntent;
 }): Promise<AppUpdateCheckResult> {
-  return appUpdateService.checkForAppUpdate({ currentVersion, releaseChannel, intent });
+  updateLifecycleLog.checkStarted({ currentVersion, releaseChannel, intent });
+  const result = await appUpdateService.checkForAppUpdate({
+    currentVersion,
+    releaseChannel,
+    intent,
+  });
+  updateLifecycleLog.checkCompleted({
+    currentVersion,
+    targetVersion: result.latestVersion,
+    releaseChannel,
+    intent,
+    hasUpdate: result.hasUpdate,
+    readyToInstall: result.readyToInstall,
+    errorMessage: result.errorMessage,
+  });
+  return result;
 }
 
 export async function downloadAndInstallUpdate(

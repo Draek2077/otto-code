@@ -129,8 +129,8 @@ root-relative, HTML, escaping, missing and remote images in one document each.
 ### Two resolvers, on purpose - do not unify them
 
 Chat has its own, older path for the same-looking problem: `utils/assistant-image-source.ts` →
-`AssistantMarkdownImage` (`message.tsx`), which reads an agent-authored `![](screenshots/out.png)`
-through the identical `readFile` → attachment-store transport. It looks like a duplicate. It is not,
+`AssistantMarkdownImage` (`components/otto/assistant-markdown-image.tsx`), which reads an agent-authored `![](screenshots/out.png)`
+through `assistant-image/use-assistant-image.ts`, which owns acquisition, retries, preview lifetime and image-load state over the same `readFile` → attachment-store transport. The Otto component only owns bounded thumbnail geometry and image Copy/Save actions. The separate source resolver looks like a duplicate. It is not,
 and merging them would be a security regression.
 
 |                       | Viewer (`workspace-image-source.ts`) | Chat (`assistant-image-source.ts`)                                      |
@@ -176,31 +176,41 @@ fence gets the same highlighted code block the agent's reply gets, from the same
 `createSharedMarkdownRules()`. The plain `<Text>` it used until then was inherited from upstream,
 never a decision.
 
-It does **not** share the assistant's parser, and that is the part to preserve:
+Every rendered surface starts with `utils/markdown-parser.ts:createMarkdownParser`, which keeps
+`html:false` and `typographer:false`. Surface profiles decorate fresh instances instead of owning
+another constructor or mutating a shared parser after it has been handed to a renderer.
 
-|               | Assistant                                    | User                          |
-| ------------- | -------------------------------------------- | ----------------------------- |
-| `typographer` | on                                           | **off**                       |
-| Plugins       | task lists, footnotes, math (**not** alerts) | math only                     |
-| Rules         | the `message.tsx` copy (file-link aware)     | `createSharedMarkdownRules()` |
+|               | Assistant                                   | User                            |
+| ------------- | ------------------------------------------- | ------------------------------- |
+| `typographer` | off                                         | off                             |
+| Plugins       | task lists, footnotes, math, without alerts | math only                       |
+| File links    | allowed by the canonical assistant adapter  | ordinary Markdown scheme checks |
+| Rules         | the `message.tsx` copy, file-link aware     | `createSharedMarkdownRules()`   |
 
-The assistant's chain is `createAssistantMarkdownParser()`
-(`markdown/assistant-parser.ts`), its own module rather than a const inside `message.tsx` precisely
-because it is the place a shared extension silently fails to reach: math shipped to the viewer first
-and did not reach chat for a release. Alerts still do not, because the assistant rules carry no
-`blockquote` rule to draw one.
+`utils/assistant-markdown-parser.ts:createAssistantMarkdownParser` is the one owner of the
+assistant-only `file://` validation exception. Chat and rich clipboard use that same adapter;
+every other surface retains the base parser's scheme restrictions.
 
-**Math is the one plugin both sides take**, because a formula you send should look the way it will
-look coming back. The currency guards are what make that safe in a prompt, and they are the reason
-no other plugin followed it across: footnotes, task lists and alerts are parse cost per bubble for
-constructs prompts do not use.
+Otto's pure decorators live in `components/markdown/otto/parser-extensions.ts`. The assistant
+profile adds task markers, footnotes and math. The document profile also adds alerts.
+`components/markdown/parser.ts` exports the decorated document instance used by the renderer,
+Find and Knowledge source maps. The HTML exporter creates a separate instance with the same
+base and decorator because its HTML render rules are mutable and must not leak into the app.
+Plan cards use the base with `linkify:false`, preserving their plain bare URLs.
 
-`typographer` is the load-bearing difference. It rewrites `"` into curly quotes, `--` into an en
-dash and `...` into an ellipsis. That is right for prose a model wrote and wrong for text a person
-typed, because the composer's file-mention autocomplete inserts a quoted, backslash-escaped path
-(`formatQuotedFileMentionPath`), and smart quotes would show the user a mention they did not write.
-Reuse the assistant's parser here and file mentions go curly; the straight-quote assertion in
-`e2e/user-message-contract.ui-contract.spec.ts` is the tripwire.
+**Math is the one plugin both sides of chat take**, because a formula you send should look the
+way it will look coming back. Currency guards keep ordinary prompts intact. User prompts do not
+acquire the task-list, footnote or alert transformations of a document.
+
+**Authored punctuation stays authored.** Markdown-it's typographer rewrites `(c)` into a copyright
+symbol, straight quotes into curly ones and `...` into an ellipsis. Those substitutions can change
+an agent's option labels, quoted shell arguments or file contents. All profiles therefore leave it
+off. The user bubble also keeps the exact quoted, backslash-escaped paths the composer's mention
+completion inserts. This changes character substitution, not Otto's font families, sizes or themes.
+
+Chat Find passes the actual user or assistant parser to `collectRenderedTextRuns`; it does not
+assume the document profile. Otherwise task markers, footnotes or alert labels would be counted
+as different text from the text rendered in the bubble.
 
 The assistant's bespoke rules are also deliberately not reused: their `code_inline` and `link` rules
 resolve file paths through `useAssistantFileLinkActions`, which the user bubble has no workspace
@@ -370,6 +380,11 @@ Dropping it would silently delete text; numbering it would invent a note nothing
 re-expressed as `data-otto-task` and `data-otto-task-line` on the `list_item_open` token, which
 `tokensToAST` hands to the `list_item` rule as `node.attributes`.
 
+`otto/task-marker.tsx:MarkdownListMarker` restores the marker for both the shared document rule
+and the assistant's file-link-aware custom list rule. Assistant tasks pass `readOnly` explicitly;
+ordered tasks keep their number, and the checkbox glyph inherits the row's text metrics. A task
+state must not disappear just because the parser removed its source marker from the text.
+
 Read-only is the default and looks exactly as it did: a surface only gets a tickable box when it
 passes `onToggleTask`, which is right, because a task list in an assistant message has no document
 behind it to write to. The markdown preview beside the editor passes one, and a tick routes through
@@ -385,12 +400,11 @@ offset keeps their checkboxes read-only rather than writing to a line that means
 `$x^2$` inline and `$$...$$` as a block, rendered with KaTeX. In the file viewer, the preview, the
 HTML/PDF export and in agent replies.
 
-**Chat is a second wiring site, not a free ride.** Every other surface picks math up from
-`defaultMarkdownParser` + `createSharedMarkdownRules()`; chat parses with its own chain and its own
-rules copy (see [above](#both-sides-of-chat-parse-with-different-parsers)), so both halves are
-registered there by hand and `assistant-parser.test.ts` is what stops the parse half from being
-dropped again. The user's own bubble takes the parse half too, and gets the render half
-free from the shared rules it already spreads.
+**Chat is a second rendering site.** The canonical assistant parser is decorated with the same
+math token rules as documents. Its own renderer still supplies the math render rules alongside
+its file-link and iOS text-selection rules. `otto/parser-extensions.test.ts` checks that math,
+currency guards, task states, footnotes and safe file links survive that composition. The user's
+bubble takes the math parser decoration and the shared render rules.
 
 **A display formula holds an assistant block open.** An assistant reply is cut into blocks on blank
 lines
@@ -479,6 +493,12 @@ extensions the viewer uses, so task lists, alerts, footnotes and math arrive in 
 second code path to keep in sync. The PDF is that same HTML, loaded in a hidden window and printed
 with Electron's `webContents.printToPDF`. A separate PDF renderer would be a second thing to keep
 agreeing with the first, and it would lose that argument eventually.
+
+Rich clipboard remains a different render sink. Its plain MIME is the original Markdown, and
+its lightweight HTML parser uses the canonical assistant link policy without the document
+plugins. Math and task syntax therefore remain source text there. Registering math or task
+parsing without their HTML render rules would remove content; importing the full KaTeX exporter
+into clipboard startup merely to share a parser would also add unnecessary load.
 
 The export is standalone: the stylesheet is inlined, math is MathML, and nothing is fetched when the
 file opens. The one thing it does not carry is the document's own images. A relative

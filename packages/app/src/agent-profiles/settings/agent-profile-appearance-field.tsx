@@ -10,7 +10,7 @@ import {
   resolveControlInteractionStyles,
   type FieldControlSize,
 } from "@/components/ui/control-geometry";
-import { Field } from "@/components/ui/form-field";
+import { Field, type FieldProps } from "@/components/ui/form-field";
 import { identityForeground } from "@/styles/identity-colors";
 import type { Theme } from "@/styles/theme";
 import { AgentProfileGlyph } from "../internal/agent-profile-glyph";
@@ -137,6 +137,7 @@ function ColorCell({
  */
 export function AgentProfileAppearanceField({
   label,
+  Label,
   icon,
   color,
   onChange,
@@ -146,6 +147,7 @@ export function AgentProfileAppearanceField({
   triggerTestID,
 }: {
   label: string;
+  Label?: FieldProps["Label"];
   icon: string;
   color: string;
   onChange: (next: { icon: string; color: string }) => void;
@@ -202,7 +204,7 @@ export function AgentProfileAppearanceField({
   const header = useMemo(() => ({ title: label }), [label]);
 
   return (
-    <Field label={label} testID={testID}>
+    <Field label={label} Label={Label} testID={testID}>
       <View ref={anchorRef} collapsable={false}>
         <Pressable
           onPress={handleTriggerPress}

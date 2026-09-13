@@ -11,6 +11,10 @@ function otto(id: string, status: OttoSubagentRow["status"] = "idle"): OttoSubag
     description: null,
     subtitle: null,
     status,
+    turn:
+      status === "running"
+        ? { phase: "open", turnId: null, startedAt: null, cancellationRequestId: null }
+        : { phase: "idle", cancellationRequestId: null },
     requiresAttention: false,
     createdAt: new Date(),
     updatedAt: new Date(),

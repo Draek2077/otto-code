@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import invariant from "tiny-invariant";
-import { buildDiffDocumentModel, retainReusableModels } from "./model";
+import { buildDiffDocumentModel, retainReusableModels, reviewGeometryKey } from "./model";
 import type {
   BuildDiffDocumentModelInput,
   DiffDocumentModel,
@@ -13,6 +13,7 @@ const MAX_MODEL_VARIANTS = 4;
 const MAX_TYPOGRAPHY_RESOURCES = 4;
 
 interface ModelVariant {
+  measureText: TextMeasurer;
   key: string;
   exactKey: string;
   model: DiffDocumentModel;
@@ -38,23 +39,29 @@ export interface DiffDocumentWorkspaceCache {
 }
 
 export function createDiffDocumentWorkspaceCache(): DiffDocumentWorkspaceCache {
-  const variantsByFiles = new WeakMap<BuildDiffDocumentModelInput["files"], ModelVariant[]>();
+  let variants: ModelVariant[] = [];
   const typographyResources = new Map<string, DiffTypographyResource>();
 
   return {
     buildModel(input) {
       const key = modelVariantKey(input);
       const exactKey = exactModelKey(input);
-      const variants = variantsByFiles.get(input.files) ?? [];
-      const variantIndex = variants.findIndex((candidate) => candidate.key === key);
+      const variantIndex = variants.findIndex(
+        (candidate) => candidate.key === key && candidate.measureText === input.measureText,
+      );
       const variant = variantIndex === -1 ? undefined : variants[variantIndex];
-      if (variant?.exactKey === exactKey) {
+      if (
+        variant?.exactKey === exactKey &&
+        variant.model.files.length === input.files.length &&
+        variant.model.files.every((file, index) => file.file === input.files[index])
+      ) {
         variants.splice(variantIndex, 1);
         variants.unshift(variant);
         return variant.model;
       }
       const model = buildDiffDocumentModel({ ...input, reuseFrom: variant?.models });
       const nextVariant = {
+        measureText: input.measureText,
         key,
         exactKey,
         model,
@@ -62,7 +69,7 @@ export function createDiffDocumentWorkspaceCache(): DiffDocumentWorkspaceCache {
       };
       if (variantIndex !== -1) variants.splice(variantIndex, 1);
       variants.unshift(nextVariant);
-      variantsByFiles.set(input.files, variants.slice(0, MAX_MODEL_VARIANTS));
+      variants = variants.slice(0, MAX_MODEL_VARIANTS);
       return model;
     },
     typography(input) {
@@ -117,17 +124,11 @@ function modelVariantKey(input: Omit<BuildDiffDocumentModelInput, "reuseFrom">):
 
 function exactModelKey(input: Omit<BuildDiffDocumentModelInput, "reuseFrom">): string {
   const collapsedFilePaths = [...input.collapsedFilePaths].sort();
-  const reviewGeometry = input.reviewActions
-    ? {
-        comments: [...input.reviewActions.commentsByTarget.entries()]
-          .map(([target, comments]) => [target, comments.map((comment) => comment.id).sort()])
-          .sort(([left], [right]) => String(left).localeCompare(String(right))),
-        editor: input.reviewActions.editor
-          ? [input.reviewActions.editor.target.key, input.reviewActions.editor.commentId]
-          : null,
-      }
+  const reviewGeometry = reviewGeometryKey(input.reviewActions);
+  const materializationWindow = input.materializationWindow
+    ? [input.materializationWindow.top, input.materializationWindow.height]
     : null;
-  return JSON.stringify([collapsedFilePaths, reviewGeometry]);
+  return JSON.stringify([collapsedFilePaths, reviewGeometry, materializationWindow]);
 }
 
 function typographyKey(typography: DiffTypography): string {
@@ -150,6 +151,11 @@ function paletteKey(palette: DiffPalette): string {
     palette.deletionBackground,
     palette.emptyBackground,
     palette.selection,
+    palette.headerActiveSurface,
+    palette.headerBorder,
+    palette.statusSuccess,
+    palette.statusDanger,
+    palette.statusWarning,
     syntax,
   ]);
 }

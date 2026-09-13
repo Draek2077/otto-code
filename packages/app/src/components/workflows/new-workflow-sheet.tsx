@@ -1,3 +1,4 @@
+import { resolveOttoFormHost } from "@/provider-selection/otto-form-target";
 import {
   useCallback,
   useEffect,
@@ -36,7 +37,7 @@ import type { PersonalityFormValues } from "@/provider-selection/personality-for
 import { getProviderIcon } from "@/components/provider-icons";
 import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
 import { formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
-import { useAgentFormState, type FormInitialValues } from "@/hooks/use-agent-form-state";
+import { useAgentFormState } from "@/hooks/use-agent-form-state";
 import { useProjects } from "@/hooks/use-projects";
 import {
   useProjectWorkflowGraphs,
@@ -459,31 +460,41 @@ function OpenNewOrchestrationSheet({
     [projectOptions.targets, prefill],
   );
 
-  const initialFormValues = useMemo<FormInitialValues | undefined>(
-    () => (resolvedInitialCwd ? { workingDir: resolvedInitialCwd } : undefined),
-    [resolvedInitialCwd],
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(() =>
+    resolveOttoFormHost({
+      selectedServerId: null,
+      seedServerId: resolvedInitialServerId,
+      onlineServerIds,
+    }),
   );
+  const [workingDir, setWorkingDir] = useState(resolvedInitialCwd);
+  // Unseeded global opens choose an online host once; later discovery never
+  // replaces a seeded host or a host chosen through the project picker.
+  useEffect(() => {
+    setSelectedServerId((current) =>
+      resolveOttoFormHost({
+        selectedServerId: current,
+        seedServerId: resolvedInitialServerId,
+        onlineServerIds,
+      }),
+    );
+  }, [selectedServerId, resolvedInitialServerId, onlineServerIds]);
 
   const form = useAgentFormState({
-    initialServerId: resolvedInitialServerId,
-    initialValues: initialFormValues,
+    serverId: selectedServerId,
+    workingDir,
     isVisible: visible,
     isCreateFlow: true,
-    onlineServerIds,
   });
   const {
-    selectedServerId,
     selectedProvider,
     selectedModel,
     selectedThinkingOptionId,
     setThinkingOptionFromUser,
     availableThinkingOptions,
-    workingDir,
     setProviderAndModelFromUser,
     applyPersonalityValues,
     clearProviderSelectionFromUser,
-    setSelectedServerIdFromUser,
-    setWorkingDirFromUser,
     modelSelectorProviders,
     allProviderEntries,
     isAllModelsLoading,
@@ -573,17 +584,12 @@ function OpenNewOrchestrationSheet({
         clearProviderSelectionFromUser();
       }
       setProjectOptionId(target.optionId);
-      setSelectedServerIdFromUser(target.serverId);
+      setSelectedServerId(target.serverId);
       // Switching project resets the workspace to that project's root; the
       // Workspace picker below narrows it to a worktree.
-      setWorkingDirFromUser(target.cwd);
+      setWorkingDir(target.cwd);
     },
-    [
-      clearProviderSelectionFromUser,
-      selectedServerId,
-      setSelectedServerIdFromUser,
-      setWorkingDirFromUser,
-    ],
+    [clearProviderSelectionFromUser, selectedServerId, setSelectedServerId, setWorkingDir],
   );
 
   const workspaceTargets = useMemo(
@@ -600,9 +606,9 @@ function OpenNewOrchestrationSheet({
   );
   const handleSelectWorkspace = useCallback(
     (target: OrchestrationWorkspaceTarget) => {
-      setWorkingDirFromUser(target.cwd);
+      setWorkingDir(target.cwd);
     },
-    [setWorkingDirFromUser],
+    [setWorkingDir],
   );
   const effectiveCwd = resolveEffectiveCwd({
     workspaceCwd: selectedWorkspaceTarget?.cwd,
@@ -626,6 +632,7 @@ function OpenNewOrchestrationSheet({
       pressed: boolean;
     }): ReactNode => (
       <ModelTrigger
+        serverId={selectedServerId}
         label={selectedPersonalityName ?? selectedModelLabel}
         provider={selectedProvider}
         hasPersonality={Boolean(selectedPersonalityName)}
@@ -637,6 +644,7 @@ function OpenNewOrchestrationSheet({
       />
     ),
     [
+      selectedServerId,
       selectedModel,
       selectedProvider,
       selectedPersonalityName,
@@ -1951,15 +1959,22 @@ function ProjectOptionItem({
   );
 }
 
-function ProviderGlyph({ provider }: { provider: string | null }): ReactElement | null {
+function ProviderGlyph({
+  provider,
+  serverId,
+}: {
+  provider: string | null;
+  serverId: string | null;
+}): ReactElement | null {
   if (!provider) {
     return null;
   }
-  const Icon = getProviderIcon(provider);
+  const Icon = getProviderIcon(provider, serverId);
   return <Icon size="md" color={styles.providerIcon.color} />;
 }
 
 function ModelTrigger({
+  serverId,
   label,
   provider,
   hasPersonality,
@@ -1969,6 +1984,7 @@ function ModelTrigger({
   active,
   isPlaceholder,
 }: {
+  serverId: string | null;
   label: string;
   provider: string | null;
   hasPersonality: boolean;
@@ -1995,6 +2011,7 @@ function ModelTrigger({
   } else if (hasPersonality && provider) {
     leadingIcon = (
       <PersonalityProviderIcon
+        serverId={serverId}
         provider={provider}
         size="md"
         glowA={personalitySpinner?.glowA}
@@ -2002,7 +2019,7 @@ function ModelTrigger({
       />
     );
   } else {
-    leadingIcon = <ProviderGlyph provider={provider} />;
+    leadingIcon = <ProviderGlyph provider={provider} serverId={serverId} />;
   }
   return (
     <View pointerEvents="none" style={containerStyle} testID="workflow-model-trigger">

@@ -1,3 +1,5 @@
+import { SettingsTargetText, SettingsTargetScope } from "@/screens/settings-search/target";
+import { PluginSettingsLinks } from "@/plugins/settings";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
@@ -7,7 +9,8 @@ import type { PluginListItem, PluginLogEntry } from "@otto-code/protocol/message
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Field, FormTextInput } from "@/components/ui/form-field";
+import { SettingsField as Field } from "@/screens/settings-search/fields";
+import { FormTextInput } from "@/components/ui/form-field";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Switch } from "@/components/ui/switch";
 import { useFetchQuery } from "@/data/query";
@@ -36,6 +39,7 @@ function pluginRowAction(action: string | undefined): PluginRowAction | undefine
 
 function PluginRow({
   plugin,
+  serverId,
   clientError,
   pending,
   pendingAction,
@@ -44,6 +48,7 @@ function PluginRow({
   supportsLogs,
 }: {
   plugin: PluginListItem;
+  serverId: string;
   clientError?: string;
   pending: boolean;
   pendingAction?: PluginRowAction;
@@ -70,37 +75,50 @@ function PluginRow({
   if (pendingAction === "enable") toggleLabel = t("settings.plugins.actions.enabling");
   else if (pendingAction === "disable") toggleLabel = t("settings.plugins.actions.disabling");
   return (
-    <View style={styles.pluginRow} accessibilityLabel={`${plugin.id} ${statusLabel}`}>
-      <View style={settingsStyles.rowContent}>
-        <View style={styles.pluginTitle}>
-          <Text style={settingsStyles.rowTitle}>{plugin.id}</Text>
-          <StatusBadge label={statusLabel} variant={badgeVariant} />
+    <View>
+      <View style={styles.pluginRow} accessibilityLabel={`${plugin.id} ${statusLabel}`}>
+        <View style={settingsStyles.rowContent}>
+          <View style={styles.pluginTitle}>
+            <SettingsTargetText
+              settingId="host-plugins-plugin-lifecycle-configured-plugin"
+              style={settingsStyles.rowTitle}
+            >
+              {plugin.id}
+            </SettingsTargetText>
+            <StatusBadge label={statusLabel} variant={badgeVariant} />
+          </View>
+          <Text style={settingsStyles.rowHint}>{plugin.path}</Text>
+          {clientError || plugin.error ? (
+            <Text style={styles.error}>{clientError ?? plugin.error}</Text>
+          ) : null}
         </View>
-        <Text style={settingsStyles.rowHint}>{plugin.path}</Text>
-        {clientError || plugin.error ? (
-          <Text style={styles.error}>{clientError ?? plugin.error}</Text>
-        ) : null}
-      </View>
-      <View style={styles.actions}>
-        {supportsLogs ? (
-          <Button variant="outline" size="sm" onPress={openLogs} disabled={pending}>
-            {t("settings.plugins.logs.action")}
+        <View style={styles.actions}>
+          {supportsLogs ? (
+            <Button variant="outline" size="sm" onPress={openLogs} disabled={pending}>
+              {t("settings.plugins.logs.action")}
+            </Button>
+          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={reload}
+            disabled={pending || !plugin.enabled}
+          >
+            {pendingAction === "reload"
+              ? t("settings.plugins.actions.reloading")
+              : t("settings.plugins.actions.reload")}
           </Button>
-        ) : null}
-        <Button variant="outline" size="sm" onPress={reload} disabled={pending || !plugin.enabled}>
-          {pendingAction === "reload"
-            ? t("settings.plugins.actions.reloading")
-            : t("settings.plugins.actions.reload")}
-        </Button>
-        <Button variant="outline" size="sm" onPress={toggle} disabled={pending}>
-          {toggleLabel}
-        </Button>
-        <Button variant="outline" size="sm" onPress={remove} disabled={pending}>
-          {pendingAction === "remove"
-            ? t("settings.plugins.actions.removing")
-            : t("settings.plugins.actions.remove")}
-        </Button>
+          <Button variant="outline" size="sm" onPress={toggle} disabled={pending}>
+            {toggleLabel}
+          </Button>
+          <Button variant="outline" size="sm" onPress={remove} disabled={pending}>
+            {pendingAction === "remove"
+              ? t("settings.plugins.actions.removing")
+              : t("settings.plugins.actions.remove")}
+          </Button>
+        </View>
       </View>
+      <PluginSettingsLinks serverId={serverId} pluginId={plugin.id} />
     </View>
   );
 }
@@ -347,6 +365,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
             return (
               <PluginRow
                 key={plugin.id}
+                serverId={serverId}
                 plugin={plugin}
                 clientError={clientError}
                 pending={mutation.isPending}
@@ -377,7 +396,12 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.plugins.globalTitle")}</Text>
+              <SettingsTargetText
+                settingId="host-plugins-plugin-lifecycle-enable-plugins"
+                style={settingsStyles.rowTitle}
+              >
+                {t("settings.plugins.globalTitle")}
+              </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>{t("settings.plugins.globalHint")}</Text>
             </View>
             <Switch
@@ -389,31 +413,37 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
           </View>
         </View>
         <View style={[settingsStyles.card, styles.install]}>
-          <Field label={t("settings.plugins.directoryLabel")}>
-            <FormTextInput
-              initialValue=""
-              resetKey={directoryResetKey}
-              onChangeText={setDirectory}
-              onBlur={prefillManifestId}
-              placeholder={t("settings.plugins.directoryPlaceholder")}
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!mutation.isPending}
-              accessibilityLabel={t("settings.plugins.directoryLabel")}
-            />
-          </Field>
-          <Field label={t("settings.plugins.idLabel")} hint={t("settings.plugins.idHint")}>
-            <FormTextInput
-              initialValue={pluginId}
-              resetKey={pluginIdResetKey}
-              onChangeText={setPluginId}
-              placeholder={t("settings.plugins.idPlaceholder")}
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!mutation.isPending}
-              accessibilityLabel={t("settings.plugins.idLabel")}
-            />
-          </Field>
+          <SettingsTargetScope settingIds={["host-plugins-plugin-lifecycle-plugin-directory"]}>
+            <Field label={t("settings.plugins.directoryLabel")}>
+              <FormTextInput
+                initialValue=""
+                resetKey={directoryResetKey}
+                onChangeText={setDirectory}
+                onBlur={prefillManifestId}
+                placeholder={t("settings.plugins.directoryPlaceholder")}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!mutation.isPending}
+                accessibilityLabel={t("settings.plugins.directoryLabel")}
+              />
+            </Field>
+          </SettingsTargetScope>
+          <SettingsTargetScope
+            settingIds={["host-plugins-plugin-lifecycle-plugin-installation-id"]}
+          >
+            <Field label={t("settings.plugins.idLabel")} hint={t("settings.plugins.idHint")}>
+              <FormTextInput
+                initialValue={pluginId}
+                resetKey={pluginIdResetKey}
+                onChangeText={setPluginId}
+                placeholder={t("settings.plugins.idPlaceholder")}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!mutation.isPending}
+                accessibilityLabel={t("settings.plugins.idLabel")}
+              />
+            </Field>
+          </SettingsTargetScope>
           <Button onPress={install} disabled={!directory.trim() || mutation.isPending}>
             {mutation.isPending && mutation.variables?.action === "install"
               ? t("settings.plugins.installing")

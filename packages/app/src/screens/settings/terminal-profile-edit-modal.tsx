@@ -1,10 +1,13 @@
+import { SettingsAdaptiveModalSheet as AdaptiveModalSheet } from "@/screens/settings-search/sheets";
+import { SettingsTargetScope, useSettingsSearchRequest } from "@/screens/settings-search/target";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
-import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
-import { Field, FormTextInput } from "@/components/ui/form-field";
+import { SettingsField as Field } from "@/screens/settings-search/fields";
+import { FormTextInput } from "@/components/ui/form-field";
 import { TextFieldPicker, type ComboboxOption } from "@/components/ui/text-field-picker";
 
 // Common shell binaries - still fully freeform via allowCustomValue, since a
@@ -49,6 +52,7 @@ export function TerminalProfileEditModal({
   testID,
 }: TerminalProfileEditModalProps) {
   const { t } = useTranslation();
+  const requestedSetting = useSettingsSearchRequest();
   const [name, setName] = useState(initialDraft.name);
   const [command, setCommand] = useState(initialDraft.command);
   const [args, setArgs] = useState(initialDraft.args);
@@ -88,11 +92,12 @@ export function TerminalProfileEditModal({
     setSubmitError(null);
     setIsPending(false);
 
+    if (requestedSetting?.startsWith("host-terminals-terminal-profile-editor-")) return;
     const timeout = setTimeout(() => {
       nameInputRef.current?.focus();
     }, 50);
     return () => clearTimeout(timeout);
-  }, [visible, initialDraft.name, initialDraft.command, initialDraft.args]);
+  }, [visible, initialDraft.name, initialDraft.command, initialDraft.args, requestedSetting]);
 
   const validate = useCallback((): boolean => {
     const errors: FieldErrors = {};
@@ -175,62 +180,68 @@ export function TerminalProfileEditModal({
       desktopMaxWidth={480}
     >
       <View style={styles.body}>
-        <Field
-          label={t("settings.host.terminalProfiles.nameLabel")}
-          error={nameError}
-          testID="terminal-profile-name-field"
-        >
-          <FormTextInput
-            ref={nameInputRef}
-            initialValue={initialDraft.name}
-            resetKey={visible ? "open" : "closed"}
-            onChangeText={handleNameChange}
-            placeholder={t("settings.host.terminalProfiles.namePlaceholder")}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!isPending}
-            returnKeyType="done"
-            nativeID="terminal-profile-name-input"
-            accessibilityLabel={t("settings.host.terminalProfiles.nameLabel")}
-            testID="terminal-profile-name-input"
-          />
-        </Field>
+        <SettingsTargetScope settingIds={["host-terminals-terminal-profile-editor-name"]}>
+          <Field
+            label={t("settings.host.terminalProfiles.nameLabel")}
+            error={nameError}
+            testID="terminal-profile-name-field"
+          >
+            <FormTextInput
+              ref={nameInputRef}
+              initialValue={initialDraft.name}
+              resetKey={visible ? "open" : "closed"}
+              onChangeText={handleNameChange}
+              placeholder={t("settings.host.terminalProfiles.namePlaceholder")}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!isPending}
+              returnKeyType="done"
+              nativeID="terminal-profile-name-input"
+              accessibilityLabel={t("settings.host.terminalProfiles.nameLabel")}
+              testID="terminal-profile-name-input"
+            />
+          </Field>
+        </SettingsTargetScope>
 
-        <Field
-          label={t("settings.host.terminalProfiles.commandLabel")}
-          error={commandError}
-          testID="terminal-profile-command-field"
-        >
-          <TextFieldPicker
-            value={command}
-            onChange={handleCommandChange}
-            options={SHELL_COMMAND_PRESETS}
-            placeholder={t("settings.host.terminalProfiles.commandPlaceholder")}
-            testID="terminal-profile-command-input"
-          />
-        </Field>
+        <SettingsTargetScope settingIds={["host-terminals-terminal-profile-editor-command"]}>
+          <Field
+            label={t("settings.host.terminalProfiles.commandLabel")}
+            error={commandError}
+            testID="terminal-profile-command-field"
+          >
+            <TextFieldPicker
+              value={command}
+              onChange={handleCommandChange}
+              options={SHELL_COMMAND_PRESETS}
+              placeholder={t("settings.host.terminalProfiles.commandPlaceholder")}
+              testID="terminal-profile-command-input"
+            />
+          </Field>
+        </SettingsTargetScope>
 
-        <Field
-          label={t("settings.host.terminalProfiles.argsLabel")}
-          hint={t("settings.host.terminalProfiles.argsHint")}
-          testID="terminal-profile-args-field"
-        >
-          <FormTextInput
-            ref={argsInputRef}
-            initialValue={initialDraft.args}
-            resetKey={visible ? "open" : "closed"}
-            onChangeText={handleArgsChange}
-            placeholder={t("settings.host.terminalProfiles.argsPlaceholder")}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!isPending}
-            returnKeyType="done"
-            onSubmitEditing={handleArgsSubmit}
-            nativeID="terminal-profile-args-input"
-            accessibilityLabel={t("settings.host.terminalProfiles.argsLabel")}
-            testID="terminal-profile-args-input"
-          />
-        </Field>
+        <SettingsTargetScope settingIds={["host-terminals-terminal-profile-editor-arguments"]}>
+          <Field
+            label={t("settings.host.terminalProfiles.argsLabel")}
+            hint={t("settings.host.terminalProfiles.argsHint")}
+            testID="terminal-profile-args-field"
+          >
+            <FormTextInput
+              ref={argsInputRef}
+              initialValue={initialDraft.args}
+              resetKey={visible ? "open" : "closed"}
+              onChangeText={handleArgsChange}
+              placeholder={t("settings.host.terminalProfiles.argsPlaceholder")}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!isPending}
+              returnKeyType="done"
+              onSubmitEditing={handleArgsSubmit}
+              nativeID="terminal-profile-args-input"
+              accessibilityLabel={t("settings.host.terminalProfiles.argsLabel")}
+              testID="terminal-profile-args-input"
+            />
+          </Field>
+        </SettingsTargetScope>
 
         {submitError ? (
           <Text style={styles.submitError} testID="terminal-profile-submit-error">

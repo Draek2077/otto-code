@@ -1,56 +1,126 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { PASEO_PLUGIN_API_VERSION } from "@otto-code/protocol/plugin-compatibility";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { tmpdir } from "node:os";
-import ts from "typescript";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { scaffoldPluginDirectory } from "./scaffold.js";
 
 const directories: string[] = [];
+const scratchRoot = fileURLToPath(
+  new URL("../../../../../.tmp/cli-plugin-scaffold/", import.meta.url),
+);
+
+async function createScaffoldTestDirectory(): Promise<string> {
+  await mkdir(scratchRoot, { recursive: true });
+  return mkdtemp(path.join(scratchRoot, "fixture-"));
+}
+const execFileAsync = promisify(execFile);
+const tscPath = createRequire(import.meta.url).resolve("typescript/bin/tsc");
+
+async function typecheckPlugin(directory: string): Promise<void> {
+  const configPath = path.join(directory, "tsconfig.json");
+  try {
+    await execFileAsync(process.execPath, [tscPath, "--noEmit", "-p", configPath], {
+      cwd: directory,
+    });
+  } catch (error) {
+    const failure = error as { stderr?: string; stdout?: string };
+    throw new Error(`${failure.stdout ?? ""}${failure.stderr ?? ""}`, { cause: error });
+  }
+}
 
 afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true })));
 });
 
 describe("plugin scaffold", () => {
-  it("creates a standalone split-runtime project that typechecks", async () => {
-    const parent = await mkdtemp(path.join(process.cwd(), ".plugin-scaffold-"));
-    directories.push(parent);
-    const directory = path.join(parent, "hello-plugin");
+  it(
+    "creates a standalone split-runtime project that typechecks",
+    { timeout: 15_000 },
+    async () => {
+      const parent = await createScaffoldTestDirectory();
+      directories.push(parent);
+      const directory = path.join(parent, "hello-plugin");
 
-    await scaffoldPluginDirectory(directory);
+      await scaffoldPluginDirectory(directory);
 
-    const configPath = path.join(directory, "tsconfig.json");
-    const loaded = ts.readConfigFile(configPath, ts.sys.readFile);
-    expect(loaded.error).toBeUndefined();
-    const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, directory);
-    const diagnostics = ts.getPreEmitDiagnostics(
-      ts.createProgram(parsed.fileNames, parsed.options),
-    );
-    expect(
-      diagnostics.map((diagnostic) =>
-        ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
-      ),
-    ).toEqual([]);
-    expect(JSON.parse(await readFile(path.join(directory, "otto-plugin.json"), "utf8"))).toEqual({
-      id: "hello-plugin",
-    });
-    await expect(readFile(path.join(directory, "index.ts"), "utf8")).resolves.toContain(
-      'from "./main.client"',
-    );
-    await expect(readFile(path.join(directory, "main.client.tsx"), "utf8")).resolves.toContain(
-      "Hello from my plugin",
-    );
-  });
+      const configPath = path.join(directory, "tsconfig.json");
+      const config = JSON.parse(await readFile(configPath, "utf8")) as {
+        compilerOptions: { lib: string[]; types: string[] };
+      };
+      expect(config.compilerOptions.lib).toEqual(["ES2023"]);
+      expect(config.compilerOptions.types).toEqual(["react"]);
+      await expect(typecheckPlugin(directory)).resolves.toBeUndefined();
+      const cliPackageJson = JSON.parse(
+        await readFile(new URL("../../../package.json", import.meta.url), "utf8"),
+      ) as { version: string };
+      expect(JSON.parse(await readFile(path.join(directory, "otto-plugin.json"), "utf8"))).toEqual({
+        id: "hello-plugin",
+        requirements: { paseo: `>=${PASEO_PLUGIN_API_VERSION}` },
+      });
+      expect(JSON.parse(await readFile(path.join(directory, "package.json"), "utf8"))).toEqual({
+        name: "hello-plugin",
+        private: true,
+        version: "0.0.0",
+        scripts: { typecheck: "tsc --noEmit" },
+        devDependencies: {
+          "@otto-code/plugin": cliPackageJson.version,
+          "@tanstack/react-query": "^5.90.11",
+          "@types/react": "~19.2.0",
+          react: "19.1.0",
+          "react-native": "0.81.5",
+          typescript: "^5.9.3",
+          zod: "^4.4.3",
+        },
+      });
+      expect(await readdir(directory)).not.toContain("otto-plugin.d.ts");
+      await expect(readFile(path.join(directory, "index.client.tsx"), "utf8")).resolves.toContain(
+        'from "./client/greeting"',
+      );
+      await expect(readFile(path.join(directory, "index.server.ts"), "utf8")).resolves.toContain(
+        'from "./server/greeting"',
+      );
+      await expect(
+        readFile(path.join(directory, "client/greeting.tsx"), "utf8"),
+      ).resolves.toContain("useRpc(greetingRpc)");
+      await expect(readFile(path.join(directory, "client/web.ts"), "utf8")).resolves.not.toContain(
+        `/// <reference lib="dom" />`,
+      );
+      await expect(readFile(path.join(directory, "client/web.ts"), "utf8")).resolves.toContain(
+        `declare const window: { open(url: string, target: string, features: string): unknown };`,
+      );
+      await expect(readFile(path.join(directory, "client/web.ts"), "utf8")).resolves.toContain(
+        `Platform.OS === "web"`,
+      );
+      await expect(
+        readFile(path.join(directory, "client/greeting.tsx"), "utf8"),
+      ).resolves.toContain(`openExternal("https://otto-code.me")`);
+      await expect(readFile(path.join(directory, "server/greeting.ts"), "utf8")).resolves.toContain(
+        '"Hello, " + name + "!"',
+      );
+      await expect(readFile(path.join(directory, "shared/greeting.ts"), "utf8")).resolves.toContain(
+        'name: "greeting.create"',
+      );
+
+      await writeFile(path.join(directory, "client/greeting.tsx"), '\ndocument.title = "x";\n', {
+        flag: "a",
+      });
+      await expect(typecheckPlugin(directory)).rejects.toThrow("Cannot find name 'document'.");
+    },
+  );
 
   it("typechecks client and server Otto API access", async () => {
-    const parent = await mkdtemp(path.join(process.cwd(), ".plugin-scaffold-"));
+    const parent = await createScaffoldTestDirectory();
     directories.push(parent);
     const directory = path.join(parent, "otto-api-plugin");
     await scaffoldPluginDirectory(directory);
     await Promise.all([
       writeFile(
-        path.join(directory, "inspect.shared.ts"),
-        `import { defineRpc } from "@otto-code/plugin/server";
+        path.join(directory, "shared", "inspect.ts"),
+        `import { defineRpc } from "@otto-code/plugin";
 import { z } from "zod";
 
 export const inspect = defineRpc({
@@ -61,13 +131,13 @@ export const inspect = defineRpc({
 `,
       ),
       writeFile(
-        path.join(directory, "inspect.server.ts"),
+        path.join(directory, "server", "inspect.ts"),
         `import type { PluginHandlerContext } from "@otto-code/plugin/server";
-import type { output as ZodOutput } from "zod";
-import { inspect } from "./inspect.shared";
+import type { RpcInput } from "@otto-code/plugin";
+import { inspect } from "../shared/inspect";
 
 export async function inspectConfig(
-  _input: ZodOutput<typeof inspect.input>,
+  _input: RpcInput<typeof inspect>,
   { otto }: PluginHandlerContext,
 ) {
   return { configured: Boolean((await otto.config.get()).config) };
@@ -75,23 +145,23 @@ export async function inspectConfig(
 `,
       ),
       writeFile(
-        path.join(directory, "main.client.tsx"),
+        path.join(directory, "client", "main.tsx"),
         `import React from "react";
 import { Text } from "react-native";
-import {
-  type PluginAgentPanelProps,
-  useAgent,
-  useOtto,
-  useWorkspace,
-} from "@otto-code/plugin";
+import { Icon, Modal, useToast } from "@otto-code/plugin/client/react-native";
+import { type PluginAgentPanelProps, type PluginClientContext, type PluginSurfaceProps, useAgent, useOtto, useWorkspace } from "@otto-code/plugin/client";
+import { inspect } from "../shared/inspect";
 
-export function Surface() {
+export function Surface({ navigation }: PluginSurfaceProps) {
   const otto = useOtto();
+  const toast = useToast();
   const createWorkspace = () => otto.workspaces.create({
     source: { kind: "directory", path: "/repo" },
   });
+  navigation?.openAgent({ agentId: "agent-1" });
+  navigation?.openWorkspace({ workspaceId: "workspace-1" });
   void createWorkspace;
-  return <Text>Otto API</Text>;
+  return <><Icon name="Settings" size={18} color="#123456" /><Text onPress={() => toast.show("Ready")}>Otto API</Text><Modal title="Example" icon={<Icon name="Settings" />} open={false} onOpenChange={() => {}}><Modal.Content><Text>Modal</Text></Modal.Content></Modal></>;
 }
 
 export function AgentPanel({ workspaceId, agentId }: PluginAgentPanelProps) {
@@ -107,26 +177,61 @@ export function AgentPanel({ workspaceId, agentId }: PluginAgentPanelProps) {
   });
   return <Text>{workspaceName}: {agentTitle}</Text>;
 }
+
+export function contributeClient(client: PluginClientContext) {
+  const header = client.addHeaderButton({
+    id: "review-tools",
+    workspaceId: "workspace-a",
+    button: {
+      title: "Review tools",
+      icon: "Scan",
+      label: "Review",
+      behavior: {
+        kind: "menu",
+        items: [{ kind: "item", id: "refresh", title: "Refresh review", behavior: {
+          kind: "action", async onPress() { await client.rpc(inspect, {}); },
+        } }],
+      },
+    },
+  });
+  const pill = client.addComposerPill({
+    id: "open-review",
+    workspaceId: "workspace-a",
+    agentId: "agent-a",
+    button: {
+      title: "Open review",
+      icon: "Scan",
+      behavior: {
+        kind: "action",
+        async onPress() {
+          await client.rpc(inspect, {});
+          client.openPanel("review", { workspaceId: "workspace-a", agentId: "agent-a" });
+        },
+      },
+    },
+  });
+  header.update({ visible: false });
+  pill.update({ disabled: true });
+  return () => { header.remove(); pill.remove(); };
+}
 `,
       ),
       writeFile(
-        path.join(directory, "index.ts"),
-        `import type { PluginContext } from "@otto-code/plugin";
-import { AgentPanel, Surface } from "./main.client";
-import { inspectConfig } from "./inspect.server";
-import { inspect } from "./inspect.shared";
+        path.join(directory, "index.client.tsx"),
+        `import type { PluginClientContext } from "@otto-code/plugin/client";
+import { AgentPanel, contributeClient, Surface } from "./client/main";
+import { inspect } from "./shared/inspect";
 
-export default function contribute(plugin: PluginContext) {
-  plugin.handle(inspect, inspectConfig);
-  plugin.addSurface("main", Surface);
-  plugin.addWorkspacePanel({
+export default function contribute(client: PluginClientContext) {
+  client.addSurface("main", Surface);
+  client.addWorkspacePanel({
     id: "review",
     title: "Review",
     icon: "Scan",
     context: "agent",
     Component: AgentPanel,
   });
-  plugin.addCommandCenterItem({
+  client.addCommandCenterItem({
     id: "open-review",
     title: "Open review",
     icon: "Scan",
@@ -137,28 +242,60 @@ export default function contribute(plugin: PluginContext) {
       openPanel("review");
     },
   });
+  return contributeClient(client);
+}
+`,
+      ),
+      writeFile(
+        path.join(directory, "index.server.ts"),
+        `import type { PluginServerContext } from "@otto-code/plugin/server";
+import { inspectConfig } from "./server/inspect";
+import { inspect } from "./shared/inspect";
+
+export default function contribute(server: PluginServerContext) {
+  server.handle(inspect, inspectConfig);
   return () => {};
 }
 `,
       ),
     ]);
 
-    const configPath = path.join(directory, "tsconfig.json");
-    const loaded = ts.readConfigFile(configPath, ts.sys.readFile);
-    const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, directory);
-    const diagnostics = ts.getPreEmitDiagnostics(
-      ts.createProgram(parsed.fileNames, parsed.options),
-    );
+    await expect(typecheckPlugin(directory)).resolves.toBeUndefined();
+  }, 20_000);
 
-    expect(
-      diagnostics.map((diagnostic) =>
-        ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
-      ),
-    ).toEqual([]);
+  it("reports TypeScript errors for the old composer pill shape and cleanup", async () => {
+    const parent = await createScaffoldTestDirectory();
+    directories.push(parent);
+    const directory = path.join(parent, "old-composer-pill");
+    await scaffoldPluginDirectory(directory);
+    await writeFile(
+      path.join(directory, "index.client.tsx"),
+      `
+import type { PluginClientContext, PluginComposerPillProps } from "@otto-code/plugin/client";
+
+export default function contribute(client: PluginClientContext) {
+  const oldPill = {
+    id: "review", workspaceId: "workspace-a", agentId: "agent-a",
+    title: "Review", Component: () => null, onPress() {},
+  };
+  client.addComposerPill(oldPill);
+  const pill = client.addComposerPill({
+    id: "review", workspaceId: "workspace-a", agentId: "agent-a",
+    button: { title: "Review", icon: "Scan", behavior: { kind: "action", onPress() {} } },
+  });
+  pill();
+  return () => pill.remove();
+}
+`,
+    );
+    const check = typecheckPlugin(directory);
+    await expect(check).rejects.toThrow("has no exported member 'PluginComposerPillProps'");
+    await expect(check).rejects.toThrow("Property 'button' is missing");
+    await expect(check).rejects.toThrow("has no call signatures");
   }, 20_000);
 
   it("refuses to write into a non-empty directory", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "otto-plugin-scaffold-"));
+    const directory = await createScaffoldTestDirectory();
     directories.push(directory);
     await writeFile(path.join(directory, "notes.txt"), "keep me");
 

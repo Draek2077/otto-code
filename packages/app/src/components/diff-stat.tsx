@@ -2,21 +2,13 @@ import { useMemo } from "react";
 import { View, Text, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { compactUp } from "@/styles/theme";
+import { formatDiffCount } from "@/git/file-header-presentation";
 
 interface DiffStatProps {
   additions: number;
   deletions: number;
   style?: StyleProp<ViewStyle>;
   testID?: string;
-}
-
-const compactFormatter = new Intl.NumberFormat("en-US", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
-export function formatDiffCount(value: number): string {
-  return compactFormatter.format(value).toLowerCase();
 }
 
 export function DiffStat({ additions, deletions, style, testID }: DiffStatProps) {

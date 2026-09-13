@@ -17,7 +17,7 @@ import {
   resolveControlInteractionStyles,
   type FieldControlSize,
 } from "@/components/ui/control-geometry";
-import { Field } from "@/components/ui/form-field";
+import { Field, type FieldProps } from "@/components/ui/form-field";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 
@@ -43,6 +43,7 @@ export interface SelectFieldRenderOptionInput<TValue> {
 }
 
 export interface SelectFieldProps<TValue> {
+  Label?: FieldProps["Label"];
   label: string;
   value: TValue | null;
   selectedDisplay: SelectFieldDisplay | null;
@@ -71,6 +72,7 @@ export interface SelectFieldProps<TValue> {
 }
 
 export interface SelectFieldTriggerProps {
+  Label?: FieldProps["Label"];
   display?: SelectFieldDisplay | null;
   label?: string;
   isPlaceholder?: boolean;
@@ -123,6 +125,7 @@ function useVisibleSelectOptions<TValue>(
 }
 
 export function SelectFieldTrigger({
+  Label = Text,
   display,
   label: explicitLabel,
   isPlaceholder: explicitIsPlaceholder,
@@ -166,9 +169,9 @@ export function SelectFieldTrigger({
   return (
     <View pointerEvents="none" style={triggerStyle} testID={testID}>
       {leading}
-      <Text style={textStyle} numberOfLines={1}>
+      <Label style={textStyle} numberOfLines={1}>
         {label}
-      </Text>
+      </Label>
       {loading ? (
         <View style={styles.spinnerSlot}>
           <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedMapping} />
@@ -181,6 +184,7 @@ export function SelectFieldTrigger({
 
 export function SelectField<TValue>({
   label,
+  Label,
   value,
   selectedDisplay,
   options,
@@ -311,6 +315,7 @@ export function SelectField<TValue>({
         >
           {({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => (
             <SelectFieldTrigger
+              Label={field ? undefined : Label}
               display={selectedDisplay}
               placeholder={placeholder}
               hovered={Boolean(hovered)}
@@ -346,7 +351,7 @@ export function SelectField<TValue>({
   }
 
   return (
-    <Field label={label} hint={fieldHint} error={error} testID={testID}>
+    <Field Label={Label} label={label} hint={fieldHint} error={error} testID={testID}>
       {control}
     </Field>
   );

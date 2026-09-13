@@ -378,8 +378,8 @@ describe("auto-speech queue", () => {
 
   it("keeps reading while the app is backgrounded", async () => {
     // Auto-speech is for when you are NOT looking at the screen: nothing in the
-    // playback path may gate on visibility. The reveal's own off-screen snap is
-    // what keeps segments arriving (see turn-reveal).
+    // playback path may gate on visibility. The headless producer follows
+    // stream completion independently of visual reveal.
     const harness = createSpeaker();
     autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
     autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);

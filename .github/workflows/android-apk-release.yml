@@ -43,10 +43,7 @@ env:
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
 
 jobs:
-  # Its own job purely so the shared lock below is held for seconds instead of
-  # for the whole APK build. Leaving this as a step inside publish-android-apk
-  # would make Desktop Release wait out a fifteen-minute gradle run to create
-  # the release it is about to publish into.
+  # Keep release creation/wait separate from the expensive APK build.
   ensure-release:
     # On a `v*` tag Desktop Release creates the release and this job only waits
     # for it. On an `android-v*` retry tag Desktop Release does not run at all,
@@ -91,6 +88,7 @@ jobs:
             --tag "$RELEASE_TAG" \
             --repo "${{ github.repository }}" \
             --mode "$ENSURE_MODE" \
+            --draft \
             "${prerelease_flag[@]}"
 
   publish-android-apk:
@@ -379,4 +377,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$RELEASE_TAG" "${{ steps.artifact.outputs.asset_path }}" --clobber --repo "${{ github.repository }}"
+          release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
+          gh release upload "$release_lookup" "${{ steps.artifact.outputs.asset_path }}" --clobber --repo "${{ github.repository }}"
