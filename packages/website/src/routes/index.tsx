@@ -3,12 +3,23 @@ import { LandingPage } from "~/components/landing-page";
 import { pageMeta } from "~/meta";
 
 export const Route = createFileRoute("/")({
-  head: () =>
-    pageMeta(
+  head: () => {
+    const metadata = pageMeta(
       "Otto: the agentic coding assistant for Claude Code, Codex, Copilot, and local models",
       "A fully featured, self-hosted agentic coding assistant: frontier-model tooling (browser-verified previews, artifacts, rich permission modes) for every provider, cloud and local alike. Drive it from your desk or your phone. No required cloud service or account.",
       "/",
-    ),
+    );
+    return {
+      ...metadata,
+      meta: [
+        ...metadata.meta,
+        {
+          name: "ahrefs-site-verification",
+          content: "c31aa4957750063502ed5441f53ec97a36308e47321ba65eac0b5e4b04d1a97d",
+        },
+      ],
+    };
+  },
   component: Home,
 });
 
