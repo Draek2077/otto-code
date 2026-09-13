@@ -5,12 +5,11 @@
 // sides call it and this module must not value-import the shell; the shell
 // imports it back. Type-only imports from service.ts are erased at runtime,
 // so there is no module cycle.
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promises as fs, type Stats } from "fs";
 import type { FileHandle } from "fs/promises";
 import path from "path";
-import { promisify } from "util";
+import { runGitCommand } from "../../utils/run-git-command.js";
 import { writeFileAtomic } from "../atomic-file.js";
 import { expandUserPath, isSameOrDescendantPath, resolvePathFromBase } from "../path-utils.js";
 import type { ExplorerEntryKind, ReadFileParams, WriteExplorerFileResult } from "./service.js";
@@ -39,7 +38,6 @@ export interface ExplorerFileIdentity {
 export const ACCESS_OUTSIDE_WORKSPACE_MESSAGE = "Access outside of workspace is not allowed";
 
 const WORKSPACE_ROOT_TARGET_MESSAGE = "The workspace root cannot be created, renamed, or deleted";
-const execFileAsync = promisify(execFile);
 
 interface ScopedPathParams {
   root: string;
@@ -324,7 +322,7 @@ export async function renameExplorerEntry({
 
   const gitRoot = expandUserPath(root);
   if (await isGitTracked(gitRoot, source.relativePath)) {
-    await execFileAsync("git", ["mv", "--", source.relativePath, destination.relativePath], {
+    await runGitCommand(["mv", "--", source.relativePath, destination.relativePath], {
       cwd: gitRoot,
     });
   } else {
@@ -340,7 +338,7 @@ export async function renameExplorerEntry({
 
 async function isGitTracked(root: string, relativePath: string): Promise<boolean> {
   try {
-    await execFileAsync("git", ["ls-files", "--error-unmatch", "--", relativePath], { cwd: root });
+    await runGitCommand(["ls-files", "--error-unmatch", "--", relativePath], { cwd: root });
     return true;
   } catch {
     // Non-Git workspaces and untracked entries both use the filesystem path.

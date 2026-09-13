@@ -27,6 +27,7 @@ import {
  *   personal settings that otherwise reshape every header we read.
  * - `color.ui=false` defeats `color.ui=always`, which wraps patch lines in ANSI
  *   escapes even when stdout is a pipe.
+ * - `core.fsmonitor=false` prevents repository config from launching a command.
  *
  * `diff.external` cannot be pinned here: an empty value makes git exit with
  * "external diff died", so patch-producing commands pass `--no-ext-diff` instead.
@@ -34,6 +35,8 @@ import {
 const MACHINE_READABLE_GIT_CONFIG = [
   "-c",
   "core.quotepath=false",
+  "-c",
+  "core.fsmonitor=false",
   "-c",
   "diff.mnemonicPrefix=false",
   "-c",
