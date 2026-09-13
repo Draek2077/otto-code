@@ -3,10 +3,9 @@
     "setup": [
       "npm ci",
       "node ./scripts/seed-ios-native-cache.mjs",
-      "OTTO_DEV_MANAGED_HOME=1 OTTO_DEV_SEED_HOME=\"$OTTO_SOURCE_CHECKOUT_PATH/packages/desktop/.dev/otto-home\" OTTO_DEV_ROOT=\"$PWD\" ./scripts/dev-home.sh",
+      "node ./scripts/seed-worktree-dev-state.mjs",
       "npm run build:server",
-      "npm run build --workspace=@otto-code/expo-two-way-audio",
-      "cp \"$OTTO_SOURCE_CHECKOUT_PATH/packages/server/.env\" \"$PWD/packages/server/.env\""
+      "npm run build --workspace=@otto-code/expo-two-way-audio"
     ]
   },
   "scripts": {

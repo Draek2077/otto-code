@@ -18,8 +18,9 @@ seedOttoHome();
 copyServerEnv();
 
 function seedOttoHome() {
-  const source = process.env.OTTO_DEV_SEED_HOME || join(sourceRoot, ".dev/otto-home");
-  const target = join(targetRoot, ".dev/otto-home");
+  const source =
+    process.env.OTTO_DEV_SEED_HOME || join(sourceRoot, "packages/desktop/.dev/otto-home");
+  const target = join(targetRoot, "packages/desktop/.dev/otto-home");
 
   if (!existsSync(source)) {
     console.log(`  Seed:    skipped (${source} missing)`);
