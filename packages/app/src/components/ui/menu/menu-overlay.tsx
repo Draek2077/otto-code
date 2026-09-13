@@ -28,6 +28,8 @@ import { StyleSheet } from "react-native-unistyles";
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
 import { isWeb } from "@/constants/platform";
 import type { KeyboardFocusScope } from "@/keyboard/actions";
+import { resolveKeyboardFocusScope } from "@/keyboard/focus-scope";
+import { useMenuWebEnteringAnimation } from "./use-menu-web-entering-animation";
 import {
   getOverlayRoot,
   OverlayLayerProvider,
@@ -47,62 +49,17 @@ import {
 const SCROLL_CONTENT_STYLE = { flexGrow: 1 } as const;
 const CONTENT_ENTERING_DURATION_MS = 150;
 
-const contentEntering = new Keyframe({
-  0: { opacity: 0, transform: [{ scale: 0.97 }] },
-  100: { opacity: 1, transform: [{ scale: 1 }] },
-}).duration(CONTENT_ENTERING_DURATION_MS);
+const contentEntering = isWeb
+  ? undefined
+  : new Keyframe({
+      0: { opacity: 0, transform: [{ scale: 0.97 }] },
+      100: { opacity: 1, transform: [{ scale: 1 }] },
+    }).duration(CONTENT_ENTERING_DURATION_MS);
 
 const contentExiting = new Keyframe({
   0: { opacity: 1, transform: [{ scale: 1 }] },
   100: { opacity: 0, transform: [{ scale: 0.97 }] },
 }).duration(100);
-
-function releaseFixedMenuHeight(surfaceNativeID: string): void {
-  if (!isWeb) return;
-  document.getElementById(surfaceNativeID)?.style.removeProperty("height");
-}
-
-/**
- * Reanimated's web entering animation leaves an inline height snapshot on the measured surface.
- * Once the menu is open, height must return to content-sized so rows can grow in place — and so
- * a submenu page taller than the page it replaced is not clipped to the old height.
- *
- * `revision` is what makes that second case work: bump it whenever the rendered content changes
- * identity (a page push, for instance) and the snapshot is released again.
- */
-function useReleaseFixedMenuHeight({
-  contentSize,
-  enabled,
-  surfaceNativeID,
-  revision,
-}: {
-  contentSize: Size | null;
-  enabled: boolean;
-  surfaceNativeID: string;
-  revision?: string | number;
-}): void {
-  useEffect(() => {
-    if (!enabled) return undefined;
-
-    const release = () => {
-      releaseFixedMenuHeight(surfaceNativeID);
-      if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => releaseFixedMenuHeight(surfaceNativeID));
-      }
-    };
-    const timers: ReturnType<typeof setTimeout>[] = [
-      setTimeout(release, CONTENT_ENTERING_DURATION_MS),
-    ];
-
-    if (contentSize) {
-      timers.push(setTimeout(release, 0));
-    }
-
-    return () => {
-      for (const timer of timers) clearTimeout(timer);
-    };
-  }, [contentSize, enabled, surfaceNativeID, revision]);
-}
 
 /**
  * Resolves where an anchored surface sits: measures the anchor, measures the content, and runs
@@ -243,8 +200,6 @@ export interface AnchoredSurfaceProps {
   scrollViewRef?: Ref<ScrollView>;
   onScroll?: ScrollViewProps["onScroll"];
   onContentSizeChange?: ScrollViewProps["onContentSizeChange"];
-  /** Bump when the rendered content changes identity, so the height snapshot is released. */
-  revision?: string | number;
   /** A submenu sits inside its parent's overlay and must not paint a second backdrop. */
   backdrop?: boolean;
   /**
@@ -282,7 +237,6 @@ export function AnchoredSurface({
   scrollViewRef,
   onScroll,
   onContentSizeChange,
-  revision,
   backdrop = true,
   onPointerEnter,
   onPointerLeave,
@@ -317,20 +271,16 @@ export function AnchoredSurface({
     [],
   );
 
-  useReleaseFixedMenuHeight({
-    contentSize,
-    enabled: open,
-    surfaceNativeID,
-    revision,
-  });
-
   const isPositioned = position !== null;
+  useMenuWebEnteringAnimation(surfaceNativeID, open && isPositioned);
   useEffect(() => {
     if (!isWeb || !open || !contentSize || !isPositioned || typeof document === "undefined")
       return undefined;
     const frame = requestAnimationFrame(() => {
-      document
-        .getElementById(surfaceNativeID)
+      const surface = document.getElementById(surfaceNativeID);
+      // Filtering changes the content measurement; it must not take focus from the search field.
+      if (surface?.contains(document.activeElement)) return;
+      surface
         ?.querySelector<HTMLElement>('[data-menu-item="true"]:not([data-menu-disabled="true"])')
         ?.focus({ preventScroll: true });
     });
@@ -483,6 +433,8 @@ export function MenuOverlay({
       const target = event.target instanceof Element ? event.target : null;
       const surface = target?.closest<HTMLElement>('[data-menu-surface="true"]');
       if (!surface) return false;
+      if (resolveKeyboardFocusScope({ target, commandCenterOpen: false }) === "editable")
+        return false;
       const items = Array.from(
         surface.querySelectorAll<HTMLElement>(
           '[data-menu-item="true"]:not([data-menu-disabled="true"])',
