@@ -165,12 +165,3 @@ describe("runOccupiedDirectorySteer", () => {
     expect(occupiedError().sourceDirectory).toBe(DIRECTORY);
   });
 });
-
-test("does not offer or run worktree creation in User mode", async () => {
-  const h = harness({ allowWorktree: false, confirm: confirmReturning("alternate") });
-  await runOccupiedDirectorySteer(h.input);
-  expect(h.input.confirm).toHaveBeenCalledWith(
-    expect.objectContaining({ alternateLabel: undefined }),
-  );
-  expect(h.input.createWorktreeInstead).not.toHaveBeenCalled();
-});

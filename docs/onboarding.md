@@ -29,9 +29,11 @@ GitHub; this UI does not provision a remote or initialize a non-Git folder.
 
 Backup writes are offered only on main/master outside Otto-owned worktrees. Switching interface
 mode never switches a branch, moves files, creates a worktree, or uploads anything. Existing
-advanced workspaces remain visible and explain the backup restriction. Branch selectors, worktree
-creation choices, and PR actions stay out of User mode. New workspaces use the existing local
-workspace path and retain the user's Developer worktree preference without applying it.
+advanced workspaces remain visible and explain the backup restriction. New Workspace keeps its
+full Git setup in User mode: the branch and PR picker, the local or worktree isolation choice, and
+the create-worktree option for an occupied directory. It is the easiest way to start Git work, so
+User mode never hides it. The in-workspace branch switcher, branch meta, and PR actions stay out
+of User mode.
 
 The implementation stays in Otto's presentation modules (`git/backup-policy.ts`,
 `git/use-action-copy.ts`, and `git/workspace-backups.tsx`) with small composition-site changes.
