@@ -2,6 +2,30 @@
 
 All workspaces share one version and release together.
 
+## Google sign-in build input
+
+Desktop release builds read the repository Actions secret
+`OTTO_GOOGLE_OAUTH_CLIENT_JSON`, containing the publisher's Google **Desktop app**
+registration JSON. Configure it before publishing. All four desktop build paths
+pass it to the server build and require it when publishing; a missing registration
+fails the build instead of shipping disabled Google connectors.
+
+For local desktop or npm releases, set `OTTO_GOOGLE_OAUTH_CLIENT_FILE` to the
+publisher's downloaded registration and `OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT=1` in
+the shell running the release. Keep these variables available through `npm
+publish`: the server's `prepack` performs a clean rebuild. Supply only one of the
+file and JSON inputs. Never commit the registration or print its contents.
+See [connectors.md](connectors.md#daemon-ownership-and-publisher-configuration).
+
+The server's `prepublishOnly` hook requires the Google registration input even
+when the publisher forgets the opt-in environment flag. Slack and Dropbox's
+public registrations compile into `connector-oauth-registration.js`; they need
+no separate secret file. Desktop `afterPack` compares the OAuth broker, public
+registrations, Google authorization module and configured Google JSON against
+the files inside `app.asar`. Missing, empty or stale copies fail packaging before
+signing or publishing. Unconfigured development builds may omit Google's JSON;
+publishing desktop builds require it.
+
 ## Two steps
 
 A release has exactly two steps. The agent does the first, the user authorizes the second.

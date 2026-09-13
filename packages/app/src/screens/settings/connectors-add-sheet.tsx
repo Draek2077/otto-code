@@ -14,7 +14,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { StyleSheet } from "react-native-unistyles";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
+import {
+  hostedConnectorVendor,
+  HOSTED_CONNECTOR_DISCLOSURE,
+} from "@otto-code/protocol/connector-hosted-auth";
+import { useHostedConnectorFeature } from "./connectors-shared";
 import { signInGoogleConnector } from "./connectors-google-sign-in";
+import { CONNECTOR_CONSENT_MESSAGE, signInOauthConnector } from "./connectors-oauth-sign-in";
 import {
   AdaptiveModalSheet,
   SHEET_HORIZONTAL_PADDING_SCALE,
@@ -23,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ConnectorIdentity } from "@/components/connector-identity";
 import { isWeb } from "@/constants/platform";
+import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { SettingsSection } from "@/screens/settings/settings-section";
@@ -51,7 +58,6 @@ import {
   useConnectorOauthFeature,
   useGoogleConnectorFeature,
   usePatchMutation,
-  waitForOauthStatus,
 } from "./connectors-shared";
 
 const TRANSPORTS: ConnectorTransport[] = ["stdio", "http", "sse"];
@@ -132,10 +138,13 @@ function CatalogFilterChip(props: {
 function CatalogEntryRow(props: {
   entry: ConnectorCatalogEntry;
   installed: boolean;
+  pendingAuthorization: boolean;
   onSelect: (entry: ConnectorCatalogEntry) => void;
 }) {
-  const { entry, installed, onSelect } = props;
+  const { entry, installed, pendingAuthorization, onSelect } = props;
   const handlePress = useCallback(() => onSelect(entry), [onSelect, entry]);
+  let label = installed ? "Added" : setupSummary(entry);
+  if (pendingAuthorization) label = "Sign-in incomplete";
   return (
     <View style={settingsStyles.row} testID={`connectors-catalog-entry-${entry.id}`}>
       <ConnectorIdentity id={entry.id} label={entry.label}>
@@ -148,7 +157,7 @@ function CatalogEntryRow(props: {
         disabled={installed}
         testID={`connectors-catalog-entry-${entry.id}-add`}
       >
-        {installed ? "Added" : setupSummary(entry)}
+        {label}
       </Button>
     </View>
   );
@@ -164,6 +173,41 @@ interface InstallState {
 }
 
 const IDLE_INSTALL: InstallState = { phase: "idle", message: null };
+
+function CatalogInstallAction(props: {
+  authorizationUrl: string | null;
+  done: boolean;
+  canInstall: boolean;
+  isOauth: boolean;
+  entryId: string;
+  reopen(): void;
+  onDone(): void;
+  onInstall(): void;
+}) {
+  if (props.authorizationUrl)
+    return (
+      <Button onPress={props.reopen} variant="secondary" size="sm">
+        Open sign-in page
+      </Button>
+    );
+  if (props.done)
+    return (
+      <Button onPress={props.onDone} variant="secondary" size="sm">
+        Done
+      </Button>
+    );
+  return (
+    <Button
+      onPress={props.onInstall}
+      variant="default"
+      size="sm"
+      disabled={!props.canInstall}
+      testID={`connectors-install-${props.entryId}-submit`}
+    >
+      {props.isOauth ? "Connect" : "Add"}
+    </Button>
+  );
+}
 
 /**
  * The install panel for one catalog entry, expanded in place under its row so
@@ -184,16 +228,29 @@ function CatalogInstallPanel(props: {
   const client = useHostRuntimeClient(serverId);
   const hasOauth = useConnectorOauthFeature(serverId);
   const hasGoogleOauth = useGoogleConnectorFeature(serverId);
+  const hasHostedOauth = useHostedConnectorFeature(serverId);
+  const hosted = hostedConnectorVendor({ server: buildCatalogConnectorServer(entry.setup) });
   const { patchConfig } = useDaemonConfig(serverId);
   const [token, setToken] = useState("");
   const authorizationAbort = useRef<AbortController | null>(null);
+  const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
   useEffect(() => () => authorizationAbort.current?.abort(), []);
   const [state, setState] = useState<InstallState>(IDLE_INSTALL);
 
   const needsToken = entry.setup.kind === "token";
   const isOauth = entry.setup.kind === "oauth";
   const builtin = entry.setup.kind === "oauth" ? entry.setup.builtin : undefined;
-  const blockedOnHost = isOauth && (builtin ? !hasGoogleOauth : !hasOauth);
+  let authSupported = hasOauth;
+  let unavailableMessage = "Update the host to sign connectors in.";
+  if (builtin) {
+    authSupported = hasGoogleOauth;
+    unavailableMessage = "Google sign-in is unavailable in this host build.";
+  } else if (hosted) {
+    authSupported = hasHostedOauth;
+    unavailableMessage =
+      "Hosted sign-in is not enabled on this host. Update the host or contact its administrator.";
+  }
+  const blockedOnHost = isOauth && !authSupported;
   const busy =
     state.phase === "adding" || state.phase === "signing-in" || state.phase === "verifying";
   const canInstall =
@@ -204,6 +261,9 @@ function CatalogInstallPanel(props: {
       return;
     }
     const run = async (): Promise<void> => {
+      const controller = new AbortController();
+      authorizationAbort.current = controller;
+      setAuthorizationUrl(null);
       setState({ phase: "adding", message: null });
       const server = buildCatalogConnectorServer(entry.setup, token);
       const connector: ConnectorConfig = {
@@ -215,30 +275,33 @@ function CatalogInstallPanel(props: {
       };
       const result = await addVerifiedCatalogConnector({
         add: () => patchConfig(createAddConnectorPatch(config, connector)),
-        remove: (saved) => patchConfig(createRemoveConnectorPatch(saved, entry.id)),
+        remove: (saved) =>
+          patchConfig(
+            createRemoveConnectorPatch(
+              queryClient.getQueryData<MutableDaemonConfig>(daemonConfigQueryKey(serverId)) ??
+                saved,
+              entry.id,
+            ),
+          ),
         verify: async () => {
+          controller.signal.throwIfAborted();
           if (entry.setup.kind === "oauth") {
             setState({ phase: "signing-in", message: "Opening your browser to sign in…" });
             if (builtin) {
-              authorizationAbort.current?.abort();
-              const controller = new AbortController();
-              authorizationAbort.current = controller;
               await signInGoogleConnector(client, entry.id, controller.signal);
               await queryClient.invalidateQueries({
                 queryKey: ["connector-authorization", serverId],
               });
             } else {
-              const authorization = await client.connectorsOauthAuthorize(
-                entry.id,
-                entry.setup.scope,
-              );
-              if (authorization.status === "error")
-                throw new Error(authorization.error ?? "Sign-in failed.");
-              if (authorization.status === "redirect" && authorization.authorizationUrl) {
-                const settled = waitForOauthStatus(client, entry.id);
-                void openExternalUrl(authorization.authorizationUrl);
-                await settled;
-              }
+              await signInOauthConnector(client, entry.id, {
+                signal: controller.signal,
+                scope: entry.setup.scope,
+                onWaiting: (url) => {
+                  setAuthorizationUrl(url);
+                  setState({ phase: "signing-in", message: CONNECTOR_CONSENT_MESSAGE });
+                },
+              });
+              setAuthorizationUrl(null);
             }
           }
 
@@ -259,12 +322,21 @@ function CatalogInstallPanel(props: {
       });
     };
     void run().catch((error: unknown) => {
+      setAuthorizationUrl(null);
       setState({ phase: "error", message: toErrorMessage(error) ?? "Could not connect." });
     });
   }, [client, config, entry, patchConfig, token, builtin, queryClient, serverId]);
 
+  const reopen = useCallback(() => {
+    if (authorizationUrl)
+      void openExternalUrl(authorizationUrl).catch((error: unknown) => {
+        setState({ phase: "signing-in", message: toErrorMessage(error) });
+      });
+  }, [authorizationUrl]);
+
   return (
     <View style={styles.installPanel} testID={`connectors-install-${entry.id}`}>
+      {hosted ? <Text style={settingsStyles.rowHint}>{HOSTED_CONNECTOR_DISCLOSURE}</Text> : null}
       {builtin ? (
         <Text style={settingsStyles.rowHint}>
           Sign in with Google and approve access. Complete sign-in on the computer running this
@@ -295,9 +367,7 @@ function CatalogInstallPanel(props: {
 
       <View style={styles.installRow}>
         <View style={settingsStyles.rowContent}>
-          {blockedOnHost ? (
-            <Text style={settingsStyles.rowHint}>Update the host to sign connectors in.</Text>
-          ) : null}
+          {blockedOnHost ? <Text style={settingsStyles.rowHint}>{unavailableMessage}</Text> : null}
           {state.message ? (
             <Text
               style={state.phase === "error" ? settingsStyles.rowError : settingsStyles.rowHint}
@@ -307,21 +377,16 @@ function CatalogInstallPanel(props: {
             </Text>
           ) : null}
         </View>
-        {state.phase === "done" ? (
-          <Button onPress={onDone} variant="secondary" size="sm">
-            Done
-          </Button>
-        ) : (
-          <Button
-            onPress={handleInstall}
-            variant="default"
-            size="sm"
-            disabled={!canInstall}
-            testID={`connectors-install-${entry.id}-submit`}
-          >
-            {isOauth ? "Connect" : "Add"}
-          </Button>
-        )}
+        <CatalogInstallAction
+          authorizationUrl={authorizationUrl}
+          done={state.phase === "done"}
+          canInstall={canInstall}
+          isOauth={isOauth}
+          entryId={entry.id}
+          reopen={reopen}
+          onDone={onDone}
+          onInstall={handleInstall}
+        />
       </View>
     </View>
   );
@@ -617,6 +682,16 @@ export function AddConnectorSheet({ serverId, config, visible, onClose }: AddCon
                 <CatalogEntryRow
                   entry={entry}
                   installed={connectorExists(config, entry.id)}
+                  pendingAuthorization={
+                    entry.setup.kind === "oauth" &&
+                    !entry.setup.builtin &&
+                    !!config?.connectors?.some(
+                      (connector) =>
+                        connector.id === entry.id &&
+                        !connector.auth?.tokens &&
+                        !connector.auth?.hosted?.connected,
+                    )
+                  }
                   onSelect={handleSelectEntry}
                 />
                 {selectedId === entry.id ? renderInstall(entry) : null}

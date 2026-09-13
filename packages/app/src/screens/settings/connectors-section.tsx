@@ -27,6 +27,7 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { AddConnectorSheet } from "./connectors-add-sheet";
 import { GoogleConnectorAuth } from "./connectors-google-auth";
+import { OauthConnectorAuth } from "./connectors-oauth-auth";
 import {
   createRemoveConnectorPatch,
   createSetConnectorEnabledPatch,
@@ -195,6 +196,7 @@ function ConnectorCard(props: {
       </View>
 
       <GoogleConnectorAuth serverId={serverId} connector={connector} onChanged={refreshTools} />
+      <OauthConnectorAuth serverId={serverId} connector={connector} onChanged={refreshTools} />
       <View style={connectorStyles.borderedRow}>
         <Button
           onPress={toggleExpanded}

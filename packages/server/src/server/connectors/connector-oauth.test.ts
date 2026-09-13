@@ -1,11 +1,147 @@
 // The OAuth provider's storage half. The protocol half (discovery, PKCE, code
 // exchange) belongs to the MCP SDK and is not re-tested here; what is ours is
 // how tokens are persisted, which is where a silent logout comes from.
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
 
-import { createConnectorAuthProvider, hasUsableAuthorization } from "./connector-oauth.js";
+import {
+  ConnectorOAuthBroker,
+  createConnectorAuthProvider,
+  hasUsableAuthorization,
+} from "./connector-oauth.js";
 import { createMemoryConnectorAuthStore } from "./connector-auth-store.js";
+
+const nativeFetch = globalThis.fetch;
+const brokers: ConnectorOAuthBroker[] = [];
+
+afterEach(() => {
+  for (const broker of brokers.splice(0)) broker.closeAll();
+  vi.unstubAllGlobals();
+});
+
+function callbackFixture(error?: string) {
+  let registrations = 0;
+  let discoveries = 0;
+  const exchanges: URLSearchParams[] = [];
+  const store = createMemoryConnectorAuthStore();
+  const broker = new ConnectorOAuthBroker({ store, callbackPort: 0 });
+  brokers.push(broker);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/.well-known/oauth-protected-resource")) {
+        return Response.json({
+          resource: "https://mcp.linear.app/mcp",
+          authorization_servers: ["https://oauth.example.test"],
+        });
+      }
+      if (url.includes("/.well-known/oauth-authorization-server")) {
+        discoveries++;
+        return Response.json({
+          issuer: "https://oauth.example.test",
+          authorization_endpoint: "https://oauth.example.test/authorize",
+          token_endpoint: "https://oauth.example.test/token",
+          registration_endpoint: "https://oauth.example.test/register",
+          response_types_supported: ["code"],
+          code_challenge_methods_supported: ["S256"],
+          token_endpoint_auth_methods_supported: ["client_secret_post"],
+        });
+      }
+      if (url === "https://oauth.example.test/register") {
+        registrations++;
+        return Response.json({
+          ...JSON.parse(String(init?.body)),
+          client_id: `client-${registrations}`,
+          client_secret: "fixture-client-secret",
+        });
+      }
+      if (url === "https://oauth.example.test/token") {
+        exchanges.push(new URLSearchParams(String(init?.body)));
+        if (error)
+          return Response.json(
+            {
+              error,
+              error_description: "Vendor rejected fixture-code for fixture-client-secret <client>.",
+            },
+            { status: 400 },
+          );
+        return Response.json({
+          access_token: "fixture-access",
+          refresh_token: "fixture-refresh",
+          token_type: "Bearer",
+        });
+      }
+      throw new Error(`Unexpected OAuth request: ${url}`);
+    }),
+  );
+  async function start() {
+    const result = await broker.beginAuthorization({ connector: connector() });
+    if (result.status !== "redirect") throw new Error("Expected browser sign-in");
+    const authorization = new URL(result.authorizationUrl);
+    const callback = new URL(authorization.searchParams.get("redirect_uri")!);
+    callback.searchParams.set("state", authorization.searchParams.get("state")!);
+    callback.searchParams.set("code", "fixture-code");
+    return { authorization, callback };
+  }
+  return { broker, store, exchanges, start, counts: () => ({ registrations, discoveries }) };
+}
+
+describe("OAuth browser callback", () => {
+  test("exchanges once using the discovery and client that started consent", async () => {
+    const fixture = callbackFixture();
+    const { callback, authorization } = await fixture.start();
+    const response = await nativeFetch(callback);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Connected");
+    await fixture.broker.waitForCompletion("linear");
+    expect(fixture.counts()).toEqual({ registrations: 1, discoveries: 1 });
+    expect(fixture.exchanges).toHaveLength(1);
+    expect(fixture.exchanges[0]?.get("client_id")).toBe(
+      authorization.searchParams.get("client_id"),
+    );
+    expect(fixture.exchanges[0]?.get("redirect_uri")).toBe(
+      authorization.searchParams.get("redirect_uri"),
+    );
+    expect(fixture.store.read("linear")?.tokens?.accessToken).toBe("fixture-access");
+  });
+
+  test.each(["invalid_client", "unauthorized_client"])(
+    "preserves %s and re-registers only on the next Connect",
+    async (error) => {
+      const fixture = callbackFixture(error);
+      const { callback } = await fixture.start();
+      const response = await nativeFetch(callback);
+      expect(response.status).toBe(500);
+      const html = await response.text();
+      expect(html).toContain(error);
+      expect(html).toContain("Vendor rejected *** for *** &lt;client&gt;.");
+      expect(html).toContain("start a new sign-in");
+      expect(html).not.toContain("Existing OAuth client information");
+      await expect(fixture.broker.waitForCompletion("linear")).rejects.toThrow(
+        `${error}: Vendor rejected *** for *** <client>.`,
+      );
+      expect(fixture.counts()).toEqual({ registrations: 1, discoveries: 1 });
+      expect(fixture.exchanges).toHaveLength(1);
+      expect(fixture.store.read("linear")).toBeUndefined();
+      const next = await fixture.start();
+      expect(next.authorization.searchParams.get("client_id")).toBe("client-2");
+      expect(fixture.exchanges).toHaveLength(1);
+    },
+  );
+
+  test("does not retry an invalid authorization code or discard the client", async () => {
+    const fixture = callbackFixture("invalid_grant");
+    const { callback } = await fixture.start();
+    const response = await nativeFetch(callback);
+    expect(response.status).toBe(500);
+    expect(await response.text()).toContain("invalid_grant");
+    await expect(fixture.broker.waitForCompletion("linear")).rejects.toThrow("invalid_grant");
+    expect(fixture.exchanges).toHaveLength(1);
+    expect(fixture.store.read("linear")?.client?.clientId).toBe("client-1");
+    expect(fixture.store.read("linear")?.tokens).toBeUndefined();
+  });
+});
 
 function connector(auth?: ConnectorConfig["auth"]): ConnectorConfig {
   return {

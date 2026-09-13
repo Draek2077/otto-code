@@ -181,6 +181,8 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
           OTTO_DESKTOP_SMOKE: "1"
           OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
         run: |
@@ -284,6 +286,8 @@ jobs:
         env:
           EP_GH_IGNORE_TIME: true
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
           OTTO_DESKTOP_SMOKE: "1"
           OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
         run: |
@@ -388,6 +392,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
+          OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
           OTTO_DESKTOP_SMOKE: "1"
           OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
           # Use the system Python installed above; this skips the before-pack
@@ -493,6 +499,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
+          OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
           OTTO_DESKTOP_SMOKE: "1"
           OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
           # Use the system Python installed above; this skips the before-pack

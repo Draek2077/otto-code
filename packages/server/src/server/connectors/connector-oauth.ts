@@ -18,14 +18,31 @@
 import { createServer, type Server } from "node:http";
 import { randomUUID } from "node:crypto";
 import { AddressInfo } from "node:net";
+import { hostedConnectorVendor } from "@otto-code/protocol/connector-hosted-auth";
+import { getHostedConnectorAuthorization } from "./hosted-connector-authorization.js";
 import type { Logger } from "pino";
-import { auth, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import {
+  auth,
+  fetchToken,
+  selectResourceURL,
+  type OAuthClientProvider,
+  type OAuthDiscoveryState,
+} from "@modelcontextprotocol/sdk/client/auth.js";
+import {
+  InvalidClientError,
+  OAuthError,
+  UnauthorizedClientError,
+} from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type {
   OAuthClientInformationMixed,
   OAuthClientMetadata,
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { ConnectorAuthState, ConnectorConfig } from "@otto-code/protocol/provider-config";
+import {
+  getConnectorOAuthRegistration,
+  type ConnectorOAuthRegistration,
+} from "./connector-oauth-registration.js";
 
 /** How long an unfinished login holds its loopback port before giving up. */
 const AUTHORIZATION_TIMEOUT_MS = 5 * 60 * 1000;
@@ -57,6 +74,8 @@ export interface ConnectorOAuthBrokerOptions {
   logger?: Logger;
   /** Injected in tests to avoid binding a real socket. */
   now?: () => number;
+  /** Override the generic loopback port; zero selects an isolated port in tests. */
+  callbackPort?: number;
 }
 
 export interface BeginAuthorizationParams {
@@ -118,9 +137,11 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
   private readonly onRedirect: ((url: URL) => void) | undefined;
   private readonly stateValue: string;
   private readonly now: () => number;
+  private readonly registration: ConnectorOAuthRegistration | undefined;
   // PKCE verifier is per-flow and never persisted: it is only meaningful
   // between the authorization request and the code exchange minutes later.
   private verifier: string | undefined;
+  private discovery: OAuthDiscoveryState | undefined;
 
   constructor(params: {
     connectorId: string;
@@ -130,6 +151,7 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
     now: () => number;
     onRedirect?: (url: URL) => void;
     isActive?: () => boolean;
+    registration?: ConnectorOAuthRegistration;
   }) {
     this.connectorId = params.connectorId;
     this.store = params.store;
@@ -137,6 +159,7 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
     this.stateValue = params.state;
     this.now = params.now;
     this.isActive = params.isActive ?? (() => true);
+    this.registration = params.registration;
     this.onRedirect = params.onRedirect;
   }
 
@@ -161,6 +184,7 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
 
   clientInformation(): OAuthClientInformationMixed | undefined {
     if (!this.isActive()) return undefined;
+    if (this.registration) return { client_id: this.registration.clientId };
     const stored = this.store.read(this.connectorId)?.client;
     // A registration made against a different redirect URI cannot be reused:
     // the authorization server will reject the mismatch at the authorize step.
@@ -175,6 +199,8 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
 
   saveClientInformation(clientInformation: OAuthClientInformationMixed): void {
     if (!this.isActive()) throw new Error("This authorization attempt is no longer active.");
+    if (this.registration)
+      throw new Error("This connector uses Otto's registered public OAuth client.");
     const current = this.store.read(this.connectorId);
     this.store.write(this.connectorId, {
       kind: "oauth",
@@ -191,7 +217,7 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
 
   tokens(): OAuthTokens | undefined {
     if (!this.isActive()) return undefined;
-    const stored = this.store.read(this.connectorId)?.tokens;
+    const stored = this.readAuthorization()?.tokens;
     if (!stored) {
       return undefined;
     }
@@ -205,7 +231,7 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
 
   saveTokens(tokens: OAuthTokens): void {
     if (!this.isActive()) throw new Error("This authorization attempt is no longer active.");
-    const current = this.store.read(this.connectorId);
+    const current = this.readAuthorization();
     // A refresh token is often omitted on refresh responses; keeping the
     // previous one is the difference between staying logged in and being
     // silently logged out on the next expiry.
@@ -213,6 +239,15 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
     this.store.write(this.connectorId, {
       kind: "oauth",
       ...current,
+      ...(this.registration
+        ? {
+            resourceUrl: this.registration.serverUrl,
+            client: {
+              clientId: this.registration.clientId,
+              redirectUri: this.registration.redirectUri,
+            },
+          }
+        : {}),
       tokens: {
         accessToken: tokens.access_token,
         tokenType: tokens.token_type,
@@ -226,11 +261,57 @@ class ConnectorOAuthProvider implements OAuthClientProvider {
     });
   }
 
+  private readAuthorization(): ConnectorAuthState | undefined {
+    const current = this.store.read(this.connectorId);
+    if (
+      this.registration &&
+      (current?.client?.clientId !== this.registration.clientId ||
+        current.client.clientSecret !== undefined ||
+        current.client.redirectUri !== this.registration.redirectUri ||
+        current.resourceUrl !== this.registration.serverUrl)
+    )
+      return undefined;
+    return current;
+  }
+
+  saveDiscoveryState(state: OAuthDiscoveryState): void {
+    const metadata = state.authorizationServerMetadata;
+    if (
+      this.registration &&
+      (state.authorizationServerUrl !== this.registration.authorizationServerUrl ||
+        metadata?.authorization_endpoint !== this.registration.authorizationEndpoint ||
+        metadata?.token_endpoint !== this.registration.tokenEndpoint)
+    ) {
+      throw new Error(
+        "The connector's authorization endpoints no longer match Otto's app registration.",
+      );
+    }
+    this.discovery = state;
+  }
+
+  async completeAuthorization(serverUrl: string, authorizationCode: string): Promise<void> {
+    if (!this.isActive() || !this.clientInformation() || !this.discovery) {
+      throw new Error("Authorization is no longer in progress; start the connection again.");
+    }
+    // A code belongs to the original client, redirect and discovery result.
+    // auth() clears rejected clients and retries the same code, hiding the
+    // vendor's error behind a missing-client error. Exchange exactly once.
+    const tokens = await fetchToken(this, this.discovery.authorizationServerUrl, {
+      metadata: this.discovery.authorizationServerMetadata,
+      resource: await selectResourceURL(serverUrl, this, this.discovery.resourceMetadata),
+      authorizationCode,
+    });
+    this.saveTokens(tokens);
+  }
+
   redirectToAuthorization(authorizationUrl: URL): void {
     if (!this.onRedirect) {
       throw new Error(
         "This connector needs you to sign in again. Open Settings > Connectors and choose Reconnect.",
       );
+    }
+    for (const [key, value] of Object.entries(this.registration?.authorizationParams ?? {})) {
+      authorizationUrl.searchParams.set(key, value);
     }
     this.onRedirect(authorizationUrl);
   }
@@ -283,6 +364,11 @@ export function createConnectorAuthProvider(params: {
   store: ConnectorAuthStore;
   now?: () => number;
 }): OAuthClientProvider | undefined {
+  if (hostedConnectorVendor(params.connector)) {
+    const hosted = getHostedConnectorAuthorization();
+    if (hosted) return hosted.provider(params.connector);
+    throw new Error("Hosted connector sign-in is unavailable on this host.");
+  }
   const state = params.store.read(params.connector.id);
   if (
     state?.resourceUrl &&
@@ -292,12 +378,17 @@ export function createConnectorAuthProvider(params: {
   if (!state?.tokens) {
     return undefined;
   }
+  const registration = getConnectorOAuthRegistration(params.connector);
   return new ConnectorOAuthProvider({
     connectorId: params.connector.id,
     store: params.store,
     // Refresh never redirects, but the SDK still sends redirect_uri on the
     // token request, so it has to match what the client registered with.
-    redirectUri: state.client?.redirectUri ?? loopbackRedirectUri(PREFERRED_CALLBACK_PORT),
+    redirectUri:
+      registration?.redirectUri ??
+      state.client?.redirectUri ??
+      loopbackRedirectUri(PREFERRED_CALLBACK_PORT),
+    registration,
     state: "",
     now: params.now ?? Date.now,
     isActive: () => {
@@ -339,6 +430,7 @@ export class ConnectorOAuthBroker {
   private readonly store: ConnectorAuthStore;
   private readonly logger: Logger | undefined;
   private readonly now: () => number;
+  private readonly callbackPort: number;
   private readonly pending = new Map<string, PendingFlow>();
   private readonly completions = new Map<string, Promise<void>>();
 
@@ -346,6 +438,7 @@ export class ConnectorOAuthBroker {
     this.store = options.store;
     this.logger = options.logger;
     this.now = options.now ?? Date.now;
+    this.callbackPort = options.callbackPort ?? PREFERRED_CALLBACK_PORT;
   }
 
   /**
@@ -355,6 +448,15 @@ export class ConnectorOAuthBroker {
    */
   async beginAuthorization(params: BeginAuthorizationParams): Promise<BeginAuthorizationResult> {
     const { connector } = params;
+    if (hostedConnectorVendor(connector)) {
+      if (params.oauthClient)
+        throw new Error("Publisher credentials cannot be supplied by a client.");
+      const hosted = getHostedConnectorAuthorization();
+      if (!hosted) throw new Error("Hosted connector sign-in is unavailable on this host.");
+      const result = await hosted.start(connector.id);
+      this.completions.set(connector.id, hosted.waitForCompletion(connector.id));
+      return result;
+    }
     if (connector.server.type === "stdio") {
       throw new Error("OAuth applies to remote connectors; this one runs a local command.");
     }
@@ -364,8 +466,9 @@ export class ConnectorOAuthBroker {
     this.cancel(connector.id, "Superseded by a new connection attempt.");
 
     const state = randomUUID();
-    const { server, port } = await this.listen();
-    const redirectUri = loopbackRedirectUri(port);
+    const registration = getConnectorOAuthRegistration(connector);
+    const { server, port } = await this.listen(registration);
+    const redirectUri = registration?.redirectUri ?? loopbackRedirectUri(port);
     let capturedUrl: URL | undefined;
     const provider = new ConnectorOAuthProvider({
       connectorId: connector.id,
@@ -373,6 +476,7 @@ export class ConnectorOAuthBroker {
       redirectUri,
       state,
       now: this.now,
+      registration,
       isActive: () => this.pending.get(connector.id)?.state === state,
       onRedirect: (url) => {
         capturedUrl = url;
@@ -419,7 +523,7 @@ export class ConnectorOAuthBroker {
     });
 
     try {
-      const scope = params.scope;
+      const scope = registration?.scopes.join(" ") ?? params.scope;
       const result = await auth(provider, {
         serverUrl,
         ...(scope ? { scope } : {}),
@@ -464,7 +568,14 @@ export class ConnectorOAuthBroker {
   }
 
   /** Drop a connector's authorization entirely (the Disconnect button). */
-  disconnect(connectorId: string): void {
+  async disconnect(connectorId: string): Promise<void> {
+    if (
+      this.store.read(connectorId)?.hosted ||
+      getHostedConnectorAuthorization()?.hasConnection(connectorId)
+    ) {
+      await getHostedConnectorAuthorization()?.disconnect(connectorId);
+      return;
+    }
     this.cancel(connectorId, "Disconnected.");
     this.store.write(connectorId, null);
   }
@@ -520,10 +631,7 @@ export class ConnectorOAuthBroker {
       return;
     }
     try {
-      const result = await auth(flow.provider, {
-        serverUrl: flow.serverUrl,
-        authorizationCode: code,
-      });
+      await flow.provider.completeAuthorization(flow.serverUrl, code);
       if (this.pending.get(connectorId) !== flow) {
         this.respond(
           res,
@@ -533,13 +641,16 @@ export class ConnectorOAuthBroker {
         );
         return;
       }
-      if (result !== "AUTHORIZED") {
-        throw new Error("The authorization server did not issue a token.");
-      }
       this.respond(res, 200, "Connected", "You can close this tab and return to Otto.");
       this.finish(connectorId, { ok: true });
     } catch (err) {
-      const message = this.describeError(connectorId, err).replaceAll(code, "***");
+      let message = this.describeError(connectorId, err).replaceAll(code, "***");
+      if (err instanceof InvalidClientError || err instanceof UnauthorizedClientError) {
+        // Redact before clearing secrets, and leave re-registration to a new
+        // browser attempt whose code can actually belong to the new client.
+        flow.provider.invalidateCredentials("all");
+        message += " Return to Otto and choose Connect or Reconnect to start a new sign-in.";
+      }
       this.respond(res, 500, "Sign-in failed", message);
       if (this.pending.get(connectorId) === flow)
         this.finish(connectorId, { ok: false, error: message });
@@ -583,11 +694,24 @@ export class ConnectorOAuthBroker {
     }
   }
 
-  private async listen(): Promise<{ server: Server; port: number }> {
+  private async listen(
+    registration?: ConnectorOAuthRegistration,
+  ): Promise<{ server: Server; port: number }> {
     const server = createServer();
+    const requestedPort = registration
+      ? Number(new URL(registration.redirectUri).port)
+      : this.callbackPort;
     const port = await new Promise<number>((resolve, reject) => {
       const onError = (err: NodeJS.ErrnoException): void => {
         if (err.code === "EADDRINUSE") {
+          if (registration) {
+            reject(
+              new Error(
+                `Otto's connector sign-in port ${requestedPort} is in use. Finish the other sign-in and try again.`,
+              ),
+            );
+            return;
+          }
           // Fall back to an ephemeral port. Costs a re-registration, beats
           // failing the login because something else holds the preferred port.
           server.listen(0, "127.0.0.1");
@@ -605,12 +729,13 @@ export class ConnectorOAuthBroker {
         }
         resolve(address.port);
       });
-      server.listen(PREFERRED_CALLBACK_PORT, "127.0.0.1");
+      server.listen(requestedPort, "127.0.0.1");
     });
     return { server, port };
   }
 }
 
 function describeError(error: unknown): string {
+  if (error instanceof OAuthError) return `${error.errorCode}: ${error.message}`;
   return error instanceof Error ? error.message : String(error);
 }

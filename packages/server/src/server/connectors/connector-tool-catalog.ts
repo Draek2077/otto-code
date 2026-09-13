@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { z } from "zod";
 import type { Logger } from "pino";
 import { googleConnectorForUrl, type ConnectorConfig } from "@otto-code/protocol/provider-config";
 import {
@@ -11,6 +10,9 @@ import type { ManagedProcessRegistry } from "../managed-processes/managed-proces
 import type { ConnectorAuthStore } from "./connector-oauth.js";
 import { connectorToolName } from "./connector-tool-name.js";
 import type { GoogleConnectorService } from "./google-connector-service.js";
+import { connectorInputSchema } from "./connector-input-schema.js";
+import { hostedConnectorVendor } from "@otto-code/protocol/connector-hosted-auth";
+import { getHostedConnectorAuthorization } from "./hosted-connector-authorization.js";
 
 interface CachedConnector {
   fingerprint: string;
@@ -28,6 +30,8 @@ function connectionFingerprint(connector: ConnectorConfig): string {
         connector.auth?.client,
         !!connector.auth?.tokens,
         connector.auth?.resourceUrl,
+        connector.auth?.hosted,
+        connector.auth?.authorizedAt,
       ]),
     )
     .digest("hex");
@@ -77,6 +81,7 @@ export class ConnectorToolCatalogService {
     const enabled = connectors.filter(
       (connector) =>
         connector.enabled !== false &&
+        (!hostedConnectorVendor(connector) || connector.auth?.hosted?.connected === true) &&
         (connector.builtin ||
           connector.server.type === "stdio" ||
           !googleConnectorForUrl(connector.server.url) ||
@@ -148,6 +153,7 @@ export class ConnectorToolCatalogService {
                 additionalSecrets: () => {
                   const auth = this.deps.authStore.read(connector.id);
                   return [
+                    ...(getHostedConnectorAuthorization()?.additionalSecrets(connector.id) ?? []),
                     auth?.tokens?.accessToken,
                     auth?.tokens?.refreshToken,
                     auth?.client?.clientSecret,
@@ -164,7 +170,7 @@ export class ConnectorToolCatalogService {
           for (const binding of current.manager.getToolBindings()) {
             if (connector.disabledTools?.includes(binding.toolName)) continue;
             try {
-              const inputSchema = z.fromJSONSchema(binding.parameters);
+              const inputSchema = connectorInputSchema(binding.parameters);
               definitions.push({
                 name: connectorToolName(connector.id, binding.toolName),
                 title: `${connector.label}: ${binding.toolName}`,

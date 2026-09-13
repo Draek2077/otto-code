@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { createHash } = require("crypto");
+const { extractFile, uncache } = require("@electron/asar");
 
 const { smokePackagedDesktopApp } = require("../e2e/packaged-app-smoke.js");
 
@@ -19,6 +20,58 @@ function getResourcesDir(appOutDir, platform) {
   return platform === "darwin"
     ? path.join(appOutDir, `${EXECUTABLE_NAME}.app`, "Contents", "Resources")
     : path.join(appOutDir, "resources");
+}
+
+function verifyBundledConnectorOAuth(
+  appOutDir,
+  platform,
+  projectDir,
+  requireGoogle = process.env.OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT === "1",
+) {
+  const archive = path.join(getResourcesDir(appOutDir, platform), "app.asar");
+  const compiledDirectory = path.resolve(projectDir, "../server/dist/server/server/connectors");
+  // Verify the actual archive, not just the staging directory or a files glob.
+  // Slack and Dropbox public registrations compile into JS. Google also needs
+  // its publisher JSON beside the authorization module. Compare build output
+  // with the archive before an installer can be signed or published.
+  uncache(archive);
+  const googleAsset = "google-oauth-client.json";
+  const hasGoogleAsset = fs.existsSync(path.join(compiledDirectory, googleAsset));
+  if (requireGoogle && !hasGoogleAsset) {
+    throw new Error("Google sign-in registration is required for this release.");
+  }
+  for (const file of [
+    "connector-oauth.js",
+    "connector-oauth-registration.js",
+    "google-connector-authorization.js",
+    googleAsset,
+  ]) {
+    const entry = path.join(
+      "node_modules",
+      "@otto-code",
+      "server",
+      "dist",
+      "server",
+      "server",
+      "connectors",
+      file,
+    );
+    let bundled;
+    try {
+      bundled = extractFile(archive, entry);
+    } catch {
+      if (file === googleAsset && !hasGoogleAsset) continue;
+      throw new Error(`Bundled connector OAuth runtime is missing: ${entry}`);
+    }
+    if (file === googleAsset && !hasGoogleAsset) {
+      throw new Error("Bundled Google registration is unexpected for this unconfigured build.");
+    }
+    const expected = fs.readFileSync(path.join(compiledDirectory, file));
+    if (expected.length === 0 || !expected.equals(bundled)) {
+      throw new Error(`Bundled connector OAuth runtime is stale or empty: ${entry}`);
+    }
+  }
+  console.log("Verified bundled connector OAuth runtime and publisher registrations.");
 }
 
 function verifyBundledZoomRecorder(appOutDir, platform, arch) {
@@ -194,6 +247,7 @@ exports.default = async function afterPack(context) {
   const platform = context.electronPlatformName;
   const arch = ARCH_MAP[context.arch] || process.arch;
 
+  verifyBundledConnectorOAuth(context.appOutDir, platform, context.packager.projectDir);
   verifyBundledZoomRecorder(context.appOutDir, platform, arch);
   verifyBundledWakeWordModel(context.appOutDir, platform);
   pruneNativeModules(context.appOutDir, platform, arch);
@@ -211,6 +265,7 @@ exports.default = async function afterPack(context) {
 
 exports.verifyBundledWakeWordModel = verifyBundledWakeWordModel;
 exports.verifyBundledZoomRecorder = verifyBundledZoomRecorder;
+exports.verifyBundledConnectorOAuth = verifyBundledConnectorOAuth;
 
 async function smokeUnpackedAppIfRequested(appOutDir) {
   if (process.env.OTTO_DESKTOP_SMOKE !== "1") {

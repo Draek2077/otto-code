@@ -1,0 +1,103 @@
+# Shared connector authentication
+
+Otto has one reusable publisher authentication service for connectors whose vendors require a confidential OAuth application. Box is its first adapter. The service lives in `packages/auth-service`; its daemon driver lives in `packages/server/src/server/connectors/hosted-connector-authorization.ts`.
+
+This is an opt-in implementation until its deployment and vendor distribution are approved and verified. The daemon advertises `server_info.features.connectorHostedOauth` only when `OTTO_CONNECTOR_AUTH_URL` is configured. Shipping source does not establish public availability. End users should receive a working publisher configuration through the normal host release; they should not register developer apps or supply publisher secrets.
+
+## Why this service exists
+
+Vendors choose different OAuth client policies. Some support dynamic client registration; others accept a registered public client using PKCE. These can authenticate directly. Box's published authorization metadata omits dynamic registration and advertises confidential client authentication. The verified Box registration requires its client secret even with PKCE. A secret embedded in the desktop app would be extractable by every recipient.
+
+The service holds that publisher secret at runtime, exchanges authorization codes, renews grants and attempts revocation. It is not a Box account shared among Otto users. Each person approves their own account and permissions. Future compatible vendors add allowlisted adapters and secret bindings to this same service, not another deployed application. Vendors with different protocols still require adapter work and verification; a generic broker cannot remove vendor approval requirements.
+
+## Ownership and flow
+
+1. The client sends the existing connector sign-in request to its selected daemon over Otto's established authenticated transport. The daemon generates a random 256-bit possession proof and sends its SHA-256 hash to the service with a vendor identifier. User-supplied OAuth clients, endpoints and scopes cannot override publisher policy.
+2. The service creates one Durable Object grant and returns a browser URL. The daemon polls it using the possession proof. The proof never reaches the browser, the client protocol, a model's configuration, or a log.
+3. The browser displays Otto's disclosure and an explicit Continue button, then sends the user to the vendor. Only approve flows you started from your selected host; approving a link supplied by another person could authorize their host. The vendor displays consent and handles credentials, MFA and its own account policies.
+4. The service validates the vendor-specific random state and stores the returned code temporarily. It generates and retains the vendor PKCE verifier until exchange. The fixed HTTPS callback does not require a port on the daemon or a browser on the same computer.
+5. Authenticated collection consumes the code exactly once. The service exchanges it using the publisher secret and PKCE verifier, returns the token set directly to the initiating daemon, and persists only a hash of the current refresh token plus connection metadata.
+6. The daemon stores the tokens, service origin, vendor/resource binding, grant identifier and possession proof in the existing host credential vault. Only account label, scopes, connection status and authorization time are projected into daemon configuration. Box account-label lookup runs directly from the daemon to Box; its failure does not invent an account identity.
+7. Existing connector MCP clients obtain access tokens from the hosted driver. The daemon serializes refreshes across all model providers. Tool discovery and calls remain daemon-to-vendor traffic, subject to Otto's connector enablement and per-tool controls.
+
+The service is not an MCP/content proxy, an agent harness, an Otto relay replacement, or a new client connection protocol. Desktop, mobile and web all use the selected host and existing browser-opening abstraction. Old clients continue parsing protocol messages; the new feature requires its optional capability. Direct connectors retain their existing auth paths. Their existing callback restrictions are not changed by this feature.
+
+## Security and data inventory
+
+| Location                       | Data and authority                                                                                                                                                    | Retention and exposure                                                                                                                                                                         |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vendor                         | User login, MFA, consent, account data, issued grant                                                                                                                  | Controlled by the vendor and user's organization policies                                                                                                                                      |
+| Shared service secret bindings | Publisher client ID and confidential secret, separately configured per environment/vendor                                                                             | Runtime access only; never packaged with the host/client or copied into ordinary CI variables                                                                                                  |
+| Shared service live storage    | Vendor ID, random OAuth state, PKCE verifier and authorization code during consent; possession-proof hash, current refresh-token hash, stage and expiry for the grant | Sign-in lifetime five minutes; active metadata lifetime 90 days from collection or successful renewal. Alarms schedule expired data deletion. Reads enforce expiry even if an alarm is delayed |
+| Shared service memory          | Authorization codes and access/refresh tokens while processing exchange, renewal and revocation                                                                       | No application-level persistent access/refresh-token store. Network/runtime memory and platform administration remain trust boundaries                                                         |
+| Host vault                     | Access and refresh tokens, possession proof, grant and endpoint binding                                                                                               | Until disconnect/removal; unavailable vault fails closed. Host OS/user security and backups govern physical retention                                                                          |
+| Host/client metadata           | Account label, scopes, status and authorization time                                                                                                                  | Visible to people who can access the selected host's settings                                                                                                                                  |
+| Model provider                 | Tool descriptions and results when a chat uses the connector                                                                                                          | Governed by the selected model provider and Otto's existing task/permission behavior                                                                                                           |
+
+The application does **not** promise physical erasure at the expiry timestamp. Cloudflare storage backups, infrastructure retention and administrative access have separate policies. These must be reviewed for the deployed account and reflected in public privacy disclosures. The service has Worker observability disabled and emits no request, token, code or exception-body logs. Do not enable request logging, HTTP Logpush, tails, tracing or WAF captures containing callback URLs, headers or bodies without a reviewed redaction and retention policy. Aggregate health/status/rate metrics are the intended operational signals.
+
+This service is not zero knowledge. A compromised Worker, deployment credential, dependency, cloud account or operator could intercept live tokens and use the permissions users approved. One runtime serves several vendors; separate secret names do not contain a runtime compromise to one vendor. A compromised host can access that host's stored connections. Scope minimization, restricted deployment rights, protected branches/environments, secret rotation, incident response and vendor revocation remain necessary.
+
+Authorization and renewal endpoints accept only configured vendors. Redirects from token endpoints are rejected, caller-provided endpoints/scopes are ignored, browser cross-origin requests are refused, and public token retrieval requires the initiating host's proof. Renewal/revocation additionally match the hash of the current refresh token. The Durable Object serializes grant transitions and persists a consuming stage before external calls. It never retries a code or refresh token after an ambiguous exchange failure, crash, or lost response; reauthorization is required. These possession proofs are per-connection capabilities, not claims of hardware attestation or a global Otto login.
+
+## Disconnect, revocation and outages
+
+Disconnect invalidates the daemon's active attempt/generation, attempts vendor revocation, then removes credentials from the host vault and local metadata. It also handles pending attempts. If vendor revocation cannot be confirmed, the client receives an explicit message that local credentials were removed and that the user should remove Otto in the vendor's account settings. Removing local credentials is not proof of vendor revocation. Changes to a connector's endpoint never retarget its existing credentials.
+
+Existing unexpired access tokens continue working during an auth-service outage because calls go directly to the vendor. New sign-in and refresh require the service. An ambiguous renewal failure marks the connection for reauthorization rather than replaying a possibly consumed rotating refresh token. If reconnect cannot revoke the prior grant, disconnect and remove Otto in the vendor's settings before signing in again. Long-idle connections whose service metadata expires need fresh consent.
+
+The shared service does not preserve recoverable token responses centrally. If a response is lost or the host closes before saving it, the user may need to revoke the orphaned grant at the vendor and connect again. Browser closure alone does not revoke a vendor grant.
+
+## Vendor adapters
+
+Consent documents use `Referrer-Policy: same-origin` so browser form submissions retain the origin required by the service. `no-referrer` can produce `Origin: null` on a form POST and must not be used on this document. Callbacks and outbound authorization redirects retain `no-referrer`. The consent document and redirect response restrict CSP `form-action` to the service itself, the registered authorization origin and vendor-owned redirect origins explicitly listed by the adapter. Box's signed-in flow continues from `account.box.com` to `app.box.com`; both must be allowed. Verify an actual browser button click, since manually supplied HTTP Origin headers do not exercise browser referrer policy or CSP redirect enforcement.
+
+`src/vendors.ts` owns fixed authorize/token/revoke endpoints, client bindings, requested scopes and consent descriptions. `connector-hosted-auth.ts` in the protocol package owns only public endpoint routing and common disclosure text. The daemon's `hosted-connector-account.ts` optionally resolves a safe account label through vendor APIs. New vendors must satisfy the existing authorization-code/PKCE/rotating-token contract or extend it explicitly with tests. Do not route arbitrary custom MCP endpoints through publisher credentials.
+
+Box uses `root_readwrite ai.readwrite`. This permits content changes and AI features as authorized by the account. Per-tool switches restrict Otto's advertised/executable tools, but do not narrow the vendor OAuth grant itself. Review narrower scopes against the desired tool catalog before changing the publisher policy. Box organization policies, plans and distribution approval can restrict users independently of Otto's code. Developer-enterprise success is not evidence of access for unrelated accounts.
+
+## CI/CD and deployment procedure
+
+The single `.github/workflows/deploy-auth-service.yml` verifies source and a Worker dry build without vendor secrets. After bootstrap is explicitly enabled, relevant main-branch pushes deploy staging; a manual workflow selects production. The default worker does not have a public route. Staging and production are isolated environments of this service, with separate grant storage and secret bindings.
+
+Before the first deployment:
+
+1. Review the service threat model and an independent security assessment, domain ownership, expected traffic, cloud costs, billing alerts and abuse controls. The in-code rate limiter is per Cloudflare location and is not a global quota or spending cap. Large NAT networks share IP budgets. Tune with realistic load and add account-level protections before broad distribution.
+2. Confirm the Cloudflare account and reserve unique rate-limit namespaces. `wrangler.toml` defines `auth-staging.otto-code.me` and `auth.otto-code.me`, SQLite Durable Object migration `v1`, and nonsecret origin configuration. Inspect a dry build before applying migrations/routes. Do not reset active Durable Object data during upgrades.
+3. Create protected GitHub Environments `auth-staging` and `auth-production`. Restrict production to main and require human reviewers. Give each environment an `AUTH_CLOUDFLARE_API_TOKEN` with the minimum account permissions needed to deploy this Worker/bindings/routes, and `CLOUDFLARE_ACCOUNT_ID` as an environment variable. Confirm actual Cloudflare permission granularity; do not claim a token is isolated to one Worker unless it is. Anyone able to deploy code that reads runtime secrets is a credential custodian even without direct secret-view rights.
+4. Provision `BOX_CLIENT_ID` and `BOX_CLIENT_SECRET` directly as Worker runtime secrets for each environment using the approved secure channel. Use separate vendor registrations for staging and production. Never put a secret in repository files, `.env` files outside ignored scratch space, command arguments, CI output, screenshots, client JSON or packaged artifacts. If using Wrangler's interactive secret input, keep it out of captured tool output. No vendor secret is required for pull-request checks or normal code deployment.
+5. Register the exact callbacks `https://auth-staging.otto-code.me/v1/callback` and `https://auth.otto-code.me/v1/callback` on the corresponding vendor apps. Prepare user-facing app branding, consent, privacy/support URLs and required public distribution review. Retire temporary probe callbacks after the hosted flow is proven.
+6. Set repository variable `AUTH_SERVICE_DEPLOY_ENABLED=true` only after that review. Run staging deployment, verify `/health`, then perform real consent, tool enumeration, a harmless tool call, forced refresh and revocation against a permitted staging account. Health alone does not validate OAuth or vendor secrets.
+7. Verify browser consent from desktop, mobile and web controlling a remote host, credential absence from client protocol/renderer/provider launch config, stale-client capability behavior, all supported model-provider tool catalogs, and packaged host secret exclusion. Obtain proof from an unrelated allowed Box account before claiming public distribution works.
+8. Promote the reviewed commit through the protected production environment. Verify the same live flow, then set the tested publisher default in the host release and release the client/daemon capability together. Ordinary users receive a Sign in flow; host administrators may use `OTTO_CONNECTOR_AUTH_URL` for controlled environments. This flag is not a replacement for shipping the verified publisher default.
+
+Local verification commands:
+
+```sh
+npm run typecheck --workspace=@otto-code/auth-service
+npm run lint -- packages/auth-service/src
+npx vitest run packages/auth-service/src/grant.test.ts packages/auth-service/src/worker.test.ts --bail=1
+npx vitest run packages/server/src/server/connectors/hosted-connector-authorization.test.ts --bail=1
+npm run build --workspace=@otto-code/auth-service
+npm run test:runtime --workspace=@otto-code/auth-service
+```
+
+The build command is a local Wrangler dry run. The runtime smoke uses Miniflare/workerd, real Durable Object routing/storage, synthetic vendor responses and disabled external networking. It verifies consent, collection, replay rejection, refresh and revocation. Workers require manual redirect handling rather than Node's `redirect: "error"`; both paths reject redirects without forwarding secrets. No deployment is implied. The daemon accepts HTTPS origins only. Local browser/daemon integration needs a locally trusted TLS certificate, an exact matching development origin/callback, and an isolated vendor registration; do not disable certificate verification.
+
+Rollback redeploys a reviewed compatible Worker version. Grant storage schema changes must remain readable by the rollback version or explicitly force reconnection. Do not roll back by exposing publisher secrets in clients or bypassing proof validation. Incident response may disable a vendor by removing its binding, stop new sign-ins, rotate publisher/deployment credentials, coordinate vendor-side revocation and notify affected users with the known exposure window. Removing a secret stops exchanges; it does not revoke every already-issued user token.
+
+## Paseo merge boundary
+
+Service code and vendor adaptations live in new Otto-owned modules. Existing broker/provider creation, bootstrap installation, status projection and capability advertisement are narrow integration seams. The client keeps its existing host runtime, connector events, adaptive layout and browser-opening API. No duplicated transport, provider-specific connector stack, daemon lifecycle rewrite or upstream auth replacement is introduced.
+
+Future Paseo merges should review those seam edits explicitly. Additive code reduces overlap; it does not guarantee conflict-free merges. Preserve the source baseline and distinguish other in-progress work when reviewing a diff in a shared checkout.
+
+## Primary references
+
+- [Box hosted MCP server](https://github.com/box/mcp-server-box-remote)
+- [Box authorization metadata](https://api.box.com/.well-known/oauth-authorization-server)
+- [Box current-user endpoint](https://developer.box.com/reference/get-users-me)
+- [OAuth security best current practice](https://www.rfc-editor.org/info/rfc9700)
+- [Cloudflare Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
+- [Cloudflare rate limiting and its locality/accuracy limits](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
+- [Cloudflare Durable Object storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)

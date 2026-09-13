@@ -338,6 +338,14 @@ export const ConnectorOAuthClientSchema = z.object({
  * is only for the interactive OAuth path.
  */
 export const ConnectorAuthStateSchema = z.object({
+  /** Safe daemon-owned status; hosted credentials live only in the host vault. */
+  hosted: z
+    .object({
+      vendorId: z.string(),
+      connected: z.boolean(),
+      scopes: z.array(z.string()).optional(),
+    })
+    .optional(),
   /** Binds new authorizations to the exact resource that owns them. */
   resourceUrl: z.string().optional(),
   kind: z.literal("oauth"),
