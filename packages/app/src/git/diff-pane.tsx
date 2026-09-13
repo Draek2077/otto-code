@@ -52,6 +52,7 @@ import {
   useCheckoutPrStatusQuery,
 } from "@/git/use-pr-status-query";
 import { CommitsSection } from "@/git/commits-section/commits-section";
+import { ChangesCommitSection } from "@/git/changes-commit-section";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import {
@@ -142,8 +143,9 @@ function computeSelectedDiffStat(
 function shouldEnableChangesSelection(
   diffMode: "uncommitted" | "base",
   rollbackSupported: boolean,
+  commitSupported: boolean,
 ): boolean {
-  return diffMode === "uncommitted" && rollbackSupported;
+  return diffMode === "uncommitted" && (rollbackSupported || commitSupported);
 }
 
 function useDiscardChangesAction({
@@ -1910,11 +1912,18 @@ export function ChangesSurface({
   const rollbackSelectionSupported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitRollback === true,
   );
+  const commitSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitCommit === true,
+  );
+  const gitLogSupported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitLog === true,
+  );
   const changesSelection = useChangesSelectionAddon({
     serverId,
     cwd,
     files,
-    enabled: shouldEnableChangesSelection(diffMode, rollbackSelectionSupported),
+    enabled: shouldEnableChangesSelection(diffMode, rollbackSelectionSupported, commitSupported),
+    rollbackSupported: rollbackSelectionSupported,
   });
   const [localFocusRequest, setLocalFocusRequest] = useState<{
     path: string;
@@ -2213,6 +2222,23 @@ export function ChangesSurface({
       {prErrorMessage ? <Text style={styles.actionErrorText}>{prErrorMessage}</Text> : null}
 
       <View style={styles.diffContainer}>{bodyContent}</View>
+
+      {/* Otto's manual commit form shares file selection with bulk rollback. */}
+      <ChangesCommitSection
+        key={`${serverId}:${cwd}`}
+        serverId={serverId}
+        cwd={cwd}
+        workspaceId={workspaceId}
+        selectedPaths={changesSelection.selectedPaths}
+        totalFiles={files.length}
+        commitSupported={commitSupported}
+        logSupported={gitLogSupported}
+        isGit={isGit}
+        diffMode={diffMode}
+        hasChanges={hasChanges}
+        onToggleSelectAll={changesSelection.toggleAll}
+        onCommitted={changesSelection.clearSelection}
+      />
 
       <ChangesCommits
         presentation={presentation}

@@ -5,7 +5,7 @@ title: "User mode preserves useful tools and presents Git as backups"
 status: "proposed"
 tags: ["user-mode","interface-mode","workspace","files","backups","upstream"]
 created_at: "2026-09-13T00:19:18.505Z"
-updated_at: "2026-09-13T01:06:40.692Z"
+updated_at: "2026-09-13T05:33:15.860Z"
 ---
 # User mode preserves useful tools and presents Git as backups
 
@@ -13,7 +13,7 @@ updated_at: "2026-09-13T01:06:40.692Z"
 
 User mode helps people accomplish tasks without requiring them to understand development workflows. It preserves the full File Editor when a file is opened, all open content tabs, script output, workspace Scripts and Open tools, and pane split/maximize/restore controls wherever supported. It simplifies entry points and explanations rather than hiding useful capabilities.
 
-Git is presented as file backups: save a local version, check for newer remote versions, download updates, upload saved versions, and inspect version history. Local version saving and remote backup upload remain distinct outcomes. The ordinary backup workflow uses main/master. Switching interface mode does not silently switch branches, move files, or upload anything; existing advanced workspaces remain accessible.
+Git keeps the original split button and dropdown menu in User mode. Simplification changes the offered actions and their vocabulary: Save version, Check for updates, Download updates, and Upload changes. Do not add a Backups dialog, a version-history view, or a history submenu. User mode must not introduce extra Git UI that the original Developer mode control does not have. Local version saving and remote backup upload remain distinct outcomes. The ordinary backup workflow uses main/master. Switching interface mode does not silently switch branches, move files, or upload anything; existing advanced workspaces remain accessible.
 
 New Workspace keeps its full Git setup in User mode: the branch and PR picker, the local or worktree isolation choice, and the create-worktree option when a directory is already occupied. Workspace creation is the easiest way to start Git work, so basic backup tools never replace it. Inside an open workspace, the branch switcher, branch and PR meta, copy-branch-name, and pull request actions stay out of User mode.
 
@@ -33,3 +33,12 @@ Preserve Paseo mergeability through Otto-owned presentation modules and small co
   summary: "User direction on 2026-09-12 during the 0.9.10 release review: hiding branch and worktree creation in New Workspace left User mode with no easy way to start Git work. Having basic Git backup tools does not mean removing the easiest path to create Git work, so New Workspace keeps its Git setup in User mode."
   source: "Chat with the user, 2026-09-12 release preparation"
   affects: ["user-mode","new-workspace"]
+- time: "2026-09-13T05:02:01.277Z"
+  kind: "decision"
+  summary: "The user explicitly rejected the released Backups dialog and then rejected retaining history in a submenu. The requested simplification is the original menu with fewer actions and clearer wording. Removed workspace-backups.tsx and routed both modes through GitActionsSplitButton. App typecheck and targeted lint passed; the running preview showed the original split button and three dropdown actions with no Backups dialog or version history."
+  source: "User correction in this chat on 2026-09-12"
+  affects: ["user-mode"]
+- time: "2026-09-13T05:33:15.860Z"
+  kind: "decision"
+  summary: "The user requested the paired labels Download updates and Upload changes, with shorter explanations. Updated the upload action, success/error wording, and menu descriptions."
+  source: "User correction in this chat on 2026-09-12"

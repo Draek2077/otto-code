@@ -12,7 +12,7 @@ const BACKUP_COPY: Record<string, string> = {
   "workspace.git.actions.fetch.success": BACKUP_ACTION_LABELS.fetch.successLabel,
   "workspace.git.actions.toasts.failedCommit": "Could not save this version",
   "workspace.git.actions.toasts.failedPull": "Could not download updates",
-  "workspace.git.actions.toasts.failedPush": "Could not upload the backup",
+  "workspace.git.actions.toasts.failedPush": "Could not upload changes",
   "workspace.git.actions.toasts.failedFetch": "Could not check for updates",
   "workspace.git.commitAgent.confirmTitle": "Save version",
   "workspace.git.commitAgent.confirmCta": "Save version",
