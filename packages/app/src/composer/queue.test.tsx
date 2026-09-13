@@ -251,7 +251,7 @@ describe("useComposerQueue - the daemon broadcast beats the sidecar write", () =
   });
 });
 
-describe("useComposerQueue - what 'Send all' must still leave behind", () => {
+describe("useComposerQueue - explicit 'Send all' eligibility", () => {
   it("leaves an entry whose attachments this client genuinely never had", async () => {
     seedSession({ steerQueue: true });
     const { result } = renderQueue({});
@@ -266,7 +266,7 @@ describe("useComposerQueue - what 'Send all' must still leave behind", () => {
     await expect(result.current.listSendable()).resolves.toEqual([]);
   });
 
-  it("leaves system-injected entries out of the merged turn", async () => {
+  it("includes system-injected entries alongside user messages in queue order", async () => {
     seedSession({ steerQueue: true });
     const { result } = renderQueue({});
 
@@ -282,7 +282,41 @@ describe("useComposerQueue - what 'Send all' must still leave behind", () => {
     });
 
     const sendable = await result.current.listSendable();
-    expect(sendable.map((item) => item.id)).toEqual([ENTRY_ID]);
+    expect(sendable.map((item) => item.id)).toEqual(["entry-system", ENTRY_ID]);
+  });
+
+  it("can take every completion notification from a system-only queue with its full envelope", async () => {
+    seedSession({ steerQueue: true });
+    const notifications = ["child-1", "child-2"].map((id) => ({
+      id,
+      text: `<otto-system>\nAgent ${id} finished.\nFull completion report for ${id}.\n</otto-system>`,
+    }));
+    const notificationsById = new Map(notifications.map((item) => [item.id, item]));
+    const removeQueuedAgentMessage = vi.fn(
+      async (_agentId: string, id: string) => notificationsById.get(id) ?? null,
+    );
+    const { result } = renderQueue({ removeQueuedAgentMessage });
+    const previews = notifications.map(({ id }) =>
+      entry({ id, preview: `<otto-system>\nAgent ${id} finished...`, source: "system" }),
+    );
+
+    await act(async () => {
+      broadcastQueueEntries(previews);
+    });
+
+    const sendable = await result.current.listSendable();
+    expect(sendable.map((item) => item.id)).toEqual(["child-1", "child-2"]);
+    const taken: Array<ComposerQueueItem | null> = [];
+    await act(async () => {
+      for (const item of sendable) taken.push(await result.current.take(item.id));
+    });
+    expect(taken).toEqual(
+      notifications.map((item) => ({ id: item.id, text: item.text, attachments: [] })),
+    );
+    expect(removeQueuedAgentMessage.mock.calls).toEqual([
+      [AGENT_ID, "child-1"],
+      [AGENT_ID, "child-2"],
+    ]);
   });
 });
 

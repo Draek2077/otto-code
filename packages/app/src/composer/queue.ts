@@ -68,12 +68,12 @@ function projectDaemonQueueItems(
 }
 
 /**
- * Whether "Send all" may pull this entry into the merged user turn. Two kinds
- * must not be, and are left in the queue to drain naturally instead:
+ * Whether an explicit "Send all" may pull this entry into the merged turn.
+ * Include system notifications too: the user has chosen to deliver them now,
+ * and `take` returns their full text, preserving each notification's envelope.
+ * The daemon's automatic drain still keeps system entries separate.
  *
- *  - system-injected entries (mentions/schedules), which the daemon's own
- *    drain never merges into a user turn;
- *  - entries whose attachments the daemon holds but this client cannot back.
+ * Leave entries whose attachments the daemon holds but this client cannot back.
  *    "Send all" *takes* each entry out of the daemon's queue and re-sends one
  *    merged message built from the client's copy of the attachments, so the
  *    daemon's copy is destroyed by the take: if the sidecar is gone (reload,
@@ -83,9 +83,6 @@ function projectDaemonQueueItems(
  *    a write that simply hasn't landed yet.
  */
 function isSendableAsUserTurn(item: ComposerQueueItem): boolean {
-  if (item.source === "system") {
-    return false;
-  }
   return !((item.attachmentCount ?? 0) > 0 && item.attachments.length === 0);
 }
 
