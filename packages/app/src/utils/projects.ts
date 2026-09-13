@@ -18,6 +18,7 @@ export interface ProjectHostEntry {
   projectId: string;
   projectName: string;
   projectCustomName: string | null;
+  projectOffline?: boolean;
   customIconRevision?: string | null;
   // This host's Kanban board target for the project; null means unconfigured.
   projectKanban: ProjectKanbanTarget | null;
@@ -90,6 +91,7 @@ interface HostGroup {
   projectId: string;
   projectName: string;
   projectCustomName: string | null;
+  projectOffline?: boolean;
   // This host's Kanban board target for the project; null means unconfigured.
   projectKanban: ProjectKanbanTarget | null;
   customIconRevision?: string | null;
@@ -106,6 +108,7 @@ interface ProjectGroup {
   projectKey: string;
   projectName: string;
   projectCustomName: string | null;
+  projectOffline?: boolean;
   hostsByServerId: Map<string, HostGroup>;
 }
 
@@ -164,6 +167,7 @@ function toHostEntry(group: HostGroup): ProjectHostEntry {
     projectCustomName: group.projectCustomName,
     customIconRevision: canonical?.projectCustomIconRevision ?? group.customIconRevision,
     projectKanban: group.projectKanban,
+    projectOffline: canonical?.projectOffline ?? group.projectOffline,
     serverName: group.serverName,
     isOnline: group.isOnline,
     repoRoot,
@@ -203,6 +207,9 @@ function addHostProjects(
   host: ProjectHost,
   hostProjects: HostProjectListItem[],
 ): void {
+  const offlineProjectIds = new Set(
+    host.projects.filter((project) => project.projectOffline).map((project) => project.projectId),
+  );
   const repoRootByProjectId = new Map(
     host.projects.map((project) => [project.projectId, project.projectRootPath]),
   );
@@ -234,6 +241,7 @@ function addHostProjects(
         projectName: customName?.displayName ?? hostProject.projectName,
         projectCustomName: customName?.customName ?? null,
         projectKanban: customName?.kanban ?? null,
+        projectOffline: offlineProjectIds.has(projectId),
         customIconRevision: placement.customIconRevision,
         serverName: host.serverName,
         isOnline: host.isOnline,

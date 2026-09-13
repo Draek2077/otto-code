@@ -14,6 +14,8 @@ import {
 const PersistedProjectRecordSchema = z.object({
   projectId: z.string(),
   rootPath: z.string(),
+  // Otto-owned project availability; Offline never archives its workspaces.
+  offline: z.boolean().optional(),
   kind: z.enum(["git", "non_git"]),
   displayName: z.string(),
   // COMPAT(projectKey): added in v0.2.4 on 2026-07-28; remove optional after 2027-01-28.
@@ -118,6 +120,8 @@ const PersistedProjectRecordSchema = z.object({
 
 const PersistedWorkspaceRecordSchema = z.object({
   workspaceId: z.string(),
+  // Shared membership; tab placement and dismissal remain client-owned.
+  artifactIds: z.array(z.string()).optional(),
   projectId: z.string(),
   cwd: z.string(),
   kind: z.enum(["local_checkout", "worktree", "directory"]),
@@ -226,6 +230,7 @@ export interface ProjectRegistry {
 }
 
 export interface WorkspaceRegistry {
+  setMutationGuard?(guard: (record: PersistedWorkspaceRecord) => Promise<void>): void;
   initialize(): Promise<void>;
   existsOnDisk(): Promise<boolean>;
   list(): Promise<PersistedWorkspaceRecord[]>;
@@ -389,6 +394,11 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
     });
   }
 
+  protected async validateMutation(
+    _before: ReadonlyMap<string, TRecord>,
+    _after: ReadonlyMap<string, TRecord>,
+  ): Promise<void> {}
+
   protected async mutateCache<TResult>(
     updater: (records: Map<string, TRecord>) => TResult,
     hooks?: {
@@ -413,6 +423,7 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
       const result = updater(staged);
       const recordsChanged = !mapsEqual(this.cache, staged);
       if (!recordsChanged && !hooks?.forcePersist?.(result)) return result;
+      await this.validateMutation(this.cache, staged);
       const records = Array.from(staged.values());
       await hooks?.beforeWrite?.(records);
       if (recordsChanged) await this.writeRecords(this.filePath, records);
@@ -582,6 +593,23 @@ export class FileBackedWorkspaceRegistry
   extends FileBackedRegistry<PersistedWorkspaceRecord>
   implements WorkspaceRegistry
 {
+  private mutationGuard?: (record: PersistedWorkspaceRecord) => Promise<void>;
+  setMutationGuard(guard: (record: PersistedWorkspaceRecord) => Promise<void>): void {
+    this.mutationGuard = guard;
+  }
+  protected override async validateMutation(
+    before: ReadonlyMap<string, PersistedWorkspaceRecord>,
+    after: ReadonlyMap<string, PersistedWorkspaceRecord>,
+  ): Promise<void> {
+    if (!this.mutationGuard) return;
+    for (const [id, record] of before) {
+      if (after.get(id) !== record) await this.mutationGuard(record);
+    }
+    for (const [id, record] of after) {
+      if (before.get(id) !== record) await this.mutationGuard(record);
+    }
+  }
+
   private readonly mutationListeners = new Set<
     (mutation: WorkspaceMutation) => void | Promise<void>
   >();

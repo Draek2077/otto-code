@@ -1,4 +1,5 @@
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop, react/jsx-max-depth -- notification cards bind their own explicit conversation and acknowledgement identities. */
+import { OfflineProjectPanel } from "@/projects/offline-project-panel";
 import { getOpenAgentTabLabel } from "@otto-code/protocol/agent-labels";
 import {
   memo,
@@ -212,6 +213,7 @@ import { MoveChatToWorkspaceHost } from "@/components/move-chat-to-workspace-hos
 import { registerInAppLinkOpener } from "@/utils/open-link";
 import { ArtifactOpenMenu } from "@/components/artifacts/artifact-open-menu";
 import { useHostFeature } from "@/runtime/host-features";
+import { useWorkspaceArtifactDiscovery } from "@/artifacts/use-workspace-artifact-discovery";
 import { useGeneratingArtifactAgentIds } from "@/artifacts/use-artifacts";
 import { useDesktopBrowserNewTabRequests } from "@/desktop/browser/new-tab-requests";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
@@ -1071,12 +1073,35 @@ export const WorkspaceScreen = memo(function WorkspaceScreen({
   isRouteFocused,
 }: WorkspaceScreenProps) {
   const navigationFocused = useIsFocused();
+  const directoryHydrated = useSessionStore(
+    (state) => state.sessions[serverId]?.hasHydratedWorkspaces ?? false,
+  );
+  const offlineWorkspace = useSessionStore((state) => {
+    const workspace = state.sessions[serverId]?.workspaces.get(workspaceId);
+    return workspace?.projectOffline ? workspace : null;
+  });
   useEffect(() => {
     traceInstant("otto.workspace.mount", { serverId, workspaceId });
     return () => {
       traceInstant("otto.workspace.unmount", { serverId, workspaceId });
     };
   }, [serverId, workspaceId]);
+  if (offlineWorkspace) {
+    return (
+      <OfflineProjectPanel
+        serverId={serverId}
+        projectId={offlineWorkspace.projectId}
+        projectName={offlineWorkspace.projectDisplayName}
+        rootPath={offlineWorkspace.projectRootPath}
+      />
+    );
+  }
+  if (!directoryHydrated)
+    return (
+      <WorkspaceScreenGateFrame>
+        <ActivityIndicator />
+      </WorkspaceScreenGateFrame>
+    );
   return (
     <WorkspaceScreenContent
       serverId={serverId}
@@ -2479,6 +2504,7 @@ function WorkspaceScreenContent({
   // reconciliation prunes any agent tab not in that known set once agents are
   // hydrated. Fold in generating artifacts' agent ids so an explicitly opened
   // "view generation log" tab survives for the duration of the run.
+  useWorkspaceArtifactDiscovery(normalizedServerId ?? "", normalizedWorkspaceId ?? "");
   const generatingArtifactAgentIds = useGeneratingArtifactAgentIds({
     serverId: normalizedServerId,
     workspaceDirectory,

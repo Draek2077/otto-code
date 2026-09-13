@@ -241,6 +241,7 @@ export interface WorkspaceDescriptor {
   projectDisplayName: string;
   projectCustomName?: string | null;
   projectCustomIconRevision?: string | null;
+  projectOffline?: boolean;
   projectRootPath: string;
   workspaceDirectory: string;
   projectKind: WorkspaceDescriptorPayload["projectKind"];
@@ -249,6 +250,7 @@ export interface WorkspaceDescriptor {
   title?: string | null;
   pinnedAt?: string | null;
   labels?: string[];
+  artifactIds?: string[];
   status: WorkspaceDescriptorPayload["status"];
   statusEnteredAt: Date | null;
   archivingAt: string | null;
@@ -278,6 +280,7 @@ export function normalizeWorkspaceDescriptor(
     projectDisplayName: payload.projectDisplayName,
     projectCustomName: payload.projectCustomName ?? null,
     projectCustomIconRevision: payload.projectCustomIconRevision ?? null,
+    projectOffline: payload.projectOffline ?? false,
     projectRootPath: payload.projectRootPath,
     // Canonicalize the workspace directory once, at the store boundary, so every
     // consumer can read workspace.workspaceDirectory directly. Empty means "no
@@ -290,6 +293,7 @@ export function normalizeWorkspaceDescriptor(
     pinnedAt: payload.pinnedAt ?? null,
     // COMPAT(workspaceLabels): old daemons omit assignments.
     labels: payload.labels ?? [],
+    artifactIds: payload.artifactIds,
     status: payload.status,
     statusEnteredAt,
     archivingAt: payload.archivingAt ?? null,
@@ -327,6 +331,7 @@ export interface ProjectDescriptor {
   projectKnowledgeLocation?: ProjectKnowledgeStoreLocationValue | null;
   projectArtifactLocation?: "repository" | "host" | null;
   projectWorkflowLocation?: "repository" | "host" | null;
+  projectOffline?: boolean;
   projectRootPath: string;
   projectKind: WorkspaceDescriptorPayload["projectKind"];
 }
@@ -346,6 +351,7 @@ export function normalizeProjectDescriptor(
     projectKnowledgeLocation: payload.projectKnowledgeLocation ?? null,
     projectArtifactLocation: payload.projectArtifactLocation ?? null,
     projectWorkflowLocation: payload.projectWorkflowLocation ?? null,
+    projectOffline: payload.projectOffline ?? false,
     projectRootPath: payload.projectRootPath,
     projectKind: payload.projectKind,
   };

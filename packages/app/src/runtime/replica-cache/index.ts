@@ -176,6 +176,7 @@ const WorkspaceGitRuntimeSchema = z
   .optional();
 
 const StoredWorkspaceSchema = z.strictObject({
+  projectOffline: z.boolean().optional(),
   id: z.string(),
   projectId: z.string(),
   projectDisplayName: z.string(),
@@ -200,6 +201,7 @@ const StoredWorkspaceSchema = z.strictObject({
 });
 
 const StoredProjectSchema = z.strictObject({
+  projectOffline: z.boolean().optional(),
   projectId: z.string(),
   projectKey: z.string().optional(),
   projectDisplayName: z.string(),
@@ -451,6 +453,7 @@ function serializeWorkspace(workspace: WorkspaceDescriptor): StoredWorkspace {
     projectDisplayName: workspace.projectDisplayName,
     projectCustomName: workspace.projectCustomName ?? null,
     projectCustomIconRevision: workspace.projectCustomIconRevision ?? null,
+    projectOffline: workspace.projectOffline ?? false,
     projectRootPath: workspace.projectRootPath,
     workspaceDirectory: workspace.workspaceDirectory,
     worktreeSlug: workspace.worktreeSlug,
@@ -488,6 +491,7 @@ function serializeProject(project: ProjectDescriptor): StoredProject {
     ...(project.projectKey ? { projectKey: project.projectKey } : {}),
     projectDisplayName: project.projectDisplayName,
     projectCustomName: project.projectCustomName,
+    projectOffline: project.projectOffline ?? false,
     projectRootPath: project.projectRootPath,
     projectKind: project.projectKind,
   };

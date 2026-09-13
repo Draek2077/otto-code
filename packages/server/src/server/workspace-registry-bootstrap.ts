@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isProjectOffline, observeOfflineProjects } from "./project-availability.js";
 import { statSync } from "node:fs";
 
 import type { Logger } from "pino";
@@ -60,6 +61,12 @@ export async function bootstrapWorkspaceRegistries(options: {
   ]);
 
   await Promise.all([options.projectRegistry.initialize(), options.workspaceRegistry.initialize()]);
+  await observeOfflineProjects(options.projectRegistry);
+  const offlineProjectIds = new Set(
+    (await options.projectRegistry.list())
+      .filter(isProjectOffline)
+      .map((project) => project.projectId),
+  );
 
   // COMPAT(worktree-branch-identity): added in v0.4.0 on 2026-08-15; remove after
   // 2027-02-15. Older worktrees did not pin branch-off/check-out branch identity.
@@ -67,6 +74,7 @@ export async function bootstrapWorkspaceRegistries(options: {
   for (const workspace of await options.workspaceRegistry.list()) {
     if (
       workspace.archivedAt ||
+      offlineProjectIds.has(workspace.projectId) ||
       !workspace.isOttoOwnedWorktree ||
       !workspace.worktreeRoot ||
       !workspace.branch
@@ -84,7 +92,7 @@ export async function bootstrapWorkspaceRegistries(options: {
   }
 
   if (projectsExists && workspacesExists) {
-    await backfillWorkspaceIdForLegacyAgents(options);
+    await backfillWorkspaceIdForLegacyAgents({ ...options, excludedProjectIds: offlineProjectIds });
     return;
   }
 

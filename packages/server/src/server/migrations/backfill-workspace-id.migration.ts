@@ -67,8 +67,11 @@ export async function backfillWorkspaceIdForLegacyAgents(options: {
   agentStorage: AgentStorage;
   workspaceRegistry: WorkspaceRegistry;
   logger: Logger;
+  excludedProjectIds?: ReadonlySet<string>;
 }): Promise<number> {
-  const workspaceRecords = await options.workspaceRegistry.list();
+  const workspaceRecords = (await options.workspaceRegistry.list()).filter(
+    (workspace) => !options.excludedProjectIds?.has(workspace.projectId),
+  );
   const records = await options.agentStorage.list();
   let migrated = 0;
 

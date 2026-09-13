@@ -1,3 +1,4 @@
+import { OfflineProjectPanel } from "@/projects/offline-project-panel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -151,6 +152,17 @@ export default function ProjectSettingsScreen({
 
   if (!project || !selectedHost || !client || !canEdit) {
     return <NoEditableTarget serverId={serverId} />;
+  }
+
+  if (selectedHost.projectOffline) {
+    return (
+      <OfflineProjectPanel
+        serverId={serverId}
+        projectId={projectId}
+        projectName={selectedHost.projectName}
+        rootPath={selectedHost.repoRoot}
+      />
+    );
   }
 
   return (

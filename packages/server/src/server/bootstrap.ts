@@ -1,4 +1,10 @@
 import {
+  assertProjectOnline,
+  pathWithinRoot,
+  protectOfflineWorkspaceRecords,
+} from "./project-availability.js";
+import { ProjectRelocationService } from "./project-relocation-service.js";
+import {
   GoogleConnectorAuthorization,
   loadGoogleOAuthRegistration,
   GOOGLE_CONNECTOR_INTEGRATION_ID,
@@ -247,6 +253,10 @@ import { createAgentStructuredTextGeneration } from "./session/checkout/git-meta
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { ConnectorOAuthBroker, type ConnectorAuthStore } from "./connectors/connector-oauth.js";
 import { setConnectorAuthStore } from "./connectors/connector-auth-store.js";
+import {
+  HostedConnectorAuthorization,
+  setHostedConnectorAuthorization,
+} from "./connectors/hosted-connector-authorization.js";
 import { ConnectorToolCatalogService } from "./connectors/connector-tool-catalog.js";
 import {
   createStartupOrchestrationSkills,
@@ -1513,6 +1523,13 @@ export async function createOttoDaemon(
     registration: await loadGoogleOAuthRegistration(),
     readConnectors: () => daemonConfigStore.get().connectors ?? [],
   });
+  const hostedConnectorAuthorization = new HostedConnectorAuthorization({
+    authorization: integrationAuthorization,
+    store: connectorAuthStore,
+    readConnectors: () => daemonConfigStore.get().connectors ?? [],
+    origin: process.env.OTTO_CONNECTOR_AUTH_URL,
+  });
+  setHostedConnectorAuthorization(hostedConnectorAuthorization);
   const googleConnectors = new GoogleConnectorService({
     authorization: googleConnectorAuthorization,
     readConnectors: () => daemonConfigStore.get().connectors ?? [],
@@ -1525,6 +1542,9 @@ export async function createOttoDaemon(
     managedProcesses,
   });
   daemonConfigStore.onFieldChange("connectors", () => {
+    void hostedConnectorAuthorization
+      .reconcile()
+      .catch(() => logger.warn("Could not clear a removed hosted connection"));
     void googleConnectors
       .reconcile()
       .catch(() => logger.warn("Could not clear a removed Google connection"));
@@ -1752,6 +1772,21 @@ export async function createOttoDaemon(
     logger,
   });
   const agentManager = new AgentManager({
+    assertDirectoryAvailable: async (cwd) => {
+      const workspaces = await workspaceRegistry.list();
+      const owners = new Set(
+        workspaces
+          .filter((workspace) => pathWithinRoot(workspace.cwd, cwd))
+          .map((workspace) => workspace.projectId),
+      );
+      for (const project of await projectRegistry.list()) {
+        if (
+          owners.has(project.projectId) ||
+          (!project.archivedAt && pathWithinRoot(project.rootPath, cwd))
+        )
+          assertProjectOnline(project);
+      }
+    },
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
@@ -1806,6 +1841,15 @@ export async function createOttoDaemon(
   );
   await agentStorage.initialize();
   logger.info({ elapsed: elapsed() }, "Agent storage initialized");
+  await projectRegistry.initialize();
+  await workspaceRegistry.initialize();
+  protectOfflineWorkspaceRecords(projectRegistry, workspaceRegistry);
+  await new ProjectRelocationService({
+    ottoHome: config.ottoHome,
+    projectRegistry,
+    workspaceRegistry,
+    agentStorage,
+  }).recover();
   await bootstrapWorkspaceRegistries({
     ottoHome: config.ottoHome,
     agentStorage,
@@ -2972,6 +3016,8 @@ export async function createOttoDaemon(
   };
 
   const stop = async () => {
+    await hostedConnectorAuthorization.close();
+    setHostedConnectorAuthorization(undefined);
     connectorOAuthBroker.closeAll();
     await connectorToolCatalog.close();
     await googleConnectors.close();

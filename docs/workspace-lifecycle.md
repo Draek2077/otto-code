@@ -36,7 +36,7 @@ the selected branch name. Existing branches and worktrees are preserved.
 
 This also fixed a quiet leave bug: archiving a worktree resolved `repoRoot = null`, which skipped `git worktree remove`/`prune` and only `rm -rf`'d the directory - leaving a **stale worktree registration** (phantom `git worktree list` entry, branch pinned as "already checked out").
 
-**`cwd` is immutable.** A workspace's root is set at creation and never mutated; this is a re-attach primitive, not a mutable-root refactor. Ownership (chats, terminals) is keyed by `workspaceId`, never `cwd`, so the root is _technically_ movable - we deliberately keep it fixed to preserve the one-directory-one-live-workspace guard (`WorkspaceDirectoryOccupiedError`) and the reconciler contract. Swapping between a worktree and its base is therefore **navigation, not mutation**: "Open base checkout" ensures/reveals the project's base `local_checkout` workspace.
+**`cwd` is stable except during explicit Offline project reconnection.** Normal workspace operations never swap a workspace's root. Switching between a worktree and its base is navigation: "Open base checkout" ensures/reveals the project's base `local_checkout` workspace. The only root-edit operation reconnects a moved project as described below, preserving workspace IDs and checking occupied destinations.
 
 **A workspace's backing directory is not its `cwd`.** Otto opens a workspace at the package it was
 launched on, so one worktree routinely backs a record at `<worktreeRoot>` and another at
@@ -91,6 +91,18 @@ Two rules follow for anything that changes project-level metadata:
 - **Only list workspaces the client can see** when re-emitting descriptors. Archived and hidden workspaces resolve to no descriptor, so the emission chokepoint turns each one into a spurious `remove` - a rename on a long-lived project used to emit one per archived worktree.
 
 The client's project list is derived from the store, not from a react-query cache: `useProjects` → `buildProjects` reads `session.workspaces` + `session.emptyProjects`. `invalidateQueries({queryKey:["projects"]})` does not refresh it - only a store write does.
+
+## Offline projects and root relocation
+
+A missing or inaccessible project base folder makes the existing project **Offline**. This is persisted separately from archive state. Restoring a directory at the old path does not silently reactivate it; the user explicitly reconnects it. Startup checks roots before workspace bootstrap, the reconciler probes roots every two seconds, and workspace operations check availability before opening the directory.
+
+Offline projects retain their project, workspace, and chat identities. Workspace reconciliation, initialization, Git observers, and workspace record mutations stop for that project. The app replaces its workspace and project-settings content with a base-folder editor; a fully Offline sidebar project opens that editor and hides workspace actions. Directory metadata can still be listed to render this state, and running chats can still be stopped. Nothing interprets a missing project root as an instruction to archive or recreate its workspaces.
+
+**Reconnect project** selects an existing folder on the project's host. The daemon validates the expected old root, destination availability, active workspace subdirectories, and project/workspace destination collisions. Running or initializing chats must be stopped first. Idle provider sessions close before relocation so they cannot subsequently persist the old working directory. This close retains Otto's in-memory transcript for the next resume, including providers without their own saved history; normal close and explicit chat reload keep their existing semantics. Persistence across daemon restarts still uses the provider's existing session storage.
+
+`ProjectRelocationService` updates the existing project root, workspace `cwd`/`worktreeRoot`/`mainRepoRoot`, and owned chat `cwd` values that are beneath the old root. Relative suffixes, IDs, titles, labels, archive state, and provider session handles stay intact. Paths outside that root are untouched. The operation moves no files and creates no project directories. A host-local rollback journal preserves the original records until completion; interrupted relocation is rolled back to Offline before startup bootstrap. The protocol advertises `features.projectRelocation` and uses `project.root.relocate.request` / `.response` with optional `projectOffline` descriptor fields.
+
+This is recovery from moving a whole project root or its ancestor. Internal folder moves, Git worktree repair, terminal/process cleanup, and rewriting paths in project files are outside the operation. The storage tests cover parent moves, preserved identities, rejected edits, rollback, and startup recovery. The browser test covers Offline reload, invalid destinations, and restoring the same workspace and mock-provider conversation. Native macOS folder-picker behavior and native-provider continuation remain separate validation boundaries.
 
 ## Workspace activity
 

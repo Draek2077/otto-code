@@ -1,3 +1,4 @@
+import { isProjectOffline } from "./project-availability.js";
 import { resolve } from "node:path";
 import type pino from "pino";
 import type {
@@ -680,6 +681,7 @@ export class WorkspaceDirectory {
         projectDisplayName: resolveProjectDisplayName(project),
         projectCustomName: project.customName ?? null,
         projectCustomIconRevision: project.customIconRevision ?? null,
+        projectOffline: isProjectOffline(project),
         projectRootPath: project.rootPath,
         projectKind: project.kind,
       }));
