@@ -1884,4 +1884,20 @@ describe("otto-brain built-in provider", () => {
       registry["otto-brain"]!.fetchCatalog({ scope: "global", force: false }),
     ).rejects.toThrow(/not available/u);
   });
+
+  test("reads current host state through an existing registry entry", async () => {
+    let reason = "Otto Brain is starting.";
+    const registry = buildProviderRegistry(logger, {
+      brainEndpoint: () => ({ state: "unavailable", reason }),
+    });
+    const provider = registry["otto-brain"]!;
+
+    await expect(provider.fetchCatalog({ scope: "global", force: false })).rejects.toThrow(
+      "Otto Brain is starting.",
+    );
+    reason = "Otto Brain is turned off.";
+    await expect(provider.fetchCatalog({ scope: "global", force: false })).rejects.toThrow(
+      "Otto Brain is turned off.",
+    );
+  });
 });

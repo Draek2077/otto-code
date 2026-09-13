@@ -34,8 +34,7 @@ import type {
   ProviderProfileModel,
   ProviderRuntimeSettings,
 } from "./provider-launch-config.js";
-import type { ConnectorConfig, OttoToolGroup } from "@otto-code/protocol/provider-config";
-import { resolveStoredOttoToolGroups } from "@otto-code/protocol/provider-config";
+import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
 import { ClaudeAgentClient } from "./providers/claude/agent.js";
 import { CodexAppServerAgentClient } from "./providers/codex-app-server-agent.js";
 import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
@@ -43,8 +42,12 @@ import { CursorACPAgentClient } from "./providers/cursor-acp-agent.js";
 import { GenericACPAgentClient } from "./providers/generic-acp-agent.js";
 import { KimiACPAgentClient } from "./providers/kimi-acp-agent.js";
 import { KiroACPAgentClient } from "./providers/kiro-acp-agent.js";
-import { OpenAICompatAgentClient, OPENAI_COMPAT_EXTENDS } from "./providers/openai-compat-agent.js";
-import { resolveProjectRootForCwd } from "./context-management/context-management-service.js";
+import {
+  createOttoBrainClient,
+  createOpenAICompatClient,
+  OPENAI_COMPAT_EXTENDS,
+  type BrainProviderEndpointResolver,
+} from "./otto/provider-factories.js";
 import { OpenCodeAgentClient } from "./providers/opencode-agent.js";
 import { OmpAgentClient } from "./providers/omp/agent.js";
 import type { OmpRuntime } from "./providers/omp/runtime.js";
@@ -52,7 +55,6 @@ import { PiRpcAgentClient } from "./providers/pi/agent.js";
 import { TraeACPAgentClient } from "./providers/trae-acp-agent.js";
 import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
 import { MockSlowProviderClient } from "./providers/mock-slow-provider.js";
-import type { BrainProviderEndpoint } from "../brain/brain-manager.js";
 import { ClaudeProviderOptionsSchema } from "./providers/claude/options.js";
 import { CodexProviderOptionsSchema } from "./providers/codex/options.js";
 import { OpenCodeProviderOptionsSchema } from "./providers/opencode/options.js";
@@ -126,12 +128,8 @@ export interface BuildProviderRegistryOptions {
   brainEndpoint?: BrainProviderEndpointResolver;
 }
 
-/**
- * Resolves the local AI host's OpenAI-compatible endpoint from the brain
- * settings. Synchronous: the provider calls it per request so a host that was
- * just stopped reports unavailable immediately.
- */
-export type BrainProviderEndpointResolver = () => BrainProviderEndpoint;
+export type { BrainProviderEndpointResolver } from "./otto/provider-factories.js";
+export { OTTO_BRAIN_PROVIDER_ID } from "./otto/provider-factories.js";
 
 interface ProviderClientFactoryOptions extends Pick<
   BuildProviderRegistryOptions,
@@ -151,22 +149,6 @@ type ProviderClientFactory = (
   runtimeSettings?: ProviderRuntimeSettings,
   options?: ProviderClientFactoryOptions,
 ) => AgentClient;
-
-/**
- * A provider override's Otto tool-group selection, in whichever taxonomy it was
- * written in. undefined = every group.
- *
- * COMPAT(ottoToolGroupsV2): added in v0.8.20. Drop the legacy argument when the
- * floor is >= v0.8.20.
- */
-function resolveProviderToolGroups(
-  override: Pick<ProviderOverride, "ottoToolGroups" | "ottoToolGroupsV2"> | undefined,
-): OttoToolGroup[] | undefined {
-  return resolveStoredOttoToolGroups({
-    v2: override?.ottoToolGroupsV2,
-    legacy: override?.ottoToolGroups,
-  });
-}
 
 interface ResolvedProvider {
   definition: AgentProviderDefinition;
@@ -268,83 +250,9 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
     }),
   mock: (logger) => new MockLoadTestAgentClient(logger),
   "mock-slow": () => new MockSlowProviderClient(),
-  "otto-brain": (logger, _runtimeSettings, options) => createOttoBrainClient(logger, options),
+  "otto-brain": (logger, _runtimeSettings, options) =>
+    createOttoBrainClient({ logger, ...options }),
 };
-
-/**
- * The local AI host. An OpenAI-compatible client like any custom endpoint,
- * except the URL and credential come from the brain settings rather than
- * provider config, so there is nothing for the operator to configure there.
- * Its own function rather than an inline factory: the override reads alone
- * carry the whole map past the complexity ceiling.
- */
-function createOttoBrainClient(
-  logger: Logger,
-  options: ProviderClientFactoryOptions | undefined,
-): AgentClient {
-  const override = options?.providerOverride;
-  return new OpenAICompatAgentClient({
-    logger,
-    providerId: OTTO_BRAIN_PROVIDER_ID,
-    label: OTTO_BRAIN_LABEL,
-    resolveProjectRoot: buildProjectRootResolver(options?.workspaceGitService),
-    resolveEndpoint: () => resolveBrainEndpoint(options?.brainEndpoint),
-    ottoToolGroups: resolveProviderToolGroups(override),
-    mcpServers: override?.mcpServers,
-    mcpToolPermissions: override?.mcpToolPermissions,
-    // Local models benefit from a much smaller retained tail and a bounded
-    // handoff. External OpenAI-compatible providers retain their existing
-    // conservative defaults; explicit Brain overrides still win.
-    compaction: {
-      keepRecentTokens: 6_000,
-      summaryMaxTokens: 4_000,
-      ...override?.compaction,
-    },
-    reasoningEffortMode: "toggle",
-    maxToolRounds: override?.maxToolRounds,
-    actionBreaker: override?.actionBreaker ?? null,
-    maxRoundTextChars: override?.maxRoundTextChars,
-    midSessionContextUpdates: override?.midSessionContextUpdates,
-    managedProcesses: options?.managedProcesses,
-  });
-}
-
-/**
- * Repo-root resolver for the payload-owning provider's tool loop, or null when
- * the daemon has no git service to ask. Same resolution the spawn-time
- * instruction loader uses (`bootstrap.ts`), so a file injected mid-session is
- * headed with the same project-relative path it would have had at spawn.
- */
-function buildProjectRootResolver(
-  workspaceGitService: Pick<WorkspaceGitService, "resolveRepoRoot"> | undefined,
-): ((cwd: string) => Promise<string>) | undefined {
-  if (!workspaceGitService) return undefined;
-  return (cwd) => resolveProjectRootForCwd(cwd, (dir) => workspaceGitService.resolveRepoRoot(dir));
-}
-
-export const OTTO_BRAIN_PROVIDER_ID = "otto-brain";
-const OTTO_BRAIN_LABEL = "Otto Brain";
-
-/**
- * The brain endpoint, or a throw carrying the operator-facing reason it is
- * unreachable. Throwing is the contract: the snapshot manager turns it into the
- * provider's error state, which is what shows a red dot and an empty model list
- * instead of a stale "available".
- */
-function resolveBrainEndpoint(resolver: BrainProviderEndpointResolver | undefined) {
-  const endpoint = resolver?.() ?? {
-    state: "unavailable" as const,
-    reason: "Otto Brain is not available on this host.",
-  };
-  if (endpoint.state === "unavailable") {
-    throw new Error(endpoint.reason);
-  }
-  return {
-    baseUrl: endpoint.baseUrl,
-    apiKey: endpoint.apiKey,
-    dispatcher: endpoint.dispatcher,
-  };
-}
 
 function getCursorACPCommand(
   runtimeSettings: ProviderRuntimeSettings | undefined,
@@ -1010,22 +918,7 @@ function resolveOpenAICompatProvider(
     providerParams: override.params,
     contract: UNSUPPORTED_PROVIDER_CONTRACT,
     createBaseClient: (logger) =>
-      new OpenAICompatAgentClient({
-        logger,
-        providerId,
-        label,
-        env: override.env,
-        resolveProjectRoot: buildProjectRootResolver(options.workspaceGitService),
-        ottoToolGroups: resolveProviderToolGroups(override),
-        mcpServers: override.mcpServers,
-        mcpToolPermissions: override.mcpToolPermissions,
-        compaction: override.compaction,
-        maxToolRounds: override.maxToolRounds,
-        actionBreaker: override.actionBreaker ?? null,
-        maxRoundTextChars: override.maxRoundTextChars,
-        midSessionContextUpdates: override.midSessionContextUpdates,
-        managedProcesses: options.managedProcesses,
-      }),
+      createOpenAICompatClient({ logger, providerId, label, override, ...options }),
   };
 }
 
