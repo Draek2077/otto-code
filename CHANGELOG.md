@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.9.11 - 2026-09-13
+
+Otto now builds on Paseo 0.8.0.
+
+**Before upgrading:** the desktop app now requires macOS 13 or newer. Plugins written for Paseo 0.7 need the [0.8 migration guide](https://paseo.sh/docs/plugins/v0.8/migration).
+
+### Added
+
+- Integrate Paseo 0.8.0's plugin, provider, and chat improvements
+- Sign in to connectors through Otto's hosted sign-in
+- Sign in to HubSpot through the hosted connector sign-in
+- Commit selected files with a message from the Changes panel
+- Choose which Otto tools each provider can use
+- Answer Codex questions while the agent keeps working
+- Mark finished workspaces as unread
+- Search and page through sessions in Import session
+- View Mermaid diagrams fullscreen on web and desktop
+- Copy a line, copy a selection, or select all from the web diff menu
+- Add custom agent providers through plugins
+- Let plugins add header buttons, composer controls, and settings screens
+- Ask for approval before running setup scripts in fork pull request workspaces
+- Refresh Context Management and Project Knowledge on demand
+- Find artifacts that another chat adds to a shared workspace
+
+### Changed
+
+- Give Connectors their own section in host settings
+- Include system notifications when you use Send all
+- Show projects whose folders are missing as Offline until they reconnect
+- Show the Paseo base version in About
+- Credit Archify in About
+- Reconnect to every host as soon as you return to the app
+- Smooth mobile keyboard transitions
+- Open large diffs with fewer stalls
+- Keep agent context lighter by leaving article text out of the Knowledge catalog
+- Refresh the agent catalog to the latest published versions
+
+### Fixed
+
+- Keep the Commits row at the bottom of Changes on mobile
+- Keep the rest of a diff readable when one file is too large to show
+- Stop web menus disappearing right after they open
+- Keep your typing in the built-in browser while an agent drives it
+- Remember where restored browser tabs navigate
+- Connect Webflow to its current endpoint and repair saved Webflow connectors
+- Stop a repository's fsmonitor setting from running commands during Git operations
+- Keep the mobile terminal keyboard open while typing
+- Stop repeated Claude compaction updates leaving extra Compacting rows
+- Show nested subagents under their actual parent
+- Keep Changes and its diff in sync when switching comparisons
+- Stop Mermaid diagrams shrinking while they stream
+
 ## 0.9.10 - 2026-09-12
 
 ### Changed
