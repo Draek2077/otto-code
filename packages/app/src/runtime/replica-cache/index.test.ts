@@ -269,6 +269,26 @@ describe("ReplicaCache", () => {
     expect(restoredTimeline).toEqual(timeline());
   });
 
+  it("round-trips the prompt-suggestion capability instead of dropping the cached agent", async () => {
+    // The stored capability schema is strict. A flag the serializer writes but
+    // the schema omits makes the whole agent row fail validation on restore,
+    // which hides the composer's Autonomous mode toggle until the host replies.
+    const storage = new MemoryStorage();
+    const writer = createCache(storage);
+    const value = directory();
+    const cachedAgent = value.agents.get("agent-1")!;
+    value.agents.set("agent-1", {
+      ...cachedAgent,
+      capabilities: { ...cachedAgent.capabilities, supportsPromptSuggestions: true },
+    });
+    commitDirectory(writer, SERVER_ID, value);
+    await writer.flush();
+
+    const restored = await createCache(storage).readDirectory(SERVER_ID);
+
+    expect(restored.agents.get("agent-1")?.capabilities.supportsPromptSuggestions).toBe(true);
+  });
+
   it("preserves pending timeline updates across directory baseline replacement", async () => {
     const storage = new MemoryStorage();
     const writer = createCache(storage);

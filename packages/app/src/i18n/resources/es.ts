@@ -116,8 +116,11 @@ export const es: TranslationResources = {
   composer: {
     followSuggestion: {
       active: "Siguiendo el mensaje sugerido por el agente. {{sent}} de {{max}} enviados.",
+      activeUnlimited: "Siguiendo los mensajes sugeridos por el agente. {{sent}} enviados.",
       limit: "Se siguieron {{max}} mensajes sugeridos seguidos. Envía un mensaje para continuar.",
-      stop: "Dejar de seguir sugerencias",
+      turnOff: "Desactivar el modo autónomo",
+      autonomousOn: "Modo autónomo activado",
+      autonomousOff: "Modo autónomo desactivado",
     },
     rateLimit: {
       approaching: "Te acercas a tu límite {{window}} de {{provider}}",

@@ -355,6 +355,8 @@ const CLAUDE_CAPABILITIES: AgentCapabilityFlags = {
   supportsRewindConversation: true,
   supportsRewindFiles: true,
   supportsRewindBoth: true,
+  // The CLI's promptSuggestions option; see the "prompt_suggestion" case below.
+  supportsPromptSuggestions: true,
   // Enforced in applyWorkspaceAccess: the level's denied tools are added to
   // disallowedTools and stripped from allowedTools at every option build.
   supportsWorkspaceAccess: true,

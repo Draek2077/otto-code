@@ -41,14 +41,18 @@ rides in a request.
    fan-out is ~180 extra calls). `notifyOnFinish` injects a child's entire last message into the
    parent and buys a full parent turn. Each needs an exposed off switch, not a hardcoded `true`.
 
-   `promptSuggestions` gained a second, sharper edge on the client. **Follow prompt suggestions**
-   (Settings -> General, device-local, default off) accepts that predicted next prompt the moment it
+   `promptSuggestions` gained a second, sharper edge on the client. **Autonomous mode** (the
+   per-chat toggle at the message box's top-right) accepts that predicted next prompt the moment it
    arrives instead of waiting for the user to press Tab, which multiplies whole turns rather than
-   adding a call to one. It is deliberately **not** part of Auto mode, and it is bounded: Otto
-   follows at most `FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE` (3) suggestions in a row per chat, and
-   the count only resets when the user sends a message of their own. The guards and the bound live
-   in `packages/app/src/composer/follow-suggestion/decide.ts` as one pure function, and a band above
-   the message box says when a prompt was accepted by Otto rather than typed.
+   adding a call to one. Each chat starts from the **Follow prompt suggestions** default (Settings ->
+   General, device-local, default off) and keeps its own state until archived. It is deliberately
+   **not** part of Auto mode, and it is bounded by **Suggestions in a row** (3 by default; 5, 10, 25,
+   or Unlimited). The count only resets when the user sends a message of their own, so Unlimited is
+   the one setting that lets a chat prompt itself until the agent stops suggesting. The toggle only
+   appears for providers whose capabilities carry `supportsPromptSuggestions` (Claude today; Codex's
+   app-server protocol has no suggestion event). The guards and the bound live in
+   `packages/app/src/composer/follow-suggestion/decide.ts` as one pure function, and a band above the
+   message box says when a prompt was accepted by Otto rather than typed.
 
 5. **Accounting cannot see most of this, so users discover it on their bill.** Everything keys off
    `turn_completed`, so: openai-compat records only the **last** round of a multi-round turn;

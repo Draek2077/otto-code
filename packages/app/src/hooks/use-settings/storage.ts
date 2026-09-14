@@ -28,6 +28,7 @@ import {
   migrateTutorialFlag,
   parseSettingsRecord,
   pickAgentAutoSpeechSettings,
+  pickFollowPromptSuggestionSettings,
   pickAgentVoiceCueSettings,
   pickChatCodeSettings,
   pickFeatureFlagSettings,
@@ -334,6 +335,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     ...pickZoomRecorderSettings(stored),
     ...pickVoicePlaybackSettings(stored),
     ...pickAgentAutoSpeechSettings(stored),
+    ...pickFollowPromptSuggestionSettings(stored),
     ...pickFeatureFlagSettings(stored),
     ...(typeof stored.useLegacyTerminalRenderer === "boolean"
       ? { useLegacyTerminalRenderer: stored.useLegacyTerminalRenderer }
@@ -420,6 +422,9 @@ export {
   VISUALIZER_PIP_SIZES,
   VISUALIZER_SURFACES,
   buildAgentAutoSpeechKey,
+  buildAgentFollowPromptSuggestionsKey,
+  FOLLOW_PROMPT_SUGGESTIONS_LIMITS,
+  isFollowPromptSuggestionsLimit,
   parseClampedFontSize,
   parseMountedTabLimit,
   parseMountedWorkspaceLimit,
@@ -431,6 +436,7 @@ export type {
   AppStartScreen,
   ChatTimestampDisplay,
   ColorSchemeMode,
+  FollowPromptSuggestionsLimit,
   InterfaceMode,
   LinkOpenBehavior,
   MeetingTranscriptDeliveryPolicy,

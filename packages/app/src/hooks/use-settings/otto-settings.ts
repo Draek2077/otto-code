@@ -57,12 +57,20 @@ export interface OttoAppSettings {
   lightTheme: LightThemeName;
   darkTheme: DarkThemeName;
   promptSuggestionsEnabled: boolean;
-  // Accept the ghost-text next-prompt suggestion the moment it arrives, instead
-  // of waiting for Tab. Deliberately its own preference and NOT a level of Auto
-  // mode: Auto mode governs how an agent acts inside a turn, this governs only
-  // who accepts an already-generated suggestion. Bounded per chat by
-  // FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE. Device-local. Default OFF.
+  // The default a chat's Autonomous mode toggle starts with: accept the
+  // ghost-text next-prompt suggestion the moment it arrives, instead of waiting
+  // for Tab. Deliberately its own preference and NOT a level of Auto mode: Auto
+  // mode governs how an agent acts inside a turn, this governs only who accepts
+  // an already-generated suggestion. Device-local. Default OFF.
   followPromptSuggestions: boolean;
+  // How many suggestions a chat may follow back-to-back before it waits for the
+  // user. "unlimited" follows until the agent stops suggesting. Default "3".
+  followPromptSuggestionsLimit: FollowPromptSuggestionsLimit;
+  // Per-chat Autonomous mode, keyed by `buildAgentFollowPromptSuggestionsKey`.
+  // Unlike auto-speech this stores `false` too: a chat keeps the state it was
+  // seeded with even after the default changes, so an absent key means "not
+  // seeded yet", not "off". Archiving a chat deletes its key.
+  agentFollowPromptSuggestions: Record<string, boolean>;
   // Show provider-reported plan rate-limit warnings (e.g. Claude claude.ai
   // plan windows) as a strip above the composer. Device-local presentation
   // only - the daemon keeps emitting events either way. Default on.
@@ -446,6 +454,15 @@ export interface OttoAppSettings {
 }
 
 export type SendBehavior = "interrupt" | "steer" | "queue";
+
+export const FOLLOW_PROMPT_SUGGESTIONS_LIMITS = ["3", "5", "10", "25", "unlimited"] as const;
+export type FollowPromptSuggestionsLimit = (typeof FOLLOW_PROMPT_SUGGESTIONS_LIMITS)[number];
+
+export function isFollowPromptSuggestionsLimit(
+  value: unknown,
+): value is FollowPromptSuggestionsLimit {
+  return (FOLLOW_PROMPT_SUGGESTIONS_LIMITS as readonly unknown[]).includes(value);
+}
 
 export type ReleaseChannel = "stable" | "beta";
 
@@ -961,6 +978,28 @@ export function pickVoicePlaybackSettings(stored: Partial<AppSettings>): Partial
 // Sparse record - a missing key means off, and turning a chat off deletes its
 // key rather than storing `false`. Validates that every stored value is a
 // boolean, dropping anything else.
+// The Autonomous mode bound and per-chat states. Unlike auto-speech, per-chat
+// `false` values are kept: they are a chat's seeded state, not a stale default.
+export function pickFollowPromptSuggestionSettings(
+  stored: Partial<AppSettings>,
+): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {};
+  if (isFollowPromptSuggestionsLimit(stored.followPromptSuggestionsLimit)) {
+    result.followPromptSuggestionsLimit = stored.followPromptSuggestionsLimit;
+  }
+  const raw = stored.agentFollowPromptSuggestions;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const chats: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (typeof value === "boolean") {
+        chats[key] = value;
+      }
+    }
+    result.agentFollowPromptSuggestions = chats;
+  }
+  return result;
+}
+
 export function pickAgentAutoSpeechSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   const raw = stored.agentAutoSpeechEnabled;
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
@@ -1437,6 +1476,10 @@ export function buildAgentAutoSpeechKey(serverId: string, agentId: string): stri
   return `${serverId}:${agentId}`;
 }
 
+export function buildAgentFollowPromptSuggestionsKey(serverId: string, agentId: string): string {
+  return `${serverId}:${agentId}`;
+}
+
 export function sanitizeFontFamily(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -1463,6 +1506,8 @@ export const DEFAULT_OTTO_SETTINGS: OttoAppSettings = {
   darkTheme: "dark",
   promptSuggestionsEnabled: true,
   followPromptSuggestions: false,
+  followPromptSuggestionsLimit: "3",
+  agentFollowPromptSuggestions: {},
   rateLimitWarningsEnabled: true,
   resourceMonitorEnabled: true,
   contextWarningsEnabled: true,

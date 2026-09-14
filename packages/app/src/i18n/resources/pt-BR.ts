@@ -116,8 +116,11 @@ export const ptBR: TranslationResources = {
   composer: {
     followSuggestion: {
       active: "Seguindo o prompt sugerido pelo agente. {{sent}} de {{max}} enviados.",
+      activeUnlimited: "Seguindo os prompts sugeridos pelo agente. {{sent}} enviados.",
       limit: "{{max}} prompts sugeridos seguidos em sequência. Envie uma mensagem para continuar.",
-      stop: "Parar de seguir sugestões",
+      turnOff: "Desativar o modo autônomo",
+      autonomousOn: "Modo autônomo ativado",
+      autonomousOff: "Modo autônomo desativado",
     },
     rateLimit: {
       approaching: "Você está perto do seu limite {{window}} do {{provider}}",

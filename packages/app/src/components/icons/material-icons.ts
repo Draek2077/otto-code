@@ -61,6 +61,8 @@ export const AlignJustify = createMaterialSymbolIcon("AlignJustify");
 export const AllInclusive = createMaterialSymbolIcon("AllInclusive");
 export const Architecture = createMaterialSymbolIcon("Architecture");
 export const Archive = createMaterialSymbolIcon("Archive");
+// Material's `autoplay`. The composer's per-chat Autonomous mode toggle.
+export const Autoplay = createMaterialSymbolIcon("Autoplay");
 export const ArrowDown = createMaterialSymbolIcon("ArrowDown");
 // Material's `vertical_align_bottom`. Entering focus mode.
 export const ArrowDownToLine = createMaterialSymbolIcon("ArrowDownToLine");

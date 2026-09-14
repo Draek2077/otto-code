@@ -182,6 +182,8 @@ export interface AgentCapabilityFlags {
   supportsRewindConversation?: boolean;
   supportsRewindFiles?: boolean;
   supportsRewindBoth?: boolean;
+  /** Emits `prompt_suggestion` stream events after a turn (composer ghost text). */
+  supportsPromptSuggestions?: boolean;
 }
 
 export interface AgentPersistenceHandle {

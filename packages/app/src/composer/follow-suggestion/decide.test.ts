@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   decideFollowPromptSuggestion,
   resolveFollowChainPhase,
-  FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE,
+  resolveFollowPromptSuggestionsLimit,
+  DEFAULT_FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE,
   type FollowPromptSuggestionInput,
 } from "./decide";
 
@@ -16,8 +17,8 @@ function input(overrides: Partial<FollowPromptSuggestionInput> = {}): FollowProm
     queuedCount: 0,
     isAgentRunning: false,
     canSubmit: true,
-    isStopped: false,
     sentCount: 0,
+    maxConsecutive: DEFAULT_FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE,
     ...overrides,
   };
 }
@@ -31,7 +32,7 @@ describe("decideFollowPromptSuggestion", () => {
     });
   });
 
-  it("is inert when the setting is off, whatever else is true", () => {
+  it("is inert when Autonomous mode is off for the chat, whatever else is true", () => {
     expect(decideFollowPromptSuggestion(input({ isFollowEnabled: false }))).toEqual({
       action: "skip",
       reason: "off",
@@ -48,7 +49,6 @@ describe("decideFollowPromptSuggestion", () => {
   it.each([
     ["no suggestion at all", { suggestion: null }, "no-suggestion"],
     ["a whitespace-only suggestion", { suggestion: "   \n" }, "no-suggestion"],
-    ["the user pressed Stop", { isStopped: true }, "stopped"],
     ["the user has typed something", { draftText: "wait, actually" }, "draft-present"],
     ["the user attached a file", { attachmentCount: 1 }, "attachments-present"],
     ["the user has queued messages", { queuedCount: 2 }, "queue-present"],
@@ -69,13 +69,13 @@ describe("decideFollowPromptSuggestion", () => {
 });
 
 describe("the loop bound", () => {
-  it("stops after the configured number of consecutive follows", () => {
-    // Walk a chat that keeps producing a suggestion after every followed one.
+  function walk(maxConsecutive: number | null, turns: number): string[] {
+    // A chat that keeps producing a suggestion after every followed one.
     let sentCount = 0;
     const sent: string[] = [];
-    for (let turn = 0; turn < 20; turn += 1) {
+    for (let turn = 0; turn < turns; turn += 1) {
       const decision = decideFollowPromptSuggestion(
-        input({ suggestion: `next step ${turn}`, sentCount }),
+        input({ suggestion: `next step ${turn}`, sentCount, maxConsecutive }),
       );
       if (decision.action !== "send") {
         expect(decision.reason).toBe("limit-reached");
@@ -84,60 +84,66 @@ describe("the loop bound", () => {
       sent.push(decision.prompt);
       sentCount = decision.sentCount;
     }
-    expect(sent).toHaveLength(FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE);
-    expect(sentCount).toBe(FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE);
+    return sent;
+  }
+
+  it("stops after the configured number of consecutive follows", () => {
+    expect(walk(3, 20)).toHaveLength(3);
+    expect(walk(10, 20)).toHaveLength(10);
+  });
+
+  it("never stops on its own when the bound is unlimited", () => {
+    expect(walk(null, 200)).toHaveLength(200);
   });
 
   it("refuses once the count has reached the bound", () => {
-    expect(
-      decideFollowPromptSuggestion(input({ sentCount: FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE })),
-    ).toEqual({ action: "skip", reason: "limit-reached" });
-  });
-
-  it("honors a caller-supplied bound", () => {
-    expect(decideFollowPromptSuggestion(input({ sentCount: 1, maxConsecutive: 1 }))).toEqual({
+    expect(decideFollowPromptSuggestion(input({ sentCount: 5, maxConsecutive: 5 }))).toEqual({
       action: "skip",
       reason: "limit-reached",
     });
-    expect(decideFollowPromptSuggestion(input({ sentCount: 0, maxConsecutive: 1 })).action).toBe(
-      "send",
-    );
   });
 
   it("re-arms once the user's own message resets the count", () => {
-    const exhausted = input({ sentCount: FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE });
+    const exhausted = input({ sentCount: 3, maxConsecutive: 3 });
     expect(decideFollowPromptSuggestion(exhausted).action).toBe("skip");
     // A user send resets the chain to zero (chain-store.resetChain).
     expect(decideFollowPromptSuggestion({ ...exhausted, sentCount: 0 }).action).toBe("send");
   });
 });
 
+describe("resolveFollowPromptSuggestionsLimit", () => {
+  it("maps each Settings choice to a bound, with unlimited as null", () => {
+    expect(resolveFollowPromptSuggestionsLimit("3")).toBe(3);
+    expect(resolveFollowPromptSuggestionsLimit("25")).toBe(25);
+    expect(resolveFollowPromptSuggestionsLimit("unlimited")).toBeNull();
+  });
+});
+
 describe("resolveFollowChainPhase", () => {
   it("is idle before anything has been followed", () => {
-    expect(resolveFollowChainPhase({ isFollowEnabled: true, isStopped: false, sentCount: 0 })).toBe(
-      "idle",
-    );
+    expect(
+      resolveFollowChainPhase({ isFollowEnabled: true, sentCount: 0, maxConsecutive: 3 }),
+    ).toBe("idle");
   });
 
   it("reports following mid-chain and limit-reached at the bound", () => {
-    expect(resolveFollowChainPhase({ isFollowEnabled: true, isStopped: false, sentCount: 1 })).toBe(
-      "following",
-    );
     expect(
-      resolveFollowChainPhase({
-        isFollowEnabled: true,
-        isStopped: false,
-        sentCount: FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE,
-      }),
+      resolveFollowChainPhase({ isFollowEnabled: true, sentCount: 1, maxConsecutive: 3 }),
+    ).toBe("following");
+    expect(
+      resolveFollowChainPhase({ isFollowEnabled: true, sentCount: 3, maxConsecutive: 3 }),
     ).toBe("limit-reached");
   });
 
-  it("shows nothing once the setting is off or the user stopped the chain", () => {
+  it("keeps following at any count when unlimited", () => {
     expect(
-      resolveFollowChainPhase({ isFollowEnabled: false, isStopped: false, sentCount: 2 }),
+      resolveFollowChainPhase({ isFollowEnabled: true, sentCount: 500, maxConsecutive: null }),
+    ).toBe("following");
+  });
+
+  it("shows nothing once Autonomous mode is off", () => {
+    expect(
+      resolveFollowChainPhase({ isFollowEnabled: false, sentCount: 2, maxConsecutive: 3 }),
     ).toBe("idle");
-    expect(resolveFollowChainPhase({ isFollowEnabled: true, isStopped: true, sentCount: 2 })).toBe(
-      "idle",
-    );
   });
 });

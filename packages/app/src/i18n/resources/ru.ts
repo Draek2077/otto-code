@@ -116,8 +116,11 @@ export const ru: TranslationResources = {
   composer: {
     followSuggestion: {
       active: "Следую подсказке агента. Отправлено {{sent}} из {{max}}.",
+      activeUnlimited: "Следую подсказкам агента. Отправлено: {{sent}}.",
       limit: "Подряд выполнено подсказок: {{max}}. Отправьте сообщение, чтобы продолжить.",
-      stop: "Перестать следовать подсказкам",
+      turnOff: "Выключить автономный режим",
+      autonomousOn: "Автономный режим включён",
+      autonomousOff: "Автономный режим выключен",
     },
     rateLimit: {
       approaching: "Приближение к лимиту {{provider}} ({{window}})",

@@ -7,7 +7,10 @@ import {
   selectFollowSuggestionChain,
   useFollowSuggestionChainStore,
 } from "@/composer/follow-suggestion/chain-store";
-import { useFollowPromptSuggestionsSetting } from "@/composer/follow-suggestion/setting";
+import {
+  useChatFollowPromptSuggestions,
+  useFollowPromptSuggestionsLimit,
+} from "@/composer/follow-suggestion/setting";
 
 export interface UseFollowPromptSuggestionInput {
   serverId: string;
@@ -25,9 +28,8 @@ export interface UseFollowPromptSuggestionInput {
 }
 
 /**
- * Drives "Follow prompt suggestions" for one chat: when the guards allow it,
- * the suggestion the agent already produced is sent without the user pressing
- * Tab and Enter.
+ * Drives Autonomous mode for one chat: when the guards allow it, the suggestion
+ * the agent already produced is sent without the user pressing Tab and Enter.
  *
  * The effect intentionally depends on the guard values, not just the suggestion
  * text. A suggestion arrives at the tail of a turn, so `isAgentRunning` may
@@ -35,7 +37,8 @@ export interface UseFollowPromptSuggestionInput {
  * land. `handledRef` is what keeps that from firing twice for one suggestion.
  */
 export function useFollowPromptSuggestion(input: UseFollowPromptSuggestionInput): void {
-  const isFollowEnabled = useFollowPromptSuggestionsSetting();
+  const isFollowEnabled = useChatFollowPromptSuggestions(input.serverId, input.agentId) === "on";
+  const maxConsecutive = useFollowPromptSuggestionsLimit();
   const chain = useFollowSuggestionChainStore((state) =>
     selectFollowSuggestionChain(state, input.serverId, input.agentId),
   );
@@ -62,8 +65,8 @@ export function useFollowPromptSuggestion(input: UseFollowPromptSuggestionInput)
     canSubmit,
   } = input;
 
-  // Off is off: drop any chain state so turning the setting back on later starts
-  // from zero rather than resuming someone's half-spent budget.
+  // Off is off: drop any chain state so turning the chat back on later starts
+  // from zero rather than resuming a half-spent budget.
   useEffect(() => {
     if (isFollowEnabled) return;
     handledRef.current = null;
@@ -80,8 +83,8 @@ export function useFollowPromptSuggestion(input: UseFollowPromptSuggestionInput)
       queuedCount,
       isAgentRunning,
       canSubmit,
-      isStopped: chain.isStopped,
       sentCount: chain.sentCount,
+      maxConsecutive,
     });
 
     if (decision.action !== "send") {
@@ -102,11 +105,11 @@ export function useFollowPromptSuggestion(input: UseFollowPromptSuggestionInput)
     arePromptSuggestionsEnabled,
     attachmentCount,
     canSubmit,
-    chain.isStopped,
     chain.sentCount,
     draftText,
     isAgentRunning,
     isFollowEnabled,
+    maxConsecutive,
     queuedCount,
     recordFollowedSuggestion,
     serverId,

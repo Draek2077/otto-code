@@ -116,8 +116,11 @@ export const ko: TranslationResources = {
   composer: {
     followSuggestion: {
       active: "Following the agent's suggested prompt. {{sent}} of {{max}} sent.",
+      activeUnlimited: "Following the agent's suggested prompts. {{sent}} sent.",
       limit: "Followed {{max}} suggested prompts in a row. Send a message to keep going.",
-      stop: "Stop following suggestions",
+      turnOff: "Turn off Autonomous mode",
+      autonomousOn: "Autonomous mode on",
+      autonomousOff: "Autonomous mode off",
     },
     rateLimit: {
       approaching: "Approaching your {{provider}} {{window}} limit",

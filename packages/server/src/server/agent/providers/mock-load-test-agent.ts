@@ -66,6 +66,8 @@ const CAPABILITIES: AgentCapabilityFlags = {
   supportsRewindConversation: true,
   supportsRewindFiles: true,
   supportsRewindBoth: true,
+  // The synthetic prompt-suggestion scenario emits `prompt_suggestion`.
+  supportsPromptSuggestions: true,
 };
 
 const MODELS: AgentModelDefinition[] = [

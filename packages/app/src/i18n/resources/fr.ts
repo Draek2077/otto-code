@@ -118,8 +118,11 @@ export const fr: TranslationResources = {
   composer: {
     followSuggestion: {
       active: "Suivi de l'invite suggérée par l'agent. {{sent}} sur {{max}} envoyées.",
+      activeUnlimited: "Suivi des invites suggérées par l'agent. {{sent}} envoyées.",
       limit: "{{max}} invites suggérées suivies d'affilée. Envoyez un message pour continuer.",
-      stop: "Arrêter de suivre les suggestions",
+      turnOff: "Désactiver le mode autonome",
+      autonomousOn: "Mode autonome activé",
+      autonomousOff: "Mode autonome désactivé",
     },
     rateLimit: {
       approaching: "Vous approchez de votre limite {{window}} {{provider}}",

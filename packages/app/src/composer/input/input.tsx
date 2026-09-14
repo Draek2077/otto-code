@@ -139,6 +139,8 @@ export interface MessageInputProps {
   showAttachmentButton?: boolean;
   /** Hide the per-chat auto-speech toggle when this is a secondary composer. */
   showAutoSpeechButton?: boolean;
+  /** A control pinned to the text input's top-right (the per-chat Autonomous mode toggle). */
+  textAccessory?: React.ReactNode;
   onAttachButtonRef?: (node: View | null) => void;
   onAddImages?: (images: ImageAttachment[]) => void;
   onPasteImages?: (files: readonly NativePastedFile[]) => void;
@@ -671,6 +673,7 @@ interface ComposerTextSurfaceProps {
   onKeyPress: ((event: WebTextInputKeyPressEvent) => void) | undefined;
   onSelectionChange: (event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => void;
   inputScrollbar: React.ReactNode;
+  textAccessory: React.ReactNode;
 }
 
 interface ResponsivePlaceholderMetrics {
@@ -780,8 +783,14 @@ function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElemen
       </View>
     );
   }
-  return (
-    <View style={styles.textInputScrollWrapper}>
+  const surface = (
+    <View
+      style={
+        props.textAccessory
+          ? [styles.textInputScrollWrapper, styles.textInputScrollWrapperWithAccessory]
+          : styles.textInputScrollWrapper
+      }
+    >
       <ThemedTextInput
         key={props.textReplacementKey}
         ref={props.textInputRef}
@@ -807,6 +816,17 @@ function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElemen
         spellCheck
       />
       {props.inputScrollbar}
+    </View>
+  );
+  if (!props.textAccessory) {
+    return surface;
+  }
+  // A sibling, not an overlay: the text, its placeholder measurement, and the
+  // web scrollbar all end before the accessory instead of running under it.
+  return (
+    <View style={styles.textInputAccessoryRow}>
+      {surface}
+      <View style={styles.textAccessory}>{props.textAccessory}</View>
     </View>
   );
 }
@@ -2243,6 +2263,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             onKeyPress={shouldHandleWebKeyPress ? handleDesktopKeyPress : undefined}
             onSelectionChange={handleSelectionChange}
             inputScrollbar={inputScrollbar}
+            textAccessory={props.textAccessory}
           />
 
           {/* Button row */}
@@ -2376,6 +2397,22 @@ const styles = StyleSheet.create((theme: Theme) => ({
   textInputScrollWrapper: {
     flexShrink: 1,
     position: "relative",
+  },
+  textInputAccessoryRow: {
+    flexShrink: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: theme.spacing[2],
+  },
+  textInputScrollWrapperWithAccessory: {
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: 0,
+  },
+  // The accessory is a 28px round button beside a ~20px first line. Negative
+  // vertical margin keeps it from growing a one-line composer.
+  textAccessory: {
+    marginVertical: -theme.spacing[1],
   },
   shortcutDiscoveryAnchor: {
     position: "relative",

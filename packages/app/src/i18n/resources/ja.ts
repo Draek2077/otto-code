@@ -119,7 +119,10 @@ export const ja: TranslationResources = {
         "エージェントの提案プロンプトに従っています。{{max}} 件中 {{sent}} 件を送信しました。",
       limit:
         "提案プロンプトを連続で {{max}} 件実行しました。続けるにはメッセージを送信してください。",
-      stop: "提案の自動実行を停止",
+      activeUnlimited: "エージェントの提案プロンプトに従っています。{{sent}} 件を送信しました。",
+      turnOff: "自律モードをオフにする",
+      autonomousOn: "自律モード: オン",
+      autonomousOff: "自律モード: オフ",
     },
     rateLimit: {
       approaching: "{{provider}} の{{window}}上限に近づいています",

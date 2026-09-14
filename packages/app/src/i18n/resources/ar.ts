@@ -116,8 +116,11 @@ export const ar: TranslationResources = {
   composer: {
     followSuggestion: {
       active: "يجري اتباع الموجّه الذي اقترحه الوكيل. تم إرسال {{sent}} من {{max}}.",
+      activeUnlimited: "يجري اتباع الموجّهات التي اقترحها الوكيل. تم إرسال {{sent}}.",
       limit: "تم اتباع {{max}} من الموجّهات المقترحة على التوالي. أرسل رسالة للمتابعة.",
-      stop: "إيقاف اتباع الاقتراحات",
+      turnOff: "إيقاف الوضع المستقل",
+      autonomousOn: "الوضع المستقل مفعّل",
+      autonomousOff: "الوضع المستقل معطّل",
     },
     rateLimit: {
       approaching: "تقترب من حد {{provider}} {{window}}",

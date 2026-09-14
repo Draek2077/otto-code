@@ -114,8 +114,11 @@ export const zhCN: TranslationResources = {
   composer: {
     followSuggestion: {
       active: "正在采用助手建议的提示词。已发送 {{sent}} / {{max}} 条。",
+      activeUnlimited: "正在采用助手建议的提示词。已发送 {{sent}} 条。",
       limit: "已连续采用 {{max}} 条建议提示词。发送一条消息即可继续。",
-      stop: "停止采用建议",
+      turnOff: "关闭自主模式",
+      autonomousOn: "自主模式：开",
+      autonomousOff: "自主模式：关",
     },
     rateLimit: {
       approaching: "即将达到 {{provider}} 的{{window}}用量上限",

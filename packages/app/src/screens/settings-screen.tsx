@@ -104,6 +104,7 @@ import {
   type InterfaceMode,
   type AppStartScreen,
   type SuggestedTasksDefaultMode,
+  type FollowPromptSuggestionsLimit,
   type LinkOpenBehavior,
   type PreviewServerCloseBehavior,
   type SendBehavior,
@@ -196,7 +197,6 @@ import ProjectSettingsScreen, {
   confirmDiscardProjectSettingsChanges,
 } from "@/screens/project-settings-screen";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE } from "@/composer/follow-suggestion/decide";
 import { resolveMountedTabLimit } from "@/screens/workspace/mounted-tab-retention";
 import { isNative, isWeb } from "@/constants/platform";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
@@ -465,6 +465,17 @@ const APP_START_SCREEN_DESCRIPTION_KEYS = {
 
 // Suggested-task default action. English-only for now - the whole suggested-task
 // feature is unlocalized pending verification (see build-first-translate-last).
+const FOLLOW_PROMPT_SUGGESTIONS_LIMIT_OPTIONS: {
+  value: FollowPromptSuggestionsLimit;
+  label: string;
+}[] = [
+  { value: "3", label: "3" },
+  { value: "5", label: "5" },
+  { value: "10", label: "10" },
+  { value: "25", label: "25" },
+  { value: "unlimited", label: "Unlimited" },
+];
+
 const SUGGESTED_TASKS_DEFAULT_MODE_OPTIONS: {
   value: SuggestedTasksDefaultMode;
   label: string;
@@ -1009,6 +1020,7 @@ interface ChatSectionProps {
   handleSuggestedTasksDefaultModeChange: (mode: SuggestedTasksDefaultMode) => void;
   handlePromptSuggestionsEnabledChange: (enabled: boolean) => void;
   handleFollowPromptSuggestionsChange: (enabled: boolean) => void;
+  handleFollowPromptSuggestionsLimitChange: (limit: FollowPromptSuggestionsLimit) => void;
   handleRateLimitWarningsEnabledChange: (enabled: boolean) => void;
   handleContextWarningsEnabledChange: (enabled: boolean) => void;
   handleAutoClearCompletedSubagentsChange: (enabled: boolean) => void;
@@ -1025,6 +1037,7 @@ function ChatSection({
   handleSuggestedTasksDefaultModeChange,
   handlePromptSuggestionsEnabledChange,
   handleFollowPromptSuggestionsChange,
+  handleFollowPromptSuggestionsLimitChange,
   handleRateLimitWarningsEnabledChange,
   handleContextWarningsEnabledChange,
   handleAutoClearCompletedSubagentsChange,
@@ -1130,10 +1143,10 @@ function ChatSection({
                   Follow prompt suggestions
                 </SettingsTargetText>
                 <Text style={settingsStyles.rowHint}>
-                  Send the predicted next prompt automatically instead of waiting for Tab, stopping
-                  after {FOLLOW_PROMPT_SUGGESTION_MAX_CONSECUTIVE} in a row until you send one
-                  yourself. Separate from Auto mode, which decides how an agent acts after a prompt
-                  is sent.
+                  The default Autonomous mode for new chats. When on, a chat sends the predicted
+                  next prompt automatically instead of waiting for Tab. Each chat has its own toggle
+                  in the message box. Separate from Auto mode, which decides how an agent acts after
+                  a prompt is sent.
                 </Text>
               </View>
               <Switch
@@ -1141,6 +1154,30 @@ function ChatSection({
                 onValueChange={handleFollowPromptSuggestionsChange}
                 accessibilityLabel="Follow prompt suggestions"
                 testID="settings-follow-prompt-suggestions-switch"
+              />
+            </View>
+          ) : null}
+          {settings.promptSuggestionsEnabled ? (
+            <View style={ROW_WITH_BORDER_STYLE}>
+              <View style={settingsStyles.rowContent}>
+                <SettingsTargetText
+                  settingId="app-chat-agent-behavior-suggestions-in-a-row"
+                  style={settingsStyles.rowTitle}
+                >
+                  Suggestions in a row
+                </SettingsTargetText>
+                <Text style={settingsStyles.rowHint}>
+                  How many suggested prompts Autonomous mode sends back-to-back before it waits for
+                  you. Sending a message yourself resets the count. Unlimited keeps going until the
+                  agent stops suggesting.
+                </Text>
+              </View>
+              <SegmentedControl
+                size="sm"
+                value={settings.followPromptSuggestionsLimit}
+                onValueChange={handleFollowPromptSuggestionsLimitChange}
+                options={FOLLOW_PROMPT_SUGGESTIONS_LIMIT_OPTIONS}
+                testID="settings-follow-prompt-suggestions-limit"
               />
             </View>
           ) : null}
@@ -2463,6 +2500,13 @@ export default function SettingsScreen({
     [updateSettings],
   );
 
+  const handleFollowPromptSuggestionsLimitChange = useCallback(
+    (followPromptSuggestionsLimit: FollowPromptSuggestionsLimit) => {
+      void updateSettings({ followPromptSuggestionsLimit });
+    },
+    [updateSettings],
+  );
+
   const handleContextWarningsEnabledChange = useCallback(
     (contextWarningsEnabled: boolean) => {
       void updateSettings({ contextWarningsEnabled });
@@ -2926,6 +2970,7 @@ export default function SettingsScreen({
               handleSuggestedTasksDefaultModeChange={handleSuggestedTasksDefaultModeChange}
               handlePromptSuggestionsEnabledChange={handlePromptSuggestionsEnabledChange}
               handleFollowPromptSuggestionsChange={handleFollowPromptSuggestionsChange}
+              handleFollowPromptSuggestionsLimitChange={handleFollowPromptSuggestionsLimitChange}
               handleRateLimitWarningsEnabledChange={handleRateLimitWarningsEnabledChange}
               handleContextWarningsEnabledChange={handleContextWarningsEnabledChange}
               handleAutoClearCompletedSubagentsChange={handleAutoClearCompletedSubagentsChange}

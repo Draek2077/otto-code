@@ -123,6 +123,11 @@ import { dispatchComposerKeyboardAction } from "@/composer/keyboard-actions";
 import { submitAgentInput } from "@/composer/submit";
 import { useFollowPromptSuggestion } from "@/composer/follow-suggestion/use-follow-prompt-suggestion";
 import { useFollowSuggestionChainStore } from "@/composer/follow-suggestion/chain-store";
+import {
+  useChatFollowPromptSuggestions,
+  useSeedChatFollowPromptSuggestions,
+} from "@/composer/follow-suggestion/setting";
+import { AutonomousModeToggle } from "@/composer/follow-suggestion/autonomous-toggle";
 import { confirmInterruptWithLiveSubagents } from "@/components/interrupt-subagents-warning";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
@@ -1318,6 +1323,32 @@ export function Composer({
   // "Follow prompt suggestions" (composer/follow-suggestion/). Separate from
   // Auto mode by construction: nothing here touches a permission mode.
   const resetFollowSuggestionChain = useFollowSuggestionChainStore((state) => state.resetChain);
+  // Autonomous mode is per chat and only offered where the provider can
+  // actually produce a suggestion to follow.
+  const supportsPromptSuggestions = useSessionStore(
+    (state) =>
+      state.sessions[serverId]?.agents.get(agentId)?.capabilities.supportsPromptSuggestions ===
+      true,
+  );
+  const showAutonomousToggle =
+    mode.showAutonomousToggle &&
+    !readOnly &&
+    appSettings.promptSuggestionsEnabled &&
+    supportsPromptSuggestions;
+  const chatFollowState = useChatFollowPromptSuggestions(serverId, agentId);
+  useSeedChatFollowPromptSuggestions({
+    serverId,
+    agentId,
+    state: chatFollowState,
+    enabled: showAutonomousToggle,
+  });
+  const autonomousToggle = useMemo(
+    () =>
+      showAutonomousToggle ? (
+        <AutonomousModeToggle serverId={serverId} agentId={agentId} state={chatFollowState} />
+      ) : null,
+    [agentId, chatFollowState, serverId, showAutonomousToggle],
+  );
   const appendSentPrompt = useSessionStore((state) => state.appendSentPrompt);
 
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -2869,6 +2900,7 @@ export function Composer({
               onAutoStartDictationConsumed={onAutoStartDictationConsumed}
               leadingContent={mode.showUsageMeter ? contextWindowMeter : null}
               showAutoSpeechButton={mode.showAutoSpeechButton}
+              textAccessory={autonomousToggle}
               leftContent={leftContent}
               rightContent={rightContent}
               activeActionContent={activeActionContent}

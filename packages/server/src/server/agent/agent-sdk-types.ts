@@ -273,6 +273,13 @@ export interface AgentCapabilityFlags {
   supportsRewindConversation?: boolean;
   supportsRewindFiles?: boolean;
   supportsRewindBoth?: boolean;
+  /**
+   * The adapter emits `prompt_suggestion` stream events after a turn. The app
+   * only offers the composer's Autonomous mode toggle on chats that can produce
+   * one, so never set this without the emitter behind it. Rides the capability
+   * schema's boolean catchall, so no wire schema change was needed.
+   */
+  supportsPromptSuggestions?: boolean;
 }
 
 export interface AgentPersistenceHandle {

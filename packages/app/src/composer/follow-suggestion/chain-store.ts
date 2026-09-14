@@ -2,31 +2,26 @@ import { create } from "zustand";
 
 /**
  * Per-chat state for the "Follow prompt suggestions" chain: how many
- * suggestions this chat has followed back-to-back, and whether the user pressed
- * Stop on the band.
+ * suggestions this chat has followed back-to-back.
  *
  * Client-local and deliberately not in session-store: nothing here survives a
- * reload, crosses the wire, or outlives the feature. Deleting the feature is
- * deleting this directory.
+ * reload, crosses the wire, or outlives the feature. Whether a chat follows at
+ * all is its Autonomous mode toggle (setting.ts), not state held here.
  */
 
 export interface FollowSuggestionChain {
   /** Consecutive followed suggestions since the user last sent a message. */
   sentCount: number;
-  /** Stopped for this chat only. Cleared by the user's next own message. */
-  isStopped: boolean;
 }
 
-const IDLE_CHAIN: FollowSuggestionChain = { sentCount: 0, isStopped: false };
+const IDLE_CHAIN: FollowSuggestionChain = { sentCount: 0 };
 
 interface FollowSuggestionChainState {
   chains: Record<string, FollowSuggestionChain>;
   /** Called after a followed suggestion is handed to the send path. */
   recordFollowedSuggestion: (serverId: string, agentId: string, sentCount: number) => void;
-  /** The user sent their own message, or the feature went away: re-arm. */
+  /** The user sent their own message, or Autonomous mode went off: re-arm. */
   resetChain: (serverId: string, agentId: string) => void;
-  /** The user pressed Stop. The setting stays on for every other chat. */
-  stopChain: (serverId: string, agentId: string) => void;
 }
 
 export function followSuggestionChainKey(serverId: string, agentId: string): string {
@@ -39,7 +34,7 @@ export const useFollowSuggestionChainStore = create<FollowSuggestionChainState>(
     set((state) => ({
       chains: {
         ...state.chains,
-        [followSuggestionChainKey(serverId, agentId)]: { sentCount, isStopped: false },
+        [followSuggestionChainKey(serverId, agentId)]: { sentCount },
       },
     })),
   resetChain: (serverId, agentId) =>
@@ -48,12 +43,6 @@ export const useFollowSuggestionChainStore = create<FollowSuggestionChainState>(
       if (!state.chains[key]) return state;
       const { [key]: _removed, ...rest } = state.chains;
       return { chains: rest };
-    }),
-  stopChain: (serverId, agentId) =>
-    set((state) => {
-      const key = followSuggestionChainKey(serverId, agentId);
-      const current = state.chains[key] ?? IDLE_CHAIN;
-      return { chains: { ...state.chains, [key]: { ...current, isStopped: true } } };
     }),
 }));
 

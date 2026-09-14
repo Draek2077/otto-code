@@ -18,6 +18,8 @@ export interface ComposerInputModePresentation {
   showUsageMeter: boolean;
   /** The per-chat auto-speech toggle is another chat-only voice affordance. */
   showAutoSpeechButton: boolean;
+  /** Autonomous mode follows an agent's suggested next prompt, so it is chat-only. */
+  showAutonomousToggle: boolean;
   showAutocomplete: boolean;
   showAgentControls: boolean;
   /** Argv is read character by character, so it gets the terminal's own font. */
@@ -32,6 +34,7 @@ const PRESENTATION_BY_MODE: Record<ComposerInputMode, ComposerInputModePresentat
     showVoice: true,
     showUsageMeter: true,
     showAutoSpeechButton: true,
+    showAutonomousToggle: true,
     showAutocomplete: true,
     showAgentControls: true,
     isMonospace: false,
@@ -42,6 +45,7 @@ const PRESENTATION_BY_MODE: Record<ComposerInputMode, ComposerInputModePresentat
     showVoice: false,
     showUsageMeter: false,
     showAutoSpeechButton: false,
+    showAutonomousToggle: false,
     showAutocomplete: false,
     showAgentControls: false,
     isMonospace: true,
