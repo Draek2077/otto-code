@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -115,7 +115,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -150,7 +150,7 @@ jobs:
     # on a single worker, then the integration suite.
     timeout-minutes: ${{ matrix.os == 'windows-latest' && 60 || 30 }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -208,7 +208,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -283,7 +283,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -307,7 +307,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -346,7 +346,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -414,7 +414,7 @@ jobs:
       # two builds) as well as the run itself.
       E2E_GLOBAL_TIMEOUT_MINUTES: "55"
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -471,7 +471,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -497,7 +497,7 @@ jobs:
     name: cli-tests (shard ${{ matrix.shard }}/3)
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:

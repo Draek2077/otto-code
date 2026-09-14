@@ -22,7 +22,7 @@ jobs:
     # enough time for a complete result to replace legacy Default-setup data.
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
