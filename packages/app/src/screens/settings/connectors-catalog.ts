@@ -237,9 +237,9 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     category: "Design & content",
     audience: "user",
     description: "Sites, collections, and CMS items in Webflow.",
-    setup: { kind: "oauth", transport: "http", url: "https://mcp.webflow.com/" },
-    verifiedOn: VERIFIED,
-    source: "https://developers.webflow.com/data/docs/ai-tools",
+    setup: { kind: "oauth", transport: "http", url: "https://mcp.webflow.com/mcp" },
+    verifiedOn: "2026-09-13",
+    source: "https://developers.webflow.com/mcp/reference/getting-started",
     homepage: "https://webflow.com",
   },
   {
@@ -261,7 +261,8 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     description: "Contacts, deals, activity history, and marketing content in HubSpot.",
     setup: { kind: "oauth", transport: "http", url: "https://mcp.hubspot.com" },
     verifiedOn: VERIFIED,
-    source: "https://developers.hubspot.com/mcp",
+    source:
+      "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server",
     homepage: "https://www.hubspot.com",
   },
   {

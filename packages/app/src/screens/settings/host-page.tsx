@@ -341,9 +341,9 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
   );
 }
 
-// Tools host section: the agent-facing tool surfaces (Otto tools + browser
-// tools) on their own sidebar section after Teams, rather than trailing the
-// Agents page where they read as a footnote.
+// Tools host section: Otto's own agent-facing tool surfaces (Otto tools +
+// browser tools) on their own sidebar section after Teams, rather than trailing
+// the Agents page where they read as a footnote.
 export function HostToolsPage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const host = useHostProfile(serverId);
@@ -359,8 +359,32 @@ export function HostToolsPage({ serverId }: { serverId: string }) {
         <>
           <OttoToolsSection serverId={serverId} />
           <BrowserToolsSection serverId={serverId} />
-          <ConnectorsSection serverId={serverId} />
         </>
+      ) : (
+        <View style={EMPTY_CARD_STYLE}>
+          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Connectors host section: third-party services whose MCP tools reach agents.
+// Split from Tools so Otto's built-in tool switches and the external service
+// catalog stay separate ownership boundaries.
+export function HostConnectorsPage({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const host = useHostProfile(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
+
+  if (!host) {
+    return <HostNotFound />;
+  }
+
+  return (
+    <View>
+      {isConnected ? (
+        <ConnectorsSection serverId={serverId} />
       ) : (
         <View style={EMPTY_CARD_STYLE}>
           <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>

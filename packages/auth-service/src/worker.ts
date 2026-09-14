@@ -1,5 +1,13 @@
-import { CALLBACK_PATH, GrantError, GrantMachine, readJson, type GrantRecord } from "./grant";
+import {
+  CALLBACK_PATH,
+  GrantError,
+  GrantMachine,
+  randomSecret,
+  readJson,
+  type GrantRecord,
+} from "./grant";
 import { resolveVendor, type VendorBindings } from "./vendors";
+import { consentContent, renderAuthPage, statusContent } from "./pages";
 
 interface Env extends VendorBindings {
   PUBLIC_ORIGIN: string;
@@ -32,16 +40,16 @@ function consentHeaders(authorizationOrigins: readonly string[]) {
 }
 
 function page(body: string, status = 200, authorizationOrigins?: readonly string[]): Response {
-  return new Response(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Otto sign-in</title><main>${body}</main></html>`,
-    {
-      status,
-      headers: {
-        ...(authorizationOrigins ? consentHeaders(authorizationOrigins) : headers),
-        "content-type": "text/html; charset=utf-8",
-      },
+  const nonce = randomSecret();
+  const pageHeaders = authorizationOrigins ? consentHeaders(authorizationOrigins) : headers;
+  return new Response(renderAuthPage(body, nonce), {
+    status,
+    headers: {
+      ...pageHeaders,
+      "content-security-policy": `${pageHeaders["content-security-policy"]}; style-src 'nonce-${nonce}'`,
+      "content-type": "text/html; charset=utf-8",
     },
-  );
+  });
 }
 
 function failure(error: unknown): Response {
@@ -181,7 +189,10 @@ export class AuthGrant {
         url.searchParams.has("error"),
       );
       return page(
-        "<h1>Access approved</h1><p>Return to Otto while your host finishes connecting. You can close this page. Otto will confirm when the tools are available.</p>",
+        statusContent(
+          "Access approved",
+          "Return to Otto while your host finishes connecting. You can close this page. Otto will confirm when the tools are available.",
+        ),
       );
     }
     if (request.method !== "POST" || request.headers.has("origin"))
@@ -211,10 +222,13 @@ export class AuthGrant {
       const view = await this.machine.view();
       if (view.stage !== "consent")
         return page(
-          "<h1>Sign-in started</h1><p>Finish the vendor approval in the browser where you started it, or start again in Otto.</p>",
+          statusContent(
+            "Sign-in started",
+            "Finish the vendor approval in the browser where you started it, or start again in Otto.",
+          ),
         );
       return page(
-        `<h1>Connect ${view.vendor} to Otto</h1><p>Continue only if you just started this connection from your selected Otto host. Do not approve a sign-in link sent by someone else.</p><p>Otto's shared service exchanges and renews your credentials. It can read tokens while processing them. Your host stores the tokens in its credential vault and calls ${view.vendor} directly. Sign-in codes expire after five minutes. Connection proof hashes expire 90 days after the last renewal. Expired records are scheduled for deletion; infrastructure backups follow Cloudflare's retention policies. The service does not persist access or refresh tokens.</p><p>Requested access: ${view.scopes}. Tools run with the access you approve. Their results may be sent to the AI provider selected in Otto.</p><form method="post" action="?state=${view.state}"><button type="submit">Continue to ${view.vendor}</button></form>`,
+        consentContent(view),
         200,
         // no-referrer turns a browser form POST's Origin into null. Preserve
         // same-origin consent while withholding referrers from other sites.

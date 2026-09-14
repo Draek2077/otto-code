@@ -121,7 +121,7 @@ export class GrantMachine {
       client_id: vendor.clientId,
       response_type: "code",
       redirect_uri: this.origin + CALLBACK_PATH,
-      scope: vendor.scopes,
+      ...(vendor.scopes !== null ? { scope: vendor.scopes } : {}),
       state: `${id}.${record.state}`,
       code_challenge: await digest(record.verifier!),
       code_challenge_method: "S256",
@@ -204,6 +204,7 @@ export class GrantMachine {
           client_id: vendor.clientId,
           client_secret: vendor.clientSecret,
           token: refreshToken!,
+          ...(vendor.revokeTokenTypeHint ? { token_type_hint: vendor.revokeTokenTypeHint } : {}),
         }),
       });
     } catch {
@@ -274,11 +275,7 @@ export class GrantMachine {
         value.token_type?.toString().toLowerCase() !== "bearer"
       )
         throw new Error();
-      const scopes =
-        typeof value.scope === "string"
-          ? value.scope.split(/\s+/).filter(Boolean)
-          : vendor.scopes.split(" ");
-      if (scopes.some((scope) => !vendor.scopes.split(" ").includes(scope))) throw new Error();
+      const scopes = tokenScopes(value, vendor.scopes);
       return {
         accessToken: value.access_token,
         refreshToken: value.refresh_token,
@@ -289,6 +286,37 @@ export class GrantMachine {
       throw new GrantError("reconnect_required", 502);
     }
   }
+}
+
+/** HubSpot returns `scopes` as an array; standard OAuth uses a space-delimited
+ * `scope`. Vendor-owned consent can grant a subset which must not be invented
+ * from an advertised catalog. Bound both forms before exposing host metadata.
+ */
+function tokenScopes(value: Record<string, unknown>, requested: string | null): string[] {
+  const allowed = requested?.split(/\s+/).filter(Boolean) ?? [];
+  let scopes: unknown[];
+  if (value.scopes !== undefined) {
+    if (!Array.isArray(value.scopes)) throw new Error("Invalid scopes");
+    scopes = value.scopes;
+  } else if (value.scope !== undefined) {
+    if (typeof value.scope !== "string") throw new Error("Invalid scope");
+    scopes = value.scope.split(/\s+/).filter(Boolean);
+  } else {
+    scopes = allowed;
+  }
+  if (
+    scopes.length > 100 ||
+    scopes.some(
+      (scope) =>
+        typeof scope !== "string" ||
+        !scope ||
+        scope.length > 200 ||
+        /\s/.test(scope) ||
+        (requested !== null && !allowed.includes(scope)),
+    )
+  )
+    throw new Error("Invalid scopes");
+  return [...new Set(scopes as string[])];
 }
 
 export async function readJson(

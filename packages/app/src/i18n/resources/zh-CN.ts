@@ -3427,6 +3427,7 @@ export const zhCN: TranslationResources = {
       agents: "智能体",
       teams: "团队",
       tools: "工具",
+      connectors: "连接器",
       code: "代码",
       brain: "大脑",
       metadata: "元数据",

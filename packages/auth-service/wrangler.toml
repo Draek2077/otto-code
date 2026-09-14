@@ -40,3 +40,4 @@ simple = { limit = 120, period = 60 }
 
 # BOX_CLIENT_ID and BOX_CLIENT_SECRET are runtime secret bindings, independently
 # provisioned for each environment. No vendor secret belongs in this file or CI.
+# HubSpot uses HUBSPOT_CLIENT_ID and HUBSPOT_CLIENT_SECRET in the same service.

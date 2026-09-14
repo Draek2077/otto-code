@@ -70,6 +70,12 @@ function fixture() {
       "form-action 'self' https://account.box.com https://app.box.com;",
     );
     const html = await view.text();
+    const styleNonce = /<style nonce="([\w-]+)">/.exec(html)![1];
+    expect(view.headers.get("content-security-policy")).toContain(
+      `style-src 'nonce-${styleNonce}'`,
+    );
+    expect(view.headers.get("content-security-policy")).not.toContain("unsafe-inline");
+    expect(html).not.toContain("<script");
     const state = /action="\?state=([\w-]+)"/.exec(html)![1];
     for (const origin of ["null", "https://attacker.example"]) {
       const rejected = await call(`/v1/grants/${grantId}/authorize?state=${state}`, {

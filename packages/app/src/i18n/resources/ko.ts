@@ -3494,6 +3494,7 @@ export const ko: TranslationResources = {
       agents: "에이전트",
       teams: "Teams",
       tools: "Tools",
+      connectors: "커넥터",
       code: "Code",
       brain: "Brain",
       metadata: "메타데이터",

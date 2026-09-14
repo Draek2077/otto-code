@@ -4,6 +4,7 @@ import {
   type PersistedConfig,
 } from "./persisted-config.js";
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
+import { migrateConnectorEndpoints } from "./connectors/connector-config-migrations.js";
 import { type ConnectorAuthState, type ConnectorConfig } from "@otto-code/protocol/provider-config";
 import {
   AgentProfileSchema,
@@ -394,6 +395,7 @@ export class DaemonConfigStore {
       ...initial,
       relay: initial.relay ?? { enabled: true },
     });
+    this.current.connectors = migrateConnectorEndpoints(this.current.connectors);
     this.relayEnabledMutable = options.relayEnabledMutable ?? true;
     this.reloadSource = options.reloadSource;
     this.startupPersisted = options.startupPersisted ?? loadPersistedConfig(ottoHome, this.logger);
@@ -552,6 +554,7 @@ export class DaemonConfigStore {
       ),
     );
 
+    next.connectors = migrateConnectorEndpoints(next.connectors);
     const configChanged = !isEqualValue(this.current, next);
 
     // A patch that changes nothing still has to run when it removes a provider:
@@ -594,6 +597,7 @@ export class DaemonConfigStore {
       ...resolved.mutable,
       plugins: this.current.plugins,
     });
+    desired.connectors = migrateConnectorEndpoints(desired.connectors);
     const changedSinceLastApply = diffPaths(this.lastKnownPersisted, persisted);
     const overrideControlledPaths = compactOwnedPaths(
       changedSinceLastApply.filter((path) =>

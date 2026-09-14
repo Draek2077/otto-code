@@ -3495,6 +3495,7 @@ export const en = {
       agents: "Agents",
       teams: "Teams",
       tools: "Tools",
+      connectors: "Connectors",
       code: "Code",
       brain: "Brain",
       metadata: "Metadata",

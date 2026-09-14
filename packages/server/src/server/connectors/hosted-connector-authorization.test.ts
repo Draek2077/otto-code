@@ -15,7 +15,7 @@ afterEach(async () => {
   setHostedConnectorAuthorization(undefined);
 });
 
-function fixture() {
+function fixture(vendorId = "box", origin: string | null = "https://auth.example") {
   const secrets = new Map<string, string>();
   const records = new Map<string, IntegrationConnectionMetadata>();
   const authorization = new IntegrationAuthorizationService({
@@ -41,7 +41,7 @@ function fixture() {
     },
   });
   const connectors: ConnectorConfig[] = [
-    { id: "box", label: "Box", server: { type: "http", url: "https://mcp.box.com" } },
+    { id: vendorId, label: vendorId, server: { type: "http", url: `https://mcp.${vendorId}.com` } },
   ];
   const store = createMemoryConnectorAuthStore();
   const originalWrite = store.write;
@@ -59,7 +59,7 @@ function fixture() {
     if (String(url).endsWith("/v1/grants"))
       return Response.json({
         grantId: "a".repeat(64),
-        authorizationUrl: `https://auth.example/v1/grants/${"a".repeat(64)}/authorize`,
+        authorizationUrl: `${origin ?? "https://auth.otto-code.me"}/v1/grants/${"a".repeat(64)}/authorize`,
       });
     return Response.json({ tokens });
   });
@@ -67,7 +67,7 @@ function fixture() {
     authorization,
     store,
     readConnectors: () => connectors,
-    origin: "https://auth.example",
+    ...(origin === null ? {} : { origin }),
     fetcher,
     pollMs: 1,
   });
@@ -76,25 +76,45 @@ function fixture() {
   return { auth, authorization, secrets, records, store, connectors, tokens, fetcher };
 }
 
-test("existing broker and MCP provider use hosted auth; credentials never enter config or overview", async () => {
-  const f = fixture();
-  const broker = new ConnectorOAuthBroker({ store: f.store });
-  expect(
-    await broker.beginAuthorization({ connector: f.connectors[0], scope: "attacker-scope" }),
-  ).toMatchObject({ status: "redirect" });
-  await broker.waitForCompletion("box");
-  expect(f.connectors[0].auth).toMatchObject({ hosted: { connected: true, vendorId: "box" } });
-  expect(f.connectors[0].auth?.tokens).toBeUndefined();
-  expect(JSON.stringify(await f.authorization.getOverview())).not.toContain("secret-");
-  expect(JSON.stringify(f.connectors)).not.toContain("secret-");
-  const provider = createConnectorAuthProvider({ connector: f.connectors[0], store: f.store })!;
-  expect(await provider.tokens()).toEqual({ access_token: "secret-access", token_type: "Bearer" });
-  expect(JSON.stringify(f.fetcher.mock.calls)).not.toContain("attacker-scope");
-  expect(f.secrets.size).toBe(1);
-  await broker.disconnect("box");
-  expect(f.secrets.size).toBe(0);
-  await expect(provider.tokens()).rejects.toThrow("Connect this account");
+test("ordinary hosts use the deployed publisher service; an explicit empty override disables sign-in", async () => {
+  const f = fixture("hubspot", null);
+  expect(f.auth.configured).toBe(true);
+  await f.auth.start("hubspot");
+  await f.auth.waitForCompletion("hubspot");
+  expect(f.fetcher.mock.calls[0][0]).toBe("https://auth.otto-code.me/v1/grants");
+  await f.auth.disconnect("hubspot");
+  const disabled = fixture("hubspot", "");
+  expect(disabled.auth.configured).toBe(false);
+  await expect(disabled.auth.start("hubspot")).rejects.toThrow("not enabled");
+  expect(disabled.fetcher).not.toHaveBeenCalled();
 });
+
+test.each(["box", "hubspot"])(
+  "%s broker and MCP provider use hosted auth; credentials never enter config or overview",
+  async (vendorId) => {
+    const f = fixture(vendorId);
+    const broker = new ConnectorOAuthBroker({ store: f.store });
+    expect(
+      await broker.beginAuthorization({ connector: f.connectors[0], scope: "attacker-scope" }),
+    ).toMatchObject({ status: "redirect" });
+    await broker.waitForCompletion(vendorId);
+    expect(f.connectors[0].auth).toMatchObject({ hosted: { connected: true, vendorId } });
+    expect(JSON.parse(String(f.fetcher.mock.calls[0][1]?.body)).vendorId).toBe(vendorId);
+    expect(f.connectors[0].auth?.tokens).toBeUndefined();
+    expect(JSON.stringify(await f.authorization.getOverview())).not.toContain("secret-");
+    expect(JSON.stringify(f.connectors)).not.toContain("secret-");
+    const provider = createConnectorAuthProvider({ connector: f.connectors[0], store: f.store })!;
+    expect(await provider.tokens()).toEqual({
+      access_token: "secret-access",
+      token_type: "Bearer",
+    });
+    expect(JSON.stringify(f.fetcher.mock.calls)).not.toContain("attacker-scope");
+    expect(f.secrets.size).toBe(1);
+    await broker.disconnect(vendorId);
+    expect(f.secrets.size).toBe(0);
+    await expect(provider.tokens()).rejects.toThrow("Connect this account");
+  },
+);
 
 test("concurrent MCP users renew once; a disconnect racing renewal cannot return the new token", async () => {
   const f = fixture();

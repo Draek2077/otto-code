@@ -55,6 +55,8 @@ export function useProjectKnowledge(
   load: () => void;
   reload: () => void;
   readRecord: (id: string) => Promise<ProjectKnowledgeRecord | null>;
+  /** A full record already read against the loaded catalog, or null. */
+  cachedRecord: (id: string) => ProjectKnowledgeRecord | null;
   /** Reads one selected root document when the host returned a summary catalog. */
   readRoot: (slug: string) => Promise<ProjectKnowledgeRootPage | null>;
   /** Apply the canonical response from an already-completed mutation in place. */
@@ -122,18 +124,41 @@ export function useProjectKnowledge(
   const [nonce, setNonce] = useState(0);
   const [shouldLoad, setShouldLoad] = useState(() => !options?.deferInitialLoad);
   const retryAttemptRef = useRef(0);
+  // Full records read against the loaded catalog. The catalog carries no
+  // article text, so revisiting an article reuses its read until a reload.
+  const fullRecordsRef = useRef({
+    generation: 0,
+    records: new Map<string, ProjectKnowledgeRecord>(),
+  });
+  const forgetFullRecords = useCallback(() => {
+    fullRecordsRef.current = {
+      generation: fullRecordsRef.current.generation + 1,
+      records: new Map(),
+    };
+  }, []);
+  useEffect(() => forgetFullRecords, [client, forgetFullRecords, workspaceId]);
   const load = useCallback(() => setShouldLoad(true), []);
   const reload = useCallback(() => {
+    forgetFullRecords();
     setShouldLoad(true);
     setNonce((value) => value + 1);
-  }, []);
+  }, [forgetFullRecords]);
   const readRecord = useCallback(
     async (id: string) => {
       if (!client) return null;
+      const generation = fullRecordsRef.current.generation;
       const result = await client.getProjectKnowledge({ workspaceId, id });
+      // A read that straddles a reload may predate the change that caused it.
+      if (result.record && fullRecordsRef.current.generation === generation) {
+        fullRecordsRef.current.records.set(result.record.id, result.record);
+      }
       return result.record;
     },
     [client, workspaceId],
+  );
+  const cachedRecord = useCallback(
+    (id: string) => fullRecordsRef.current.records.get(id) ?? null,
+    [],
   );
   const readRoot = useCallback(
     async (slug: string) => {
@@ -144,6 +169,8 @@ export function useProjectKnowledge(
     [client, workspaceId],
   );
   const replaceRecord = useCallback((record: ProjectKnowledgeRecord) => {
+    // Mutation responses are canonical full records.
+    fullRecordsRef.current.records.set(record.id, record);
     setView((current) =>
       current
         ? {
@@ -354,6 +381,7 @@ export function useProjectKnowledge(
       error,
       load,
       reload,
+      cachedRecord,
       readRecord,
       readRoot,
       replaceRecord,
@@ -373,6 +401,7 @@ export function useProjectKnowledge(
       load,
       loading,
       reload,
+      cachedRecord,
       readRecord,
       readRoot,
       replaceRecord,

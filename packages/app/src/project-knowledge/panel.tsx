@@ -167,9 +167,13 @@ export function ProjectKnowledgePanel(): ReactElement {
     goBack: handleCompactBack,
   } = useCompactDetailNavigation(isCompact);
   const readRecord = knowledge.readRecord;
+  const cachedRecord = knowledge.cachedRecord;
   const readRoot = knowledge.readRoot;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [recordDetail, setRecordDetail] = useState<KnowledgeRecord | null>(null);
+  const [recordReadError, setRecordReadError] = useState<{ id: string; message: string } | null>(
+    null,
+  );
   const [selectedRootSlug, setSelectedRootSlug] = useState<string | null>(null);
   const [rootDetail, setRootDetail] = useState<
     NonNullable<NonNullable<typeof knowledge.view>["rootPages"]>[number] | null
@@ -292,7 +296,11 @@ export function ProjectKnowledgePanel(): ReactElement {
       ? (records.find((record) => record.id === selectedId) ?? null)
       : (records[0] ?? null);
   }
-  const detailedSelection = recordDetail && recordDetail.id === selectedId ? recordDetail : null;
+  // The catalog carries no article text, so whichever record is shown, including
+  // the default first one, is always read in full.
+  const selectedRecordId = selectedRoot ? null : (selectedId ?? selectedSummary?.id ?? null);
+  const detailedSelection =
+    recordDetail && recordDetail.id === selectedRecordId ? recordDetail : null;
   const selected = detailedSelection ?? selectedSummary;
   let architecturalKnowledgeReference: ArchitecturalViewKnowledgeReference | null = null;
   if (selectedRoot) {
@@ -370,22 +378,42 @@ export function ProjectKnowledgePanel(): ReactElement {
     setDocumentMode("article");
   }, [selected?.id, selectedRoot?.slug]);
   useEffect(() => {
-    if (!selectedId) {
+    if (!selectedRecordId) {
       setRecordDetail(null);
       return;
     }
+    const recordId = selectedRecordId;
+    const showRecord = (record: KnowledgeRecord) => {
+      setRecordDetail(record);
+      if (record.kind === "project") setScope("projects");
+      else if (record.kind === "reference") setScope("references");
+    };
+    const cached = cachedRecord(recordId);
+    if (cached) {
+      showRecord(cached);
+      ensureKnowledgeLoaded();
+      return;
+    }
     let cancelled = false;
-    setRecordDetail(null);
-    void readRecord(selectedId)
+    setRecordReadError(null);
+    // An open article stays on screen while a reload refetches it. A different
+    // article waits for its full read rather than rendering a partial page.
+    setRecordDetail((current) => (current?.id === recordId ? current : null));
+    void readRecord(recordId)
       .then((record) => {
-        if (cancelled || !record) return undefined;
-        setRecordDetail(record);
-        if (record.kind === "project") setScope("projects");
-        else if (record.kind === "reference") setScope("references");
+        if (cancelled) return undefined;
+        if (record) showRecord(record);
+        else
+          setRecordReadError({ id: recordId, message: "This Knowledge document was not found." });
         return undefined;
       })
-      .catch(() => {
-        if (!cancelled) setRecordDetail(null);
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        setRecordDetail(null);
+        setRecordReadError({
+          id: recordId,
+          message: cause instanceof Error ? cause.message : String(cause),
+        });
       })
       .finally(() => {
         if (!cancelled) ensureKnowledgeLoaded();
@@ -393,7 +421,7 @@ export function ProjectKnowledgePanel(): ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [ensureKnowledgeLoaded, readRecord, selectedId, knowledge.view?.records]);
+  }, [cachedRecord, ensureKnowledgeLoaded, readRecord, selectedRecordId, knowledge.view?.records]);
   useEffect(() => {
     if (!selectedRootSummary || typeof selectedRootSummary.body === "string") {
       setRootDetail(null);
@@ -423,12 +451,14 @@ export function ProjectKnowledgePanel(): ReactElement {
     "# Project knowledge\n\nSelect a root page or record to inspect its Markdown-backed current truth.";
   if (selectedRoot) {
     document = rootDocumentBody(selectedRoot.body ?? "");
-  } else if (selected) {
+  } else if (detailedSelection) {
     document = recordMarkdown(
-      selected,
+      detailedSelection,
       knowledge.view?.records ?? [],
       knowledge.view?.findings.filter(
-        (finding) => finding.recordId === selected.id || finding.relatedRecordId === selected.id,
+        (finding) =>
+          finding.recordId === detailedSelection.id ||
+          finding.relatedRecordId === detailedSelection.id,
       ) ?? [],
     );
   }
@@ -1354,6 +1384,14 @@ export function ProjectKnowledgePanel(): ReactElement {
         </View>
       </View>
     );
+  } else if (selectedRecordId && !detailedSelection) {
+    const readError = recordReadError?.id === selectedRecordId ? recordReadError.message : null;
+    viewer = (
+      <View style={styles.empty} testID="project-knowledge-record-loading">
+        {readError ? null : <LoadingSpinner size="small" />}
+        <Text style={styles.description}>{readError ?? "Loading Knowledge document…"}</Text>
+      </View>
+    );
   } else if (selected) {
     viewer = (
       <View style={styles.documentContent}>
@@ -1705,15 +1743,17 @@ export function ProjectKnowledgePanel(): ReactElement {
                 !reviewProposal ? (
                   <>
                     {markdownPath ? <ToolbarSeparator /> : null}
-                    <ToolbarIconButton
-                      label="Edit current truth"
-                      Icon={ThemedPencil}
-                      onPress={() => {
-                        setStatement(selected.statement);
-                        setTruthReason("");
-                        setEditingTruth(true);
-                      }}
-                    />
+                    {detailedSelection ? (
+                      <ToolbarIconButton
+                        label="Edit current truth"
+                        Icon={ThemedPencil}
+                        onPress={() => {
+                          setStatement(detailedSelection.statement);
+                          setTruthReason("");
+                          setEditingTruth(true);
+                        }}
+                      />
+                    ) : null}
                     {tagEditingSupported ? (
                       <ToolbarIconButton
                         label="Edit tags"

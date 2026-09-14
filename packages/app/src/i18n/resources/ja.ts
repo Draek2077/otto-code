@@ -3513,6 +3513,7 @@ export const ja: TranslationResources = {
       agents: "エージェント",
       teams: "チーム",
       tools: "ツール",
+      connectors: "コネクタ",
       code: "コード",
       brain: "ブレイン",
       metadata: "メタデータ",
