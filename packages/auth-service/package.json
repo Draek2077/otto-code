@@ -8,7 +8,8 @@
     "dev": "wrangler dev --env staging --local-protocol https --ip 127.0.0.1 --port 8793 --var PUBLIC_ORIGIN:https://127.0.0.1:8793",
     "typecheck": "tsgo --noEmit",
     "build": "wrangler deploy --dry-run --env staging --outdir dist",
-    "test:runtime": "node scripts/smoke.mjs",
+    "build:production": "wrangler deploy --dry-run --env production --outdir dist",
+    "test:runtime": "node scripts/smoke.mjs && node scripts/smoke.mjs hubspot",
     "deploy:staging": "wrangler deploy --env staging",
     "deploy:production": "wrangler deploy --env production"
   },

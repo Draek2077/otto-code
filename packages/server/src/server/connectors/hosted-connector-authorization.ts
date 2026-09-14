@@ -9,6 +9,9 @@ import type { ConnectorAuthStore } from "./connector-oauth.js";
 import { hostedConnectorAccount } from "./hosted-connector-account.js";
 
 const INTEGRATION_ID = "connector-hosted-oauth";
+// Publisher deployment and HubSpot consent/read/refresh/revocation verified
+// 2026-09-13. An explicitly empty OTTO_CONNECTOR_AUTH_URL disables sign-in.
+const DEFAULT_AUTH_ORIGIN = "https://auth.otto-code.me";
 const Tokens = z.object({
   accessToken: z.string().min(1).max(32768),
   refreshToken: z.string().min(1).max(32768),
@@ -77,7 +80,7 @@ export class HostedConnectorAuthorization {
   private closed = false;
 
   constructor(private readonly options: Options) {
-    this.origin = serviceOrigin(options.origin);
+    this.origin = serviceOrigin(options.origin ?? DEFAULT_AUTH_ORIGIN);
     this.fetcher = options.fetcher ?? fetch;
   }
 

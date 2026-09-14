@@ -62,8 +62,8 @@ saying where to get it is the failure this catalog was rebuilt to remove.
 
 ### Shared hosted authentication
 
-Box uses Otto's shared confidential-client authentication service. Its authorization
-server does not offer dynamic client registration. The publisher secret stays in
+Box and HubSpot use Otto's shared confidential-client authentication service. Their authorization
+servers do not offer dynamic client registration. The publisher secret stays in
 the service; per-user credentials stay in the host vault. The implementation is
 capability-gated and requires a verified publisher deployment before ordinary users
 can sign in. See [shared authentication](connector-auth-service.md) for ownership,
@@ -77,14 +77,14 @@ publisher-owned public registrations for remote MCP servers such as Slack. Googl
 uses Otto's publisher-owned Desktop OAuth registration and ordinary APIs. The
 remaining shapes below describe vendor requirements, not implemented support:
 
-| Shape                          | What the user supplies                  | Vendors                                                                                                                                                                            |
-| ------------------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fixed URL + DCR                | nothing                                 | Notion, Linear, Atlassian, monday.com, Airtable, ClickUp, Trello, HubSpot, Stripe, GitHub, Sentry, Supabase, Cloudflare, Vercel, Square, Intercom, Canva, Webflow, Ahrefs, Netlify |
-| Registered public client + MCP | account sign-in                         | Slack (internal workspace verified; Marketplace distribution pending)                                                                                                              |
-| Publisher-owned Desktop OAuth  | nothing beyond account sign-in          | Google Drive, Gmail and Calendar                                                                                                                                                   |
-| **Templated URL** + a variable | tenant, host, store, region, or org URL | Microsoft 365, GitLab, Shopify, Datadog, AWS, Salesforce, Microsoft Ads                                                                                                            |
-| **Client credentials** grant   | client ID and secret, no browser        | PayPal                                                                                                                                                                             |
-| Static API token, no OAuth     | one token                               | Bitbucket tools on the Atlassian endpoint                                                                                                                                          |
+| Shape                          | What the user supplies                  | Vendors                                                                                                                                                                   |
+| ------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fixed URL + DCR                | nothing                                 | Notion, Linear, Atlassian, monday.com, Airtable, ClickUp, Trello, Stripe, GitHub, Sentry, Supabase, Cloudflare, Vercel, Square, Intercom, Canva, Webflow, Ahrefs, Netlify |
+| Registered public client + MCP | account sign-in                         | Slack (internal workspace verified; Marketplace distribution pending)                                                                                                     |
+| Publisher-owned Desktop OAuth  | nothing beyond account sign-in          | Google Drive, Gmail and Calendar                                                                                                                                          |
+| **Templated URL** + a variable | tenant, host, store, region, or org URL | Microsoft 365, GitLab, Shopify, Datadog, AWS, Salesforce, Microsoft Ads                                                                                                   |
+| **Client credentials** grant   | client ID and secret, no browser        | PayPal                                                                                                                                                                    |
+| Static API token, no OAuth     | one token                               | Bitbucket tools on the Atlassian endpoint                                                                                                                                 |
 
 The lesson is that "sign in and you're done" is the goal, not a universal
 property of the ecosystem. A connector that needs a tenant ID still beats one
@@ -219,6 +219,33 @@ was rejected, the next Connect or Reconnect starts fresh consent, dynamically
 registering again where applicable. Otto never retries the old code against a
 new client.
 
+### Webflow endpoint and HubSpot registration
+
+Webflow uses `https://mcp.webflow.com/mcp`. Its origin root serves HTML, including
+for MCP POST requests, so successful browser consent alone cannot validate that
+address. The daemon repairs saved HTTP entries pointing exactly at that root on
+startup, settings save and reload. It preserves connector identity and tool
+preferences and discards the old OAuth grant so the corrected resource receives
+fresh consent. Custom paths and current `/mcp` grants are unchanged. See
+[Webflow's setup guide](https://developers.webflow.com/mcp/reference/getting-started).
+
+HubSpot is not a dynamic-registration connector. Its published MCP setup requires
+an MCP auth app with a client ID, confidential client secret and registered
+redirect URL, plus PKCE. Live discovery on September 13, 2026 advertised
+`client_secret_post` and no registration endpoint. The current generic OAuth
+path cannot complete that setup. Otto routes HubSpot through its shared
+authentication service, which requires publisher runtime bindings
+`HUBSPOT_CLIENT_ID` and `HUBSPOT_CLIENT_SECRET`. Each sign-in generates fresh PKCE;
+users do not generate values in HubSpot's Installation URL Builder. HubSpot's
+consent page determines scopes, and Otto accepts its bounded `scopes` array or
+standard `scope` string without inventing permissions. End users are never asked
+for publisher secrets. The production service and developer-account flow were
+verified with 28 tools, an account-details read, refresh and revocation. The host
+defaults to the deployed service; installed apps need a host build containing
+this integration. Verification used a temporary in-memory vault; packaged
+desktop sign-in and unrelated-account distribution remain unverified.
+See [HubSpot's MCP integration guide](https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server).
+
 ### Slack's registered public client
 
 Slack does not support dynamic client registration. The broker selects Otto's
@@ -346,7 +373,7 @@ pretending the connection succeeded.
 ## Google Drive, Gmail and Calendar
 
 Otto implements these services over their ordinary account APIs. Users choose a
-service in **Settings > Tools > Connectors > Add connector**, click Connect,
+service in **Settings > Connectors > Add connector**, click Connect,
 sign in and approve access. They need no client registration or preview setting.
 The callback currently requires a browser on the host computer; remote phone
 consent is not implemented. Start or reload a chat after changing connections.

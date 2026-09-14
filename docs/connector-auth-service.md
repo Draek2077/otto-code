@@ -1,8 +1,10 @@
 # Shared connector authentication
 
-Otto has one reusable publisher authentication service for connectors whose vendors require a confidential OAuth application. Box is its first adapter. The service lives in `packages/auth-service`; its daemon driver lives in `packages/server/src/server/connectors/hosted-connector-authorization.ts`.
+Otto has one reusable publisher authentication service for connectors whose vendors require a confidential OAuth application. Box and HubSpot have adapters. The service lives in `packages/auth-service`; its daemon driver lives in `packages/server/src/server/connectors/hosted-connector-authorization.ts`.
 
-This is an opt-in implementation until its deployment and vendor distribution are approved and verified. The daemon advertises `server_info.features.connectorHostedOauth` only when `OTTO_CONNECTOR_AUTH_URL` is configured. Shipping source does not establish public availability. End users should receive a working publisher configuration through the normal host release; they should not register developer apps or supply publisher secrets.
+Hosts default to the deployed publisher service at `https://auth.otto-code.me` and advertise `server_info.features.connectorHostedOauth` when a service origin is configured. Administrators may override `OTTO_CONNECTOR_AUTH_URL`; an explicitly empty value disables hosted sign-in. End users do not register developer apps or supply publisher secrets. Source changes still require a host release before installed users receive this default.
+
+Production deployment and HubSpot's developer-account flow were verified on September 13, 2026: consent, 28 MCP tools, an account-details read, refresh, and revocation succeeded through the shared service and current daemon source. The verification used a temporary in-memory host vault and removed its grant afterward; it did not install a connection in the running desktop app. HubSpot credentials are provisioned on the Worker. Box credentials, unrelated-account distribution, OS-vault persistence and packaged desktop sign-in remain unverified for this deployment.
 
 ## Why this service exists
 
@@ -56,6 +58,12 @@ Consent documents use `Referrer-Policy: same-origin` so browser form submissions
 
 Box uses `root_readwrite ai.readwrite`. This permits content changes and AI features as authorized by the account. Per-tool switches restrict Otto's advertised/executable tools, but do not narrow the vendor OAuth grant itself. Review narrower scopes against the desired tool catalog before changing the publisher policy. Box organization policies, plans and distribution approval can restrict users independently of Otto's code. Developer-enterprise success is not evidence of access for unrelated accounts.
 
+HubSpot requires an **MCP auth app**, created under **Development > MCP Auth Apps**. Its client ID and secret are runtime bindings `HUBSPOT_CLIENT_ID` and `HUBSPOT_CLIENT_SECRET`. The app's registered redirect must match the service's `/v1/callback` URL exactly. For the production Otto registration, use `https://auth.otto-code.me/v1/callback`. Each sign-in generates fresh state and S256 PKCE on the service; the portal's manual PKCE test generator is unnecessary. A registered callback does not establish that the service has been deployed.
+
+HubSpot's MCP consent page owns permission selection, so Otto omits the authorization `scope` parameter instead of guessing a static CRM scope bundle. Token responses may contain the standard `scope` string or HubSpot's `scopes` array. Returned scopes are bounded to 100 strings of at most 200 characters. Missing scope metadata stays empty for HubSpot; Box retains its fixed requested-scope validation. HubSpot discovery fixes authorize/token endpoints to `mcp.hubspot.com`, and revocation uses its documented `https://api.hubapi.com/oauth/2026-09/token/revoke` endpoint with a refresh-token hint. Local fixtures cover PKCE, exchange, scope parsing, refresh, revocation and daemon vault routing. Production developer-account proof is recorded above; unrelated-account distribution still requires verification.
+
+The connector card shows a short notice; the service consent page keeps the full credential, retention and tool-result disclosure under **How your connection is handled**. Consent and completion pages share a centered, responsive Otto frame with the canonical robot mark, homepage link and auth-service package version. Daylight and Twilight colors follow the browser's preferred color scheme. Assets and styles are embedded locally, with a fresh CSP nonce permitting only the page's stylesheet; no scripts, external fonts or asset requests are required.
+
 ## CI/CD and deployment procedure
 
 The single `.github/workflows/deploy-auth-service.yml` verifies source and a Worker dry build without vendor secrets. After bootstrap is explicitly enabled, relevant main-branch pushes deploy staging; a manual workflow selects production. The default worker does not have a public route. Staging and production are isolated environments of this service, with separate grant storage and secret bindings.
@@ -81,6 +89,8 @@ npx vitest run packages/server/src/server/connectors/hosted-connector-authorizat
 npm run build --workspace=@otto-code/auth-service
 npm run test:runtime --workspace=@otto-code/auth-service
 ```
+
+For a production-only deployment, `npm run build:production --workspace=@otto-code/auth-service` builds the production Worker without publishing it, and `npm run deploy:production --workspace=@otto-code/auth-service` publishes that environment after its bindings and account access are ready. Provision HubSpot credentials through Cloudflare runtime secrets using `npx wrangler secret put HUBSPOT_CLIENT_ID --env production` and `npx wrangler secret put HUBSPOT_CLIENT_SECRET --env production` from `packages/auth-service`. Enter values interactively, never as command arguments or chat messages. The runtime smoke command checks both Box and HubSpot with synthetic vendor responses and external networking disabled.
 
 The build command is a local Wrangler dry run. The runtime smoke uses Miniflare/workerd, real Durable Object routing/storage, synthetic vendor responses and disabled external networking. It verifies consent, collection, replay rejection, refresh and revocation. Workers require manual redirect handling rather than Node's `redirect: "error"`; both paths reject redirects without forwarding secrets. No deployment is implied. The daemon accepts HTTPS origins only. Local browser/daemon integration needs a locally trusted TLS certificate, an exact matching development origin/callback, and an isolated vendor registration; do not disable certificate verification.
 
