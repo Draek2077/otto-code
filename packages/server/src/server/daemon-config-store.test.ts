@@ -15,6 +15,7 @@ import {
   DEFAULT_AGENT_TEAMS,
 } from "@otto-code/protocol/default-personalities";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
+import { MutableDaemonConfigSchema } from "@otto-code/protocol/messages";
 
 /**
  * The mutable config a reload-capable daemon starts from: every leaf that
@@ -108,6 +109,66 @@ describe("DaemonConfigStore", () => {
     for (const dir of tempDirs) {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("repairs saved Webflow endpoints at startup, patch and reload without reusing grants", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-webflow-migration-"));
+    tempDirs.push(ottoHome);
+    const legacy = {
+      id: "webflow-custom-id",
+      name: "Webflow",
+      enabled: false,
+      disabledTools: ["publish_site"],
+      server: { type: "http" as const, url: "https://mcp.webflow.com/" },
+      auth: {
+        kind: "oauth" as const,
+        tokens: { accessToken: "old-resource-token", tokenType: "Bearer" },
+      },
+    };
+    const initial = MutableDaemonConfigSchema.parse({
+      mcp: { injectIntoAgents: false },
+      connectors: [legacy],
+    });
+    const store = new DaemonConfigStore(ottoHome, initial, undefined, {
+      reloadSource: { resolve: () => ({ mutable: initial, overrideControlledPaths: [] }) },
+    });
+    const expected = {
+      ...initial.connectors[0],
+      server: { type: "http", url: "https://mcp.webflow.com/mcp" },
+    };
+    delete expected.auth;
+    expect(store.get().connectors).toEqual([expected]);
+    const patched = store.patch({
+      connectors: [{ ...legacy, server: { type: "http", url: "https://mcp.webflow.com" } }],
+    });
+    expect(patched.connectors).toEqual([expected]);
+    store.patch({ connectors: [] });
+    writeFileSync(
+      path.join(ottoHome, "config.json"),
+      JSON.stringify({ daemon: { connectors: [legacy] } }),
+    );
+    store.reload();
+    expect(store.get().connectors).toEqual([expected]);
+  });
+
+  test("preserves current Webflow grants and custom endpoints", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-webflow-current-"));
+    tempDirs.push(ottoHome);
+    const initial = MutableDaemonConfigSchema.parse({
+      mcp: { injectIntoAgents: false },
+      connectors: [
+        "https://mcp.webflow.com/mcp",
+        "https://mcp.webflow.com/custom",
+        "https://mcp.webflow.com.attacker.test/",
+      ].map((url, i) => ({
+        id: `webflow-${i}`,
+        name: "Webflow",
+        server: { type: "http", url },
+        auth: { kind: "oauth", tokens: { accessToken: "keep-token", tokenType: "Bearer" } },
+      })),
+    });
+    const store = new DaemonConfigStore(ottoHome, initial);
+    expect(store.get().connectors).toEqual(initial.connectors);
   });
 
   test("patch persists relay state and emits its field change", () => {
