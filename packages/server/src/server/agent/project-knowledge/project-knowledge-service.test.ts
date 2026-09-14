@@ -196,8 +196,7 @@ describe("ProjectKnowledgeService", () => {
       });
 
       const summary = (await knowledge.catalogView(root)).records[0];
-      expect(summary.statement.length).toBeLessThanOrEqual(480);
-      expect(summary.statement.endsWith("…")).toBe(true);
+      expect(summary.statement).toBe("");
       expect(summary.statementDigest).toBe(createHash("sha256").update(statement).digest("hex"));
       expect(summary.evidence).toBeUndefined();
       expect(summary.provenance).toBeUndefined();

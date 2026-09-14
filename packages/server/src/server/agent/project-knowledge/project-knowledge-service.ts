@@ -190,10 +190,10 @@ export class ProjectKnowledgeService {
       records: view.records.map((record) => {
         const summary: ProjectKnowledgeRecord = Object.assign({}, record, {
           statementDigest: createHash("sha256").update(record.statement).digest("hex"),
-          statement:
-            record.statement.length > 480
-              ? `${record.statement.slice(0, 477).trimEnd()}…`
-              : record.statement,
+          // The catalog is an index. Readers fetch the selected page in full, so
+          // article text here would only ride the wire unseen. The field stays
+          // because the protocol requires it.
+          statement: "",
         });
         delete summary.evidence;
         delete summary.provenance;

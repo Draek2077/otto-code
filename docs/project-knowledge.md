@@ -87,7 +87,7 @@ At the end of an effort, after the requested outcome has been verified and befor
 
 This timing rule lets development proceed through mistakes and abandoned approaches without fragmenting the durable record. A failed experiment is captured only when the failure itself is a verified, reusable finding. New pages remain inactive until explicit human confirmation. Delivery and reference metadata changes do not alter review status.
 
-This is the practical distinction between discovery and context injection: discovery itself is a small automatic injection, while the potentially large page content stays conditional. The workspace list RPC follows the same rule: it returns lightweight catalog records with a statement digest, and the reader fetches full Markdown and timeline only for the selected page. Draft and superseded pages do not enter the catalog or normal agent retrieval.
+This is the practical distinction between discovery and context injection: discovery itself is a small automatic injection, while the potentially large page content stays conditional. The workspace list RPC follows the same rule: it returns catalog records with no article text, only a statement digest, and the reader fetches full Markdown and timeline only for the selected page. The reader shows a loading state until that read completes, never a partial article, and reuses a page it already read until the catalog reloads. Draft and superseded pages do not enter the catalog or normal agent retrieval.
 
 ## Bootstrap and management
 

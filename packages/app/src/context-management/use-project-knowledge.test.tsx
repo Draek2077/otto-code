@@ -10,6 +10,7 @@ const SERVER_ID = "server-1";
 const WORKSPACE_ID = "workspace-1";
 const listProjectKnowledge = vi.fn();
 const getProjectKnowledgeRoot = vi.fn();
+const getProjectKnowledge = vi.fn();
 
 const view = {
   records: [],
@@ -24,10 +25,11 @@ const view = {
 beforeEach(() => {
   listProjectKnowledge.mockReset();
   getProjectKnowledgeRoot.mockReset();
+  getProjectKnowledge.mockReset();
   useSessionStore.setState({
     sessions: {
       [SERVER_ID]: {
-        client: { listProjectKnowledge, getProjectKnowledgeRoot },
+        client: { listProjectKnowledge, getProjectKnowledge, getProjectKnowledgeRoot },
         serverInfo: { features: { projectKnowledge: true } },
       },
     },
@@ -127,7 +129,7 @@ describe("useProjectKnowledge", () => {
     useSessionStore.setState({
       sessions: {
         [SERVER_ID]: {
-          client: { listProjectKnowledge, getProjectKnowledgeRoot },
+          client: { listProjectKnowledge, getProjectKnowledge, getProjectKnowledgeRoot },
           serverInfo: {
             features: { projectKnowledge: true, projectKnowledgeDeferredRootBodies: true },
           },
@@ -143,5 +145,69 @@ describe("useProjectKnowledge", () => {
     expect(listProjectKnowledge).toHaveBeenCalledWith(WORKSPACE_ID, {
       includeRootBodies: false,
     });
+  });
+});
+
+describe("useProjectKnowledge full record reads", () => {
+  const summary = {
+    id: "record-1",
+    title: "T",
+    statement: "",
+    updatedAt: "2026-09-13T00:00:00Z",
+  };
+  const full = { ...summary, statement: "The full article." };
+
+  async function renderLoaded() {
+    listProjectKnowledge.mockResolvedValue({ ...view, records: [summary] });
+    const hook = renderHook(() => useProjectKnowledge(SERVER_ID, WORKSPACE_ID));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    return hook;
+  }
+
+  it("reuses a read article until the catalog reloads", async () => {
+    getProjectKnowledge.mockResolvedValue({ record: full });
+    const { result } = await renderLoaded();
+    expect(result.current.cachedRecord(summary.id)).toBeNull();
+
+    await act(async () => {
+      await result.current.readRecord(summary.id);
+    });
+    expect(result.current.cachedRecord(summary.id)).toEqual(full);
+
+    act(() => result.current.reload());
+    expect(result.current.cachedRecord(summary.id)).toBeNull();
+  });
+
+  it("drops a read that straddles a reload", async () => {
+    let resolveRead: (value: { record: typeof full }) => void = () => undefined;
+    getProjectKnowledge.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRead = resolve;
+      }),
+    );
+    const { result } = await renderLoaded();
+
+    let read: Promise<unknown> = Promise.resolve();
+    act(() => {
+      read = result.current.readRecord(summary.id);
+    });
+    act(() => result.current.reload());
+    await act(async () => {
+      resolveRead({ record: full });
+      await read;
+    });
+
+    expect(result.current.cachedRecord(summary.id)).toBeNull();
+  });
+
+  it("keeps a mutation response as the full article", async () => {
+    const { result } = await renderLoaded();
+
+    act(() => result.current.replaceRecord(full as never));
+
+    expect(result.current.cachedRecord(summary.id)).toEqual(full);
+    expect(getProjectKnowledge).not.toHaveBeenCalled();
   });
 });
