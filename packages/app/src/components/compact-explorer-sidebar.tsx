@@ -146,15 +146,16 @@ export function CompactExplorerSidebar({
     () => [
       inlineUnistylesStyle({
         paddingTop: insets.top + HEADER_TOP_PADDING_MOBILE,
-        paddingBottom: usePanelKeyboardPadding ? 0 : insets.bottom,
       }),
       styles.mobileSidebar,
-      // A disabled padding animation resolves to `paddingBottom: 0`, which
-      // would erase Changes' safe-area inset. It only owns the bottom edge
-      // while the Files/Search keyboard path is active.
-      usePanelKeyboardPadding ? mobileKeyboardInsetStyle : null,
+      // The animated padding stays attached and owns the bottom edge on every
+      // tab. Detaching it on a tab switch leaves its last UI-thread value
+      // (inset + keyboard height) stuck on the native view, which pushed
+      // Changes' Commits row to mid-screen. On Changes it resolves to 0 and
+      // CommitsSection consumes the safe-area inset itself.
+      mobileKeyboardInsetStyle,
     ],
-    [insets.bottom, insets.top, mobileKeyboardInsetStyle, usePanelKeyboardPadding],
+    [insets.top, mobileKeyboardInsetStyle],
   );
 
   return (
