@@ -4646,6 +4646,17 @@ export const fr: TranslationResources = {
         forgot: "Point de terminaison oublié",
       },
       tools: {
+        policy: {
+          save: "Enregistrer",
+          enabled: "Activer les outils Otto",
+          description:
+            "Contrôle les outils fournis par Otto au démarrage ou à la reprise d’un chat. Les outils du fournisseur et les autorisations des connecteurs restent inchangés.",
+          disabledTools: "Outils désactivés",
+          namesHint:
+            "Un nom exact par ligne, par exemple create_agent. Une liste vide ne bloque rien. Les blocages nommés s’appliquent aussi aux connecteurs.",
+          updateHost: "Mettez l’hôte à jour pour configurer les outils Otto par fournisseur.",
+          unavailable: "Connectez-vous à cet hôte, puis réessayez d’enregistrer.",
+        },
         title: "Outils Otto",
         description:
           "Groupes d'outils que ce modèle peut utiliser. Décochez un groupe pour le masquer au modèle.",

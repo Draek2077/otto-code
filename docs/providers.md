@@ -117,6 +117,10 @@ Otto tools are not implemented as MCP tools internally. They live in a shared to
 
 A provider that can register runtime tools directly should set `supportsNativeOttoTools: true` and consume the already-filtered `launchContext.ottoTools` in `createSession`/`resumeSession`. When native tools are present, `AgentManager` strips the internal Otto MCP server from the provider launch config so the provider does not receive the same tools twice. Providers that only know MCP should keep `supportsMcpServers: true` and let the daemon inject `/mcp/agents`; the MCP server builds the same policy-filtered catalog for that caller. Filtering is enforced at catalog registration in both paths. Browser tools remain subject to the daemon browser-tools setting and browser-host availability.
 
+The provider's **Tools** tab exposes this policy for every provider, including custom and plugin provider IDs. **Enable Otto tools** defaults on; **Disabled tools** defaults empty and accepts one exact tool name per line with an explicit Save action. Settings search opens the selected provider's Tools tab at either control. Hosts without `server_info.features.providerOttoToolPolicy` show an update message instead of editable controls.
+
+The master switch affects tools supplied by Otto, not the provider's own tools or separately granted connector tools. Explicit disabled names also block matching connector tools. Policy is applied when sessions start or resume; changing it does not rebuild an already running session. Existing OpenAI-compatible tool-group controls remain separate and further restrict which tools are available. The UI patches only the edited policy field, preserving the other field and unrelated provider configuration.
+
 ## Instruction files: `ownsContextPayload`
 
 Claude and Codex chats list `/init` as a command and pass the submitted text and arguments

@@ -4625,6 +4625,17 @@ export const es: TranslationResources = {
         forgot: "Punto de conexión olvidado",
       },
       tools: {
+        policy: {
+          save: "Guardar",
+          enabled: "Activar herramientas de Otto",
+          description:
+            "Controla las herramientas de Otto al iniciar o reanudar un chat. Las herramientas del proveedor y los permisos de conectores no cambian.",
+          disabledTools: "Herramientas desactivadas",
+          namesHint:
+            "Un nombre exacto por línea, por ejemplo create_agent. Una lista vacía no bloquea nada. Los bloqueos por nombre también se aplican a conectores.",
+          updateHost: "Actualiza el host para configurar las herramientas de Otto por proveedor.",
+          unavailable: "Conéctate a este host y vuelve a guardar.",
+        },
         title: "Herramientas de Otto",
         description:
           "Grupos de herramientas que este modelo puede usar. Desmarca un grupo para ocultarlo del modelo.",

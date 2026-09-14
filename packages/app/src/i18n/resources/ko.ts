@@ -4562,6 +4562,17 @@ export const ko: TranslationResources = {
         forgot: "Endpoint forgotten",
       },
       tools: {
+        policy: {
+          save: "저장",
+          enabled: "Otto 도구 활성화",
+          description:
+            "채팅 시작 또는 재개 시 Otto가 제공하는 도구를 제어합니다. 공급자 자체 도구와 커넥터의 개별 권한은 변경되지 않습니다.",
+          disabledTools: "비활성화된 도구",
+          namesHint:
+            "한 줄에 정확한 도구 이름 하나를 입력하세요(예: create_agent). 빈 목록은 아무것도 차단하지 않습니다. 이름별 차단은 커넥터 도구에도 적용됩니다.",
+          updateHost: "공급자별 Otto 도구를 설정하려면 호스트를 업데이트하세요.",
+          unavailable: "이 호스트에 연결한 후 저장을 다시 시도하세요.",
+        },
         title: "Otto tools",
         description: "Tool groups this model can use. Uncheck a group to hide it from the model.",
         globallyDisabled: "Disabled in global settings",

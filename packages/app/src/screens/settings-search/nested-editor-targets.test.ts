@@ -9,6 +9,14 @@ import {
 } from "./nested-editor-targets";
 
 describe("nested Settings destinations", () => {
+  it("opens provider tool policy search results in the Tools tab", () => {
+    expect(
+      settingsEditorTab(PROVIDER_SETTINGS_TABS, "host-providers-tools-enable-otto-tools"),
+    ).toBe("tools");
+    expect(settingsEditorTab(PROVIDER_SETTINGS_TABS, "host-providers-tools-disabled-tools")).toBe(
+      "tools",
+    );
+  });
   it("keeps equally named fields bound to the chosen editor, with no cross-entity fallback", () => {
     expect(settingsEditorTab(TEAM_SETTINGS_TABS, "host-teams-identity-name")).toBeNull();
     expect(settingsEditorTab(PERSONALITY_SETTINGS_TABS, "host-teams-identity-name-2")).toBeNull();

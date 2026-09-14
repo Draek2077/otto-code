@@ -4589,6 +4589,17 @@ export const ja: TranslationResources = {
         forgot: "エンドポイントを削除しました",
       },
       tools: {
+        policy: {
+          save: "保存",
+          enabled: "Ottoツールを有効にする",
+          description:
+            "チャットの開始・再開時にOttoが提供するツールを制御します。プロバイダー独自のツールとコネクターの個別権限は変わりません。",
+          disabledTools: "無効なツール",
+          namesHint:
+            "正確なツール名を1行に1つ入力します（例：create_agent）。空欄では何もブロックしません。名前によるブロックはコネクターツールにも適用されます。",
+          updateHost: "プロバイダー別のOttoツールを設定するにはホストを更新してください。",
+          unavailable: "このホストに接続してから保存を再試行してください。",
+        },
         title: "Otto ツール",
         description:
           "このモデルが使用できるツールグループ。グループのチェックを外すとモデルから隠せます。",

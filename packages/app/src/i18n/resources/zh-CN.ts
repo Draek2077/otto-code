@@ -4472,6 +4472,17 @@ export const zhCN: TranslationResources = {
         forgot: "已忘记该端点",
       },
       tools: {
+        policy: {
+          save: "保存",
+          enabled: "启用 Otto 工具",
+          description:
+            "控制聊天开始或恢复时 Otto 提供的工具。提供商自带的工具和连接器的独立授权保持不变。",
+          disabledTools: "已禁用的工具",
+          namesHint:
+            "每行一个准确的工具名称，例如 create_agent。空列表不屏蔽任何工具。按名称屏蔽也适用于连接器工具。",
+          updateHost: "更新主机以配置各提供商的 Otto 工具。",
+          unavailable: "连接到此主机，然后重试保存。",
+        },
         title: "Otto 工具",
         description: "此模型可使用的工具组。取消选中某个组即可对模型隐藏。",
         globallyDisabled: "已在全局设置中禁用",

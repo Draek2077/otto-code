@@ -5744,6 +5744,8 @@ export const ServerInfoStatusPayloadSchema = z
         // ignores the field and always injects) shows "Update the host" instead of
         // a switch that does nothing.
         openaiCompatMidSessionUpdates: z.boolean().optional(),
+        // Provider-level Otto tool policy is persisted and enforced for exact provider IDs.
+        providerOttoToolPolicy: z.boolean().optional(),
         // COMPAT(mcpToolGroups): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         // Set when the daemon honors `mcp.toolGroups` - per-group gating of the
         // Otto tool catalog on the MCP (Claude) path. Old daemons register every

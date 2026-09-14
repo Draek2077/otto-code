@@ -4603,6 +4603,17 @@ export const ptBR: TranslationResources = {
         forgot: "Endpoint esquecido",
       },
       tools: {
+        policy: {
+          save: "Salvar",
+          enabled: "Ativar ferramentas do Otto",
+          description:
+            "Controla as ferramentas do Otto ao iniciar ou retomar um chat. As ferramentas do provedor e as permissões dos conectores não mudam.",
+          disabledTools: "Ferramentas desativadas",
+          namesHint:
+            "Um nome exato por linha, por exemplo create_agent. Uma lista vazia não bloqueia nada. Bloqueios por nome também se aplicam aos conectores.",
+          updateHost: "Atualize o host para configurar as ferramentas do Otto por provedor.",
+          unavailable: "Conecte-se a este host e tente salvar novamente.",
+        },
         title: "Ferramentas do Otto",
         description:
           "Grupos de ferramentas que este modelo pode usar. Desmarque um grupo para ocultá-lo do modelo.",

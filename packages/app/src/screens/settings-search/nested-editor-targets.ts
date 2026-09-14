@@ -33,6 +33,8 @@ export const TEAM_SETTINGS_TABS = {
 export const TEAM_SETTINGS_TARGETS = Object.keys(TEAM_SETTINGS_TABS);
 
 export const PROVIDER_SETTINGS_TABS = {
+  "host-providers-tools-enable-otto-tools": "tools",
+  "host-providers-tools-disabled-tools": "tools",
   "host-providers-models-add-model": "models",
   "host-providers-models-diagnostics": "models",
   "host-providers-models-hide-all": "models",

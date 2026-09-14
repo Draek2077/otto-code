@@ -4620,6 +4620,17 @@ export const en = {
         forgot: "Endpoint forgotten",
       },
       tools: {
+        policy: {
+          save: "Save",
+          enabled: "Enable Otto tools",
+          description:
+            "Controls tools supplied by Otto when a chat starts or resumes. The provider’s own tools and separate connector grants are unchanged.",
+          disabledTools: "Disabled tools",
+          namesHint:
+            "One exact tool name per line, for example create_agent. An empty list blocks none. Named blocks also apply to connector tools.",
+          updateHost: "Update the host to configure per-provider Otto tools.",
+          unavailable: "Connect to this host, then retry saving.",
+        },
         title: "Otto tools",
         description: "Tool groups this model can use. Uncheck a group to hide it from the model.",
         globallyDisabled: "Disabled in global settings",

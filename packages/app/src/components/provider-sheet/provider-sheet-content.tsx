@@ -419,6 +419,7 @@ const CLAUDE_COMPATIBLE_BASE_URL_PRESETS: ComboboxOption[] = [
 export const EMPTY_SAVED_ENDPOINTS: SavedProviderEndpoint[] = [];
 
 type ProviderSheetFeature =
+  | "providerOttoToolPolicy"
   | "providerRemove"
   | "artifactsToolGroup"
   | "modelTierOverrides"

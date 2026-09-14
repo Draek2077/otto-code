@@ -1,6 +1,10 @@
 import type { RefObject } from "react";
 import { SettingsButton } from "@/screens/settings-search/controls";
 import {
+  ProviderToolPolicySection,
+  readProviderToolPolicy,
+} from "./provider-sheet/provider-tool-policy";
+import {
   PROVIDER_SETTINGS_TABS,
   PROVIDER_SETTINGS_TARGETS,
   settingsEditorTab,
@@ -719,6 +723,8 @@ export function ProviderDiagnosticSheet({
   );
   const supportsProviderRemove = useProviderSheetFeature(serverId, "providerRemove");
   const supportsArtifactsToolGroup = useProviderSheetFeature(serverId, "artifactsToolGroup");
+  // COMPAT(providerOttoToolPolicy): added in v0.9.10, remove after 2027-03-13 when the host floor supports it.
+  const supportsToolPolicy = useProviderSheetFeature(serverId, "providerOttoToolPolicy");
   // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
   const supportsModelTierOverrides = useProviderSheetFeature(serverId, "modelTierOverrides");
   // COMPAT(modelVisibilityOverrides): added in v0.8.18, drop the gate when daemon floor >= v0.8.18.
@@ -784,7 +790,7 @@ export function ProviderDiagnosticSheet({
 
   const hasConnectionTab = connection !== null;
   const isOpenAiCompatFamily = resolveIsOpenAiCompatFamily(provider, providerExtends);
-  const hasToolsTab = isOpenAiCompatFamily;
+  const hasToolsTab = true;
   const hasAgentsTab = isOpenAiCompatFamily;
   const tabOptions = useMemo(
     () => buildProviderTabOptions(t, hasConnectionTab, hasToolsTab, hasAgentsTab),
@@ -1014,14 +1020,24 @@ export function ProviderDiagnosticSheet({
         ) : null}
         {currentTab === "tools" ? (
           <TabScrollView>
-            <ProviderToolGroupsSection
-              key={`tools-${provider}`}
+            <ProviderToolPolicySection
+              key={`policy-${provider}`}
               provider={provider}
-              selectedGroups={readProviderToolGroups(config?.providers?.[provider])}
-              supportsArtifactsGroup={supportsArtifactsToolGroup}
+              policy={readProviderToolPolicy(config, provider)}
+              supported={supportsToolPolicy}
+              ready={config !== null}
               patchConfig={patchConfig}
-              refresh={refresh}
             />
+            {isOpenAiCompatFamily ? (
+              <ProviderToolGroupsSection
+                key={`tools-${provider}`}
+                provider={provider}
+                selectedGroups={readProviderToolGroups(config?.providers?.[provider])}
+                supportsArtifactsGroup={supportsArtifactsToolGroup}
+                patchConfig={patchConfig}
+                refresh={refresh}
+              />
+            ) : null}
           </TabScrollView>
         ) : null}
         {currentTab === "agents" ? (
