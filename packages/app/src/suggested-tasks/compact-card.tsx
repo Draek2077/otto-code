@@ -103,12 +103,14 @@ export function CompactSuggestedTasksCard({
           onPress={toggle}
           style={[styles.toggle, compact && styles.toggleCompact]}
         >
-          {expanded ? (
-            <ThemedChevronDown size="md" uniProps={foregroundMutedColorMapping} />
-          ) : (
-            <ThemedChevronRight size="md" uniProps={foregroundMutedColorMapping} />
-          )}
-          <ThemedLightbulb size="sm" uniProps={statusInfoColorMapping} />
+          <View style={styles.toggleIcons}>
+            {expanded ? (
+              <ThemedChevronDown size="md" uniProps={foregroundMutedColorMapping} />
+            ) : (
+              <ThemedChevronRight size="md" uniProps={foregroundMutedColorMapping} />
+            )}
+            <ThemedLightbulb size="sm" uniProps={statusInfoColorMapping} />
+          </View>
           <Text style={styles.label} numberOfLines={1}>
             {summary}
           </Text>
@@ -247,6 +249,13 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     paddingVertical: theme.spacing[1],
+  },
+  // Bare SVGs are shrinkable flex items on web; only the label gives up width.
+  toggleIcons: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 0,
+    gap: theme.spacing[2],
   },
   label: {
     flexShrink: 1,
