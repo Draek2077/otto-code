@@ -1,5 +1,8 @@
 name: Verify and deploy shared connector authentication
 
+# Production only. There is no staging deployment of the auth service; the
+# production Worker (otto-auth at auth.otto-code.me) is the only environment.
+
 on:
   pull_request:
     paths:
@@ -15,18 +18,12 @@ on:
       - "package-lock.json"
       - ".github/workflows/deploy-auth-service.yml"
   workflow_dispatch:
-    inputs:
-      environment:
-        description: Deployment environment
-        type: choice
-        options: [staging, production]
-        default: staging
 
 permissions:
   contents: read
 
 concurrency:
-  group: auth-service-${{ github.event.inputs.environment || 'staging' }}-${{ github.ref }}
+  group: auth-service-production-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -42,15 +39,15 @@ jobs:
       - run: npm run typecheck --workspace=@otto-code/auth-service
       - run: npm run lint -- packages/auth-service/src
       - run: npx vitest run packages/auth-service/src/grant.test.ts packages/auth-service/src/worker.test.ts --bail=1
-      - run: npm run build --workspace=@otto-code/auth-service
+      - run: npm run build:production --workspace=@otto-code/auth-service
       - run: npm run test:runtime --workspace=@otto-code/auth-service
 
   deploy:
     needs: verify
-    # Bootstrap explicitly after reviewing domains, cost limits, vendor consent,
-    # secret bindings and protected GitHub Environments. Merging code is inert.
+    # Stays off until the repository variable AUTH_SERVICE_DEPLOY_ENABLED is
+    # "true". Deploys with the same repository CLOUDFLARE_API_TOKEN the website
+    # uses; the account id is pinned in packages/auth-service/wrangler.toml.
     if: vars.AUTH_SERVICE_DEPLOY_ENABLED == 'true' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    environment: auth-${{ github.event.inputs.environment || 'staging' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
@@ -60,17 +57,8 @@ jobs:
           cache: npm
       - run: node scripts/npm-retry.mjs ci --workspace=@otto-code/auth-service --include-workspace-root --ignore-scripts
       - name: Deploy reviewed service
-        run: npm run "deploy:$AUTH_ENVIRONMENT" --workspace=@otto-code/auth-service
+        run: npm run deploy:production --workspace=@otto-code/auth-service
         env:
-          AUTH_ENVIRONMENT: ${{ github.event.inputs.environment || 'staging' }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.AUTH_CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       - name: Check deployed health
-        run: |
-          if [ "$AUTH_ENVIRONMENT" = production ]; then
-            curl --fail --silent --show-error https://auth.otto-code.me/health
-          else
-            curl --fail --silent --show-error https://auth-staging.otto-code.me/health
-          fi
-        env:
-          AUTH_ENVIRONMENT: ${{ github.event.inputs.environment || 'staging' }}
+        run: curl --fail --silent --show-error https://auth.otto-code.me/health

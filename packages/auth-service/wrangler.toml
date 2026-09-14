@@ -1,4 +1,5 @@
 name = "otto-auth"
+account_id = "3910072adb29ec7ee1bdcc37d532765d"
 main = "src/worker.ts"
 compatibility_date = "2026-05-01"
 workers_dev = false
