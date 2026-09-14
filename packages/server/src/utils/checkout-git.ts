@@ -2578,13 +2578,33 @@ const CHECKOUT_DIFF_FRAME_HEADROOM_BYTES = 1024 * 1024;
 export const CHECKOUT_DIFF_MAX_STRUCTURED_BYTES =
   maxBase64EncryptedPlaintextByteLength(RELAY_MAX_FRAME_BYTES) - CHECKOUT_DIFF_FRAME_HEADROOM_BYTES;
 
+// Structural rendering wants whole-file `beforeSource`/`afterSource` snapshots, but a
+// file need not be huge for those to dominate its contribution to the snapshot: two
+// full copies of a file approaching MAX_FULL_FILE_HIGHLIGHT_CHARS (256 KiB, in
+// diff-highlighter.ts) cost ~500 KiB even when the edit itself is one or two lines.
+// A 2026-09-13 capture showed exactly this - 11 files of 181-268 KB, edited by 1-2
+// lines each, pushing one `checkout_diff_update` push to 8.37 MB and freezing the
+// client's render. Past this per-file ceiling on the file's own structured payload
+// (hunks + tokens + sources), sources are dropped and only hunks/tokens ship.
+// Structural then reports "missing-source" for that one file and falls back to Line
+// diff (see the missing-source path in packages/app/src/utils/diff-document.ts),
+// which already renders correctly without sources.
+const PER_FILE_STRUCTURED_SOURCE_BUDGET_BYTES = 64 * 1024;
+
+// If a file's hunks and tokens alone - sources already dropped - still exceed this,
+// the file's *diff* is the problem, not Structural's source duplication, and it
+// degrades to the existing `too_large` placeholder instead of consuming the rest of
+// the snapshot budget on one file.
+const PER_FILE_STRUCTURED_MAX_BYTES = 768 * 1024;
+
 /**
  * The `diff` text is capped by {@link TOTAL_DIFF_MAX_BYTES}, but the structured
  * payload is a separate, far larger object: every diff line carries highlight
  * tokens, so a 3.6MB patch expands into ~900k token objects. Without this bound
- * the daemon builds that in memory and ships it as one frame. Callers that
- * overflow return `diffTooLarge` so the client renders the too-large state
- * instead of receiving a payload no socket should carry.
+ * the daemon builds that in memory and ships it as one frame. Individual files are
+ * degraded first (see {@link degradeStructuredFileToFit}); `diffTooLarge` for the
+ * whole snapshot is the last resort, when even a `too_large` placeholder for one
+ * file can't fit what's left of the budget.
  */
 interface StructuredDiffAccumulator {
   files: ParsedDiffFile[];
@@ -2596,24 +2616,85 @@ function createStructuredDiffAccumulator(): StructuredDiffAccumulator {
   return { files: [], serializedBytes: Buffer.byteLength("[]", "utf8"), renderLines: 0 };
 }
 
-/** Returns false when appending `file` would exceed the frame budget. */
+function structuredFileSize(file: ParsedDiffFile): { bytes: number; renderLines: number } {
+  return {
+    bytes: Buffer.byteLength(JSON.stringify(file), "utf8"),
+    renderLines: countStructuredDiffLines(file),
+  };
+}
+
+function withoutStructuredSources(file: ParsedDiffFile): ParsedDiffFile {
+  if (file.beforeSource === undefined && file.afterSource === undefined) {
+    return file;
+  }
+  const { beforeSource: _beforeSource, afterSource: _afterSource, ...rest } = file;
+  return rest;
+}
+
+function toTooLargeStructuredPlaceholder(file: ParsedDiffFile): ParsedDiffFile {
+  return {
+    path: file.path,
+    ...(file.oldPath ? { oldPath: file.oldPath } : {}),
+    isNew: file.isNew,
+    isDeleted: file.isDeleted,
+    additions: file.additions,
+    deletions: file.deletions,
+    hunks: [],
+    status: "too_large",
+  };
+}
+
+/**
+ * Degrades one file's structured payload through three tiers - full, sources
+ * dropped, `too_large` placeholder - so an oversized file shrinks or drops out on
+ * its own instead of forcing the whole snapshot into `diffTooLarge`. Returns null
+ * only when even the placeholder can't fit what remains of the snapshot budget.
+ */
+function degradeStructuredFileToFit(
+  file: ParsedDiffFile,
+  remainingBytes: number,
+  remainingRenderLines: number,
+): { file: ParsedDiffFile; bytes: number; renderLines: number } | null {
+  let candidate = file;
+  let size = structuredFileSize(candidate);
+
+  if (size.bytes > PER_FILE_STRUCTURED_SOURCE_BUDGET_BYTES || size.bytes > remainingBytes) {
+    candidate = withoutStructuredSources(candidate);
+    size = structuredFileSize(candidate);
+  }
+
+  if (
+    size.bytes > PER_FILE_STRUCTURED_MAX_BYTES ||
+    size.bytes > remainingBytes ||
+    size.renderLines > remainingRenderLines
+  ) {
+    candidate = toTooLargeStructuredPlaceholder(candidate);
+    size = structuredFileSize(candidate);
+  }
+
+  if (size.bytes > remainingBytes || size.renderLines > remainingRenderLines) {
+    return null;
+  }
+  return { file: candidate, ...size };
+}
+
+/** Returns false when even a degraded `too_large` placeholder for `file` overflowed the frame budget. */
 function appendStructuredFile(
   structured: StructuredDiffAccumulator,
   file: ParsedDiffFile,
 ): boolean {
-  const renderLines = countStructuredDiffLines(file);
-  if (structured.renderLines + renderLines > CHECKOUT_DIFF_MAX_RENDER_LINES) {
-    return false;
-  }
   const separatorBytes = structured.files.length > 0 ? 1 : 0;
-  const fileBytes = Buffer.byteLength(JSON.stringify(file), "utf8");
-  const nextBytes = structured.serializedBytes + separatorBytes + fileBytes;
-  if (nextBytes > CHECKOUT_DIFF_MAX_STRUCTURED_BYTES) {
+  const remainingBytes =
+    CHECKOUT_DIFF_MAX_STRUCTURED_BYTES - structured.serializedBytes - separatorBytes;
+  const remainingRenderLines = CHECKOUT_DIFF_MAX_RENDER_LINES - structured.renderLines;
+
+  const degraded = degradeStructuredFileToFit(file, remainingBytes, remainingRenderLines);
+  if (!degraded) {
     return false;
   }
-  structured.files.push(file);
-  structured.serializedBytes = nextBytes;
-  structured.renderLines += renderLines;
+  structured.files.push(degraded.file);
+  structured.serializedBytes += separatorBytes + degraded.bytes;
+  structured.renderLines += degraded.renderLines;
   return true;
 }
 

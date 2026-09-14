@@ -20,6 +20,8 @@ export interface DiffHunk {
 
 export interface ParsedDiffFile {
   path: string;
+  /** Present on renames, matching the protocol's optional `oldPath`. */
+  oldPath?: string;
   isNew: boolean;
   isDeleted: boolean;
   additions: number;

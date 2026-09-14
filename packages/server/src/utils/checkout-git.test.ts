@@ -1355,6 +1355,61 @@ const x = 1;
     expect(metrics.maxConcurrent).toBeLessThanOrEqual(8);
   });
 
+  it("drops whole-file sources for small edits to near-256KB tracked files, without failing the snapshot", async () => {
+    // Reproduces a 2026-09-13 capture: 11 tracked files of 181-268 KB, each edited by
+    // 1-2 lines, pushed one checkout_diff_update to 8.37 MB because every file's
+    // full before/after source was attached alongside its (tiny) hunk. A genuinely
+    // oversized file is mixed in to prove per-file degradation, not a global bail-out.
+    const lineCount = 3500;
+    const baseLines = Array.from(
+      { length: lineCount },
+      (_, i) => `export const filler_${i} = "padding_padding_padding_padding";`,
+    );
+    const fileNames = Array.from({ length: 11 }, (_, i) => `resource-${i}.ts`);
+    for (const fileName of fileNames) {
+      writeFileSync(join(repoDir, fileName), `${baseLines.join("\n")}\n`);
+    }
+    writeFileSync(join(repoDir, "huge.txt"), `${"x".repeat(2_100_000)}\n`);
+    execFileSync("git", ["add", ...fileNames, "huge.txt"], { cwd: repoDir });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add fixture files"], {
+      cwd: repoDir,
+    });
+
+    for (const fileName of fileNames) {
+      const editedLines = [...baseLines];
+      editedLines[10] = `export const filler_10 = "edited_padding_value";`;
+      editedLines[11] = `export const filler_11 = "edited_padding_value";`;
+      writeFileSync(join(repoDir, fileName), `${editedLines.join("\n")}\n`);
+    }
+    writeFileSync(join(repoDir, "huge.txt"), `${"y".repeat(2_100_000)}\n`);
+
+    const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
+
+    expect(diff.diffTooLarge).not.toBe(true);
+    const structured = diff.structured ?? [];
+    expect(structured.length).toBeGreaterThan(0);
+
+    const totalStructuredBytes = Buffer.byteLength(JSON.stringify(structured), "utf8");
+    // Production measured 8.37MB for this shape with sources attached; well under
+    // 1MB proves the per-file source budget dropped them.
+    expect(totalStructuredBytes).toBeLessThan(1024 * 1024);
+
+    for (const fileName of fileNames) {
+      const entry = structured.find((file) => file.path === fileName);
+      expect(entry).toBeTruthy();
+      expect(entry?.status).toBe("ok");
+      expect(entry?.hunks.length).toBeGreaterThan(0);
+      expect(entry?.beforeSource).toBeUndefined();
+      expect(entry?.afterSource).toBeUndefined();
+    }
+
+    const hugeEntry = structured.find((file) => file.path === "huge.txt");
+    expect(hugeEntry).toBeTruthy();
+    expect(hugeEntry?.status).toBe("too_large");
+    expect(hugeEntry?.hunks).toEqual([]);
+    expect(diff.diff).toContain("# huge.txt: diff too large omitted");
+  });
+
   it("marks tracked files omitted by the total diff budget as too_large", async () => {
     for (let i = 1; i <= 4; i += 1) {
       writeFileSync(join(repoDir, `budget-${i}.txt`), "old\n");

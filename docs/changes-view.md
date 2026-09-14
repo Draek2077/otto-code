@@ -232,6 +232,46 @@ Regression coverage is `packages/server/src/utils/checkout-git.user-git-config.t
 one case per setting. Add a case there rather than a defensive branch downstream when a
 new setting turns up.
 
+## Structured payload size degrades per file, not per snapshot
+
+`getCheckoutDiff`'s `structured` payload is not the patch text - every diff line carries
+highlight tokens, and `isFullFileHighlightable` (`diff-highlighter.ts`) attaches whole-file
+`beforeSource`/`afterSource` snapshots (up to 256 KiB each) so Structural rendering can parse
+real syntax instead of isolated hunks. A file does not need to be large for that to dominate: a
+2026-09-13 capture showed 11 tracked files of 181-268 KB, each edited by one or two lines,
+pushing a single `checkout_diff_update` to 8.37 MB - almost all of it duplicate whole-file
+sources for edits that touched a handful of lines - which froze the client on a 1.5-2.2s React
+render over 69k DOM nodes.
+
+`appendStructuredFile` (`checkout-git.ts`) now degrades **one file at a time** instead of
+failing the whole snapshot the moment any single file is too expensive:
+
+1. **Ok** - a file's structured payload (hunks, tokens, sources) fits its own budget. Ships
+   unchanged.
+2. **Sources dropped** - a file's payload exceeds `PER_FILE_STRUCTURED_SOURCE_BUDGET_BYTES`
+   (64 KiB). `beforeSource`/`afterSource` are removed; hunks and tokens still ship. Structural
+   reports `missing-source` for that one file and falls back to Line diff
+   (`checkStructuralAvailability` in `packages/app/src/utils/diff-document.ts`); every other
+   file in the same snapshot is unaffected.
+3. **`too_large` placeholder** - even without sources, a file's hunks/tokens exceed
+   `PER_FILE_STRUCTURED_MAX_BYTES` (768 KiB) or its render-line count would blow the remaining
+   render-line budget. It becomes the existing `status: "too_large"` placeholder (`hunks: []`,
+   stat preserved), the same shape a raw patch over `PER_FILE_DIFF_MAX_BYTES` already produces.
+4. **`diffTooLarge` for the whole snapshot** - last resort only: even a `too_large` placeholder
+   for one file cannot fit what remains of `CHECKOUT_DIFF_MAX_STRUCTURED_BYTES` (sized to the
+   relay's frame limit, not to what the UI can render). One file this large next to others that
+   already filled the budget is the only realistic trigger.
+
+Each file is measured against what is actually left of the snapshot budget
+(`degradeStructuredFileToFit`), so files are appended until the budget runs out rather than the
+first oversized file aborting everything after it - see "keeps small tracked files displayable
+when another tracked file has a massive diff" and the 11-file/one-huge-file case in
+`checkout-git.test.ts` for the shape both guarantees take together.
+
+This bounds the payload the client renders; it does not eliminate the duplicate-source cost
+outright. Loading sources lazily per file on expand instead of pushing them with every
+snapshot is tracked separately and not yet built.
+
 ## Switching branches with uncommitted changes
 
 Otto stages agent edits, so it does not expose a second Unstaged-files surface merely to make branch
