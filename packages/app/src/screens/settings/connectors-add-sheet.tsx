@@ -164,7 +164,7 @@ function CatalogEntryRow(props: {
         <Text style={settingsStyles.rowHint}>{entry.description}</Text>
       </ConnectorIdentity>
       <SettingsButton
-        settingIds={["host-tools-connectors-catalog-connector"]}
+        settingIds={["host-connectors-connectors-catalog-connector"]}
         onPress={handlePress}
         variant={installed ? "secondary" : "default"}
         size="sm"
@@ -447,7 +447,7 @@ function ManualConnectorForm(props: { serverId: string; config: MutableDaemonCon
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
           <SettingsTargetText
-            settingId="host-tools-connector-editor-name"
+            settingId="host-connectors-connector-editor-name"
             style={settingsStyles.rowTitle}
           >
             Name
@@ -473,7 +473,7 @@ function ManualConnectorForm(props: { serverId: string; config: MutableDaemonCon
       <View style={connectorStyles.borderedRow}>
         <View style={settingsStyles.rowContent}>
           <SettingsTargetText
-            settingId="host-tools-connector-editor-transport"
+            settingId="host-connectors-connector-editor-transport"
             style={settingsStyles.rowTitle}
           >
             Transport
@@ -496,8 +496,8 @@ function ManualConnectorForm(props: { serverId: string; config: MutableDaemonCon
           <SettingsTargetText
             settingId={
               transport === "stdio"
-                ? "host-tools-connector-editor-command"
-                : "host-tools-connector-editor-url"
+                ? "host-connectors-connector-editor-command"
+                : "host-connectors-connector-editor-url"
             }
             style={settingsStyles.rowTitle}
           >
@@ -542,7 +542,7 @@ function ManualConnectorForm(props: { serverId: string; config: MutableDaemonCon
       <View style={connectorStyles.borderedRow}>
         <View style={settingsStyles.rowContent}>
           <SettingsTargetText
-            settingId="host-tools-connector-editor-token"
+            settingId="host-connectors-connector-editor-token"
             style={settingsStyles.rowTitle}
           >
             Token
@@ -753,7 +753,7 @@ export function AddConnectorSheet({ serverId, config, visible, onClose }: AddCon
               <Text style={settingsStyles.rowHint}>{KNOWN_ABSENT_NOTE}</Text>
             </View>
             <SettingsButton
-              settingIds={["host-tools-connectors-custom-connector"]}
+              settingIds={["host-connectors-connectors-custom-connector"]}
               onPress={toggleManual}
               variant="secondary"
               size="sm"

@@ -3524,6 +3524,7 @@ export const ptBR: TranslationResources = {
       agents: "Agentes",
       teams: "Equipes",
       tools: "Ferramentas",
+      connectors: "Conectores",
       code: "Código",
       brain: "Cérebro",
       metadata: "Metadados",

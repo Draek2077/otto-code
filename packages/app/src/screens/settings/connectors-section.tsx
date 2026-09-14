@@ -79,7 +79,7 @@ function ConnectorToolRow(props: {
     <View style={styles.toolRow} testID={`connectors-tool-${connector.id}-${toolName}`}>
       <View style={settingsStyles.rowContent}>
         <SettingsTargetText
-          settingId="host-tools-connector-editor-connector-tool"
+          settingId="host-connectors-connector-editor-connector-tool"
           style={settingsStyles.rowTitle}
         >
           {toolName}
@@ -185,7 +185,10 @@ function ConnectorCard(props: {
 
   return (
     <View style={settingsStyles.card} testID={`connectors-card-${connector.id}`}>
-      <SettingsTarget settingId="host-tools-connector-editor-enabled" style={settingsStyles.row}>
+      <SettingsTarget
+        settingId="host-connectors-connector-editor-enabled"
+        style={settingsStyles.row}
+      >
         <ConnectorIdentity
           id={connector.builtin ?? connector.id}
           label={connector.label ?? connector.id}

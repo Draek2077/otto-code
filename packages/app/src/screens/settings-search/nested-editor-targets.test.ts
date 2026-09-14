@@ -41,11 +41,15 @@ describe("nested Settings destinations", () => {
   });
   it("binds source connector identities despite their different display names", () => {
     expect(CONNECTOR_CATALOG_TARGETS.atlassian).toBe(
-      "host-tools-connector-catalog-jira-confluence",
+      "host-connectors-connector-catalog-jira-confluence",
     );
-    expect(CONNECTOR_CATALOG_TARGETS.filesystem).toBe("host-tools-connector-catalog-local-files");
-    expect(CONNECTOR_CATALOG_TARGETS.memory).toBe("host-tools-connector-catalog-persistent-memory");
-    expect(CONNECTOR_CATALOG_TARGETS.monday).toBe("host-tools-connector-catalog-monday-com");
+    expect(CONNECTOR_CATALOG_TARGETS.filesystem).toBe(
+      "host-connectors-connector-catalog-local-files",
+    );
+    expect(CONNECTOR_CATALOG_TARGETS.memory).toBe(
+      "host-connectors-connector-catalog-persistent-memory",
+    );
+    expect(CONNECTOR_CATALOG_TARGETS.monday).toBe("host-connectors-connector-catalog-monday-com");
     const catalog = new Set(SETTINGS_SEARCH_ITEMS.map((row) => row.id));
     for (const id of [
       ...Object.keys(PERSONALITY_SETTINGS_TABS),

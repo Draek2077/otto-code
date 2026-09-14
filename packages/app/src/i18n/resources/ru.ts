@@ -3518,6 +3518,7 @@ export const ru: TranslationResources = {
       agents: "Агенты",
       teams: "Команды",
       tools: "Инструменты",
+      connectors: "Коннекторы",
       code: "Код",
       brain: "Мозг",
       metadata: "Метаданные",

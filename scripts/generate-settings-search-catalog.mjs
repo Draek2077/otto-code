@@ -23,6 +23,7 @@ const sectionForCategory = {
   chat: "chat",
   code: "code",
   connections: "connections",
+  connectors: "connectors",
   diagnostics: "diagnostics",
   editor: "editor",
   general: "general",

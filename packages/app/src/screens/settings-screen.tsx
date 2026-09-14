@@ -55,6 +55,7 @@ import {
   HardDrive,
   Keyboard,
   PanelRight,
+  Plug,
   Stethoscope,
   Info,
   Shield,
@@ -176,6 +177,7 @@ import {
   HostTeamsPage,
   HostCodePage,
   HostToolsPage,
+  HostConnectorsPage,
   HostSettingsPage,
   HostProvidersPage,
   HostUsagePage,
@@ -350,6 +352,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "plugins", labelKey: "settings.plugins.title", icon: Blocks },
   { id: "teams", labelKey: "settings.hostSections.teams", icon: Groups },
   { id: "tools", labelKey: "settings.hostSections.tools", icon: Wrench },
+  { id: "connectors", labelKey: "settings.hostSections.connectors", icon: Plug },
   { id: "code", labelKey: "settings.hostSections.code", icon: DataObject },
   { id: "brain", labelKey: "settings.hostSections.brain", icon: Brain },
   // Not developer-only: reclaiming the disk agents filled is a plain user need,
@@ -375,6 +378,8 @@ function renderHostSettingsContent(
       return <HostTeamsPage serverId={view.serverId} />;
     case "tools":
       return <HostToolsPage serverId={view.serverId} />;
+    case "connectors":
+      return <HostConnectorsPage serverId={view.serverId} />;
     case "code":
       return <HostCodePage serverId={view.serverId} />;
     case "brain":

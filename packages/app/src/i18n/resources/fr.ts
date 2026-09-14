@@ -3558,6 +3558,7 @@ export const fr: TranslationResources = {
       agents: "Agents",
       teams: "Équipes",
       tools: "Outils",
+      connectors: "Connecteurs",
       code: "Code",
       brain: "Cerveau",
       metadata: "Métadonnées",

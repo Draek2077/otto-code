@@ -64,7 +64,7 @@ export type SettingsSection = keyof typeof SECTION_LABELS;
 
 // Mirrors HOST_SECTION_SLUGS in @/utils/host-routes. Personalities and teams
 // live under "teams" (split out of "agents"); agent-facing tool surfaces live
-// under "tools".
+// under "tools"; third-party MCP connectors live under "connectors".
 type HostSection =
   | "projects"
   | "connections"
@@ -72,6 +72,7 @@ type HostSection =
   | "agents"
   | "teams"
   | "tools"
+  | "connectors"
   | "code"
   | "brain"
   | "metadata"

@@ -3465,6 +3465,7 @@ export const ar: TranslationResources = {
       agents: "الوكلاء",
       teams: "الفرق",
       tools: "الأدوات",
+      connectors: "الموصلات",
       code: "الكود",
       brain: "الدماغ",
       metadata: "البيانات الوصفية",
