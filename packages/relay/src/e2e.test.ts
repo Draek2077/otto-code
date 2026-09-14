@@ -17,7 +17,12 @@ import {
 
 const nodeMajor = Number((process.versions.node ?? "0").split(".")[0] ?? "0");
 const shouldRunRelayE2e = process.env.FORCE_RELAY_E2E === "1" || nodeMajor < 25;
-const wranglerCliPath = createRequire(import.meta.url).resolve("wrangler/bin/wrangler.js");
+// wrangler >= 4.9x ships an `exports` map that hides `bin/`, so resolve the exported
+// package.json and join the bin path to it rather than resolving the subpath directly.
+const wranglerCliPath = resolvePath(
+  dirname(createRequire(import.meta.url).resolve("wrangler/package.json")),
+  "bin/wrangler.js",
+);
 const relayPackageRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
 const STARTUP_HOOK_TIMEOUT_MS = 90_000;
 // SIGTERM grace, then a shorter SIGKILL grace. On Windows SIGTERM does not reach
