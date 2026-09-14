@@ -875,14 +875,20 @@ async function stopCliDaemon({ appPath, env }) {
   });
 }
 
+// Otto: upstream expects `${EXECUTABLE_NAME}.desktop`. Otto's desktopName instead
+// matches the app id Electron derives from the packaged "name" field
+// ("@otto-code/desktop" -> "otto-code-desktop"), which is also the .desktop entry's
+// StartupWMClass. Requiring "Otto.desktop" would reopen the detached taskbar icon
+// bug; see "Taskbar/dock icon detached" in docs/desktop-linux.md.
 function assertLinuxDesktopIdentity(appPath) {
   if (process.platform === "linux") {
     const metadata = JSON.parse(
       extractFile(path.join(appPath, "resources", "app.asar"), "package.json").toString(),
     );
-    if (metadata.desktopName !== `${EXECUTABLE_NAME}.desktop`) {
+    const expected = `${String(metadata.name).replace(/^@/, "").replace(/\//g, "-")}.desktop`;
+    if (metadata.desktopName !== expected) {
       throw new Error(
-        `Packaged Linux desktop identity ${JSON.stringify(metadata.desktopName)} does not match ${EXECUTABLE_NAME}.desktop`,
+        `Packaged Linux desktop identity ${JSON.stringify(metadata.desktopName)} does not match ${expected}`,
       );
     }
   }
