@@ -26,6 +26,12 @@ Measured on 2026-09-12, with the Windows `hermesc` (a debug build) and the relea
 
 The speed comparison ran in Node, not Hermes; both layouts execute the same per-type code once the validator is chosen. Keep this shape: do not compile the whole envelope, or any other large union, as one schema in a bundle that Hermes compiles.
 
+### Condition-chain depth
+
+Size is not the only Hermes limit. zod-aot emits an object's checks as one flat `a && b && c ...` expression, and hermesc parses that as nested binary nodes. The Windows `hermesc` rejects nesting past about 510 with `Too many nested expressions/statements/declarations` (measured 2026-09-13: a 500-term chain compiles, 511 fails). The Linux `hermesc` CI uses accepted a 542-term chain, but that is headroom, not a guarantee.
+
+`stats.activity.get.response` (five `ActivityCounters` buckets of about 30 defaulted numbers) produced a 542-term chain and broke local Windows APK builds. Such types are listed in `packages/protocol/codegen/ws-outbound-zod-only-types.ts`: the codegen entry skips them and `validateWSOutboundMessage` validates them with the Zod source schema, which it already does for any type without a generated validator. A regression test keeps every compiled chain under 400 terms, so the next counter added fails a unit test instead of the APK build.
+
 ## Codegen Ownership
 
 The protocol package owns generation.

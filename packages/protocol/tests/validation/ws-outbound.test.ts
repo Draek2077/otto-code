@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { sessionOutboundValidators } from "../../src/generated/validation/ws-outbound-dispatch.aot.js";
 import { SessionOutboundMessageSchema } from "../../src/messages.js";
 import { validateWSOutboundMessage } from "../../src/validation/ws-outbound.js";
+import { ZOD_ONLY_OUTBOUND_MESSAGE_TYPES } from "../../codegen/ws-outbound-zod-only-types.js";
 
 interface GeneratedSchema {
   safeParse(input: unknown): { success: boolean; data?: unknown };
@@ -265,12 +266,40 @@ const SourceSchema = z.object({
     expect(generated).toContain('from "./ws-outbound-metadata.aot.js"');
   });
 
-  it("dispatches every session message type to exactly one generated validator", () => {
+  it("dispatches every compiled session message type to exactly one generated validator", () => {
     const declaredTypes = SessionOutboundMessageSchema.options.flatMap(
       (option) => option.shape.type._zod.def.values,
     );
     expect(new Set(declaredTypes).size).toBe(declaredTypes.length);
-    expect([...sessionOutboundValidators.keys()].sort()).toEqual([...declaredTypes].sort());
+    for (const zodOnlyType of ZOD_ONLY_OUTBOUND_MESSAGE_TYPES) {
+      expect(declaredTypes).toContain(zodOnlyType);
+    }
+    const compiledTypes = declaredTypes.filter(
+      (type) => !ZOD_ONLY_OUTBOUND_MESSAGE_TYPES.has(type),
+    );
+    expect([...sessionOutboundValidators.keys()].sort()).toEqual(compiledTypes.sort());
+  });
+
+  it("validates Zod-only session message types through the Zod fallback", () => {
+    const counters = {};
+    const result = validateWSOutboundMessage({
+      type: "session",
+      message: {
+        type: "stats.activity.get.response",
+        payload: {
+          requestId: "r1",
+          today: counters,
+          yesterday: counters,
+          last7Days: counters,
+          last30Days: counters,
+          allTime: counters,
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success && result.data.type === "session") {
+      expect(result.data.message).toMatchObject({ payload: { today: { messagesSent: 0 } } });
+    }
   });
 
   it("keeps every generated validator small enough for Hermes to compile", async () => {
@@ -278,8 +307,19 @@ const SourceSchema = z.object({
     // for hermesc and killed the Android release build. Per type, the largest is under 400 KB.
     const generated = await readFile(generatedWSOutboundPath, "utf8");
     const validators = generated.split(/\n(?=export const )/).slice(1);
-    expect(validators).toHaveLength(SessionOutboundMessageSchema.options.length + 1);
+    expect(validators).toHaveLength(
+      SessionOutboundMessageSchema.options.length - ZOD_ONLY_OUTBOUND_MESSAGE_TYPES.size + 1,
+    );
     expect(Math.max(...validators.map((validator) => validator.length))).toBeLessThan(1_000_000);
+  });
+
+  it("keeps every generated condition chain shallow enough for hermesc to parse", async () => {
+    // hermesc parses `a && b && ...` as nested nodes and the Windows build rejects nesting past
+    // about 510 (a 500-term chain compiles, 511 fails). 400 leaves headroom. A schema that cannot
+    // fit goes in codegen/ws-outbound-zod-only-types.ts.
+    const generated = await readFile(generatedWSOutboundPath, "utf8");
+    const deepest = Math.max(...generated.split("\n").map((line) => line.split("&&").length - 1));
+    expect(deepest).toBeLessThan(400);
   });
 
   it("falls back to Zod errors for unknown and rejected session messages", () => {
