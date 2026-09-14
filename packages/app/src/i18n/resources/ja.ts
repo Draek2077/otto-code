@@ -3717,6 +3717,8 @@ export const ja: TranslationResources = {
       credits: {
         title: "サードパーティのクレジット",
         visualizer: "ビジュアライザーは {{author}} による {{name}}（{{license}}）を基にしています",
+        architecturalViews:
+          "アーキテクチャビューは {{author}} による {{name}}（{{license}}）を使用しています",
         viewSource: "ソースを見る",
       },
       releaseChannel: {

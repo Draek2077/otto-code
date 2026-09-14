@@ -3752,6 +3752,7 @@ export const es: TranslationResources = {
       credits: {
         title: "Créditos de terceros",
         visualizer: "El Visualizador deriva de {{name}} ({{license}}) de {{author}}",
+        architecturalViews: "Las Vistas arquitectónicas usan {{name}} ({{license}}) de {{author}}",
         viewSource: "Ver el código fuente",
       },
       releaseChannel: {

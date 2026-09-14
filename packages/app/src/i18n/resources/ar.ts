@@ -3669,6 +3669,7 @@ export const ar: TranslationResources = {
       credits: {
         title: "شكر وتقدير لأطراف ثالثة",
         visualizer: "المُصوِّر مشتق من {{name}} ({{license}}) بواسطة {{author}}",
+        architecturalViews: "تستخدم العروض المعمارية {{name}} ({{license}}) بواسطة {{author}}",
         viewSource: "عرض المصدر",
       },
       releaseChannel: {

@@ -3732,6 +3732,8 @@ export const ptBR: TranslationResources = {
       credits: {
         title: "Créditos de terceiros",
         visualizer: "O Visualizador deriva de {{name}} ({{license}}) de {{author}}",
+        architecturalViews:
+          "As Visualizações arquiteturais usam {{name}} ({{license}}) de {{author}}",
         viewSource: "Ver o código-fonte",
       },
       releaseChannel: {

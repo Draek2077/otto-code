@@ -3628,6 +3628,7 @@ export const zhCN: TranslationResources = {
       credits: {
         title: "第三方致谢",
         visualizer: "可视化视图衍生自 {{author}} 的 {{name}}（{{license}}）",
+        architecturalViews: "架构视图使用 {{author}} 的 {{name}}（{{license}}）",
         viewSource: "查看源代码",
       },
       releaseChannel: {

@@ -3724,6 +3724,8 @@ export const ru: TranslationResources = {
       credits: {
         title: "Сторонние компоненты",
         visualizer: "Визуализатор основан на {{name}} ({{license}}) от {{author}}",
+        architecturalViews:
+          "Архитектурные представления используют {{name}} ({{license}}) от {{author}}",
         viewSource: "Открыть исходный код",
       },
       releaseChannel: {

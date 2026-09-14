@@ -3760,6 +3760,7 @@ export const en = {
       credits: {
         title: "Third-party credits",
         visualizer: "Visualizer is derived from {{name}} ({{license}}) by {{author}}",
+        architecturalViews: "Architectural Views use {{name}} ({{license}}) by {{author}}",
         viewSource: "View source",
       },
       releaseChannel: {

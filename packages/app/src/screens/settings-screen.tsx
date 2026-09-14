@@ -145,6 +145,12 @@ import { isElectronRuntime } from "@/desktop/host";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
+import {
+  ARCHITECTURAL_VIEWS_UPSTREAM_AUTHOR,
+  ARCHITECTURAL_VIEWS_UPSTREAM_LICENSE,
+  ARCHITECTURAL_VIEWS_UPSTREAM_NAME,
+  ARCHITECTURAL_VIEWS_UPSTREAM_URL,
+} from "@/utils/architectural-views-attribution";
 import { UPSTREAM_BASE_NAME, UPSTREAM_BASE_VERSION } from "@/utils/upstream-base-version";
 import {
   VISUALIZER_UPSTREAM_AUTHOR,
@@ -1517,8 +1523,11 @@ function SetupWizardRerunRow() {
 
 function ThirdPartyCreditsRow() {
   const { t } = useTranslation();
-  const handlePress = useCallback(() => {
+  const handleVisualizerPress = useCallback(() => {
     void openLink(VISUALIZER_UPSTREAM_URL);
+  }, []);
+  const handleArchitecturalViewsPress = useCallback(() => {
+    void openLink(ARCHITECTURAL_VIEWS_UPSTREAM_URL);
   }, []);
   return (
     <View style={ROW_WITH_BORDER_STYLE}>
@@ -1529,22 +1538,41 @@ function ThirdPartyCreditsRow() {
         >
           {t("settings.about.credits.title")}
         </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          {t("settings.about.credits.visualizer", {
-            name: VISUALIZER_UPSTREAM_NAME,
-            license: VISUALIZER_UPSTREAM_LICENSE,
-            author: VISUALIZER_UPSTREAM_AUTHOR,
-          })}
-        </Text>
+        <View style={styles.aboutCreditLine}>
+          <Text style={settingsStyles.rowHint}>
+            {t("settings.about.credits.visualizer", {
+              name: VISUALIZER_UPSTREAM_NAME,
+              license: VISUALIZER_UPSTREAM_LICENSE,
+              author: VISUALIZER_UPSTREAM_AUTHOR,
+            })}
+          </Text>
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={handleVisualizerPress}
+            testID="settings-visualizer-credits-link"
+          >
+            {t("settings.about.credits.viewSource")}
+          </Button>
+        </View>
+        <View style={styles.aboutCreditLine}>
+          <Text style={settingsStyles.rowHint}>
+            {t("settings.about.credits.architecturalViews", {
+              name: ARCHITECTURAL_VIEWS_UPSTREAM_NAME,
+              license: ARCHITECTURAL_VIEWS_UPSTREAM_LICENSE,
+              author: ARCHITECTURAL_VIEWS_UPSTREAM_AUTHOR,
+            })}
+          </Text>
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={handleArchitecturalViewsPress}
+            testID="settings-architectural-views-credits-link"
+          >
+            {t("settings.about.credits.viewSource")}
+          </Button>
+        </View>
       </View>
-      <Button
-        variant="ghost"
-        size="sm"
-        onPress={handlePress}
-        testID="settings-visualizer-credits-link"
-      >
-        {t("settings.about.credits.viewSource")}
-      </Button>
     </View>
   );
 }
@@ -3207,6 +3235,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   aboutVersionColumn: {
     alignItems: "flex-end",
+  },
+  aboutCreditLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
   },
   aboutBaseVersion: {
     color: theme.colors.foregroundMuted,
