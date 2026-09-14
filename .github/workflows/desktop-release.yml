@@ -318,7 +318,10 @@ jobs:
             echo "::error::No unsigned macOS release artifacts found in $release_dir"
             exit 1
           fi
-          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber --repo "${{ github.repository }}"
+          # The release is still a draft here, and a draft is not addressable by
+          # its tag name, so resolve it the same way the other platform uploads do.
+          release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
+          gh release upload "$release_lookup" "${files[@]}" --clobber --repo "${{ github.repository }}"
 
       - name: Upload unsigned desktop artifacts to workflow
         if: env.SHOULD_PUBLISH != 'true'
