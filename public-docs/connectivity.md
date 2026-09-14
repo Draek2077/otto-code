@@ -10,8 +10,6 @@ category: Getting started
 
 Your Otto app connects to the daemon running on your computer or server. Otto Desktop and the CLI can tunnel through SSH. Mobile clients can connect through the Otto relay or directly with Tailscale.
 
-This is client-to-daemon transport. The separate [Paseo Hub reference](/docs/hub) describes upstream event-driven automation. Hub is disabled in Otto.
-
 - [SSH](#ssh)
 - [Otto relay](#otto-relay)
 - [Tailscale](#tailscale)

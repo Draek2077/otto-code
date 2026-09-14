@@ -36,7 +36,7 @@ Codex App is a desktop app for Codex. It can run local and worktree threads on y
 
 Codex App runs Codex.
 
-Otto runs Codex too, plus Claude Code, OpenCode, and Pi natively, plus additional agents through the catalog through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
+Otto runs Codex too, plus Claude Code, OpenCode, and Pi natively, plus more agents through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
 
 ## Desktop platforms
 
@@ -106,11 +106,8 @@ Otto supports dictation and realtime voice mode. Speech-to-text and text-to-spee
 | Voice                        | Dictation and realtime voice                            | Dictation                    |
 | Self-hosted daemon           | Yes                                                     | No                           |
 
+## Plugins
+
+[Plugins](/docs/plugins) extend Otto through client and server APIs: custom providers, workspace panels, commands, settings, and chat components.
+
 See also: [Otto vs Claude Desktop](/alternatives/claude-desktop), [Otto vs OpenCode Desktop](/alternatives/opencode-desktop), [Supported providers](/agents).
-
-## Application extensions
-
-[Otto plugins](/docs/plugins) extend the application through client and server APIs: providers,
-workspace panels, commands, settings, and chat components. Otto also retains its shared tools for
-cloud and local providers. Android builds and the web app are available from [Downloads](/download);
-this fork does not currently publish an iOS App Store build.

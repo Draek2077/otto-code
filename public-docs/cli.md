@@ -300,16 +300,6 @@ Reload validates the whole file, applies runtime-safe changes, and reports `appl
 
 Use `OTTO_HOME` to run multiple isolated daemon instances.
 
-## Hub
-
-Hub is disabled in this Otto build. `otto hub` remains registered so an invocation explains the boundary and exits with a nonzero status:
-
-```text
-Otto Hub is disabled in this build. See docs/upstream-merges.md.
-```
-
-It does not log in, enroll a daemon, deploy triggers or connect to a hosted service. Otto's local [Schedules](/docs/schedules) and orchestration commands remain available independently. The [Paseo Hub reference](/docs/hub) retains upstream trigger, workflow and API examples for a separate Paseo installation.
-
 ## Connecting to a remote daemon
 
 The global `--host` option accepts a direct target (`host:port`, a unix socket, or a Windows pipe), an SSH URI, or a pairing offer URL, the same `https://app.otto-code.me/#offer=...` link the mobile app uses for QR pairing. With an offer URL the CLI connects through the Otto relay with end-to-end encryption, so you can drive a daemon on another machine without exposing it to the network.

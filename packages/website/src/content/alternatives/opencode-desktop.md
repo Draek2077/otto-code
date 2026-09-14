@@ -36,7 +36,7 @@ OpenCode Desktop is the desktop app for OpenCode. OpenCode is available as a ter
 
 OpenCode is a multi-model coding agent. It can connect to many LLM providers through its own provider system, including OpenCode Zen, local models, and API providers.
 
-Otto is multi-provider at the agent harness layer. It runs OpenCode, Claude Code, Codex, and Pi natively, plus additional agents through the catalog through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
+Otto is multi-provider at the agent harness layer. It runs OpenCode, Claude Code, Codex, and Pi natively, plus more agents through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
 
 ## Desktop platforms
 
@@ -113,11 +113,8 @@ Otto supports dictation and realtime voice mode. Speech-to-text and text-to-spee
 | Local voice                  | Yes                                                     | No                              |
 | Self-hosted daemon           | Yes                                                     | OpenCode server / local runtime |
 
+## Plugins
+
+[Plugins](/docs/plugins) extend Otto through client and server APIs: custom providers, workspace panels, commands, settings, and chat components.
+
 See also: [Otto vs Codex App](/alternatives/codex-app), [Otto vs Claude Desktop](/alternatives/claude-desktop), [Otto vs OpenChamber](/alternatives/openchamber).
-
-## Application extensions
-
-[Otto plugins](/docs/plugins) extend the application through client and server APIs: providers,
-workspace panels, commands, settings, and chat components. Otto also retains its shared tools for
-cloud and local providers. Android builds and the web app are available from [Downloads](/download);
-this fork does not currently publish an iOS App Store build.

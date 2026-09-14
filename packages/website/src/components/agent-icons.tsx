@@ -1,4 +1,4 @@
-// Agent provider brand marks, shared by the landing page and the Hub page.
+// Agent provider brand marks, shared by the landing page.
 
 import type * as React from "react";
 

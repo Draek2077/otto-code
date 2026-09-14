@@ -603,6 +603,13 @@ These carry across merges. Revisit only when the stated trigger fires.
   unsupported. Should it ever be reconsidered, that is a product call, not an
   implementation one.
 
+  **Update (2026-09-13): Hub is deleted from the website and public docs.**
+  Unlike the source tree, published pages are not kept upstream-shaped:
+  `public-docs/hub/`, `packages/website/src/routes/hub.tsx`,
+  `packages/website/src/hub-plans.ts` and `hub-doc-examples.test.ts` were
+  removed, along with every Hub link. When a merge re-offers them as
+  modify/delete conflicts, keep them deleted.
+
 - **Forge abstraction (`a8ebd390f`) - took theirs, ported ours onto it.**
   Upstream shipped a pluggable forge layer (GitLab, Gitea/Forgejo/Codeberg,
   CLI-delegated auth) covering the same concern as our `git-hosting` layer

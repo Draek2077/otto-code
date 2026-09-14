@@ -363,6 +363,18 @@ function BuiltOnPaseoSection() {
           like, go star Agent Flow too.
         </p>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Architectural Views render with{" "}
+          <a
+            href="https://github.com/tt-a1i/archify"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Archify
+          </a>{" "}
+          (MIT) by tt-a1i.
+        </p>
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Otto is a personal project by Philippe, not a startup. Most of it is written by the agents
           it runs. The problem I keep hitting is that agents can now do a lot of work on their own,
           and it&apos;s hard to see what they did, what it cost, and where it went sideways. So the

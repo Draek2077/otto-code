@@ -133,10 +133,6 @@ Otto wraps agent CLIs (Claude Code, Codex, OpenCode) but does not manage their a
 
 Otto never stores or transmits provider API keys. Agents run in your user context with your existing credentials.
 
-## Hub identities and credentials
-
-Hub is disabled in this Otto build. `otto hub` does not store a Hub login, enroll the daemon or establish a Hub relationship. The [upstream identity and credential reference](/docs/hub/api#authentication) describes a separate Paseo installation. Its human CLI login and daemon relationship are separate identities, and its credentials are restricted to the matching Hub origin.
-
 ## Recommendations
 
 - **Use the relay** for mobile access, it's the simplest option and all traffic is end-to-end encrypted
@@ -145,4 +141,3 @@ Hub is disabled in this Otto build. `otto hub` does not store a Hub login, enrol
 - **Never bind to 0.0.0.0 without a password**, without one, any device on your network can connect
 - **Scope Docker mounts tightly**, agents can access mounted workspaces and provider credentials
 - **Keep your daemon updated**, security improvements are released regularly
-- **For a separate Paseo Hub installation, protect its configuration branch.** Its configuration controls the upstream service's agent authority; see the [Hub reference](/docs/hub/security).

@@ -46,12 +46,6 @@ export function SiteFooter({ width = "default" }: SiteFooterProps) {
               Support
             </a>
             <a
-              href="/hub"
-              className="block text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Hub reference
-            </a>
-            <a
               href="/docs/cli"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >

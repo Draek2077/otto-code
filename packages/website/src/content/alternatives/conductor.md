@@ -32,7 +32,7 @@ Conductor's desktop app is the host. Agents run inside it.
 
 ## Providers
 
-Otto runs Claude Code, Codex, OpenCode, and Pi natively, plus additional agents through the catalog through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
+Otto runs Claude Code, Codex, OpenCode, and Pi natively, plus more agents through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
 
 Conductor runs Claude Code and Codex.
 
@@ -94,11 +94,8 @@ Otto's speech-to-text and text-to-speech run locally on your device. Nothing lea
 | Local voice (on-device)      | Yes                                                     | No                 |
 | Self-hosted daemon           | Yes                                                     | No                 |
 
+## Plugins
+
+[Plugins](/docs/plugins) extend Otto through client and server APIs: custom providers, workspace panels, commands, settings, and chat components.
+
 See also: [Otto vs Superset](/alternatives/superset), [Otto vs OpenChamber](/alternatives/openchamber), [Otto vs Happy Coder](/alternatives/happy-coder).
-
-## Application extensions
-
-[Otto plugins](/docs/plugins) extend the application through client and server APIs: providers,
-workspace panels, commands, settings, and chat components. Otto also retains its shared tools for
-cloud and local providers. Android builds and the web app are available from [Downloads](/download);
-this fork does not currently publish an iOS App Store build.

@@ -18,8 +18,6 @@ The target can be:
 
 Cadence is either an interval, like every 30 minutes, or a cron expression, like every weekday morning. Every run is recorded, and you can pause, resume, run once, update, or delete a schedule at any time.
 
-These schedules run on a cadence you set. The [Paseo Hub reference](/docs/hub) describes a separate upstream service for external events such as comments and mentions. Hub is disabled in Otto.
-
 ## What it's for
 
 - **Overnight refactors:** wake an agent every 30 minutes to continue a scoped refactor, run checks, and leave notes.

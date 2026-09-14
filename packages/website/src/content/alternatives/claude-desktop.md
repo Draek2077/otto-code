@@ -36,7 +36,7 @@ Claude Desktop is the host app. The Code tab can run Claude Code locally, connec
 
 Claude Desktop runs Claude Code.
 
-Otto runs Claude Code too, plus Codex, OpenCode, and Pi natively, plus additional agents through the catalog through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
+Otto runs Claude Code too, plus Codex, OpenCode, and Pi natively, plus more agents through the in-app catalog including GitHub Copilot, Cursor, Gemini CLI, and Amp. Otto speaks the [Agent Client Protocol](https://agentclientprotocol.com), so any ACP agent works. Custom providers run any CLI agent. See [Supported providers](/agents).
 
 ## Desktop platforms
 
@@ -114,11 +114,8 @@ Claude supports voice in Claude's own mobile and app surfaces. Claude Code itsel
 | MCP server for orchestration | Yes                                                     | MCP support inside Claude Code    |
 | Self-hosted daemon           | Yes                                                     | No                                |
 
+## Plugins
+
+[Plugins](/docs/plugins) extend Otto through client and server APIs: custom providers, workspace panels, commands, settings, and chat components.
+
 See also: [Otto vs Codex App](/alternatives/codex-app), [Otto vs OpenCode Desktop](/alternatives/opencode-desktop), [Otto vs Conductor](/alternatives/conductor).
-
-## Application extensions
-
-[Otto plugins](/docs/plugins) extend the application through client and server APIs: providers,
-workspace panels, commands, settings, and chat components. Otto also retains its shared tools for
-cloud and local providers. Android builds and the web app are available from [Downloads](/download);
-this fork does not currently publish an iOS App Store build.
