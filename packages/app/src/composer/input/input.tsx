@@ -676,6 +676,11 @@ interface ComposerTextSurfaceProps {
   textAccessory: React.ReactNode;
 }
 
+// How far the button row bleeds past the input's content inset. The text
+// accessory bleeds the same amount on the right so its button lines up with
+// the rightmost toolbar button below it.
+const COMPOSER_BUTTON_ROW_BLEED = 6;
+
 interface ResponsivePlaceholderMetrics {
   availableWidth: number;
   placeholderWidth: number;
@@ -726,6 +731,7 @@ function useResponsiveTextInputPlaceholder(
   inputRef: ComposerTextSurfaceProps["textInputRef"],
   placeholder: string,
   compactPlaceholder: string | undefined,
+  textReplacementKey: string | undefined,
 ): string {
   const [metrics, setMetrics] = useState<ResponsivePlaceholderMetrics>({
     availableWidth: 0,
@@ -744,9 +750,13 @@ function useResponsiveTextInputPlaceholder(
         : nextMetrics,
     );
   }, [compactPlaceholder, inputRef, placeholder]);
+  // `textReplacementKey` is an effect dependency on purpose: an explicit
+  // replacement remounts the textarea, and without re-running these effects the
+  // observer would keep watching the detached element and the placeholder would
+  // stop shortening after a send.
   useLayoutEffect(() => {
     measure();
-  }, [measure]);
+  }, [measure, textReplacementKey]);
   useEffect(() => {
     if (!isWeb || !compactPlaceholder || typeof ResizeObserver === "undefined") return;
     const input = getTextInputNativeElement(inputRef.current);
@@ -754,7 +764,7 @@ function useResponsiveTextInputPlaceholder(
     const observer = new ResizeObserver(measure);
     observer.observe(input);
     return () => observer.disconnect();
-  }, [compactPlaceholder, inputRef, measure]);
+  }, [compactPlaceholder, inputRef, measure, textReplacementKey]);
   return resolveResponsivePlaceholder({
     placeholder,
     compactPlaceholder,
@@ -773,6 +783,7 @@ function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElemen
     props.textInputRef,
     props.placeholder,
     props.compactPlaceholder,
+    props.textReplacementKey,
   );
   if (props.readOnly) {
     return (
@@ -783,50 +794,41 @@ function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElemen
       </View>
     );
   }
-  const surface = (
-    <View
-      style={
-        props.textAccessory
-          ? [styles.textInputScrollWrapper, styles.textInputScrollWrapperWithAccessory]
-          : styles.textInputScrollWrapper
-      }
-    >
-      <ThemedTextInput
-        key={props.textReplacementKey}
-        ref={props.textInputRef}
-        {...({ dataSet: COMPOSER_INPUT_DATASET } as Record<string, unknown>)}
-        value={props.value}
-        onChangeText={props.onChangeText}
-        onPasteImages={props.onPasteImages}
-        onPasteError={props.onPasteError}
-        pasteImagesEnabled={props.pasteImagesEnabled}
-        placeholder={placeholder}
-        uniProps={textInputPlaceholderColorMapping}
-        accessibilityLabel={props.accessibilityLabel}
-        onFocus={props.onFocus}
-        onBlur={props.onBlur}
-        style={props.textInputStyle}
-        multiline
-        scrollEnabled={props.scrollEnabled}
-        onContentSizeChange={props.onContentSizeChange}
-        editable={props.editable}
-        onKeyPress={props.onKeyPress}
-        onSelectionChange={props.onSelectionChange}
-        autoFocus={props.autoFocus}
-        spellCheck
-      />
-      {props.inputScrollbar}
-    </View>
-  );
-  if (!props.textAccessory) {
-    return surface;
-  }
-  // A sibling, not an overlay: the text, its placeholder measurement, and the
-  // web scrollbar all end before the accessory instead of running under it.
+  // The row is always rendered, even without an accessory. Swapping parents
+  // when the accessory appears would remount the textarea, dropping focus and
+  // leaving the placeholder measurement attached to a detached element. The
+  // text, its placeholder measurement, and the web scrollbar end before the
+  // accessory instead of running under it.
   return (
     <View style={styles.textInputAccessoryRow}>
-      {surface}
-      <View style={styles.textAccessory}>{props.textAccessory}</View>
+      <View style={[styles.textInputScrollWrapper, styles.textInputScrollWrapperInRow]}>
+        <ThemedTextInput
+          key={props.textReplacementKey}
+          ref={props.textInputRef}
+          {...({ dataSet: COMPOSER_INPUT_DATASET } as Record<string, unknown>)}
+          value={props.value}
+          onChangeText={props.onChangeText}
+          onPasteImages={props.onPasteImages}
+          onPasteError={props.onPasteError}
+          pasteImagesEnabled={props.pasteImagesEnabled}
+          placeholder={placeholder}
+          uniProps={textInputPlaceholderColorMapping}
+          accessibilityLabel={props.accessibilityLabel}
+          onFocus={props.onFocus}
+          onBlur={props.onBlur}
+          style={props.textInputStyle}
+          multiline
+          scrollEnabled={props.scrollEnabled}
+          onContentSizeChange={props.onContentSizeChange}
+          editable={props.editable}
+          onKeyPress={props.onKeyPress}
+          onSelectionChange={props.onSelectionChange}
+          autoFocus={props.autoFocus}
+          spellCheck
+        />
+        {props.inputScrollbar}
+      </View>
+      {props.textAccessory ? <View style={styles.textAccessory}>{props.textAccessory}</View> : null}
     </View>
   );
 }
@@ -2404,15 +2406,17 @@ const styles = StyleSheet.create((theme: Theme) => ({
     alignItems: "flex-start",
     gap: theme.spacing[2],
   },
-  textInputScrollWrapperWithAccessory: {
+  textInputScrollWrapperInRow: {
     flexGrow: 1,
     flexBasis: 0,
     minWidth: 0,
   },
   // The accessory is a 28px round button beside a ~20px first line. Negative
-  // vertical margin keeps it from growing a one-line composer.
+  // vertical margin keeps it from growing a one-line composer; the right bleed
+  // matches the button row so it stacks over the rightmost toolbar button.
   textAccessory: {
     marginVertical: -theme.spacing[1],
+    marginRight: -COMPOSER_BUTTON_ROW_BLEED,
   },
   shortcutDiscoveryAnchor: {
     position: "relative",
@@ -2457,8 +2461,8 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   buttonRow: {
     flexShrink: 0,
-    marginHorizontal: -6,
-    marginBottom: -6,
+    marginHorizontal: -COMPOSER_BUTTON_ROW_BLEED,
+    marginBottom: -COMPOSER_BUTTON_ROW_BLEED,
     overflow: "hidden",
   },
   buttonRowContent: {
