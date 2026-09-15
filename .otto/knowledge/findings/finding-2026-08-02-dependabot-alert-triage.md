@@ -3,11 +3,10 @@ id: "finding-2026-08-02-dependabot-alert-triage"
 kind: "finding"
 title: "Dependabot: what do the 183 alerts on `Draek2077/otto-code` actually expose?"
 status: "confirmed"
-tags: ["finding", "dependency-vulnerabilities"]
+tags: ["finding","dependency-vulnerabilities"]
 created_at: "2026-08-16T22:16:11.449Z"
-updated_at: "2026-08-16T22:16:11.449Z"
+updated_at: "2026-09-14T20:18:12.657Z"
 ---
-
 # Dependabot: what do the 183 alerts on `Draek2077/otto-code` actually expose?
 
 <!-- compiled_truth -->
@@ -249,3 +248,7 @@ Remediation sequencing is not this document's job. The rows live under
   kind: "migration"
   summary: "Migrated from the legacy findings report without discarding its evidence."
   source: "findings/dependency-vulnerabilities/2026-08-02-dependabot-alert-triage.md"
+- time: "2026-09-14T20:18:12.657Z"
+  kind: "evidence"
+  summary: "2026-09-14 remediation sweep, measured before and after.\n\nBefore (API snapshot, 14:18Z): 189 open alerts (1 critical, 93 high, 78 medium, 17 low). 140 in the root package-lock.json, 47 in packages/expo-two-way-audio/package-lock.json (including the only critical, shell-quote), 1 in packages/server/package.json (uuid), 1 in a demo capture fixture (vitest).\n\nAfter (API, after the merge rescan): 0 open. 205 alerts closed at or after 20:00Z: 201 fixed (151 root lockfile, 49 expo-two-way-audio lockfile, 1 server manifest) and 4 dismissed with written reasons. By severity: 1 critical, 99 high, 88 medium, 17 low. The closed count exceeds the morning snapshot because alerts kept opening during the day before the merge; the same fixes covered them.\n\nDismissed, not fixed: #471 and #472 image-size (no patched release; Metro-only, repo-owned assets), #477 decode-uri-component (only fix is ESM-only; query-string 7 loads it through CommonJS in the app bundle), #517 vitest in packages/app/demo/staging/templates/pulse-api/commits/08-tests/package.json (demo fixture, never installed).\n\nWhat landed:\n- packages/expo-two-way-audio/package-lock.json deleted. It was vestigial and never installed from, as this page established.\n- Direct bumps: wait-on 9.1.0, electron-builder 26.16.1, ai 5.0.257, uuid ^11.1.1, undici ^7.29.0, @cloudflare/vite-plugin ~1.46.0, vitest ^4.1.11.\n- Root overrides with pinned lockfile entries for the rest of the transitive set.\n- GitHub Actions: setup-java 6.0.1, setup-python 7.0.0, checkout 7.0.1.\n\nMethod notes that change how this should be done next time:\n- In this npm 11.13 workspaces repo, root overrides are credited when npm validates an existing lockfile entry, but never used to resolve a missing one. So each fix was a scratch non-workspace resolve written into the lockfile, then two installs to prove it stuck.\n- Pinning left some new versions' own dependencies unmet. A walk-up edge checker over the whole lockfile reached 0 missing and 0 unsatisfied edges, matching main, and platform binaries were pinned with their parents (sharp @img, esbuild @esbuild).\n\nVerification: local build:server, full typecheck, lint, format, and targeted server tests.\n\nCI failing-test names were compared, not job colors. Main is red in 17 jobs.\n- Every job concluded the same as main.\n- There were 703 branch failures against 705 on main, excluding the timed-out Playwright shard 5, and lint and format failure lines were identical.\n- 4 names failed only on the branch, all explained: an extractor duration false positive, a layout test that already fails intermittently on main, a fixture project-leak teardown on a test main's timed-out shard never reached, and an image-preview case that also fails on a rerun of main.\n\nPR CI caught two real regressions that local runs missed, both fixed before merge:\n- The vitest layout lost `page`/`userEvent` types on a clean Linux install. The fix was one root vitest with @vitest/browser* beside it.\n- The relay e2e test resolved wrangler/bin/wrangler.js, which wrangler 4.113 no longer exports."
+  source: "PR #49 (squash e74b59d71), CI runs 34851851336 (main baseline) and 34876131907 (branch), GitHub Dependabot alerts API"
