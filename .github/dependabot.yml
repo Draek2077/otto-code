@@ -9,13 +9,18 @@ version: 2
 # by Dependabot *security* updates instead, which are a repository setting rather than a block
 # here (Settings > Code security > Dependabot). Adding a `package-ecosystem: npm` entry below
 # would turn that quiet advisory feed into full version-bump PRs, which is not what we want.
+#
+# Paused 2026-09-14: CI on main is red, so Dependabot PRs could not be verified and were closed.
+# Dependency and action bumps are handled by hand for now; automated security fix PRs are also
+# off in repository settings (alerts stay on). Restore a nonzero limit to resume PRs.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    # 0 disables version-update PRs without removing the config.
+    open-pull-requests-limit: 0
     commit-message:
       prefix: "chore(ci)"
     ignore:
