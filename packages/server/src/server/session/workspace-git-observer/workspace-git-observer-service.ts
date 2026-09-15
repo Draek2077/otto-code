@@ -94,6 +94,12 @@ export function createWorkspaceGitObserverService(deps: {
       workspace.workspaceDirectory,
       workspace.name,
       workspace.diffStat ? [workspace.diffStat.additions, workspace.diffStat.deletions] : null,
+      // A commit leaves the branch-versus-base stat unchanged while emptying the
+      // uncommitted one, so leaving this out suppresses exactly that update and the
+      // workspace indicator keeps showing already-committed lines.
+      workspace.workingTreeDiffStat
+        ? [workspace.workingTreeDiffStat.additions, workspace.workingTreeDiffStat.deletions]
+        : null,
     ]);
   }
 

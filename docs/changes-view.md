@@ -262,6 +262,15 @@ failing the whole snapshot the moment any single file is too expensive:
    relay's frame limit, not to what the UI can render). One file this large next to others that
    already filled the budget is the only realistic trigger.
 
+The render-line budget (`CHECKOUT_DIFF_MAX_RENDER_LINES`, 20,000) is spent the same way. Tracked
+files are measured one at a time in `processTrackedChanges` **before** highlighting, and a file that
+would overrun what is left becomes a `too_large` placeholder without being parsed. Untracked files
+follow the same rule. There used to be an up-front check that failed the whole snapshot whenever the
+combined tracked patch passed 20,000 lines. That is the ordinary case for Committed mode on any
+long-lived branch, so the view went blank ("This diff is too large to preview") even with 0/0
+uncommitted and every file individually small. Do not reintroduce a combined-patch gate. The
+per-file decision already bounds both the parse cost and the client's synchronous layout.
+
 Each file is measured against what is actually left of the snapshot budget
 (`degradeStructuredFileToFit`), so files are appended until the budget runs out rather than the
 first oversized file aborting everything after it - see "keeps small tracked files displayable

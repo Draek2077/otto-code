@@ -28,6 +28,7 @@ function makeDescriptor(overrides: {
   name?: string | null;
   currentBranch?: string | null;
   diffStat?: { additions: number; deletions: number } | null;
+  workingTreeDiffStat?: { additions: number; deletions: number } | null;
 }): WorkspaceDescriptorPayload {
   return {
     id: overrides.id,
@@ -39,6 +40,7 @@ function makeDescriptor(overrides: {
       ? { gitRuntime: { currentBranch: overrides.currentBranch } }
       : {}),
     diffStat: overrides.diffStat ?? null,
+    workingTreeDiffStat: overrides.workingTreeDiffStat ?? null,
   } as unknown as WorkspaceDescriptorPayload;
 }
 
@@ -281,6 +283,26 @@ describe("shouldSkipUpdate", () => {
     expect(h.service.shouldSkipUpdate("ws1", a)).toBe(false);
     expect(h.service.shouldSkipUpdate("ws1", a)).toBe(true);
     expect(h.service.shouldSkipUpdate("ws1", b)).toBe(false);
+  });
+
+  test("emits when a commit empties uncommitted changes but leaves the branch stat", () => {
+    const h = buildHarness();
+    h.service.syncObservers([makeDescriptor({ id: "ws1", workspaceDirectory: WS1 })]);
+    const branchStat = { additions: 40, deletions: 3 };
+    const dirty = makeDescriptor({
+      id: "ws1",
+      workspaceDirectory: WS1,
+      diffStat: branchStat,
+      workingTreeDiffStat: { additions: 12, deletions: 1 },
+    });
+    const committed = makeDescriptor({
+      id: "ws1",
+      workspaceDirectory: WS1,
+      diffStat: branchStat,
+      workingTreeDiffStat: null,
+    });
+    expect(h.service.shouldSkipUpdate("ws1", dirty)).toBe(false);
+    expect(h.service.shouldSkipUpdate("ws1", committed)).toBe(false);
   });
 
   test("starts from the descriptor state recorded during observer sync", () => {

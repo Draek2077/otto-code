@@ -3628,10 +3628,19 @@ async function processUntrackedChange(input: ProcessUntrackedChangeInput): Promi
     return true;
   }
 
-  appendDiff(text);
   if (structured.renderLines + countRenderableDiffLines(text) > CHECKOUT_DIFF_MAX_RENDER_LINES) {
-    return false;
+    if (
+      !appendStructuredFile(
+        structured,
+        buildPlaceholderParsedDiffFile(change, { status: "too_large", stat }),
+      )
+    ) {
+      return false;
+    }
+    appendDiff(`# ${change.path}: diff too large omitted\n`);
+    return true;
   }
+  appendDiff(text);
   const parsed = await parseAndHighlightDiff(text, cwd);
   const parsedFile =
     parsed[0] ??
@@ -3658,6 +3667,8 @@ interface ProcessTrackedChangesInput {
   refsForDiff: CheckoutDiffRefs;
   trackedChanges: CheckoutFileChange[];
   ignoreWhitespace: boolean;
+  /** Structured diffs are rendered, so they spend {@link CHECKOUT_DIFF_MAX_RENDER_LINES}. */
+  limitRenderLines: boolean;
   appendDiff: (text: string) => void;
 }
 
@@ -3671,7 +3682,8 @@ interface ProcessTrackedChangesResult {
 async function processTrackedChanges(
   input: ProcessTrackedChangesInput,
 ): Promise<ProcessTrackedChangesResult> {
-  const { cwd, refsForDiff, trackedChanges, ignoreWhitespace, appendDiff } = input;
+  const { cwd, refsForDiff, trackedChanges, ignoreWhitespace, limitRenderLines, appendDiff } =
+    input;
   const trackedChangeByPath = new Map(trackedChanges.map((change) => [change.path, change]));
   const trackedNumstatByPath =
     trackedChanges.length > 0
@@ -3694,6 +3706,7 @@ async function processTrackedChanges(
 
   let trackedDiffText = "";
   let trackedDiffBytes = 0;
+  let trackedRenderLines = 0;
   if (trackedDiffPaths.length > 0) {
     const trackedDiffs: Array<Awaited<ReturnType<typeof getTrackedDiffTextForPath>>> = [];
     let nextTrackedDiffIndex = 0;
@@ -3727,7 +3740,14 @@ async function processTrackedChanges(
         continue;
       }
       const diffBytes = Buffer.byteLength(fileDiff.text, "utf8");
-      if (trackedDiffBytes + diffBytes > TOTAL_DIFF_MAX_BYTES) {
+      // The render-line budget is spent file by file, so a branch whose total patch is
+      // large still ships every file that fits and a `too_large` placeholder for the rest.
+      // Deciding before highlighting keeps the parse cost bounded by the same budget.
+      const renderLines = limitRenderLines ? countRenderableDiffLines(fileDiff.text) : 0;
+      if (
+        trackedDiffBytes + diffBytes > TOTAL_DIFF_MAX_BYTES ||
+        trackedRenderLines + renderLines > CHECKOUT_DIFF_MAX_RENDER_LINES
+      ) {
         trackedPlaceholderByPath.set(fileDiff.path, {
           status: "too_large",
           stat: trackedNumstatByPath.get(fileDiff.path) ?? null,
@@ -3735,6 +3755,7 @@ async function processTrackedChanges(
         continue;
       }
       trackedDiffBytes += diffBytes;
+      trackedRenderLines += renderLines;
       visibleTrackedDiffs.push(fileDiff.text);
     }
 
@@ -3834,15 +3855,9 @@ export async function getCheckoutDiff(
     refsForDiff: effectiveRefsForDiff,
     trackedChanges,
     ignoreWhitespace,
+    limitRenderLines: compare.includeStructured === true,
     appendDiff,
   });
-
-  if (
-    compare.includeStructured &&
-    countRenderableDiffLines(trackedDiff.trackedDiffText) > CHECKOUT_DIFF_MAX_RENDER_LINES
-  ) {
-    return { diff: "", structured: [], diffTooLarge: true };
-  }
 
   const appendTrackedPlaceholderComment = (
     change: CheckoutFileChange,

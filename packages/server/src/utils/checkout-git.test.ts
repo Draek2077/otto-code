@@ -1276,7 +1276,7 @@ const x = 1;
     );
   });
 
-  it("rejects a render-hostile structured diff before highlighting it", async () => {
+  it("degrades a render-hostile tracked file to too_large without highlighting it", async () => {
     writeFileSync(join(repoDir, "generated.ts"), "export const baseline = 0;\n");
     execFileSync("git", ["add", "generated.ts"], { cwd: repoDir });
     execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add generated"], {
@@ -1291,7 +1291,54 @@ const x = 1;
 
     const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
 
-    expect(diff).toEqual({ diff: "", structured: [], diffTooLarge: true });
+    expect(diff.diffTooLarge).not.toBe(true);
+    expect(
+      diff.structured?.map((file) => ({
+        path: file.path,
+        status: file.status,
+        hunks: file.hunks.length,
+      })),
+    ).toEqual([{ path: "generated.ts", status: "too_large", hunks: 0 }]);
+    expect(diff.diff).toContain("# generated.ts: diff too large omitted");
+  });
+
+  it("ships committed branch files that fit when the whole branch exceeds the render budget", async () => {
+    // A long-lived branch diffed in Committed mode: no single file is too large, but
+    // together they exceed the render-line budget. The view must list files, not blank.
+    // Short plain-text lines keep every file far below the per-file byte ceilings, so the
+    // render-line budget is the only thing that can decide which files degrade.
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    const fileNames = ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"];
+    for (const fileName of fileNames) {
+      const lines = Array.from({ length: 6_000 }, (_, index) => String(index));
+      writeFileSync(join(repoDir, fileName), `${lines.join("\n")}\n`);
+    }
+    execFileSync("git", ["add", ...fileNames], { cwd: repoDir });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "feature work"], {
+      cwd: repoDir,
+    });
+
+    const diff = await getCheckoutDiff(repoDir, {
+      mode: "base",
+      baseRef: "main",
+      includeStructured: true,
+    });
+
+    expect(diff.diffTooLarge).not.toBe(true);
+    expect(diff.structured?.map((file) => ({ path: file.path, status: file.status }))).toEqual([
+      { path: "a.txt", status: "ok" },
+      { path: "b.txt", status: "ok" },
+      { path: "c.txt", status: "ok" },
+      { path: "d.txt", status: "too_large" },
+      { path: "e.txt", status: "too_large" },
+    ]);
+    let renderLines = 0;
+    for (const file of diff.structured ?? []) {
+      for (const hunk of file.hunks) {
+        renderLines += hunk.lines.length;
+      }
+    }
+    expect(renderLines).toBeLessThanOrEqual(20_000);
   });
 
   it("marks tracked generated one-line diffs as too_large by content size", async () => {
