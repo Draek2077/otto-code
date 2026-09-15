@@ -660,6 +660,33 @@ export const ja: TranslationResources = {
       expandAll: "Expand all",
       collapseAll: "Collapse all",
     },
+    selectionActions: {
+      menu: "チャット",
+      explain: {
+        label: "説明",
+        description: "わかりやすく噛み砕いて説明します。",
+        prompt:
+          "これをもっと詳しく説明してください。どういう意味で、なぜ重要なのかを順を追って教えてください。",
+      },
+      contest: {
+        label: "異議",
+        description: "疑ってかかり、正しいか確かめます。",
+        prompt:
+          "これに異議があります。本当に正しいか確認し、欠陥や暗黙の前提を指摘し、誤っていれば修正してください。",
+      },
+      research: {
+        label: "調査",
+        description: "さらに掘り下げ、根拠で裏付けます。",
+        prompt:
+          "これをさらに調査してください。コードベースやアクセスできる情報源を使って徹底的に調べ、見つかった根拠を報告してください。",
+      },
+      complete: {
+        label: "完了",
+        description: "最後までやり遂げ、足りない部分を補います。",
+        prompt:
+          "これを最後までやり遂げてください。書かれている内容を実行し、未完成のまま残っている部分をすべて補ってください。",
+      },
+    },
     attachments: {
       dismissImage: "画像を閉じる",
       closeImage: "画像を閉じる",

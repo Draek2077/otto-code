@@ -653,6 +653,32 @@ export const en = {
       expandAll: "Expand all",
       collapseAll: "Collapse all",
     },
+    selectionActions: {
+      menu: "Chat",
+      explain: {
+        label: "Explain",
+        description: "Break it down so it is easy to follow.",
+        prompt: "Explain this in more depth. Walk me through what it means and why it matters.",
+      },
+      contest: {
+        label: "Contest",
+        description: "Challenge it and check that it holds up.",
+        prompt:
+          "I want to challenge this. Check whether it is actually correct, point out any flaws or unstated assumptions, and correct it if it is wrong.",
+      },
+      research: {
+        label: "Research",
+        description: "Dig deeper and back it up with evidence.",
+        prompt:
+          "Research this further. Investigate it thoroughly, using the codebase and any sources you can reach, and report back with the evidence you find.",
+      },
+      complete: {
+        label: "Complete",
+        description: "Carry it through and fill in what is missing.",
+        prompt:
+          "Carry this through to completion. Do what it describes, and fill in anything that was left unfinished.",
+      },
+    },
     attachments: {
       dismissImage: "Dismiss image",
       closeImage: "Close image",

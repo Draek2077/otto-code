@@ -656,6 +656,33 @@ export const ko: TranslationResources = {
       expandAll: "Expand all",
       collapseAll: "Collapse all",
     },
+    selectionActions: {
+      menu: "채팅",
+      explain: {
+        label: "설명",
+        description: "이해하기 쉽게 풀어서 설명합니다.",
+        prompt:
+          "이 내용을 더 자세히 설명해 주세요. 무슨 의미이고 왜 중요한지 차근차근 알려 주세요.",
+      },
+      contest: {
+        label: "반박",
+        description: "의문을 제기하고 타당한지 확인합니다.",
+        prompt:
+          "이 내용에 이의를 제기합니다. 정말 맞는지 확인하고, 결함이나 드러나지 않은 가정을 짚어 주고, 틀렸다면 바로잡아 주세요.",
+      },
+      research: {
+        label: "조사",
+        description: "더 깊이 파고들어 근거로 뒷받침합니다.",
+        prompt:
+          "이 내용을 더 조사해 주세요. 코드베이스와 접근 가능한 자료를 활용해 철저히 살펴보고, 찾은 근거를 보고해 주세요.",
+      },
+      complete: {
+        label: "완료",
+        description: "끝까지 마무리하고 빠진 부분을 채웁니다.",
+        prompt:
+          "이 작업을 끝까지 완료해 주세요. 설명된 내용을 수행하고, 마무리되지 않은 부분을 모두 채워 주세요.",
+      },
+    },
     attachments: {
       dismissImage: "이미지 닫기",
       closeImage: "이미지 닫기",

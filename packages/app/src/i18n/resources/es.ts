@@ -658,6 +658,32 @@ export const es: TranslationResources = {
       expandAll: "Expand all",
       collapseAll: "Collapse all",
     },
+    selectionActions: {
+      menu: "Chat",
+      explain: {
+        label: "Explicar",
+        description: "Desglosarlo para que sea fácil de seguir.",
+        prompt: "Explica esto con más detalle. Guíame por lo que significa y por qué importa.",
+      },
+      contest: {
+        label: "Cuestionar",
+        description: "Ponerlo a prueba y comprobar si se sostiene.",
+        prompt:
+          "Quiero cuestionar esto. Comprueba si es realmente correcto, señala fallos o suposiciones implícitas y corrígelo si está mal.",
+      },
+      research: {
+        label: "Investigar",
+        description: "Profundizar y respaldarlo con evidencia.",
+        prompt:
+          "Investiga esto más a fondo. Examínalo con detalle, usando el código y cualquier fuente a tu alcance, e informa de la evidencia que encuentres.",
+      },
+      complete: {
+        label: "Completar",
+        description: "Llevarlo a término y completar lo que falta.",
+        prompt:
+          "Lleva esto a término. Haz lo que describe y completa todo lo que haya quedado sin terminar.",
+      },
+    },
     attachments: {
       dismissImage: "Descartar imagen",
       closeImage: "Cerrar imagen",

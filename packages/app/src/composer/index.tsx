@@ -57,6 +57,7 @@ import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { selectAgentTurnPresentation, useSessionStore, type Agent } from "@/stores/session-store";
 import { isCompactionActive } from "@/timeline/compaction-state";
 import { useWidgetPromptStore } from "@/widgets/prompt-store";
+import { registerChatPromptSender } from "@/composer/chat-prompt-sender";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import type { DroppedItem } from "@/components/file-drop/types";
@@ -1740,17 +1741,73 @@ export function Composer({
   // A compaction is the exception to the normal direct widget route. Its
   // context rewrite must finish before another prompt is delivered, so retain
   // the prompt in the same queue as the text composer without touching a draft.
+  //
+  // A prompt from outside the box must never cost the reader their draft, so it
+  // skips queueMessage, which clears the box because the box is what it queues.
+  const enqueueMessage = messageQueue.enqueue;
+  const enqueueExternalPrompt = useCallback(
+    (text: string) => {
+      onMessageSent?.();
+      void enqueueMessage(text, []).catch((error: unknown) => {
+        setSendError(error instanceof Error ? error.message : t("composer.errors.failedToSend"));
+      });
+    },
+    [enqueueMessage, onMessageSent, t],
+  );
+
   useEffect(() => {
     return registerWidgetPromptSender({ serverId, agentId }, (text) => {
       if (isCompacting) {
-        queueMessage(text, []);
+        enqueueExternalPrompt(text);
         return;
       }
       void submitMessage(text, []).catch((error: unknown) => {
         console.error("[Composer] Widget prompt failed to send:", error);
       });
     });
-  }, [agentId, isCompacting, queueMessage, registerWidgetPromptSender, serverId, submitMessage]);
+  }, [
+    agentId,
+    enqueueExternalPrompt,
+    isCompacting,
+    registerWidgetPromptSender,
+    serverId,
+    submitMessage,
+  ]);
+
+  // Transcript selection actions (Chat > Explain, Contest, Research, Complete)
+  // deliver exactly what Enter would right now: a send when idle, otherwise the
+  // queue, steer, or interrupt the primary action shows. An interrupt asks first
+  // when live subagents would die with the turn, as Enter does. The draft is
+  // never read or written.
+  useEffect(() => {
+    return registerChatPromptSender({ serverId, agentId }, (text) => {
+      if (isAgentRunning && (isCompacting || activeSendBehavior === "queue")) {
+        enqueueExternalPrompt(text);
+        return;
+      }
+      void (async () => {
+        if (isAgentRunning && activeSendBehavior === "interrupt") {
+          const confirmed = await confirmInterruptWithLiveSubagents({
+            serverId,
+            parentAgentId: agentId,
+          });
+          if (!confirmed) return;
+        }
+        await submitMessage(text, []);
+      })().catch((error: unknown) => {
+        setSendError(error instanceof Error ? error.message : t("composer.errors.failedToSend"));
+      });
+    });
+  }, [
+    activeSendBehavior,
+    agentId,
+    enqueueExternalPrompt,
+    isAgentRunning,
+    isCompacting,
+    serverId,
+    submitMessage,
+    t,
+  ]);
 
   const sendMessageWithContent = useCallback(
     async (

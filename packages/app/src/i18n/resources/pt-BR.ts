@@ -658,6 +658,33 @@ export const ptBR: TranslationResources = {
       expandAll: "Expand all",
       collapseAll: "Collapse all",
     },
+    selectionActions: {
+      menu: "Chat",
+      explain: {
+        label: "Explicar",
+        description: "Detalhar para que fique fácil de acompanhar.",
+        prompt:
+          "Explique isto com mais profundidade. Mostre o que significa e por que é importante.",
+      },
+      contest: {
+        label: "Contestar",
+        description: "Questionar e verificar se se sustenta.",
+        prompt:
+          "Quero questionar isto. Verifique se está realmente correto, aponte falhas ou suposições implícitas e corrija se estiver errado.",
+      },
+      research: {
+        label: "Pesquisar",
+        description: "Aprofundar e embasar com evidências.",
+        prompt:
+          "Pesquise isto mais a fundo. Investigue com cuidado, usando o código e as fontes que puder acessar, e relate as evidências encontradas.",
+      },
+      complete: {
+        label: "Concluir",
+        description: "Levar até o fim e preencher o que falta.",
+        prompt:
+          "Leve isto até a conclusão. Faça o que é descrito e complete tudo o que ficou inacabado.",
+      },
+    },
     attachments: {
       dismissImage: "Dispensar imagem",
       closeImage: "Fechar imagem",

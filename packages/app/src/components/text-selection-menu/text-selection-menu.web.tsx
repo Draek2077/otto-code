@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -20,6 +21,7 @@ import {
   ContextMenuSeparator,
   contextMenuAnchorFromEvent,
 } from "@/components/ui/context-menu";
+import type { MenuPageDefinition } from "@/components/ui/menu";
 import { Shortcut } from "@/components/ui/shortcut";
 import { getDesktopHost } from "@/desktop/host";
 import {
@@ -38,6 +40,7 @@ interface TextSelectionSnapshot {
 interface TextSelectionMenuState {
   anchor: { x: number; y: number };
   beforeStandardActions: ReactNode;
+  pages: readonly MenuPageDefinition[] | undefined;
   snapshot: TextSelectionSnapshot;
   spellcheckContext: SpellcheckContextSnapshot | null;
 }
@@ -53,9 +56,21 @@ interface SpellcheckContextSnapshot {
 export interface OpenTextSelectionMenuOptions {
   /** Actions rendered above the standard Cut/Copy/Paste/Select all group. */
   beforeStandardActions?: ReactNode;
+  /** Submenu pages, reachable from a `MenuSubTrigger` in `beforeStandardActions`. */
+  pages?: readonly MenuPageDefinition[];
   /** Limits Select all to this element instead of the complete Otto document. */
   selectAllScope?: Element | null;
 }
+
+export interface TextSelectionActionsContext {
+  /** The selected text exactly as the browser reports it. */
+  selectionText: string;
+}
+
+/** Contributes actions for a selection inside a `TextSelectionActionsScope`; null adds none. */
+export type TextSelectionActionsResolver = (
+  context: TextSelectionActionsContext,
+) => Pick<OpenTextSelectionMenuOptions, "beforeStandardActions" | "pages"> | null;
 
 interface TextSelectionMenuContextValue {
   /**
@@ -64,6 +79,8 @@ interface TextSelectionMenuContextValue {
    * clipboard behavior, enablement, separators, or shortcuts.
    */
   open: (event: unknown, options?: OpenTextSelectionMenuOptions) => boolean;
+  /** Backs `TextSelectionActionsScope`; returns the unregister function. */
+  registerActionScope: (id: string, resolve: TextSelectionActionsResolver) => () => void;
 }
 
 const TextSelectionMenuContext = createContext<TextSelectionMenuContextValue | null>(null);
@@ -163,6 +180,19 @@ function captureTextSelection(
 
 function isHybridTarget(target: EventTarget | null): boolean {
   return getTargetElement(target)?.closest("[data-otto-text-selection-hybrid]") !== null;
+}
+
+const SELECTION_ACTIONS_ATTRIBUTE = "data-otto-text-selection-actions";
+
+function findSelectionActionsScope(target: EventTarget | null): Element | null {
+  return getTargetElement(target)?.closest(`[${SELECTION_ACTIONS_ATTRIBUTE}]`) ?? null;
+}
+
+/** A right click inside a scope must not act on text selected somewhere else. */
+function selectionLiesWithin(scope: Element): boolean {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return false;
+  return scope.contains(selection.getRangeAt(0).commonAncestorContainer);
 }
 
 function isConnected(element: Element | null): element is Element {
@@ -358,6 +388,7 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
       setState({
         anchor,
         beforeStandardActions: options.beforeStandardActions ?? null,
+        pages: options.pages,
         snapshot,
         spellcheckContext,
       });
@@ -365,9 +396,28 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
     },
     [],
   );
-  const contextValue = useMemo(() => ({ open }), [open]);
+  const actionScopes = useRef(new Map<string, TextSelectionActionsResolver>());
+  const registerActionScope = useCallback((id: string, resolve: TextSelectionActionsResolver) => {
+    actionScopes.current.set(id, resolve);
+    return () => {
+      if (actionScopes.current.get(id) === resolve) actionScopes.current.delete(id);
+    };
+  }, []);
+  const contextValue = useMemo(() => ({ open, registerActionScope }), [open, registerActionScope]);
 
   useEffect(() => {
+    const resolveScopedActions = (
+      target: EventTarget | null,
+      snapshot: TextSelectionSnapshot,
+    ): OpenTextSelectionMenuOptions | undefined => {
+      // Contributed actions work on read-only selected text. An editable
+      // control keeps the plain edit group.
+      if (snapshot.editableTarget !== null || !snapshot.selectionText.trim()) return undefined;
+      const scope = findSelectionActionsScope(target);
+      const id = scope?.getAttribute(SELECTION_ACTIONS_ATTRIBUTE);
+      if (!scope || !id || !selectionLiesWithin(scope)) return undefined;
+      return actionScopes.current.get(id)?.({ selectionText: snapshot.selectionText }) ?? undefined;
+    };
     const handleSelectionContextMenuCapture = (event: globalThis.MouseEvent) => {
       const target = getEventTarget(event);
       if (
@@ -382,7 +432,7 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
       // fallback below, but it must never make selected normal UI text lose
       // Copy just because it happened to be inside that row.
       if (snapshot.selectionText.length > 0 || snapshot.editableTarget !== null) {
-        open(event);
+        open(event, resolveScopedActions(target, snapshot));
       }
     };
     const handleContextMenu = (event: globalThis.MouseEvent) => {
@@ -443,7 +493,12 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
         open={state !== null}
         onOpenChange={handleOpenChange}
       >
-        <ContextMenuContent side="bottom" align="start" testID="text-selection-context-menu">
+        <ContextMenuContent
+          side="bottom"
+          align="start"
+          pages={state?.pages}
+          testID="text-selection-context-menu"
+        >
           {state?.spellcheckContext ? (
             <SpellcheckMenuItems context={state.spellcheckContext} />
           ) : null}
@@ -464,6 +519,26 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
 export function TextSelectionMenuHybridScope({ children }: PropsWithChildren) {
   return (
     <div data-otto-text-selection-hybrid="true" style={DISPLAY_CONTENTS}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Contributes actions to the shared menu for read-only text selected inside
+ * this subtree, without claiming the right click: routing, editable controls,
+ * spellcheck, and the standard group stay with the provider. `resolve` runs
+ * when the menu opens; returning null leaves the standard group alone.
+ */
+export function TextSelectionActionsScope({
+  resolve,
+  children,
+}: PropsWithChildren<{ resolve: TextSelectionActionsResolver }>) {
+  const registerActionScope = useContext(TextSelectionMenuContext)?.registerActionScope;
+  const id = useId();
+  useEffect(() => registerActionScope?.(id, resolve), [id, registerActionScope, resolve]);
+  return (
+    <div data-otto-text-selection-actions={id} style={DISPLAY_CONTENTS}>
       {children}
     </div>
   );

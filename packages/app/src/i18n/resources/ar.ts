@@ -648,6 +648,31 @@ export const ar: TranslationResources = {
       expandAll: "Expand all",
       collapseAll: "Collapse all",
     },
+    selectionActions: {
+      menu: "الدردشة",
+      explain: {
+        label: "شرح",
+        description: "تبسيطه ليسهل فهمه.",
+        prompt: "اشرح هذا بمزيد من التفصيل. وضّح لي ما يعنيه ولماذا هو مهم.",
+      },
+      contest: {
+        label: "اعتراض",
+        description: "التشكيك فيه والتحقق من صحته.",
+        prompt:
+          "أريد الاعتراض على هذا. تحقق مما إذا كان صحيحًا فعلًا، وأشر إلى أي عيوب أو افتراضات ضمنية، وصححه إن كان خاطئًا.",
+      },
+      research: {
+        label: "بحث",
+        description: "التعمق أكثر ودعمه بالأدلة.",
+        prompt:
+          "ابحث في هذا بشكل أعمق. افحصه جيدًا مستعينًا بقاعدة الشيفرة وأي مصادر متاحة، ثم أبلغني بالأدلة التي وجدتها.",
+      },
+      complete: {
+        label: "إكمال",
+        description: "إتمامه حتى النهاية واستكمال الناقص.",
+        prompt: "أكمل هذا حتى النهاية. نفّذ ما يصفه، واستكمل كل ما بقي غير مكتمل.",
+      },
+    },
     attachments: {
       dismissImage: "تجاهل الصورة",
       closeImage: "إغلاق الصورة",

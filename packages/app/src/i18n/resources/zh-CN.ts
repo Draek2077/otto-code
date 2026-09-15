@@ -644,6 +644,31 @@ export const zhCN: TranslationResources = {
       expandAll: "Expand all",
       collapseAll: "Collapse all",
     },
+    selectionActions: {
+      menu: "聊天",
+      explain: {
+        label: "解释",
+        description: "拆解开来，让它易于理解。",
+        prompt: "请更深入地解释这段内容。说明它的含义以及为什么重要。",
+      },
+      contest: {
+        label: "质疑",
+        description: "提出质疑，检查它是否站得住脚。",
+        prompt:
+          "我想质疑这段内容。请检查它是否真的正确，指出其中的缺陷或未说明的假设，如果有误请加以纠正。",
+      },
+      research: {
+        label: "研究",
+        description: "深入挖掘，并用证据加以支撑。",
+        prompt:
+          "请进一步研究这段内容。结合代码库和你能获取的任何资料进行彻底调查，并汇报你找到的证据。",
+      },
+      complete: {
+        label: "完成",
+        description: "贯彻到底，补全缺失的部分。",
+        prompt: "请把这件事做完。执行其中描述的内容，并补全所有未完成的部分。",
+      },
+    },
     attachments: {
       dismissImage: "关闭图片",
       closeImage: "关闭图片",

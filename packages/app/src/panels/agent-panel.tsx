@@ -198,6 +198,8 @@ import {
   contextMenuAnchorFromEvent,
 } from "@/components/ui/context-menu";
 import { ChatContextMenu, type ChatContextMenuHandle } from "@/chat/context-menu";
+import { useChatSelectionActionsResolver } from "@/chat/selection-actions";
+import { TextSelectionActionsScope } from "@/components/text-selection-menu/text-selection-menu";
 import type { ViewedTimelineStatus, ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
@@ -2376,6 +2378,10 @@ const AgentStreamSection = memo(function AgentStreamSection({
     () => streamViewRef.current?.setAllExpandableContentExpanded(false),
     [streamViewRef],
   );
+  const resolveChatSelectionActions = useChatSelectionActionsResolver({
+    serverId,
+    agentId: agent.id,
+  });
   const streamView = (
     <AgentStreamView
       ref={streamViewRef}
@@ -2430,7 +2436,11 @@ const AgentStreamSection = memo(function AgentStreamSection({
         fallbackContent={chatFallbackContextMenu}
         testID="agent-chat-background"
       >
-        <View style={styles.chatContextTrigger}>{streamView}</View>
+        <View style={styles.chatContextTrigger}>
+          <TextSelectionActionsScope resolve={resolveChatSelectionActions}>
+            {streamView}
+          </TextSelectionActionsScope>
+        </View>
       </ChatContextMenu>
       <ContextMenu
         anchor={exportMenuAnchor}

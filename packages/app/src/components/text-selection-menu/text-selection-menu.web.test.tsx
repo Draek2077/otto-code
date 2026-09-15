@@ -49,7 +49,13 @@ vi.mock("@/components/ui/context-menu", async () => {
       onSelect?: () => void;
     }) => createElement("button", { type: "button", disabled, onClick: onSelect }, children),
     ContextMenuSeparator: () => createElement("hr"),
-    contextMenuAnchorFromEvent: (event: MouseEvent) => ({ x: event.clientX, y: event.clientY }),
+    // Claims the event like the real helper, so the provider's bubble fallback
+    // does not reopen the menu and discard contributed actions.
+    contextMenuAnchorFromEvent: (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      return { x: event.clientX, y: event.clientY };
+    },
   };
 });
 
@@ -69,7 +75,88 @@ vi.mock("@/desktop/host", () => ({
   }),
 }));
 
-const { TextSelectionMenuProvider } = await import("./text-selection-menu.web");
+const { TextSelectionMenuProvider, TextSelectionActionsScope } =
+  await import("./text-selection-menu.web");
+
+function selectContents(element: Element): void {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+describe("TextSelectionActionsScope", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    window.getSelection()?.removeAllRanges();
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    vi.clearAllMocks();
+  });
+
+  async function renderScope(resolve: () => { beforeStandardActions: React.ReactNode } | null) {
+    act(() => {
+      root.render(
+        <TextSelectionMenuProvider>
+          <TextSelectionActionsScope resolve={resolve}>
+            <p data-testid="inside">Use a mutex here.</p>
+          </TextSelectionActionsScope>
+          <p data-testid="outside">Unrelated label</p>
+        </TextSelectionMenuProvider>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const inside = container.querySelector("[data-testid='inside']");
+    const outside = container.querySelector("[data-testid='outside']");
+    if (!inside || !outside) throw new Error("Expected scope fixtures.");
+    return { inside, outside };
+  }
+
+  it("prepends the scope's actions for a selection inside it", async () => {
+    const resolve = vi.fn(() => ({ beforeStandardActions: <span>Chat actions</span> }));
+    const { inside } = await renderScope(resolve);
+
+    selectContents(inside);
+    act(() => {
+      inside.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, clientX: 4, clientY: 8 }),
+      );
+    });
+
+    expect(resolve).toHaveBeenCalledWith({ selectionText: "Use a mutex here." });
+    expect(container.textContent).toContain("Chat actions");
+    expect(container.textContent).toContain("Copy");
+  });
+
+  it("ignores text selected outside the scope", async () => {
+    const resolve = vi.fn(() => ({ beforeStandardActions: <span>Chat actions</span> }));
+    const { inside, outside } = await renderScope(resolve);
+
+    selectContents(outside);
+    act(() => {
+      inside.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, clientX: 4, clientY: 8 }),
+      );
+    });
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("Chat actions");
+    expect(container.textContent).toContain("Copy");
+  });
+});
 
 describe("TextSelectionMenuProvider spellcheck", () => {
   let container: HTMLDivElement;
