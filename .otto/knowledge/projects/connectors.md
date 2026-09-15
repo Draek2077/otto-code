@@ -9,7 +9,7 @@ progress_completed: 0
 progress_total: 5
 progress_unit: "0.9 delivery slices"
 created_at: "2026-08-08T06:17:20.615Z"
-updated_at: "2026-09-14T02:16:38.363Z"
+updated_at: "2026-09-14T22:10:09.237Z"
 ---
 # Connectors
 
@@ -327,3 +327,8 @@ The feature is complete only when every roster id has passing T1 coverage, a pas
   kind: "evidence"
   summary: "User securely provisioned HUBSPOT_CLIENT_SECRET through Wrangler; runtime binding presence was confirmed without reading its value. Live production verification through https://auth.otto-code.me and the actual ConnectorOAuthBroker/HostedConnectorAuthorization completed OAuth with 72 reported scopes, enumerated 28 HubSpot tools, and exposed the same 28 definitions through ConnectorToolCatalogService. The namespaced get_user_details tool succeeded via the shared catalog handler. Forced access-token expiry triggered a successful refresh, followed by another successful 28-tool enumeration. Disconnect/revocation succeeded. This used a temporary in-memory host vault and removed the test grant; no connector was installed in the running Otto app, and OS-vault/packaged desktop or unrelated-account distribution were not proved. The initial verification helper had a name-lookup mistake after successful enumeration; a corrected second run completed account-read and refresh. No HubSpot content was written. Current host source now defaults to the verified production auth origin; an explicit empty OTTO_CONNECTOR_AUTH_URL disables it and nonempty override remains available. Seven hosted driver tests, server typecheck and targeted lint passed after the default change. Earlier grant/protocol tests, both vendor runtime smokes and production dry build passed. Desktop/daemon changes remain uncommitted and require a host build/release; shared service deployment and developer-account HubSpot lifecycle are live-verified. Box runtime credentials remain unprovisioned on this production service."
   source: "HubSpot production OAuth lifecycle verification, 2026-09-13"
+- time: "2026-09-14T22:10:09.237Z"
+  kind: "evidence"
+  summary: "The user registered `https://auth.otto-code.me/v1/callback` in the existing Box OAuth application, then authorized adding the existing confidential-client ID and secret to the production `otto-auth` Worker as `BOX_CLIENT_ID` and `BOX_CLIENT_SECRET` secrets. Cloudflare binding enumeration confirmed both Box bindings and the existing HubSpot bindings without revealing values. A production `POST /v1/grants` for `vendorId: box` returned 201; its possession-proof-authorized revoke returned 200. No Box authorization page opened, no user token was issued, and no tool call, refresh, installed-app flow, or unrelated-account distribution was verified."
+  source: "2026-09-14 production auth-service configuration and safe grant check"
+  affects: ["integration-authorization-is-daemon-owned-and-reusable"]
