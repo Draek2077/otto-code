@@ -6,6 +6,13 @@ export const fr: TranslationResources = {
     drop: {
       openInTextEditor: "Ouvrir dans l’éditeur de texte",
     },
+    linkTooltip: {
+      modClickOpenInPlace: "cliquer pour ouvrir sur place",
+      clickToOpen: "Cliquer pour ouvrir",
+      findingFile: "Recherche de ce fichier dans l’espace de travail…",
+      fileNotFound: "Aucun fichier correspondant dans cet espace de travail",
+      cannotOpen: "Otto ne peut pas ouvrir ce lien",
+    },
     back: "Retour",
     loading: "Chargement...",
     actions: {

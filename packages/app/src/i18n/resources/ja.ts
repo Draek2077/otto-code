@@ -6,6 +6,13 @@ export const ja: TranslationResources = {
     drop: {
       openInTextEditor: "テキストエディターで開く",
     },
+    linkTooltip: {
+      modClickOpenInPlace: "クリックでその場で開く",
+      clickToOpen: "クリックして開く",
+      findingFile: "ワークスペース内でこのファイルを検索しています…",
+      fileNotFound: "このワークスペースに一致するファイルがありません",
+      cannotOpen: "Otto はこのリンクを開けません",
+    },
     back: "戻る",
     loading: "読み込み中...",
     actions: {

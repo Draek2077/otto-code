@@ -3,6 +3,13 @@ export const en = {
     drop: {
       openInTextEditor: "Open in Text Editor",
     },
+    linkTooltip: {
+      modClickOpenInPlace: "click to open in place",
+      clickToOpen: "Click to open",
+      findingFile: "Looking for this file in the workspace…",
+      fileNotFound: "No matching file in this workspace",
+      cannotOpen: "Otto can't open this link",
+    },
     back: "Back",
     loading: "Loading...",
     actions: {

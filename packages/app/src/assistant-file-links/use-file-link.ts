@@ -16,8 +16,21 @@ import {
   type AssistantFileLinkSource,
 } from "./resolver";
 
+/**
+ * What a click on the link will actually do, for the hover tooltip. A link is
+ * underlined before anything proves it can open, so the tooltip is where the
+ * user learns the real target - or that there is none.
+ */
+export type FileLinkHoverState =
+  | { kind: "external"; url: string }
+  | { kind: "file"; target: InlinePathTarget }
+  | { kind: "resolving"; token: string }
+  | { kind: "unresolved"; token: string }
+  | { kind: "unopenable"; href: string };
+
 export interface UseFileLinkResult {
   target: InlinePathTarget | null;
+  hoverState: FileLinkHoverState;
   resolve: () => Promise<InlinePathTarget | null>;
   onHoverIn: () => void;
   onPress: () => void;
@@ -162,10 +175,46 @@ export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult 
     return query.data ?? null;
   }, [query.data, resolution]);
 
+  const hoverState = useMemo<FileLinkHoverState>(() => {
+    if (target) {
+      return { kind: "file", target };
+    }
+    if (resolution.kind === "needsLookup") {
+      return query.status === "error"
+        ? { kind: "unresolved", token: resolution.token }
+        : { kind: "resolving", token: resolution.token };
+    }
+    const { value } = resolution;
+    if (value.kind === "external" && isOpenableExternalUrl(value.url)) {
+      return { kind: "external", url: value.url };
+    }
+    return { kind: "unopenable", href: safeDecodeUri(stableSource.href) };
+  }, [target, resolution, query.status, stableSource.href]);
+
   return useMemo(
-    () => ({ target, resolve, onHoverIn, onPress, onAuxPress, open }),
-    [target, resolve, onHoverIn, onPress, onAuxPress, open],
+    () => ({ target, hoverState, resolve, onHoverIn, onPress, onAuxPress, open }),
+    [target, hoverState, resolve, onHoverIn, onPress, onAuxPress, open],
   );
+}
+
+// openLink only ever succeeds for http(s): the desktop opener and the web
+// fallback both refuse every other scheme, so a mailto: or vscode:// link, or a
+// Windows path that markdown-it percent-encoded into `C:%5C...`, is dead.
+function isOpenableExternalUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function safeDecodeUri(value: string): string {
+  try {
+    return decodeURI(value);
+  } catch {
+    return value;
+  }
 }
 
 export function useAssistantFileLinkActions(): AssistantFileLinkActions {

@@ -6,6 +6,13 @@ export const ru: TranslationResources = {
     drop: {
       openInTextEditor: "Открыть в текстовом редакторе",
     },
+    linkTooltip: {
+      modClickOpenInPlace: "щелкните, чтобы открыть на месте",
+      clickToOpen: "Щелкните, чтобы открыть",
+      findingFile: "Поиск этого файла в рабочей области…",
+      fileNotFound: "В этой рабочей области нет подходящего файла",
+      cannotOpen: "Otto не может открыть эту ссылку",
+    },
     back: "Назад",
     loading: "Загрузка...",
     actions: {

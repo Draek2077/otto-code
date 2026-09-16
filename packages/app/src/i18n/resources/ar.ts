@@ -6,6 +6,13 @@ export const ar: TranslationResources = {
     drop: {
       openInTextEditor: "فتح في محرر النصوص",
     },
+    linkTooltip: {
+      modClickOpenInPlace: "انقر لفتحه في مكانه",
+      clickToOpen: "انقر للفتح",
+      findingFile: "جارٍ البحث عن هذا الملف في مساحة العمل…",
+      fileNotFound: "لا يوجد ملف مطابق في مساحة العمل هذه",
+      cannotOpen: "لا يستطيع Otto فتح هذا الرابط",
+    },
     back: "رجوع",
     loading: "تحميل...",
     actions: {

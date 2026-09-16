@@ -1,12 +1,18 @@
-import { useMemo, type CSSProperties, type MouseEvent, type ReactNode } from "react";
-import { Platform, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
-import { isNative, isWeb } from "@/constants/platform";
+import {
+  useMemo,
+  type ComponentProps,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
+import { Platform, type StyleProp, type TextStyle } from "react-native";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+import { isNative } from "@/constants/platform";
 import { MarkdownTextSpan } from "@/components/markdown-text";
 import { MarkdownLinkText } from "@/components/markdown/link-text";
 import { AssistantLinkPressProvider, type AssistantLinkPress } from "./link-press-context";
-import { Shortcut } from "@/components/ui/shortcut";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { LinkHoverTooltip } from "@/components/markdown/link-hover-tooltip";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { useChatContextMenuTarget } from "@/chat/context-menu";
@@ -14,7 +20,7 @@ import { markdownCopyDataSet } from "@/assistant-selection-copy/markup";
 import { AssistantLinkContextMenuTarget } from "./link-context-menu";
 import { useAssistantFileLinkResolverContext } from "./provider";
 import type { AssistantFileLinkSource } from "./resolver";
-import { useFileLink } from "./use-file-link";
+import { useFileLink, type FileLinkHoverState } from "./use-file-link";
 
 interface AssistantMarkdownLinkProps {
   source: AssistantFileLinkSource;
@@ -34,14 +40,10 @@ export function AssistantMarkdownLink({
   monoSurface,
   children,
 }: AssistantMarkdownLinkProps) {
-  const { target, resolve, onHoverIn, onPress, onAuxPress, open } = useFileLink(source);
+  const { target, hoverState, resolve, onHoverIn, onPress, onAuxPress, open } = useFileLink(source);
   const { configRef } = useAssistantFileLinkResolverContext();
   const chatContextMenu = useChatContextMenuTarget();
   const workspaceRoot = configRef.current.workspaceRoot;
-  const tooltipPath = useMemo(
-    () => (target ? formatInlinePathTargetForTooltip(target, workspaceRoot) : null),
-    [target, workspaceRoot],
-  );
   const handleAnchorClickCapture = useStableEvent((event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     if (!isModifiedOpenEvent(event)) {
@@ -80,14 +82,10 @@ export function AssistantMarkdownLink({
         {children}
       </MarkdownTextSpan>
     );
-    return (
-      <FileLinkHoverTooltip filePath={tooltipPath}>
-        {Platform.OS === "ios" ? (
-          <AssistantLinkPressProvider value={linkPress}>{span}</AssistantLinkPressProvider>
-        ) : (
-          span
-        )}
-      </FileLinkHoverTooltip>
+    return Platform.OS === "ios" ? (
+      <AssistantLinkPressProvider value={linkPress}>{span}</AssistantLinkPressProvider>
+    ) : (
+      span
     );
   }
 
@@ -121,7 +119,9 @@ export function AssistantMarkdownLink({
       open={open}
       workspaceRoot={workspaceRoot}
     >
-      <FileLinkHoverTooltip filePath={tooltipPath}>{anchor}</FileLinkHoverTooltip>
+      <AssistantLinkHoverTooltip hoverState={hoverState} workspaceRoot={workspaceRoot}>
+        {anchor}
+      </AssistantLinkHoverTooltip>
     </AssistantLinkContextMenuTarget>
   );
 }
@@ -218,46 +218,54 @@ export function AssistantInlineCodePathLink({
   );
 }
 
-const FILE_LINK_TOOLTIP_TRIGGER_STYLE: ViewStyle = {
-  // RN doesn't type "inline-flex" but RN-web honors it at runtime, which keeps
-  // the tooltip wrapper from breaking inline link flow.
-  display: "inline-flex" as ViewStyle["display"],
-};
-
 const FILE_LINK_TOOLTIP_MOD_KEYS = ["mod"];
 
-function FileLinkHoverTooltip({
-  filePath,
+function AssistantLinkHoverTooltip({
+  hoverState,
+  workspaceRoot,
   children,
 }: {
-  filePath: string | null;
+  hoverState: FileLinkHoverState;
+  workspaceRoot: string | undefined;
   children: ReactNode;
 }) {
-  if (!isWeb) {
-    return children;
-  }
+  const { t } = useTranslation();
   return (
-    <Tooltip delayDuration={400}>
-      <TooltipTrigger asChild>
-        <View style={FILE_LINK_TOOLTIP_TRIGGER_STYLE}>{children}</View>
-      </TooltipTrigger>
-      {filePath ? (
-        <TooltipContent side="top" align="start" maxWidth={520}>
-          <View style={styles.tooltipBody}>
-            <Text selectable={false} style={styles.tooltipPath}>
-              {filePath}
-            </Text>
-            <View style={styles.tooltipHintRow}>
-              <Shortcut keys={FILE_LINK_TOOLTIP_MOD_KEYS} />
-              <Text selectable={false} style={styles.tooltipHintText}>
-                click to open in place
-              </Text>
-            </View>
-          </View>
-        </TooltipContent>
-      ) : null}
-    </Tooltip>
+    <LinkHoverTooltip {...getHoverTooltipProps(hoverState, workspaceRoot, t)}>
+      {children}
+    </LinkHoverTooltip>
   );
+}
+
+function getHoverTooltipProps(
+  hoverState: FileLinkHoverState,
+  workspaceRoot: string | undefined,
+  t: TFunction,
+): Omit<ComponentProps<typeof LinkHoverTooltip>, "children"> {
+  switch (hoverState.kind) {
+    case "file":
+      return {
+        label: formatInlinePathTargetForTooltip(hoverState.target, workspaceRoot),
+        hint: t("common.linkTooltip.modClickOpenInPlace"),
+        hintKeys: FILE_LINK_TOOLTIP_MOD_KEYS,
+      };
+    case "external":
+      return { label: hoverState.url, hint: t("common.linkTooltip.clickToOpen") };
+    case "resolving":
+      return { label: hoverState.token, hint: t("common.linkTooltip.findingFile") };
+    case "unresolved":
+      return {
+        label: hoverState.token,
+        hint: t("common.linkTooltip.fileNotFound"),
+        hintTone: "error",
+      };
+    case "unopenable":
+      return {
+        label: hoverState.href,
+        hint: t("common.linkTooltip.cannotOpen"),
+        hintTone: "error",
+      };
+  }
 }
 
 const LINK_ANCHOR_STYLE: CSSProperties = {
@@ -273,24 +281,3 @@ function preventAnchorNavigation(event: MouseEvent<HTMLAnchorElement>): void {
 function isModifiedOpenEvent(event: MouseEvent<HTMLElement>): boolean {
   return event.metaKey || event.ctrlKey;
 }
-
-const styles = StyleSheet.create((theme) => ({
-  tooltipBody: {
-    gap: theme.spacing[1],
-  },
-  tooltipPath: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-  },
-  tooltipHintRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  tooltipHintText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-  },
-}));

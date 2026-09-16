@@ -6,6 +6,13 @@ export const ko: TranslationResources = {
     drop: {
       openInTextEditor: "Open in Text Editor",
     },
+    linkTooltip: {
+      modClickOpenInPlace: "클릭하여 현재 위치에서 열기",
+      clickToOpen: "클릭하여 열기",
+      findingFile: "작업 공간에서 이 파일을 찾는 중…",
+      fileNotFound: "이 작업 공간에 일치하는 파일이 없습니다",
+      cannotOpen: "Otto에서 이 링크를 열 수 없습니다",
+    },
     back: "뒤로",
     loading: "불러오는 중...",
     actions: {

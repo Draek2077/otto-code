@@ -80,6 +80,7 @@ import {
 import { headingAnchors } from "@/editor/markdown/markdown-link-completion";
 import { extractMarkdownHeadings } from "@otto-code/highlight";
 import { colorMarkdownLinkChildren } from "./link-children";
+import { LinkHoverTooltip } from "./link-hover-tooltip";
 import { MarkdownLinkText } from "./link-text";
 
 export type MarkdownStyles = Record<string, TextStyle & ViewStyle & { [key: string]: unknown }>;
@@ -1007,9 +1008,11 @@ function SharedMarkdownLink({
 
   if (!isNative) {
     return (
-      <MarkdownLinkText style={style} onPress={handlePress}>
-        {children}
-      </MarkdownLinkText>
+      <LinkHoverTooltip label={href}>
+        <MarkdownLinkText style={style} onPress={handlePress}>
+          {children}
+        </MarkdownLinkText>
+      </LinkHoverTooltip>
     );
   }
 

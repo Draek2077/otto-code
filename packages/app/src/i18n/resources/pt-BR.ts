@@ -6,6 +6,13 @@ export const ptBR: TranslationResources = {
     drop: {
       openInTextEditor: "Abrir no Editor de Texto",
     },
+    linkTooltip: {
+      modClickOpenInPlace: "clique para abrir no lugar",
+      clickToOpen: "Clique para abrir",
+      findingFile: "Procurando este arquivo no espaço de trabalho…",
+      fileNotFound: "Nenhum arquivo correspondente neste espaço de trabalho",
+      cannotOpen: "O Otto não consegue abrir este link",
+    },
     back: "Voltar",
     loading: "Carregando...",
     actions: {

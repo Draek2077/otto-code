@@ -6,6 +6,13 @@ export const zhCN: TranslationResources = {
     drop: {
       openInTextEditor: "在文本编辑器中打开",
     },
+    linkTooltip: {
+      modClickOpenInPlace: "点击在当前位置打开",
+      clickToOpen: "点击打开",
+      findingFile: "正在工作区中查找此文件…",
+      fileNotFound: "此工作区中没有匹配的文件",
+      cannotOpen: "Otto 无法打开此链接",
+    },
     back: "返回",
     loading: "加载中...",
     actions: {
