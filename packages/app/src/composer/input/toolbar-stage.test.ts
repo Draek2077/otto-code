@@ -149,6 +149,48 @@ describe("resolveToolbarLayoutStep", () => {
     ).toBe(2);
   });
 
+  it("puts compact straight on the last rung and scales from the widths in hand", () => {
+    // The measured Android case: 532dp of icon-only controls against a 366dp row.
+    const result = step({
+      rowWidth: 366,
+      leftWidth: 404,
+      rightWidth: 120,
+      stageIndex: 0,
+      isCompact: true,
+    });
+    expect(result?.nextStageIndex).toBe(LAST_STAGE);
+    expect(result?.judgedCurrentStage).toBe(true);
+    expect(result?.scale).toBeCloseTo(366 / 532);
+  });
+
+  it("never lets a stale stage stamp hold a compact scale back", () => {
+    // Compact ignores the stage, so a width reported against another rung is
+    // still the width on screen and must be judged, not waited on.
+    const result = step({
+      rowWidth: 366,
+      leftWidth: 404,
+      rightWidth: 120,
+      stageIndex: LAST_STAGE,
+      leftStage: 2,
+      isCompact: true,
+    });
+    expect(result?.judgedCurrentStage).toBe(true);
+    expect(result?.scale).toBeCloseTo(366 / 532);
+  });
+
+  it("returns compact to full size as soon as the row fits again", () => {
+    const result = step({
+      rowWidth: 800,
+      leftWidth: 404,
+      rightWidth: 120,
+      stageIndex: LAST_STAGE,
+      measuredNeededByStage: [900, 900, 900, 900, 532],
+      isCompact: true,
+    });
+    expect(result?.nextStageIndex).toBe(LAST_STAGE);
+    expect(result?.scale).toBe(1);
+  });
+
   it("reports the compact feature gate from the row width", () => {
     expect(step({ rowWidth: 900, leftWidth: 200, rightWidth: 120 })?.canFitFeatures).toBe(true);
     expect(step({ rowWidth: 200, leftWidth: 700, rightWidth: 120 })?.canFitFeatures).toBe(false);

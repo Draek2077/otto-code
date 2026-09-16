@@ -86,6 +86,11 @@ export function applyToolbarMeasurement(
   return true;
 }
 
+/** Compact is icon-only on every rung, so it starts where scaling is allowed. */
+function resolveEntryStageIndex(isCompact: boolean): number {
+  return isCompact ? COMPOSER_CONTROL_STAGES.length - 1 : 0;
+}
+
 export interface ToolbarLayoutStep {
   /** The stage to render next; equal to the current one when nothing changes. */
   nextStageIndex: number;
@@ -117,6 +122,26 @@ export function resolveToolbarLayoutStep(input: {
   const availableWidth = measurements.rowWidth;
   const neededWidth = measurements.leftWidth + measurements.rightWidth + TOOLBAR_GROUP_GAP;
   const canFitFeatures = canFitCompactFeatures(availableWidth);
+
+  // The compact branch is icon-only whatever the stage says, so the ladder has
+  // nothing to drop there: every rung is a no-op that no layout event can
+  // confirm. Walking it anyway left the row clipped for a frame per rung and
+  // made the scale depend on a timed guess instead of the measurements. Compact
+  // sits on the last rung and its scale is a pure function of the widths in
+  // hand, so any fresh measurement fully corrects it.
+  if (input.isCompact) {
+    return {
+      nextStageIndex: COMPOSER_CONTROL_STAGES.length - 1,
+      scale: computeToolbarScale({
+        toolbarRowWidth: availableWidth,
+        toolbarNeededWidth: neededWidth,
+        isCompact: true,
+      }),
+      canFitFeatures,
+      neededWidth,
+      judgedCurrentStage: true,
+    };
+  }
 
   // Only a width measured at the stage now on screen can decide the next one.
   if (measurements.leftStage !== stageIndex) {
@@ -157,10 +182,12 @@ export interface ComposerToolbarLayout {
   canFitFeatures: boolean;
   /** How much text the agent controls may render. */
   toolbarStage: ComposerControlStage;
+  /** The uniform shrink, on a frame whose width is the measured row width. */
+  toolbarFrameStyle: AnimatedStyle<ViewStyle>;
   /**
-   * Width compensation plus the uniform shrink, driven from the UI thread. The
-   * row is widened by exactly what the scale takes back, so `space-between`
-   * still holds the two groups against the row's real edges once transformed.
+   * Width compensation for the shrink. The content is widened by exactly what
+   * the scale takes back, so `space-between` still holds the two groups
+   * against the row's real edges once the frame is transformed.
    */
   toolbarContentStyle: AnimatedStyle<ViewStyle>;
   handleToolbarRowLayout: (event: LayoutChangeEvent) => void;
@@ -199,10 +226,25 @@ export function useComposerToolbarLayout({
   // stage. Retreating to a roomier stage consults this rather than an
   // estimate, so a label only comes back when a measurement proves it fits.
   const measuredNeededByStageRef = useRef<(number | undefined)[]>([]);
-  const [stageIndex, setStageIndex] = useState(0);
+  const [stageIndex, setStageIndex] = useState(() => resolveEntryStageIndex(isCompact));
   const stageIndexRef = useRef(stageIndex);
   stageIndexRef.current = stageIndex;
   const [canFitFeatures, setCanFitFeatures] = useState(true);
+
+  // A form-factor flip (a tablet rotating across the breakpoint) swaps the
+  // whole control branch, so nothing measured on the old one describes the new
+  // one. Compact enters on the last rung; desktop re-enters at full and steps
+  // down on fresh measurements. Keeping the old records would strand desktop
+  // on icon-only, since retreating needs a record for the roomier rung.
+  const compactModeRef = useRef(isCompact);
+  useEffect(() => {
+    if (compactModeRef.current === isCompact) return;
+    compactModeRef.current = isCompact;
+    measuredNeededByStageRef.current = [];
+    const entry = resolveEntryStageIndex(isCompact);
+    stageIndexRef.current = entry;
+    setStageIndex(entry);
+  }, [isCompact]);
 
   const scale = useSharedValue(1);
   const contentWidth = useSharedValue(0);
@@ -277,45 +319,49 @@ export function useComposerToolbarLayout({
     return () => cancelAnimationFrame(frame);
   }, [evaluate, stageIndex]);
 
+  // The scale and the widening live on two different views, on purpose.
+  //
+  // The frame carries the transform and is never resized by it: its width is
+  // the row's own width, the very measurement the scale was computed from, so
+  // that width is already mounted before any transform derived from it lands.
+  // This matters because no platform lets us name the pivot. `transformOrigin`
+  // never reaches web (unistyles mangles the array into junk CSS, and
+  // reanimated's web update path drops it), and Android Fabric resolves even
+  // the default center origin against the view's native width at the moment
+  // the transform prop arrives. When one view carried both the transform and
+  // an animated width, Android applied the transform ahead of the width's
+  // layout pass, pivoted on the stale width, and left the row mis-scaled until
+  // something forced a fresh pass, such as a rotation.
+  //
+  // So the pivot is the frame's center, a width that is known and settled, and
+  // a translateX of rowWidth * (1 - s) / 2 re-anchors the scale at the row's
+  // left edge. Order matters: on web the array serializes to CSS in order and
+  // CSS applies right-to-left; on native RN folds the array in listed order,
+  // so the same list means the same thing. The translate must come first so
+  // it acts in screen space, after the scale.
+  const toolbarFrameStyle = useAnimatedStyle(() => {
+    const rowWidth = contentWidth.value;
+    const s = scale.value;
+    if (rowWidth <= 0 || s === 1) return { transform: [{ translateX: 0 }, { scale: 1 }] };
+    return { transform: [{ translateX: (-rowWidth * (1 - s)) / 2 }, { scale: s }] };
+  });
+
+  // The content box is widened by exactly what the scale takes back, so
+  // `space-between` still holds the two groups against the row's real edges
+  // once the frame shrinks it. It overflows the frame to the right, which the
+  // scale then folds back inside the row.
   const toolbarContentStyle = useAnimatedStyle(() => {
     // Before the first measurement the row has no width to compensate with, so
     // fall back to filling its parent rather than collapsing to zero - the
     // groups still have to lay out for their widths to be reported at all.
     if (contentWidth.value <= 0) return { width: "100%" as const };
-    const s = scale.value;
-    const width = contentWidth.value / s;
-    // One pivot, and it lives here. The row is widened by exactly what the
-    // scale takes back, so the scale has to pivot at the row's left edge or
-    // the groups stop landing on the row's real edges. `transformOrigin` is
-    // not that pivot on any platform: web never receives it (unistyles mangles
-    // the array into junk CSS, and reanimated's web update path drops it -
-    // verified live, the computed origin stayed at the box center), and on
-    // Android Fabric the origin is resolved against the view's measured width
-    // when the transform prop lands, which for this row is a width that is
-    // itself animated, so it resolves against a stale size and the row settles
-    // off-center. The row style therefore declares no origin at all.
-    //
-    // Baking it in instead: a center-pivot scale leaves the box
-    // width * (1 - s) / 2 too far right, so a translateX of that amount
-    // re-anchors it at the row's left edge - the left-edge pivot, expressed as
-    // a pure reposition of the same uniform scale, and applied in the same
-    // worklet as the width it compensates for, so the two can never disagree.
-    //
-    // Order matters: on web the array serializes to CSS in order and CSS
-    // applies right-to-left; on native RN folds the array in listed order, so
-    // the same list means the same thing. Either way the translate must come
-    // first so it acts in screen space, after the scale. Listed second it
-    // would itself be scaled by s and undercompensate by
-    // width * (1 - s)^2 / 2.
-    return {
-      width,
-      transform: [{ translateX: (-width * (1 - s)) / 2 }, { scale: s }],
-    };
+    return { width: contentWidth.value / scale.value };
   });
 
   return {
     canFitFeatures,
     toolbarStage: COMPOSER_CONTROL_STAGES[stageIndex] ?? COMPOSER_CONTROL_STAGES[0],
+    toolbarFrameStyle,
     toolbarContentStyle,
     handleToolbarRowLayout,
     handleToolbarLeftLayout,

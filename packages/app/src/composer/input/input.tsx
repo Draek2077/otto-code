@@ -1178,15 +1178,25 @@ function computeIsDictationStartEnabled(
   return (isReadyForDictation ?? isConnected) && !disabled;
 }
 
-/** The toolbar row's content box: width compensation plus the uniform shrink. */
+/**
+ * The toolbar row's content: a frame that carries the uniform shrink, around a
+ * box widened to compensate for it. See `useComposerToolbarLayout` for why the
+ * two must be separate views.
+ */
 function ToolbarContentBox({
+  frameStyle,
   style,
   children,
 }: {
+  frameStyle: AnimatedStyle<import("react-native").ViewStyle>;
   style: AnimatedStyle<import("react-native").ViewStyle>;
   children: React.ReactNode;
 }) {
-  return <Animated.View style={[styles.buttonRowContent, style]}>{children}</Animated.View>;
+  return (
+    <Animated.View style={[styles.buttonRowFrame, frameStyle]}>
+      <Animated.View style={[styles.buttonRowContent, style]}>{children}</Animated.View>
+    </Animated.View>
+  );
 }
 
 // Uniform-shrink fallback: once labels are already dropped (compact/icon-only
@@ -1741,6 +1751,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const {
       canFitFeatures,
       toolbarStage,
+      toolbarFrameStyle,
       toolbarContentStyle,
       handleToolbarRowLayout,
       handleToolbarLeftLayout,
@@ -2271,7 +2282,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           {/* Button row */}
           <View style={styles.buttonRow} onLayout={handleToolbarRowLayout}>
             <ComposerToolbarProvider canFitFeatures={canFitFeatures} stage={toolbarStage}>
-              <ToolbarContentBox style={toolbarContentStyle}>
+              <ToolbarContentBox frameStyle={toolbarFrameStyle} style={toolbarContentStyle}>
                 {/* Toolbar left: attachment button + usage ring + agent controls */}
                 <View style={styles.leftButtonGroup} onLayout={handleToolbarLeftLayout}>
                   {showAttachmentButton ? (
@@ -2465,26 +2476,25 @@ const styles = StyleSheet.create((theme: Theme) => ({
     marginBottom: -COMPOSER_BUTTON_ROW_BLEED,
     overflow: "hidden",
   },
+  // Stretches to the row's width and never takes a width of its own, so the
+  // scale it carries always pivots on a settled size.
+  // Deliberately no `transformOrigin`. The left-edge pivot is baked into the
+  // animated transform (composer/input/toolbar-stage.ts), and it has to be the
+  // only pivot in play: declaring both compensates twice and pushes the row off
+  // its left edge, under a parent that clips. Web never receives it anyway
+  // (unistyles mangles the array into junk CSS and reanimated's web update path
+  // drops it). If it ever comes back, array form only, never a CSS string: the
+  // native RCTView setter casts to ReadableArray, so "left center" throws
+  // ClassCastException on Android.
+  buttonRowFrame: {
+    alignSelf: "stretch",
+  },
   buttonRowContent: {
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
     alignSelf: "flex-start",
     gap: TOOLBAR_GROUP_GAP,
-    // Deliberately no `transformOrigin`. The scaled row's left-edge pivot is
-    // baked into the animated transform itself (composer/input/toolbar-stage.ts),
-    // and it has to be the only pivot in play: declaring both compensates
-    // twice and pushes the row off the row's left edge, under a parent that
-    // clips. It also cannot be made to work here. Web never receives it
-    // (unistyles mangles the array into junk CSS and reanimated's web update
-    // path drops it), and on Android Fabric the origin offset is derived from
-    // the view's measured width at the moment the transform prop lands - a
-    // width this row animates - so the pivot resolves against a stale size and
-    // the row settles off-center. The transform-baked pivot is immune: it
-    // rides the same worklet as the width it compensates for.
-    // If it ever comes back, array form only, never a CSS string: the native
-    // RCTView setter casts to ReadableArray, so "left center" throws
-    // ClassCastException on Android.
   },
   leftButtonGroup: {
     flexShrink: 0,
