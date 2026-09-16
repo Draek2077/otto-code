@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.13-beta.1 - 2026-09-16
+
+### Changed
+
+- Publish Otto's npm packages from GitHub with signed build provenance
+- Refresh the agent catalog to the latest published versions
+
 ## 0.9.12 - 2026-09-16
 
 ### Added
