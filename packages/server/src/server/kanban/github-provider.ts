@@ -422,7 +422,13 @@ export class GitHubProjectV2Provider implements KanbanProvider {
       const data = await this.graphql<{
         organization?: { projectV2?: RawBoardNode | null } | null;
         user?: { projectV2?: RawBoardNode | null } | null;
-      }>(PROJECT_BY_NUMBER_QUERY, { login: owner, number: Number(targetBoardId) });
+      }>(
+        PROJECT_BY_NUMBER_QUERY,
+        { login: owner, number: Number(targetBoardId) },
+        // A login is either an organization or a user, never both, so GitHub
+        // always reports NOT_FOUND for the other half alongside the real data.
+        { ignoreNotFoundAt: ["organization", "user"] },
+      );
       board = data.organization?.projectV2 ?? data.user?.projectV2;
     } else {
       const data = await this.graphql<{ node?: RawBoardNode | null }>(PROJECT_BY_NODE_ID_QUERY, {
@@ -449,6 +455,7 @@ export class GitHubProjectV2Provider implements KanbanProvider {
   private async graphql<TData>(
     query: string,
     variables: Record<string, unknown> = {},
+    options: { ignoreNotFoundAt?: readonly string[] } = {},
   ): Promise<TData> {
     if (!this.token) {
       throw new Error(
@@ -481,6 +488,16 @@ export class GitHubProjectV2Provider implements KanbanProvider {
     } catch {
       throw new Error(`GitHub returned an empty response (HTTP ${response.status}).`);
     }
+    const ignored = options.ignoreNotFoundAt ?? [];
+    const errors = payload.errors?.filter(
+      (error) =>
+        !(
+          error.type === "NOT_FOUND" &&
+          Array.isArray(error.path) &&
+          ignored.includes(String(error.path[0]))
+        ),
+    );
+    payload = { ...payload, ...(errors ? { errors } : {}) };
     if (!response.ok || (payload.errors && payload.errors.length > 0)) {
       const scopeFailure = describeScopeFailure(payload.errors, response, this.apiBaseUrl);
       if (scopeFailure) {

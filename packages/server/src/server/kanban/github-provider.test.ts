@@ -187,6 +187,42 @@ describe("GitHubProjectV2Provider", () => {
     expect(call?.variables).toEqual({ login: "acme", number: 12 });
   });
 
+  it("resolves an organization board despite GitHub's NOT_FOUND for the user half", async () => {
+    // What GitHub really returns for an organization login: the board under
+    // `organization`, plus a NOT_FOUND error for `user` with the same login.
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { query: string };
+      const payload = body.query.startsWith("query KanbanProjectByNumber")
+        ? {
+            data: {
+              organization: { projectV2: { id: "PVT_org", title: "Org board" } },
+              user: null,
+            },
+            errors: [
+              {
+                type: "NOT_FOUND",
+                path: ["user"],
+                message: "Could not resolve to a User with the login of 'taste-the-city'.",
+              },
+            ],
+          }
+        : { data: { viewer: { login: "octocat" } } };
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    const provider = new GitHubProjectV2Provider({ fetch: fetchImpl });
+    await provider.initialize({ githubToken: "ghp_test" });
+
+    const boards = await provider.listBoards({
+      targetBoardId: "3",
+      targetBoardOwner: "taste-the-city",
+    });
+
+    expect(boards).toEqual([{ providerId: "github", boardId: "PVT_org", title: "Org board" }]);
+  });
+
   it("resolves a configured GraphQL node id without a discovery list", async () => {
     const { provider, calls } = makeProvider({
       token: "ghp_test",
