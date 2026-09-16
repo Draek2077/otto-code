@@ -54,9 +54,10 @@ local-only are **stale**; the "Local network hosting" section below remains vali
 alternative, not the current state. (Amended 2026-07-11: `app.otto-code.me`'s one-time
 custom-domain attach was missing until this date; now done - see "Web app custom domain" below.)
 
-**Update (2026-07-11): npm is live.** The `otto-code` npm org exists (owner `draek2077`) and all
-six `@otto-code/*` packages were first published at 0.5.0 - `release:publish` is now a normal
-part of the release chain.
+**Update (2026-07-11): npm is live.** The `otto-code` npm org exists (owner `draek2077`) and the
+`@otto-code/*` packages were first published at 0.5.0. **Since 2026-09-16 the tag push publishes
+them from CI** (`npm Publish`, npm trusted publishing); no release machine logs in to npm. See
+[release.md](release.md#npm-publishing-from-ci).
 
 **Update (2026-07-12): Google Play internal-track auto-submit is wired.** The `Android Play
 Release` workflow (`.github/workflows/android-play-release.yml`) builds an AAB via EAS and submits
@@ -75,7 +76,7 @@ rebrand-upstream tooling) has been swapped to `otto-code.me`.
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GitHub repo                            | `Draek2077/otto-code` (`origin`)                                                                                           | ✅ Yes                        | Already done                                                                                                                                                                                                                          |
 | Desktop auto-update feed               | `Draek2077/otto-code` GitHub Releases                                                                                      | ✅ Yes                        | Already done (see below) - unaffected by domain/hosting choice                                                                                                                                                                        |
-| npm packages (`@otto-code/*`)          | npm org `otto-code` (owner `draek2077`); all six packages published at 0.5.0 on 2026-07-11                                 | ✅ Yes                        | Nothing - `release:publish` is part of the normal release chain now; stay logged in as an org member                                                                                                                                  |
+| npm packages (`@otto-code/*`)          | npm org `otto-code` (owner `draek2077`); eight packages, first published at 0.5.0 on 2026-07-11                            | ✅ Yes                        | Nothing - the `npm Publish` workflow publishes on tag push through trusted publishing (configured for all eight packages)                                                                                                             |
 | Docker image (GHCR)                    | `ghcr.io/draek2077/otto` (dynamic owner)                                                                                   | ✅ Yes                        | Nothing - the workflow reads the owner from GitHub automatically                                                                                                                                                                      |
 | Android build (EAS)                    | Expo org `otto-code`, `projectId 69eddb63-f77d-413a-b2b7-ed83e8e16759`, `EXPO_TOKEN` set                                   | ✅ Yes                        | Already done (see "Android release" below)                                                                                                                                                                                            |
 | Android package identity               | `me.ottocode.mobile` / `me.ottocode.mobile.debug` (`packages/app/app.config.js`)                                           | ✅ Yes                        | Already done - fork-owned namespace, safe for eventual Play Store use                                                                                                                                                                 |
@@ -187,12 +188,11 @@ The release loop, once you're ready to ship:
   who turn on `daemon.keepRunningAfterQuit` get their update on the next explicit "Update now",
   which stops the daemon deliberately and warns first.
 
-- **npm publish works (as of 2026-07-11).** The `otto-code` npm org is claimed (owner
-  `draek2077`) and all six packages first published at 0.5.0, so the full `release:patch`
-  chain - including `release:publish` - runs end to end. The only prerequisite is being
-  logged in (`npm whoami`) as an org member on the machine running the release. If publish
-  fails mid-chain the tag exists but is unpushed; resume with `npm run release:publish` then
-  `npm run release:push` rather than re-running the chain.
+- **npm publishes from CI (as of 2026-09-16).** `release:patch` checks, bumps, tags, and pushes;
+  the tag push runs `npm Publish`, which publishes the eight `@otto-code/*` packages through
+  npm trusted publishing. The release machine needs no npm login, no 2FA, and no Google
+  registration. If the workflow fails, rerun it for the tag; packages already published are
+  skipped.
 
 ## Android release
 
@@ -539,11 +539,9 @@ Pulling the above into one end-to-end runbook for "ship a new version":
 
 - [ ] Working tree clean, on `main`, format/lint/typecheck all green
 - [ ] Decide patch vs. beta (see "Versioning" above)
-- [ ] Confirm you're logged into npm as an `otto-code` org member (`npm whoami`)
-- [ ] `npm run release:patch` (or the beta mode) - bumps, commits, tags, publishes the six
-      `@otto-code/*` packages to npm, and pushes HEAD + tag (triggers CI workflows). If the
-      publish step fails, the tag exists but is unpushed - resume with `npm run release:publish`
-      then `npm run release:push`
+- [ ] `npm run release:patch` (or the beta mode) - bumps, commits, tags, and pushes HEAD + tag,
+      which triggers CI, including `npm Publish` for the eight `@otto-code/*` packages
+- [ ] **npm Publish** workflow is green for the tag (rerun it for the tag if it failed)
 - [ ] **npm**: spot-check `npm view @otto-code/cli version` reports the new version
 - [ ] **Desktop**: confirm `Desktop Release` workflow is green for Windows/Linux on the new tag
       (macOS jobs skip until Apple signing is set up), and `finalize-rollout` uploaded the

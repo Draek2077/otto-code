@@ -123,12 +123,14 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
   reported issues as unverified until measured, and distinguish observations from hypotheses in
   task descriptions and handoffs. Ask when ambiguity would change the action.
 - **Release handoff:** When the user has reviewed the changelog and says “go” for a release, carry
-  the release through all non-interactive steps: commit the approved changelog, run the release
-  checks, create the version commit and tag, and start npm publishing. Stop at the first npm
-  authentication or 2FA prompt, tell the user exactly what completed and what remains, and hand
-  the interactive publish step to the user. Do not wait silently, guess an OTP, or treat a tool
-  timeout as evidence that the release failed. After the user completes the interactive step,
-  resume only the remaining release actions, typically pushing the branch and tag.
+  the release through end to end: commit the approved changelog, then run the release command
+  (checks, version commit and tag, push). npm publishing is not a local step: the tag push runs the
+  `npm Publish` workflow, which publishes through npm trusted publishing with no login or 2FA and
+  reads the Google sign-in registration from a GitHub secret. Never put that registration on a
+  machine. If `npm Publish` fails, rerun it for the tag rather than bumping the version. The
+  terminal fallback `npm run release:publish` needs the user's npm login and 2FA, so only the user
+  runs it; never guess an OTP, and never treat a tool timeout as evidence that the release failed.
+  See [docs/release.md](docs/release.md#npm-publishing-from-ci).
 - **NEVER add auth checks to tests** - agent providers handle their own auth.
 - **Before changing app routes, startup routing, remembered workspace restore, or active workspace selection, read [docs/expo-router.md](docs/expo-router.md).**
 - **NEVER run the full test suite locally.** The test suites are heavy and will freeze the machine, especially if multiple agents run them in parallel. Rules:
