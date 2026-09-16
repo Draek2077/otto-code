@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.12 - 2026-09-16
+
+### Added
+
+- Explain, contest, research, or complete text you select in a chat transcript
+- Turn Autonomous mode on or off for a single chat from the message box
+- Choose how many prompt suggestions Otto follows in a row
+
+### Changed
+
+- Follow prompt suggestions now sets the default for new chats instead of switching every chat at once
+- Refresh the agent catalog to the latest published versions
+- Update bundled dependencies to clear known security advisories
+
+### Fixed
+
+- Update the workspace change counts after you commit
+- Show per-file line counts in Changes instead of hiding a long branch behind a too-large notice
+- Restore the short message box placeholder when the composer runs out of room
+- Keep the suggested task card's toggle icons from shrinking
+- Include the macOS desktop builds in the release downloads
+
 ## 0.9.11 - 2026-09-13
 
 Otto now builds on Paseo 0.8.0.
