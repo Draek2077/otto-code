@@ -3,6 +3,11 @@
   "version": "0.9.12",
   "description": "Otto CLI - control your AI coding agents from the command line",
   "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Draek2077/otto-code.git",
+    "directory": "packages/cli"
+  },
   "bin": {
     "otto": "bin/otto"
   },

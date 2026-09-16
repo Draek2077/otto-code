@@ -2,6 +2,11 @@
   "name": "@otto-code/plugin",
   "version": "0.9.12",
   "description": "Otto plugin SDK package",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Draek2077/otto-code.git",
+    "directory": "packages/plugin"
+  },
   "files": [
     "dist",
     "!dist/**/*.map"

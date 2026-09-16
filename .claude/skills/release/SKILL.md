@@ -61,24 +61,21 @@ Only after explicit go-ahead:
 # Commit the approved changelog on its OWN commit - no code bundled in.
 git commit -m "docs(changelog): add X.Y.Z release notes"
 
-# Confirm prerequisites, then cut it.
-npm whoami                    # must be an otto-code npm org member
-npm run release:patch         # release:check → version:all:patch (bump+commit+tag) → release:publish → release:push
+# Cut it. No npm login, no 2FA, no Google registration needed on this machine.
+npm run release:patch         # release:check → version:all:patch (bump+commit+tag) → release:push
 ```
 
-`release:patch` bumps every workspace, publishes the six `@otto-code/*` packages, and pushes HEAD + tag. The tag push triggers CI (see step 5).
+`release:patch` bumps every workspace, commits, tags, and pushes HEAD + tag. **The agent runs it end to end.** Publishing is not part of it: the tag push runs the `npm Publish` workflow, which publishes the eight `@otto-code/*` packages (highlight, relay, protocol, client, plugin, server, brain, cli) through npm trusted publishing and reads the Google sign-in registration from the `OTTO_GOOGLE_OAUTH_CLIENT_JSON` repository secret. See `docs/release.md` → "npm publishing from CI".
 
-**`npm run release:publish` needs 2FA - the user always runs it, never the agent.** It hits npm's interactive one-time-password/browser-auth gate (`EOTP`) for each of the six `@otto-code/*` packages. **NEVER attempt the publish or OTP step yourself** - don't pass `--otp=`, don't run the browser auth, don't ask for or enter a code. This is a hard standing rule, not a fallback for when something goes wrong.
+**If the chain fails** (a dirty tree from a stray build artifact, a push rejection): fix the cause, then resume - don't re-run the full chain. If the version commit + tag already exist, resume at `npm run release:push`. If they don't, resume at `npm run version:all:patch`.
 
-Expect `npm run release:patch` to run through `release:check` and `version:all:patch` (bump+commit+tag) and then stop at the `EOTP` prompt on `release:publish` - that's the normal, expected outcome, not a failure to work around. When it stops there: tell the user the version commit + tag are ready, and have them run `npm run release:publish` themselves in their own terminal. Once they confirm all six packages published, resume with the non-credentialed `npm run release:push` (pushes HEAD + tag, triggers CI).
-
-**If the chain fails before publish** (e.g. a dirty tree from a stray build artifact, an auth/registry hiccup unrelated to 2FA): fix the underlying cause, then resume - don't re-run the full chain from `release:patch`. If the version commit + tag already exist, resume at `npm run release:publish` (user-run) then `npm run release:push`. If they don't exist yet, resume at `npm run version:all:patch`.
+**If `npm Publish` fails**, fix the cause and rerun it for the tag (`gh workflow run npm-publish.yml --repo Draek2077/otto-code -f tag=vX.Y.Z`); it skips packages already on the registry. Never bump the version to retry a publish. `npm run release:publish` is a terminal fallback only: it needs the user's `npm login` with 2FA and the Google registration in that shell, so **the user runs it, never the agent** - don't pass `--otp=`, run browser auth, or ask for a code.
 
 ### 5. Done - `release:push` is the last step
 
 **Do NOT watch the builds.** No background polling loop, no `gh run list` heartbeat, no scheduled re-check, no "I'll report back when they settle." The user watches CI themselves and has ruled the monitoring a waste of tokens. Report what shipped and end the turn.
 
-The `v*` tag push triggers, in **your** repo: `Desktop Release`, `Android APK Release`, `Android Play Release` (AAB → Play internal track), `Docker`, `Deploy App` (web app), `Release Notes Sync`. `Deploy Website` runs when the GitHub release publishes (stable only).
+The `v*` tag push triggers, in **your** repo: `npm Publish`, `Desktop Release`, `Android APK Release`, `Android Play Release` (AAB → Play internal track), `Docker`, `Deploy App` (web app), `Release Notes Sync`. `Deploy Website` runs when the GitHub release publishes (stable only).
 
 - **`gh` defaults to upstream Otto here - always pass `--repo Draek2077/otto-code`** - for the one-off checks below, or when the user asks about a specific failure later.
 - macOS desktop jobs **run and produce unsigned artifacts** (they no longer skip for want of Apple signing - changed as of 0.6.6). A red mac job is a **real failure**, not an expected skip. Unsigned means a Gatekeeper warning on first open; that is the known trade, not a defect.
@@ -93,7 +90,7 @@ Stable rollout is a 36h staged ramp by default; nothing extra needed. To admit e
 Betas are fast release candidates on the `beta` channel: npm publishes on the `beta` dist-tag only, the website download target does not move, and **the sanity check is skipped** (the beta is the smoke test).
 
 ```bash
-npm run release:beta:patch    # → X.Y.Z-beta.1: check, bump, publish beta dist-tag, push tag
+npm run release:beta:patch    # → X.Y.Z-beta.1: check, bump, push tag (CI publishes on the beta dist-tag)
 # ...smoke desktop + APK prerelease assets from GitHub Releases...
 npm run release:beta:next     # optional: cut beta.2, beta.3, ...
 npm run release:promote       # promote X.Y.Z-beta.N → stable X.Y.Z (fresh v* tag)

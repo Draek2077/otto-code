@@ -10,11 +10,49 @@ registration JSON. Configure it before publishing. All four desktop build paths
 pass it to the server build and require it when publishing; a missing registration
 fails the build instead of shipping disabled Google connectors.
 
-For local desktop or npm releases, set `OTTO_GOOGLE_OAUTH_CLIENT_FILE` to the
-publisher's downloaded registration and `OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT=1` in
-the shell running the release. Keep these variables available through `npm
-publish`: the server's `prepack` performs a clean rebuild. Supply only one of the
-file and JSON inputs. Never commit the registration or print its contents.
+npm packages are published by the `npm Publish` workflow, which reads the same
+secret, so no release machine needs the registration. Only a manual fallback
+publish or a local desktop build needs it: set `OTTO_GOOGLE_OAUTH_CLIENT_FILE` (or
+`OTTO_GOOGLE_OAUTH_CLIENT_JSON`) and `OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT=1` in that
+shell, and keep them through `npm publish` because the server's `prepack` performs
+a clean rebuild. Supply only one of the file and JSON inputs. Never commit the
+registration or print its contents.
+
+## npm publishing from CI
+
+Pushing a `v*` tag runs `.github/workflows/npm-publish.yml`, which publishes the
+eight `@otto-code/*` packages (highlight, relay, protocol, client, plugin, server,
+brain, cli) with **npm trusted publishing**: GitHub's OIDC identity replaces npm
+tokens, so no one logs in and no 2FA prompt appears. npm attaches provenance
+automatically. Stable versions publish to `latest`, prereleases to `beta`.
+
+- `scripts/publish-release-packages.mjs` publishes in dependency order and skips
+  any package already on the registry at that version, so a failed run is fixed by
+  rerunning it: **Actions → npm Publish → Run workflow** with the tag.
+- Each package's `repository.url` must stay
+  `git+https://github.com/Draek2077/otto-code.git`; npm rejects a trusted publish
+  whose repository does not match.
+- Each package's trusted publisher on npmjs.com names the workflow file
+  `npm-publish.yml`. **Renaming the file breaks publishing** until every package is
+  reconfigured.
+
+**One-time setup, per package** (repeat for all eight). Either in the package's
+settings on npmjs.com under Trusted Publisher (GitHub Actions, owner
+`Draek2077`, repository `otto-code`, workflow `npm-publish.yml`), or from a
+terminal with npm 11.15 or newer and account 2FA:
+
+```bash
+for package in highlight relay protocol client plugin server brain cli; do
+  npx npm@latest trust github "@otto-code/$package" --file npm-publish.yml --repo Draek2077/otto-code --allow-publish
+done
+```
+
+Once a CI publish has succeeded, set each package's publishing access to
+"Require two-factor authentication and disallow tokens" so only the workflow and
+an interactive 2FA session can publish.
+
+`npm run release:publish` runs the same script from a terminal as a manual
+fallback. It needs an `npm login` with 2FA and the Google registration input above.
 See [connectors.md](connectors.md#daemon-ownership-and-publisher-configuration).
 
 The server's `prepublishOnly` hook requires the Google registration input even
@@ -45,7 +83,7 @@ A release has exactly two steps. The agent does the first, the user authorizes t
 **Go-ahead** (user says "go ahead"):
 
 - commit the approved release inputs locally
-- run the release, which publishes npm and pushes the prepared branch and tag
+- run the release, which pushes the prepared branch and tag; the tag push publishes npm from CI
 - create the release heartbeat immediately and babysit it to completion
 
 Rules that apply to both steps:
@@ -164,19 +202,16 @@ Before running any stable patch release command:
 - **Run `npm run format`, `npm run lint`, and `npm run typecheck` and commit any resulting changes BEFORE you start any `release:*` command.** `release:check` runs `npm install --workspaces --include-workspace-root` as part of `release:prepare`, which can mutate `package-lock.json` (e.g. churning `"dev": true` markers on optional deps). The next step, `version:all:*`, runs `npm version` which aborts when the working tree is dirty. If this happens mid-flight you have to commit the lockfile churn before retrying, and the pre-commit format hook will reject a lockfile-only commit because oxfmt internally skips `package-lock.json` while lefthook's glob still matches it. Avoid the whole mess by running format/lint/typecheck first, then `release:prepare` once on its own to absorb any lockfile churn into a normal commit, then start the release.
 - Do not use `npm run release:patch` as a substitute for checking whether the current commit is actually ready.
 
-> **npm publish is live.** The `otto-code` npm org was claimed and all six packages
-> (`@otto-code/{highlight,relay,protocol,client,server,cli}`) were first published at 0.5.0
-> on 2026-07-11, so the full `release:patch` chain - including `release:publish` - now works
-> end to end. Publishing requires being logged in (`npm whoami`) as a member of the
-> `otto-code` org. **If publish fails mid-chain** (auth expired, registry hiccup), the
-> version commit and tag exist but are unpushed - fix the cause, then resume manually with
-> `npm run release:publish` followed by `npm run release:push`; don't re-run the full chain.
+> **npm publishes from CI.** The release chain no longer publishes from the release machine,
+> so it needs no npm login, no 2FA, and no Google registration. The tag push runs
+> `npm Publish` (see "npm publishing from CI"). If that workflow fails, rerun it for the tag;
+> already-published packages are skipped.
 
 ```bash
 npm run release:patch
 ```
 
-This bumps the version across all workspaces, runs checks, publishes to npm, and pushes the branch + tag. The tag push triggers `Desktop Release`, `Android APK Release`, `Docker`, `Deploy App` (web app to Cloudflare Pages), and `Release Notes Sync` on GitHub Actions; `Deploy Website` redeploys when the GitHub release is published (stable only). See "Mobile builds (EAS)" below for what does - and on this fork does **not** - happen on the store side.
+This bumps the version across all workspaces, runs checks, and pushes the branch + tag. The tag push triggers `npm Publish`, `Desktop Release`, `Android APK Release`, `Docker`, `Deploy App` (web app to Cloudflare Pages), and `Release Notes Sync` on GitHub Actions; `Deploy Website` redeploys when the GitHub release is published (stable only). See "Mobile builds (EAS)" below for what does - and on this fork does **not** - happen on the store side.
 
 The Docker workflow builds images from the checked-out source tree on pull requests and on `main` as non-publishing checks. Stable `vX.Y.Z` tag pushes publish `ghcr.io/draek2077/otto:X.Y.Z` and `ghcr.io/draek2077/otto:latest`; beta `vX.Y.Z-beta.N` tag pushes publish only `ghcr.io/draek2077/otto:X.Y.Z-beta.N` and never move `latest`.
 
@@ -184,7 +219,7 @@ The Docker workflow builds images from the checked-out source tree on pull reque
 
 ```bash
 OTTO_VERSION=$(node -p "require('./package.json').version")
-for package in highlight relay protocol client plugin server cli; do
+for package in highlight relay protocol client plugin server brain cli; do
   npm dist-tag add "@otto-code/$package@$OTTO_VERSION" beta
 done
 ```
@@ -204,14 +239,13 @@ The production relay is the Elixir service in [Draek2077/otto-code-relay](https:
 npm run typecheck            # Verify the exact commit you intend to release
 npm run release:check        # Typecheck, build, dry-run pack
 npm run version:all:patch    # Bump version, create commit + tag
-npm run release:publish      # Publish to npm
-npm run release:push         # Push HEAD + tag (triggers CI workflows)
+npm run release:push         # Push HEAD + tag (triggers CI workflows, including npm Publish)
 ```
 
 ## Beta flow
 
 ```bash
-npm run release:beta:patch       # Bump to X.Y.Z-beta.1, publish npm beta, push commit + tag
+npm run release:beta:patch       # Bump to X.Y.Z-beta.1, push commit + tag (CI publishes npm beta)
 # ... test desktop and APK prerelease assets from GitHub Releases ...
 npm run release:beta:next        # Optional: cut X.Y.Z-beta.2, beta.3, ...
 npm run release:promote          # Promote X.Y.Z-beta.N to stable X.Y.Z
@@ -583,8 +617,8 @@ intentionally unavailable to desktop updater clients.
 - The npm `version` lifecycle regenerates F-Droid changelog files from `CHANGELOG.md` for stable releases only (`npm run fdroid:changelogs`) and stages them, so the release tag carries them. Betas are a no-op. A stable run **aborts the release** if `CHANGELOG.md` has no entry for the version being cut — commit the changelog entry first. See [docs/android.md](android.md) for why these files are generated per ABI.
 - `release:prepare` refreshes workspace `node_modules` links to prevent stale types
 - `npm run dev:desktop` and `npm run build:desktop` target the Electron desktop package in `packages/desktop`
-- If `release:publish` partially fails, re-run it - npm skips already-published versions
-- If `release:publish:beta` partially fails, re-run it - npm skips already-published versions and keeps prereleases off `latest` because every publish uses `--tag beta`
+- If `npm Publish` partially fails, rerun it for the tag - the script skips already-published versions
+- Prereleases always publish with `--tag beta`, so they never move `latest`
 - The website uses GitHub's latest published release API for download links, so published beta prereleases do not replace the stable download target.
 
 ## Changelog format
@@ -738,9 +772,9 @@ The scope never narrows to the previous beta. A beta entry is an in-flight draft
 - [ ] Ensure local `npm run typecheck` passes on that exact commit before running any `release:*` patch/promote command
 - [ ] Update `CHANGELOG.md` with user-facing release notes (features, fixes - not refactors). When promoting from beta, overwrite the existing `## X.Y.Z-beta.N` heading in place (heading → `X.Y.Z`, date → promotion day) - do not add a new entry on top of the beta one
 - [ ] Verify the changelog heading follows strict `## X.Y.Z - YYYY-MM-DD` format
-- [ ] `release:patch`/`release:promote` completes successfully (includes `release:publish` - be logged into npm as an `otto-code` org member first; see the npm note under "Standard release" if publish fails mid-chain)
+- [ ] `release:patch`/`release:promote` completes successfully and the tag's `npm Publish` workflow is green
 - [ ] npm shows the new version on `latest` (`npm view @otto-code/cli version`)
-- [ ] Move npm's `beta` dist-tag to the new stable version for every published package and verify both `latest` and `beta` resolve to it
+- [ ] Move npm's `beta` dist-tag to the new stable version for every published package (this still runs from a terminal with `npm login` and 2FA; trusted publishing only authorizes `npm publish`) and verify both `latest` and `beta` resolve to it
 - [ ] The GitHub Release was published only after the required stable manifests were uploaded, and it has the changelog body and every expected asset for the configured desktop platforms plus Android APK
 - [ ] GitHub `Desktop Release` workflow for the `v*` tag is green
 - [ ] The GitHub Release contains `latest-linux.yml` and `latest.yml`, plus `latest-mac.yml` when Apple signing is configured

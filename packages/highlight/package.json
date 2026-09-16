@@ -2,6 +2,11 @@
   "name": "@otto-code/highlight",
   "version": "0.9.12",
   "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Draek2077/otto-code.git",
+    "directory": "packages/highlight"
+  },
   "files": [
     "dist",
     "!dist/**/*.map",

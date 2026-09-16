@@ -1,0 +1,67 @@
+name: npm Publish
+
+# Publishes the eight @otto-code/* packages when a release tag is pushed.
+# Authentication is npm trusted publishing (OIDC): no npm token, no 2FA prompt.
+# Each package's trusted publisher on npmjs.com names this file, so renaming it
+# breaks publishing until every package is reconfigured.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (for example v0.9.13). Already-published packages are skipped."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  # The onnxruntime-node postinstall download is not needed to build or pack.
+  ONNXRUNTIME_NODE_INSTALL: skip
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Require npm with trusted publishing
+        run: |
+          node -e '
+            const [major, minor, patch] = require("child_process").execSync("npm -v").toString().trim().split(".").map(Number);
+            const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+            if (!ok) { console.error("npm >= 11.5.1 is required for trusted publishing"); process.exit(1); }
+          ' || npm install -g npm@11
+          npm -v
+
+      - name: Install JS dependencies
+        run: node scripts/npm-retry.mjs ci
+
+      - name: Build release packages
+        run: npm run build:server:clean
+
+      - name: Publish packages
+        env:
+          OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: "1"
+        run: node scripts/publish-release-packages.mjs
