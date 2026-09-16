@@ -146,10 +146,10 @@ const CATALOG_DATA = [
     id: "deepagents",
     title: "DeepAgents",
     description: "Batteries-included AI coding and general purpose agent powered by LangChain.",
-    version: "0.1.30",
+    version: "0.1.31",
     iconId: "deepagents",
     installLink: "https://docs.langchain.com/oss/javascript/deepagents/overview",
-    command: ["npx", "-y", "deepagents-acp@0.1.30"],
+    command: ["npx", "-y", "deepagents-acp@0.1.31"],
   },
   {
     id: "devin",
