@@ -545,8 +545,24 @@ describe("suggested task model selection", () => {
       };
       const parent = { id: "source", provider: "codex", cwd: "/project", config } as ManagedAgent;
       const markSuggestedTaskStarted = vi.fn();
+      const providers = createProviderSnapshotManagerStub();
+      // The chosen model defaults to low; the parent's xhigh must win anyway.
+      providers.listModels.mockResolvedValue([
+        {
+          provider: "openai-compatible",
+          id: "local/model",
+          label: "Local model",
+          defaultThinkingOptionId: "low",
+          thinkingOptions: [
+            { id: "low", label: "Low", isDefault: true },
+            { id: "high", label: "High" },
+            { id: "xhigh", label: "Extra high" },
+          ],
+        },
+      ]);
       const session = createSessionForTest({
         messages,
+        providerSnapshotManager: providers.manager,
         agentManager: {
           getAgent: vi.fn(() => parent),
           getSuggestedTaskEntry: vi.fn(() => ({
@@ -589,6 +605,7 @@ describe("suggested task model selection", () => {
       expect(input?.config).toEqual({
         provider: "codex",
         cwd: "/project",
+        thinkingOptionId: "xhigh",
         systemPrompt: "Keep project conventions.",
         workspaceAccess: "read",
         toolPolicy: { allow: ["Read"] },

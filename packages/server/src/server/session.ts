@@ -157,6 +157,7 @@ import type { ProjectKnowledgeService } from "./agent/project-knowledge/project-
 import { composeSystemPromptParts } from "./agent/system-prompt.js";
 import { buildTimelinePromptIndex } from "./agent/timeline-prompt-index.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import { resolveCarriedOverEffort } from "./agent/carry-over-effort.js";
 import type {
   ActivityIncrementFn,
   ActivityRollups,
@@ -3379,6 +3380,23 @@ export class Session {
     if (provider !== parent.provider || model !== parent.config.model) {
       delete passthroughConfig.model;
       delete passthroughConfig.thinkingOptionId;
+      // Never let the provider pick the effort: carry the parent's onto the
+      // chosen model instead of silently falling to a low provider default.
+      const carriedEffort = model
+        ? resolveCarriedOverEffort({
+            parentThinkingOptionId:
+              parent.config.thinkingOptionId ?? parent.runtimeInfo?.thinkingOptionId,
+            models: await this.providerSnapshotManager.listModels({
+              provider,
+              cwd: params.cwd ?? parent.cwd,
+              wait: true,
+            }),
+            model,
+          })
+        : undefined;
+      if (carriedEffort) {
+        passthroughConfig.thinkingOptionId = carriedEffort;
+      }
     }
     if (provider !== parent.provider) {
       // Mode ids and adapter options belong to the source provider. Resolve
