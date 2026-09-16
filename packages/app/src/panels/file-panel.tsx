@@ -17,6 +17,7 @@ import { usePublishPanelInstanceAttributes } from "@/panels/panel-instance-attri
 import { definePanel } from "@/panels/panel-registry";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { PanelDescriptorContext } from "@/panels/panel-registry";
+import { formatFileTabTooltipPath } from "@/panels/file-tab-tooltip-path";
 import { confirmDialog } from "@/utils/confirm-dialog";
 
 const CENTERED_PADDED_STYLE = {
@@ -45,12 +46,13 @@ function useFilePanelDirty(
   );
 }
 
-function useFilePanelDescriptor(target: WorkspaceFileTabTarget) {
+function useFilePanelDescriptor(target: WorkspaceFileTabTarget, context: PanelDescriptorContext) {
+  const workspaceDirectory = useWorkspaceDirectory(context.serverId, context.workspaceId);
   const fileName = target.path.split("/").findLast(Boolean) ?? target.path;
   return {
     label: fileName,
     subtitle: target.path,
-    tooltip: target.path,
+    tooltip: formatFileTabTooltipPath(target, workspaceDirectory),
     titleState: "ready" as const,
     icon: FileText,
     statusBucket: null,

@@ -1349,7 +1349,13 @@ function TabChip({
   return (
     <View ref={middleClickRef}>
       <ContextMenu key={tab.key}>
-        <Tooltip delayDuration={400} enabledOnDesktop={!showLabel} enabledOnMobile={false}>
+        <Tooltip
+          delayDuration={400}
+          // A labeled tab normally needs no tooltip, but a File Editor label is
+          // only the file name: the tooltip carries which file it is.
+          enabledOnDesktop={!showLabel || tab.target.kind === "file"}
+          enabledOnMobile={false}
+        >
           <TooltipTrigger asChild triggerRefProp="triggerRef">
             <ContextMenuTrigger
               {...(dragHandleProps?.attributes as object | undefined)}
