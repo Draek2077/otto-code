@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
 interface ChatOutlineLayoutState {
   isRailVisible: boolean;
@@ -13,33 +13,24 @@ const ChatOutlineLayoutContext = createContext<ChatOutlineLayoutState>({
 
 /**
  * Keeps the outline rail and the otherwise independent chat tracks on one
- * layout contract. The rail alone knows when it can render in this pane; every
- * ChatWidthBounds descendant follows that result.
+ * layout contract. The rail is the only writer: it decides the gutter from the
+ * prompt index and the pane width, and every ChatWidthBounds descendant follows.
+ *
+ * There is no optimistic reservation. A chat opens with no gutter and gains one
+ * only once the rail knows it will render, before that frame paints. On first
+ * load the history overlay hides the chat until the timeline, and the prompt
+ * index that rides with it, has arrived, so the gutter never visibly changes
+ * while loading. It changes only when the prompt count crosses the threshold,
+ * the pane crosses the width threshold, or the preference is toggled.
  */
 export function ChatOutlineLayoutProvider({
   enabled,
-  initiallyReserveGutter = enabled,
   children,
 }: {
   enabled: boolean;
-  /**
-   * Existing agents reserve the rail's clearance until history determines
-   * whether it can render. A brand-new draft has no history or rail yet, so
-   * reserving that space makes its composer visibly resize on first send.
-   */
-  initiallyReserveGutter?: boolean;
   children: ReactNode;
 }) {
-  // Existing chats reserve the gutter before their initial timeline response
-  // arrives. The rail later withdraws it for chats with fewer than two prompts
-  // or a narrow pane, but a chat that will show the rail never visibly reflows.
-  const [railVisible, setRailVisible] = useState(initiallyReserveGutter);
-
-  useEffect(() => {
-    if (!enabled) {
-      setRailVisible(false);
-    }
-  }, [enabled]);
+  const [railVisible, setRailVisible] = useState(false);
 
   const value = useMemo(
     () => ({

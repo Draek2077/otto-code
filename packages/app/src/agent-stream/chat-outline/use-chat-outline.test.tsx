@@ -21,7 +21,6 @@ const runtime = vi.hoisted(() => ({
     () => () => undefined,
   ),
 }));
-const outlineLayout = vi.hoisted(() => ({ setRailVisible: vi.fn() }));
 
 vi.mock("@/constants/platform", () => ({ isWeb: true }));
 vi.mock("@/runtime/host-runtime", () => ({
@@ -29,9 +28,6 @@ vi.mock("@/runtime/host-runtime", () => ({
     getClient: () => runtime,
     fetchAgentTimeline: runtime.fetchAgentTimeline,
   }),
-}));
-vi.mock("./layout", () => ({
-  useChatOutlineLayout: () => outlineLayout,
 }));
 
 function deferred<T>() {
@@ -47,10 +43,18 @@ describe("useChatOutline", () => {
     runtime.listAgentTimelinePrompts.mockReset();
     runtime.fetchAgentTimeline.mockReset();
     runtime.on.mockClear();
-    outlineLayout.setRailVisible.mockReset();
   });
 
   it("uses the initial timeline prompt index without a second request", () => {
+    // Stable like the store's value: a fresh literal per render re-runs the
+    // index effect forever.
+    const initialPromptIndex = {
+      epoch: "epoch-1",
+      prompts: [
+        { seq: 1, timestamp: "2026-05-02T00:00:00.000Z", preview: "First prompt" },
+        { seq: 3, timestamp: "2026-05-02T00:00:02.000Z", preview: "Second prompt" },
+      ],
+    };
     const viewportRef = createRef<StreamViewportHandle>();
     const { result } = renderHook(() =>
       useChatOutline({
@@ -62,13 +66,7 @@ describe("useChatOutline", () => {
         enabled: true,
         viewportRef,
         onJumpError: vi.fn(),
-        initialPromptIndex: {
-          epoch: "epoch-1",
-          prompts: [
-            { seq: 1, timestamp: "2026-05-02T00:00:00.000Z", preview: "First prompt" },
-            { seq: 3, timestamp: "2026-05-02T00:00:02.000Z", preview: "Second prompt" },
-          ],
-        },
+        initialPromptIndex,
       }),
     );
 
@@ -80,7 +78,7 @@ describe("useChatOutline", () => {
     expect(runtime.listAgentTimelinePrompts).not.toHaveBeenCalled();
   });
 
-  it("leaves narrow-pane gutter ownership to the width-aware rail", async () => {
+  it("loads the prompt index from the legacy RPC after hydration", async () => {
     runtime.listAgentTimelinePrompts.mockResolvedValue({
       epoch: "epoch-1",
       prompts: [
@@ -103,7 +101,6 @@ describe("useChatOutline", () => {
     );
 
     await waitFor(() => expect(result.current.prompts).toHaveLength(2));
-    expect(outlineLayout.setRailVisible).not.toHaveBeenCalled();
   });
 
   it("waits for initial timeline hydration before falling back to the legacy index RPC", () => {

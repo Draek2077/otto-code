@@ -55,6 +55,24 @@ export function chatOutlineSegmentLabel(segment: ChatOutlineSegment, totalPrompt
   return `Prompts ${range} of ${totalPrompts}: ${segment.target.preview}`;
 }
 
+export const MIN_OUTLINE_PROMPTS = 2;
+
+/**
+ * The gutter has two states, and only a known fact may move it between them.
+ * `null` means "leave the gutter as it is": the prompt index or the pane width
+ * is not known yet, so any answer would be a guess that later snaps back.
+ */
+export function resolveChatOutlineGutter(input: {
+  enabled: boolean;
+  hasPromptIndex: boolean;
+  promptCount: number;
+  isPaneWide: boolean | null;
+}): boolean | null {
+  if (!input.enabled) return false;
+  if (!input.hasPromptIndex || input.isPaneWide === null) return null;
+  return input.isPaneWide && input.promptCount >= MIN_OUTLINE_PROMPTS;
+}
+
 export function shouldAcceptPromptIndexEpoch(
   timelineEpoch: string | null,
   indexEpoch: string,

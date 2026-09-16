@@ -8,9 +8,36 @@ import {
   shouldAcceptPromptIndexEpoch,
   promptTickMagnification,
   resolveActivePromptSeq,
+  resolveChatOutlineGutter,
   OUTLINE_MAGNIFY_RADIUS,
   type ChatOutlinePrompt,
 } from "./model";
+
+describe("chat outline gutter", () => {
+  const known = { enabled: true, hasPromptIndex: true, promptCount: 2, isPaneWide: true };
+
+  it("opens only for a wide pane with enough prompts", () => {
+    expect(resolveChatOutlineGutter(known)).toBe(true);
+    expect(resolveChatOutlineGutter({ ...known, promptCount: 1 })).toBe(false);
+    expect(resolveChatOutlineGutter({ ...known, isPaneWide: false })).toBe(false);
+  });
+
+  it("closes when the preference or host capability is off, even before loading", () => {
+    expect(
+      resolveChatOutlineGutter({
+        ...known,
+        enabled: false,
+        hasPromptIndex: false,
+        isPaneWide: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("leaves the gutter alone while the index or the pane width is unknown", () => {
+    expect(resolveChatOutlineGutter({ ...known, hasPromptIndex: false })).toBeNull();
+    expect(resolveChatOutlineGutter({ ...known, isPaneWide: null })).toBeNull();
+  });
+});
 
 describe("chat outline prompt index epoch", () => {
   it("accepts only the authoritative timeline epoch", () => {

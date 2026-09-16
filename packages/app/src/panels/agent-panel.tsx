@@ -633,11 +633,7 @@ export function AgentConversationPanel() {
   // Black tab background: render the whole chat pane (stream + composer) on
   // pure black with dark-theme colors regardless of the app-wide light/dark
   // mode. Chat tabs only - terminal/browser/preview panes are not wrapped.
-  return (
-    <ChatConversationSurface initiallyReserveOutlineGutter={target.kind === "agent"}>
-      {content}
-    </ChatConversationSurface>
-  );
+  return <ChatConversationSurface>{content}</ChatConversationSurface>;
 }
 
 /**
@@ -645,20 +641,11 @@ export function AgentConversationPanel() {
  * reusable by a compound surface, but individual workspace tabs still choose
  * their own target and lifecycle above this layer.
  */
-export function ChatConversationSurface({
-  children,
-  initiallyReserveOutlineGutter = true,
-}: {
-  children: ReactNode;
-  initiallyReserveOutlineGutter?: boolean;
-}) {
+export function ChatConversationSurface({ children }: { children: ReactNode }) {
   const { settings } = useAppSettings();
   return (
     <BlackChatScope enabled={settings.blackTabBackground}>
-      <ChatOutlineLayoutProvider
-        enabled={settings.chatOutlineEnabled}
-        initiallyReserveGutter={initiallyReserveOutlineGutter}
-      >
+      <ChatOutlineLayoutProvider enabled={settings.chatOutlineEnabled}>
         <ChatWidthLayoutProvider>{children}</ChatWidthLayoutProvider>
       </ChatOutlineLayoutProvider>
     </BlackChatScope>

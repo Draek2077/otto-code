@@ -6,7 +6,6 @@ import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { planTimelinePromptJump } from "@/timeline/timeline-sync-plan";
 import type { StreamItem } from "@/types/stream";
 import type { StreamViewportHandle } from "../strategy";
-import { useChatOutlineLayout } from "./layout";
 import {
   createActivePromptPublisher,
   resolveActivePromptSeq,
@@ -64,7 +63,6 @@ export function useChatOutline({
     AgentTimelinePromptIndexPayload,
     "epoch" | "prompts"
   > | null>(null);
-  const { setRailVisible } = useChatOutlineLayout();
   const [pendingJump, setPendingJump] = useState<PendingPromptJump | null>(null);
   const [activePrompt] = useState(createActivePromptPublisher);
   const readingRowIdRef = useRef<string | null>(null);
@@ -84,13 +82,9 @@ export function useChatOutline({
   useEffect(() => {
     if (!isWeb || !enabled) {
       setIndex(null);
-      setRailVisible(false);
       return;
     }
     setIndex(acceptedInitialPromptIndex);
-    if (acceptedInitialPromptIndex) {
-      setRailVisible(acceptedInitialPromptIndex.prompts.length >= 2);
-    }
     const client = getHostRuntimeStore().getClient(serverId);
     if (!client) return;
     let active = true;
@@ -104,10 +98,8 @@ export function useChatOutline({
             requestId === nextIndexRequestIdRef.current &&
             shouldAcceptPromptIndexEpoch(timelineEpoch, payload.epoch)
           ) {
-            // The rail owns its gutter because it is also the only surface
-            // that knows whether this pane is wide enough to render. Setting
-            // it from the prompt count alone left a narrow pane inset after a
-            // second prompt, even though no rail could appear there.
+            // The rail alone decides the gutter from this index; see
+            // resolveChatOutlineGutter.
             setIndex(payload);
           }
           return undefined;
@@ -132,7 +124,7 @@ export function useChatOutline({
       active = false;
       unsubscribe();
     };
-  }, [acceptedInitialPromptIndex, agentId, enabled, serverId, setRailVisible, timelineEpoch]);
+  }, [acceptedInitialPromptIndex, agentId, enabled, serverId, timelineEpoch]);
 
   // The transcript names the row it is showing; the outline turns that into a prompt using the
   // complete index, so unloaded rows never have to exist in the DOM to be marked.
