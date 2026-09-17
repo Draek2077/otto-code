@@ -96,6 +96,8 @@ export interface ContextManagementServiceDeps {
   }) => Promise<PersonalityMemoryBrief>;
   thresholds?: ContextThresholds;
   homeDir?: string;
+  /** Shared report cache; omitted means one private to this instance. */
+  store?: ContextReportStore;
 }
 
 export interface GetContextReportInput {
@@ -128,19 +130,57 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-export class ContextManagementService {
-  private readonly cache = new Map<string, CacheEntry>();
+/**
+ * Finished reports plus the builds still running, keyed identically. A build
+ * scans the whole context graph, so concurrent identical requests (a reconnect
+ * burst, several panes) share one build rather than each paying for it.
+ */
+export interface ContextReportStore {
+  cache: Map<string, CacheEntry>;
+  inFlight: Map<string, Promise<WireContextReport>>;
+}
 
-  constructor(private readonly deps: ContextManagementServiceDeps) {}
+export function createContextReportStore(): ContextReportStore {
+  return { cache: new Map(), inFlight: new Map() };
+}
+
+const storesByScope = new WeakMap<object, ContextReportStore>();
+
+/**
+ * One store per daemon-scoped object (sessions pass their shared registry), so a
+ * reconnecting client reuses the reports the previous session built, and an
+ * invalidation from any session clears them for all.
+ */
+export function contextReportStoreFor(scope: object): ContextReportStore {
+  let store = storesByScope.get(scope);
+  if (!store) {
+    store = createContextReportStore();
+    storesByScope.set(scope, store);
+  }
+  return store;
+}
+
+export class ContextManagementService {
+  private readonly store: ContextReportStore;
+
+  constructor(private readonly deps: ContextManagementServiceDeps) {
+    this.store = deps.store ?? createContextReportStore();
+  }
 
   /** Drops cached reports so the next read re-scans. */
   invalidate(workspaceId?: string): void {
+    const { cache, inFlight } = this.store;
     if (!workspaceId) {
-      this.cache.clear();
+      cache.clear();
+      // Builds already running keep serving their callers, but no longer land
+      // in the cache or get joined: they may predate whatever invalidated them.
+      inFlight.clear();
       return;
     }
-    for (const key of this.cache.keys()) {
-      if (key.startsWith(`${workspaceId}\0`)) this.cache.delete(key);
+    for (const map of [cache, inFlight]) {
+      for (const key of map.keys()) {
+        if (key.startsWith(`${workspaceId}\0`)) map.delete(key);
+      }
     }
   }
 
@@ -160,19 +200,35 @@ export class ContextManagementService {
     // The personality is part of the key: two personalities in one workspace
     // carry different memory, and so are genuinely different reports.
     const cacheKey = `${input.workspaceId}\0${provider}\0${windowTokens}\0${input.personalityId ?? ""}`;
-    const cached = this.cache.get(cacheKey);
-    if (!input.forceRefresh && cached && cached.expiresAt > Date.now()) return cached.report;
+    const { cache, inFlight } = this.store;
+    if (!input.forceRefresh) {
+      const cached = cache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) return cached.report;
+      const pending = inFlight.get(cacheKey);
+      if (pending) return pending;
+    }
 
-    const report = await this.buildReport({
+    // A forced refresh never joins a running build (it may have started before
+    // whatever the user is refreshing for); it replaces it for later joiners.
+    const build = this.buildReport({
       workspaceId: input.workspaceId,
       provider,
       windowTokens,
       location,
       runtime,
       ...(input.personalityId ? { personalityId: input.personalityId } : {}),
-    });
-    this.cache.set(cacheKey, { report, expiresAt: Date.now() + CACHE_TTL_MS });
-    return report;
+    })
+      .then((report) => {
+        if (inFlight.get(cacheKey) === build) {
+          cache.set(cacheKey, { report, expiresAt: Date.now() + CACHE_TTL_MS });
+        }
+        return report;
+      })
+      .finally(() => {
+        if (inFlight.get(cacheKey) === build) inFlight.delete(cacheKey);
+      });
+    inFlight.set(cacheKey, build);
+    return build;
   }
 
   private async buildReport(params: {

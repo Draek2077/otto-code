@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import pLimit from "p-limit";
 import type { Logger } from "pino";
 import type {
   LegacyProjectKnowledgeFile,
@@ -28,6 +29,7 @@ const ENTRY_POINT = "KNOWLEDGE.md";
 const LEGACY_FILE = "project-knowledge.json";
 const LEGACY_MIGRATION_MARKER = ".project-knowledge-json-migrated";
 const STALE_AFTER_MS = 180 * 24 * 60 * 60 * 1000;
+const PAGE_READ_CONCURRENCY = 16;
 /**
  * An atomic write that never reached its rename leaves this file behind. Only
  * sweep ones old enough that no in-flight write, including another daemon's,
@@ -727,14 +729,19 @@ export class ProjectKnowledgeService {
   private async readPages(store: ProjectKnowledgeStore): Promise<ProjectKnowledgeRecord[]> {
     try {
       const pages = await this.pagePaths(this.knowledgeDirectory(store));
+      // A store holds hundreds of pages; opening them all at once starves the
+      // libuv pool that every other daemon file read shares.
+      const limit = pLimit(PAGE_READ_CONCURRENCY);
       return (
         await Promise.all(
-          pages.map(async (pagePath) => {
-            return parsePage(await readFile(pagePath, "utf8"), {
-              relativePath: path.relative(store.pathBase, pagePath),
-              absolutePath: pagePath,
-            });
-          }),
+          pages.map((pagePath) =>
+            limit(async () => {
+              return parsePage(await readFile(pagePath, "utf8"), {
+                relativePath: path.relative(store.pathBase, pagePath),
+                absolutePath: pagePath,
+              });
+            }),
+          ),
         )
       )
         .filter((record): record is ProjectKnowledgeRecord => record !== null)

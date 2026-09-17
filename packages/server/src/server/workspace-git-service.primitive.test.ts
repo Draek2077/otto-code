@@ -268,6 +268,7 @@ function createGitHubServiceStub(): GitHubService {
 interface CreateServiceOptions {
   getCheckoutSnapshotFacts?: ReturnType<typeof vi.fn>;
   getCheckoutStatus?: ReturnType<typeof vi.fn>;
+  getCheckoutIdentity?: ReturnType<typeof vi.fn>;
   getCheckoutShortstat?: ReturnType<typeof vi.fn>;
   getCheckoutUncommittedShortstat?: ReturnType<typeof vi.fn>;
   getPullRequestStatus?: ReturnType<typeof vi.fn>;
@@ -1486,7 +1487,16 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
       },
     ];
     const listOttoWorktrees = vi.fn().mockResolvedValue(worktrees);
+    const getCheckoutIdentity = vi.fn(async () => ({
+      isGit: true as const,
+      repoRoot: REPO_CWD,
+      mainRepoRoot: null,
+      currentBranch: "main",
+      remoteUrl: null,
+      isOttoOwnedWorktree: false,
+    }));
     const service = createService({
+      getCheckoutIdentity,
       listOttoWorktrees,
       now: () => new Date(nowMs),
     });
@@ -1574,15 +1584,27 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
     service.dispose();
   });
 
-  test("resolveRepoRoot cold-loads, warms, forces, and coalesces through snapshots", async () => {
+  test("resolveRepoRoot cold-loads identity only, warms, forces, and coalesces", async () => {
     let nowMs = 0;
-    const checkoutDeferred = createDeferred<CheckoutStatusGit>();
-    const getCheckoutStatus = vi
+    const identityDeferred = createDeferred<unknown>();
+    const identity = {
+      isGit: true as const,
+      repoRoot: REPO_CWD,
+      mainRepoRoot: null,
+      currentBranch: "main",
+      remoteUrl: null,
+      isOttoOwnedWorktree: false,
+    };
+    const getCheckoutIdentity = vi
       .fn()
-      .mockImplementationOnce(async () => checkoutDeferred.promise)
-      .mockResolvedValue(createCheckoutStatus(REPO_CWD));
+      .mockImplementationOnce(async () => identityDeferred.promise)
+      .mockResolvedValue(identity);
+    const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
+    const getPullRequestStatus = vi.fn(async () => createPullRequestStatusResult());
     const service = createService({
+      getCheckoutIdentity,
       getCheckoutStatus,
+      getPullRequestStatus,
       now: () => new Date(nowMs),
     });
 
@@ -1590,16 +1612,55 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
     const second = service.resolveRepoRoot(join(REPO_CWD, "."));
     await flushPromises();
 
-    expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
-    checkoutDeferred.resolve(createCheckoutStatus(REPO_CWD));
+    expect(getCheckoutIdentity).toHaveBeenCalledTimes(1);
+    identityDeferred.resolve(identity);
     await expect(Promise.all([first, second])).resolves.toEqual([REPO_CWD, REPO_CWD]);
 
     nowMs = 1_000;
     await service.resolveRepoRoot(REPO_CWD);
-    expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
+    expect(getCheckoutIdentity).toHaveBeenCalledTimes(1);
+    // A plain root lookup never runs the snapshot refresh or the forge PR read.
+    expect(getCheckoutStatus).not.toHaveBeenCalled();
+    expect(getPullRequestStatus).not.toHaveBeenCalled();
 
     await service.resolveRepoRoot(REPO_CWD, { force: true, reason: "test" });
-    expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
+    expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
+
+    // Once a snapshot exists, its root answers without another identity read.
+    nowMs = 60_000;
+    await expect(service.resolveRepoRoot(REPO_CWD)).resolves.toBe(REPO_CWD);
+    expect(getCheckoutIdentity).toHaveBeenCalledTimes(1);
+
+    service.dispose();
+  });
+
+  test("resolveRepoRoot rejects a non-git cwd and caches the answer", async () => {
+    const getCheckoutIdentity = vi.fn(async () => ({ isGit: false as const }));
+    const service = createService({ getCheckoutIdentity });
+
+    await expect(service.resolveRepoRoot(REPO_CWD)).rejects.toThrow(
+      "Create worktree requires a git repository",
+    );
+    await expect(service.resolveRepoRoot(REPO_CWD)).rejects.toThrow(
+      "Create worktree requires a git repository",
+    );
+    expect(getCheckoutIdentity).toHaveBeenCalledTimes(1);
+
+    service.dispose();
+  });
+
+  test("resolveRepoRoot maps an Otto-owned worktree to its main repo", async () => {
+    const getCheckoutIdentity = vi.fn(async () => ({
+      isGit: true as const,
+      repoRoot: join(REPO_CWD, "wt"),
+      mainRepoRoot: REPO_CWD,
+      currentBranch: "feature",
+      remoteUrl: null,
+      isOttoOwnedWorktree: true,
+    }));
+    const service = createService({ getCheckoutIdentity });
+
+    await expect(service.resolveRepoRoot(join(REPO_CWD, "wt"))).resolves.toBe(REPO_CWD);
 
     service.dispose();
   });

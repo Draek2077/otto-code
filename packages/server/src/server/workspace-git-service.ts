@@ -683,6 +683,12 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     WorkspaceGitAuxiliaryReadCacheEntry<string>
   >({ max: WORKSPACE_GIT_AUXILIARY_CACHE_MAX });
 
+  // Boxed so a non-git cwd (repoRoot: null) is cached too; a bare null reads as "not loaded".
+  private readonly repoRootCache = new LRUCache<
+    string,
+    WorkspaceGitAuxiliaryReadCacheEntry<{ repoRoot: string | null }>
+  >({ max: WORKSPACE_GIT_AUXILIARY_CACHE_MAX });
+
   private readonly checkoutDiffCache = new LRUCache<
     string,
     WorkspaceGitAuxiliaryReadCacheEntry<CheckoutDiffResult>
@@ -989,14 +995,42 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   }
 
   async resolveRepoRoot(cwd: string, options?: WorkspaceGitReadOptions): Promise<string> {
+    // Repo root is identity, not drift. An unforced lookup must not pay for a full
+    // snapshot refresh (status walks plus the forge PR network call) inside the
+    // shared refresh limiter, so it reuses any cached git snapshot - the root does
+    // not move when the branch or working tree does - and otherwise does an
+    // identity-only read, coalesced and cached per cwd.
+    if (!options?.force) {
+      this.assertNotDisposed();
+      const normalizedCwd = resolve(cwd);
+      const cached = this.workspaceTargets.get(normalizedCwd)?.latestSnapshot?.git;
+      const key = JSON.stringify(["repo-root", normalizedCwd]);
+      let repoRoot: string | null;
+      if (cached) {
+        repoRoot = cached.isGit ? pickRepoRoot(normalizedCwd, cached) : null;
+      } else {
+        const entry = await this.readAuxiliaryCache(this.repoRootCache, key, options, async () => {
+          const identity = await this.deps.getCheckoutIdentity(normalizedCwd, {
+            ottoHome: this.ottoHome,
+            worktreesRoot: this.worktreesRoot,
+            logger: this.logger,
+          });
+          return { repoRoot: identity.isGit ? pickRepoRoot(normalizedCwd, identity) : null };
+        });
+        repoRoot = entry.repoRoot;
+      }
+      if (repoRoot === null) {
+        throw new Error("Create worktree requires a git repository");
+      }
+      return repoRoot;
+    }
+
     const snapshot = await this.getSnapshot(cwd, options);
     if (!snapshot.git.isGit) {
       throw new Error("Create worktree requires a git repository");
     }
 
-    return snapshot.git.isOttoOwnedWorktree
-      ? (snapshot.git.mainRepoRoot ?? snapshot.git.repoRoot ?? resolve(cwd))
-      : (snapshot.git.repoRoot ?? resolve(cwd));
+    return pickRepoRoot(resolve(cwd), snapshot.git);
   }
 
   async resolveDefaultBranch(
@@ -3679,6 +3713,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       this.stashListCache,
       this.worktreeListCache,
       this.defaultBranchCache,
+      this.repoRootCache,
     ];
     for (const cache of caches) {
       const staleKeys: string[] = [];
@@ -3959,6 +3994,19 @@ function parseWorkspaceGitStashList(
   }
 
   return entries;
+}
+
+interface RepoRootIdentity {
+  repoRoot: string | null;
+  mainRepoRoot: string | null;
+  isOttoOwnedWorktree: boolean;
+}
+
+// An Otto-owned worktree resolves to the repository it was cut from.
+function pickRepoRoot(cwd: string, identity: RepoRootIdentity): string {
+  return identity.isOttoOwnedWorktree
+    ? (identity.mainRepoRoot ?? identity.repoRoot ?? cwd)
+    : (identity.repoRoot ?? cwd);
 }
 
 function buildNotGitSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot {

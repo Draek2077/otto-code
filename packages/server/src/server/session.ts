@@ -148,6 +148,7 @@ import {
 import { AgentManager, AgentRunCancellationError } from "./agent/agent-manager.js";
 import {
   ContextManagementService,
+  contextReportStoreFor,
   resolveProjectRootForCwd,
 } from "./agent/context-management/context-management-service.js";
 import { convertEdge } from "./agent/context-management/edge-convert.js";
@@ -1622,6 +1623,10 @@ export class Session {
     // the same workspace can host agents on different providers.
     this.contextManagement = new ContextManagementService({
       logger: this.sessionLogger,
+      // Reports are workspace-scoped, not session-scoped: key the cache on the
+      // daemon's shared registry so reconnects reuse it and invalidations reach
+      // every session.
+      store: contextReportStoreFor(this.workspaceRegistry),
       // A personality's injected lessons are fixed weight like any other prompt
       // text, so the report has to count them or its percentages understate what
       // a personality-backed chat actually carries.

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ContextManagementService } from "./context-management-service.js";
+import {
+  ContextManagementService,
+  createContextReportStore,
+} from "./context-management-service.js";
 
 describe("ContextManagementService project knowledge", () => {
   it("bypasses a fresh cached report on explicit refresh and caches the new answer", async () => {
@@ -18,6 +21,82 @@ describe("ContextManagementService project knowledge", () => {
     const refreshed = await service.getReport({ ...input, forceRefresh: true });
     expect(refreshed?.projectKnowledgeTokens).toBe(28);
     expect(await service.getReport(input)).toBe(refreshed);
+  });
+
+  it("shares one build between concurrent identical requests", async () => {
+    let builds = 0;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const service = new ContextManagementService({
+      logger: { warn: () => undefined } as never,
+      resolveLocation: async () => ({ cwd: "/project", projectRoot: "/project" }),
+      resolveRuntime: async () => ({ provider: "unknown" }),
+      resolveProjectKnowledgeBrief: async () => {
+        builds += 1;
+        await gate;
+        return { text: "Catalog", estTokens: 14 };
+      },
+    });
+    const input = { workspaceId: "workspace-1" };
+    const first = service.getReport(input);
+    const second = service.getReport(input);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release();
+    const [a, b] = await Promise.all([first, second]);
+    expect(builds).toBe(1);
+    expect(a).toBe(b);
+  });
+
+  it("does not cache a build that an invalidation overtook", async () => {
+    let catalogTokens = 14;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const service = new ContextManagementService({
+      logger: { warn: () => undefined } as never,
+      resolveLocation: async () => ({ cwd: "/project", projectRoot: "/project" }),
+      resolveRuntime: async () => ({ provider: "unknown" }),
+      resolveProjectKnowledgeBrief: async () => {
+        const tokens = catalogTokens;
+        if (tokens === 14) await gate;
+        return { text: "Catalog", estTokens: tokens };
+      },
+    });
+    const input = { workspaceId: "workspace-1" };
+    const stale = service.getReport(input);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    service.invalidate("workspace-1");
+    catalogTokens = 28;
+    release();
+    expect((await stale)?.projectKnowledgeTokens).toBe(14);
+    expect((await service.getReport(input))?.projectKnowledgeTokens).toBe(28);
+  });
+
+  it("shares cached reports across instances that share a store", async () => {
+    const store = createContextReportStore();
+    let builds = 0;
+    const make = () =>
+      new ContextManagementService({
+        logger: { warn: () => undefined } as never,
+        resolveLocation: async () => ({ cwd: "/project", projectRoot: "/project" }),
+        resolveRuntime: async () => ({ provider: "unknown" }),
+        resolveProjectKnowledgeBrief: async () => {
+          builds += 1;
+          return { text: "Catalog", estTokens: 14 };
+        },
+        store,
+      });
+    const first = make();
+    const second = make();
+    const report = await first.getReport({ workspaceId: "workspace-1" });
+    expect(await second.getReport({ workspaceId: "workspace-1" })).toBe(report);
+    expect(builds).toBe(1);
+    second.invalidate("workspace-1");
+    await first.getReport({ workspaceId: "workspace-1" });
+    expect(builds).toBe(2);
   });
 
   it("counts and previews the same catalog injected at chat start", async () => {

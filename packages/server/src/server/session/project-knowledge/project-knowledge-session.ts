@@ -230,7 +230,7 @@ export class ProjectKnowledgeSession {
       ...(msg.sourceUrl ? { sourceUrl: msg.sourceUrl } : {}),
     });
     this.contextManagement.invalidate(msg.workspaceId);
-    await this.host.pushContextReport(msg.workspaceId);
+    void this.host.pushContextReport(msg.workspaceId);
     this.host.emit({
       type: "project.knowledge.create.response",
       payload: { requestId: msg.requestId, record },
@@ -263,7 +263,7 @@ export class ProjectKnowledgeSession {
           });
     if (result.record) {
       this.contextManagement.invalidate(msg.workspaceId);
-      await this.host.pushContextReport(msg.workspaceId);
+      void this.host.pushContextReport(msg.workspaceId);
     }
     this.host.emit({
       type: "project.knowledge.apply.response",
@@ -283,7 +283,7 @@ export class ProjectKnowledgeSession {
     const record = await this.projectKnowledge.setStatus(cwd, msg.id, msg.status, msg.reason);
     if (record) {
       this.contextManagement.invalidate(msg.workspaceId);
-      await this.host.pushContextReport(msg.workspaceId);
+      void this.host.pushContextReport(msg.workspaceId);
     }
     this.host.emit({
       type: "project.knowledge.status.response",
@@ -306,7 +306,7 @@ export class ProjectKnowledgeSession {
     });
     if (result.record) {
       this.contextManagement.invalidate(msg.workspaceId);
-      await this.host.pushContextReport(msg.workspaceId);
+      void this.host.pushContextReport(msg.workspaceId);
     }
     this.host.emit({
       type: "project.knowledge.project.apply.response",
@@ -333,7 +333,7 @@ export class ProjectKnowledgeSession {
     });
     if (result.record) {
       this.contextManagement.invalidate(msg.workspaceId);
-      await this.host.pushContextReport(msg.workspaceId);
+      void this.host.pushContextReport(msg.workspaceId);
     }
     this.host.emit({
       type: "project.knowledge.reference.apply.response",
@@ -352,7 +352,7 @@ export class ProjectKnowledgeSession {
       throw new Error("Project knowledge is unavailable for this workspace.");
     const page = await this.projectKnowledge.updateRoot({ cwd, slug: msg.slug, body: msg.body });
     this.contextManagement.invalidate(msg.workspaceId);
-    await this.host.pushContextReport(msg.workspaceId);
+    void this.host.pushContextReport(msg.workspaceId);
     this.host.emit({
       type: "project.knowledge.root.apply.response",
       payload: { requestId: msg.requestId, page },
@@ -470,7 +470,7 @@ export class ProjectKnowledgeSession {
     });
     if (result.deleted) {
       this.contextManagement.invalidate(msg.workspaceId);
-      await this.host.pushContextReport(msg.workspaceId);
+      void this.host.pushContextReport(msg.workspaceId);
     }
     this.host.emit({
       type: "project.knowledge.delete.response",
@@ -560,7 +560,7 @@ export class ProjectKnowledgeSession {
       // switch changes it even though no page's content did.
       if (msg.workspaceId) {
         this.contextManagement.invalidate(msg.workspaceId);
-        await this.host.pushContextReport(msg.workspaceId);
+        void this.host.pushContextReport(msg.workspaceId);
       }
       await this.host.announceProjectUpdate?.(msg.projectId);
       emit({
