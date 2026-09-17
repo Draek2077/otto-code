@@ -1,11 +1,30 @@
 # Changelog
 
-## 0.9.13-beta.1 - 2026-09-16
+## 0.9.13 - 2026-09-17
+
+### Added
+
+- Hover a chat link to see where it goes, or why Otto can't open it
+- Hover a File Editor tab to see the file's path
+
+### Improved
+
+- Keep animations smooth during long sessions by stopping background work you can't see
+- Free the memory held by workspaces you haven't looked at in 10 minutes
+- Pause the Visualizer's animation while it is off screen
+- Refresh workspaces and the Context Management tab faster by skipping repeated git and project scans
 
 ### Changed
 
 - Publish Otto's npm packages from GitHub with signed build provenance
 - Refresh the agent catalog to the latest published versions
+
+### Fixed
+
+- Keep the effort level of the originating chat when a task starts on a different model
+- Find GitHub project boards that belong to an organization in Kanban
+- Stop the chat from shifting sideways while the prompt outline loads
+- Size the compact message box toolbar correctly on Android
 
 ## 0.9.12 - 2026-09-16
 
