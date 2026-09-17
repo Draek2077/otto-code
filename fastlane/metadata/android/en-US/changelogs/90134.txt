@@ -1,0 +1,11 @@
+Added
+- Hover a chat link to see where it goes, or why Otto can't open it
+- Hover a File Editor tab to see the file's path
+
+Improved
+- Keep animations smooth during long sessions by stopping background work you can't see
+- Free the memory held by workspaces you haven't looked at in 10 minutes
+- Pause the Visualizer's animation while it is off screen
+- Refresh workspaces and the Context Management tab faster by skipping repeated git and project scans
+
+Full notes: https://paseo.sh/changelog
