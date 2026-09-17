@@ -119,7 +119,9 @@ const styles = StyleSheet.create((theme) => ({
     left: 0,
     right: 0,
     bottom: 0,
-    height: theme.borderWidth[1],
+    // Structural separators stay a literal 1px. This is not theme-scaled
+    // control chrome, and the title bar must line up with the other hairlines.
+    height: 1,
     backgroundColor: theme.colors.border,
   },
   borderLineHidden: {

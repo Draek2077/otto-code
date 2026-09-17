@@ -163,7 +163,9 @@ const styles = StyleSheet.create((theme) => ({
     right: 0,
     bottom: 0,
     left: 0,
-    height: theme.borderWidth[1],
+    // A literal 1px, not theme.borderWidth: structural hairlines must match
+    // the title bar separator (screen-header.tsx) at every theme scale.
+    height: 1,
     backgroundColor: theme.colors.border,
   },
   content: {
