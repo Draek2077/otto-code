@@ -20,6 +20,7 @@ import {
 import { useHasHydratedWorkspaces, useWorkspaceExists } from "@/stores/session-store-hooks";
 import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { WorkspaceScreen } from "@/screens/workspace/workspace-screen";
+import { isWorkspaceDeckEntryPinned } from "@/screens/workspace/workspace-deck-pins";
 import { useWorkspaceLayoutStoreHydrated } from "@/stores/workspace-layout-store";
 import {
   areWorkspaceSelectionListsEqual,
@@ -28,7 +29,9 @@ import {
   orderWorkspaceSelectionsForStableRender,
   pruneMountedWorkspaceSelections,
   resolveWorkspaceDeckEntries,
+  resolveWorkspaceDeckExpiry,
   shouldKeepWorkspaceDeckEntryMounted,
+  WORKSPACE_DECK_INACTIVE_TTL_MS,
 } from "@/screens/workspace/workspace-deck-retention";
 import { useAppSettingValue, type AppSettings } from "@/hooks/use-settings";
 import {
@@ -257,6 +260,38 @@ function WorkspaceDeck() {
       setMountedSelections(nextMountedSelections);
     }
   }, [mountedSelections, nextMountedSelections]);
+
+  // Idle eviction: a hidden workspace unmounts once it has gone unshown for
+  // WORKSPACE_DECK_INACTIVE_TTL_MS. Timestamps live in a ref because only the
+  // expiry timer reads them; the tick state re-runs this effect when it fires.
+  const inactiveSinceRef = useRef(new Map<string, number>());
+  const [expiryTick, setExpiryTick] = useState(0);
+  useEffect(() => {
+    const now = Date.now();
+    const inactiveSince = inactiveSinceRef.current;
+    const activeKey = activeSelection ? getWorkspaceSelectionKey(activeSelection) : null;
+    const mountedKeys = new Set(nextMountedSelections.map(getWorkspaceSelectionKey));
+    for (const key of inactiveSince.keys()) {
+      if (key === activeKey || !mountedKeys.has(key)) inactiveSince.delete(key);
+    }
+    for (const key of mountedKeys) {
+      if (key !== activeKey && !inactiveSince.has(key)) inactiveSince.set(key, now);
+    }
+    const { expired, nextDelayMs } = resolveWorkspaceDeckExpiry({
+      selections: nextMountedSelections,
+      activeSelection,
+      inactiveSince,
+      now,
+      ttlMs: WORKSPACE_DECK_INACTIVE_TTL_MS,
+      isPinned: isWorkspaceDeckEntryPinned,
+    });
+    for (const selection of expired) {
+      unmountWorkspaceSelection(selection);
+    }
+    if (nextDelayMs === null) return;
+    const timeout = setTimeout(() => setExpiryTick((tick) => tick + 1), nextDelayMs + 1);
+    return () => clearTimeout(timeout);
+  }, [activeSelection, expiryTick, nextMountedSelections, unmountWorkspaceSelection]);
 
   return (
     <View style={styles.deck}>

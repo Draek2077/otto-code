@@ -13,6 +13,7 @@ import {
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { isWeb } from "@/constants/platform";
 import { useAppVisible } from "@/hooks/use-app-visible";
+import { useWorkspaceDeckPin } from "@/screens/workspace/workspace-deck-pins";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import { revealFileInFiles } from "@/git/changes-reveal";
@@ -87,6 +88,8 @@ export function ExternalFileEditorPane({
   onLaunchFailure,
 }: ExternalFileEditorPaneProps) {
   const client = useHostRuntimeClient(serverId);
+  // Unmounting kills the editor session, so the deck must not idle-evict it.
+  useWorkspaceDeckPin(serverId, workspaceId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const { isWorkspaceFocused, isPaneFocused } = usePaneFocus();
   const { openFileInWorkspace } = usePaneContext();

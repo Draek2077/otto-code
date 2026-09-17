@@ -4,6 +4,7 @@ import {
   orderWorkspaceSelectionsForStableRender,
   pruneMountedWorkspaceSelections,
   resolveWorkspaceDeckEntries,
+  resolveWorkspaceDeckExpiry,
   shouldKeepWorkspaceDeckEntryMounted,
 } from "@/screens/workspace/workspace-deck-retention";
 
@@ -196,5 +197,44 @@ describe("shouldKeepWorkspaceDeckEntryMounted", () => {
         workspaceExists: true,
       }),
     ).toBe(true);
+  });
+});
+
+describe("resolveWorkspaceDeckExpiry", () => {
+  const ttlMs = 1_000;
+  const notPinned = () => false;
+
+  it("expires hidden workspaces past the TTL and schedules the next one", () => {
+    const result = resolveWorkspaceDeckExpiry({
+      selections: [workspace("A"), workspace("B"), workspace("C")],
+      activeSelection: workspace("A"),
+      inactiveSince: new Map([
+        ["server:A", 0],
+        ["server:B", 0],
+        ["server:C", 700],
+      ]),
+      now: 1_200,
+      ttlMs,
+      isPinned: notPinned,
+    });
+
+    expect(mountedWorkspaceIds(result.expired)).toEqual(["B"]);
+    expect(result.nextDelayMs).toBe(500);
+  });
+
+  it("never expires the active workspace or a pinned one", () => {
+    const result = resolveWorkspaceDeckExpiry({
+      selections: [workspace("A"), workspace("B")],
+      activeSelection: workspace("A"),
+      inactiveSince: new Map([
+        ["server:A", 0],
+        ["server:B", 0],
+      ]),
+      now: 5_000,
+      ttlMs,
+      isPinned: (key) => key === "server:B",
+    });
+
+    expect(result).toEqual({ expired: [], nextDelayMs: null });
   });
 });

@@ -121,3 +121,51 @@ export function shouldKeepWorkspaceDeckEntryMounted({
 }
 
 export const WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES = 10;
+
+// A hidden workspace that has not been shown for this long is unmounted, as
+// upstream Paseo does. Without it the deck held up to `mountedWorkspaceLimit`
+// full workspace trees all day, each still re-rendering on every store write.
+export const WORKSPACE_DECK_INACTIVE_TTL_MS = 10 * 60 * 1000;
+
+interface ResolveWorkspaceDeckExpiryInput {
+  selections: ActiveWorkspaceSelection[];
+  activeSelection: ActiveWorkspaceSelection | null;
+  /** When each selection last stopped being active, by selection key. */
+  inactiveSince: ReadonlyMap<string, number>;
+  now: number;
+  ttlMs: number;
+  /** Pinned entries hold state that unmounting would destroy; they never expire. */
+  isPinned: (selectionKey: string) => boolean;
+}
+
+export function resolveWorkspaceDeckExpiry({
+  selections,
+  activeSelection,
+  inactiveSince,
+  now,
+  ttlMs,
+  isPinned,
+}: ResolveWorkspaceDeckExpiryInput): {
+  expired: ActiveWorkspaceSelection[];
+  nextDelayMs: number | null;
+} {
+  const expired: ActiveWorkspaceSelection[] = [];
+  let nextDelayMs: number | null = null;
+  for (const selection of selections) {
+    if (areWorkspaceSelectionsEqual(selection, activeSelection)) {
+      continue;
+    }
+    const key = getWorkspaceSelectionKey(selection);
+    const since = inactiveSince.get(key);
+    if (since === undefined || isPinned(key)) {
+      continue;
+    }
+    const remaining = since + ttlMs - now;
+    if (remaining <= 0) {
+      expired.push(selection);
+    } else if (nextDelayMs === null || remaining < nextDelayMs) {
+      nextDelayMs = remaining;
+    }
+  }
+  return { expired, nextDelayMs };
+}
