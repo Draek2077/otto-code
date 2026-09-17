@@ -38,6 +38,7 @@ import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ObservedSubagentCallout } from "@/components/observed-subagent-callout";
 import { BlackChatScope } from "@/components/black-chat-scope";
 import { KeyboardDock } from "@/components/keyboard-dock";
+import { useAppVisible } from "@/hooks/use-app-visible";
 import {
   resolveBlackChatCanvasStyle,
   useBlackChatScope,
@@ -880,12 +881,16 @@ export function ArchitecturalViewAuthoringSurface({
 
   // The authoring tools mutate only this staged document. Polling that one
   // payload while a turn runs keeps the canvas live without rereading Project
-  // Knowledge or adding a second stream transport.
+  // Knowledge or adding a second stream transport. Hidden deck workspaces and
+  // minimized windows skip the poll; the mount refresh above catches up.
+  const isPanelActive = useRetainedPanelActive();
+  const isAppVisible = useAppVisible();
   useEffect(() => {
-    if (!agentIsRunning) return;
+    if (!agentIsRunning || !isPanelActive || !isAppVisible) return;
+    void refreshPreview();
     const interval = setInterval(() => void refreshPreview(), 1_500);
     return () => clearInterval(interval);
-  }, [agentIsRunning, refreshPreview]);
+  }, [agentIsRunning, isAppVisible, isPanelActive, refreshPreview]);
 
   const removeCompletedAuthoringTab = useCallback(() => {
     const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });

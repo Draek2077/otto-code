@@ -70,7 +70,7 @@ interface TimerFire {
   kind: SlowTimerCallback["kind"];
   delayMs: number;
   handler: (...values: unknown[]) => void;
-  registeredAt: string;
+  registration: Registration;
 }
 
 /** What `describeTimerFireAt` resolves a LoAF timer script to. */
@@ -125,9 +125,27 @@ function nowMs(): number {
     : Date.now();
 }
 
-function captureRegistrationStack(): string {
+// The registration stack is captured on every timer call but formatted only
+// when something reads it (a slow timer, a LoAF match). V8 defers the costly
+// `.stack` string build until first access; formatting eagerly here put a
+// stack-trace render on every setTimeout in the app, including the per-frame
+// stream flush.
+type Registration = Error | null;
+
+function captureRegistration(): Registration {
   try {
-    const stack = new Error().stack ?? "";
+    return new Error();
+  } catch {
+    return null;
+  }
+}
+
+function formatRegistration(registration: Registration): string {
+  if (!registration) {
+    return "";
+  }
+  try {
+    const stack = registration.stack ?? "";
     // Drop "Error", this helper, and the patched timer wrapper itself.
     return stack
       .split(String.fromCharCode(10))
@@ -169,10 +187,10 @@ function runTimed(
   callbackArgs: unknown[],
   kind: SlowTimerCallback["kind"],
   delayMs: number,
-  registeredAt: string,
+  registration: Registration,
 ): void {
   const startedAt = nowMs();
-  recordTimerFire({ startedAt, kind, delayMs, handler, registeredAt });
+  recordTimerFire({ startedAt, kind, delayMs, handler, registration });
   try {
     handler(...callbackArgs);
   } finally {
@@ -185,7 +203,7 @@ function runTimed(
         durationMs: Math.round(durationMs * 10) / 10,
         name: handler.name || "(anonymous)",
         source: handlerSource(handler),
-        registeredAt,
+        registeredAt: formatRegistration(registration),
       });
     }
   }
@@ -239,7 +257,7 @@ export function installRuntimeCounters(
     }
 
     state.pendingTimeouts += 1;
-    const registeredAt = captureRegistrationStack();
+    const registration = captureRegistration();
     let handle: TimerHandle;
     const settle = () => {
       if (pendingHandles.delete(handle)) {
@@ -255,7 +273,7 @@ export function installRuntimeCounters(
           callbackArgs,
           "timeout",
           timeout ?? 0,
-          registeredAt,
+          registration,
         );
       },
       timeout,
@@ -278,7 +296,7 @@ export function installRuntimeCounters(
     timeout?: number,
     ...args: unknown[]
   ): TimerHandle {
-    const registeredAt = typeof handler === "function" ? captureRegistrationStack() : "";
+    const registration = typeof handler === "function" ? captureRegistration() : null;
     const timedHandler =
       typeof handler === "function"
         ? (...callbackArgs: unknown[]) =>
@@ -287,7 +305,7 @@ export function installRuntimeCounters(
               callbackArgs,
               "interval",
               timeout ?? 0,
-              registeredAt,
+              registration,
             )
         : handler;
     const handle = nativeSetInterval.call(this, timedHandler, timeout, ...args);
@@ -358,7 +376,7 @@ export function describeTimerFireAt(startedAtMs: number): TimerFireDescription |
     delayMs: best.delayMs,
     name: best.handler.name || "(anonymous)",
     source: handlerSource(best.handler),
-    registeredAt: best.registeredAt,
+    registeredAt: formatRegistration(best.registration),
   };
 }
 

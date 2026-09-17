@@ -19,28 +19,55 @@ export interface AggregatedAgentsResult {
   refreshAll: () => void;
 }
 
+const EMPTY_SESSION_AGENTS: Record<string, Map<string, Agent> | undefined> = {};
+const noopUnsubscribe = () => undefined;
+
+/**
+ * Keeps every host's agent directory synced while `enabled`, without subscribing the caller to
+ * the agents themselves. For consumers that read agents imperatively or through a narrow selector.
+ */
+export function useAgentDirectoryDemand(enabled: boolean): void {
+  const daemons = useHosts();
+  const runtime = getHostRuntimeStore();
+  const serverIds = useMemo(() => daemons.map((daemon) => daemon.serverId), [daemons]);
+  useEffect(() => {
+    if (!enabled) return;
+    const releases = serverIds.map((serverId) => runtime.acquireDirectoryDemand(serverId));
+    return () => releases.forEach((release) => release());
+  }, [enabled, runtime, serverIds]);
+}
+
 export function useAggregatedAgents(options?: {
   includeArchived?: boolean;
   demand?: boolean;
+  /**
+   * When false the hook neither demands directories nor subscribes to the session store, and
+   * returns an empty list. Lets permanently mounted callers (a closed palette) skip the
+   * several-times-a-second agent churn while any agent streams.
+   */
+  enabled?: boolean;
 }): AggregatedAgentsResult {
   const daemons = useHosts();
   const runtime = getHostRuntimeStore();
   const includeArchived = options?.includeArchived ?? false;
-  const demand = options?.demand ?? true;
+  const enabled = options?.enabled ?? true;
+  const demand = enabled && (options?.demand ?? true);
   const serverIds = useMemo(() => daemons.map((daemon) => daemon.serverId), [daemons]);
-  useEffect(() => {
-    if (!demand) return;
-    const releases = serverIds.map((serverId) => runtime.acquireDirectoryDemand(serverId));
-    return () => releases.forEach((release) => release());
-  }, [demand, runtime, serverIds]);
+  useAgentDirectoryDemand(demand);
+  const subscribeRuntime = useCallback(
+    (onStoreChange: () => void) =>
+      enabled ? runtime.subscribeAll(onStoreChange) : noopUnsubscribe,
+    [enabled, runtime],
+  );
   const runtimeVersion = useSyncExternalStore(
-    (onStoreChange) => runtime.subscribeAll(onStoreChange),
+    subscribeRuntime,
     () => runtime.getVersion(),
     () => runtime.getVersion(),
   );
 
   const sessionAgents = useSessionStore(
     useShallow((state) => {
+      if (!enabled) return EMPTY_SESSION_AGENTS;
       const result: Record<string, Map<string, Agent> | undefined> = {};
       for (const [serverId, session] of Object.entries(state.sessions)) {
         result[serverId] = session.agents;

@@ -160,7 +160,6 @@ function useDiscardChangesAction({
   const toast = useToast();
   const discardChanges = useCheckoutGitActionsStore((state) => state.discardChanges);
   const rollbackPaths = useCheckoutGitActionsStore((state) => state.rollbackPaths);
-  const agentsById = useSessionStore((s) => s.sessions[serverId]?.agents);
   // Prefer Otto's rollback RPC: the daemon refuses while agents are still
   // writing to the workspace and the user must confirm the override, which
   // upstream's discard path has no equivalent for.
@@ -212,7 +211,8 @@ function useDiscardChangesAction({
             if (error.rollbackError.kind === "agents_running") {
               const agents = resolveRunningAgentLabels(
                 error.rollbackError.agents,
-                agentsById,
+                // Read at failure time: subscribing to the agents map re-rendered on every streamed update.
+                useSessionStore.getState().sessions[serverId]?.agents,
                 t("workspace.git.rollback.unnamedAgent"),
               );
               const overrideConfirmed = await confirmDialog({
@@ -238,7 +238,7 @@ function useDiscardChangesAction({
       };
       await attempt(false);
     },
-    [agentsById, cwd, discardChanges, rollbackPaths, rollbackSupported, serverId, t, toast],
+    [cwd, discardChanges, rollbackPaths, rollbackSupported, serverId, t, toast],
   );
   const handleDiscardPath = useCallback(
     (path: string, oldPath?: string) => {

@@ -15,15 +15,20 @@ export type { WorkspaceProjectScope } from "./preferred-workspace-project-scope-
 export function usePreferredWorkspaceProjectScope(): WorkspaceProjectScope | null {
   const activeWorkspace = useActiveWorkspaceSelection();
   const lastWorkspace = useLastWorkspaceSelection();
-  const sessions = useSessionStore((state) => state.sessions);
-
-  return useMemo(
-    () =>
+  // Select only the resolved root path (a primitive) so unrelated session writes, such as agent
+  // streaming, do not re-render every aggregate screen.
+  const projectRootPath = useSessionStore(
+    (state) =>
       resolvePreferredWorkspaceProjectScope({
         activeWorkspace,
         lastWorkspace,
-        sessions,
-      }),
-    [activeWorkspace, lastWorkspace, sessions],
+        sessions: state.sessions,
+      })?.projectRootPath ?? null,
+  );
+  const serverId = (activeWorkspace ?? lastWorkspace)?.serverId ?? null;
+
+  return useMemo(
+    () => (serverId && projectRootPath ? { serverId, projectRootPath } : null),
+    [serverId, projectRootPath],
   );
 }

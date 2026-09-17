@@ -53,6 +53,7 @@ import {
 } from "@/hooks/use-preferred-workspace-project-scope";
 import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore, type Agent, type WorkspaceDescriptor } from "@/stores/session-store";
+import { useShallow } from "zustand/shallow";
 import {
   collectRunAgentIds,
   useCancelRun,
@@ -299,7 +300,6 @@ function HostRunsCollector({
 function RunsScreenContent(): ReactElement {
   const hosts = useHosts();
   const { projects } = useProjects();
-  const sessions = useSessionStore((state) => state.sessions);
   const preferredWorkspaceScope = usePreferredWorkspaceProjectScope();
 
   const [newOrchestrationOpen, setNewOrchestrationOpen] = useState(false);
@@ -393,14 +393,12 @@ function RunsScreenContent(): ReactElement {
   // The user-initiated front door is gated on any connected host advertising
   // the capability; the dialog itself picks the host.
   // COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
-  const canCreateOrchestration = useMemo(
-    () =>
-      hosts.some(
-        (host) =>
-          sessions[host.serverId]?.serverInfo?.features?.orchestrationGraphs === true &&
-          sessions[host.serverId]?.serverInfo?.features?.workflowStartConfirmation === true,
-      ),
-    [hosts, sessions],
+  const canCreateOrchestration = useSessionStore((state) =>
+    hosts.some(
+      (host) =>
+        state.sessions[host.serverId]?.serverInfo?.features?.orchestrationGraphs === true &&
+        state.sessions[host.serverId]?.serverInfo?.features?.workflowStartConfirmation === true,
+    ),
   );
   const openNewOrchestration = useCallback(() => {
     setEditPrefill(null);
@@ -723,7 +721,24 @@ function RunCard({
   const startConfirmationMutation = useRespondToWorkflowStartConfirmation(serverId);
   const cancelMutation = useCancelRun(serverId);
   const deleteMutation = useDeleteRun(serverId);
-  const agentsById = useSessionStore((state) => state.sessions[serverId]?.agents);
+  // Narrow agent reads to the rendered primitives: the agents map is replaced on every streamed
+  // update, and selecting it whole re-rendered every run card while any agent streamed.
+  const conductorAgentId = run.conductorAgentId;
+  const conductor = useSessionStore(
+    useShallow((state) => {
+      const agent = conductorAgentId
+        ? state.sessions[serverId]?.agents.get(conductorAgentId)
+        : undefined;
+      return {
+        personalityName: agent?.personalityName ?? null,
+        provider: agent?.provider ?? null,
+        model: agent?.model ?? null,
+      };
+    }),
+  );
+  const totalTokens = useSessionStore((state) =>
+    sumRunTokens(run, state.sessions[serverId]?.agents),
+  );
   const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
   // COMPAT(runsDelete): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
   const hostCanDelete = useSessionStore(
@@ -809,7 +824,6 @@ function RunCard({
 
   const complexity = describeRunComplexity(run);
   const terminalPresentation = describeRunTerminalPresentation(run);
-  const conductor = run.conductorAgentId ? agentsById?.get(run.conductorAgentId) : undefined;
   const location = describeRunLocation({
     serverId,
     cwd: run.cwd,
@@ -817,7 +831,6 @@ function RunCard({
     workspaces,
     projectNameByCwd,
   });
-  const totalTokens = sumRunTokens(run, agentsById);
   const terminalCardStyle = terminalPresentation
     ? cardStyleForTerminalTone(terminalPresentation.tone)
     : null;
@@ -871,9 +884,9 @@ function RunCard({
 
         <ExecutorRow
           serverId={serverId}
-          personalityName={conductor?.personalityName ?? null}
-          provider={conductor?.provider ?? null}
-          model={conductor?.model ?? null}
+          personalityName={conductor.personalityName}
+          provider={conductor.provider}
+          model={conductor.model}
         />
         <ProjectNameLine projectName={location} />
         <WorkflowStorageRemediation provenance={run.workflowStorage} connectedHostId={serverId} />

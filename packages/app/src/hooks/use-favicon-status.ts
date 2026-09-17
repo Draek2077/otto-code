@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getIsElectronRuntimeMac } from "@/constants/layout";
-import { useAggregatedAgents } from "./use-aggregated-agents";
+import { useAgentDirectoryDemand } from "./use-aggregated-agents";
+import { useSessionStore, type SessionState } from "@/stores/session-store";
 import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
 import { useWorkspaceStatusesForBadges } from "@/stores/session-store-hooks";
 import { deriveMacDockBadgeCountFromWorkspaceStatuses } from "@/utils/desktop-badge-state";
@@ -24,19 +25,22 @@ const FAVICON_IMAGES: Record<ColorScheme, Record<FaviconStatus, { uri: string } 
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-function deriveFaviconStatus(
-  agents: ReturnType<typeof useAggregatedAgents>["agents"],
-): FaviconStatus {
-  const hasRunning = agents.some((agent) => agent.status === "running");
-  if (hasRunning) {
-    return "running";
+// Selected as a primitive so the hook re-renders only when the status flips, not on every
+// streamed agent update. Archived agents are skipped, matching the aggregated agent list.
+function deriveFaviconStatus(sessions: Record<string, SessionState>): FaviconStatus {
+  let hasAttention = false;
+  for (const session of Object.values(sessions)) {
+    for (const agent of session.agents.values()) {
+      if (agent.archivedAt) continue;
+      if (agent.status === "running") {
+        return "running";
+      }
+      if (agent.requiresAttention || agent.pendingPermissions.length > 0) {
+        hasAttention = true;
+      }
+    }
   }
-  const hasAttention = agents.some((agent) => agent.requiresAttention);
-  const hasNeedsInput = agents.some((agent) => (agent.pendingPermissionCount ?? 0) > 0);
-  if (hasAttention || hasNeedsInput) {
-    return "attention";
-  }
-  return "none";
+  return hasAttention ? "attention" : "none";
 }
 
 function getFaviconUri(status: FaviconStatus, colorScheme: ColorScheme): string {
@@ -66,7 +70,9 @@ function updateFavicon(status: FaviconStatus, colorScheme: ColorScheme) {
   if (!link) return;
 
   const newHref = getFaviconUri(status, colorScheme);
-  if (link.href !== newHref) {
+  // `link.href` reads back as an absolute URL, so compare against the resolved form; comparing to
+  // a relative path never matches and rewrites the favicon on every call.
+  if (link.href !== new URL(newHref, document.baseURI).href) {
     link.href = newHref;
   }
 }
@@ -111,7 +117,10 @@ async function updateTrayAttention(status: FaviconStatus) {
 }
 
 export function useFaviconStatus() {
-  const { agents } = useAggregatedAgents({ demand: !isNative });
+  useAgentDirectoryDemand(!isNative);
+  const status = useSessionStore((state) =>
+    isNative ? "none" : deriveFaviconStatus(state.sessions),
+  );
   const workspaceStatuses = useWorkspaceStatusesForBadges();
   const [colorScheme, setColorScheme] = useState<ColorScheme>(getSystemColorScheme);
   const lastDockBadgeCountRef = useRef<number | undefined>(undefined);
@@ -134,7 +143,6 @@ export function useFaviconStatus() {
   useEffect(() => {
     if (isNative) return;
 
-    const status = deriveFaviconStatus(agents);
     updateFavicon(status, colorScheme);
 
     const dockBadgeCount = deriveMacDockBadgeCountFromWorkspaceStatuses(workspaceStatuses);
@@ -148,5 +156,5 @@ export function useFaviconStatus() {
       lastTrayAttentionRef.current = trayAttention;
       void updateTrayAttention(status);
     }
-  }, [agents, colorScheme, workspaceStatuses]);
+  }, [status, colorScheme, workspaceStatuses]);
 }

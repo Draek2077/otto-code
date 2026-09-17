@@ -50,7 +50,6 @@ export function useChangesSelectionAddon({
   const { t } = useTranslation();
   const toast = useToast();
   const rollbackPaths = useCheckoutGitActionsStore((state) => state.rollbackPaths);
-  const agentsById = useSessionStore((state) => state.sessions[serverId]?.agents);
   const [deselectedPaths, setDeselectedPaths] =
     useState<ReadonlySet<string>>(EMPTY_DESELECTED_PATHS);
   const selectedPaths = useMemo(
@@ -101,7 +100,8 @@ export function useChangesSelectionAddon({
         ) {
           const agents = resolveRunningAgentLabels(
             error.rollbackError.agents,
-            agentsById,
+            // Read at failure time: subscribing to the agents map re-rendered on every streamed update.
+            useSessionStore.getState().sessions[serverId]?.agents,
             t("workspace.git.rollback.unnamedAgent"),
           );
           const overrideConfirmed = await confirmDialog({
@@ -126,7 +126,7 @@ export function useChangesSelectionAddon({
       }
     };
     await attempt(false);
-  }, [agentsById, cwd, rollbackPaths, selectedPaths, serverId, t, toast]);
+  }, [cwd, rollbackPaths, selectedPaths, serverId, t, toast]);
   const renderSelectionControl = useCallback(
     (path: string) => (
       <ChangesSelectionControl

@@ -50,4 +50,21 @@ describe("getAgentTabsNeedingOpenLabel", () => {
       }),
     ).toEqual([]);
   });
+
+  it("skips observed subagents, which the daemon never stores", () => {
+    const observed = {
+      ...agent({ id: "parent::sub::toolu_1", parentAgentId: "parent" }),
+      attend: "observed",
+    } as Agent;
+    const agents = new Map([[observed.id, observed]]);
+
+    expect(
+      getAgentTabsNeedingOpenLabel({
+        tabs: [tab(observed.id, 1)],
+        getAgent: (agentId) => agents.get(agentId),
+        label,
+        pendingAgentIds: new Set(),
+      }),
+    ).toEqual([]);
+  });
 });

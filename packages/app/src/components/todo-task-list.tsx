@@ -10,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Check } from "@/components/icons/material-icons";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import type { Theme } from "@/styles/theme";
 import {
   resolveTodoEntryStatus,
@@ -87,7 +88,13 @@ interface TodoSummaryMarkerProps {
  * once every task is done. Larger than the per-row {@link TodoStatusMarker}
  * because on a phone it is the only status the user gets until they expand.
  */
-export function TodoSummaryMarker({ phase, animationsEnabled }: TodoSummaryMarkerProps) {
+export function TodoSummaryMarker({
+  phase,
+  animationsEnabled: animationsSetting,
+}: TodoSummaryMarkerProps) {
+  // Transcript cards in hidden deck workspaces hold still.
+  const panelActive = useRetainedPanelActive();
+  const animationsEnabled = animationsSetting && panelActive;
   const pulse = useSharedValue(phase === "partial" ? 1 : 0);
 
   useEffect(() => {
@@ -143,7 +150,11 @@ interface TodoStatusMarkerProps {
  * check scales in only on a live transition into completed - never on first
  * mount, so scrolling a finished list back into view doesn't replay it.
  */
-function TodoStatusMarker({ status, animationsEnabled }: TodoStatusMarkerProps) {
+function TodoStatusMarker({ status, animationsEnabled: animationsSetting }: TodoStatusMarkerProps) {
+  // Old transcript cards whose item never left in_progress would otherwise
+  // pulse forever in hidden deck workspaces.
+  const panelActive = useRetainedPanelActive();
+  const animationsEnabled = animationsSetting && panelActive;
   const pulse = useSharedValue(status === "in_progress" ? 1 : 0);
   const check = useSharedValue(status === "completed" ? 1 : 0);
   const prevStatus = useRef(status);

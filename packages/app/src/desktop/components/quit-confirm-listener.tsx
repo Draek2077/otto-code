@@ -7,7 +7,8 @@ import {
   suppressQuitSchedulesWarning,
 } from "@/desktop/components/quit-schedules-warning";
 import { useDesktopSettings, type DesktopSettings } from "@/desktop/settings/desktop-settings";
-import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
+import { useAgentDirectoryDemand } from "@/hooks/use-aggregated-agents";
+import { useSessionStore } from "@/stores/session-store";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { isSidebarActiveAgent } from "@/utils/sidebar-agent-state";
 import { confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
@@ -18,14 +19,34 @@ interface QuitConfirmRequestPayload {
   willStopDaemon: boolean;
 }
 
+// Read at quit time rather than subscribed: this listener is mounted for the app's whole lifetime
+// and the agents map changes several times a second while any agent streams.
+function hasActiveUnarchivedAgents(): boolean {
+  for (const session of Object.values(useSessionStore.getState().sessions)) {
+    for (const agent of session.agents.values()) {
+      if (agent.archivedAt) continue;
+      if (
+        isSidebarActiveAgent({
+          status: agent.status,
+          pendingPermissionCount: agent.pendingPermissions.length,
+          requiresAttention: agent.requiresAttention,
+          attentionReason: agent.attentionReason,
+        })
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 async function handleQuitConfirmRequest(
   payload: QuitConfirmRequestPayload,
   settingsRef: { current: DesktopSettings },
-  agentsRef: { current: AggregatedAgent[] },
   localDaemonServerIdRef: { current: string | null },
 ): Promise<void> {
   const settings = settingsRef.current;
-  const hasActiveAgents = agentsRef.current.some((agent) => isSidebarActiveAgent(agent));
+  const hasActiveAgents = hasActiveUnarchivedAgents();
   // Main also sends the request when the quit will stop the managed daemon
   // (for the schedules warning below), so the generic "warn before quitting"
   // prompt must re-check its own setting here rather than rely on main gating.
@@ -112,7 +133,8 @@ async function handleQuitConfirmRequest(
  */
 export function QuitConfirmListener() {
   const { settings } = useDesktopSettings();
-  const { agents } = useAggregatedAgents();
+  // Keeps the agent directories synced so the quit-time read above sees current agents.
+  useAgentDirectoryDemand(true);
   // Subscribing here keeps the local daemon serverId query mounted (and its
   // result cached) for the app's whole lifetime, so the quit flow never has
   // to resolve it on demand - that path shells out to the CLI and would hold
@@ -121,8 +143,6 @@ export function QuitConfirmListener() {
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-  const agentsRef = useRef(agents);
-  agentsRef.current = agents;
   const localDaemonServerIdRef = useRef(localDaemonServerId);
   localDaemonServerIdRef.current = localDaemonServerId;
 
@@ -138,7 +158,7 @@ export function QuitConfirmListener() {
       const fn = await listenToDesktopEvent<QuitConfirmRequestPayload>(
         "quit-confirm-request",
         (payload) => {
-          void handleQuitConfirmRequest(payload, settingsRef, agentsRef, localDaemonServerIdRef);
+          void handleQuitConfirmRequest(payload, settingsRef, localDaemonServerIdRef);
         },
       );
       if (cancelled) {

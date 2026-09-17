@@ -8,6 +8,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
+import { useShallow } from "zustand/shallow";
 import {
   useActiveWorkspaceSelection,
   useLastWorkspaceSelection,
@@ -561,14 +562,40 @@ function KanbanBoardFilter({ options, value, onChange }: KanbanBoardFilterProps)
 
 // ── Screen ──────────────────────────────────────────────────────────────────
 
+/**
+ * The project of the active (or last) workspace. Selects the project id as a primitive so
+ * unrelated session writes, such as agent streaming, do not re-render the board screen.
+ */
+function usePreferredKanbanProject(): { serverId: string; projectId: string } | null {
+  const activeWorkspaceSelection = useActiveWorkspaceSelection();
+  const lastWorkspaceSelection = useLastWorkspaceSelection();
+  const workspaceSelection = activeWorkspaceSelection ?? lastWorkspaceSelection;
+  const serverId = workspaceSelection?.serverId ?? null;
+  const projectId = useSessionStore((state) => {
+    if (!workspaceSelection) return null;
+    return (
+      state.sessions[workspaceSelection.serverId]?.workspaces.get(workspaceSelection.workspaceId)
+        ?.projectId ?? null
+    );
+  });
+  return useMemo(
+    () => (serverId && projectId ? { serverId, projectId } : null),
+    [serverId, projectId],
+  );
+}
+
 export function KanbanScreen(): ReactElement {
   const { t } = useTranslation();
   const router = useRouter();
   const hosts = useHosts();
-  const sessions = useSessionStore((state) => state.sessions);
+  const kanbanCapableServerIds = useSessionStore(
+    useShallow((state) =>
+      hosts
+        .filter((host) => state.sessions[host.serverId]?.serverInfo?.features?.kanbanBoard === true)
+        .map((host) => host.serverId),
+    ),
+  );
   const { projects, refetch: refetchProjects } = useProjects();
-  const activeWorkspaceSelection = useActiveWorkspaceSelection();
-  const lastWorkspaceSelection = useLastWorkspaceSelection();
 
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -576,23 +603,15 @@ export function KanbanScreen(): ReactElement {
   const kanbanHosts = useMemo(
     () =>
       hosts.filter((host) => {
-        const session = sessions[host.serverId];
         return (
-          session?.serverInfo?.features?.kanbanBoard === true &&
+          kanbanCapableServerIds.includes(host.serverId) &&
           getHostRuntimeStore().getClient(host.serverId) !== null
         );
       }),
-    [hosts, sessions],
+    [hosts, kanbanCapableServerIds],
   );
 
-  const preferredProject = useMemo(() => {
-    const workspaceSelection = activeWorkspaceSelection ?? lastWorkspaceSelection;
-    if (!workspaceSelection) return null;
-    const projectId = sessions[workspaceSelection.serverId]?.workspaces.get(
-      workspaceSelection.workspaceId,
-    )?.projectId;
-    return projectId ? { serverId: workspaceSelection.serverId, projectId } : null;
-  }, [activeWorkspaceSelection, lastWorkspaceSelection, sessions]);
+  const preferredProject = usePreferredKanbanProject();
 
   const {
     selectedHost,

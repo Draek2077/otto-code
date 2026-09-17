@@ -13,8 +13,12 @@ export function getAgentTabsNeedingOpenLabel(input: {
       continue;
     }
     const agent = input.getAgent(tab.target.agentId);
+    // Observed subagents are synthetic rows the daemon never stores, so a label
+    // write can only fail "Agent not found". Skipping them is what stops the
+    // retry loop in use-open-agent-tab-labels from hammering the daemon.
     if (
       agent?.parentAgentId &&
+      agent.attend !== "observed" &&
       agent.labels[input.label] !== "true" &&
       !input.pendingAgentIds.has(agent.id)
     ) {

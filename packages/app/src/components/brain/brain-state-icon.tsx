@@ -30,6 +30,7 @@ import {
   type BrainStateVisual,
 } from "@/components/brain/brain-state";
 import { brainGlyphExtent } from "@/components/icons/brain-glyph-scale";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import type { Theme } from "@/styles/theme";
 
@@ -679,8 +680,12 @@ function BrainIconBadge({
  */
 function useSweepProgress(active: boolean, durationMs: number): SharedValue<number> {
   const progress = useSharedValue(0);
+  // Every mounted workspace renders its own Brain button; the hidden deck
+  // copies must not keep a JS frame loop alive for the whole busy period.
+  const panelActive = useRetainedPanelActive();
+  const running = active && panelActive;
   useEffect(() => {
-    if (!active || durationMs <= 0) {
+    if (!running || durationMs <= 0) {
       cancelAnimation(progress);
       progress.value = 0;
       return;
@@ -715,7 +720,7 @@ function useSweepProgress(active: boolean, durationMs: number): SharedValue<numb
     return () => {
       cancelAnimation(progress);
     };
-  }, [active, durationMs, progress]);
+  }, [running, durationMs, progress]);
   return progress;
 }
 

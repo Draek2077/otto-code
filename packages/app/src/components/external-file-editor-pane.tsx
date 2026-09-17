@@ -10,7 +10,9 @@ import {
   resolveExternalFileEditorCommand,
   type FileEditorMode,
 } from "@/editor/external-file-editor";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { isWeb } from "@/constants/platform";
+import { useAppVisible } from "@/hooks/use-app-visible";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import { revealFileInFiles } from "@/git/changes-reveal";
@@ -243,6 +245,9 @@ export function ExternalFileEditorPane({
     };
   }, []);
 
+  const panelActive = useRetainedPanelActive();
+  const appVisible = useAppVisible();
+  const pollActive = panelActive && appVisible;
   useEffect(() => {
     if (!client || !terminalId) {
       return;
@@ -261,12 +266,14 @@ export function ExternalFileEditorPane({
       }
     };
     void checkTerminal();
-    const poll = setInterval(() => void checkTerminal(), 1_000);
+    // Hidden deck workspaces and minimized windows check once on becoming
+    // visible again instead of polling the daemon every second.
+    const poll = pollActive ? setInterval(() => void checkTerminal(), 1_000) : null;
     return () => {
       cancelled = true;
-      clearInterval(poll);
+      if (poll) clearInterval(poll);
     };
-  }, [client, onExit, terminalId, workspaceId, workspaceRoot]);
+  }, [client, onExit, pollActive, terminalId, workspaceId, workspaceRoot]);
 
   useEffect(() => {
     if (!client) {

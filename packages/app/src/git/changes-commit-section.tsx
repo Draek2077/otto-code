@@ -373,7 +373,6 @@ export function ChangesCommitSection({
   onCommitted,
 }: ChangesCommitSectionProps) {
   const { t } = useTranslation();
-  const agentsById = useSessionStore((state) => state.sessions[serverId]?.agents);
   const [message, setMessage] = useState("");
   const inputRef = useRef<EditingTextInputHandle>(null);
   const [isFocused, setIsFocused] = useState(false);
@@ -422,7 +421,8 @@ export function ChangesCommitSection({
           if (error.commitError.kind === "agents_running") {
             const agents = resolveRunningAgentLabels(
               error.commitError.agents,
-              agentsById,
+              // Read at failure time: subscribing to the agents map re-rendered on every streamed update.
+              useSessionStore.getState().sessions[serverId]?.agents,
               t("workspace.git.commit.unnamedAgent"),
             );
             const confirmed = await confirmDialog({
@@ -455,7 +455,6 @@ export function ChangesCommitSection({
     selectedPaths,
     serverId,
     t,
-    agentsById,
   ]);
 
   const allSelected = totalFiles > 0 && selectedPaths.length === totalFiles;

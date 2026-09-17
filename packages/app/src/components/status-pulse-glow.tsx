@@ -11,6 +11,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import { StyleSheet } from "react-native-unistyles";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import type { Theme } from "@/styles/theme";
 
@@ -68,7 +69,10 @@ export function StatusPulseGlow({
 }>): ReactElement {
   const gradientId = useId();
   const animationsEnabled = useAnimationsEnabled();
-  const active = color !== null && animationsEnabled;
+  // A halo in a hidden deck workspace holds its peak frame: on web the
+  // Reanimated loop is a JS frame callback that display:none does not stop.
+  const panelActive = useRetainedPanelActive();
+  const active = color !== null && animationsEnabled && panelActive;
   const progress = useSharedValue(0);
 
   useEffect(() => {

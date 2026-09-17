@@ -369,6 +369,8 @@ export function selectWorkspaceKeys(state: SessionsSnapshot, serverId: string | 
   return workspaces ? Array.from(workspaces.keys()) : EMPTY_WORKSPACE_KEYS;
 }
 
+const recommendedProjectPathsCache = new WeakMap<Map<string, WorkspaceDescriptor>, string[]>();
+
 export function selectRecommendedProjectPaths(
   state: SessionsSnapshot,
   serverId: string | null,
@@ -380,9 +382,17 @@ export function selectRecommendedProjectPaths(
   if (!workspaces) {
     return EMPTY_WORKSPACE_KEYS;
   }
-  return Array.from(workspaces.values())
+  // Workspaces maps are replaced on write, so the map identity keys the derived list and
+  // unrelated store writes (agent streaming) skip the rebuild.
+  const cached = recommendedProjectPathsCache.get(workspaces);
+  if (cached) {
+    return cached;
+  }
+  const paths = Array.from(workspaces.values())
     .map((workspace) => workspace.projectRootPath)
     .filter((path) => path.length > 0);
+  recommendedProjectPathsCache.set(workspaces, paths);
+  return paths;
 }
 
 export function selectHasWorkspaces(state: SessionsSnapshot, serverId: string | null): boolean {
@@ -392,14 +402,30 @@ export function selectHasWorkspaces(state: SessionsSnapshot, serverId: string | 
   return (state.sessions[serverId]?.workspaces?.size ?? 0) > 0;
 }
 
+// Last-call cache keyed on the identities of every session's workspaces map, so store writes that
+// leave all workspaces untouched (agent streaming) return the previous array without a rescan.
+let badgeStatusesCache: {
+  workspaceMaps: Map<string, WorkspaceDescriptor>[];
+  statuses: DesktopBadgeWorkspaceStatus[];
+} | null = null;
+
 export function selectWorkspaceStatusesForBadges(
   state: SessionsSnapshot,
 ): DesktopBadgeWorkspaceStatus[] {
+  const workspaceMaps = Object.values(state.sessions).map((session) => session.workspaces);
+  if (
+    badgeStatusesCache &&
+    badgeStatusesCache.workspaceMaps.length === workspaceMaps.length &&
+    badgeStatusesCache.workspaceMaps.every((map, index) => map === workspaceMaps[index])
+  ) {
+    return badgeStatusesCache.statuses;
+  }
   const statuses: DesktopBadgeWorkspaceStatus[] = [];
-  for (const session of Object.values(state.sessions)) {
-    for (const workspace of session.workspaces.values()) {
+  for (const workspaces of workspaceMaps) {
+    for (const workspace of workspaces.values()) {
       statuses.push(workspace.status);
     }
   }
+  badgeStatusesCache = { workspaceMaps, statuses };
   return statuses;
 }
