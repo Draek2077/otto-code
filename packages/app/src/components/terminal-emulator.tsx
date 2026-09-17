@@ -697,6 +697,10 @@ export default function TerminalEmulator({
       ref={rootRef}
       data-testid={testId}
       data-terminal-scrollbar-root="true"
+      // data-pmono excludes xterm's subtree from the app-wide interface-font rule.
+      // Without it, the DOM renderer (used whenever WebGL is unavailable) draws
+      // terminal rows in the proportional UI font.
+      data-pmono=""
       style={rootDivStyle}
       onPointerDown={handleRootPointerDown}
       onContextMenu={handleRootContextMenu}
