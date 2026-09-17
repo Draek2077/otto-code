@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Z } from '@/lib/agent-types'
 import { COLORS } from '@/lib/colors'
+import { isRenderPaused, onRenderResume } from '@/lib/render-gate'
 
 // OTTO PATCH (see OTTO-PATCHES.md): host-toggleable on-screen FPS meter.
 // Counts the page's own requestAnimationFrame ticks — the same clock the canvas
@@ -20,6 +21,7 @@ export function FpsMeter({ compact }: { compact?: boolean }) {
     let frames = 0
     let last = performance.now()
     const tick = (now: number) => {
+      if (isRenderPaused()) { rafRef.current = 0; return }
       frames++
       if (now - last >= 1000) {
         setFps(Math.round((frames * 1000) / (now - last)))
@@ -29,7 +31,16 @@ export function FpsMeter({ compact }: { compact?: boolean }) {
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafRef.current)
+    const unsubResume = onRenderResume(() => {
+      if (rafRef.current) return
+      frames = 0
+      last = performance.now()
+      rafRef.current = requestAnimationFrame(tick)
+    })
+    return () => {
+      unsubResume()
+      cancelAnimationFrame(rafRef.current)
+    }
   }, [])
 
   // Tint the number by health, reusing the HUD state-palette tokens so the

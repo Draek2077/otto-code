@@ -23,6 +23,7 @@ import {
 import { useCanvasCamera, type CameraFramingConfig } from '@/hooks/use-canvas-camera'
 import { BUBBLE_DRAW, BUBBLE_MAX_LINES, PERSISTENT_BUBBLE_MAX_LINES } from '@/lib/canvas-constants'
 import { useCanvasInteraction } from '@/hooks/use-canvas-interaction'
+import { isRenderPaused, onRenderResume } from '@/lib/render-gate'
 
 interface CanvasProps {
   /** Ref to simulation state — read every frame without React re-renders */
@@ -213,6 +214,8 @@ export function AgentCanvas({
   const drawRef = useRef<(timestamp: number) => void>(() => {})
 
   const draw = useCallback((timestamp: number) => {
+    // OTTO PATCH (OTTO-PATCHES.md): stop drawing while off screen.
+    if (isRenderPaused()) { animationRef.current = 0; return }
     animationRef.current = requestAnimationFrame((ts) => drawRef.current(ts))
 
     const canvas = mainCanvasRef.current
@@ -405,7 +408,13 @@ export function AgentCanvas({
   useEffect(() => {
     const loop = (timestamp: number) => drawRef.current(timestamp)
     animationRef.current = requestAnimationFrame(loop)
-    return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current) }
+    const unsubResume = onRenderResume(() => {
+      if (!animationRef.current) animationRef.current = requestAnimationFrame(loop)
+    })
+    return () => {
+      unsubResume()
+      if (animationRef.current) cancelAnimationFrame(animationRef.current)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- drawRef is stable; rAF loop set up once
   }, [])
 

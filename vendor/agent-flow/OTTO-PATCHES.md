@@ -7,6 +7,28 @@ here (rather than a fork-wide diff) are the exception, logged one entry per
 patch, oldest first. Each entry should be small enough to re-apply by hand
 after a `git subtree pull` if the upstream diff conflicts with it.
 
+## 2026-09-17 — nothing draws while the surface is off screen
+
+The page ran three `requestAnimationFrame` loops (canvas draw, simulation,
+FPS meter) for as long as it was mounted. Whether a hidden guest kept ticking
+depended on how the host happened to hide it, so a Visualizer in a hidden pane,
+hidden workspace or minimized window could keep drawing.
+
+- `web/lib/render-gate.ts` (new) — `isRenderPaused()` is true while the host
+  reports `config.paused` or the document is hidden; `onRenderResume` fires when
+  rendering is allowed again.
+- `web/components/agent-visualizer/canvas.tsx`,
+  `web/hooks/use-agent-simulation.ts`,
+  `web/components/agent-visualizer/fps-meter.tsx` — each loop stops rescheduling
+  while paused and restarts from the resume callback. The simulation restarts
+  from a zeroed clock and leaves queued external events in place.
+- `web/lib/vscode-bridge.ts`, `web/hooks/use-vscode-bridge.ts` — `config.paused`
+  is accepted and forwarded to the gate.
+
+Otto-side counterpart: `packages/app/src/visualizer/visualizer-surface.tsx` sends
+`paused` whenever the pane is not visible, its retained panel is inactive, or the
+app is not visible. Needs `npm run build:visualizer`.
+
 ## 2026-08-29 — background session starts do not steal selection
 
 `session-started` auto-selected the incoming session unconditionally. In Otto a

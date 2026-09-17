@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Text, useColorScheme, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
 import { useIsSoftwareRendering } from "@/desktop/use-software-rendering";
 import { collectRunAgentIds, useRuns } from "@/hooks/use-runs";
+import { useAppVisible } from "@/hooks/use-app-visible";
 import { useAppSettings, useSettings } from "@/hooks/use-settings";
 import { VisualizerToolbar } from "@/panels/visualizer-toolbar";
 import { useSessionStore, type Agent } from "@/stores/session-store";
@@ -626,6 +628,19 @@ export function VisualizerSurface({
     settings.visualizerSoundVolume,
     settings.visualizerSoundMuted,
   ]);
+
+  // Nothing draws while the surface is off screen: a hidden pane, a hidden
+  // deck workspace, or a minimized window. The page stops its canvas,
+  // simulation and FPS loops on `paused` and restarts them on resume.
+  const panelActive = useRetainedPanelActive();
+  const appVisible = useAppVisible();
+  const renderPaused = !(isVisible && panelActive && appVisible);
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    viewRef.current?.postMessage({ type: "config", config: { paused: renderPaused } });
+  }, [ready, renderPaused]);
 
   // Fonts + type scale: the guest page renders in Otto's interface/code fonts
   // at the chat prose size instead of the vendor's own mono-everywhere look

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig, type CameraConfig, type LatestAssistantBubbleConfig, type SessionStateReport, type TogglablePanel, type ViewportCommand } from '@/lib/vscode-bridge'
 import { SimulationEvent } from '@/lib/agent-types'
+import { setHostRenderPaused } from '@/lib/render-gate'
 
 // OTTO PATCH (OTTO-PATCHES.md): synthetic picker value from the native toolbar.
 // It is not an event session; selecting it streams every LIVE chat session into
@@ -257,6 +258,8 @@ export function useVSCodeBridge(): BridgeHookResult {
       if (config.hudBottomHidden !== undefined) { setHudBottomHidden(config.hudBottomHidden) }
       if (config.hudCompact !== undefined) { setHudCompact(config.hudCompact) }
       if (config.showLatestAssistantBubble !== undefined) { setShowLatestAssistantBubble(config.showLatestAssistantBubble) }
+      // OTTO PATCH (OTTO-PATCHES.md): host-reported off-screen state gates every rAF loop.
+      if (config.paused !== undefined) { setHostRenderPaused(config.paused) }
     })
 
     // Session lifecycle tracking

@@ -101,6 +101,9 @@ export type VisualizerHostToPageMessage =
   | {
       type: "config";
       config: Partial<{
+        // Off-screen: the page stops every requestAnimationFrame loop until
+        // this flips back (OTTO PATCH, vendor lib/render-gate.ts).
+        paused: boolean;
         mode: string;
         autoPlay: boolean;
         showMockData: boolean;

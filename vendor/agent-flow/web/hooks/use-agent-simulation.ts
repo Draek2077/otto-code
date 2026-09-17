@@ -16,6 +16,7 @@ import type { SimulationState, ForceNode, ForceLink, UseAgentSimulationOptions }
 import { createEmptyState, MAX_EVENT_LOG } from './simulation/types'
 import { processEvent, type ProcessEventContext } from './simulation/process-event'
 import { computeNextFrame } from './simulation/animate'
+import { isRenderPaused, onRenderResume } from '@/lib/render-gate'
 import { snapVisualState } from './simulation/snap-visual-state'
 import { settleVisualState } from './simulation/settle-visual-state'
 
@@ -179,6 +180,10 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
   // Reads/writes frameRef directly. Only calls commitState when new events
   // are processed, so React only re-renders UI on structural data changes.
   const animate = useCallback((timestamp: number) => {
+    // OTTO PATCH (OTTO-PATCHES.md): stop simulating while off screen. Queued
+    // external events stay queued (see the consume guard below) and the resume
+    // restarts from a zeroed clock, so the maxDeltaTime cap absorbs the gap.
+    if (isRenderPaused()) { animationRef.current = 0; return }
     // Cap at 60fps to reduce CPU/GPU load
     const elapsed = timestamp - lastTimeRef.current
     if (lastTimeRef.current && elapsed < ANIM_SPEED.minFrameInterval) {
@@ -325,7 +330,17 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
     } else if (animationRef.current) {
       cancelAnimationFrame(animationRef.current)
     }
-    return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current) }
+    const unsubResume = state.isPlaying
+      ? onRenderResume(() => {
+          if (animationRef.current) return
+          lastTimeRef.current = 0
+          animationRef.current = requestAnimationFrame(loop)
+        })
+      : () => {}
+    return () => {
+      unsubResume()
+      if (animationRef.current) cancelAnimationFrame(animationRef.current)
+    }
   }, [state.isPlaying])
 
   // ─── Playback controls ───────────────────────────────────────────────────
