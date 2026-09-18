@@ -683,7 +683,13 @@ export function resolveAgentForm(
     }
 
     case "SET_PROVIDER_AND_MODEL_FROM_USER": {
-      const normalizedModelId = resolveCanonicalModelId(action.providerModels, action.modelId);
+      // OTTO: an explicit provider+model pick (a personality or team applying
+      // its model) is kept even when the current catalog does not list it yet,
+      // e.g. while the provider snapshot is still loading. Known references
+      // still resolve to their canonical id.
+      const normalizedModelId =
+        resolveCanonicalModelId(action.providerModels, action.modelId) ||
+        normalizeSelectedModelId(action.modelId);
       const nextModelId = normalizedModelId || resolveDefaultModelId(action.providerModels);
       const nextThinkingOptionId = pickNextThinkingOptionForTarget({
         availableModels: action.providerModels,
