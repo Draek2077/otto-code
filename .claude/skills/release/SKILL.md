@@ -23,20 +23,29 @@ Invoking this skill is intent to _start_, not authorization to publish. If the u
 
 ### 1. Pre-flight (agent, reversible)
 
-Run from a clean tree on `main`, on the exact commit to be released:
+Run from a clean tree on `main`, on the exact commit to be released. **Every step runs on every release, however small.** These are the steps small releases used to skip:
 
 ```bash
+git pull --rebase                                      # other sessions push to main while you prepare; release what is really there
 npm run format && npm run lint && npm run typecheck   # all green; commit any format churn on its own
-npm run acp:version-drift:check                        # if drift is intentional, say so; else: npm run acp:version-drift:update && commit
+npm run acp:version-drift:check                        # npm/PyPI pins + installed-command labels + ACP registry coverage
+npm run settings:catalog                               # regenerates settings search; commit it if it changed
+npm run size:ceilings:check                            # CI gate: a failure means main is red; report it, never raise a ceiling
+npm outdated -w @otto-code/server                      # report agent SDK lag (claude-agent-sdk, @anthropic-ai/sdk, openai, @opencode-ai/sdk)
 npm run release:prepare                                # run once alone to absorb any package-lock churn into a normal commit
 ```
+
+- **ACP drift:** run `npm run acp:version-drift:update`, then the catalog tests (`packages/app`: `src/hooks/use-acp-provider-catalog.test.ts`, `src/components/provider-icon-name.test.ts`), and commit. A **missing registry agent** is never auto-fixed: either add it (catalog entry, icon in `assets/acp-provider-icons.ts` and `assets/acp-provider-icons/`, id in `ACP_PROVIDER_ICON_NAMES` in `packages/protocol/src/provider-icon-names.ts`, a line in `public-docs/supported-providers.md`) or add it to `REGISTRY_EXCLUSIONS` in the drift script with a reason.
+- **Agent SDK lag** is reported, not fixed: an SDK bump changes agent behavior, so it needs the user's approval and its own tested commit.
+- **Uncommitted work in the tree that is not yours:** ask whether it ships. Never leave it out silently, and never commit it unasked.
+- F-Droid changelogs need no step: the npm `version` lifecycle generates them.
 
 Why `release:prepare` first: it runs `npm install --workspaces`, which can churn `package-lock.json`. `version:all:*` aborts on a dirty tree, and the pre-commit hook rejects a lockfile-only commit. Absorbing the churn now avoids a mid-release mess.
 
 ### 2. Draft the changelog (agent writes it - never hand it off)
 
 - Heading is **strict**: `## X.Y.Z - YYYY-MM-DD` - no `v`, no extra text. A malformed heading breaks Release Notes Sync.
-- Draft from the `v<previous-stable>..HEAD` diff. Covers the **full** delta from the previous stable.
+- Draft from the `v<previous-stable>..HEAD` diff. Covers the **full** delta from the previous stable. `git fetch` and re-read `git log v<previous>..origin/main` right before committing the changelog: commits other sessions push during preparation belong in it too.
 - **User-facing voice**, not implementation. Describe what changed in the app, not the code. No component/module names, no "remount / virtualized / debounced / memoized".
 - One sentence per bullet, no trailing periods, one line each. Split any bullet that chains changes with "and"/commas/em-dash. Collapse intra-release fixes (if a feature was added _and_ fixed this release, list only the working feature).
 - Order by user impact: features → quality-of-life → internal-with-user-benefit.
@@ -67,6 +76,8 @@ npm run release:patch         # release:check → version:all:patch (bump+commit
 
 `release:patch` bumps every workspace, commits, tags, and pushes HEAD + tag. **The agent runs it end to end.** Publishing is not part of it: the tag push runs the `npm Publish` workflow, which publishes the eight `@otto-code/*` packages (highlight, relay, protocol, client, plugin, server, brain, cli) through npm trusted publishing and reads the Google sign-in registration from the `OTTO_GOOGLE_OAUTH_CLIENT_JSON` repository secret. See `docs/release.md` → "npm publishing from CI".
 
+**Push credentials:** the push must authenticate as `Draek2077`. If `gh auth status` shows another active account, don't switch it (other sessions may rely on it); give the push the right token instead, by setting these env vars for the one command: `GIT_CONFIG_COUNT=2`, `GIT_CONFIG_KEY_0/1=credential.https://github.com.helper`, `GIT_CONFIG_VALUE_0=''`, `GIT_CONFIG_VALUE_1='!f() { test "$1" = get || exit 0; echo username=Draek2077; echo "password=$(gh auth token --user Draek2077)"; }; f'`.
+
 **If the chain fails** (a dirty tree from a stray build artifact, a push rejection): fix the cause, then resume - don't re-run the full chain. If the version commit + tag already exist, resume at `npm run release:push`. If they don't, resume at `npm run version:all:patch`.
 
 **If `npm Publish` fails**, fix the cause and rerun it for the tag (`gh workflow run npm-publish.yml --repo Draek2077/otto-code -f tag=vX.Y.Z`); it skips packages already on the registry. Never bump the version to retry a publish. `npm run release:publish` is a terminal fallback only: it needs the user's `npm login` with 2FA and the Google registration in that shell, so **the user runs it, never the agent** - don't pass `--otp=`, run browser auth, or ask for a code.
@@ -80,6 +91,7 @@ The `v*` tag push triggers, in **your** repo: `npm Publish`, `Desktop Release`, 
 - **`gh` defaults to upstream Otto here - always pass `--repo Draek2077/otto-code`** - for the one-off checks below, or when the user asks about a specific failure later.
 - macOS desktop jobs **run and produce unsigned artifacts** (they no longer skip for want of Apple signing - changed as of 0.6.6). A red mac job is a **real failure**, not an expected skip. Unsigned means a Gatekeeper warning on first open; that is the known trade, not a defect.
 - Spot-check once, if at all: `npm view @otto-code/cli version` shows the new version on `latest`.
+- **Stable only, always in the final report:** tell the user npm's `beta` dist-tag still points at the old beta and must move to the new stable. Trusted publishing can't move dist-tags, so the user runs it with their `npm login` (loop in `docs/release.md` → "Release completion and heartbeat"). Never run it yourself.
 
 Stable rollout is a 36h staged ramp by default; nothing extra needed. To admit everyone immediately or tune the ramp, see **`docs/release.md` → "Staged rollout"**.
 

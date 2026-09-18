@@ -148,7 +148,14 @@ ACP catalog work enters a release through an explicit user request:
 
 - **Check ACP drift**: run `npm run acp:version-drift:check`. When drift exists,
   run `npm run acp:version-drift:update`, verify the catalog, and include the
-  update in the local release-preparation commits.
+  update in the local release-preparation commits. The check has three parts:
+  exact npm/PyPI pins for package-runner entries; version labels for
+  installed-command entries (`goose acp`) against the
+  [ACP registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json),
+  moved forward only; and registry coverage. A registry agent with no catalog
+  entry fails the check until someone adds the entry or lists it in
+  `REGISTRY_EXCLUSIONS` in `scripts/check-acp-catalog-version-drift.mjs` with a
+  reason. `--update` never adds agents.
 - **Update ACP**: run `npm run acp:version-drift:update`, verify the catalog, and
   include the update in the local release-preparation commits.
 

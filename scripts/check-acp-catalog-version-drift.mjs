@@ -3,13 +3,37 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 const CATALOG_PATH = new URL("../packages/app/src/data/acp-provider-catalog.ts", import.meta.url);
+const ACP_REGISTRY_URL = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 const EXACT_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+].*)?$/;
+
+// ACP registry agents that deliberately have no catalog entry. A registry agent
+// that is neither in the catalog nor listed here fails the check, so a new
+// agent gets a decision at release time instead of going unnoticed.
+const REGISTRY_EXCLUSIONS = {
+  "claude-acp": "built-in Otto provider",
+  "codex-acp": "built-in Otto provider",
+  "github-copilot-cli": "built-in Otto provider",
+  opencode: "built-in Otto provider",
+  "pi-acp": "built-in Otto provider",
+  "antigravity-acp":
+    "ships only as a downloaded archive whose launcher is not a PATH command, so a catalog entry could not start it",
+};
+
+// Registry ids that the catalog carries under an older id. Renaming a catalog
+// id would orphan every installed provider config that references it.
+const REGISTRY_ID_ALIASES = {
+  "grok-build": "grok",
+};
+
 const HELP_TEXT = `Usage: npm run acp:version-drift [-- --json] [-- --fail-on-drift] [-- --no-network] [-- --update]
 
-Checks package-runner ACP catalog entries for exact latest registry pins.
+Checks package-runner ACP catalog entries for exact latest registry pins, the
+version labels of installed-command entries against the ACP registry, and the
+catalog's coverage of the ACP registry.
 
 By default this is report-only. Add --fail-on-drift to exit non-zero when drift is found.
-Add --update to rewrite the catalog package-runner entries to the latest exact versions.`;
+Add --update to rewrite package-runner pins and installed-command version labels.
+Registry coverage gaps are never auto-fixed: add the entry or an exclusion with a reason.`;
 
 function parseArgs(argv) {
   const options = {
@@ -381,31 +405,126 @@ async function inspectEntry(entry, options) {
   };
 }
 
+async function fetchAcpRegistryAgents() {
+  const response = await fetch(ACP_REGISTRY_URL, { signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) {
+    throw new Error(`ACP registry responded ${response.status}`);
+  }
+  const registry = await response.json();
+  const agents = Array.isArray(registry) ? registry : registry?.agents;
+  if (!Array.isArray(agents)) {
+    throw new Error("ACP registry response did not include an agents list");
+  }
+  return agents;
+}
+
+// Numeric, dot-wise comparison. Good enough for the semver and calendar
+// versions the registry publishes; prerelease suffixes are ignored.
+function compareVersions(left, right) {
+  const leftParts = left.split(/[-+]/)[0].split(".").map(Number);
+  const rightParts = right.split(/[-+]/)[0].split(".").map(Number);
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return 0;
+}
+
+/**
+ * The registry pass. Package-runner entries are already pinned against npm or
+ * PyPI above, which publish ahead of the registry, so the registry only
+ * versions the installed-command entries (`goose acp`, `kimi acp`, ...). Their
+ * version is a display label, and it moves only forward: a registry that lags
+ * never downgrades it. Entries labelled "manual" are left alone on purpose.
+ */
+function inspectRegistry(entries, results, agents) {
+  const catalogIds = new Set(entries.map((entry) => entry.id));
+  const skippedIds = new Set(
+    results.filter((result) => !result.checked).map((result) => result.id),
+  );
+  const labelDrift = [];
+  const missing = [];
+
+  for (const agent of agents) {
+    const catalogId = REGISTRY_ID_ALIASES[agent.id] ?? agent.id;
+    if (!catalogIds.has(catalogId)) {
+      if (!REGISTRY_EXCLUSIONS[agent.id]) {
+        missing.push({ id: agent.id, name: agent.name, version: agent.version });
+      }
+      continue;
+    }
+    const entry = entries.find((candidate) => candidate.id === catalogId);
+    if (
+      skippedIds.has(catalogId) &&
+      EXACT_VERSION_PATTERN.test(entry.version ?? "") &&
+      typeof agent.version === "string" &&
+      EXACT_VERSION_PATTERN.test(agent.version) &&
+      compareVersions(agent.version, entry.version) > 0
+    ) {
+      labelDrift.push({
+        id: catalogId,
+        catalogVersion: entry.version,
+        registryVersion: agent.version,
+        start: entry.start,
+        end: entry.end,
+      });
+    }
+  }
+
+  const registryIds = new Set(agents.map((agent) => REGISTRY_ID_ALIASES[agent.id] ?? agent.id));
+  const unregistered = entries.map((entry) => entry.id).filter((id) => id && !registryIds.has(id));
+
+  return { labelDrift, missing, unregistered };
+}
+
 function serializeCommand(command) {
   return `[${command.map((arg) => JSON.stringify(arg)).join(", ")}]`;
 }
 
-function applyUpdates(source, results) {
+function applyUpdates(source, results, registryReport) {
   let updatedSource = source;
-  const updates = results
+  const pinUpdates = results
     .filter((result) => result.checked && result.latestVersion && result.updatedCommand)
-    .sort((left, right) => right.start - left.start);
+    .map((result) => ({
+      start: result.start,
+      end: result.end,
+      version: result.latestVersion,
+      command: result.updatedCommand,
+    }));
+  const labelUpdates = (registryReport?.labelDrift ?? []).map((drift) => ({
+    start: drift.start,
+    end: drift.end,
+    version: drift.registryVersion,
+    command: null,
+  }));
+  // Rewrite from the end of the file backwards so earlier offsets stay valid.
+  const updates = [...pinUpdates, ...labelUpdates].sort((left, right) => right.start - left.start);
 
-  for (const result of updates) {
-    const block = updatedSource.slice(result.start, result.end);
-    const updatedBlock = block
-      .replace(/version:\s*"[^"]+"/, `version: "${result.latestVersion}"`)
-      .replace(/command:\s*\[[^\]]+\]/, `command: ${serializeCommand(result.updatedCommand)}`);
-    updatedSource = `${updatedSource.slice(0, result.start)}${updatedBlock}${updatedSource.slice(result.end)}`;
+  for (const update of updates) {
+    const block = updatedSource.slice(update.start, update.end);
+    let updatedBlock = block.replace(/version:\s*"[^"]+"/, `version: "${update.version}"`);
+    if (update.command) {
+      updatedBlock = updatedBlock.replace(
+        /command:\s*\[[^\]]+\]/,
+        `command: ${serializeCommand(update.command)}`,
+      );
+    }
+    updatedSource = `${updatedSource.slice(0, update.start)}${updatedBlock}${updatedSource.slice(update.end)}`;
   }
 
   return updatedSource;
 }
 
-function printReport(results, options) {
+function printReport(results, registryReport, options) {
   const reportResults = results.map(({ start: _start, end: _end, ...result }) => result);
   if (options.json) {
-    console.log(JSON.stringify(reportResults, null, 2));
+    const registry = registryReport && {
+      ...registryReport,
+      labelDrift: registryReport.labelDrift.map(({ start: _start, end: _end, ...label }) => label),
+    };
+    console.log(JSON.stringify({ packageRunners: reportResults, registry }, null, 2));
     return;
   }
 
@@ -435,10 +554,42 @@ function printReport(results, options) {
   }
 
   if (skipped.length > 0) {
-    console.log("\nSkipped non-package-runner commands:");
+    console.log("\nInstalled-command entries (versioned from the ACP registry):");
     for (const result of skipped) {
       console.log(`- ${result.id}: ${result.command?.join(" ") ?? "<no command>"}`);
     }
+  }
+
+  printRegistryReport(registryReport);
+}
+
+function printRegistryReport(registryReport) {
+  if (!registryReport) {
+    console.log("\nACP registry: not checked (--no-network)");
+    return;
+  }
+
+  console.log("\nACP registry");
+  console.log("============");
+  console.log(`stale labels:    ${registryReport.labelDrift.length}`);
+  console.log(`missing agents:  ${registryReport.missing.length}`);
+  for (const label of registryReport.labelDrift) {
+    console.log(
+      `- ${label.id}: catalog ${label.catalogVersion}, registry ${label.registryVersion}`,
+    );
+  }
+  if (registryReport.missing.length > 0) {
+    console.log(
+      "\nIn the ACP registry but not the catalog (add an entry, or an exclusion with a reason):",
+    );
+    for (const agent of registryReport.missing) {
+      console.log(`- ${agent.id} (${agent.name} ${agent.version ?? ""})`);
+    }
+  }
+  if (registryReport.unregistered.length > 0) {
+    console.log(
+      `\nCurated catalog entries not in the ACP registry (informational): ${registryReport.unregistered.join(", ")}`,
+    );
   }
 }
 
@@ -446,13 +597,19 @@ const options = parseArgs(process.argv.slice(2));
 const source = await readFile(CATALOG_PATH, "utf8");
 const entries = parseCatalogEntries(source);
 const results = await Promise.all(entries.map((entry) => inspectEntry(entry, options)));
-const hasDrift = results.some((result) => result.checked && result.status === "drift");
+const registryReport = options.noNetwork
+  ? null
+  : inspectRegistry(entries, results, await fetchAcpRegistryAgents());
+const hasDrift =
+  results.some((result) => result.checked && result.status === "drift") ||
+  (registryReport !== null &&
+    (registryReport.labelDrift.length > 0 || registryReport.missing.length > 0));
 
 if (options.update) {
-  await writeFile(CATALOG_PATH, applyUpdates(source, results));
+  await writeFile(CATALOG_PATH, applyUpdates(source, results, registryReport));
 }
 
-printReport(results, options);
+printReport(results, registryReport, options);
 
 if (options.failOnDrift && hasDrift) {
   process.exitCode = 1;
