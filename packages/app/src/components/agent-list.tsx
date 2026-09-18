@@ -9,7 +9,7 @@ import {
   type PressableStateCallbackType,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -38,6 +38,7 @@ import type { AgentSearchMatch } from "@otto-code/protocol/messages";
 import type { MatchRange } from "@otto-code/protocol/search/text-match";
 import type { IconSizeProp } from "@/components/icons/icon-size";
 import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 
 interface AgentListProps {
   agents: AggregatedAgent[];
@@ -220,6 +221,56 @@ function SessionRowBadges({
   );
 }
 
+function useSessionRowPressState({
+  isSelected,
+  isRestoring,
+  isLocked,
+}: {
+  isSelected: boolean;
+  isRestoring: boolean;
+  isLocked: boolean;
+}) {
+  const style = useCallback(
+    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.row,
+      (isSelected || isRestoring) && styles.rowSelected,
+      Boolean(hovered) && !isLocked && styles.rowHovered,
+      pressed && styles.rowPressed,
+      isLocked && styles.rowLocked,
+    ],
+    [isSelected, isRestoring, isLocked],
+  );
+  return {
+    style,
+    disabled: isLocked || isRestoring,
+    accessibilityState: isRestoring ? RESTORING_ACCESSIBILITY_STATE : undefined,
+  };
+}
+
+/**
+ * The provider icon, or a same-size spinner in its place while the archived chat is
+ * being restored, so the title does not shift when the restore settles.
+ */
+function SessionRowLeadingIcon({
+  agent,
+  isRestoring,
+}: {
+  agent: AggregatedAgent;
+  isRestoring: boolean;
+}) {
+  const { theme } = useUnistyles();
+  const ProviderIcon = getProviderIcon(agent.provider, agent.serverId);
+  return (
+    <View style={styles.providerIconWrap}>
+      {isRestoring ? (
+        <LoadingSpinner size="sm" testID={`agent-row-restoring-${agent.serverId}-${agent.id}`} />
+      ) : (
+        <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+      )}
+    </View>
+  );
+}
+
 function SessionRowTrailingAttention({
   isMobile,
   showAttentionIndicator,
@@ -247,6 +298,8 @@ function SessionRow({
   selectedAgentId,
   showAttentionIndicator,
   showHostColumn,
+  isRestoring,
+  isLocked,
   onPress,
   onLongPress,
 }: {
@@ -256,6 +309,10 @@ function SessionRow({
   selectedAgentId?: string;
   showAttentionIndicator: boolean;
   showHostColumn: boolean;
+  /** This row's archived chat is being restored; the spinner stands in for its provider icon. */
+  isRestoring: boolean;
+  /** Another row is restoring, so this one takes no presses until it settles. */
+  isLocked: boolean;
   onPress: (agent: AggregatedAgent) => void;
   onLongPress: (agent: AggregatedAgent) => void;
 }) {
@@ -267,7 +324,6 @@ function SessionRow({
   const projectName = agent.projectPlacement?.projectName ?? "";
   const branch = agent.projectPlacement?.checkout.currentBranch ?? "";
   const workspaceName = agent.projectPlacement?.workspaceName ?? "";
-  const ProviderIcon = getProviderIcon(agent.provider, agent.serverId);
   const pendingPermissionCount = agent.pendingPermissionCount ?? 0;
   const rangesFor = useCallback(
     (field: AgentSearchMatch["field"]) =>
@@ -275,15 +331,7 @@ function SessionRow({
     [searchMatches],
   );
 
-  const pressableStyle = useCallback(
-    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.row,
-      isSelected && styles.rowSelected,
-      Boolean(hovered) && styles.rowHovered,
-      pressed && styles.rowPressed,
-    ],
-    [isSelected],
-  );
+  const pressState = useSessionRowPressState({ isSelected, isRestoring, isLocked });
 
   const handlePress = useCallback(() => onPress(agent), [onPress, agent]);
   const handleLongPress = useCallback(() => onLongPress(agent), [onLongPress, agent]);
@@ -302,9 +350,11 @@ function SessionRow({
 
   return (
     <Pressable
-      style={pressableStyle}
+      style={pressState.style}
       onPress={handlePress}
       onLongPress={handleLongPress}
+      disabled={pressState.disabled}
+      accessibilityState={pressState.accessibilityState}
       testID={`agent-row-${agent.serverId}-${agent.id}`}
     >
       <View style={styles.rowContent}>
@@ -317,9 +367,7 @@ function SessionRow({
             iconSize={theme.iconSize.xs}
             color={theme.colors.foregroundMuted}
           />
-          <View style={styles.providerIconWrap}>
-            <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-          </View>
+          <SessionRowLeadingIcon agent={agent} isRestoring={isRestoring} />
           <HighlightedText
             text={agent.title || t("agentList.fallbackTitle")}
             ranges={agent.title ? rangesFor("title") : undefined}
@@ -440,9 +488,18 @@ export function AgentList({
   const isActionSheetVisible = actionAgent !== null;
   const isActionDaemonUnavailable = Boolean(actionAgent?.serverId && !actionClient);
 
+  /**
+   * Restoring an archived chat is a daemon round-trip that can take seconds, so it
+   * runs one at a time: the clicked row shows a spinner and every other row is
+   * locked until the restore settles and the view switches. The ref closes the
+   * double-click window before the state render lands.
+   */
+  const [restoringAgentKey, setRestoringAgentKey] = useState<string | null>(null);
+  const restoringAgentKeyRef = useRef<string | null>(null);
+
   const handleAgentPress = useCallback(
     (agent: AggregatedAgent) => {
-      if (isActionSheetVisible) {
+      if (isActionSheetVisible || restoringAgentKeyRef.current) {
         return;
       }
 
@@ -461,6 +518,9 @@ export function AgentList({
       if (agent.archivedAt) {
         const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
         if (client) {
+          const agentKey = `${serverId}:${agentId}`;
+          restoringAgentKeyRef.current = agentKey;
+          setRestoringAgentKey(agentKey);
           void client
             .refreshAgent(agentId)
             .then(() => {
@@ -469,14 +529,20 @@ export function AgentList({
                 queryKey: agentHistoryQueryKey(serverId),
               });
             })
-            .catch(() => {});
+            .catch((error: unknown) => {
+              toast.error(toErrorMessage(error));
+            })
+            .finally(() => {
+              restoringAgentKeyRef.current = null;
+              setRestoringAgentKey(null);
+            });
         }
         return;
       }
 
       openAgent();
     },
-    [isActionSheetVisible, onAgentSelect, queryClient],
+    [isActionSheetVisible, onAgentSelect, queryClient, toast],
   );
 
   /**
@@ -514,6 +580,9 @@ export function AgentList({
 
   const handleAgentLongPress = useCallback(
     (agent: AggregatedAgent) => {
+      if (restoringAgentKeyRef.current) {
+        return;
+      }
       const isRunning = agent.status === "running";
       if (isRunning) {
         setActionAgent(agent);
@@ -595,6 +664,8 @@ export function AgentList({
           selectedAgentId={selectedAgentId}
           showAttentionIndicator={showAttentionIndicator}
           showHostColumn={showHostColumn}
+          isRestoring={restoringAgentKey === item.key}
+          isLocked={restoringAgentKey !== null && restoringAgentKey !== item.key}
           onPress={handleAgentPress}
           onLongPress={handleAgentLongPress}
         />
@@ -604,6 +675,7 @@ export function AgentList({
       handleAgentLongPress,
       handleAgentPress,
       isMobile,
+      restoringAgentKey,
       searchMatchesByAgentKey,
       selectedAgentId,
       showAttentionIndicator,
@@ -648,6 +720,7 @@ export function AgentList({
         contentContainerStyle={styles.listContent}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
+        extraData={restoringAgentKey}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         ListFooterComponent={listFooterComponent}
@@ -775,6 +848,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   rowPressed: {
     backgroundColor: theme.colors.surface2,
+  },
+  rowLocked: {
+    opacity: 0.5,
   },
   sessionTitle: {
     flexShrink: 1,
@@ -928,6 +1004,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
   },
 }));
+
+const RESTORING_ACCESSIBILITY_STATE = { busy: true } as const;
 
 const SHEET_CANCEL_BUTTON_STYLE = [styles.sheetButton, styles.sheetCancelButton];
 const SHEET_ARCHIVE_BUTTON_STYLE = [styles.sheetButton, styles.sheetArchiveButton];
