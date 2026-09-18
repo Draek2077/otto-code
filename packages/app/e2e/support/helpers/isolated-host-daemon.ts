@@ -4,7 +4,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { withDisabledE2ESpeechEnv } from "./speech-env";
-import { killProcessTree as stopProcess } from "./spawn-node";
+import { killProcessTree as stopProcess, spawnTsx } from "./spawn-node";
 
 export interface IsolatedHostDaemon {
   serverId: string;
@@ -136,9 +136,6 @@ export async function startIsolatedHostDaemon(
   const serverDir = publishedPackageRoot
     ? path.join(publishedPackageRoot, "node_modules", "@otto-code", "server")
     : path.resolve(__dirname, "../../../../server");
-  // Resolve the tsx CLI entry through the module graph instead of `which tsx`
-  // so the daemon starts on Windows too (`which` is POSIX-only).
-  const tsxCli = require.resolve("tsx/cli", { paths: [serverDir] });
   const spawnDaemon = async (): Promise<ChildProcess> => {
     const spawnOptions: SpawnOptions = {
       cwd: serverDir,
@@ -163,11 +160,7 @@ export async function startIsolatedHostDaemon(
     };
     const child = publishedPackageRoot
       ? spawn(process.execPath, ["dist/scripts/supervisor-entrypoint.js"], spawnOptions)
-      : spawn(
-          process.execPath,
-          [tsxCli, "scripts/supervisor-entrypoint.ts", "--dev"],
-          spawnOptions,
-        );
+      : spawnTsx("scripts/supervisor-entrypoint.ts", ["--dev"], spawnOptions);
 
     let stderr = "";
     child.stderr?.on("data", (chunk: Buffer) => {

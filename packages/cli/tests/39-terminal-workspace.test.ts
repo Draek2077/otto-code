@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createOttoClient } from "@otto-code/client";
 import { createE2ETestContext } from "./helpers/test-daemon.ts";
 import { waitForTerminalOutput } from "./helpers/terminal.ts";
 
 const ctx = await createE2ETestContext({ timeout: 30_000 });
 const sdk = createOttoClient({ url: `${ctx.wsUrl}/ws`, reconnect: { enabled: false } });
+// Otto keeps one live workspace per directory (docs/workspace-lifecycle.md), so
+// the second workspace gets its own directory rather than sharing ctx.workDir.
+const featureDir = await mkdtemp(join(tmpdir(), "otto-e2e-feature-"));
 
 async function cli(args: string[]) {
   const result = await ctx.otto([...args, "--json"]);
@@ -19,7 +25,7 @@ try {
     title: "main",
   });
   const second = await sdk.workspaces.create({
-    source: { kind: "directory", path: ctx.workDir },
+    source: { kind: "directory", path: featureDir },
     title: "feature-work",
   });
   const main = await cli(["terminal", "create", "--cwd", ctx.workDir, "--name", "Main"]);
@@ -28,11 +34,12 @@ try {
   assert.deepEqual(feature, {
     id: feature.id,
     name: "Feature",
-    cwd: ctx.workDir,
+    cwd: featureDir,
     workspaceId: second.id,
   });
   assert.deepEqual(await cli(["terminal", "ls", "--workspace", second.id]), [feature]);
-  assert.deepEqual(await cli(["terminal", "ls", "--cwd", ctx.workDir]), [main, feature]);
+  assert.deepEqual(await cli(["terminal", "ls", "--cwd", ctx.workDir]), [main]);
+  assert.deepEqual(await cli(["terminal", "ls", "--cwd", featureDir]), [feature]);
   assert.deepEqual(await cli(["terminal", "ls", "--all"]), [main, feature]);
   const invalid = await ctx.otto([
     "terminal",
@@ -77,4 +84,5 @@ try {
 } finally {
   await sdk.close();
   await ctx.stop();
+  await rm(featureDir, { recursive: true, force: true });
 }

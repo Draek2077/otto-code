@@ -348,7 +348,7 @@ describe("desktop-settings", () => {
       migrations: Record<string, boolean>;
     };
 
-    expect(persisted.settings.tray).toEqual({ enabled: true });
+    expect(persisted.settings.tray).toEqual({ ...DEFAULT_DESKTOP_SETTINGS.tray, enabled: true });
     expect(persisted.settings.daemon.futureFlag).toBe(7);
     expect(persisted.migrations.futureMigrationApplied).toBe(true);
     expect(persisted.futureDocumentKey).toBe("kept");
@@ -357,6 +357,10 @@ describe("desktop-settings", () => {
       releaseChannel: "beta",
       notifications: { playSound: false },
       daemon: { manageBuiltInDaemon: true, keepRunningAfterQuit: false },
+      // Otto models tray and quit, so the public projection carries their
+      // defaults while the foreign `tray.enabled` key survives only on disk.
+      tray: DEFAULT_DESKTOP_SETTINGS.tray,
+      quit: DEFAULT_DESKTOP_SETTINGS.quit,
     });
   });
 
@@ -378,7 +382,7 @@ describe("desktop-settings", () => {
       settings: { releaseChannel: string; tray: unknown };
     };
 
-    expect(persisted.settings.tray).toEqual({ enabled: true });
+    expect(persisted.settings.tray).toEqual({ ...DEFAULT_DESKTOP_SETTINGS.tray, enabled: true });
     expect(persisted.settings.releaseChannel).toBe("beta");
   });
 
@@ -401,7 +405,7 @@ describe("desktop-settings", () => {
     };
 
     expect(persisted.settings.releaseChannel).toBe("stable");
-    expect(persisted.settings.tray).toEqual({ enabled: true });
+    expect(persisted.settings.tray).toEqual({ ...DEFAULT_DESKTOP_SETTINGS.tray, enabled: true });
   });
   it("retains independent Otto tray and quit preferences plus unknown future storage fields", async () => {
     const userDataPath = await createTempUserDataDir();

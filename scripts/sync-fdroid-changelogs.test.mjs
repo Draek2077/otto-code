@@ -266,9 +266,17 @@ test("renders the real 0.1.109 notice, which is the entry's whole point", () => 
 });
 
 test("preserves the standalone 0.1.96 Android notice", () => {
-  const changelog = readFileSync(path.resolve("CHANGELOG.md"), "utf8");
-  const entry = changelog.match(/## 0\.1\.96 - 2026-06-13\n([\s\S]*?)(?=\n## |$)/)?.[1];
-  assert.ok(entry);
+  // The upstream 0.1.x history was removed from Otto's CHANGELOG.md, so the
+  // 0.1.96 entry body is inlined verbatim instead of read from the repo.
+  const entry = [
+    "",
+    "_This release only fixes an Android issue — desktop users don't need to update._",
+    "",
+    "### Fixed",
+    "",
+    "- On Android, the sidebar no longer reappears and gets stuck after you open a chat",
+    "",
+  ].join("\n");
 
   const contents = formatFdroidChangelog(entry.split("\n"));
   assert.match(contents, /This release only fixes an Android issue/);

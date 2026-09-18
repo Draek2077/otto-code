@@ -223,7 +223,9 @@ export function syncFdroidChangelogs(argv = process.argv.slice(2), deps = {}) {
 
   for (const { abi, versionCode } of versionCodes) {
     const filePath = path.join(changelogDir, `${versionCode}.txt`);
-    const relativePath = path.relative(cwd, filePath);
+    // Repo paths are reported with forward slashes on every platform, as git
+    // prints them; path.relative would give backslashes on Windows.
+    const relativePath = path.relative(cwd, filePath).split(path.sep).join("/");
     const current = existsSync(filePath) ? readFileSync(filePath, "utf8") : null;
 
     if (current === contents) {
