@@ -354,6 +354,9 @@ const CurrentPullRequestStatusSchema = z.object({
   isDraft: z.boolean().optional().catch(false),
   baseRefName: z.string().catch(""),
   headRefName: z.string().catch(""),
+  // Never requested from `gh pr view/list` (older gh rejects the field), but the
+  // batched GraphQL poll carries it so merged PRs can match the checkout SHA.
+  headRefOid: z.string().optional(),
   mergedAt: z.string().nullable().optional(),
   statusCheckRollup: z.unknown().optional(),
   reviewDecision: z.unknown().optional(),
@@ -3670,8 +3673,10 @@ function toCurrentPullRequestCandidate(
     return null;
   }
   const headRepositoryOwner = item.headRepositoryOwner?.login;
+  const headSha = item.headRefOid;
   return {
     status,
+    ...(headSha ? { headSha } : {}),
     ...(headRepositoryOwner ? { headRepositoryOwner } : {}),
   };
 }

@@ -111,6 +111,10 @@ export class WorkspaceAutoName {
     if (!this.isMetadataGenerationEnabled()) {
       return;
     }
+    // A workspace can sit in a subdirectory of its worktree. The branch and the
+    // first-agent metadata belong to the worktree root; the title belongs to the
+    // workspace (Paseo #2098).
+    const worktreeRoot = input.workspace.worktreeRoot ?? input.workspace.cwd;
     let generated: GeneratedWorkspaceName | null = null;
     // Whether the branch-rename path actually invoked the generator. A null
     // result from a generation that DID run must not re-trigger the whole
@@ -119,12 +123,12 @@ export class WorkspaceAutoName {
     // should fall through to the direct generation below for the title.
     let generatorInvoked = false;
     const result: AttemptFirstAgentBranchAutoNameResult = await attemptFirstAgentBranchAutoName({
-      cwd: input.workspace.cwd,
+      cwd: worktreeRoot,
       firstAgentContext: input.firstAgentContext,
-      generateBranchNameFromContext: ({ cwd, firstAgentContext }) => {
+      generateBranchNameFromContext: ({ firstAgentContext }) => {
         generatorInvoked = true;
         return this.generateFromContext({
-          cwd,
+          cwd: input.workspace.cwd,
           firstAgentContext,
           currentSelection: input.currentSelection,
         }).then((nextGenerated) => {
@@ -156,7 +160,7 @@ export class WorkspaceAutoName {
       promptTitle: resolveFirstAgentPromptTitle(input.firstAgentContext),
     });
     if (result.renamed) {
-      await this.gitMutation.notifyGitMutation(input.workspace.cwd, "rename-branch");
+      await this.gitMutation.notifyGitMutation(worktreeRoot, "rename-branch");
     }
     await this.emitWorkspaceUpdateForCwd(input.workspace.cwd);
   }

@@ -1348,7 +1348,7 @@ async function resolveBaseRefLadder(
     };
   }
 
-  const defaultBranch = await resolveBaseRef(cwd).catch(() => null);
+  const defaultBranch = await resolveBaseRef(cwd, context).catch(() => null);
   const detected = await detectBaseRefForBranch(cwd, {
     currentBranch,
     defaultBranch,
@@ -1472,7 +1472,7 @@ async function healRememberedBaseRef(
     return { ref: remembered.ref, source: remembered.source };
   }
 
-  const defaultBranch = await resolveBaseRef(cwd).catch(() => null);
+  const defaultBranch = await resolveBaseRef(cwd, context).catch(() => null);
   if (!defaultBranch || normalizeLocalBranchRefName(defaultBranch) === currentBranch) {
     try {
       clearStoredDiffBaseForBranch(worktreeRoot, currentBranch);
@@ -2517,7 +2517,9 @@ export async function getCheckoutSnapshotFacts(
     if (branchRemoteName) {
       [branchMergeRef, branchRemoteUrl] = await Promise.all([
         getGitConfigValue(cwd, `branch.${inspected.currentBranch}.merge`, context),
-        getGitConfigValue(cwd, `remote.${branchRemoteName}.url`, context),
+        branchRemoteName === "origin"
+          ? inspected.remoteUrl
+          : getGitConfigValue(cwd, `remote.${branchRemoteName}.url`, context),
       ]);
     }
   }

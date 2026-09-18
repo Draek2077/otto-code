@@ -1073,7 +1073,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       includeForge: false,
       reason: "refresh",
       notify: true,
-      queueIfBusy: true,
+      queueIfBusy: false,
       movedRemoteRefs: new Set(),
     });
     this.scheduleWorkspaceObservationSetup(target);
@@ -1332,7 +1332,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         force: false,
         refreshStructure: true,
         refreshWorktree: true,
-        includeForge: true,
+        // Otto: registration (the sidebar listing) must not block on a forge
+        // round-trip. PR status arrives through the per-branch forge poll.
+        includeForge: false,
         reason: "initial",
         notify: true,
         queueIfBusy: false,
@@ -1404,6 +1406,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target.repoGitRoot = repoGitRoot;
     await this.ensureRepoTarget(target);
     if (this.isActiveObservedWorkspaceTarget(target)) {
+      // Working-tree and metadata observation are both running now. Without this
+      // stamp a git workspace never counts as covered, and every getSnapshot on it
+      // re-reads git and the forge as "snapshot-predates-watchers".
+      target.watchersStartedAtMs ??= this.deps.now().getTime();
       target.observationSetupComplete = true;
     }
   }
