@@ -138,6 +138,52 @@ export interface UseFormRolePersonalityInput {
 }
 
 /**
+ * A profile owns its provider: model/mode/effort may deviate and keep the
+ * identity, but a form sitting on a different provider no longer describes the
+ * selection. The form re-resolves on its own (hide/show, host change, new
+ * initial values) and lands on the last-used model while the selection
+ * survives - the trigger said "Kit", the spawn said Codex. Put the selection's
+ * values back whenever that drift appears. An unresolvable selection (provider
+ * still warming) is a no-op; the next snapshot retries. Binding surfaces edit a
+ * stored record whose saved brain is the source of truth, so they opt out.
+ */
+function useReapplyOnProviderDrift(input: {
+  hasBinding: boolean;
+  currentSelection: PersonalityCurrentSelection | undefined;
+  teamEntrySelected: boolean;
+  teamEntry: { values: PersonalityFormValues | null } | null;
+  selectedEntry: SelectorProfile | null;
+  onApply: (values: PersonalityFormValues) => void;
+  selectPersonality: (id: string, options?: { persist?: boolean }) => void;
+}): void {
+  const { hasBinding, teamEntrySelected, onApply, selectPersonality } = input;
+  const formProvider = input.currentSelection?.provider ?? null;
+  const teamValues = teamEntrySelected ? (input.teamEntry?.values ?? null) : null;
+  const personalityId = teamEntrySelected ? null : (input.selectedEntry?.id ?? null);
+  const selectedProvider = teamEntrySelected
+    ? (teamValues?.provider ?? null)
+    : (input.selectedEntry?.provider ?? null);
+  useEffect(() => {
+    if (hasBinding || !formProvider || !selectedProvider || formProvider === selectedProvider) {
+      return;
+    }
+    if (teamValues) {
+      onApply(teamValues);
+    } else if (personalityId) {
+      selectPersonality(personalityId, { persist: false });
+    }
+  }, [
+    hasBinding,
+    formProvider,
+    selectedProvider,
+    teamValues,
+    personalityId,
+    onApply,
+    selectPersonality,
+  ]);
+}
+
+/**
  * Form-surface personality producer: the role-filtered roster (via
  * usePersonalitySelection) plus, when a team is active, a synthetic entry that
  * follows the team's holder of `role` at pick time. Selecting the synthetic
@@ -404,6 +450,16 @@ export function useFormRolePersonality(input: UseFormRolePersonalityInput): Role
         : undefined,
     [selectedEntry],
   );
+
+  useReapplyOnProviderDrift({
+    hasBinding: binding !== undefined,
+    currentSelection,
+    teamEntrySelected,
+    teamEntry,
+    selectedEntry,
+    onApply,
+    selectPersonality,
+  });
 
   // The team slot's id is display-only, so resolve it to the member the team
   // actually picked before it can reach createAgent.

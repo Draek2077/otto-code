@@ -123,12 +123,16 @@ function setConfig(input: { personalities: AgentProfile[]; activeTeamId: string 
 interface HarnessProps {
   entries: readonly ProviderSnapshotEntry[];
   initialPersonalityId?: string | null;
+  /** The provider the form currently holds. Defaults to the roster's "mock". */
+  formProvider?: string;
+  /** The model the form currently holds. Defaults to "model-a". */
+  formModel?: string;
 }
 
 function renderComposerPicker(initialProps: HarnessProps) {
   const onApply = vi.fn<(values: PersonalityFormValues) => void>();
   const view = renderHook(
-    ({ entries, initialPersonalityId }: HarnessProps) =>
+    ({ entries, initialPersonalityId, formProvider, formModel }: HarnessProps) =>
       useFormRolePersonality({
         serverId: "host-a",
         role: "chatter",
@@ -137,8 +141,8 @@ function renderComposerPicker(initialProps: HarnessProps) {
         // What the form currently shows. The remembered-personality preselect
         // is match-gated against this, so it lines up with the roster entries.
         currentSelection: {
-          provider: "mock",
-          model: "model-a",
+          provider: formProvider ?? "mock",
+          model: formModel ?? "model-a",
           modeId: "",
           thinkingOptionId: "",
         },
@@ -342,5 +346,82 @@ describe("useFormRolePersonality (load order)", () => {
     expect(result.current.spawnProfileId).toBe(OTHER_CHATTER.id);
     // Identity only - the fork's provider/model already arrive via initialValues.
     expect(onApply).not.toHaveBeenCalled();
+  });
+});
+
+describe("useFormRolePersonality (form drift)", () => {
+  beforeEach(() => {
+    mocks.config.config = null;
+    mocks.teamsFeature.enabled = false;
+    mocks.preferences.preferences = {};
+    mocks.preferences.isLoading = false;
+    mocks.preferences.updatePreferences.mockClear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("re-applies the team slot when the form re-resolves onto another provider", async () => {
+    // The bug: hiding and re-showing the draft composer re-resolved the form to
+    // the last-used model (another provider) while the team slot stayed
+    // selected. The trigger read "Kit", the spawn sent Codex with Kit's id.
+    mocks.teamsFeature.enabled = true;
+    setConfig({ personalities: [CHATTER], activeTeamId: TEAM.id });
+
+    const { result, rerender, onApply } = renderComposerPicker({ entries: READY_ENTRIES });
+    await waitFor(() => {
+      expect(result.current.selectedProfileId).toBe(TEAM_ENTRY_ID);
+    });
+    onApply.mockClear();
+
+    rerender({ entries: READY_ENTRIES, formProvider: "codex", formModel: "gpt-6-astra" });
+
+    await waitFor(() => {
+      expect(onApply).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: "mock", model: "model-a" }),
+      );
+    });
+    expect(result.current.selectedProfileId).toBe(TEAM_ENTRY_ID);
+    expect(result.current.spawnProfileId).toBe(CHATTER.id);
+  });
+
+  it("re-applies a selected personality when the form drifts to another provider", async () => {
+    setConfig({ personalities: [CHATTER], activeTeamId: null });
+
+    const { result, rerender, onApply } = renderComposerPicker({ entries: READY_ENTRIES });
+    await waitFor(() => {
+      expect(result.current.selectedProfileId).toBe(CHATTER.id);
+    });
+    onApply.mockClear();
+
+    rerender({ entries: READY_ENTRIES, formProvider: "codex", formModel: "gpt-6-astra" });
+
+    await waitFor(() => {
+      expect(onApply).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: "mock", model: "model-a" }),
+      );
+    });
+    expect(result.current.selectedProfileId).toBe(CHATTER.id);
+    // A repair, not a user choice - device memory stays untouched.
+    expect(mocks.preferences.updatePreferences).not.toHaveBeenCalled();
+  });
+
+  it("keeps a same-provider deviation without re-applying the personality", async () => {
+    // Deviation keeps identity: a different model on the personality's own
+    // provider is the user's override, not drift.
+    setConfig({ personalities: [CHATTER], activeTeamId: null });
+
+    const { result, rerender, onApply } = renderComposerPicker({ entries: READY_ENTRIES });
+    await waitFor(() => {
+      expect(result.current.selectedProfileId).toBe(CHATTER.id);
+    });
+    onApply.mockClear();
+
+    rerender({ entries: READY_ENTRIES, formModel: "model-b" });
+
+    expect(onApply).not.toHaveBeenCalled();
+    expect(result.current.selectedProfileId).toBe(CHATTER.id);
   });
 });

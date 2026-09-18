@@ -2591,9 +2591,14 @@ export class Session {
 
   private async enrichAgentPayload(payload: AgentSnapshotPayload): Promise<AgentSnapshotPayload> {
     const storedRecord = await this.agentStorage.get(payload.id);
-    payload.title = storedRecord?.title ?? null;
-    payload.archivedAt = storedRecord?.archivedAt ?? null;
-    return payload;
+    // Observed subagents have no stored record. Their projection owns the title
+    // and archive state; enriching a push must not erase either in the registry.
+    return {
+      ...payload,
+      ...(storedRecord
+        ? { title: storedRecord.title ?? null, archivedAt: storedRecord.archivedAt ?? null }
+        : {}),
+    };
   }
 
   private buildAgentPayload(agent: ManagedAgent): Promise<AgentSnapshotPayload> {
@@ -7349,7 +7354,8 @@ export class Session {
    * re-checked here (the cwd may differ from where the picker resolved it); an
    * unavailable or unknown personality is skipped with a warning rather than
    * failing the create - the agent still runs with the chosen brain, just
-   * without personality identity. The brain fields are never overridden; only
+   * without personality identity, as is one whose provider differs from the
+   * requested provider. The brain fields are never overridden; only
    * `profileSnapshot` and (when the caller set none) `systemPrompt` are added.
    */
   private async applyProfileIdentityToConfig(
@@ -7381,6 +7387,22 @@ export class Session {
       return config;
     }
     const snapshot: ResolvedProfileSnapshot = resolution.snapshot;
+    // A profile is bound to its provider: model, mode and effort may deviate
+    // within that family, but a different provider is a different agent. A
+    // client whose picker drifted (profile still shown, form re-resolved to
+    // another provider) must not stamp this profile's name, prompt and team
+    // layer onto an agent it does not describe.
+    if (snapshot.provider !== config.provider) {
+      this.sessionLogger.warn(
+        {
+          personalityId,
+          profileProvider: snapshot.provider,
+          requestedProvider: config.provider,
+        },
+        "create_agent_request: personality provider differs from requested provider; spawning without personality identity",
+      );
+      return config;
+    }
     // The one team rule: a member of the active team at spawn time carries the
     // frozen team layer, and the team prompt stacks directly ahead of the
     // personality prompt. Caller-authored prompts still win - nothing composes.
