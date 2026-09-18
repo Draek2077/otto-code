@@ -14,6 +14,7 @@ import {
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
+import { closeVisualizerTabs, getVisualizerTabs } from "./visualizer-tab-owner";
 
 export interface OpenVisualizerTabInput {
   serverId: string;
@@ -60,9 +61,9 @@ function findVisualizerSplitTarget(
 }
 
 /**
- * Open (or focus) the Visualizer tab for a workspace. One instance per
- * workspace (or per run, when `runId` is given) - reopening focuses the
- * existing tab. The Visualizer is a companion view - the user watches it
+ * Open (or retarget) this workspace's Visualizer tab. Inactive workspaces keep
+ * their tabs but unload their guests; only the active workspace initializes one.
+ * The Visualizer is a companion view - the user watches it
  * alongside the chat or orchestration that's beginning - so it opens in a
  * split to the right of the focused pane rather than covering it. When it's
  * already split out into another pane, or there's nothing in the focused pane
@@ -86,6 +87,14 @@ export function openVisualizerTab(input: OpenVisualizerTabInput): boolean {
     kind: "visualizer",
     ...(input.runId ? { runId: input.runId } : {}),
   };
+  const store = useWorkspaceLayoutStore.getState();
+  const existing = getVisualizerTabs(store.layoutByWorkspace).find(
+    (entry) => entry.workspaceKey === workspaceKey,
+  );
+  closeVisualizerTabs(workspaceKey, existing?.tab.tabId);
+  if (existing && !workspaceTabTargetsEqual(existing.tab.target, target)) {
+    store.retargetTab(workspaceKey, existing.tab.tabId, target);
+  }
   const splitTargetPaneId = findVisualizerSplitTarget(workspaceKey, target);
   const tabId = useWorkspaceLayoutStore
     .getState()

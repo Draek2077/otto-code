@@ -70,11 +70,8 @@ import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 export interface VisualizerPipProps {
   serverId: string;
   workspaceId: string;
-  /** The workspace is on screen. False parks the guest (zero frames). */
+  /** Active workspace visibility, forwarded to the event adapter. */
   isVisible: boolean;
-  /** The PIP should be showing. False while the host is holding it mounted for
-   * its fade-out (see visualizer-pip-host.tsx). */
-  shown: boolean;
   onOpenFile: (request: WorkspaceFileOpenRequest) => void;
 }
 
@@ -85,7 +82,6 @@ export function VisualizerPip({
   serverId,
   workspaceId,
   isVisible,
-  shown,
   onOpenFile,
 }: VisualizerPipProps) {
   const { t } = useTranslation();
@@ -164,17 +160,15 @@ export function VisualizerPip({
   } = useVisualizerSurface(serverId, workspaceId);
   const handleBackground = useCallback(() => showAsBackground(), [showAsBackground]);
 
-  // Presence fade: 0 until the position is known, then up; back down when the
-  // host hands us `shown: false` (closed, or handed over to a full tab) while it
-  // holds the mount open for exactly this long. With Animations off both edges
-  // snap, which is the old instant behavior.
+  // Fade in only after measurement. Inactive guests unmount immediately; no
+  // exit animation may retain one while its replacement initializes.
   const presence = useSharedValue(0);
   useEffect(() => {
-    const target = shown && measured ? 1 : 0;
+    const target = measured ? 1 : 0;
     presence.value = animationsEnabled
       ? withTiming(target, { duration: VISUALIZER_PIP_FADE_DURATION_MS })
       : target;
-  }, [shown, measured, animationsEnabled, presence]);
+  }, [measured, animationsEnabled, presence]);
   const presenceStyle = useAnimatedStyle(() => ({ opacity: presence.value }));
 
   // Electron's guest surface does not reliably follow a Reanimated ancestor's

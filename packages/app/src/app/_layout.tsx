@@ -1,4 +1,5 @@
 import "@/styles/unistyles";
+import { VisualizerWindowProvider } from "@/visualizer/visualizer-window-host";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { PortalProvider } from "@gorhom/portal";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -845,7 +846,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
           {/* Headless: binds the resource monitor started above the router to the
           `resourceMonitorEnabled` setting, so the telemetry can be turned off. */}
           <ResourceMonitorHost />
-          {children}
+          <VisualizerWindowProvider>{children}</VisualizerWindowProvider>
         </VoiceProvider>
       </AppearanceProvider>
     </ChatRenderSettingsProvider>

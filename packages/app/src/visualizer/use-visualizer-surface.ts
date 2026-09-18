@@ -15,29 +15,14 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useAppSettings } from "@/hooks/use-settings";
 import type { VisualizerSurface } from "@/hooks/use-settings/storage";
-import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import { openVisualizerTab } from "@/visualizer/open-visualizer-tab";
+import { closeVisualizerTabs } from "@/visualizer/visualizer-tab-owner";
 import {
   useFocusedTabIdFromLayout,
   useWorkspaceTabsFromLayout,
 } from "@/visualizer/use-workspace-chat-focus";
-
-/** Close every Visualizer tab in the workspace. Plural on purpose: run-scoped
- * Visualizer tabs (`target.runId`) are the same surface as the general one, and
- * leaving one behind would re-park the PIP the instant it opened. */
-function closeVisualizerTabs(workspaceKey: string): void {
-  const store = useWorkspaceLayoutStore.getState();
-  const layout = store.layoutByWorkspace[workspaceKey];
-  if (!layout) {
-    return;
-  }
-  for (const tab of collectAllTabs(layout.root)) {
-    if (tab.target.kind === "visualizer") {
-      store.closeTab(workspaceKey, tab.tabId);
-    }
-  }
-}
 
 /** The tab wins when both somehow exist: it is the surface the user can see and
  * interact with, and the reconcile effect is about to retire the PIP anyway. */
@@ -130,9 +115,7 @@ export function useVisualizerSurface(
   }, [updateSettings]);
 
   const collapseToPip = useCallback(() => {
-    if (workspaceKey) {
-      closeVisualizerTabs(workspaceKey);
-    }
+    if (workspaceKey) closeVisualizerTabs(workspaceKey);
     void updateSettings({
       visualizerPipOpen: true,
       visualizerBackgroundOpen: false,
@@ -214,7 +197,8 @@ export function useVisualizerSurface(
  * never went through `useVisualizerSurface` - the Runs "Visualize" action, a
  * restored workspace layout, a dropped tab. Without this the PIP setting would
  * sit `true`-but-parked again, which is the exact state the old bug lived in.
- * Mount once per workspace (the PIP host does it).
+ * Mounted by the window's single PIP host for the active workspace. Saved tabs
+ * in other workspaces do not participate until the user returns to them.
  */
 export function useReconcileVisualizerSurface(hasVisualizerTab: boolean, isVisible: boolean): void {
   const { settings, updateSettings } = useAppSettings();

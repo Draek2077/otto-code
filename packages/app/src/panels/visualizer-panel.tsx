@@ -1,6 +1,10 @@
 import { useCallback } from "react";
 import invariant from "tiny-invariant";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
+import { useRetainedPanelActive } from "@/components/retained-panel";
+import { useAppVisible } from "@/hooks/use-app-visible";
+import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
+import { useVisualizerTabOwnerKey, visualizerTabOwnerKey } from "@/visualizer/visualizer-tab-owner";
 import { VisualizerSurface } from "@/visualizer/visualizer-surface";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 
@@ -17,7 +21,7 @@ import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 // can pull it via React.lazy - the boundary that keeps the vendored render
 // bundle out of the startup graph.
 export function VisualizerPanel() {
-  const { serverId, workspaceId, target, openFileInWorkspace } = usePaneContext();
+  const { serverId, workspaceId, tabId, target, openFileInWorkspace } = usePaneContext();
   invariant(target.kind === "visualizer", "VisualizerPanel requires visualizer target");
   // The Visualizer is a companion view - the user watches it in a split while
   // working in the chat pane, so it must keep tracking agents whenever it's on
@@ -26,6 +30,10 @@ export function VisualizerPanel() {
   // chat, disposing the adapter and freezing the graph / session tabs until you
   // clicked back or reopened the tab.
   const { isVisible } = usePaneFocus();
+  const panelActive = useRetainedPanelActive();
+  const appVisible = useAppVisible();
+  const ownerKey = useVisualizerTabOwnerKey();
+  const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
 
   const handleOpenFile = useCallback(
     (request: WorkspaceFileOpenRequest) => {
@@ -34,8 +42,20 @@ export function VisualizerPanel() {
     [openFileInWorkspace],
   );
 
+  // Hidden retained tabs own no guest. The owner gate also prevents restored
+  // duplicate tabs from allocating guests before the window host reconciles them.
+  if (
+    !workspaceKey ||
+    !isVisible ||
+    !panelActive ||
+    !appVisible ||
+    ownerKey !== visualizerTabOwnerKey(workspaceKey, tabId)
+  ) {
+    return null;
+  }
   return (
     <VisualizerSurface
+      key={JSON.stringify([serverId, workspaceId, target.runId])}
       serverId={serverId}
       workspaceId={workspaceId}
       surface="tab"

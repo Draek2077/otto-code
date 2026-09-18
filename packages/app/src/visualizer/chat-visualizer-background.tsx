@@ -13,6 +13,9 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Eye, EyeOff, OpenInFull, PictureInPicture, X } from "@/components/icons/material-icons";
 import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
+import { useRetainedPanelActive } from "@/components/retained-panel";
+import { useAppVisible } from "@/hooks/use-app-visible";
+import { useVisualizerTabOwnerKey } from "./visualizer-tab-owner";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import { isWeb } from "@/constants/platform";
@@ -21,7 +24,7 @@ import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import { ChatVisualizerBackgroundContext } from "./chat-background-context";
 import { useChatBackgroundPointer } from "./use-chat-background-pointer";
-import { useFocusedTabIdFromLayout, useWorkspaceTabsFromLayout } from "./use-workspace-chat-focus";
+import { useFocusedTabIdFromLayout } from "./use-workspace-chat-focus";
 import { useVisualizerSurface } from "./use-visualizer-surface";
 
 const Surface = lazy(async () => ({
@@ -59,6 +62,9 @@ export function ChatVisualizerBackground({
 }) {
   const { serverId, workspaceId, tabId, openFileInWorkspace } = usePaneContext();
   const { isVisible } = usePaneFocus();
+  const panelActive = useRetainedPanelActive();
+  const appVisible = useAppVisible();
+  const hasVisualizerTab = useVisualizerTabOwnerKey() !== null;
   const isCompact = useIsCompactFormFactor();
   const featureEnabled = useFeatureEnabled("visualizer");
   const { settings } = useAppSettings();
@@ -66,29 +72,24 @@ export function ChatVisualizerBackground({
     () => buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
     [serverId, workspaceId],
   );
-  const tabs = useWorkspaceTabsFromLayout(workspaceKey);
   const focusedTabId = useFocusedTabIdFromLayout(workspaceKey);
   const hiddenKey = useMemo(
     () => hiddenConversationKey(serverId, workspaceId, tabId),
     [serverId, workspaceId, tabId],
   );
-  // One background guest in the focused chat, even with several visible splits.
-  const enabled =
-    featureEnabled &&
-    settings.visualizerBackgroundOpen &&
-    !settings.visualizerPipOpen &&
-    isVisible &&
-    focusedTabId === tabId &&
-    !tabs.some((tab) => tab.target.kind === "visualizer");
-  const { collapseToPip, expandToTab, closeBackground } = useVisualizerSurface(
-    serverId,
-    workspaceId,
-  );
   const backgroundPlacementActive =
     featureEnabled &&
     settings.visualizerBackgroundOpen &&
     !settings.visualizerPipOpen &&
-    !tabs.some((tab) => tab.target.kind === "visualizer");
+    !hasVisualizerTab;
+  // Only an on-screen chat allocates a guest; retained workspaces hold no
+  // background renderer or event-adapter subscriptions.
+  const enabled =
+    backgroundPlacementActive && isVisible && panelActive && appVisible && focusedTabId === tabId;
+  const { collapseToPip, expandToTab, closeBackground } = useVisualizerSurface(
+    serverId,
+    workspaceId,
+  );
   const [hidden, setHidden] = useState(() => hiddenConversationByTab.get(hiddenKey) ?? false);
   const [peek, setPeek] = useState(false);
   const [stageColor, setStageColor] = useState<string | null>(null);

@@ -70,7 +70,7 @@ describe("openVisualizerTab", () => {
     expect(visualizerTabTargets()).toEqual([{ kind: "visualizer" }]);
   });
 
-  it("reopens one tab per run rather than stacking duplicates", () => {
+  it("reopens the same run without stacking duplicates", () => {
     openVisualizerTab({
       serverId: SERVER_ID,
       workspaceId: WORKSPACE_ID,
@@ -86,5 +86,40 @@ describe("openVisualizerTab", () => {
 
     expect(visualizerTabTargets()).toEqual([{ kind: "visualizer", runId: "run-1" }]);
     expect(navigateToWorkspace).toHaveBeenCalledTimes(2);
+  });
+
+  it("retargets the existing tab when selecting another run or the workspace view", () => {
+    openVisualizerTab({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID, runId: "run-1" });
+    const first = useWorkspaceLayoutStore.getState().getWorkspaceTabs(WORKSPACE_KEY)[0]!;
+    openVisualizerTab({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID, runId: "run-2" });
+    expect(visualizerTabTargets()).toEqual([{ kind: "visualizer", runId: "run-2" }]);
+    expect(useWorkspaceLayoutStore.getState().getWorkspaceTabs(WORKSPACE_KEY)[0]!.tabId).toBe(
+      first.tabId,
+    );
+    openVisualizerTab({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID });
+    expect(visualizerTabTargets()).toEqual([{ kind: "visualizer" }]);
+    expect(useWorkspaceLayoutStore.getState().getWorkspaceTabs(WORKSPACE_KEY)[0]!.tabId).toBe(
+      first.tabId,
+    );
+  });
+
+  it("preserves saved visualizer tabs in other hosts and workspaces", () => {
+    const store = useWorkspaceLayoutStore.getState();
+    store.openTabFocused(WORKSPACE_KEY, { kind: "draft", draftId: "keep-chat" });
+    openVisualizerTab({ serverId: SERVER_ID, workspaceId: WORKSPACE_ID });
+    openVisualizerTab({ serverId: "host-b", workspaceId: "workspace-b", runId: "run-2" });
+    expect(visualizerTabTargets()).toEqual([{ kind: "visualizer" }]);
+    expect(
+      store
+        .getWorkspaceTabs(WORKSPACE_KEY)
+        .map((tab) => tab.target)
+        .filter((target) => target.kind === "draft"),
+    ).toEqual([{ kind: "draft", draftId: "keep-chat" }]);
+    expect(
+      store
+        .getWorkspaceTabs("host-b:workspace-b")
+        .map((tab) => tab.target)
+        .filter((target) => target.kind === "visualizer"),
+    ).toEqual([{ kind: "visualizer", runId: "run-2" }]);
   });
 });

@@ -1,13 +1,13 @@
 // Mount point + lazy boundary for the picture-in-picture Visualizer.
 //
-// This module is imported eagerly by the workspace screen, so it must stay
+// This module is imported eagerly by the window host, so it must stay
 // light: `visualizer-pip.tsx` transitively pulls the vendored render layer, and
 // Metro does not tree-shake (docs/feature-flags.md), so the only way a disabled
 // Visualizer genuinely costs nothing is a React.lazy split. Same boundary
 // visualizer-panel-registration.tsx draws for the tab.
 //
 // It also owns the mutual exclusion that makes the "one canvas" decision real:
-// PIP renders only when no Visualizer TAB exists in this workspace. Both
+// PIP renders only when no Visualizer TAB exists in the active workspace. Both
 // surfaces host their own guest, so letting them coexist would mean two
 // simulations and two star fields - exactly the doubled per-frame cost the
 // charter warns about.
@@ -17,15 +17,13 @@
 // back to false so the closed state is real rather than merely hidden. Parking
 // PIP silently is what made its old header button dead chrome - see the bug note
 // in use-visualizer-surface.ts.
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { VISUALIZER_PIP_FADE_DURATION_MS } from "@/constants/animation";
+import { lazy, Suspense } from "react";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
-import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
+import { useAppVisible } from "@/hooks/use-app-visible";
 import { useAppSettings } from "@/hooks/use-settings";
-import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import { useReconcileVisualizerSurface } from "@/visualizer/use-visualizer-surface";
-import { useWorkspaceTabsFromLayout } from "@/visualizer/use-workspace-chat-focus";
+import { useVisualizerTabOwnerKey } from "@/visualizer/visualizer-tab-owner";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 
 const VisualizerPipLazy = lazy(async () => {
@@ -58,18 +56,14 @@ export function VisualizerPipHost({
   // button still opens the normal full tab, which is the mobile answer.
   const isCompact = useIsCompactFormFactor();
   const { settings } = useAppSettings();
+  const appVisible = useAppVisible();
 
-  const tabPersistenceKey = useMemo(
-    () => buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
-    [serverId, workspaceId],
-  );
-  // Layout store, not the tabs store - see use-workspace-chat-focus.ts for why
-  // the latter is dead state.
-  const workspaceTabs = useWorkspaceTabsFromLayout(tabPersistenceKey);
-  const hasVisualizerTab = workspaceTabs.some((tab) => tab.target.kind === "visualizer");
+  const hasVisualizerTab = useVisualizerTabOwnerKey() !== null;
   useReconcileVisualizerSurface(hasVisualizerTab, isVisible);
 
   const shown = !(
+    !isVisible ||
+    !appVisible ||
     isCompact ||
     !workspaceId ||
     !visualizerEnabled ||
@@ -77,14 +71,9 @@ export function VisualizerPipHost({
     settings.visualizerBackgroundOpen ||
     hasVisualizerTab
   );
-  // With motion on, the PIP fades rather than vanishing - which means staying
-  // mounted for the length of that fade after it should be gone. The overlap
-  // with an expanding tab is bounded by the fade duration and the outgoing guest
-  // is on its way out, so the one-canvas rule still holds in practice.
-  const animationsEnabled = useAnimationsEnabled();
-  const mounted = useFadeOutHold(shown, animationsEnabled ? VISUALIZER_PIP_FADE_DURATION_MS : 0);
-
-  if (!mounted) {
+  // Release inactive guests immediately, including on close and minimization.
+  // An exit-fade hold would overlap a replacement and retain its subscriptions.
+  if (!shown) {
     return null;
   }
 
@@ -97,31 +86,8 @@ export function VisualizerPipHost({
         serverId={serverId}
         workspaceId={workspaceId}
         isVisible={isVisible}
-        shown={shown}
         onOpenFile={onOpenFile}
       />
     </Suspense>
   );
-}
-
-/** True while `shown` is true, and for `holdMs` after it goes false - long
- * enough for the exit fade to finish before the subtree is torn down. A hold of
- * 0 (Animations off) unmounts on the same commit, as it always did. */
-function useFadeOutHold(shown: boolean, holdMs: number): boolean {
-  const [held, setHeld] = useState(shown);
-
-  useEffect(() => {
-    if (shown) {
-      setHeld(true);
-      return;
-    }
-    if (holdMs <= 0) {
-      setHeld(false);
-      return;
-    }
-    const timer = setTimeout(() => setHeld(false), holdMs);
-    return () => clearTimeout(timer);
-  }, [shown, holdMs]);
-
-  return shown || held;
 }

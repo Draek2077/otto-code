@@ -132,7 +132,10 @@ export function useVisualizerPipDrag(input: UseVisualizerPipDragInput): Visualiz
       previous.pip.height !== pip.height;
     const fractionChanged =
       previous.fraction.x !== fraction.x || previous.fraction.y !== fraction.y;
-    if (geometryChanged && dragFraction === null) {
+    // The first real measurement resolves the saved fraction; it is not a
+    // resize from a zero-sized viewport (which would snap it to an edge).
+    const hadLayout = previous.container.width > 0 && previous.container.height > 0;
+    if (geometryChanged && hadLayout && dragFraction === null) {
       setLayoutFraction(
         rebasePipFractionForContainer({
           previousContainer: previous.container,
@@ -150,14 +153,16 @@ export function useVisualizerPipDrag(input: UseVisualizerPipDragInput): Visualiz
     previousLayoutRef.current = { container, pip, fraction };
   }, [container, dragFraction, fraction, layoutFraction, pip]);
 
+  const activeFraction = dragFraction ?? layoutFraction ?? fraction;
   // Read at pointermove time so the window listeners never need re-binding.
   const latest = useRef({ container, pip, fraction, onCommit });
-  latest.current = { container, pip, fraction, onCommit };
+  latest.current = { container, pip, fraction: activeFraction, onCommit };
+  const dragCleanupRef = useRef<(() => void) | null>(null);
 
-  const activeFraction = dragFraction ?? layoutFraction ?? fraction;
   const offset = resolvePipOffset({ container, pip, fraction: activeFraction });
 
   const handlePointerDown = useCallback((event: RNPointerEvent) => {
+    dragCleanupRef.current?.();
     const target = event.currentTarget as unknown as HTMLElement | null;
     const { container: startContainer, pip: startPip, fraction: startFraction } = latest.current;
     // Nothing to drag within: the PIP already fills its container.
@@ -194,6 +199,7 @@ export function useVisualizerPipDrag(input: UseVisualizerPipDragInput): Visualiz
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
       window.removeEventListener("pointercancel", handlePointerUp);
+      dragCleanupRef.current = null;
       if (target?.hasPointerCapture?.(pointerId)) {
         target.releasePointerCapture(pointerId);
       }
@@ -213,6 +219,8 @@ export function useVisualizerPipDrag(input: UseVisualizerPipDragInput): Visualiz
         return;
       }
       cleanup();
+      // Keep the final position while the shared settings write is pending.
+      setLayoutFraction(moved);
       setDragFraction(null);
       latest.current.onCommit(moved);
     }
@@ -223,11 +231,12 @@ export function useVisualizerPipDrag(input: UseVisualizerPipDragInput): Visualiz
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
     window.addEventListener("pointercancel", handlePointerUp);
+    dragCleanupRef.current = cleanup;
   }, []);
 
-  // Safety net: if the component unmounts mid-drag the handlers above go with
-  // it, but a stuck `dragFraction` would otherwise outlive a remount.
-  useEffect(() => () => setDragFraction(null), []);
+  // Window listeners outlive React nodes unless explicitly removed. A surface
+  // change mid-drag must not leave an old listener writing the shared position.
+  useEffect(() => () => dragCleanupRef.current?.(), []);
 
   return {
     offset,

@@ -21,7 +21,7 @@ import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { VisualizerPipHost } from "@/visualizer/visualizer-pip-host";
+import { useVisualizerWorkspaceSource } from "@/visualizer/visualizer-window-host";
 import { generateDraftId } from "@/stores/draft-keys";
 import { useWakeWordListening } from "@/hooks/use-wake-word-listening";
 import { shouldStartWakeWordListening } from "@/voice/wake-word-control-state";
@@ -301,23 +301,13 @@ export function WorkspaceCenterContent({
   onOpenPipFile: (request: WorkspaceFileOpenRequest) => void;
   children: ReactNode;
 }) {
-  return (
-    <View style={styles.centerContent}>
-      {children}
-      {/* Picture-in-picture Visualizer, pinned top-right of the workspace
-          content so it sits over the conversation without belonging to any one
-          pane. Mounted here rather than inside the chat panel on purpose: a
-          per-pane mount would remount (and, on Electron, RELOAD) its guest every
-          time you switched chats - see visualizer-pip.tsx. Renders nothing
-          unless the PIP is open and no Visualizer tab exists. */}
-      <VisualizerPipHost
-        serverId={serverId}
-        workspaceId={workspaceId}
-        isVisible={isRouteFocused}
-        onOpenFile={onOpenPipFile}
-      />
-    </View>
-  );
+  useVisualizerWorkspaceSource({
+    serverId,
+    workspaceId,
+    isVisible: isRouteFocused,
+    onOpenFile: onOpenPipFile,
+  });
+  return <View style={styles.centerContent}>{children}</View>;
 }
 
 /** The non-split desktop fallback's tab chrome: the horizontal row above the
