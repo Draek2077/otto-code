@@ -2,14 +2,24 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { openSettings } from "./app";
 import { clickSettingsBackToWorkspace, openSettingsSection } from "./settings";
 
-const APP_SETTINGS_KEY = "@paseo:app-settings";
+const APP_SETTINGS_KEY = "@otto:app-settings";
 
-/** Persisted nav key -> the testID the app shell renders that item with. */
+/**
+ * Persisted nav key -> the testID the app shell renders that item with.
+ *
+ * Otto splits the builtins across two placements (`sidebarNavPlacement`): the
+ * destinations render as two-column rows at the top of the sidebar, while History
+ * and Search are icon actions in the Workspaces section header. Each placement is
+ * reordered within itself.
+ */
 const SHELL_ROW_TEST_IDS = {
+  artifacts: "sidebar-artifacts",
+  kanban: "sidebar-kanban",
+  schedules: "sidebar-schedules",
+  runs: "sidebar-runs",
   "new-workspace": "sidebar-global-new-workspace",
   history: "sidebar-sessions",
   search: "sidebar-search",
-  schedules: "sidebar-schedules",
 } as const;
 
 export type SidebarNavKey = keyof typeof SHELL_ROW_TEST_IDS;
@@ -31,16 +41,23 @@ function settingsRow(page: Page, key: SidebarNavKey): Locator {
 
 function itemLabel(key: SidebarNavKey): string {
   return {
+    artifacts: "Artifacts",
+    kanban: "Kanban",
+    schedules: "Schedules",
+    runs: "Workflows",
     "new-workspace": "New workspace",
     history: "History",
     search: "Search",
-    schedules: "Schedules",
   }[key];
 }
 
-async function rowTop(locator: Locator): Promise<number | null> {
+/**
+ * Reading-order position: rows top to bottom, then left to right. The sidebar
+ * pairs destinations into two-column rows, so two items can share a top edge.
+ */
+async function rowPosition(locator: Locator): Promise<{ top: number; left: number } | null> {
   const box = await locator.boundingBox();
-  return box?.y ?? null;
+  return box ? { top: Math.round(box.y), left: Math.round(box.x) } : null;
 }
 
 export async function seedSidebarNavPreferences(
@@ -98,11 +115,11 @@ export async function expectSidebarNavSettingsOrder(
   page: Page,
   keys: SidebarNavKey[],
 ): Promise<void> {
-  await expectVerticalOrder(keys, (key) => settingsRow(page, key), "sidebar nav settings rows");
+  await expectReadingOrder(keys, (key) => settingsRow(page, key), "sidebar nav settings rows");
 }
 
 export async function expectSidebarOrder(page: Page, keys: SidebarNavKey[]): Promise<void> {
-  await expectVerticalOrder(keys, (key) => shellRow(page, key), "app shell sidebar rows");
+  await expectReadingOrder(keys, (key) => shellRow(page, key), "app shell sidebar rows");
 }
 
 export async function expectSidebarItemHidden(page: Page, key: SidebarNavKey): Promise<void> {
@@ -125,7 +142,7 @@ export async function expectStoredSidebarNav(
     .toEqual(expected);
 }
 
-async function expectVerticalOrder(
+async function expectReadingOrder(
   keys: SidebarNavKey[],
   locate: (key: SidebarNavKey) => Locator,
   subject: string,
@@ -134,15 +151,18 @@ async function expectVerticalOrder(
     .poll(
       async () => {
         const measured = await Promise.all(
-          keys.map(async (key) => ({ key, top: await rowTop(locate(key)) })),
+          keys.map(async (key) => ({ key, position: await rowPosition(locate(key)) })),
         );
         if (
           !measured.every(
-            (entry): entry is { key: SidebarNavKey; top: number } => entry.top !== null,
+            (entry): entry is { key: SidebarNavKey; position: { top: number; left: number } } =>
+              entry.position !== null,
           )
         )
           return null;
-        return measured.sort((a, b) => a.top - b.top).map((entry) => entry.key);
+        return measured
+          .sort((a, b) => a.position.top - b.position.top || a.position.left - b.position.left)
+          .map((entry) => entry.key);
       },
       { message: `Expected ${subject} in order`, timeout: 15_000 },
     )

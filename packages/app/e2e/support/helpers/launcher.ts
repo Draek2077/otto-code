@@ -224,7 +224,9 @@ export async function expectAgentTabActive(page: Page, agentId: string): Promise
     "aria-selected",
     "true",
   );
-  await expect(getActiveTabTestId(page)).resolves.toBe(tabTestId);
+  // Polled: the tab strip can re-render between the two reads while the workspace
+  // finishes hydrating, and a single sample would read that gap as "no active tab".
+  await expect.poll(() => getActiveTabTestId(page), { timeout: 10_000 }).toBe(tabTestId);
 }
 
 // ─── Workspace setup ───────────────────────────────────────────────────────

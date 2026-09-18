@@ -666,7 +666,9 @@ test.describe("New workspace flow", () => {
     }
   });
 
-  test("selected branch becomes the base of a new workspace worktree", async ({ page }) => {
+  // docs/workspace-lifecycle.md: an explicitly selected local branch is checked out in the new
+  // worktree (4b6cc9401). Only an untouched picker cuts a fresh branch named after the directory.
+  test("selected branch is checked out in a new workspace worktree", async ({ page }) => {
     const serverId = getServerId();
 
     const tempRepo = await createTempGitRepo("new-workspace-ref-", {
@@ -717,9 +719,11 @@ test.describe("New workspace flow", () => {
       const branchInfo = await readWorktreeBranchInfo({
         worktreePath: createdWorkspace.workspaceDirectory,
       });
-      expect(branchInfo.currentBranch).toBe(path.basename(createdWorkspace.workspaceDirectory));
-      expect(branchInfo.hasAncestor(tempRepo.branchHeads.main)).toBe(true);
-      expect(branchInfo.hasAncestor(tempRepo.branchHeads.dev)).toBe(true);
+      expect(branchInfo.currentBranch).toBe("dev");
+      expect(readRepoRef(createdWorkspace.workspaceDirectory, "HEAD")).toBe(
+        tempRepo.branchHeads.dev,
+      );
+      expect(path.basename(createdWorkspace.workspaceDirectory)).not.toBe("dev");
     } finally {
       await tempRepo.cleanup();
     }

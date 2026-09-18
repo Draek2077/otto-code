@@ -163,7 +163,7 @@ test.describe("Project with no workspaces persists", () => {
       const newWorkspaceRow = page.getByTestId(
         `sidebar-project-new-workspace-row-${projectViewKey}`,
       );
-      const globalNewWorkspace = page.getByTestId("sidebar-command-center-search");
+      const globalNewWorkspace = page.getByTestId("sidebar-search");
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);

@@ -13,12 +13,17 @@ import {
   setSidebarNavItemVisible,
 } from "../support/helpers/sidebar-nav-settings";
 
+// Otto places the builtins in two groups: destinations (Artifacts, Kanban, Schedules,
+// Workflows, and the optional New workspace, which starts hidden) as two-column rows,
+// and History plus Search as Workspaces header actions. Each group reorders within itself.
 test.describe("Sidebar items in Appearance settings", () => {
   test("owner reorders and hides top-level sidebar items", async ({ page }) => {
     await gotoAppShell(page);
 
     await test.step("the sidebar starts in the default order", async () => {
-      await expectSidebarOrder(page, ["new-workspace", "history", "search", "schedules"]);
+      await expectSidebarOrder(page, ["artifacts", "kanban", "schedules", "runs"]);
+      await expectSidebarOrder(page, ["history", "search"]);
+      await expectSidebarItemHidden(page, "new-workspace");
     });
 
     await test.step("the Sidebar section lists every item in the same order", async () => {
@@ -28,15 +33,23 @@ test.describe("Sidebar items in Appearance settings", () => {
         "About Sidebar",
       );
       await expectSidebarNavSettingsOrder(page, [
+        "artifacts",
+        "kanban",
+        "schedules",
+        "runs",
         "new-workspace",
         "history",
         "search",
-        "schedules",
       ]);
       await expectSidebarNavSettingsRow(page, {
         key: "history",
         label: "History",
         visible: true,
+      });
+      await expectSidebarNavSettingsRow(page, {
+        key: "new-workspace",
+        label: "New workspace",
+        visible: false,
       });
       // Items with a keyboard shortcut badge it next to their name. Chords render
       // with Ctrl off macOS, which is what the browser project runs on.
@@ -45,54 +58,62 @@ test.describe("Sidebar items in Appearance settings", () => {
       ).toBeVisible();
     });
 
-    await test.step("moving Schedules up twice lifts it above History", async () => {
+    await test.step("moving Schedules up twice lifts it to the first row", async () => {
       await moveSidebarNavItemUp(page, "schedules");
       await expectSidebarNavSettingsOrder(page, [
-        "new-workspace",
-        "history",
+        "artifacts",
         "schedules",
-        "search",
+        "kanban",
+        "runs",
+        "new-workspace",
       ]);
       await moveSidebarNavItemUp(page, "schedules");
       await expectSidebarNavSettingsOrder(page, [
-        "new-workspace",
         "schedules",
-        "history",
-        "search",
+        "artifacts",
+        "kanban",
+        "runs",
+        "new-workspace",
       ]);
 
       await leaveSettings(page);
-      await expectSidebarOrder(page, ["new-workspace", "schedules", "history", "search"]);
+      await expectSidebarOrder(page, ["schedules", "artifacts", "kanban", "runs"]);
     });
 
     await test.step("turning History off removes it from the sidebar", async () => {
       await openSidebarNavSettings(page);
       await setSidebarNavItemVisible(page, "history", false);
       await expectStoredSidebarNav(page, [
-        { key: "new-workspace", visible: true },
         { key: "schedules", visible: true },
+        { key: "artifacts", visible: true },
+        { key: "kanban", visible: true },
+        { key: "runs", visible: true },
+        { key: "new-workspace", visible: false },
         { key: "history", visible: false },
         { key: "search", visible: true },
       ]);
 
       await leaveSettings(page);
       await expectSidebarItemHidden(page, "history");
-      await expectSidebarOrder(page, ["new-workspace", "schedules", "search"]);
+      await expectSidebarOrder(page, ["schedules", "artifacts", "kanban", "runs", "search"]);
     });
 
     await test.step("the sidebar keeps that shape across a reload", async () => {
       await page.reload();
       await expectSidebarItemHidden(page, "history");
-      await expectSidebarOrder(page, ["new-workspace", "schedules", "search"]);
+      await expectSidebarOrder(page, ["schedules", "artifacts", "kanban", "runs", "search"]);
     });
   });
 
   test("renders no top-level items when every one is turned off", async ({ page }) => {
     await seedSidebarNavPreferences(page, [
+      { key: "artifacts", visible: false },
+      { key: "kanban", visible: false },
+      { key: "schedules", visible: false },
+      { key: "runs", visible: false },
       { key: "new-workspace", visible: false },
       { key: "history", visible: false },
       { key: "search", visible: false },
-      { key: "schedules", visible: false },
     ]);
     await gotoAppShell(page);
 
@@ -100,9 +121,12 @@ test.describe("Sidebar items in Appearance settings", () => {
     await expect(page.locator('[data-testid="sidebar-settings"]:visible')).toBeVisible({
       timeout: 30_000,
     });
+    await expectSidebarItemHidden(page, "artifacts");
+    await expectSidebarItemHidden(page, "kanban");
+    await expectSidebarItemHidden(page, "schedules");
+    await expectSidebarItemHidden(page, "runs");
     await expectSidebarItemHidden(page, "new-workspace");
     await expectSidebarItemHidden(page, "history");
     await expectSidebarItemHidden(page, "search");
-    await expectSidebarItemHidden(page, "schedules");
   });
 });

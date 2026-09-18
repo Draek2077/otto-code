@@ -257,7 +257,7 @@ test.describe("Half-screen desktop layout", () => {
 
   test("keeps the pinned sidebar at half of a 14-inch Mac display", async ({ page }) => {
     await gotoAppShell(page);
-    await expect(page.getByTestId("sidebar-command-center-search")).toBeVisible();
+    await expect(page.getByTestId("sidebar-search")).toBeVisible();
     await expect(page.getByTestId("agent-list-backdrop")).not.toBeVisible();
   });
 
@@ -270,7 +270,7 @@ test.describe("Half-screen desktop layout", () => {
     expect(openBounds?.x).toBeGreaterThan(12);
 
     await openToggle.click();
-    await expect(page.getByTestId("sidebar-command-center-search")).not.toBeVisible();
+    await expect(page.getByTestId("sidebar-search")).not.toBeVisible();
 
     const closedToggle = page.getByTestId("menu-button");
     const closedBounds = await closedToggle.boundingBox();
@@ -289,7 +289,7 @@ test.describe("Half-screen desktop layout", () => {
     // the Settings screen renders the same shared SidebarFooterNavRow in its own
     // footer, so a visible `sidebar-settings` survives precisely because app
     // navigation yielded, which is the opposite of what this asserts.
-    await expect(page.getByTestId("sidebar-command-center-search")).not.toBeVisible();
+    await expect(page.getByTestId("sidebar-search")).not.toBeVisible();
   });
 
   test("keeps app navigation beside the Explorer pane", async ({ page }) => {
@@ -307,7 +307,7 @@ test.describe("Half-screen desktop layout", () => {
       ).toBeVisible();
       await expect(page.getByTestId("workspace-explorer-toggle").first()).toBeVisible();
       await expect(explorerToggle).toHaveAccessibleName("Close Explorer sidebar");
-      await expect(page.getByTestId("sidebar-command-center-search")).not.toBeVisible();
+      await expect(page.getByTestId("sidebar-search")).not.toBeVisible();
 
       const centerPane = page
         .locator('[data-testid^="workspace-pane-"]')

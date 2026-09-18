@@ -185,7 +185,7 @@ test.describe("Workspace pane mounting", () => {
       const menuButton = page.getByRole("button", { name: "Open menu", exact: true }).first();
       await expect(menuButton).toBeVisible();
       await menuButton.click();
-      await expect(page.getByTestId("sidebar-command-center-search")).toBeVisible();
+      await expect(page.getByTestId("sidebar-search")).toBeVisible();
       await page.keyboard.press("Escape");
 
       await page.setViewportSize(WIDE_VIEWPORT);

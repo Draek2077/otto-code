@@ -111,7 +111,7 @@ test.describe("Model B sidebar shape", () => {
 
       // Command Center's "New workspace" action is the universal entry - present
       // for both kinds regardless of their per-row affordance.
-      await expect(page.getByTestId("sidebar-command-center-search")).toBeVisible({
+      await expect(page.getByTestId("sidebar-search")).toBeVisible({
         timeout: 30_000,
       });
     } finally {

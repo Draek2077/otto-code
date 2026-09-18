@@ -72,6 +72,8 @@ export interface SeedDaemonClient extends Pick<InternalDaemonClient, "checkoutGi
   }): Promise<{
     workspace: SeedWorkspaceDescriptor | null;
     error: string | null;
+    /** Machine-readable refusal, e.g. `workspace_directory_occupied`. */
+    errorCode?: string | null;
   }>;
   archiveWorkspace(workspaceId: string): Promise<{ error: string | null }>;
   /**

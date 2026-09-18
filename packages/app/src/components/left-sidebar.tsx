@@ -921,7 +921,7 @@ function WorkspacesSectionHeader({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Open command center"
-          testID="sidebar-command-center-search"
+          testID="sidebar-search"
           style={headerIconButtonStyle}
           onPress={handleSearchPress}
         >

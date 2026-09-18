@@ -115,7 +115,13 @@ describe("TurnFooter", () => {
       node.getAttribute("data-testid"),
     );
 
-    expect(controls).toEqual(["running-turn-loader", "running-turn-timestamp"]);
+    // The spinner wrapper carries its own testID (eef0a8bbd) so browser
+    // fixtures can clip it; the loader and the elapsed time sit inside/after it.
+    expect(controls).toEqual([
+      "turn-working-spinner",
+      "running-turn-loader",
+      "running-turn-timestamp",
+    ]);
     expect(footer?.querySelector('[data-testid="running-turn-fork"]')).toBeNull();
   });
 

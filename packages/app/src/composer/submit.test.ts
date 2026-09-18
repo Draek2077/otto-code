@@ -92,7 +92,11 @@ describe("submitAgentInput", () => {
       message: "keep me",
       attachments,
     });
-    expect(setUserInput).not.toHaveBeenCalled();
+    // Dictation can submit without first writing the transcript into the
+    // controlled input, so the composer is re-seeded with the exact submission
+    // (eef0a8bbd) instead of being cleared.
+    expect(setUserInput).toHaveBeenCalledTimes(1);
+    expect(setUserInput).toHaveBeenCalledWith("  keep me  ");
     expect(setAttachments).not.toHaveBeenCalled();
     expect(setSendError).toHaveBeenCalledWith(null);
     expect(setIsProcessing).toHaveBeenCalledWith(true);
