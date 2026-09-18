@@ -10,7 +10,13 @@ export interface UseSuggestedTaskActionsInput {
 }
 
 export interface SuggestedTaskActions {
+  // A request-wide lock used to prevent overlapping daemon starts. The visible
+  // label is task-scoped; see isStarting below.
   starting?: boolean;
+  // Returns true only when every task represented by the button is starting.
+  // This keeps a bulk button on its normal label while only part of its queue
+  // is in flight.
+  isStarting?: (taskIds: readonly string[]) => boolean;
   canStartNewChat?: boolean;
   // One id starts a single chip; the whole pending queue starts them all,
   // applying the same mode to each (one agent/chat each - no combining).

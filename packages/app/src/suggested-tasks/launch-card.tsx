@@ -10,6 +10,7 @@ import {
 import { useSessionStore } from "@/stores/session-store";
 import { toErrorMessage } from "@/utils/error-messages";
 import { CompactSuggestedTasksCard, type CompactSuggestedTasksCardProps } from "./compact-card";
+import { areAllSuggestedTasksStarting } from "./starting";
 import type { SuggestedTaskActions } from "./use-suggested-task-actions";
 
 export function SuggestedTaskLaunchCard({
@@ -35,6 +36,9 @@ export function SuggestedTaskLaunchCard({
   const provider = selection?.provider ?? parent?.provider ?? "";
   const model = selection?.model ?? parent?.model ?? "";
   const [starting, setStarting] = useState(false);
+  const [startingTaskIds, setStartingTaskIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
   const [launchError, setError] = useState<string | null>(null);
   const startingRef = useRef(false);
   const canStartNewChat =
@@ -59,6 +63,7 @@ export function SuggestedTaskLaunchCard({
       if (startingRef.current || (mode !== "in_session" && !canStartNewChat)) return false;
       startingRef.current = true;
       setStarting(true);
+      setStartingTaskIds(new Set(taskIds));
       setError(null);
       try {
         const succeeded = await actions.startTasks(
@@ -75,13 +80,23 @@ export function SuggestedTaskLaunchCard({
       } finally {
         startingRef.current = false;
         setStarting(false);
+        setStartingTaskIds((current) => {
+          if (current.size === 0) return current;
+          const next = new Set(current);
+          for (const taskId of taskIds) next.delete(taskId);
+          return next;
+        });
       }
     },
     [actions, canStartNewChat, provider, model],
   );
+  const isStarting = useCallback(
+    (taskIds: readonly string[]) => areAllSuggestedTasksStarting(taskIds, startingTaskIds),
+    [startingTaskIds],
+  );
   const launchActions = useMemo(
-    () => ({ ...actions, startTasks, starting, canStartNewChat }),
-    [actions, startTasks, starting, canStartNewChat],
+    () => ({ ...actions, startTasks, starting, isStarting, canStartNewChat }),
+    [actions, startTasks, starting, isStarting, canStartNewChat],
   );
   const modelControl = useMemo(
     () =>

@@ -117,6 +117,7 @@ export function SplitStartButton({
   showDismiss,
 }: SplitStartButtonProps): ReactElement {
   const { startTasks, dismissTasks } = actions;
+  const starting = actions.isStarting?.(taskIds) ?? false;
   const handlePrimary = useCallback(() => {
     void startTasks(taskIds, primaryMode);
   }, [startTasks, taskIds, primaryMode]);
@@ -153,7 +154,7 @@ export function SplitStartButton({
               style={hovered || pressed ? styles.primaryTextActive : styles.primaryText}
               numberOfLines={1}
             >
-              {actions.starting ? "Starting…" : primaryLabel}
+              {starting ? "Starting…" : primaryLabel}
             </Text>
           </>
         )}
