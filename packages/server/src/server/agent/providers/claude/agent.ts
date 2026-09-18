@@ -6083,6 +6083,9 @@ class ClaudeAgentSession implements AgentSession {
         status,
         requiresAttention: message.status === "failed",
       });
+      // A shell a subagent launched also belongs on that child's timeline, the
+      // same place the queued user-envelope form of this notification lands.
+      this.appendOwnedTaskNotificationEvent(message, events);
       return;
     }
     // A workflow run and a Task subagent settle the same way - the completion
@@ -6134,16 +6137,8 @@ class ClaudeAgentSession implements AgentSession {
       );
       return;
     }
+    if (this.appendOwnedTaskNotificationEvent(message, events)) return;
     const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(message);
-    const ownerSubagentId = this.taskProtocolSource.resolveTaskOwner(message.task_id, taskUseId);
-    if (taskNotificationItem && ownerSubagentId) {
-      events.push({
-        type: "provider_subagent",
-        provider: "claude",
-        event: { type: "timeline", id: ownerSubagentId, item: taskNotificationItem },
-      });
-      return;
-    }
     if (taskNotificationItem) {
       events.push({
         type: "timeline",
@@ -6151,6 +6146,25 @@ class ClaudeAgentSession implements AgentSession {
         provider: "claude",
       });
     }
+  }
+
+  /** Route a subagent-owned task's notification onto that child's timeline. */
+  private appendOwnedTaskNotificationEvent(
+    message: Extract<SDKMessage, { type: "system"; subtype: "task_notification" }>,
+    events: AgentStreamEvent[],
+  ): boolean {
+    const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(message);
+    const ownerSubagentId = this.taskProtocolSource.resolveTaskOwner(
+      message.task_id,
+      message.tool_use_id,
+    );
+    if (!taskNotificationItem || !ownerSubagentId) return false;
+    events.push({
+      type: "provider_subagent",
+      provider: "claude",
+      event: { type: "timeline", id: ownerSubagentId, item: taskNotificationItem },
+    });
+    return true;
   }
 
   private appendUserMessageEvents(
@@ -6873,7 +6887,7 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
 
-    this.replayHistorySubagentRow(entry, timeline);
+    this.replayHistorySubagentRow(entry, timeline, replay.restoredIds);
 
     const historyTimestamp = normalizeProviderReplayTimestamp(entry.timestamp);
     const notificationOwner = notificationToolUseId
@@ -6954,6 +6968,7 @@ class ClaudeAgentSession implements AgentSession {
   private replayHistorySubagentRow(
     entry: ClaudeHistoryEntry,
     timeline: PersistedTimelineEntry[],
+    restoredIds: ReadonlySet<string>,
   ): void {
     const message = toObjectRecord(entry.message);
     const content = message?.content;
@@ -6963,6 +6978,13 @@ class ClaudeAgentSession implements AgentSession {
     for (const block of content) {
       const record = toObjectRecord(block);
       if (!record) {
+        continue;
+      }
+      // A subagent restored from its sidechain already carries identity and
+      // terminal status from the replay source (which also reads the child's
+      // own end_turn). Re-announcing it here would reset it to running.
+      const blockId = record.type === "tool_result" ? record.tool_use_id : record.id;
+      if (typeof blockId === "string" && restoredIds.has(blockId)) {
         continue;
       }
       if (this.openHistorySubagentRow(record, timeline)) {

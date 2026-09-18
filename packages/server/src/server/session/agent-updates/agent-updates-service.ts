@@ -450,14 +450,11 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
   function forwardLiveAgent(agent: ManagedAgent): Promise<void> {
     if (!subscription) {
       const workspaceId = agent.workspaceId;
+      // Same coalescing window as the subscribed path: a session without an
+      // agent-directory subscription still pays a full descriptor rebuild per
+      // event otherwise. See WORKSPACE_UPDATE_COALESCE_MS.
       return workspaceId
-        ? enqueueAgentUpdate(agent.id, async () => {
-            try {
-              await deps.emitWorkspaceUpdateForWorkspaceId(workspaceId);
-            } catch (error) {
-              deps.logger.error({ err: error }, "Failed to emit workspace update");
-            }
-          })
+        ? enqueueAgentUpdate(agent.id, () => scheduleWorkspaceUpdate(workspaceId))
         : Promise.resolve();
     }
     const payload = toAgentPayload(agent);

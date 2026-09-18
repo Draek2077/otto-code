@@ -790,6 +790,8 @@ test("an idle session skips agent hydration while preserving workspace updates",
   const agent = { ...h.managed("unobserved"), workspaceId: "workspace" };
   // No payload is registered: attempting to hydrate this agent would fail.
   await h.service.forwardLiveAgent(agent);
+  // The workspace rebuild rides the coalescing window, subscribed or not.
+  await h.service.flushPendingWorkspaceUpdates();
   expect(h.loggedErrors).toEqual([]);
   expect(h.agentUpdates()).toEqual([]);
   expect(h.workspaceUpdates).toEqual([agent.workspaceId]);

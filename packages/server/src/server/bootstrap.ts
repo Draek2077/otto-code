@@ -52,7 +52,7 @@ const AGENT_MCP_FUTURE_PROTOCOL_VERSION = "2026-07-28";
 const AGENT_MCP_NEGOTIATED_PROTOCOL_VERSION = "2025-11-25";
 
 /**
- * The installed Claude Agent SDK advertises the next MCP protocol date before
+ * Anthropic's installed agent SDK advertises the next MCP protocol date before
  * the bundled MCP server SDK has added it to its HTTP allowlist. The MCP server
  * itself negotiates its supported 2025-11-25 response correctly, but the Hono
  * adapter reads rawHeaders before that negotiation can happen.

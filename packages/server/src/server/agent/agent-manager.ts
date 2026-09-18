@@ -3150,6 +3150,9 @@ export class AgentManager {
     agent.updatedAt = new Date(archivedAt);
     await this.closeAgentRuntime(agentId);
     await this.syncNativeArchiveState(stored.provider, stored.persistence, "archive");
+    // The per-agent tool policy snapshot dies with the session; a later
+    // resume re-resolves the provider's current policy.
+    this.ottoToolPolicies.delete(agentId);
 
     await this.cascadeArchiveChildren(agentId);
 
@@ -3999,8 +4002,11 @@ export class AgentManager {
 
     if (this.agents.has(agentId)) {
       this.notifyAgentState(agentId);
-    } else if (!nextRecord.internal) {
-      this.dispatchStoredAgentState(nextRecord);
+    } else {
+      this.ottoToolPolicies.delete(agentId);
+      if (!nextRecord.internal) {
+        this.dispatchStoredAgentState(nextRecord);
+      }
     }
 
     // Same cascade archiveAgent performs. Reached when the parent was already
