@@ -58,6 +58,13 @@ function createTestRegistries() {
     upsert: async (record: PersistedProjectRecord) => {
       projects.set(record.projectId, record);
     },
+    update: async (id, updater) => {
+      const existing = projects.get(id);
+      if (!existing) return null;
+      const updated = updater(existing);
+      projects.set(id, updated);
+      return updated;
+    },
     archive: async (id: string, archivedAt: string) => {
       const existing = projects.get(id);
       if (existing) {
@@ -252,6 +259,15 @@ describe("WorkspaceReconciliationService", () => {
     }
     tempDirs.length = 0;
   });
+
+  // A missing project root marks the project Offline, and reconciliation leaves an
+  // Offline project's workspaces alone. Only the workspace directory is missing here;
+  // the canonical key keeps metadata reconciliation from also reporting a backfill.
+  function createOnlineProjectRoot(): { rootPath: string; projectKey: string } {
+    const rootPath = realpathSync(mkdtempSync(path.join(tmpdir(), "reconcile-online-project-")));
+    tempDirs.push(rootPath);
+    return { rootPath, projectKey: canonicalLocalProjectKey(rootPath) };
+  }
 
   test("preserves workspace archival that lands during boot reconciliation", async () => {
     const workspaceRoot = realpathSync(mkdtempSync(path.join(tmpdir(), "reconcile-archive-race-")));
@@ -620,7 +636,7 @@ describe("WorkspaceReconciliationService", () => {
       "p1",
       createPersistedProjectRecord({
         projectId: "p1",
-        rootPath: "/tmp/does-not-exist-reconcile-test",
+        ...createOnlineProjectRoot(),
         kind: "non_git",
         displayName: "ghost",
         createdAt: timestamp,
@@ -668,7 +684,7 @@ describe("WorkspaceReconciliationService", () => {
 
     const project = createPersistedProjectRecord({
       projectId: "p1",
-      rootPath: "/tmp/does-not-exist-reconcile-orphan",
+      ...createOnlineProjectRoot(),
       kind: "non_git",
       displayName: "orphan",
       createdAt: timestamp,
@@ -1406,7 +1422,7 @@ describe("WorkspaceReconciliationService", () => {
       "p1",
       createPersistedProjectRecord({
         projectId: "p1",
-        rootPath: "/tmp/does-not-exist-callback-test",
+        ...createOnlineProjectRoot(),
         kind: "non_git",
         displayName: "ghost",
         createdAt: timestamp,
@@ -1454,7 +1470,7 @@ describe("WorkspaceReconciliationService", () => {
       "p1",
       createPersistedProjectRecord({
         projectId: "p1",
-        rootPath: "/tmp/does-not-exist-log-test",
+        ...createOnlineProjectRoot(),
         kind: "non_git",
         displayName: "ghost",
         createdAt: timestamp,

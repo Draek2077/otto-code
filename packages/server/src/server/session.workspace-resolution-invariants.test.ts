@@ -4,10 +4,10 @@ import { createAgentRequestsStub } from "./test-utils/session-stubs.js";
 // Run to see which invariants the current code already satisfies (green) and which
 // it violates (red).
 
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { expect, test, vi } from "vitest";
+import { afterAll, expect, test, vi } from "vitest";
 
 import { Session, type SessionOptions } from "./session.js";
 import { OWNER_PERMISSIONS } from "./authorization/index.js";
@@ -212,18 +212,29 @@ function getOpenResponse(emitted: SessionOutboundMessage[], requestId: string) {
 }
 
 const T0 = "2026-01-01T00:00:00.000Z";
-const FOO = path.resolve("/foo");
-const FOO_SUB = path.join(FOO, "sub");
-const BAR = path.resolve("/bar");
-const BAR_BAZ = path.join(BAR, "baz");
-const TOOLBOX = path.resolve("/toolbox");
-const TOOLBOX_FLOMO = path.join(TOOLBOX, "flomo-cli");
-const USERS_DEVELOPER = path.resolve("/Users/me/Developer");
-const USERS_PROJECT = path.join(USERS_DEVELOPER, "projects", "foo");
-const PROJECTS = path.resolve("/projects");
-const SOME_GIT_REPO = path.join(PROJECTS, "some-git-repo");
-const PARENT = path.resolve("/parent");
-const PARENT_CHILD = path.join(PARENT, "child");
+// Every fixture path is a real directory: a registered project whose root is
+// missing reads Offline, and open requests beneath it are refused.
+const FIXTURE_ROOT = realpathSync(mkdtempSync(path.join(tmpdir(), "otto-resolution-invariants-")));
+function fixtureDir(...segments: string[]): string {
+  const dir = path.join(FIXTURE_ROOT, ...segments);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+afterAll(() => {
+  rmSync(FIXTURE_ROOT, { recursive: true, force: true });
+});
+const FOO = fixtureDir("foo");
+const FOO_SUB = fixtureDir("foo", "sub");
+const BAR = fixtureDir("bar");
+const BAR_BAZ = fixtureDir("bar", "baz");
+const TOOLBOX = fixtureDir("toolbox");
+const TOOLBOX_FLOMO = fixtureDir("toolbox", "flomo-cli");
+const USERS_DEVELOPER = fixtureDir("Users", "me", "Developer");
+const USERS_PROJECT = fixtureDir("Users", "me", "Developer", "projects", "foo");
+const PROJECTS = fixtureDir("projects");
+const SOME_GIT_REPO = fixtureDir("projects", "some-git-repo");
+const PARENT = fixtureDir("parent");
+const PARENT_CHILD = fixtureDir("parent", "child");
 
 function gitWorkspace(rootPath: string, archivedAt: string | null = null) {
   return createPersistedWorkspaceRecord({

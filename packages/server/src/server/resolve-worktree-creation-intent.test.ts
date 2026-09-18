@@ -204,7 +204,7 @@ describe("resolveWorktreeCreationIntent", () => {
       baseRefName: "main",
       checkoutRefs: [{ remoteName: "origin", remoteRef: "refs/pull/526/head" }],
       headRepositoryOwner: "therainisme",
-      headRepository: "therainisme/paseo",
+      headRepository: "therainisme/otto",
       localBranchName: "therainisme/main",
       pushRemoteUrl: "git@github.com:therainisme/otto.git",
     });

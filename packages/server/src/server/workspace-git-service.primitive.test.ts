@@ -56,6 +56,13 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
+function createAsyncSubscription() {
+  return {
+    updateIgnore: vi.fn(() => Promise.resolve()),
+    unsubscribe: vi.fn(() => Promise.resolve()),
+  };
+}
+
 async function flushPromises(): Promise<void> {
   for (let i = 0; i < 5; i += 1) {
     await Promise.resolve();
@@ -805,13 +812,15 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     service.dispose();
   });
 
-  test("initial and self-heal refreshes fetch git without an inline GitHub read", async () => {
+  test("initial refresh and the observation re-ensure timer do no inline GitHub read or periodic git", async () => {
     // GitHub PR status is delivered by the per-branch poll
     // (retainCurrentPullRequestStatusPoll), NOT inline in the snapshot refresh.
     // Registering a workspace (via the sidebar listing) must not block on a `gh`
-    // round-trip, so neither the initial refresh nor the self-heal refresh calls
-    // getPullRequestStatus. (This github stub omits the poll, so the only path
-    // that could call getPullRequestStatus is the removed inline fetch.)
+    // round-trip, so the initial refresh never calls getPullRequestStatus. (This
+    // github stub omits the poll, so the only path that could call
+    // getPullRequestStatus is the removed inline fetch.) Healthy watchers are
+    // trusted, so the periodic timer only re-ensures observation and never re-reads
+    // git (Paseo #3323, adopted in the v0.8.0 merge).
     let nowMs = 0;
     const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
     const getPullRequestStatus = vi.fn(async () => createPullRequestStatusResult());
@@ -831,7 +840,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await flushPromises();
 
-    expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
+    expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
     expect(getPullRequestStatus).not.toHaveBeenCalled();
 
     subscription.unsubscribe();
@@ -871,18 +880,21 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
   });
 
   test("stale workspace watcher callbacks do not refresh after unsubscribe", async () => {
-    const watchCallbacks: Array<() => void> = [];
-    const watch = vi.fn(
-      (_watchPath: string, _options: { recursive: boolean }, callback: () => void) => {
-        watchCallbacks.push(callback);
-        return createWatcher() as never;
+    const watchCallbacks: Array<{
+      path: string;
+      callback: (error: Error | null, events: Array<{ path: string; type: "update" }>) => void;
+    }> = [];
+    const subscribe = vi.fn(
+      async (watchPath: string, callback: (typeof watchCallbacks)[number]["callback"]) => {
+        watchCallbacks.push({ path: watchPath, callback });
+        return createAsyncSubscription();
       },
     );
     const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
     const service = createService({
       getCheckoutStatus,
       resolveAbsoluteGitDir: vi.fn(async () => join(REPO_CWD, ".git")),
-      watch,
+      subscribe,
     });
 
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
@@ -891,10 +903,12 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     await vi.waitFor(() => {
       expect(watchCallbacks.length).toBeGreaterThan(0);
     });
+    const workingTreeCallback = watchCallbacks.find((entry) => entry.path === REPO_CWD)?.callback;
+    expect(workingTreeCallback).toBeTypeOf("function");
     const callsBeforeStaleCallback = getCheckoutStatus.mock.calls.length;
 
     subscription.unsubscribe();
-    watchCallbacks[0]?.();
+    workingTreeCallback?.(null, [{ path: join(REPO_CWD, "file.ts"), type: "update" }]);
     await vi.advanceTimersByTimeAsync(1_000);
     await flushPromises();
 
@@ -1161,7 +1175,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     service.dispose();
   });
 
-  test("multiple subscribers on the same target share one self-heal timer", async () => {
+  test("multiple subscribers on the same target do not duplicate periodic git work", async () => {
     let nowMs = 0;
     const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
     const service = createService({
@@ -1177,7 +1191,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await flushPromises();
 
-    expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
+    expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
 
     first.unsubscribe();
     second.unsubscribe();
@@ -1220,7 +1234,9 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     expect(getCheckoutStatus).toHaveBeenCalledTimes(0);
   });
 
-  test("direct getSnapshot returns current snapshot during a self-heal refresh", async () => {
+  test("direct getSnapshot returns current snapshot during a background watch refresh", async () => {
+    // There is no periodic self-heal git refresh any more; a watcher-scheduled
+    // refresh is the background pass a direct read must not wait on.
     let nowMs = 0;
     const selfHealRefresh = createDeferred<CheckoutStatusGit>();
     const getCheckoutStatus = vi
@@ -1236,7 +1252,8 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     await flushPromises();
 
     nowMs = 60_000;
-    await vi.advanceTimersByTimeAsync(60_000);
+    service.scheduleRefreshForCwd(REPO_CWD);
+    await vi.advanceTimersByTimeAsync(1_000);
     await flushPromises();
     const directRead = service.getSnapshot(REPO_CWD);
     await flushPromises();

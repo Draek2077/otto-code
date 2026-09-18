@@ -1,5 +1,7 @@
 import { createAgentRequestsStub } from "./test-utils/session-stubs.js";
 import { describe, expect, test, vi } from "vitest";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type pino from "pino";
 import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js";
@@ -456,6 +458,8 @@ describe("workspace git watch targets", () => {
   });
 
   test("updates running service script URLs when the git branch changes", async () => {
+    // Git observation stops for Offline projects, and a missing root is Offline.
+    const repoCwd = realpathSync(mkdtempSync(path.join(tmpdir(), "otto-git-watch-branch-")));
     const serviceProxy = createServiceProxySubsystem({ logger: createTestLogger() });
     serviceProxy.registerWorkspaceService({
       port: 4321,
@@ -490,14 +494,14 @@ describe("workspace git watch targets", () => {
       workspaces,
       projectId: "proj-1",
       workspaceId: "ws-10",
-      cwd: "/tmp/repo",
+      cwd: repoCwd,
       name: "old-branch",
     });
 
     await session.syncWorkspaceGitObserversForExternalWorkspaceIds(["ws-10"]);
 
     subscriptions[0]?.listener(
-      createWorkspaceRuntimeSnapshot("/tmp/repo", {
+      createWorkspaceRuntimeSnapshot(repoCwd, {
         git: {
           currentBranch: "new-branch",
         },
@@ -511,6 +515,7 @@ describe("workspace git watch targets", () => {
       }),
     ]);
     await session.cleanup();
+    rmSync(repoCwd, { recursive: true, force: true });
   });
 
   test("archiving a workspace clears its script runtime entries by opaque workspace id", async () => {

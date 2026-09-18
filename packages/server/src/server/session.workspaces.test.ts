@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setImmediate as waitForImmediate } from "node:timers/promises";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterAll, afterEach, expect, test, vi } from "vitest";
 import { z } from "zod";
 
 import { createTestLogger } from "../test-utils/test-logger.js";
@@ -38,6 +38,7 @@ import type {
   AgentStreamEvent,
 } from "./agent/agent-sdk-types.js";
 import { createWorktree, UnknownBranchError } from "../utils/worktree.js";
+import { createRealpathAwarePathMatcher } from "../utils/path.js";
 import {
   readOttoWorktreeMetadata,
   writeOttoWorktreeFirstAgentBranchAutoNameMetadata,
@@ -78,7 +79,15 @@ import {
   type WorkspaceMutation,
 } from "./workspace-registry.js";
 
-const REPO_CWD = path.resolve("/tmp/repo");
+// A project whose root is missing on disk reads Offline and refuses workspace
+// requests (project-availability.ts), so the shared project root is a real directory.
+const REPO_TMP_ROOT = realpathSync(mkdtempSync(path.join(tmpdir(), "otto-session-workspaces-")));
+const REPO_CWD = onDisk(path.join(REPO_TMP_ROOT, "repo"));
+
+function onDisk(dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
 const UNREGISTERED_CWD = path.resolve("/tmp/unregistered");
 
 const terminalManagers: TerminalManager[] = [];
@@ -91,6 +100,10 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   return { promise, resolve };
 }
 
+async function flushWorkspaceUpdateBackgroundWork(): Promise<void> {
+  await waitForImmediate();
+}
+
 afterEach(async () => {
   while (terminalManagers.length > 0) {
     const manager = terminalManagers.pop();
@@ -99,6 +112,10 @@ afterEach(async () => {
     }
   }
   await flushTerminalContributionWork();
+});
+
+afterAll(() => {
+  rmSync(REPO_TMP_ROOT, { recursive: true, force: true });
 });
 
 interface SessionTestAccess {
@@ -779,7 +796,6 @@ function createSessionForWorkspaceTests(
       workspaceAutoName: new WorkspaceAutoName({
         agentManager,
         workspaceRegistry,
-        onWorkspaceRecovered: options.onWorkspaceRecovered,
         workspaceGitService,
         providerSnapshotManager,
         readDaemonConfig: () => ({ metadataGeneration: { providers: [] } }),
@@ -1070,7 +1086,6 @@ test("create_agent_request keeps requested child cwd when grouped under an exist
         agentStorage,
         projectRegistry,
         workspaceRegistry,
-        onWorkspaceRecovered: options.onWorkspaceRecovered,
         scheduleService: asScheduleService(),
         checkoutDiffManager: asCheckoutDiffManager({
           subscribe: async () => ({
@@ -1226,7 +1241,6 @@ test("create_agent_request launches from an exact subdirectory in a created work
       agentStorage,
       projectRegistry,
       workspaceRegistry,
-      onWorkspaceRecovered: options.onWorkspaceRecovered,
       scheduleService: asScheduleService(),
       checkoutDiffManager: asCheckoutDiffManager({
         subscribe: async () => ({
@@ -1247,7 +1261,6 @@ test("create_agent_request launches from an exact subdirectory in a created work
       workspaceAutoName: new WorkspaceAutoName({
         agentManager,
         workspaceRegistry,
-        onWorkspaceRecovered: options.onWorkspaceRecovered,
         workspaceGitService,
         providerSnapshotManager: createProviderSnapshotManagerStub().manager,
         readDaemonConfig: () => ({ metadataGeneration: { providers: [] } }),
@@ -1366,7 +1379,6 @@ test("create_agent_request does not title an existing workspace from the agent p
         agentStorage,
         projectRegistry,
         workspaceRegistry,
-        onWorkspaceRecovered: options.onWorkspaceRecovered,
         scheduleService: asScheduleService(),
         checkoutDiffManager: asCheckoutDiffManager({
           subscribe: async () => ({
@@ -1882,7 +1894,7 @@ test("workspace mark unread selects the newest finished workspace root", async (
         cwd: REPO_CWD,
         workspaceId: workspace.workspaceId,
         updatedAt: "2026-03-30T17:00:00.000Z",
-        labels: { "paseo.parent-agent-id": "root-agent" },
+        labels: { "otto.parent-agent-id": "root-agent" },
       }),
     ],
   ]);
@@ -3855,6 +3867,7 @@ test("archiving the last workspace emits a remove carrying the now-empty project
       projectDisplayName: "repo",
       projectCustomName: null,
       projectCustomIconRevision: null,
+      projectOffline: false,
       projectRootPath: REPO_CWD,
       projectKind: "git",
     },
@@ -4398,7 +4411,7 @@ test("import_agent_request adopts the requested workspace instead of minting a s
   const session = createSessionForWorkspaceTests();
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
   const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
-  const importedCwd = path.resolve("/tmp/imported-in-place");
+  const importedCwd = onDisk(path.join(REPO_TMP_ROOT, "imported-in-place"));
 
   projects.set(
     "proj-in-place",
@@ -4539,7 +4552,7 @@ test("open_project_request emits a workspace_update with githubRuntime once the 
   const session = createSessionForWorkspaceTests();
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
   const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
-  const cwd = path.resolve("/tmp/github-runtime-repo");
+  const cwd = onDisk(path.join(REPO_TMP_ROOT, "github-runtime-repo"));
   const snapshot = createWorkspaceRuntimeSnapshot(cwd);
 
   let listener: ((snapshot: WorkspaceGitRuntimeSnapshot) => void) | null = null;
@@ -4631,7 +4644,7 @@ test("open_project_request does not match a new child directory to an existing p
   const session = createSessionForWorkspaceTests();
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
   const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
-  const home = path.resolve("/home/developer");
+  const home = onDisk(path.join(REPO_TMP_ROOT, "developer"));
   const worktree = path.join(home, ".otto", "worktrees", "project-config-lifecycle-textarea");
 
   projects.set(
@@ -4866,12 +4879,15 @@ test("open_project_request reclassifies an active directory workspace when git m
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
   const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
   const repoRoot = path.resolve("/home/developer/dev/otto");
-  const cwd = path.join(
-    path.resolve("/home/developer"),
-    ".otto",
-    "worktrees",
-    "orchestrate",
-    "desktop-daemon-settings",
+  const cwd = onDisk(
+    path.join(
+      REPO_TMP_ROOT,
+      "reclassify-home",
+      ".otto",
+      "worktrees",
+      "orchestrate",
+      "desktop-daemon-settings",
+    ),
   );
 
   projects.set(
@@ -5218,7 +5234,7 @@ test("refresh_agent_request unarchives the owning workspace when its directory e
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
   const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
 
-  const cwd = path.resolve("/tmp/otto-unit2-existing-dir");
+  const cwd = onDisk(path.join(REPO_TMP_ROOT, "otto-unit2-existing-dir"));
   session.filesystem.isDirectory = async () => true;
   const workspaceId = "ws-repo-archived";
   const agentId = "agent-archived";
@@ -5411,7 +5427,7 @@ test("refresh_agent_request recreates a deleted worktree directory and unarchive
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
   const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
 
-  const cwd = path.resolve("/tmp/otto-deleted-worktree-dir");
+  const cwd = onDisk(path.join(REPO_TMP_ROOT, "otto-deleted-worktree-dir"));
   session.filesystem.isDirectory = async () => false;
   const workspaceId = "ws-deleted-worktree";
   const agentId = "agent-deleted-worktree";
@@ -5532,7 +5548,7 @@ test("refresh_agent_request leaves the worktree archived and surfaces a typed er
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
   const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
 
-  const cwd = path.resolve("/tmp/otto-deleted-worktree-fail");
+  const cwd = onDisk(path.join(REPO_TMP_ROOT, "otto-deleted-worktree-fail"));
   session.filesystem.isDirectory = async () => false;
   const workspaceId = "ws-deleted-worktree-fail";
   const agentId = "agent-deleted-worktree-fail";
@@ -7723,6 +7739,7 @@ test("project.rename.request announces a project with no active workspaces on th
       projectKnowledgeLocation: null,
       projectArtifactLocation: null,
       projectWorkflowLocation: null,
+      projectOffline: false,
       projectRootPath: REPO_CWD,
       projectKind: "git",
     },
@@ -8777,6 +8794,9 @@ test("workspace auto-name applies title once when branch auto-name is rejected",
       firstAgentContext: { prompt: "Fix checkout title" },
     });
     await vi.runAllTimersAsync();
+    // The timer only starts the run; the branch read and metadata writes are real git
+    // and file I/O that fake timers cannot drain. The workspace update is the last step.
+    await vi.waitFor(() => expect(emittedCwds).toHaveLength(1));
 
     expect(generateCalls).toBe(1);
     expect(stored.get(workspace.workspaceId)).toMatchObject({
@@ -9425,7 +9445,7 @@ test("refresh_agent_request leaves workspace archival independent when its direc
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
   const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
 
-  const cwd = path.resolve("/tmp/otto-unit2-existing-dir");
+  const cwd = onDisk(path.join(REPO_TMP_ROOT, "otto-unit2-existing-dir"));
   session.filesystem.isDirectory = async () => true;
   const workspaceId = "ws-repo-archived";
   const agentId = "agent-archived";
@@ -9613,7 +9633,7 @@ test("refresh_agent_request does not recreate or unarchive a deleted worktree", 
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
   const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
 
-  const cwd = path.resolve("/tmp/otto-deleted-worktree-dir");
+  const cwd = onDisk(path.join(REPO_TMP_ROOT, "otto-deleted-worktree-dir"));
   session.filesystem.isDirectory = async () => false;
   const workspaceId = "ws-deleted-worktree";
   const agentId = "agent-deleted-worktree";
@@ -9712,7 +9732,7 @@ test("refresh_agent_request does not inspect an archived worktree branch", async
   const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
   const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
 
-  const cwd = path.resolve("/tmp/otto-deleted-worktree-fail");
+  const cwd = onDisk(path.join(REPO_TMP_ROOT, "otto-deleted-worktree-fail"));
   session.filesystem.isDirectory = async () => false;
   const workspaceId = "ws-deleted-worktree-fail";
   const agentId = "agent-deleted-worktree-fail";
@@ -9796,7 +9816,8 @@ test("lists Git runtime for a checkout explicitly owned by a non-Git project", a
   const session = createSessionForWorkspaceTests();
   const project = createPersistedProjectRecord({
     projectId: "proj-explicit-directory",
-    rootPath: "/tmp/explicit-directory",
+    // A missing root would read Offline, and Offline projects carry no Git runtime.
+    rootPath: onDisk(path.join(REPO_TMP_ROOT, "explicit-directory")),
     kind: "non_git",
     displayName: "directory project",
     createdAt: "2026-03-01T12:00:00.000Z",
@@ -10384,7 +10405,11 @@ test("a workspace leaving a filtered subscription after bootstrap emits a remova
   const listing = new Promise<ListFetchResult>((resolve) => {
     finishListing = resolve;
   });
-  session.listFetchWorkspacesEntries = async () => listing;
+  const listingStarted = deferred<void>();
+  session.listFetchWorkspacesEntries = async () => {
+    listingStarted.resolve();
+    return listing;
+  };
   session.buildWorkspaceDescriptorMap = async () =>
     new Map(currentDescriptor ? [[currentDescriptor.id, currentDescriptor]] : []);
   const bootstrap = session.handleMessage({
@@ -10393,6 +10418,9 @@ test("a workspace leaving a filtered subscription after bootstrap emits a remova
     filter: { query: "repo" },
     subscribe: { subscriptionId: "sub-buffered-filter" },
   });
+  // handleMessage awaits the Offline-project gate before dispatch, so the
+  // subscription only exists once the bootstrap listing has started.
+  await listingStarted.promise;
   await session.emitWorkspaceUpdatesForWorkspaceIds([descriptor.id]);
   finishListing({
     entries: [],
@@ -10562,6 +10590,7 @@ test("workspace auto-name uses the backing root for a nested worktree", async ()
   const workspaceAutoName = new WorkspaceAutoName({
     agentManager: asAgentManager({}),
     workspaceRegistry: {
+      get: async (workspaceId) => stored.get(workspaceId) ?? null,
       update: async (workspaceId, updater) => {
         const current = stored.get(workspaceId);
         if (!current) return null;
@@ -10595,6 +10624,9 @@ test("workspace auto-name uses the backing root for a nested worktree", async ()
       firstAgentContext: { prompt: "Fix checkout title" },
     });
     await vi.runAllTimersAsync();
+    // The timer only starts the run; the branch read and metadata writes are real git
+    // and file I/O that fake timers cannot drain. The workspace update is the last step.
+    await vi.waitFor(() => expect(emittedCwds).toHaveLength(1));
 
     expect(generateCalls).toBe(1);
     expect(stored.get(workspace.workspaceId)).toMatchObject({
@@ -10709,6 +10741,13 @@ test("workspace create stays out of a non-matching workspace subscription", asyn
   expect(filterByType(emitted, "workspace_update")).toEqual([]);
 });
 
+// The default registry already backs REPO_CWD with a live workspace, and creating a
+// second workspace on an occupied directory is refused (workspace_directory_occupied),
+// so explicit-project creation targets its own directory.
+const EXPLICIT_PROJECT_WORKSPACE_CWD = onDisk(
+  path.join(REPO_TMP_ROOT, "explicit-project-directory"),
+);
+
 test("workspace.create.request attaches a directory workspace to its explicit active project", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const projects = new Map([
@@ -10716,7 +10755,7 @@ test("workspace.create.request attaches a directory workspace to its explicit ac
       "prj_explicit",
       createPersistedProjectRecord({
         projectId: "prj_explicit",
-        rootPath: path.join(REPO_CWD, "unrelated"),
+        rootPath: onDisk(path.join(REPO_CWD, "unrelated")),
         kind: "non_git",
         displayName: "unrelated",
         createdAt: "2026-03-01T00:00:00.000Z",
@@ -10737,7 +10776,7 @@ test("workspace.create.request attaches a directory workspace to its explicit ac
   await session.handleMessage({
     type: "workspace.create.request",
     requestId: "req-explicit-project",
-    source: { kind: "directory", path: REPO_CWD, projectId: "prj_explicit" },
+    source: { kind: "directory", path: EXPLICIT_PROJECT_WORKSPACE_CWD, projectId: "prj_explicit" },
   });
 
   const response = findByType(emitted, "workspace.create.response");
@@ -10749,7 +10788,7 @@ test("workspace.create.request attaches a directory workspace to its explicit ac
   const workspaceId = response?.payload.workspace?.id;
   expect(workspaceId).toEqual(expect.any(String));
   expect(workspaces.get(workspaceId as string)).toMatchObject({
-    cwd: REPO_CWD,
+    cwd: EXPLICIT_PROJECT_WORKSPACE_CWD,
     projectId: "prj_explicit",
   });
 });
@@ -10761,7 +10800,7 @@ test("workspace.create.request reports an unknown explicit project", async () =>
   await session.handleMessage({
     type: "workspace.create.request",
     requestId: "req-unknown-project",
-    source: { kind: "directory", path: REPO_CWD, projectId: "prj_missing" },
+    source: { kind: "directory", path: EXPLICIT_PROJECT_WORKSPACE_CWD, projectId: "prj_missing" },
   });
 
   expect(findByType(emitted, "workspace.create.response")?.payload).toMatchObject({
@@ -10775,7 +10814,7 @@ test("workspace.create.request reports an archived explicit project", async () =
   const emitted: SessionOutboundMessage[] = [];
   const archivedProject = createPersistedProjectRecord({
     projectId: "prj_archived",
-    rootPath: path.join(REPO_CWD, "unrelated"),
+    rootPath: onDisk(path.join(REPO_CWD, "unrelated")),
     kind: "non_git",
     displayName: "unrelated",
     createdAt: "2026-03-01T00:00:00.000Z",
@@ -10789,7 +10828,7 @@ test("workspace.create.request reports an archived explicit project", async () =
   await session.handleMessage({
     type: "workspace.create.request",
     requestId: "req-archived-project",
-    source: { kind: "directory", path: REPO_CWD, projectId: "prj_archived" },
+    source: { kind: "directory", path: EXPLICIT_PROJECT_WORKSPACE_CWD, projectId: "prj_archived" },
   });
 
   expect(findByType(emitted, "workspace.create.response")?.payload).toMatchObject({

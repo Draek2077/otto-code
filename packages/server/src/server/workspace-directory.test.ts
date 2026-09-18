@@ -614,6 +614,8 @@ describe("WorkspaceDirectory empty projects", () => {
         projectDisplayName: "Renamed",
         projectCustomName: "Renamed",
         projectCustomIconRevision: null,
+        // The fixture root does not exist on disk, so the project reads Offline.
+        projectOffline: true,
         projectRootPath: "/workspace/empty",
         projectKind: "non_git",
       },

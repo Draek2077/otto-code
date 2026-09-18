@@ -462,11 +462,11 @@ describe("resolveGitCreateBaseBranch", () => {
 describe("create-agent worktree setup boundary", () => {
   test("blocked worktrees keep their workspace but skip setup and automatic terminals", async () => {
     const { tempDir, repoDir } = createGitRepo();
-    const paseoHome = path.join(tempDir, ".paseo");
+    const ottoHome = path.join(tempDir, ".otto");
     const setupMarker = path.join(tempDir, "setup-ran");
     const emitted: SessionOutboundMessage[] = [];
     writeFileSync(
-      path.join(repoDir, "paseo.json"),
+      path.join(repoDir, "otto.json"),
       JSON.stringify({
         worktree: {
           setup: [`node -e "require('fs').writeFileSync('${setupMarker}', 'ran')"`],
@@ -476,10 +476,10 @@ describe("create-agent worktree setup boundary", () => {
     );
 
     try {
-      const result = await createPaseoWorktreeWorkflow(
+      const result = await createOttoWorktreeWorkflow(
         {
-          paseoHome,
-          createPaseoWorktree: createPaseoWorktreeForTest({ paseoHome }),
+          ottoHome,
+          createOttoWorktree: createOttoWorktreeForTest({ ottoHome }),
           warmWorkspaceGitData: async () => {},
           autoNameWorkspaceBranchForFirstAgent: () => {},
           assertWorkspaceAutomationAllowed: async () => {
@@ -502,7 +502,7 @@ describe("create-agent worktree setup boundary", () => {
           getDaemonTcpHost: null,
           onScriptsChanged: null,
         },
-        { cwd: repoDir, worktreeSlug: "blocked-fork", runSetup: false, paseoHome },
+        { cwd: repoDir, worktreeSlug: "blocked-fork", runSetup: false, ottoHome },
         {
           setupContinuation: {
             kind: "agent",
@@ -523,7 +523,7 @@ describe("create-agent worktree setup boundary", () => {
         }),
       );
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      removeTempDir(tempDir);
     }
   });
 
@@ -1397,7 +1397,7 @@ describe("runWorktreeSetupInBackground", () => {
     execFileSync("git", ["init", "-b", "fork-branch"], { cwd: tempDir, stdio: "ignore" });
     const setupMarker = path.join(tempDir, "setup-ran");
     writeFileSync(
-      path.join(tempDir, "paseo.json"),
+      path.join(tempDir, "otto.json"),
       JSON.stringify({
         worktree: {
           setup: [`node -e "require('fs').writeFileSync('setup-ran', 'ran')"`],

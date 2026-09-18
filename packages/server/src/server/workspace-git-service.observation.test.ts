@@ -149,6 +149,12 @@ function getWatcherSubscribeCallCount(
     .length;
 }
 
+// CheckoutDiffManager skips a watcher wakeup when the raw patch text did not move
+// (its fingerprint probe), so a fake patch must change whenever the files do.
+function fakePatch(files: Array<{ path: string; additions: number; deletions: number }>): string {
+  return JSON.stringify(files);
+}
+
 function createService(
   watcher: ReturnType<typeof createWatcherHarness>,
   overrides?: Record<string, unknown>,
@@ -365,7 +371,10 @@ describe("WorkspaceGitService checkout observation", () => {
     );
     const getCheckoutShortstat = vi.fn(async () => diffStat);
     const getPullRequestStatus = vi.fn();
-    const getCheckoutDiff = vi.fn(async () => ({ diff: "", structured: [diffFile] }));
+    const getCheckoutDiff = vi.fn(async () => ({
+      diff: fakePatch([diffFile]),
+      structured: [diffFile],
+    }));
     const service = createService(watcher, {
       getCheckoutSnapshotFacts,
       getCheckoutStatus,
@@ -1142,7 +1151,10 @@ describe("WorkspaceGitService checkout observation", () => {
     let diffFiles = [{ path: "tracked.txt", additions: 3, deletions: 1, status: "modified" }];
     const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd, { isDirty }));
     const getCheckoutShortstat = vi.fn(async () => diffStat);
-    const getCheckoutDiff = vi.fn(async () => ({ diff: "", structured: diffFiles }));
+    const getCheckoutDiff = vi.fn(async () => ({
+      diff: fakePatch(diffFiles),
+      structured: diffFiles,
+    }));
     const service = createService(watcher, {
       getCheckoutStatus,
       getCheckoutShortstat,
@@ -2164,7 +2176,10 @@ describe("WorkspaceGitService checkout observation", () => {
     }> = [];
     const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd, { isDirty }));
     const getCheckoutShortstat = vi.fn(async () => diffStat);
-    const getCheckoutDiff = vi.fn(async () => ({ diff: "", structured: diffFiles }));
+    const getCheckoutDiff = vi.fn(async () => ({
+      diff: fakePatch(diffFiles),
+      structured: diffFiles,
+    }));
     const service = createService(watcher, {
       getCheckoutStatus,
       getCheckoutShortstat,

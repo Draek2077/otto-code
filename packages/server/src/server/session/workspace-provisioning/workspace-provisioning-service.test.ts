@@ -114,8 +114,15 @@ afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
+// A project whose root is missing on disk reads Offline and refuses workspace
+// mutations (project-availability.ts), so project roots must be real directories.
+function onDisk(dir: string): string {
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 test("fresh git repo creates a workspace at the canonical worktree root", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(repo);
 
   const workspace = await provisioning.findOrCreateWorkspaceForDirectory(repo);
@@ -134,7 +141,7 @@ test("fresh non-git directory creates a directory workspace at the exact path", 
 });
 
 test("re-opening an active workspace by exact path returns the same record without duplicating", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(repo);
 
   const first = await provisioning.findOrCreateWorkspaceForDirectory(repo);
@@ -145,7 +152,7 @@ test("re-opening an active workspace by exact path returns the same record witho
 });
 
 test("re-opening Windows-equivalent workspace cwd spellings reuses the active and archived record", async () => {
-  const cwd = path.join(tmpDir, "workspace");
+  const cwd = onDisk(path.join(tmpDir, "workspace"));
   const created = await provisioning.findOrCreateWorkspaceForDirectory(cwd);
   await workspaceRegistry.upsert({ ...created, cwd: `${cwd}${path.sep}` });
 
@@ -160,7 +167,7 @@ test("re-opening Windows-equivalent workspace cwd spellings reuses the active an
 });
 
 test("re-opening refreshes mutable checkout metadata without renaming the workspace", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   const first = await provisioning.findOrCreateWorkspaceForDirectory(repo);
   await workspaceRegistry.upsert({ ...first, title: "Pinned work" });
   gitRoots.add(repo);
@@ -231,7 +238,7 @@ test.each([false, true])(
 test.each(["open", "reattach"] as const)(
   "%s keeps orphan repair scoped to explicit Reattach",
   async (operation) => {
-    const repoRoot = path.join(tmpDir, "source");
+    const repoRoot = onDisk(path.join(tmpDir, "source"));
     const cwd = path.join(tmpDir, "worktree");
     gitRoots.add(repoRoot);
     gitRoots.add(cwd);
@@ -271,7 +278,7 @@ test.each(["open", "reattach"] as const)(
 );
 
 test("re-opening an archived workspace by its exact path unarchives it and keeps the id", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(repo);
   const created = await provisioning.findOrCreateWorkspaceForDirectory(repo);
   await workspaceRegistry.archive(created.workspaceId, ARCHIVED_AT);
@@ -283,7 +290,7 @@ test("re-opening an archived workspace by its exact path unarchives it and keeps
 });
 
 test("reopening archived exact-root records restores the fresh Git project", async () => {
-  const cwd = path.join(tmpDir, "repo");
+  const cwd = onDisk(path.join(tmpDir, "repo"));
   const project = await projectRegistry.getOrCreateActiveByRoot({
     rootPath: cwd,
     kind: "non_git",
@@ -338,7 +345,7 @@ test("reopening archived exact-root records restores the fresh Git project", asy
 });
 
 test("uses one workspace snapshot when reopening an archived workspace", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(repo);
   const created = await provisioning.findOrCreateWorkspaceForDirectory(repo);
   await workspaceRegistry.archive(created.workspaceId, ARCHIVED_AT);
@@ -369,7 +376,7 @@ test("uses one workspace snapshot when reopening an archived workspace", async (
 });
 
 test("reopening an archived workspace refreshes placement without renaming it", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(repo);
   const created = await provisioning.findOrCreateWorkspaceForDirectory(repo);
   await workspaceRegistry.upsert({ ...created, title: "Pinned archived work" });
@@ -392,7 +399,7 @@ test("reopening an archived workspace refreshes placement without renaming it", 
 });
 
 test("opening a subpath of an archived git workspace mints a fresh workspace at the exact subpath", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(repo);
   const canonical = await provisioning.findOrCreateWorkspaceForDirectory(repo);
   await workspaceRegistry.archive(canonical.workspaceId, ARCHIVED_AT);
@@ -406,7 +413,7 @@ test("opening a subpath of an archived git workspace mints a fresh workspace at 
 });
 
 test("ensureWorkspaceRecordUnarchived restores the owning archived project with the workspace", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(repo);
   const created = await provisioning.findOrCreateWorkspaceForDirectory(repo);
   await projectRegistry.archive(created.projectId, ARCHIVED_AT);
@@ -422,7 +429,7 @@ test("ensureWorkspaceRecordUnarchived restores the owning archived project with 
 });
 
 test("ensureWorkspaceRecordUnarchived preserves the consumed auto-archive change request", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   const changeRequestUrl = "https://github.com/Draek2077/otto-code/pull/2714";
   gitRoots.add(repo);
   const created = await provisioning.findOrCreateWorkspaceForDirectory(repo);
@@ -444,7 +451,7 @@ test("ensureWorkspaceRecordUnarchived preserves the consumed auto-archive change
 });
 
 test("ensureWorkspaceRecordUnarchived acknowledges a merged change request for a legacy archive", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   const changeRequestUrl = "https://github.com/Draek2077/otto-code/pull/2714";
   gitRoots.add(repo);
   const created = await provisioning.findOrCreateWorkspaceForDirectory(repo);
@@ -465,7 +472,7 @@ test("ensureWorkspaceRecordUnarchived acknowledges a merged change request for a
 });
 
 test("ensureWorkspaceRecordUnarchived refreshes the latch for a different merged change request", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   const previousChangeRequestUrl = "https://github.com/Draek2077/otto-code/pull/2713";
   const currentChangeRequestUrl = "https://github.com/Draek2077/otto-code/pull/2714";
   gitRoots.add(repo);
@@ -489,7 +496,7 @@ test("ensureWorkspaceRecordUnarchived refreshes the latch for a different merged
 });
 
 test("does not unarchive either record when checkout refresh fails", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(repo);
   const created = await provisioning.findOrCreateWorkspaceForDirectory(repo);
   await projectRegistry.archive(created.projectId, ARCHIVED_AT);
@@ -549,7 +556,7 @@ test("resolveOrCreateWorkspaceIdForCreateAgent creates a titled workspace when n
 });
 
 test("createWorkspaceForDirectory always mints a fresh workspace even when one already occupies the cwd", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(repo);
 
   const first = await provisioning.createWorkspaceForDirectory(repo);
@@ -560,7 +567,7 @@ test("createWorkspaceForDirectory always mints a fresh workspace even when one a
 });
 
 test("directory creation persists the live branch and a trimmed title", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(repo);
   const workspace = await provisioning.createWorkspaceForDirectory(repo, "  Focused work  ");
   expect(workspace).toMatchObject({ branch: "main", title: "Focused work" });
@@ -568,7 +575,7 @@ test("directory creation persists the live branch and a trimmed title", async ()
 
 test("createWorkspaceForDirectory honors an explicit active project without cwd containment", async () => {
   const project = await projectRegistry.getOrCreateActiveByRoot({
-    rootPath: path.join(tmpDir, "elsewhere"),
+    rootPath: onDisk(path.join(tmpDir, "elsewhere")),
     kind: "non_git",
     displayName: "elsewhere",
     timestamp: "2026-03-01T00:00:00.000Z",
@@ -582,7 +589,7 @@ test("createWorkspaceForDirectory honors an explicit active project without cwd 
 });
 
 test("createWorkspaceForDirectory refreshes an explicit project's stale Git kind", async () => {
-  const rootPath = path.join(tmpDir, "repo");
+  const rootPath = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(rootPath);
   const project = await projectRegistry.getOrCreateActiveByRoot({
     rootPath,
@@ -633,7 +640,7 @@ test("createWorkspaceForDirectory classifies unknown and archived explicit proje
 });
 
 test("findOrCreateProjectForDirectory keeps nested selected roots independent", async () => {
-  const repo = path.join(tmpDir, "repo");
+  const repo = onDisk(path.join(tmpDir, "repo"));
   gitRoots.add(repo);
 
   const first = await provisioning.findOrCreateProjectForDirectory(repo);

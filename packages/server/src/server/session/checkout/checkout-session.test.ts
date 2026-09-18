@@ -1261,13 +1261,19 @@ describe("CheckoutSession", () => {
 
     // The daemon advertises `forgeSearch`, so this is the path the app takes.
     it("answers a forge search request on the forge channel", async () => {
+      // forge.search resolves the cwd's forge (the legacy github twin alone is
+      // GitHub by definition), so the cwd has to resolve to the GitHub adapter.
+      const github: GitHubService = {
+        ...createGitHubService(),
+        searchIssuesAndPrs: async () => ({
+          items: [],
+          featuresEnabled: true,
+          authState: "authenticated",
+        }),
+      };
       const { checkout, emitted } = makeCheckoutSession({
-        github: {
-          searchIssuesAndPrs: async () => ({
-            items: [],
-            featuresEnabled: true,
-            authState: "authenticated",
-          }),
+        git: {
+          resolveForge: async () => ({ forge: "github", host: "github.com", service: github }),
         },
       });
 

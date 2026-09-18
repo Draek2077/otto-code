@@ -81,6 +81,12 @@ function createScriptedRunner(steps: RunnerStep[]): TestRunner {
   };
 }
 
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    await Promise.resolve();
+  }
+}
+
 function createDeferredRunner(): TestRunner {
   const calls: RunnerCall[] = [];
   let resolveNext: ((stdout: string) => void) | null = null;

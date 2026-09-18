@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { createTestLogger } from "../test-utils/test-logger.js";
 import { areEquivalentPaths } from "../utils/path.js";
+import { deriveProjectKey } from "./project-key.js";
 import {
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
@@ -337,6 +338,13 @@ class ObservedPlacements {
         rootPath,
         kind: "non_git",
         displayName: spec.id,
+        // Seed the key reconciliation derives, so a metadata pass has nothing to backfill.
+        projectKey: deriveProjectKey({
+          rootPath,
+          remoteUrl: null,
+          worktreeRoot: null,
+          mainRepoRoot: null,
+        }),
         createdAt: TIMESTAMP,
         updatedAt: TIMESTAMP,
         archivedAt: spec.archived ? TIMESTAMP : null,
@@ -472,8 +480,14 @@ describe("observed workspace placement", () => {
   });
 
   test("archives missing workspace directories on the periodic pass", async () => {
+    // The workspace lives below the project root: deleting the root itself would
+    // take the whole project Offline, which reconciliation deliberately leaves alone.
     const observed = new ObservedPlacements([
-      { id: "project-one", root: "repo", workspaces: [{ id: "workspace-one", cwd: "repo" }] },
+      {
+        id: "project-one",
+        root: "repo",
+        workspaces: [{ id: "workspace-one", cwd: "repo/feature" }],
+      },
     ]);
     await observed.start();
     await observed.deleteWorkspaceDirectory("workspace-one");
@@ -486,8 +500,14 @@ describe("observed workspace placement", () => {
   });
 
   test("preserves a periodic full pass queued behind metadata reconciliation", async () => {
+    // The workspace lives below the project root: deleting the root itself would
+    // take the whole project Offline, which reconciliation deliberately leaves alone.
     const observed = new ObservedPlacements([
-      { id: "project-one", root: "repo", workspaces: [{ id: "workspace-one", cwd: "repo" }] },
+      {
+        id: "project-one",
+        root: "repo",
+        workspaces: [{ id: "workspace-one", cwd: "repo/feature" }],
+      },
     ]);
     await observed.start();
     const metadataRead = observed.holdNextReconciliation();

@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "fs";
@@ -388,6 +389,21 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     daemonRuntimeConfig: options.daemonRuntimeConfig,
     permissions: options.permissions ?? OWNER_PERMISSIONS,
   });
+}
+
+// Project RPCs refuse Offline projects, and a root that does not exist on disk is Offline.
+const onlineProjectRoots: string[] = [];
+
+afterEach(() => {
+  for (const dir of onlineProjectRoots.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function makeOnlineProjectRoot(prefix: string): string {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+  onlineProjectRoots.push(root);
+  return root;
 }
 
 test("queues an in-session suggested task instead of interrupting compaction", async () => {
@@ -1261,6 +1277,8 @@ describe("preview RPCs", () => {
     const session = createSessionForTest({
       messages,
       projectRegistry: {
+        // The Offline gate scans registered roots before allocating a Project.
+        list: vi.fn(async () => []),
         getOrCreateActiveByRoot: projectAllocation,
       },
       workspaceGitService: {
@@ -1309,6 +1327,7 @@ describe("preview RPCs", () => {
               projectCustomName: null,
               projectCustomIconRevision: null,
               projectIconRevision: "automatic:none:v1",
+              projectOffline: false,
               projectRootPath: directoryPath,
               projectKind: "non_git",
               // A freshly created directory has none of Otto's per-project
@@ -1918,7 +1937,7 @@ describe("project Artifact storage RPC", () => {
     let project: PersistedProjectRecord = {
       ...createPersistedProjectRecord({
         projectId: "project-artifact-store",
-        rootPath: "/repo/artifact-store",
+        rootPath: makeOnlineProjectRoot("artifact-store-session-test-"),
         kind: "git",
         displayName: "Artifact store",
         createdAt: "2026-08-29T00:00:00.000Z",
@@ -1934,6 +1953,7 @@ describe("project Artifact storage RPC", () => {
     const session = createSessionForTest({
       messages,
       projectRegistry: {
+        list: vi.fn(async () => [project]),
         get: vi.fn(async () => project),
         update,
       },
@@ -1965,6 +1985,7 @@ describe("project Artifact storage RPC", () => {
     const session = createSessionForTest({
       messages,
       projectRegistry: {
+        list: vi.fn(async () => []),
         get: vi.fn(async () => null),
         update,
       },
@@ -1996,7 +2017,7 @@ describe("project Workflow storage RPC", () => {
     let project: PersistedProjectRecord = {
       ...createPersistedProjectRecord({
         projectId: "project-workflow-store",
-        rootPath: "/repo/workflow-store",
+        rootPath: makeOnlineProjectRoot("workflow-store-session-test-"),
         kind: "git",
         displayName: "Workflow store",
         createdAt: "2026-08-29T00:00:00.000Z",
@@ -2012,7 +2033,11 @@ describe("project Workflow storage RPC", () => {
     });
     const session = createSessionForTest({
       messages,
-      projectRegistry: { get: vi.fn(async () => project), update },
+      projectRegistry: {
+        list: vi.fn(async () => [project]),
+        get: vi.fn(async () => project),
+        update,
+      },
     });
 
     await session.handleMessage({
@@ -2206,8 +2231,13 @@ describe("project config RPC authorization", () => {
   test("write_project_config_request emits stale and write-failed inline domain failures", async () => {
     const staleRoot = makeRoot();
     writeFileSync(join(staleRoot, "otto.json"), JSON.stringify({ worktree: { setup: "old" } }));
-    const writeFailedRoot = join(makeRoot(), "not-a-directory");
-    writeFileSync(writeFailedRoot, "file");
+    // The root must exist (a missing or non-directory root makes the Project
+    // Offline and the request is refused before it reaches the writer), so the
+    // write fails at the rename instead: otto.json is occupied by a directory.
+    const writeFailedRoot = makeRoot();
+    const blockedConfigPath = join(writeFailedRoot, "otto.json");
+    mkdirSync(blockedConfigPath);
+    const blockedConfigStats = statSync(blockedConfigPath);
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
@@ -2233,7 +2263,7 @@ describe("project config RPC authorization", () => {
       requestId: "write-failed-1",
       repoRoot: writeFailedRoot,
       config: { worktree: { setup: "new" } },
-      expectedRevision: null,
+      expectedRevision: { mtimeMs: blockedConfigStats.mtimeMs, size: blockedConfigStats.size },
     });
 
     expect(messages).toEqual([
@@ -2743,10 +2773,16 @@ describe("session provider refresh cwd routing", () => {
       requestId: "models-loading-home",
     });
 
-    expect(warmUpSnapshotForCwd).toHaveBeenCalledWith({
-      cwd: undefined,
-      providers: ["codex"],
-    });
+    // The Offline-project gate is awaited before dispatch, so warmup starts a tick later.
+    await vi.waitFor(() =>
+      expect(warmUpSnapshotForCwd).toHaveBeenCalledWith({
+        cwd: undefined,
+        providers: ["codex"],
+      }),
+    );
+    expect(messages).not.toContainEqual(
+      expect.objectContaining({ type: "list_provider_models_response" }),
+    );
     warmupDeferred.resolve();
     await responsePromise;
 
@@ -4396,7 +4432,8 @@ describe("session workspace descriptors", () => {
     };
     const project = {
       projectId: "remote:github.com/acme/app",
-      rootPath: "/repo/app",
+      // A real root keeps the Project online; Offline projects carry no placement.
+      rootPath: makeOnlineProjectRoot("workspace-descriptor-gh-"),
       kind: "git" as const,
       displayName: "acme/app",
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -4468,7 +4505,8 @@ describe("session workspace descriptors", () => {
     };
     const project = {
       projectId: "/repo/local",
-      rootPath: "/repo/local",
+      // A real root keeps the Project online; Offline projects carry no placement.
+      rootPath: makeOnlineProjectRoot("workspace-descriptor-local-"),
       kind: "git" as const,
       displayName: "local",
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -5810,10 +5848,12 @@ test("sends project updates only to capable sockets in a retained session", asyn
 
 test("project.list returns every active project descriptor", async () => {
   const messages: SessionOutboundMessage[] = [];
+  // A real root keeps the Project online; an Offline one skips its icon probe.
+  const activeRoot = makeOnlineProjectRoot("project-active-");
   const active = createPersistedProjectRecord({
     projectId: "project-active",
     projectKey: "remote:github.com/acme/app",
-    rootPath: "/tmp/project-active",
+    rootPath: activeRoot,
     kind: "git",
     displayName: "acme/app",
     createdAt: "2026-07-17T00:00:00.000Z",
@@ -5848,7 +5888,8 @@ test("project.list returns every active project descriptor", async () => {
             projectCustomName: null,
             projectCustomIconRevision: null,
             projectIconRevision: "automatic:none:v1",
-            projectRootPath: "/tmp/project-active",
+            projectOffline: false,
+            projectRootPath: activeRoot,
             projectKind: "git",
             // Otto's per-project locations, unset on this fixture.
             projectKnowledgeLocation: null,
@@ -6464,6 +6505,8 @@ describe("stable session regression intake", () => {
     const session = createSessionForTest({
       messages,
       projectRegistry: {
+        // The Offline gate scans registered roots before allocating a Project.
+        list: vi.fn(async () => []),
         getOrCreateActiveByRoot: vi.fn().mockRejectedValue(new Error("registry unavailable")),
       },
       workspaceGitService: {
