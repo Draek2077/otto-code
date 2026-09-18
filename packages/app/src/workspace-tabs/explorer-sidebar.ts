@@ -6,6 +6,9 @@ import {
 } from "@/stores/panel-store";
 import type { ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
 import {
+  collectAllTabs,
+  findPaneById,
+  selectExplorerSidebarPaneId,
   selectIsExplorerSidebarVisible,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
@@ -135,9 +138,33 @@ export function toggleExplorerSidebar(input: ExplorerSidebarInput): void {
   if (!input.workspaceKey) return;
   if (isExplorerSidebarOpen(input)) {
     hideExplorerSidebar(input);
+  } else if (explorerSidebarFocusesGitOnlyTree(input)) {
+    // OTTO: a fresh Explorer pane focuses Changes, which User mode and non-Git
+    // checkouts cannot show. Reveal Files instead so the pane opens on a tree
+    // the user can see. Any visible tab they picked is still preserved.
+    openExplorerSidebarTab({ ...input, tab: "files" });
   } else {
     showExplorerSidebar(input);
   }
+}
+
+function explorerSidebarFocusesGitOnlyTree(input: ExplorerSidebarInput): boolean {
+  if (input.isDeveloperMode !== false && input.checkout?.isGit !== false) {
+    return false;
+  }
+  if (!input.workspaceKey) {
+    return false;
+  }
+  const state = useWorkspaceLayoutStore.getState();
+  const layout = state.layoutByWorkspace[input.workspaceKey];
+  const paneId = layout ? selectExplorerSidebarPaneId(state, input.workspaceKey) : null;
+  const pane = paneId && layout ? findPaneById(layout.root, paneId) : null;
+  if (!layout || !pane?.focusedTabId) {
+    // No Explorer pane yet: creating one focuses its default Changes tree.
+    return true;
+  }
+  const focusedTab = collectAllTabs(layout.root).find((tab) => tab.tabId === pane.focusedTabId);
+  return !focusedTab || USER_MODE_HIDDEN_EXPLORER_KINDS.has(focusedTab.target.kind);
 }
 
 export function useIsExplorerSidebarOpen(input: ExplorerSidebarQuery): boolean {
