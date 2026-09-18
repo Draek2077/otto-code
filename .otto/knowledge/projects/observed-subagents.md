@@ -6,7 +6,7 @@ status: "confirmed"
 tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "partial"
 created_at: "2026-08-08T06:17:57.301Z"
-updated_at: "2026-09-12T15:50:32.641Z"
+updated_at: "2026-09-18T23:01:08.547Z"
 ---
 # Observed Subagents
 
@@ -318,3 +318,7 @@ Per the repo convention (CLAUDE.md → Docs), once this ships the durable facts 
   kind: "evidence"
   summary: "The user rejected device-local dismissal as insufficient user control. Removed that workaround and replaced it with host-backed provider-subagent control, gated by providerSubagentControl. Codex uses child thread turn interruption; Claude resolves task IDs; OpenCode aborts the child session. Providers without targeted stop require explicit allowStopParent confirmation before closing the owning agent session. Archive writes a parent-label tombstone and broadcasts archivedAt; replay retains it, transcripts remain fetchable, and stop/storage failures do not silently archive the row. Both track presentations and bulk/automatic archive route provider rows through the host operation. Terminal provider rows now group correctly. Validation: 109 focused tests passed (6 manager lifecycle, 3 Codex targeting, 3 generated protocol, 97 app tests), server stack build passed before final refinements, final app/server/protocol typechecks and targeted lint passed. Installed desktop/remote relay and live-provider cancellation have not been verified. The earlier Dismiss evidence is historical and does not describe the final implementation."
   source: "docs/chat-lifecycle.md; packages/server/src/server/agent/provider-subagent-control.test.ts; packages/server/src/server/agent/providers/codex/subagent-control.te"
+- time: "2026-09-18T23:01:08.547Z"
+  kind: "evidence"
+  summary: "Investigated the user's stuck subagent, missing-title, and Clear-count reports against the installed local host without interrupting it. Release 0.9.13 (parent 5cc52f4b-1eef-494d-95bf-836784e9c68b) exposed five running observed rows with null titles; matching provider descriptors had task names and statuses completed for three, canceled for one, and running for one. Source verification found Session.enrichAgentPayload mutated registry-owned observed snapshots and replaced both title and archivedAt with null because observed rows have no stored record. A regression reproduces Clear of two completed rows followed by a new completion and late usage; patched enrichment leaves only the new row visible. A separate regression reproduces resumed Claude task progress/completion being keyed to the new tool-call id instead of the original child, stranding the original row. Local patch preserves canonical identity across those events and sidechains, rejects undeclared frames in both projections, settles acknowledged targeted Stops, maps killed to closed, and prevents late usage from reopening terminal rows. Validation: 16 focused tests passed, server typecheck and targeted lint passed. Installed-host behavior after upgrade remains unverified; no daemon restart or live child cancellation was performed. The repository module-size check remains failing on pre-existing oversized modules."
+  source: "2026-09-18 read-only installed-host snapshot of Release 0.9.13; docs/chat-lifecycle.md; session.observed-metadata.test.ts; agent.observed-lifecycle.test.ts; age"

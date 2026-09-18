@@ -352,6 +352,17 @@ Row actions are **status-aware** - the primary action matches the row's state. A
 
 Row names are **frozen labels**, not summaries. A short, stable name is derived once when the subagent starts (from its type, plus an optional truncated slice of the initial task) and never mutates afterward - a provider's streaming progress summary updates the pane's live subtitle, never the row's title, and the projection enforces a hard single-line length cap. This keeps the track readable like a list of tabs.
 
+Observed snapshots own their title and archive marker. Session metadata enrichment preserves both
+when there is no stored chat record, and returns a copy instead of mutating the manager's snapshot.
+Otherwise a live push erases the name and undoes Clear on every connected client.
+
+Claude can resume the same child task under a new tool-call id. Progress, sidechain messages, and
+completion retain the original row identity through the task-id mapping. Both provider and observed
+projections apply the declaration filter, so rejected internal frames cannot create an unnamed row.
+An acknowledged targeted Stop settles both projections without waiting for a later notification;
+a rejected Stop leaves them unchanged. Terminal events settle transcript watchers too, and late
+usage retains the terminal state. Explicit background work remains live when the parent turn ends.
+
 Each row shows **honest cumulative token cost** right of the name - the running Σ(input + output) the daemon accumulates across the subagent's turns (not a last-turn or estimated number), plus `totalCostUsd` when the provider reports one. The accumulator is universal: it works for any provider and any spawn path, including cost-less local models. The collapsed track header sums the total across all rows, so a fan-out's cost is legible at a glance.
 
 ### Row liveness - "alive or hung?" without opening the row

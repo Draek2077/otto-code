@@ -2302,7 +2302,8 @@ function readObservedSubagentText(value: unknown): string | undefined {
 function toProviderSubagentStatus(status: string): "running" | "completed" | "failed" | "canceled" {
   if (status === "completed" || status === "idle") return "completed";
   if (status === "failed" || status === "error") return "failed";
-  if (status === "stopped" || status === "canceled" || status === "closed") return "canceled";
+  if (status === "stopped" || status === "killed" || status === "canceled" || status === "closed")
+    return "canceled";
   return "running";
 }
 
@@ -2564,7 +2565,7 @@ class ClaudeAgentSession implements AgentSession {
   // turn-end sweep settles anything still open, since a foreground Task
   // cannot outlive the turn that spawned it (a lost/garbled task_notification
   // otherwise left the row running forever).
-  private readonly settledObservedSubagents = new Set<string>();
+  private readonly settledObservedSubagents = new Map<string, "idle" | "error" | "closed">();
   private readonly backgroundedProviderSubagents = new Set<string>();
   // Workflow runs are backgrounded (they legitimately outlive the turn) -
   // exempt from the turn-end sweep; they settle via their own task_notification.
@@ -2920,8 +2921,8 @@ class ClaudeAgentSession implements AgentSession {
 
   /**
    * Stop a provider-managed subagent task (observed subagent) without touching
-   * the parent turn. A task_notification with status "stopped" follows and
-   * settles the observed row. See projects/observed-subagents/observed-subagents.md.
+   * the parent turn. An acknowledged stop settles both projections even if the
+   * provider's terminal notification never arrives.
    */
   async stopTask(taskId: string): Promise<void> {
     const activeQuery = this.query;
@@ -2929,6 +2930,24 @@ class ClaudeAgentSession implements AgentSession {
       throw new Error("No active Claude session to stop the subagent task");
     }
     await activeQuery.stopTask(taskId);
+    const key = this.observedKeyByTaskId.get(taskId);
+    if (key) {
+      this.settledObservedSubagents.set(key, "closed");
+      this.taskTranscriptWatcher.markSettled(key, "closed");
+      this.disarmWorkflowWatcher(key, "closed");
+      this.dispatchEvents([
+        {
+          type: "provider_subagent",
+          provider: "claude",
+          event: { type: "upsert", id: key, status: "canceled" },
+        },
+        {
+          type: "observed_subagent_updated",
+          provider: "claude",
+          update: { key, status: "closed" },
+        },
+      ]);
+    }
   }
 
   async stopProviderSubagent(subagentId: string): Promise<void> {
@@ -4589,7 +4608,7 @@ class ClaudeAgentSession implements AgentSession {
 
     for (const key of this.announcedObservedSubagents) {
       if (this.settledObservedSubagents.has(key)) continue;
-      this.settledObservedSubagents.add(key);
+      this.settledObservedSubagents.set(key, "error");
       this.taskTranscriptWatcher.markSettled(key, "error");
       events.push(
         {
@@ -5142,7 +5161,7 @@ class ClaudeAgentSession implements AgentSession {
       provider: "claude",
       update: {
         key,
-        status: "running",
+        status: this.settledObservedSubagents.get(key) ?? "running",
         usage: toClaudeSubagentUsage(totals, model),
         usageRounds: accumulator.roundCount(),
         ...(model ? { model } : {}),
@@ -5300,7 +5319,12 @@ class ClaudeAgentSession implements AgentSession {
   ): AgentStreamEvent[] {
     const parentToolUseId = this.readObservedSubagentSidechainParent(message);
     if (parentToolUseId) {
-      const sidechainEvents = this.translateSidechainFrameToEvents(message, parentToolUseId).filter(
+      const canonicalId = this.taskProtocolSource.resolveSubagentId(parentToolUseId);
+      // Apply the declaration filter to BOTH projections. Otherwise an ignored
+      // frame still creates a nameless observed row with no stoppable task id.
+      if (this.taskProtocolSource.announcesTasks && !canonicalId) return [];
+      const observedKey = canonicalId ?? parentToolUseId;
+      const sidechainEvents = this.translateSidechainFrameToEvents(message, observedKey).filter(
         (event) =>
           !(
             this.workflowObservedKeys.has(parentToolUseId) &&
@@ -5309,7 +5333,7 @@ class ClaudeAgentSession implements AgentSession {
             event.item.callId === parentToolUseId
           ),
       );
-      this.appendObservedSubagentSidechainEvents(message, parentToolUseId, sidechainEvents);
+      this.appendObservedSubagentSidechainEvents(message, observedKey, sidechainEvents);
       return sidechainEvents;
     }
 
@@ -5581,8 +5605,13 @@ class ClaudeAgentSession implements AgentSession {
     }
     if (!key || !status) return;
     const providerStatus = toProviderSubagentStatus(status);
-    if (providerStatus !== "running") {
-      this.settledObservedSubagents.add(key);
+    const observedStatus = toObservedSubagentStatus(providerStatus);
+    if (observedStatus !== "running") {
+      this.settledObservedSubagents.set(key, observedStatus);
+      this.taskTranscriptWatcher.markSettled(key, observedStatus);
+      this.disarmWorkflowWatcher(key, observedStatus);
+    } else {
+      this.settledObservedSubagents.delete(key);
     }
     events.push(
       {
@@ -5593,7 +5622,7 @@ class ClaudeAgentSession implements AgentSession {
       {
         type: "observed_subagent_updated",
         provider: "claude",
-        update: { key, status: toObservedSubagentStatus(providerStatus) },
+        update: { key, status: observedStatus },
       },
     );
   }
@@ -5850,8 +5879,14 @@ class ClaudeAgentSession implements AgentSession {
       }
       const key = this.observedKeyByTaskId.get(taskId);
       if (key && !this.settledObservedSubagents.has(key)) {
-        this.settledObservedSubagents.add(key);
+        this.settledObservedSubagents.set(key, "idle");
         this.taskTranscriptWatcher.markSettled(key, "idle");
+        this.disarmWorkflowWatcher(key, "idle");
+        events.push({
+          type: "provider_subagent",
+          provider: "claude",
+          event: { type: "upsert", id: key, status: "completed" },
+        });
         events.push({
           type: "observed_subagent_updated",
           provider: "claude",
@@ -5952,12 +5987,14 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     const key =
-      input.toolUseId ?? this.observedKeyByTaskId.get(input.taskId) ?? `task:${input.taskId}`;
+      this.observedKeyByTaskId.get(input.taskId) ?? input.toolUseId ?? `task:${input.taskId}`;
     this.observedKeyByTaskId.set(input.taskId, key);
     this.announcedObservedSubagents.add(key);
     if (input.status !== "running") {
-      this.settledObservedSubagents.add(key);
+      this.settledObservedSubagents.set(key, input.status);
       this.taskTranscriptWatcher.markSettled(key, input.status);
+    } else {
+      this.settledObservedSubagents.delete(key);
     }
     const parentKey = this.observedParentKeyByToolUseId.get(key);
     const cachedTool = this.toolUseCache.get(key);
@@ -6117,7 +6154,7 @@ class ClaudeAgentSession implements AgentSession {
       });
       const outputFile = readObservedSubagentText(toObjectRecord(message)?.output_file);
       const workflowResult = outputFile ? readClaudeWorkflowResultFile(outputFile) : undefined;
-      const workflowKey = taskUseId ?? this.observedKeyByTaskId.get(message.task_id);
+      const workflowKey = this.observedKeyByTaskId.get(message.task_id) ?? taskUseId;
       if (workflowKey && workflowResult) {
         events.push({
           type: "provider_subagent",
@@ -6131,10 +6168,7 @@ class ClaudeAgentSession implements AgentSession {
       }
       // A workflow run settling here is also where its watcher tears down: do a
       // final transcript tail + run-state reconcile and settle the child rows.
-      this.disarmWorkflowWatcher(
-        taskUseId ?? this.observedKeyByTaskId.get(message.task_id),
-        status,
-      );
+      this.disarmWorkflowWatcher(workflowKey, status);
       return;
     }
     if (this.appendOwnedTaskNotificationEvent(message, events)) return;
@@ -6350,10 +6384,15 @@ class ClaudeAgentSession implements AgentSession {
    */
   private appendTurnEndObservedSubagentSweep(events: AgentStreamEvent[]): void {
     for (const key of this.announcedObservedSubagents) {
-      if (this.settledObservedSubagents.has(key) || this.workflowObservedKeys.has(key)) {
+      if (
+        this.settledObservedSubagents.has(key) ||
+        this.backgroundedProviderSubagents.has(key) ||
+        this.isBackgroundedObservedRun(key)
+      ) {
         continue;
       }
-      this.settledObservedSubagents.add(key);
+      this.settledObservedSubagents.set(key, "idle");
+      this.taskTranscriptWatcher.markSettled(key, "idle");
       events.push({
         type: "observed_subagent_updated",
         provider: "claude",
@@ -6636,7 +6675,8 @@ class ClaudeAgentSession implements AgentSession {
           (isClaudeSubagentToolName(entry.name) || isClaudeWorkflowToolName(entry.name)) &&
           this.announcedObservedSubagents.has(id)
         ) {
-          this.settledObservedSubagents.add(id);
+          this.settledObservedSubagents.set(id, "closed");
+          this.taskTranscriptWatcher.markSettled(id, "closed");
           this.pushEvent({
             type: "observed_subagent_updated",
             provider: "claude",
@@ -6666,7 +6706,8 @@ class ClaudeAgentSession implements AgentSession {
       if (this.settledObservedSubagents.has(id) || this.backgroundedProviderSubagents.has(id)) {
         continue;
       }
-      this.settledObservedSubagents.add(id);
+      this.settledObservedSubagents.set(id, "closed");
+      this.taskTranscriptWatcher.markSettled(id, "closed");
       this.pushEvent({
         type: "provider_subagent",
         provider: "claude",
@@ -7353,7 +7394,7 @@ class ClaudeAgentSession implements AgentSession {
     // which point this is the proof that the row is backgrounded and an
     // interrupt of the parent turn will not stop it.
     this.observedKeysWithToolResult.add(toolUseId);
-    this.settledObservedSubagents.add(toolUseId);
+    this.settledObservedSubagents.set(toolUseId, isError ? "error" : "idle");
     this.taskTranscriptWatcher.markSettled(toolUseId, isError ? "error" : "idle");
     this.pendingObservedEvents.push({
       type: "observed_subagent_updated",

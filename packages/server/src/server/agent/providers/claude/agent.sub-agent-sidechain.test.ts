@@ -511,6 +511,11 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
         event.item.callId === "task-resumed",
     );
     expect(taskCards).toEqual([]);
+    const observedUpdates = events.flatMap((event) =>
+      event.type === "observed_subagent_updated" ? [event.update] : [],
+    );
+    expect(observedUpdates.every((update) => update.key === "task-original")).toBe(true);
+    expect(observedUpdates.at(-1)).toMatchObject({ key: "task-original", status: "idle" });
   });
 
   test("keeps a failed Task subagent failed when the parent turn succeeds", async () => {
