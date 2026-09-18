@@ -1915,7 +1915,8 @@ describe("Otto factory configuration identity", () => {
   });
 
   test("local tool policy identity is detached from mutable caller configuration", () => {
-    const override = { extends: "openai-compatible", maxToolRounds: 10 };
+    // Custom providers require a label (see "requires a label" above).
+    const override = { extends: "openai-compatible", label: "Local", maxToolRounds: 10 };
     const first = buildProviderRegistry(logger, { providerOverrides: { local: override } });
     const original = structuredClone(first.local!.configuration);
     override.maxToolRounds = 20;

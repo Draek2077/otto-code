@@ -15,7 +15,10 @@ import { AgentStorage, type StoredAgentRecord } from "./agent-storage.js";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
 import type { AgentMode, AgentProvider, ProviderSnapshotEntry } from "./agent-sdk-types.js";
 import type { ProviderSnapshotManager } from "./provider-snapshot-manager.js";
-import { createProviderSnapshotManagerStub } from "../test-utils/session-stubs.js";
+import {
+  createProviderSnapshot,
+  createProviderSnapshotManagerStub,
+} from "../test-utils/session-stubs.js";
 import {
   AgentListItemPayloadSchema,
   AgentPermissionRequestPayloadSchema,
@@ -443,6 +446,28 @@ function createOpenCodeManager(options?: ConfigureOpenCodeProviderStubOptions): 
   const stub = createProviderSnapshotManagerStub();
   configureOpenCodeProviderStub(stub, options);
   return { manager: stub.manager, stub };
+}
+
+// Archive teardown fails closed without a registry to prove each workspace is
+// trusted (no untrusted change-request source); these records carry none.
+function createTrustedWorkspaceRegistry(
+  cwd: string,
+): Pick<WorkspaceRegistry, "get" | "upsert" | "list"> {
+  return {
+    get: vi.fn(async (workspaceId: string) =>
+      createPersistedWorkspaceRecord({
+        workspaceId,
+        projectId: "project-1",
+        cwd,
+        kind: "worktree",
+        displayName: workspaceId,
+        createdAt: "2026-07-17T00:00:00.000Z",
+        updatedAt: "2026-07-17T00:00:00.000Z",
+      }),
+    ),
+    list: vi.fn(async () => []),
+    upsert: vi.fn(async () => undefined),
+  };
 }
 
 // Quick helper: returns a bare stub manager seam. Use when the test does not
@@ -998,7 +1023,7 @@ describe("browser MCP tools", () => {
 
       expect(toolNames).not.toContain("browser_list_tabs");
       expect(toolNames).not.toContain("browser_snapshot");
-      expect(toolNames).toEqual(expect.arrayContaining(["create_agent", "list_agents"]));
+      expect(toolNames).toEqual(expect.arrayContaining(["create_chat", "list_chats"]));
     } finally {
       await client.close();
       await server.close();
@@ -1021,7 +1046,7 @@ describe("browser MCP tools", () => {
       browserToolsEnabled: true,
       browserToolsBroker: broker as BrowserToolsBroker,
       callerAgentId: "agent-1",
-      paseoToolPolicy: { disabledTools: ["browser_list_tabs"] },
+      ottoToolPolicy: { disabledTools: ["browser_list_tabs"] },
       logger,
     });
 
@@ -1045,7 +1070,7 @@ describe("browser MCP tools", () => {
       browserToolsEnabled: true,
       browserToolsBroker: broker as BrowserToolsBroker,
       callerAgentId: "agent-1",
-      paseoToolPolicy: { disabledTools: ["list_agents", "browser_list_tabs"] },
+      ottoToolPolicy: { disabledTools: ["list_chats", "browser_list_tabs"] },
       logger,
     });
     const client = await connectInMemoryMcpClient(server);
@@ -1054,11 +1079,11 @@ describe("browser MCP tools", () => {
       const listedTools = await client.listTools();
       const toolNames = listedTools.tools.map((tool) => tool.name);
 
-      expect(toolNames).not.toContain("list_agents");
+      expect(toolNames).not.toContain("list_chats");
       expect(toolNames).not.toContain("browser_list_tabs");
-      expect(toolNames).toEqual(expect.arrayContaining(["create_agent", "browser_snapshot"]));
-      await expect(client.callTool({ name: "list_agents", arguments: {} })).resolves.toEqual({
-        content: [{ type: "text", text: "MCP error -32602: Tool list_agents not found" }],
+      expect(toolNames).toEqual(expect.arrayContaining(["create_chat", "browser_snapshot"]));
+      await expect(client.callTool({ name: "list_chats", arguments: {} })).resolves.toEqual({
+        content: [{ type: "text", text: "MCP error -32602: Tool list_chats not found" }],
         isError: true,
       });
       await expect(client.callTool({ name: "browser_list_tabs", arguments: {} })).resolves.toEqual({
@@ -1584,7 +1609,13 @@ describe("create_chat MCP tool", () => {
       );
     const baseEntries = await stub.listProviders({});
     stub.listProviders.mockResolvedValue(withCodexModels(baseEntries));
-    stub.getSnapshot.mockReturnValue(withCodexModels(stub.getSnapshot()));
+    const baseSnapshot = stub.getSnapshot();
+    stub.getSnapshot.mockReturnValue(
+      createProviderSnapshot(
+        withCodexModels(baseSnapshot.records.map(({ entry }) => entry)),
+        baseSnapshot.cwd,
+      ),
+    );
 
     const server = await createAgentMcpServer({
       agentManager,
@@ -2966,6 +2997,7 @@ describe("create_chat MCP tool", () => {
           "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
         >,
         findWorkspaceIdForCwd: vi.fn(async () => "ws-archive-tool-worktree"),
+        workspaceRegistry: createTrustedWorkspaceRegistry(repoDir),
         listActiveWorkspaces,
         archiveWorkspaceRecord,
         emitWorkspaceUpdatesForWorkspaceIds,
@@ -3080,6 +3112,7 @@ describe("create_chat MCP tool", () => {
           "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
         >,
         findWorkspaceIdForCwd: vi.fn(async () => "ws-mcp-A"),
+        workspaceRegistry: createTrustedWorkspaceRegistry(repoDir),
         listActiveWorkspaces,
         archiveWorkspaceRecord,
         emitWorkspaceUpdatesForWorkspaceIds: vi.fn(async () => undefined),

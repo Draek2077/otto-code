@@ -1,4 +1,7 @@
 import { createAgentRequestsStub } from "./test-utils/session-stubs.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import pino from "pino";
 import { z } from "zod";
 import { describe, expect, test } from "vitest";
@@ -360,9 +363,12 @@ async function emitTimelineResponse(options?: {
 
 describe("wire compatibility", () => {
   test("sends project updates only to clients that declare support", async () => {
+    // A real root: a missing one reads as an Offline project (project-availability.ts),
+    // which carries no icon revision.
+    const rootPath = mkdtempSync(path.join(tmpdir(), "wire-compat-project-"));
     const project = createPersistedProjectRecord({
       projectId: "project-1",
-      rootPath: "/tmp/project",
+      rootPath,
       kind: "git",
       displayName: "project",
       customName: "Favorite project",
@@ -377,12 +383,16 @@ describe("wire compatibility", () => {
       messages: capableMessages,
     });
 
-    await Promise.all([
-      legacy.emitProjectUpdate({ kind: "upsert", project }),
-      legacy.emitProjectUpdate({ kind: "remove", projectId: project.projectId }),
-      capable.emitProjectUpdate({ kind: "upsert", project }),
-      capable.emitProjectUpdate({ kind: "remove", projectId: project.projectId }),
-    ]);
+    try {
+      await Promise.all([
+        legacy.emitProjectUpdate({ kind: "upsert", project }),
+        legacy.emitProjectUpdate({ kind: "remove", projectId: project.projectId }),
+        capable.emitProjectUpdate({ kind: "upsert", project }),
+        capable.emitProjectUpdate({ kind: "remove", projectId: project.projectId }),
+      ]);
+    } finally {
+      rmSync(rootPath, { recursive: true, force: true });
+    }
 
     expect(legacyMessages).toEqual([]);
     expect(capableMessages.map((message) => SessionOutboundMessageSchema.parse(message))).toEqual([
@@ -396,7 +406,8 @@ describe("wire compatibility", () => {
             projectCustomName: "Favorite project",
             projectCustomIconRevision: null,
             projectIconRevision: "automatic:none:v1",
-            projectRootPath: "/tmp/project",
+            projectOffline: false,
+            projectRootPath: rootPath,
             projectKind: "git",
             // COMPAT(projectKanbanTarget): emitted as null for legacy project records.
             projectKanban: null,

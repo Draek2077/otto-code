@@ -232,10 +232,16 @@ describe("otto daemon bootstrap", () => {
       });
       expect(await beforeProxyReload.text()).toBe("http");
 
+      // Edit the file as it is on disk now: startup seeds host-owned sections
+      // (agent teams, the personality-import marker) that are restart-scoped,
+      // and rewriting from the pre-start copy would read as removing them.
+      const startedPersisted = JSON.parse(await readFile(configPath, "utf-8")) as {
+        agents?: Record<string, unknown>;
+      } & typeof initialPersisted;
       const reloadedPersisted = {
-        ...initialPersisted,
+        ...startedPersisted,
         daemon: {
-          ...initialPersisted.daemon,
+          ...startedPersisted.daemon,
           hostnames: ["127.0.0.1", "after.example.test"],
           cors: { allowedOrigins: ["https://after.example.test"] },
           trustedProxies: true as const,
@@ -245,6 +251,7 @@ describe("otto daemon bootstrap", () => {
         },
         app: { baseUrl: "https://after.example.test" },
         agents: {
+          ...startedPersisted.agents,
           catalogRefreshTimeoutMs: 5_000,
           providers: { codex: { enabled: false } },
         },

@@ -25,7 +25,7 @@ describe("agent provider runtime", () => {
 
     expect(
       runtime.snapshotManager.getAgentManagerProviderState().clients.opencode?.capabilities
-        .supportsNativePaseoTools,
+        .supportsNativeOttoTools,
     ).toBe(true);
     runtime.setOttoToolCatalog(catalog);
     await Promise.all([runtime.shutdown(), runtime.shutdown()]);
