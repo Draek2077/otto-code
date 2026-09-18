@@ -31,7 +31,8 @@ function readString(value: unknown): string | undefined {
 // Curated display names - the registry of tools we explicitly "know about".
 // Keyed by the lowercased leaf name (transport namespace already stripped).
 //
-// Only tools whose bare id does NOT title-case cleanly on its own need an entry
+// Labels are sentence case, like all UI copy (docs/design.md, "Copy and voice").
+// Only tools whose bare id does NOT humanize cleanly on its own need an entry
 // here: lowercase compound names ("websearch") a splitter can't segment, or
 // ones we want to word deliberately. Well-formed snake_case ("suggest_task") and
 // camelCase ("WebSearch") names are handled by the algorithmic humanizer below
@@ -41,26 +42,26 @@ function readString(value: unknown): string | undefined {
 // so an unmapped tool shows up looking slightly generic (e.g. a stray provider
 // tool), which is the cue to add it here. Extend this map to teach Otto a tool.
 const KNOWN_TOOL_DISPLAY_NAMES: Record<string, string> = {
-  websearch: "Web Search",
-  web_search: "Web Search",
-  webfetch: "Web Fetch",
-  web_fetch: "Web Fetch",
-  todowrite: "Update Todos",
-  todoread: "Read Todos",
-  multiedit: "Multi Edit",
-  notebookedit: "Edit Notebook",
-  notebookread: "Read Notebook",
-  bashoutput: "Bash Output",
-  killshell: "Kill Shell",
-  exitplanmode: "Exit Plan Mode",
-  applypatch: "Apply Patch",
-  ls: "List Files",
+  websearch: "Web search",
+  web_search: "Web search",
+  webfetch: "Web fetch",
+  web_fetch: "Web fetch",
+  todowrite: "Update todos",
+  todoread: "Read todos",
+  multiedit: "Multi edit",
+  notebookedit: "Edit notebook",
+  notebookread: "Read notebook",
+  bashoutput: "Bash output",
+  killshell: "Kill shell",
+  exitplanmode: "Exit plan mode",
+  applypatch: "Apply patch",
+  ls: "List files",
 };
 
 // Split camelCase / PascalCase and separator-delimited identifiers into words,
-// then Title-Case them: "WebSearch" -> "Web Search", "suggest_task" -> "Suggest
-// Task", "HTTPServer" -> "HTTP Server".
-function titleCaseToolId(value: string): string {
+// then sentence-case them: "WebSearch" -> "Web search", "suggest_task" ->
+// "Suggest task", "HTTPServer" -> "Http server".
+function sentenceCaseToolId(value: string): string {
   return value
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
@@ -84,7 +85,7 @@ function humanizeToolName(name: string): string {
   if (leaf) {
     return humanizeToolName(leaf);
   }
-  return KNOWN_TOOL_DISPLAY_NAMES[trimmed.toLowerCase()] ?? titleCaseToolId(trimmed);
+  return KNOWN_TOOL_DISPLAY_NAMES[trimmed.toLowerCase()] ?? sentenceCaseToolId(trimmed);
 }
 
 /**
@@ -92,8 +93,8 @@ function humanizeToolName(name: string): string {
  * shows a tool/action name without a full timeline item to run through
  * {@link buildToolCallDisplayModel} (the visualizer's action labels, sub-agent
  * activity rows). Strips the MCP/Otto namespace, consults the known-tool
- * registry, then title-cases as a fallback - so "mcp__otto__suggest_task",
- * "otto.suggest_task", and a bare "suggest_task" all render as "Suggest Task".
+ * registry, then sentence-cases as a fallback - so "mcp__otto__suggest_task",
+ * "otto.suggest_task", and a bare "suggest_task" all render as "Suggest task".
  */
 export function getToolDisplayName(name: string): string {
   return humanizeToolName(name);

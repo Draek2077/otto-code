@@ -95,7 +95,7 @@ function getNamespacedToolLeafName(name: string, namespace: "otto" | "paseo"): s
  *
  * Tools hosted over MCP arrive namespaced as `mcp__<server>__<tool>` (Claude
  * Code format). The `mcp__<server>__` part is transport plumbing that means
- * nothing to a reader - "Create Issue", not "mcp__linear__create_issue". This
+ * nothing to a reader - "Create issue", not "mcp__linear__create_issue". This
  * generalizes {@link getOttoToolLeafName} to ANY server so every MCP tool reads
  * cleanly, not just Otto's own.
  *

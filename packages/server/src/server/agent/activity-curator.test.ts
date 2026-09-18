@@ -150,7 +150,7 @@ second line'`,
 
     // Tool names are humanised before they reach an activity line, so the raw
     // `otto__create_chat` identifier is never what a reader sees.
-    expect(result).toBe('[Otto Create Chat] {"cwd":"/tmp/repo","initialPrompt":"do the thing"}');
+    expect(result).toBe('[Otto create chat] {"cwd":"/tmp/repo","initialPrompt":"do the thing"}');
   });
 
   it("collapses repeated tool updates by callId", () => {
@@ -323,7 +323,7 @@ second line'`,
     expect(result.attachment.text).toContain("Source directory: /repo");
     expect(result.attachment.text).toContain("[User] Ship the thing");
     expect(result.attachment.text).toContain("[Read] src/index.ts");
-    expect(result.attachment.text).toContain("[Otto Create Chat]");
+    expect(result.attachment.text).toContain("[Otto create chat]");
     expect(result.attachment.text).toContain("[Assistant] Done.");
     expect(result.attachment.text).not.toContain("private chain of thought");
     expect(result.attachment.text).not.toContain("do not include raw external tool input");

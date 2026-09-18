@@ -833,7 +833,7 @@ function toolCallStartEvents(input: {
       payload: {
         agent: ctx.name,
         // Friendly, namespace-stripped label ("mcp__otto__suggest_task" ->
-        // "Suggest Task") - shared with the chat rows so nodes read the same way.
+        // "Suggest task") - shared with the chat rows so nodes read the same way.
         tool: getToolDisplayName(item.name),
         args,
         ...(filePath ? { inputData: { file_path: filePath } } : {}),
@@ -883,7 +883,7 @@ function toolCallToSimulationEvents(input: {
     payload: {
       agent: ctx.name,
       // Friendly, namespace-stripped label ("mcp__otto__suggest_task" ->
-      // "Suggest Task") - shared with the chat rows so nodes read the same way.
+      // "Suggest task") - shared with the chat rows so nodes read the same way.
       tool: getToolDisplayName(item.name),
       result: summarizeToolCallResult(item.detail),
       isError,

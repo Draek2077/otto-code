@@ -142,7 +142,7 @@ describe("shared tool-call display mapping", () => {
       error: null,
       detail: { type: "unknown", input: null, output: null },
     });
-    expect(display.displayName).toBe("Create Chat");
+    expect(display.displayName).toBe("Create chat");
   });
 
   it("humanizes Otto MCP tool names (Codex format)", () => {
@@ -152,7 +152,7 @@ describe("shared tool-call display mapping", () => {
       error: null,
       detail: { type: "unknown", input: null, output: null },
     });
-    expect(display.displayName).toBe("Create Chat");
+    expect(display.displayName).toBe("Create chat");
   });
 
   it("humanizes list_chats Otto tool", () => {
@@ -162,7 +162,7 @@ describe("shared tool-call display mapping", () => {
       error: null,
       detail: { type: "unknown", input: null, output: null },
     });
-    expect(display.displayName).toBe("List Chats");
+    expect(display.displayName).toBe("List chats");
   });
 
   it("humanizes a non-Otto MCP tool by dropping its namespace", () => {
@@ -172,7 +172,7 @@ describe("shared tool-call display mapping", () => {
       error: null,
       detail: { type: "unknown", input: null, output: null },
     });
-    expect(display.displayName).toBe("Create Issue");
+    expect(display.displayName).toBe("Create issue");
   });
 
   it("does not override speak tool display name", () => {
@@ -186,26 +186,26 @@ describe("shared tool-call display mapping", () => {
   });
 
   describe("getToolDisplayName", () => {
-    it("strips the MCP/Otto namespace and title-cases the leaf", () => {
-      expect(getToolDisplayName("mcp__otto__suggest_task")).toBe("Suggest Task");
-      expect(getToolDisplayName("otto.list_chats")).toBe("List Chats");
-      expect(getToolDisplayName("suggest_task")).toBe("Suggest Task");
+    it("strips the MCP/Otto namespace and sentence-cases the leaf", () => {
+      expect(getToolDisplayName("mcp__otto__suggest_task")).toBe("Suggest task");
+      expect(getToolDisplayName("otto.list_chats")).toBe("List chats");
+      expect(getToolDisplayName("suggest_task")).toBe("Suggest task");
     });
 
     it("splits camelCase / PascalCase tool ids into words", () => {
-      expect(getToolDisplayName("WebSearch")).toBe("Web Search");
-      expect(getToolDisplayName("MultiEdit")).toBe("Multi Edit");
-      expect(getToolDisplayName("ExitPlanMode")).toBe("Exit Plan Mode");
+      expect(getToolDisplayName("WebSearch")).toBe("Web search");
+      expect(getToolDisplayName("MultiEdit")).toBe("Multi edit");
+      expect(getToolDisplayName("ExitPlanMode")).toBe("Exit plan mode");
     });
 
     it("prefers curated names for lowercase compound tools the splitter can't segment", () => {
-      expect(getToolDisplayName("websearch")).toBe("Web Search");
-      expect(getToolDisplayName("todowrite")).toBe("Update Todos");
-      expect(getToolDisplayName("ls")).toBe("List Files");
+      expect(getToolDisplayName("websearch")).toBe("Web search");
+      expect(getToolDisplayName("todowrite")).toBe("Update todos");
+      expect(getToolDisplayName("ls")).toBe("List files");
     });
 
     it("falls back to a readable name for unknown tools", () => {
-      expect(getToolDisplayName("some_new_tool")).toBe("Some New Tool");
+      expect(getToolDisplayName("some_new_tool")).toBe("Some new tool");
     });
   });
 
