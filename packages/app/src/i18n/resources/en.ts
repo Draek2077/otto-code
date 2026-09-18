@@ -736,7 +736,6 @@ export const en = {
         added: "Added",
         started: "Started",
         completed: "Completed",
-        reopened: "Reopened",
       },
     },
     compaction: {

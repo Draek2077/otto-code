@@ -739,7 +739,6 @@ export const ru: TranslationResources = {
         added: "Добавлена",
         started: "Начата",
         completed: "Завершена",
-        reopened: "Возобновлена",
       },
     },
     compaction: {
@@ -1102,7 +1101,7 @@ export const ru: TranslationResources = {
       },
       menu: {
         openFor: "Открыть меню для{{label}}",
-        copyResumeCommand: "Копировать команду возобновления",
+        copyResumeCommand: "Копировать команду продолжения",
         copyAgentId: "Скопировать идентификатор агента",
         copyFilename: "Копировать имя файла",
         copyFullPath: "Копировать полный путь",

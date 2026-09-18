@@ -4,9 +4,9 @@
 
 ## Summary
 
-- **Total indexed entries:** 472
-- **App surface:** 198
-- **Host surface:** 274
+- **Total indexed entries:** 475
+- **App surface:** 199
+- **Host surface:** 276
 - **Persistence scopes:** App, Desktop, Host, and Project. Surface and persistence scope are intentionally separate because some Host pages contain device-local settings.
 - **Dynamic entries:** A single row documents an unbounded runtime collection, such as one row per installed language server or team member. Finite catalogs and keyboard commands are enumerated individually.
 
@@ -15,7 +15,7 @@
 - [App settings](#app-settings)
   - [About (7)](#app-about)
   - [Appearance (26)](#app-appearance)
-  - [Chat (24)](#app-chat)
+  - [Chat (25)](#app-chat)
   - [Diagnostics (7)](#app-diagnostics)
   - [Editor (12)](#app-editor)
   - [General (15)](#app-general)
@@ -35,7 +35,7 @@
   - [Pair device (1)](#host-pair-device)
   - [Plugins (4)](#host-plugins)
   - [Projects / Project settings (29)](#host-projects-project-settings)
-  - [Providers (36)](#host-providers)
+  - [Providers (38)](#host-providers)
   - [Storage (4)](#host-storage)
   - [Teams (31)](#host-teams)
   - [Terminals (11)](#host-terminals)
