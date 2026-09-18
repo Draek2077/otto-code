@@ -54,6 +54,8 @@ export interface CreateWorktreeWorkspaceInput {
   title: string | null;
   expectsInitialAgent?: boolean;
   untrustedSource?: UntrustedWorkspaceSource;
+  /** Background worktrees (e.g. automation) stay out of the sidebar. */
+  hidden?: boolean;
 }
 
 export interface WorkspaceProvisioningService {
@@ -308,6 +310,7 @@ export function createWorkspaceProvisioningService(deps: {
         mainRepoRoot: repoRoot,
       }),
       title: input.title,
+      hidden: input.hidden ?? false,
       createdAt: timestamp,
       updatedAt: timestamp,
       ...(input.untrustedSource ? { untrustedSource: input.untrustedSource } : {}),

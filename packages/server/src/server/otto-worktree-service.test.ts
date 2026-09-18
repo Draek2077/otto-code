@@ -21,6 +21,9 @@ import { readOttoWorktreeMetadata } from "../utils/worktree-metadata.js";
 import { createWorktree, isOttoOwnedWorktreeCwd } from "../utils/worktree.js";
 import { isPlatform } from "../test-utils/platform.js";
 import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-service-stub.js";
+import { createWorkspaceProvisioningService } from "./session/workspace-provisioning/workspace-provisioning-service.js";
+import { createPersistedProjectRecord, type WorkspaceRegistry } from "./workspace-registry.js";
+import { createTestLogger } from "../test-utils/test-logger.js";
 import { existsSync } from "node:fs";
 
 const cleanupPaths: string[] = [];
@@ -93,6 +96,15 @@ test("carries the source project's projectKey through worktree creation instead 
     kind: "local_checkout",
     displayName: "main",
   });
+  // The project key is re-derived from the root checkout, so the repo has to
+  // really report the GitHub remote the key names.
+  const readCheckout = deps.workspaceGitService.getCheckout;
+  deps.workspaceGitService.getCheckout = async (cwd) => {
+    const checkout = await readCheckout(cwd);
+    return cwd === repoDir
+      ? { ...checkout, remoteUrl: "https://github.com/acme/repo.git" }
+      : checkout;
+  };
   deps.projects.set(sourceProject.projectId, sourceProject);
   deps.workspaces.set(sourceWorkspace.workspaceId, sourceWorkspace);
 
@@ -872,7 +884,7 @@ test.skipIf(isPlatform("win32"))(
 );
 
 interface TestDeps extends CreateOttoWorktreeDeps {
-  projectRegistry: Pick<ProjectRegistry, "get" | "list" | "upsert">;
+  projectRegistry: Pick<ProjectRegistry, "get" | "list" | "upsert" | "getOrCreateActiveByRoot">;
   projects: Map<string, PersistedProjectRecord>;
   workspaces: Map<string, PersistedWorkspaceRecord>;
 }
@@ -886,27 +898,55 @@ function createDeps(options?: {
   const projects = options?.projects ?? new Map<string, PersistedProjectRecord>();
   const workspaces = options?.workspaces ?? new Map<string, PersistedWorkspaceRecord>();
 
+  const projectRegistry: TestDeps["projectRegistry"] = {
+    get: async (projectId) => projects.get(projectId) ?? null,
+    list: async () => Array.from(projects.values()),
+    upsert: async (record) => {
+      events.push(`project:${record.projectId}`);
+      projects.set(record.projectId, record);
+    },
+    getOrCreateActiveByRoot: async (input) => {
+      const existing = Array.from(projects.values()).find(
+        (project) => !project.archivedAt && project.rootPath === input.rootPath,
+      );
+      if (existing) return existing;
+      const project = createPersistedProjectRecord({
+        projectId: `prj_${projects.size.toString().padStart(16, "0")}`,
+        rootPath: input.rootPath,
+        kind: input.kind,
+        displayName: input.displayName,
+        createdAt: input.timestamp,
+        updatedAt: input.timestamp,
+        projectKey: input.projectKey ?? null,
+      });
+      await projectRegistry.upsert(project);
+      return project;
+    },
+  };
+  const workspaceRegistry: TestDeps["workspaceRegistry"] = {
+    get: async (workspaceId) => workspaces.get(workspaceId) ?? null,
+    list: async () => Array.from(workspaces.values()),
+    upsert: async (record) => {
+      events.push(`workspace:${record.workspaceId}`);
+      workspaces.set(record.workspaceId, record);
+    },
+  };
+  const workspaceGitService = createWorkspaceGitServiceStub();
+
   return {
     github: createGitHubServiceStub(),
     projects,
     workspaces,
-    projectRegistry: {
-      get: async (projectId) => projects.get(projectId) ?? null,
-      list: async () => Array.from(projects.values()),
-      upsert: async (record) => {
-        events.push(`project:${record.projectId}`);
-        projects.set(record.projectId, record);
-      },
-    },
-    workspaceRegistry: {
-      get: async (workspaceId) => workspaces.get(workspaceId) ?? null,
-      list: async () => Array.from(workspaces.values()),
-      upsert: async (record) => {
-        events.push(`workspace:${record.workspaceId}`);
-        workspaces.set(record.workspaceId, record);
-      },
-    },
-    workspaceGitService: createWorkspaceGitServiceStub(),
+    projectRegistry,
+    workspaceRegistry,
+    workspaceGitService,
+    // The real provisioning service over these registries, as production wires it.
+    workspaceProvisioning: createWorkspaceProvisioningService({
+      workspaceRegistry: workspaceRegistry as unknown as WorkspaceRegistry,
+      projectRegistry: projectRegistry as unknown as ProjectRegistry,
+      workspaceGitService,
+      logger: createTestLogger(),
+    }),
   };
 }
 
@@ -995,6 +1035,30 @@ function createWorkspaceGitServiceStub(): WorkspaceGitService {
   return createNoopWorkspaceGitService({
     peekSnapshot: (cwd) => createWorkspaceGitSnapshot(cwd),
     getSnapshot: async (cwd) => createWorkspaceGitSnapshot(cwd),
+    getCheckout: async (cwd) => {
+      try {
+        const { git } = createWorkspaceGitSnapshot(cwd);
+        return {
+          cwd,
+          isGit: true,
+          currentBranch: git.currentBranch,
+          remoteUrl: git.remoteUrl,
+          worktreeRoot: git.repoRoot,
+          isOttoOwnedWorktree: git.isOttoOwnedWorktree,
+          mainRepoRoot: git.isOttoOwnedWorktree ? git.mainRepoRoot : null,
+        };
+      } catch {
+        return {
+          cwd,
+          isGit: false,
+          currentBranch: null,
+          remoteUrl: null,
+          worktreeRoot: null,
+          isOttoOwnedWorktree: false,
+          mainRepoRoot: null,
+        };
+      }
+    },
     resolveRepoRoot: async (cwd) => {
       try {
         return createWorkspaceGitSnapshot(cwd).git.repoRoot ?? cwd;

@@ -4069,6 +4069,16 @@ test("create otto worktree request returns a registered workspace descriptor", a
     stdio: "pipe",
   });
   const workspaceGitService = createNoopWorkspaceGitService();
+  // Worktree creation refreshes the project kind from getCheckout on its root.
+  workspaceGitService.getCheckout = vi.fn(async (cwd: string) => ({
+    cwd,
+    isGit: cwd === repoDir,
+    currentBranch: cwd === repoDir ? "main" : null,
+    remoteUrl: null,
+    worktreeRoot: cwd === repoDir ? repoDir : null,
+    isOttoOwnedWorktree: false,
+    mainRepoRoot: null,
+  }));
   workspaceGitService.getSnapshot = vi.fn(async (cwd: string) => {
     if (cwd === repoDir) {
       return createWorkspaceRuntimeSnapshot(cwd, {
@@ -8522,6 +8532,23 @@ test("workspace.create worktree source checks out a GitHub PR from githubPrNumbe
     upsert: async (record) => {
       projects.set(record.projectId, record);
     },
+    // With no source workspace, worktree creation allocates the project by root.
+    getOrCreateActiveByRoot: async (input) => {
+      const existing = Array.from(projects.values()).find(
+        (project) => !project.archivedAt && project.rootPath === input.rootPath,
+      );
+      if (existing) return existing;
+      const project = createPersistedProjectRecord({
+        projectId: `prj_${projects.size.toString().padStart(16, "0")}`,
+        rootPath: input.rootPath,
+        kind: input.kind,
+        displayName: input.displayName,
+        createdAt: input.timestamp,
+        updatedAt: input.timestamp,
+      });
+      projects.set(project.projectId, project);
+      return project;
+    },
     archive: async () => {},
     remove: async () => {},
   };
@@ -9118,6 +9145,8 @@ test("create otto worktree response preserves an explicit non-Git project", asyn
   );
 
   const workspaces = new Map();
+  // A missing root reads as an Offline project, which refuses the request.
+  mkdirSync(path.join(tempDir, "selected-project"), { recursive: true });
   const explicitProject = createPersistedProjectRecord({
     projectId: "prj_explicit_non_git",
     rootPath: path.join(tempDir, "selected-project"),
