@@ -3734,52 +3734,6 @@ describe("session checkout pull request merge", () => {
     });
   });
 
-  test("rejects direct merge when the current pull request is missing GitHub merge facts", async () => {
-    const messages: unknown[] = [];
-    const github = {
-      invalidate: vi.fn(),
-      mergePullRequest: vi.fn().mockResolvedValue({ success: true }),
-    };
-    const workspaceGitService = {
-      getSnapshot: vi.fn().mockResolvedValue({
-        forge: {
-          pullRequest: {
-            number: 42,
-            mergeable: "MERGEABLE",
-          },
-        },
-      }),
-    };
-    const session = createSessionForTest({ github, workspaceGitService, messages });
-
-    await session.handleMessage({
-      type: "checkout_pr_merge_request",
-      cwd: "/tmp/request-worktree",
-      mergeMethod: "squash",
-      requestId: "request-pr-merge-missing-github-facts",
-    });
-
-    expect(github.mergePullRequest).not.toHaveBeenCalled();
-    expect(workspaceGitService.invalidateForge).not.toHaveBeenCalled();
-    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
-      force: true,
-      includeForge: true,
-      reason: "merge-pr-validation",
-    });
-    expect(messages).toContainEqual({
-      type: "checkout_pr_merge_response",
-      payload: {
-        cwd: "/tmp/request-worktree",
-        success: false,
-        error: {
-          code: "UNKNOWN",
-          message: "GitHub merge facts are unavailable for this pull request",
-        },
-        requestId: "request-pr-merge-missing-github-facts",
-      },
-    });
-  });
-
   test("surfaces merge errors verbatim", async () => {
     const messages: unknown[] = [];
     const github = {
@@ -6555,6 +6509,7 @@ describe("stable session regression intake", () => {
       mergePullRequest: vi.fn().mockResolvedValue({ success: true }),
     };
     const workspaceGitService = {
+      invalidateForge: vi.fn(),
       getSnapshot: vi.fn().mockResolvedValue({
         forge: {
           pullRequest: {
@@ -6582,7 +6537,8 @@ describe("stable session regression intake", () => {
         mergeable: "MERGEABLE",
       },
     });
-    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
+    // Otto refreshes the forge through the workspace git service after a merge.
+    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/request-worktree");
     expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(1, "/tmp/request-worktree", {
       force: true,
       includeForge: true,

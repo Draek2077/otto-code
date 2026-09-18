@@ -20,7 +20,6 @@ import type {
   CheckoutDiffSnapshotPayload,
 } from "../../checkout-diff-manager.js";
 import { toCheckoutError } from "../../checkout-git-utils.js";
-import { isGitHubPullRequestStatusFacts } from "../../../services/github-facts.js";
 import { getCommitFileDiff, listCheckoutCommits } from "../../../utils/checkout-git.js";
 import {
   asEmittedPrStatusPayload,
@@ -1345,7 +1344,9 @@ export class CheckoutSession {
         includeForge: true,
         reason: "merge-pr-validation",
       });
-      this.assertCurrentPullRequestHasGithubMergeFacts(pullRequest);
+      // The forge service routes by cwd, and each forge checks its own merge
+      // readiness (GitHub: assertDirectPullRequestMergeReady), so a GitLab or
+      // Gitea change request merges through its own forge rather than GitHub.
       await this.github.mergePullRequest({
         cwd,
         prNumber: pullRequest.number,
@@ -1373,14 +1374,6 @@ export class CheckoutSession {
           requestId,
         },
       });
-    }
-  }
-
-  private assertCurrentPullRequestHasGithubMergeFacts(
-    pullRequest: CurrentWorkspacePullRequest,
-  ): void {
-    if (!isGitHubPullRequestStatusFacts(pullRequest.forgeSpecific)) {
-      throw new Error("GitHub merge facts are unavailable for this pull request");
     }
   }
 
