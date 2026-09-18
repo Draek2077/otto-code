@@ -45,9 +45,11 @@ Pick any of these from the in-app provider catalog. Each entry is a one-click in
 - [GLM Agent](https://github.com/stefandevo/glm-acp-agent), Zhipu AI's GLM coding agent.
 - [goose](https://block.github.io/goose/), Block's local open-source AI agent.
 - [Grok](https://docs.x.ai/build/overview), xAI's Grok Build agentic coding CLI.
+- [Harn](https://harnlang.com), runs .harn agent pipelines as a coding agent.
 - [Hermes Agent](https://hermes-agent.nousresearch.com/docs/user-guide/features/acp), Nous Research's self-improving agent.
 - [Junie](https://junie.jetbrains.com/docs/junie-cli-acp.html), JetBrains' coding agent.
 - [Kilo Code](https://kilo.ai/docs/code-with-ai/platforms/cli), open-source coding agent.
+- [Kimchi](https://kimchi.dev), coding agent powered by multi-model orchestration.
 - [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code), Moonshot AI's coding assistant.
 - [Minion Code](https://github.com/femto/minion-code), Minion-framework coding agent.
 - [Mistral Vibe](https://github.com/mistralai/mistral-vibe), Mistral's open-source CLI assistant.

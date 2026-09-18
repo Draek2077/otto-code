@@ -68,10 +68,13 @@ describe("ACP provider catalog", () => {
   });
 
   it("offers MiniMax Code through its pinned public ACP package", () => {
-    expect(findProvider("minimax-code")).toMatchObject({
+    // The pin moves on every `acp:version-drift:update`, so assert that the
+    // command is pinned to the listed version rather than to a literal one.
+    const provider = findProvider("minimax-code");
+    expect(provider.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(provider).toMatchObject({
       title: "MiniMax Code",
-      version: "0.1.2",
-      command: ["npx", "-y", "@minimax-ai/code@0.1.2", "acp"],
+      command: ["npx", "-y", `@minimax-ai/code@${provider.version}`, "acp"],
     });
     expect(findProvider("minimax-code").iconSvg).toContain("<svg");
   });
