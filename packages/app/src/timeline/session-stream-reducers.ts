@@ -878,6 +878,12 @@ function reconcileOverlappingProjectedReasoning(params: {
   head: StreamItem[];
   unit: TimelineUnit;
   currentEndSeq: number;
+  /**
+   * Ids of thoughts already rewritten by an earlier row in this same pass,
+   * shared across the whole unit loop. A second canonical row for one thought
+   * replaces it instead of being appended as a duplicate.
+   */
+  claimedThoughtIds?: Set<string>;
 }): { tail: StreamItem[]; head: StreamItem[]; reconciled: boolean } {
   const { unit } = params;
   if (
@@ -892,11 +898,24 @@ function reconcileOverlappingProjectedReasoning(params: {
 
   const projectedText = unit.event.item.text;
   const replaceIn = (items: StreamItem[]): StreamItem[] | null => {
-    const index = items.findLastIndex(
-      (item) => item.kind === "thought" && projectedText.startsWith(item.text),
+    // A thought this same pass already rewrote is still THIS row's thought,
+    // even though the rewrite means `startsWith` no longer holds. Canonical
+    // pages can carry several rows for one thought, and a later row need not
+    // extend the earlier one. Without this, the row falls through to the
+    // forward path, which appends it as a delta and duplicates the text
+    // ("Hello world" then "world tail" rendered as "Hello worldworld tail").
+    const claimedIndex = items.findLastIndex(
+      (item) => item.kind === "thought" && params.claimedThoughtIds?.has(item.id) === true,
     );
+    const index =
+      claimedIndex >= 0
+        ? claimedIndex
+        : items.findLastIndex(
+            (item) => item.kind === "thought" && projectedText.startsWith(item.text),
+          );
     const current = items[index];
     if (!current || current.kind !== "thought") return null;
+    params.claimedThoughtIds?.add(current.id);
     const next = [...items];
     next[index] = {
       ...current,
@@ -927,6 +946,9 @@ function reconcileOverlappingProjectedStreamItems(params: {
   const reconciledUnits = new Set<TimelineUnit>();
   if (params.currentEndSeq === undefined) return { tail, head, reconciledUnits };
 
+  // Thoughts this pass has already rewritten, so a later row for the same one
+  // replaces it rather than appending a duplicate. See the reasoning reconcile.
+  const claimedThoughtIds = new Set<string>();
   for (const unit of params.units) {
     let reconciled = reconcileOverlappingProjectedAssistant({
       tail,
@@ -941,6 +963,7 @@ function reconcileOverlappingProjectedStreamItems(params: {
         head,
         unit,
         currentEndSeq: params.currentEndSeq,
+        claimedThoughtIds,
       });
     }
     tail = reconciled.tail;

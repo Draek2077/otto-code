@@ -1480,13 +1480,16 @@ describe("processTimelineResponse", () => {
     // Truncating it back to the canonical prefix shrinks the reveal's target,
     // which walks its paced position backwards and re-types the same stretch on
     // every page - the "message replays over and over mid-turn" regression.
+    // The replace is a same-epoch reset: a live turn never crosses an epoch
+    // change, and an epoch change is a destructive replacement that keeps only
+    // active submissions (docs/timeline-sync.md), so it is not this scenario.
     const liveText = "Canonical part. Live continuation the daemon has not echoed yet.";
 
     const result = processTimelineResponse({
       ...baseTimelineInput,
       currentTail: [],
       currentHead: [makeAssistantItem(liveText, "live-head")],
-      currentCursor: { epoch: "old-epoch", startSeq: 1, endSeq: 5 },
+      currentCursor: { epoch: "epoch-1", startSeq: 1, endSeq: 5 },
       payload: {
         ...baseTimelineInput.payload,
         reset: true,
