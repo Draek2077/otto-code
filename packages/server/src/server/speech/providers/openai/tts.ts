@@ -1,6 +1,7 @@
 import type pino from "pino";
 import { OpenAI } from "openai";
 import { Readable } from "node:stream";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import type {
   SpeechStreamResult,
   SpeechVoiceOverride,
@@ -110,7 +111,13 @@ export class OpenAITTS implements TextToSpeechProvider {
           | "pcm",
       });
 
-      const audioStream = response.body as unknown as Readable;
+      // The SDK returns a fetch body: a web ReadableStream, not a Node stream.
+      // Convert it so the TTS manager's destroy() on interrupt actually
+      // cancels the request instead of leaving it downloading.
+      if (!response.body) {
+        throw new Error("OpenAI speech response has no body");
+      }
+      const audioStream = Readable.fromWeb(response.body as WebReadableStream<Uint8Array>);
 
       const duration = Date.now() - startTime;
       this.logger.debug({ duration }, "Speech synthesis stream ready");
