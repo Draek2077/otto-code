@@ -4901,8 +4901,8 @@ export const ru: TranslationResources = {
             description: "Open diffs selected in the Explorer sidebar beside your work",
           },
           chatFiles: {
-            label: "Opening a file from an agent chat",
-            description: "Open file links and tool-call files beside the conversation",
+            label: "Opening another panel from a chat",
+            description: "Open non-chat tabs in one reusable pane beside the conversation",
           },
           diffFiles: {
             label: "Opening a file from Changes",

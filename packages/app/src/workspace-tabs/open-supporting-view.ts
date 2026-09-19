@@ -41,7 +41,7 @@ export function openWorkspaceChanges(input: OpenWorkspaceChangesInput): string |
     isCompact: input.isCompact,
     workspaceKey: input.workspaceKey,
     target: { kind: "working_diff" },
-    source: "changesLinks",
+    source: "chatFiles",
     preferences: input.preferences,
   });
 }

@@ -14,6 +14,22 @@ import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 export type OpenInSidePaneSource = keyof OpenInSidePanePreferences;
 export type WorkspaceTargetOpenLocation = "main" | "side";
 
+function isChatTarget(target: WorkspaceTabTarget): boolean {
+  return target.kind === "agent" || target.kind === "draft" || target.kind === "provider_subagent";
+}
+
+/**
+ * A chat's supporting surfaces follow one placement preference. Opening
+ * another chat keeps the normal chat-tab behavior, and the empty New Tab
+ * launcher is not supporting content yet.
+ */
+export function usesChatPanelOpenPreference(
+  sourceTarget: WorkspaceTabTarget,
+  nextTarget: WorkspaceTabTarget,
+): boolean {
+  return isChatTarget(sourceTarget) && !isChatTarget(nextTarget) && nextTarget.kind !== "new_tab";
+}
+
 interface OpenWorkspaceTargetInput {
   workspaceKey: string | null;
   target: WorkspaceTabTarget;

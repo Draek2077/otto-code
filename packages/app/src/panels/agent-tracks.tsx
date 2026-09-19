@@ -99,7 +99,7 @@ export const AgentTracks = memo(function AgentTracks({
       isCompact,
       workspaceKey,
       target: { kind: "working_diff" },
-      source: "changesLinks",
+      source: "chatFiles",
       preferences: openInSidePane,
       parentTabId: tabId,
     });

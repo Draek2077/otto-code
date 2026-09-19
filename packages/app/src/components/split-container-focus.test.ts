@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   hasMultipleVisiblePanes,
   resolveSplitContainerRoot,
+  shouldClearMaximizedPane,
   splitNodeContainsPane,
 } from "@/components/split-container-focus";
 import type { SplitNode } from "@/stores/workspace-layout-store";
@@ -58,6 +59,27 @@ describe("split focus root", () => {
       hasMultipleVisiblePanes({
         ...root,
         group: { ...root.group, children: [pane("left"), hiddenPane("right")] },
+      }),
+    ).toBe(false);
+  });
+
+  it("restores the split when focus moves to another pane", () => {
+    expect(
+      shouldClearMaximizedPane({
+        maximizedPaneId: "left",
+        focusedPaneId: "right",
+        focusModeEnabled: false,
+        workspaceHasMultiplePanes: true,
+        root,
+      }),
+    ).toBe(true);
+    expect(
+      shouldClearMaximizedPane({
+        maximizedPaneId: "left",
+        focusedPaneId: "left",
+        focusModeEnabled: false,
+        workspaceHasMultiplePanes: true,
+        root,
       }),
     ).toBe(false);
   });

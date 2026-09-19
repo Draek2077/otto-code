@@ -86,7 +86,7 @@ describe("openComposerChanges", () => {
     openComposerChanges(input);
     openComposerChanges({
       ...input,
-      preferences: { ...input.preferences, changesLinks: true },
+      preferences: { ...input.preferences, chatFiles: true },
     });
 
     const state = useWorkspaceLayoutStore.getState();

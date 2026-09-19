@@ -4,8 +4,8 @@
 
 ## Summary
 
-- **Total indexed entries:** 477
-- **App surface:** 200
+- **Total indexed entries:** 476
+- **App surface:** 199
 - **Host surface:** 277
 - **Persistence scopes:** App, Desktop, Host, and Project. Surface and persistence scope are intentionally separate because some Host pages contain device-local settings.
 - **Dynamic entries:** A single row documents an unbounded runtime collection, such as one row per installed language server or team member. Finite catalogs and keyboard commands are enumerated individually.
@@ -20,7 +20,7 @@
   - [Editor (12)](#app-editor)
   - [General (15)](#app-general)
   - [Integrations (18)](#app-integrations)
-  - [Layout (7)](#app-layout)
+  - [Layout (6)](#app-layout)
   - [Permissions (5)](#app-permissions)
   - [Shortcuts (63)](#app-shortcuts)
   - [Visualizer (14)](#app-visualizer)
@@ -318,11 +318,10 @@
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----- | ---------- | ----------------------------------------- | ---------- | -------- | ---------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
 | Selecting a file in Explorer        | Chooses whether files selected in the Explorer sidebar open in the main panel or beside your work.                   | App   | Preference | Main panel; On the side                   | Main panel | User     | Desktop    | openInSidePane.explorerFiles                                            | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
 | Selecting a change in Explorer      | Chooses whether diffs selected in the Explorer sidebar open in the main panel or beside your work.                   | App   | Preference | Main panel; On the side                   | Main panel | User     | Desktop    | openInSidePane.explorerChanges                                          | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
-| Opening a file from an agent chat   | Chooses whether file links and tool-call files open in the main panel or beside the conversation.                    | App   | Preference | Main panel; On the side                   | Main panel | User     | Desktop    | openInSidePane.chatFiles                                                | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
+| Opening another panel from a chat   | Chooses whether non-chat tabs opened from a chat stay in that pane or reuse one pane to the right.                   | App   | Preference | Main panel; On the side                   | Main panel | User     | Desktop    | openInSidePane.chatFiles                                                | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
 | Opening a file from Changes         | Chooses whether source files selected from a diff open in the main panel or beside it.                               | App   | Preference | Main panel; On the side                   | Main panel | User     | Desktop    | openInSidePane.diffFiles                                                | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
 | Opening a subagent                  | Chooses whether subagents open in the main panel or beside their parent agent.                                       | App   | Preference | Main panel; On the side                   | Main panel | User     | Desktop    | openInSidePane.subagents                                                | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
 | Opening a pull request from Changes | Chooses Main panel, On the side or Explorer sidebar for pull requests; other opening preferences remain independent. | App   | Preference | Main panel; On the side; Explorer sidebar | Main panel | User     | Desktop    | pullRequestOpenLocation; legacy openInSidePane.pullRequests side mirror | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
-| Opening Changes from an agent       | Chooses whether diff stats and review attachments open in the main panel or beside the conversation.                 | App   | Preference | Main panel; On the side                   | Main panel | User     | Desktop    | openInSidePane.changesLinks                                             | [layout-section.tsx:82](../../packages/app/src/screens/settings/layout/layout-section.tsx#L82) |
 
 ### App / Permissions
 

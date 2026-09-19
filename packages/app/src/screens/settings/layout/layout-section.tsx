@@ -21,7 +21,6 @@ const SOURCES = [
   "diffFiles",
   "subagents",
   "pullRequests",
-  "changesLinks",
 ] as const satisfies readonly (keyof OpenInSidePanePreferences)[];
 
 type OpenDestination = PullRequestOpenLocation;
@@ -111,7 +110,12 @@ export function LayoutSection() {
   const handleDestinationChange = useCallback(
     (source: keyof OpenInSidePanePreferences, destination: OpenDestination) => {
       void updateSettings((current) => ({
-        openInSidePane: { ...current.openInSidePane, [source]: destination === "side" },
+        openInSidePane: {
+          ...current.openInSidePane,
+          [source]: destination === "side",
+          // Keep the retired source-specific value aligned for older app builds.
+          ...(source === "chatFiles" ? { changesLinks: destination === "side" } : {}),
+        },
         ...(source === "pullRequests" ? { pullRequestOpenLocation: destination } : {}),
       }));
     },

@@ -536,7 +536,7 @@ export function WorkspaceDraftAgentTab({
         isCompact: isCompactFormFactor,
         workspaceKey: buildWorkspaceTabPersistenceKey({ serverId, workspaceId: workspaceId ?? "" }),
         target: { kind: "working_diff" },
-        source: "changesLinks",
+        source: "chatFiles",
         preferences: openInSidePane,
       });
     },

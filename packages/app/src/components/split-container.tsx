@@ -45,6 +45,7 @@ import { RetainedPanel } from "@/components/retained-panel";
 import {
   hasMultipleVisiblePanes,
   resolveSplitContainerRoot,
+  shouldClearMaximizedPane,
   splitNodeContainsPane,
 } from "@/components/split-container-focus";
 import { shouldFocusPaneFromEventTarget } from "@/components/split-container-pane-focus";
@@ -441,15 +442,23 @@ export function SplitContainer({
   const workspaceHasMultiplePanes = Boolean(mainRoot && hasMultipleVisiblePanes(mainRoot));
   useEffect(() => {
     if (
-      maximizedPaneId &&
-      (focusModeEnabled ||
-        !workspaceHasMultiplePanes ||
-        !mainRoot ||
-        !splitNodeContainsPane(mainRoot, maximizedPaneId))
+      shouldClearMaximizedPane({
+        maximizedPaneId,
+        focusedPaneId: layout.focusedPaneId,
+        focusModeEnabled,
+        workspaceHasMultiplePanes,
+        root: mainRoot,
+      })
     ) {
       setMaximizedPane(null);
     }
-  }, [focusModeEnabled, mainRoot, maximizedPaneId, workspaceHasMultiplePanes]);
+  }, [
+    focusModeEnabled,
+    layout.focusedPaneId,
+    mainRoot,
+    maximizedPaneId,
+    workspaceHasMultiplePanes,
+  ]);
   const handleTogglePaneMaximized = useCallback(
     (paneId: string) => {
       setMaximizedPane((current) =>

@@ -10,7 +10,7 @@ export interface OttoNavigationSettings {
 
 export const DEFAULT_OTTO_NAVIGATION_SETTINGS: OttoNavigationSettings = {
   sidebarNavItems: [],
-  // Otto's seven source-specific destination controls default to the main pane.
+  // Otto's source-specific destination controls default to the main pane.
   // Adding Explorer as a PR destination does not change a saved or fresh default.
   pullRequestOpenLocation: "main",
 };
@@ -53,13 +53,17 @@ export function pickOttoNavigationSettings(stored: {
     result.openInSidePane = {
       explorerFiles: false,
       explorerChanges: false,
-      chatFiles: false,
+      // COMPAT(chatPanelOpenLocation): before v0.9.11, file and Changes
+      // opens from chats had separate controls. The combined preference keeps
+      // either prior side-pane opt-in instead of silently moving content.
+      chatFiles: value.chatFiles === true || value.changesLinks === true,
       diffFiles: false,
       subagents: false,
       pullRequests: false,
-      changesLinks: false,
+      changesLinks: value.chatFiles === true || value.changesLinks === true,
     };
     for (const key of OPEN_SOURCES) {
+      if (key === "chatFiles" || key === "changesLinks") continue;
       const setting = value[key];
       if (typeof setting === "boolean") result.openInSidePane[key] = setting;
     }

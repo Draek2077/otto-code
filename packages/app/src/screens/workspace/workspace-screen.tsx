@@ -311,7 +311,10 @@ import {
 } from "./workspace-otto-controls";
 import { type TerminalProfile } from "@otto-code/protocol/messages";
 import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
-import { openPreferredWorkspacePreview } from "@/workspace-tabs/open-beside";
+import {
+  openPreferredWorkspacePreview,
+  usesChatPanelOpenPreference,
+} from "@/workspace-tabs/open-beside";
 import { getExplorerRequestedTargetHost } from "@/workspace-tabs/explorer-open-policy";
 import { type PaneHost } from "@/panels/panel-manifest";
 import { useVisibleWorkspaceDiffStat } from "@/composer/workspace-diff-stat";
@@ -3290,7 +3293,14 @@ function WorkspaceScreenContent({
   ]);
 
   const handleOpenFileFromChat = useCallback(
-    async (location: WorkspaceFileLocation, options?: { parentTabId?: string | null }) => {
+    async (
+      location: WorkspaceFileLocation,
+      options?: {
+        parentTabId?: string | null;
+        useChatPanelPreference?: boolean;
+        sourcePaneId?: string | null;
+      },
+    ) => {
       const normalizedLocation = normalizeWorkspaceFileLocation(location);
       if (!normalizedLocation) {
         return;
@@ -3311,6 +3321,26 @@ function WorkspaceScreenContent({
         knowledgeWorkspaceId,
       );
       if (selection) {
+        if (options?.useChatPanelPreference) {
+          const tabId = openPreferredWorkspacePreview({
+            isCompact: isMobile,
+            workspaceKey: persistenceKey,
+            serverId: normalizedServerId,
+            workspaceId: normalizedWorkspaceId,
+            explorerSidebarPaneId: null,
+            lastMainPaneId: options.sourcePaneId ?? null,
+            target: {
+              kind: "projectKnowledge",
+              selection,
+              ...(resolved.location.anchor ? { anchor: resolved.location.anchor } : {}),
+            },
+            source: "chatFiles",
+            preferences: openInSidePanePreferences,
+            parentTabId: options.parentTabId,
+          });
+          if (tabId) navigateToTabId(tabId);
+          return;
+        }
         openProjectKnowledgeTab({
           serverId: normalizedServerId,
           workspaceId: knowledgeWorkspaceId,
@@ -3321,6 +3351,22 @@ function WorkspaceScreenContent({
         return;
       }
       const target = createWorkspaceFileTabTarget(resolved.location, resolved.origin);
+      if (options?.useChatPanelPreference) {
+        const tabId = openPreferredWorkspacePreview({
+          isCompact: isMobile,
+          workspaceKey: persistenceKey,
+          serverId: normalizedServerId,
+          workspaceId: normalizedWorkspaceId,
+          explorerSidebarPaneId: null,
+          lastMainPaneId: options.sourcePaneId ?? null,
+          target,
+          source: "chatFiles",
+          preferences: openInSidePanePreferences,
+          parentTabId: options.parentTabId,
+        });
+        if (tabId) navigateToTabId(tabId);
+        return;
+      }
       const tabId = options?.parentTabId
         ? openWorkspaceChildTabFocused(persistenceKey, target, options.parentTabId)
         : openWorkspaceTabFocused(persistenceKey, target);
@@ -3335,6 +3381,7 @@ function WorkspaceScreenContent({
       navigateToTabId,
       normalizedServerId,
       normalizedWorkspaceId,
+      openInSidePanePreferences,
       openWorkspaceChildTabFocused,
       openWorkspaceTabFocused,
       persistenceKey,
@@ -4613,6 +4660,22 @@ function WorkspaceScreenContent({
           if (input.focusPaneBeforeOpen && input.paneId) {
             focusWorkspacePane(persistenceKey, input.paneId);
           }
+          if (usesChatPanelOpenPreference(input.tab.target, target)) {
+            const tabId = openPreferredWorkspacePreview({
+              isCompact: isMobile,
+              workspaceKey: persistenceKey,
+              serverId: normalizedServerId,
+              workspaceId: normalizedWorkspaceId,
+              explorerSidebarPaneId: null,
+              lastMainPaneId: input.paneId ?? null,
+              target,
+              source: "chatFiles",
+              preferences: openInSidePanePreferences,
+              parentTabId: input.tab.tabId,
+            });
+            if (tabId) navigateToTabId(tabId);
+            return;
+          }
           const tabId = openWorkspaceChildTabFocused(persistenceKey, target, input.tab.tabId);
           if (tabId) {
             navigateToTabId(tabId);
@@ -4650,6 +4713,9 @@ function WorkspaceScreenContent({
             }
             const explorerRequestedHost =
               input.host === "explorer" ? getExplorerRequestedTargetHost(target) : null;
+            const preferenceSource = usesChatPanelOpenPreference(input.tab.target, target)
+              ? "chatFiles"
+              : source;
             const tabId = openPreferredWorkspacePreview({
               isCompact: isMobile,
               workspaceKey: persistenceKey,
@@ -4658,7 +4724,7 @@ function WorkspaceScreenContent({
               explorerSidebarPaneId: input.host === "explorer" ? (input.paneId ?? null) : null,
               lastMainPaneId: input.paneId ?? null,
               target,
-              source,
+              source: preferenceSource,
               preferences:
                 target.kind === "pull_request"
                   ? {
@@ -4691,6 +4757,20 @@ function WorkspaceScreenContent({
           retargetWorkspaceTab(persistenceKey, input.tab.tabId, target);
         },
         onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => {
+          if (
+            request.disposition === "preferred" &&
+            usesChatPanelOpenPreference(input.tab.target, {
+              kind: "file",
+              ...request.location,
+            })
+          ) {
+            handleOpenFileFromChat(request.location, {
+              parentTabId: input.tab.tabId,
+              useChatPanelPreference: true,
+              sourcePaneId: input.paneId,
+            });
+            return;
+          }
           handleOpenWorkspaceFileFromPane({
             request,
             paneId: input.paneId,
@@ -4706,6 +4786,7 @@ function WorkspaceScreenContent({
       handleCloseTabById,
       findKnowledgeFileSelection,
       focusWorkspacePane,
+      handleOpenFileFromChat,
       handleOpenWorkspaceFileFromPane,
       navigateToTabId,
       normalizedServerId,

@@ -1665,6 +1665,20 @@ describe("Paseo navigation intake with Otto preferences", () => {
     expect(result.pullRequestOpenLocation).toBe("side");
   });
 
+  it("combines the former chat file and Changes destinations", async () => {
+    const result = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({
+            openInSidePane: { chatFiles: false, changesLinks: true },
+          }),
+        }),
+      }),
+    );
+    expect(result.openInSidePane.chatFiles).toBe(true);
+    expect(result.openInSidePane.changesLinks).toBe(true);
+  });
+
   it("keeps Otto defaults while accepting explicit Explorer placement", async () => {
     const initial = await loadAppSettingsFromStorage(makeDeps());
     expect(initial.pullRequestOpenLocation).toBe("main");
