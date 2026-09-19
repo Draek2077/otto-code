@@ -251,6 +251,11 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
 
   const audio = useDictationAudioSource({
     onPcmSegment: (audioData) => {
+      // Stopping capture flushes its final partial chunk. Cancellation has
+      // already closed the stream, so that tail must not start another one.
+      if (actionGateRef.current.cancelling) {
+        return;
+      }
       senderRef.current?.enqueueSegment(audioData);
     },
     onError: (err) => {

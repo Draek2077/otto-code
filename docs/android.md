@@ -190,6 +190,19 @@ you are almost certainly right that it is stale. Restart Metro.
 > number and no viewer will open it. `npm run android:emu -- shot` captures on the device and pulls
 > the file instead, which cannot hit this.
 
+### Dictation stream timeout over relay
+
+If dictation times out during stream delivery, check the daemon log for relay disconnect code
+`1013` with reason `Relay message rate exceeded`. The relay limits each data socket to 200 messages
+per 10 seconds. Android's 1024-byte microphone reads at 16 kHz PCM16 produce roughly 313 events
+in that interval, so forwarding every native event as a message exhausts the allowance even
+without other app traffic.
+
+Native dictation batches PCM into one-second chunks, matching web dictation. Stopping or an audio
+interruption flushes the remaining partial chunk; cancellation discards that tail. Keep native
+capture callbacks separate from network chunk cadence. Increasing the transcription timeout does
+not repair a stream whose transport was disconnected by the relay.
+
 ## Local build + install
 
 From repo root:
