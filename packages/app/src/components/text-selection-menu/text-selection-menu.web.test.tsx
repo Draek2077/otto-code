@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
   true;
 
 const {
+  getIsElectron,
   applySpellcheckAction,
   emitSpellcheckContext,
   setSpellcheckContextHandler,
@@ -16,6 +17,7 @@ const {
 } = vi.hoisted(() => {
   let spellcheckContextHandler: ((payload: unknown) => void) | null = null;
   return {
+    getIsElectron: vi.fn(() => true),
     applySpellcheckAction: vi.fn(async () => true),
     emitSpellcheckContext: (payload: unknown) => spellcheckContextHandler?.(payload),
     setSpellcheckContextHandler: (handler: (payload: unknown) => void) => {
@@ -51,8 +53,11 @@ vi.mock("@/components/ui/context-menu", async () => {
     ContextMenuSeparator: () => createElement("hr"),
     // Claims the event like the real helper, so the provider's bubble fallback
     // does not reopen the menu and discard contributed actions.
-    contextMenuAnchorFromEvent: (event: MouseEvent) => {
-      event.preventDefault();
+    contextMenuAnchorFromEvent: (
+      event: MouseEvent,
+      options?: { preserveNativeDefault?: boolean },
+    ) => {
+      if (!options?.preserveNativeDefault) event.preventDefault();
       event.stopPropagation();
       return { x: event.clientX, y: event.clientY };
     },
@@ -62,6 +67,8 @@ vi.mock("@/components/ui/context-menu", async () => {
 vi.mock("@/components/ui/shortcut", () => ({
   Shortcut: () => null,
 }));
+
+vi.mock("@/constants/platform", () => ({ getIsElectron }));
 
 vi.mock("@/desktop/host", () => ({
   getDesktopHost: () => ({
@@ -163,9 +170,29 @@ describe("TextSelectionMenuProvider spellcheck", () => {
   let root: Root;
 
   beforeEach(() => {
+    getIsElectron.mockReturnValue(true);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+  });
+
+  it("still suppresses the browser menu outside Electron", () => {
+    getIsElectron.mockReturnValue(false);
+    act(() => {
+      root.render(
+        <TextSelectionMenuProvider>
+          <textarea />
+        </TextSelectionMenuProvider>,
+      );
+    });
+    const composer = container.querySelector("textarea");
+    if (!composer) throw new Error("Expected Composer textarea.");
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    act(() => {
+      composer.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(true);
+    expect(container.textContent).toContain("Paste");
   });
 
   afterEach(() => {
@@ -192,9 +219,16 @@ describe("TextSelectionMenuProvider spellcheck", () => {
     if (!composer) throw new Error("Expected Composer textarea.");
 
     act(() => {
-      composer.dispatchEvent(
-        new MouseEvent("contextmenu", { bubbles: true, clientX: 42, clientY: 84 }),
-      );
+      const event = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 42,
+        clientY: 84,
+      });
+      composer.dispatchEvent(event);
+      // Canceling this DOM event prevents Electron from producing the native
+      // spellcheck context below at all.
+      expect(event.defaultPrevented).toBe(false);
       emitSpellcheckContext({
         token: "spellcheck-7",
         x: 42,

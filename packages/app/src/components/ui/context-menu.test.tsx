@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ContextMenuTrigger } from "./context-menu";
+import { ContextMenuTrigger, contextMenuAnchorFromEvent } from "./context-menu";
 
 const captured = vi.hoisted(() => ({
   style: undefined as unknown,
@@ -43,6 +43,26 @@ vi.mock("@/components/ui/press-highlight", () => ({
 }));
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("contextMenuAnchorFromEvent", () => {
+  it.each([false, true])(
+    "claims the event with preserveNativeDefault=%s",
+    (preserveNativeDefault) => {
+      const event = {
+        pageX: 42,
+        pageY: 84,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      };
+      expect(contextMenuAnchorFromEvent(event, { preserveNativeDefault })).toEqual({
+        x: 42,
+        y: 84,
+      });
+      expect(event.preventDefault).toHaveBeenCalledTimes(preserveNativeDefault ? 0 : 1);
+      expect(event.stopPropagation).toHaveBeenCalledOnce();
+    },
+  );
+});
 
 describe("ContextMenuTrigger", () => {
   it("preserves a static trigger style so the native press highlight can inherit its corners", () => {

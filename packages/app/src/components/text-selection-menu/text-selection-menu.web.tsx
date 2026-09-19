@@ -24,6 +24,7 @@ import {
 import type { MenuPageDefinition } from "@/components/ui/menu";
 import { Shortcut } from "@/components/ui/shortcut";
 import { getDesktopHost } from "@/desktop/host";
+import { getIsElectron } from "@/constants/platform";
 import {
   resolveTextSelectionMenuActions,
   type TextSelectionMenuActionId,
@@ -374,9 +375,14 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
   );
   const open = useCallback(
     (event: unknown, options: OpenTextSelectionMenuOptions = {}): boolean => {
-      const anchor = contextMenuAnchorFromEvent(event);
-      if (!anchor) return false;
       const snapshot = captureTextSelection(getEventTarget(event), options.selectAllScope);
+      // preventDefault suppresses Electron's main-process context-menu event,
+      // including the spelling data we need. Stop propagation still claims the
+      // renderer menu; Electron shows no native menu unless main requests one.
+      const anchor = contextMenuAnchorFromEvent(event, {
+        preserveNativeDefault: snapshot.editableTarget !== null && getIsElectron(),
+      });
+      if (!anchor) return false;
       const pending = pendingSpellcheckContext.current;
       const spellcheckContext =
         snapshot.editableTarget !== null &&

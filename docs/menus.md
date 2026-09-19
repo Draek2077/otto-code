@@ -22,6 +22,12 @@ operation token keeps replacement and dictionary changes bound to the word that 
 right click. Browser and mobile hosts omit this Electron-only group because the web platform does
 not expose native dictionary suggestions to renderer code.
 
+Editable Electron targets stop DOM event propagation but must not call `preventDefault()` on
+`contextmenu`: canceling that default also suppresses the main process's `context-menu` event and
+its spelling data. Electron displays no native menu unless the main process explicitly opens one,
+so preserving that event still leaves presentation with Otto. Browser targets keep canceling the
+default to suppress Chromium's own menu.
+
 A target with a specific context menu claims an **unselected** browser event, while a non-empty text
 selection always yields to the root standard group. That keeps Copy available from selected labels
 inside workspace rows and tabs. To build a hybrid menu, wrap the target in

@@ -119,13 +119,17 @@ export function hasWebTextSelection(): boolean {
 
 /**
  * Converts a web context-menu or native press event into the point anchor used by an
- * imperatively controlled context menu, while suppressing the browser's default menu.
+ * imperatively controlled context menu. Electron text inputs preserve the default
+ * event so the main process can receive native spelling suggestions.
  */
-export function contextMenuAnchorFromEvent(event: unknown): { x: number; y: number } | null {
+export function contextMenuAnchorFromEvent(
+  event: unknown,
+  { preserveNativeDefault = false }: { preserveNativeDefault?: boolean } = {},
+): { x: number; y: number } | null {
   if (typeof event === "object" && event !== null) {
     const preventDefault = Reflect.get(event, "preventDefault");
     const stopPropagation = Reflect.get(event, "stopPropagation");
-    if (isCallable(preventDefault)) preventDefault.call(event);
+    if (!preserveNativeDefault && isCallable(preventDefault)) preventDefault.call(event);
     if (isCallable(stopPropagation)) stopPropagation.call(event);
   }
   const point = coerceEventPoint(event);

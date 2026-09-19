@@ -5,7 +5,7 @@ title: "Chat context menus resolve actions from the clicked target"
 status: "confirmed"
 tags: ["chat","context-menu","ux","architecture"]
 created_at: "2026-08-13T03:21:44.211Z"
-updated_at: "2026-08-27T13:47:52.283Z"
+updated_at: "2026-09-19T15:57:56.471Z"
 ---
 # Chat context menus resolve actions from the clicked target
 
@@ -37,3 +37,7 @@ A surface that needs both target-specific and selection actions uses `TextSelect
   kind: "decision"
   summary: "Keep the durable architecture record scoped to the reusable text-menu capability so its commit remains independent of the pre-existing untracked Knowledge review feature bundle."
   source: "Implementation: packages/app/src/components/text-selection-menu/text-selection-menu.web.tsx, packages/app/src/app/_layout.tsx; verification: focused Vitest, app"
+- time: "2026-09-19T15:57:56.471Z"
+  kind: "evidence"
+  summary: "Verified on Windows with repository Electron 44.2.0: canceling the textarea's DOM contextmenu event produced zero main-process context-menu events; preserving its default while stopping propagation produced misspelledWord=mispeling and dictionarySuggestions=[misspelling]. The renderer must preserve this default for editable Electron targets so the existing spellcheck bridge can populate Otto's shared menu. Browser targets must still suppress their native menu. Local source fix passed 8 focused menu tests, targeted lint, and app typecheck. Installed-app/full packaged UI verification remains outstanding."
+  source: "docs/menus.md; packages/app/src/components/text-selection-menu/text-selection-menu.web.tsx; packages/app/src/components/ui/context-menu.tsx; isolated Electron p"
