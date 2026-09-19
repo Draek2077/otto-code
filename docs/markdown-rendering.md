@@ -56,6 +56,38 @@ The five rules that follow from it, and that are easy to break:
 Nothing in this path can execute anything regardless: the renderer emits React Native primitives,
 so passthrough would be inert - but inert markup on screen is still a rendering bug.
 
+### Explicit anchors keep their id, and nothing else
+
+One tag carries something a reader can use even though its markup is dropped: an explicit
+anchor. Specs put `<a id="ros-ac-18"></a>` inside a table cell so `verification.md#ros-ac-18`
+jumps to that row, and GitHub honors it. When html-ish is called with `anchors: true`, it
+translates `<a id>`, `<a name>` and `<span id>` (the set GitHub-flavored link validators accept,
+including an unclosed `<a name="x">`) into one canonical marker, `<a id="x"></a>`. The document
+parser's inline rule (`html-anchors.ts`) turns that marker into an `otto_html_anchor` token. Every
+other attribute is still dropped, and an id holding whitespace, quotes or angle brackets is
+refused. The id never becomes a DOM attribute: it is only a key the reader scrolls to.
+
+The option is **off by default**, and it stays opt-in for a reason: the marker is only legible to
+a parser that registered `applyHtmlAnchors` (the document parser). Chat parsers do not, so on
+those surfaces the marker would show up as literal text. The shared rules render the token as
+nothing. Only a reader that navigates (`createMarkdownDocumentAnnotationRules` with
+`anchorTargets`) makes it measurable. A table row that holds an anchor becomes the target, since
+it is a real box on every platform, and an anchor in running text renders an empty inline marker.
+
+Following a link is `useMarkdownAnchorNavigation`'s job. The link resolver passes the fragment on
+**as written**. `resolveDocumentAnchor` first matches an explicit id exactly (ids are
+case-sensitive, and `Mixed_Case` is not a heading slug). Next it tries a heading anchor, then the
+fragment slugged the GitHub way, so `#Café Options` still finds `café-options`. The target's
+position is measured with `measureLayout` against the scroll content, never taken from a
+target's `onLayout` `y`. That `y` is relative to the parent, which is wrong for a table row or a
+nested heading. Late layout re-pins the target for a second after it lands, then stops, so an
+edit in split view never drags the reader back. A brief accent wash marks the landing, and every
+navigation lands again, including a repeat click on the same link. A fragment the document does
+not contain does not scroll. The File Editor instead pins a dismissible warning banner above the
+document ("The link target #x was not found in this document."). It uses the same warning tint
+and dismiss control as the disk-change and save-conflict banners, and never renders inside the
+document, where it would read as the file's content. Dismissal holds for that one navigation.
+
 ## `remoteImages`: who is allowed to fetch
 
 `MarkdownRenderer` takes `remoteImages?: "load" | "altText"` (default `"load"`).

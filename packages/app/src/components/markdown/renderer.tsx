@@ -73,6 +73,13 @@ import { recoverMisnestedMarkdownFence } from "./fence-recovery";
 import { defaultMarkdownParser } from "./parser";
 import { isLastMarkdownTableChild } from "./table-layout";
 import {
+  createHtmlAnchorPlaceholderRules,
+  useMarkdownAnchorRef,
+  withMarkdownAnchorTargetRules,
+  type MarkdownAnchorTargets,
+} from "./anchor-targets";
+import { documentAnchorKey } from "./document-anchors";
+import {
   collectMarkdownDocumentAnnotationTargets,
   resolveHeadingAnnotationTarget,
   type MarkdownDocumentAnnotationTarget,
@@ -271,22 +278,34 @@ function markdownNodeText(node: ASTNode): string {
 function MarkdownHeadingAnchor({
   anchor,
   onHeadingLayout,
+  anchorTargets,
   style,
   children,
 }: {
   anchor?: string;
   onHeadingLayout?: (anchor: string, y: number) => void;
+  anchorTargets?: MarkdownAnchorTargets;
   style?: ViewStyle;
   children: ReactNode;
 }) {
+  const ref = useMarkdownAnchorRef(
+    anchor ? [documentAnchorKey({ kind: "heading", value: anchor })] : [],
+    anchorTargets,
+  );
   const onLayout = useCallback(
     (event: { nativeEvent: { layout: { y: number } } }) => {
       if (anchor) onHeadingLayout?.(anchor, event.nativeEvent.layout.y);
+      anchorTargets?.layout();
     },
-    [anchor, onHeadingLayout],
+    [anchor, anchorTargets, onHeadingLayout],
   );
+  const tracked = Boolean(anchor && (onHeadingLayout || anchorTargets));
   return (
-    <View style={style} onLayout={anchor ? onLayout : undefined}>
+    <View
+      ref={anchorTargets ? ref : undefined}
+      style={style}
+      onLayout={tracked ? onLayout : undefined}
+    >
       {children}
     </View>
   );
@@ -303,6 +322,11 @@ export function createMarkdownDocumentAnnotationRules(input: {
   onAnnotationOpenChange?: (target: MarkdownDocumentAnnotationTarget, open: boolean) => void;
   /** Reports rendered heading positions so document links can land exactly on them. */
   onHeadingLayout?: (anchor: string, y: number) => void;
+  /**
+   * Registers headings and explicit HTML anchors as measurable link targets.
+   * The document must render with `htmlAnchors` for the explicit ones to exist.
+   */
+  anchorTargets?: MarkdownAnchorTargets;
   annotatedHeadingSourceLines?: readonly number[];
   annotatedHeadingComments?: ReadonlyMap<number, string>;
   /** Rendered in a popup anchored to the matching heading's annotation button. */
@@ -336,6 +360,7 @@ export function createMarkdownDocumentAnnotationRules(input: {
             key={node.key}
             anchor={anchor}
             onHeadingLayout={input.onHeadingLayout}
+            anchorTargets={input.anchorTargets}
             style={styles[`_VIEW_SAFE_heading${level}`]}
           >
             {children}
@@ -347,6 +372,7 @@ export function createMarkdownDocumentAnnotationRules(input: {
           key={node.key}
           anchor={anchor}
           onHeadingLayout={input.onHeadingLayout}
+          anchorTargets={input.anchorTargets}
         >
           <HeadingAnnotationAction
             target={target}
@@ -362,7 +388,7 @@ export function createMarkdownDocumentAnnotationRules(input: {
       );
     };
   }
-  return rules;
+  return input.anchorTargets ? withMarkdownAnchorTargetRules(rules, input.anchorTargets) : rules;
 }
 
 /** Heading-only rules for readers that navigate but do not support annotations. */
@@ -437,6 +463,12 @@ export interface MarkdownRendererProps {
    * so a caller that trimmed frontmatter has to add it back.
    */
   onToggleTask?: MarkdownTaskToggle | null;
+  /**
+   * Keeps explicit HTML anchors (`<a id>`, `<a name>`, `<span id>`) as link targets. Only for the
+   * document parser, the one that registers `applyHtmlAnchors`; a surface that also wants to
+   * scroll to them passes `anchorTargets` to its document rules.
+   */
+  htmlAnchors?: boolean;
 }
 
 export function MarkdownRenderer({
@@ -451,6 +483,7 @@ export function MarkdownRenderer({
   remoteImages,
   workspaceImages = null,
   onToggleTask = null,
+  htmlAnchors = false,
 }: MarkdownRendererProps) {
   const oversized = text.length > MAX_MARKDOWN_PARSE_LENGTH;
   const recoveredText = useMemo(() => recoverMisnestedMarkdownFence(text), [text]);
@@ -461,9 +494,10 @@ export function MarkdownRenderer({
         ? splitHtmlishMarkdown(recoveredText, {
             remoteImages,
             localImages: workspaceImages ? "workspace" : "off",
+            anchors: htmlAnchors,
           })
         : [{ kind: "markdown" as const, text: recoveredText }],
-    [enableHtmlish, oversized, recoveredText, remoteImages, workspaceImages],
+    [enableHtmlish, htmlAnchors, oversized, recoveredText, remoteImages, workspaceImages],
   );
   const rendererProps = useMemo(
     () => ({
@@ -1107,6 +1141,7 @@ export function createMarkdownTableRules(): RenderRules {
 export function createSharedMarkdownRules(): RenderRules {
   return {
     ...createMarkdownTableRules(),
+    ...createHtmlAnchorPlaceholderRules(),
     /**
      * A blockquote, or a GitHub alert when the parser tagged it as one.
      *

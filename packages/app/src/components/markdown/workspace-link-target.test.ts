@@ -25,10 +25,26 @@ describe("resolveWorkspaceMarkdownLink", () => {
       path: "spec/principles.md",
       anchor: "fp-02-durable-messaging-and-controlled-scale",
     });
+    // As written: the reader decides whether it names an id or a heading slug.
     expect(resolveWorkspaceMarkdownLink({ ...base, href: "#Caf%C3%A9%20Options" })).toEqual({
       kind: "workspace",
       path: "docs/README.md",
-      anchor: "café-options",
+      anchor: "Café Options",
+    });
+  });
+
+  it("keeps explicit HTML anchor fragments exactly as written", () => {
+    const principles = { workspaceRoot: "C:/work/route-os", documentPath: "spec/principles.md" };
+    expect(
+      resolveWorkspaceMarkdownLink({ ...principles, href: "quality/verification.md#ros-ac-18" }),
+    ).toEqual({ kind: "workspace", path: "spec/quality/verification.md", anchor: "ros-ac-18" });
+    expect(
+      resolveWorkspaceMarkdownLink({ ...principles, href: "decisions/open-decisions.md#ros-d-09" }),
+    ).toEqual({ kind: "workspace", path: "spec/decisions/open-decisions.md", anchor: "ros-d-09" });
+    expect(resolveWorkspaceMarkdownLink({ ...principles, href: "notes.md#Mixed_Case" })).toEqual({
+      kind: "workspace",
+      path: "spec/notes.md",
+      anchor: "Mixed_Case",
     });
   });
 

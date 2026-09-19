@@ -1,5 +1,6 @@
 import { Parser } from "htmlparser2";
 import { isWorkspaceRelativeImageSrc } from "./workspace-image-source";
+import { htmlAnchorMarker, htmlTagAnchorId } from "./html-anchors";
 
 export interface MarkdownTextPart {
   kind: "markdown";
@@ -93,6 +94,13 @@ export interface HtmlishOptions {
    * src that escapes the root lands back on the alt-text path from there.
    */
   localImages?: "workspace" | "off";
+  /**
+   * Keep the id of an explicit HTML anchor (`<a id>`, `<a name>`, `<span id>`) as the canonical
+   * marker from `html-anchors.ts`, so a document link can target it. Off by default: the marker is
+   * only legible to a parser that registered `applyHtmlAnchors`, and anywhere else it would show
+   * as literal text. Only the id survives; every other attribute is still dropped.
+   */
+  anchors?: boolean;
 }
 
 /**
@@ -428,7 +436,9 @@ function renderInlineTokens(
     const closeIndex = token.selfClosing ? null : findMatchingClose(tokens, index, token.name);
     if (closeIndex === null) {
       // Unclosed, so there is no child range to keep - drop the markup. Most often the close tag
-      // landed in a later part after an inline image split the token run.
+      // landed in a later part after an inline image split the token run. A bare `<a name="x">`
+      // is still an anchor, though, and has no content to lose.
+      output += renderAnchorMarker(token, options);
       continue;
     }
 
@@ -453,7 +463,10 @@ function translateTagToMarkdown(
     return "";
   }
   if (token.name === "a") {
-    return renderLinkToken(token, children, options);
+    return renderAnchorMarker(token, options) + renderLinkToken(token, children, options);
+  }
+  if (token.name === "span") {
+    return renderAnchorMarker(token, options) + renderInlineTokens(children, options, true);
   }
   // Not the isHeadingTag type guard: `token` is already an HtmlTagToken, so narrowing on it would
   // make every branch below unreachable to the compiler.
@@ -575,6 +588,14 @@ function renderImageToken(token: HtmlTagToken, options: HtmlishOptions): string 
   }
 
   return `![${escapeMarkdownImageAlt(image.alt)}](${image.src})`;
+}
+
+function renderAnchorMarker(token: HtmlTagToken, options: HtmlishOptions): string {
+  if (!options.anchors) {
+    return "";
+  }
+  const id = htmlTagAnchorId(token.name, token.attributes);
+  return id ? htmlAnchorMarker(id) : "";
 }
 
 function renderLinkToken(

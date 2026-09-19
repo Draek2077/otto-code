@@ -24,8 +24,10 @@ import {
   MarkdownRenderer,
   type MarkdownDocumentAnnotationTarget,
 } from "@/components/markdown/renderer";
-import { headingAnchors } from "@/editor/markdown/markdown-link-completion";
-import { extractMarkdownHeadings } from "@otto-code/highlight";
+import { useMarkdownAnchorNavigation } from "@/components/markdown/use-markdown-anchor-navigation";
+import { MarkdownAnchorLandingHighlight } from "@/components/markdown/anchor-targets";
+import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
+import { FileEditorWarningBanner } from "@/components/file-editor-warning-banner";
 import { FileHtmlPreview } from "@/file-pane/html-preview";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { RevealFileButton } from "@/components/reveal-file-button";
@@ -485,30 +487,30 @@ function FilePreviewBody({
     () => resolveRenderedDocument(documentKind, effectiveContent),
     [documentKind, effectiveContent],
   );
-  const headingOffsets = useRef(new Map<string, number>());
-  const [headingLayoutRevision, setHeadingLayoutRevision] = useState(0);
+  const previewScrollRef = useRef<RNScrollView>(null);
+  // Click alignment is web-only: it needs the content's bounding rect to turn
+  // a pointer position into a content Y. Anchor navigation measures against it
+  // on every platform.
+  const syncContentRef = useRef<View>(null);
   const requestedAnchor = location.anchor?.trim() || null;
-  const renderedHeadingAnchors = useMemo(
-    () =>
-      new Set(
-        renderedDocument
-          ? headingAnchors(extractMarkdownHeadings(renderedDocument.body)).map(
-              (item) => item.anchor,
-            )
-          : [],
-      ),
-    [renderedDocument],
+  const anchorNavigation = useMarkdownAnchorNavigation({
+    body: renderedDocument?.body ?? null,
+    fragment: requestedAnchor,
+    navigationRevision,
+    scrollRef: previewScrollRef,
+    contentRef: syncContentRef,
+  });
+  const { anchorMissing, anchorTargets, landing: anchorLanding } = anchorNavigation;
+  const handleAnchorContentSizeChange = anchorNavigation.handleContentSizeChange;
+  // Dismissal holds for this navigation only: following the link again reports again.
+  const anchorNavigationKey = `${navigationRevision}:${requestedAnchor ?? ""}`;
+  const [dismissedAnchorNavigation, setDismissedAnchorNavigation] = useState<string | null>(null);
+  const showAnchorMissing = anchorMissing && dismissedAnchorNavigation !== anchorNavigationKey;
+  const dismissAnchorMissing = useCallback(
+    () => setDismissedAnchorNavigation(anchorNavigationKey),
+    [anchorNavigationKey],
   );
-  const anchorMissing = Boolean(requestedAnchor && !renderedHeadingAnchors.has(requestedAnchor));
-  useEffect(() => {
-    headingOffsets.current.clear();
-    setHeadingLayoutRevision((revision) => revision + 1);
-  }, [renderedDocument?.body]);
-  const handleHeadingLayout = useCallback((anchor: string, y: number) => {
-    if (headingOffsets.current.get(anchor) === y) return;
-    headingOffsets.current.set(anchor, y);
-    setHeadingLayoutRevision((revision) => revision + 1);
-  }, []);
+  const animationsEnabled = useAnimationsEnabled();
   const [annotationTarget, setAnnotationTarget] = useState<MarkdownDocumentAnnotationTarget | null>(
     null,
   );
@@ -558,7 +560,7 @@ function FilePreviewBody({
         ? createMarkdownDocumentAnnotationRules({
             text: renderedDocument.body,
             onAnnotationOpenChange: onAnnotateDocumentItem ? handleAnnotationOpenChange : undefined,
-            onHeadingLayout: handleHeadingLayout,
+            anchorTargets,
             annotatedHeadingSourceLines: annotatedHeadingSourceLines.map(
               (lineStart) => lineStart - (annotationLineOffset ?? 0),
             ),
@@ -584,6 +586,7 @@ function FilePreviewBody({
           })
         : undefined,
     [
+      anchorTargets,
       annotationLineOffset,
       annotationSupported,
       annotatedHeadingSourceLines,
@@ -592,7 +595,6 @@ function FilePreviewBody({
       cancelAnnotation,
       deleteAnnotation,
       handleAnnotationOpenChange,
-      handleHeadingLayout,
       onAnnotateDocumentItem,
       renderedDocument,
       submitAnnotation,
@@ -613,21 +615,10 @@ function FilePreviewBody({
     return ({ line, checked }) => onToggleTask({ line: line + bodyLineOffset, checked });
   }, [bodyLineOffset, onToggleTask]);
 
-  const previewScrollRef = useRef<RNScrollView>(null);
   const sourceScrollRef = useRef<FileSourceViewHandle>(null);
   const scrollbar = useWebScrollViewScrollbar(previewScrollRef, {
     enabled: showWebScrollbar,
   });
-  useEffect(() => {
-    if (!requestedAnchor || anchorMissing) return;
-    const y = headingOffsets.current.get(requestedAnchor);
-    if (y === undefined) return;
-    const frame = requestAnimationFrame(() => {
-      previewScrollRef.current?.scrollTo({ y: Math.max(0, y), animated: false });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [anchorMissing, headingLayoutRevision, requestedAnchor]);
-
   // Split-view sync plumbing: track the viewport imperatively (re-rendering
   // per scroll frame would be wasteful) and swallow the echo of our own
   // programmatic scrolls so the two panes cannot ping-pong.
@@ -686,8 +677,9 @@ function FilePreviewBody({
     (width: number, height: number) => {
       scrollbarOnContentSizeChange(width, height);
       handleSyncContentSize(width, height);
+      handleAnchorContentSizeChange();
     },
-    [handleSyncContentSize, scrollbarOnContentSizeChange],
+    [handleAnchorContentSizeChange, handleSyncContentSize, scrollbarOnContentSizeChange],
   );
 
   const scrollToSyncTop = useCallback((top: number) => {
@@ -702,9 +694,6 @@ function FilePreviewBody({
     previewScrollRef.current?.scrollTo({ y: clamped, animated: false });
   }, []);
 
-  // Click alignment is web-only: it needs the content's bounding rect to turn
-  // a pointer position into a content Y.
-  const syncContentRef = useRef<View>(null);
   const handleSyncPointerDown = useCallback((event: { nativeEvent: { clientY?: number } }) => {
     if (!isWeb || !onPointerDownSyncRef.current) {
       return;
@@ -857,6 +846,14 @@ function FilePreviewBody({
       const { frontmatter, body, enableHtmlish } = renderedDocument;
       return (
         <View style={styles.previewScrollContainer}>
+          {showAnchorMissing ? (
+            <FileEditorWarningBanner
+              message={`The link target #${requestedAnchor} was not found in this document.`}
+              dismissLabel={t("common.actions.dismiss")}
+              onDismiss={dismissAnchorMissing}
+              testID="markdown-anchor-missing"
+            />
+          ) : null}
           <RNScrollView
             ref={previewScrollRef}
             style={styles.previewContent}
@@ -875,15 +872,6 @@ function FilePreviewBody({
                   </Text>
                 </View>
               ) : null}
-              {anchorMissing ? (
-                <Text
-                  style={styles.errorText}
-                  accessibilityRole="alert"
-                  testID="markdown-anchor-missing"
-                >
-                  The heading #{requestedAnchor} was not found in this document.
-                </Text>
-              ) : null}
               {/* A repo document must not be able to reach the network just by being previewed -
                   but it may show its own images, read back through the daemon. */}
               <MarkdownRenderer
@@ -894,7 +882,14 @@ function FilePreviewBody({
                 workspaceImages={workspaceImages}
                 onToggleTask={handleToggleTask}
                 onLinkPress={onLinkPress}
+                htmlAnchors
               />
+              {anchorLanding ? (
+                <MarkdownAnchorLandingHighlight
+                  landing={anchorLanding}
+                  animated={animationsEnabled}
+                />
+              ) : null}
             </View>
           </RNScrollView>
           {scrollbar.overlay}

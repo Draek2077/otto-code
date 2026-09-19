@@ -69,6 +69,7 @@ import { usePaneContext } from "@/panels/pane-context";
 import { createWorkspaceFileTabTarget } from "@/workspace/file-open";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { resolveWorkspaceMarkdownLink } from "@/components/markdown/workspace-link-target";
+import { resolveDocumentAnchor } from "@/components/markdown/document-anchors";
 import { headingAnchors } from "@/editor/markdown/markdown-link-completion";
 import { extractMarkdownHeadings } from "@otto-code/highlight";
 import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
@@ -468,7 +469,7 @@ export function ProjectKnowledgePanel(): ReactElement {
     () => currentKnowledgeSelection(selectedRoot, selected),
     [selected, selectedRoot],
   );
-  const requestedAnchor =
+  const requestedFragment =
     paneTarget.kind === "projectKnowledge" ? paneTarget.anchor?.trim() || null : null;
   const documentScrollRef = useRef<ScrollView>(null);
   const headingOffsets = useRef(new Map<string, number>());
@@ -477,6 +478,14 @@ export function ProjectKnowledgePanel(): ReactElement {
     () => new Set(headingAnchors(extractMarkdownHeadings(document)).map((item) => item.anchor)),
     [document],
   );
+  // Links carry the fragment as written; this surface lands on headings only.
+  const requestedAnchor = requestedFragment
+    ? (resolveDocumentAnchor({
+        fragment: requestedFragment,
+        headingAnchors: documentAnchors,
+        htmlAnchorIds: new Set(),
+      })?.value ?? requestedFragment)
+    : null;
   const anchorMissing = Boolean(requestedAnchor && !documentAnchors.has(requestedAnchor));
   useEffect(() => {
     headingOffsets.current.clear();

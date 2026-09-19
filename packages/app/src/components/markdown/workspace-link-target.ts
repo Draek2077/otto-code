@@ -1,5 +1,4 @@
 import { createWorkspaceImageBase } from "./workspace-image-source";
-import { headingAnchorSlug } from "@/editor/markdown/markdown-link-completion";
 import { containRelativePath } from "@/utils/path";
 
 export type WorkspaceMarkdownLinkTarget =
@@ -68,10 +67,12 @@ export function resolveWorkspaceMarkdownLink(input: {
   if (rawPath.includes("?")) {
     return { kind: "invalid", reason: "Markdown document links cannot include a query string." };
   }
-  const decodedAnchor = rawAnchor === null ? null : decode(rawAnchor);
-  const anchor = decodedAnchor === null ? null : headingAnchorSlug(decodedAnchor);
+  // The fragment is passed on as written, not slugged: an explicit `<a id>`
+  // matches exactly, and only the reader knows whether it names an id or a
+  // heading (see `resolveDocumentAnchor`).
+  const anchor = rawAnchor === null ? null : (decode(rawAnchor)?.trim() ?? null);
   if (rawAnchor !== null && !anchor) {
-    return { kind: "invalid", reason: "The Markdown heading target is invalid." };
+    return { kind: "invalid", reason: "The Markdown link target is invalid." };
   }
 
   const base = createWorkspaceImageBase({
