@@ -434,7 +434,6 @@ const ALERT_LABELS: Record<GithubAlertKind, string> = {
 const EMPTY_TEXT_STYLE: TextStyle = {};
 /** A markdown `![]()` carries no width/height attributes; only HTML `<img>` does. */
 const EMPTY_IMAGE_DIMENSIONS: { width?: number; height?: number } = {};
-const MARKDOWN_LIST_ITEM_CONTENT_FLEX: ViewStyle = { flex: 1, flexShrink: 1, minWidth: 0 };
 export interface MarkdownRendererProps {
   text: string;
   compact?: boolean;
@@ -1003,8 +1002,7 @@ interface MarkdownListItemContentProps {
 }
 
 function MarkdownListItemContent({ contentStyle, children }: MarkdownListItemContentProps) {
-  const style = useMemo(() => [contentStyle, MARKDOWN_LIST_ITEM_CONTENT_FLEX], [contentStyle]);
-  return <View style={style}>{children}</View>;
+  return <View style={contentStyle}>{children}</View>;
 }
 
 interface MarkdownListViewProps {

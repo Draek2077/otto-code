@@ -201,6 +201,18 @@ The general rule, for the next feature that persists an attachment nobody sends:
 off a draft, a queued message or the workspace attachment store, it needs a reference in
 `runAttachmentGc` or it will be deleted, quickly and silently.
 
+## Native list sizing
+
+Native chat bubbles size themselves from their content. Keep the Markdown body at
+`width: auto` on native so Yoga stretches it to the bubble's final content width;
+a percentage body width can leave nested lists using an earlier measurement.
+List content must also contribute its natural width during measurement: the shared
+styles reset the library's `flex: 1` to `flex: 0` and set `flexGrow: 1` and
+`flexShrink: 1`. A zero-basis content column can otherwise collapse to zero width,
+leaving visible markers beside empty, tall rows. Both chat renderers consume those
+shared styles without adding another flex override. Web retains its existing
+percentage body width and list flex basis.
+
 ## Both sides of chat parse, with different parsers
 
 The user's own bubble renders through `MarkdownRenderer` too, not as plain text: a prompt with a

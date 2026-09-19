@@ -1652,11 +1652,8 @@ interface MarkdownListItemContentProps {
   children: ReactNode;
 }
 
-const MARKDOWN_LIST_ITEM_CONTENT_FLEX: ViewStyle = { flex: 1, flexShrink: 1, minWidth: 0 };
-
 function MarkdownListItemContent({ contentStyle, children }: MarkdownListItemContentProps) {
-  const style = useMemo(() => [contentStyle, MARKDOWN_LIST_ITEM_CONTENT_FLEX], [contentStyle]);
-  return <View style={style}>{children}</View>;
+  return <View style={contentStyle}>{children}</View>;
 }
 
 interface MarkdownListViewProps {

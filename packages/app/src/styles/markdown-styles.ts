@@ -49,7 +49,10 @@ function createMarkdownStylesForSize(theme: Theme, proseSize: number, headingSiz
       lineHeight: proseLineHeight,
       flexShrink: 1,
       minWidth: 0,
-      width: "100%" as const,
+      // In a content-sized native bubble, nested percentage widths can be
+      // resolved during measurement and stay stale after the bubble grows.
+      // Let Yoga stretch the body to the bubble's final content width.
+      width: isWeb ? ("100%" as const) : ("auto" as const),
     },
 
     text: {
@@ -313,13 +316,20 @@ function createMarkdownStylesForSize(theme: Theme, proseSize: number, headingSiz
     },
 
     bullet_list_content: {
-      flex: 1,
+      // Native flex: 1 gives this column a zero basis during intrinsic
+      // measurement, so a list-only bubble can size itself to just the marker.
+      // Reset the library's flex shorthand and let the text establish its width.
+      flex: isWeb ? 1 : 0,
+      flexGrow: 1,
       flexShrink: 1,
+      minWidth: 0,
     },
 
     ordered_list_content: {
-      flex: 1,
+      flex: isWeb ? 1 : 0,
+      flexGrow: 1,
       flexShrink: 1,
+      minWidth: 0,
     },
 
     bullet_list_icon: {
