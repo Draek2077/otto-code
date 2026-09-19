@@ -858,7 +858,14 @@ export function SplitContainer({
           {/* A collapsed Explorer (or one hidden by focus mode) can still be
               swooped in from the right screen edge; see docs/sidebar-edge-reveal.md. */}
           {!renderExplorerSidebarDock && explorerSidebarPane && isWorkspaceFocused ? (
-            <ExplorerSidebarEdgePeek width={explorerSidebarWidth}>
+            <ExplorerSidebarEdgePeek
+              width={explorerSidebarWidth}
+              resizeWidth={explorerSidebarResizeWidth}
+              resizeSizes={explorerSidebarDockSizes}
+              containerSize={workspaceShellWidth}
+              onPreviewResize={previewExplorerSidebarResize}
+              onResize={commitExplorerSidebarResize}
+            >
               <ExplorerSidebarDock
                 pane={explorerSidebarPane}
                 uiTabs={uiTabs}
@@ -899,11 +906,42 @@ export function SplitContainer({
 
 // Mounted only while this workspace's Explorer is collapsed and on screen, so
 // the right-edge claim follows the focused workspace across the deck.
-function ExplorerSidebarEdgePeek({ width, children }: { width: number; children: ReactNode }) {
+function ExplorerSidebarEdgePeek({
+  width,
+  resizeWidth,
+  resizeSizes,
+  containerSize,
+  onPreviewResize,
+  onResize,
+  children,
+}: {
+  width: number;
+  resizeWidth: SharedValue<number>;
+  resizeSizes: number[];
+  containerSize: number;
+  onPreviewResize: (groupId: string, sizes: number[]) => void;
+  onResize: (groupId: string, sizes: number[]) => void;
+  children: ReactNode;
+}) {
+  const liveWidthStyle = useAnimatedStyle(() => ({ width: resizeWidth.value }), [resizeWidth]);
   useEffect(() => claimSidebarEdgePeek("right"), []);
   return (
     <SidebarEdgePeekPanel side="right" width={width}>
-      <View style={styles.explorerSidebarPeek}>{children}</View>
+      <Animated.View style={[staticStyles.explorerSidebarPeek, liveWidthStyle]}>
+        <View style={styles.explorerSidebarPeekSurface}>{children}</View>
+        <View style={styles.explorerSidebarPeekResizeHandle}>
+          <ResizeHandle
+            testID="workspace-explorer-sidebar-peek-resize-handle"
+            direction="horizontal"
+            groupId={EXPLORER_SIDEBAR_RESIZE_GROUP_ID}
+            index={0}
+            sizes={resizeSizes}
+            containerSize={containerSize}
+            onPreviewResizeSplit={onPreviewResize}
+            onResizeSplit={onResize}
+          />
+        </View>
+      </Animated.View>
     </SidebarEdgePeekPanel>
   );
 }
@@ -1644,6 +1682,17 @@ function removePaneFromSplitTree(node: SplitNode, paneId: string | null): SplitN
   };
 }
 
+// Animated.Views must not carry Unistyles theme styles. Keep the moving shell
+// static and put themed paint on its inner surface.
+const staticStyles = {
+  explorerSidebarPeek: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+  },
+} as const;
+
 const styles = StyleSheet.create((theme) => ({
   workspaceShell: {
     flex: 1,
@@ -1663,11 +1712,18 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
     backgroundColor: theme.colors.surfaceSidebar,
   },
-  explorerSidebarPeek: {
+  explorerSidebarPeekSurface: {
     flex: 1,
     minWidth: 0,
     minHeight: 0,
     backgroundColor: theme.colors.surfaceSidebar,
+  },
+  explorerSidebarPeekResizeHandle: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 10,
   },
   group: {
     flex: 1,

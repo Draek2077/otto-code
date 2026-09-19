@@ -14,6 +14,12 @@ let root: Root;
 let container: HTMLDivElement;
 const topStyle = { height: 149, position: "relative" as const };
 const bottomStyle = { height: 150, position: "relative" as const };
+const rightSidebarResizeHandleStyle = {
+  position: "absolute" as const,
+  top: 0,
+  bottom: 0,
+  left: 0,
+};
 
 afterEach(() => {
   act(() => root?.unmount());
@@ -135,3 +141,69 @@ it.each(["pointerup", "pointercancel", "lostpointercapture", "blur"])(
     expect(document.body.style.cursor).toBe("");
   },
 );
+
+it("grows a right sidebar when its visible left-edge splitter is dragged left", () => {
+  container = document.createElement("div");
+  container.style.cssText = "position:fixed;right:20px;top:20px;width:320px;height:300px;z-index:0";
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const preview = vi.fn();
+  const commit = vi.fn();
+
+  act(() =>
+    root.render(
+      <div style={rightSidebarResizeHandleStyle}>
+        <ResizeHandle
+          testID="right-sidebar-resize-handle"
+          direction="horizontal"
+          groupId="explorer-sidebar"
+          index={0}
+          sizes={[880 / 1200, 320 / 1200]}
+          containerSize={1200}
+          onPreviewResizeSplit={preview}
+          onResizeSplit={commit}
+        />
+      </div>,
+    ),
+  );
+
+  const seam = container.querySelector<HTMLElement>('[data-testid="right-sidebar-resize-handle"]')!;
+  const separator = document.querySelector<HTMLElement>('[role="separator"]')!;
+  const panelRect = container.getBoundingClientRect();
+  const seamRect = seam.getBoundingClientRect();
+  expect(seamRect.left).toBe(panelRect.left);
+  expect(seamRect.width).toBe(1);
+
+  vi.spyOn(separator, "setPointerCapture").mockImplementation(() => {});
+  const x = seamRect.left + seamRect.width / 2;
+  const y = seamRect.top + seamRect.height / 2;
+  act(() =>
+    separator.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        pointerId: 1,
+        clientX: x,
+        clientY: y,
+      }),
+    ),
+  );
+  act(() =>
+    window.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 1,
+        clientX: x - 120,
+        clientY: y,
+      }),
+    ),
+  );
+  expect(preview.mock.lastCall?.[0]).toBe("explorer-sidebar");
+  expect(preview.mock.lastCall?.[1][0]).toBeCloseTo(760 / 1200);
+  expect(preview.mock.lastCall?.[1][1]).toBeCloseTo(440 / 1200);
+  expect(commit).not.toHaveBeenCalled();
+
+  act(() => window.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1 })));
+  expect(commit).toHaveBeenCalledOnce();
+  expect(commit.mock.lastCall?.[0]).toBe("explorer-sidebar");
+  expect(commit.mock.lastCall?.[1][0]).toBeCloseTo(760 / 1200);
+  expect(commit.mock.lastCall?.[1][1]).toBeCloseTo(440 / 1200);
+});

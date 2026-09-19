@@ -19,6 +19,9 @@ edges** (`sidebarEdgeReveal`, device-local, on by default).
   disappears instantly. Its content unmounts once the panel is gone, so a hidden sidebar costs
   nothing between peeks.
 - **Collapsed includes focus mode.** Both sidebars can be peeked while focus mode hides them.
+- **Peeked sidebars remain resizable.** Their inner-edge splitter stays visible and draggable while
+  the sidebar is swooped in. Resizing updates the same saved width used by the docked sidebar, so
+  the new width survives after the peek leaves and is used the next time the sidebar opens.
 
 ## How it works
 
