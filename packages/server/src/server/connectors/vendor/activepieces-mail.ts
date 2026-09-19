@@ -22,7 +22,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import MailComposer from "nodemailer/lib/mail-composer/index.js";
+// Use the exact public export: the Nix dependency tracer cannot resolve
+// Nodemailer's overlapping wildcard exports for the legacy /index.js path.
+import MailComposer from "nodemailer/lib/mail-composer";
 import { simpleParser, type AddressObject, type ParsedMail } from "mailparser";
 import type Mail from "nodemailer/lib/mailer/index.js";
 
