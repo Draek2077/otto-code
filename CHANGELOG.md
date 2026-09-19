@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.15 - 2026-09-19
+
+### Added
+
+- Follow links to explicit anchors in rendered Markdown, so an ID reference jumps straight to its table row
+- Briefly highlight the heading or row a document link lands on
+- Reveal a collapsed sidebar by resting the pointer on the screen edge of a maximized or fullscreen desktop window
+- Reload a file from disk from the editor and preview toolbars
+
+### Fixed
+
+- Keep the editor in sync when an agent rewrites a file several times in quick succession
+- Keep the daemon running when the folder of an open file is deleted
+- Watch large open files without re-reading them on every change
+- Show a missing link target as a dismissible warning above the document instead of inside it
+- Land document links correctly on headings inside lists and quotes
+- Scroll to a same-document link again when you click it a second time
+- Show spelling suggestions in the right-click menu of desktop text fields
+- Stop a white edge from showing beside the browser pane at fractional split sizes
+- Stop list-only chat messages on mobile from showing bullets beside empty rows
+- Fix the Nix-packaged daemon failing to start
+
 ## 0.9.14 - 2026-09-18
 
 ### Added
