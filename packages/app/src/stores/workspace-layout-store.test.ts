@@ -4037,6 +4037,28 @@ describe("workspace-layout-store actions", () => {
     ).toBeUndefined();
   });
 
+  it("selects a tab in a hidden Explorer without docking it", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+    const paneId = store.showExplorerSidebar(workspaceKey) as string;
+    const visiblePane = findPaneById(
+      workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root,
+      paneId,
+    );
+    const nextTabId = visiblePane?.tabIds.find((tabId) => tabId !== visiblePane.focusedTabId);
+    expect(nextTabId).toBeTruthy();
+
+    store.hideExplorerSidebar(workspaceKey);
+    store.selectTabInPane(workspaceKey, paneId, nextTabId as string);
+
+    const selectedPane = findPaneById(
+      workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root,
+      paneId,
+    );
+    expect(selectedPane?.focusedTabId).toBe(nextTabId);
+    expect(selectedPane?.hidden).toBe(true);
+  });
+
   it("closing Files leaves Changes available in Explorer", () => {
     const workspaceKey = createWorkspaceKey();
     const store = workspaceLayoutStore.getState();

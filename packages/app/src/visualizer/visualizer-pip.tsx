@@ -64,7 +64,7 @@ import { useVisualizerSurface } from "@/visualizer/use-visualizer-surface";
 import { PIP_DIMENSIONS, PIP_HOVER_OPACITY } from "@/visualizer/visualizer-chrome-profile";
 import { VisualizerSurface } from "@/visualizer/visualizer-surface";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
-import { getOverlayRoot } from "@/lib/overlay-root";
+import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 export interface VisualizerPipProps {
@@ -367,7 +367,9 @@ const styles = StyleSheet.create((theme) => ({
   // coordinates, so an inset here would let the right/bottom edge overshoot.
   windowAnchor: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: CHAT_PANE_OVERLAY_Z.visualizerPip,
+    // This portal lives in the window overlay root, whose scale is separate
+    // from CHAT_PANE_OVERLAY_Z. Keep ambient PIP content below sidebar peeks.
+    zIndex: OVERLAY_Z.visualizerPip,
   },
   // Fills the workspace content area so onLayout measures the region the PIP is
   // allowed to move within. box-none: only the frame takes pointer events, so

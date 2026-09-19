@@ -44,6 +44,9 @@ export const WEB_SURFACE_PLANE = {
 
 export const OVERLAY_Z = {
   pane: 1,
+  // Window-wide ambient content. A sidebar that temporarily swoops in must
+  // remain usable above it, while docked sidebars stay in ordinary layout.
+  visualizerPip: 2,
   // A sidebar peeked in from a screen edge: above pane-local overlays, below
   // the tab-drag chip and every menu the sidebar itself can open.
   sidebarPeek: 3,

@@ -10,10 +10,12 @@ edges** (`sidebarEdgeReveal`, device-local, on by default).
 
 - **A peek never opens a sidebar.** It does not touch `panel-store` open state or the Explorer
   pane's `hidden` flag, and nothing about it persists. Pinning the sidebar from inside a peek (its
-  own toggle, or the keyboard shortcut) makes it docked, which ends the peek.
+  own toggle, or the keyboard shortcut) makes it docked, which ends the peek. Internal interactions,
+  including switching Explorer tabs, keep the sidebar transient and floating.
 - **A peek is an overlay.** The panel is portaled into the overlay root at
   `OVERLAY_Z.sidebarPeek`, pinned to the screen edge, so the workspace underneath never reflows.
-  Menus and dialogs the sidebar opens still paint above it.
+  It paints above the window-wide Visualizer PIP but below tab drags, menus, and dialogs. Docked
+  sidebars remain in ordinary layout and therefore do not cover the PIP.
 - **Animations follow the global setting.** With **Animate transitions** on, the panel slides in
   from off-screen and back out (`SIDEBAR_SLIDE_DURATION_MS`). With it off, the panel appears and
   disappears instantly. Its content unmounts once the panel is gone, so a hidden sidebar costs

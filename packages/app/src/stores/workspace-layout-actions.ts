@@ -829,7 +829,12 @@ function insertTabIntoPane(
   });
 }
 
-function focusTabInPane(root: SplitNodeInternal, paneId: string, tabId: string): SplitNodeInternal {
+function focusTabInPane(
+  root: SplitNodeInternal,
+  paneId: string,
+  tabId: string,
+  revealPane = true,
+): SplitNodeInternal {
   const panePath = findPanePathById(root, paneId);
   invariant(panePath, `Pane not found: ${paneId}`);
   return replaceNodeAtPath(root, panePath, (node) => {
@@ -839,7 +844,7 @@ function focusTabInPane(root: SplitNodeInternal, paneId: string, tabId: string):
       pane: normalizePaneAfterTabChange({
         ...node.pane,
         focusedTabId: tabId,
-        hidden: undefined,
+        ...(revealPane ? { hidden: undefined } : {}),
       }),
     };
   });
@@ -1634,7 +1639,10 @@ export function selectTabInPaneInLayout(
     return null;
   }
   return withNormalizedParentTabMap({
-    root: focusTabInPane(layout.root, input.paneId, input.tabId),
+    // A host may be temporarily painted while its pane remains hidden, as the
+    // swooped Explorer is. Selecting inside that host must not silently turn a
+    // transient overlay into a docked pane.
+    root: focusTabInPane(layout.root, input.paneId, input.tabId, false),
     focusedPaneId: layout.focusedPaneId,
     parentTabIdByTabId: input.layout.parentTabIdByTabId,
   });
