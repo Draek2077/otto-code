@@ -104,7 +104,7 @@
     "mnemonic-id": "^3.2.7",
     "node-pty": "1.2.0-beta.15",
     "nodemailer": "10.0.9",
-    "openai": "^6.44.0",
+    "openai": "^7.20.0",
     "p-limit": "^7.3.0",
     "p-memoize": "^8.0.0",
     "p-throttle": "^8.1.0",
