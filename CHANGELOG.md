@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.17 - 2026-09-19
+
+### Added
+
+- Choose a default team for each project so Otto switches teams when you enter its workspaces
+
+### Improved
+
+- Use one layout setting for every supporting panel opened from a chat, with side panels sharing one full-height pane
+
+### Fixed
+
+- Keep browser content covered while switching workspaces
+- Resize the right sidebar while it is edge-revealed
+- Keep the right sidebar floating while switching tabs
+- Show floating sidebars above the Visualizer
+
 ## 0.9.16 - 2026-09-19
 
 ### Fixed
