@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { PAGE_TRANSITION_DURATION_MS, PAGE_TRANSITION_MAX_HOLD_MS } from "@/constants/animation";
+import { PaneOverlay } from "@/components/ui/pane-overlay";
 import { useAnimationsEnabled } from "@/hooks/use-animations-enabled";
 import { useRouteTransitionKey } from "@/hooks/use-route-transition-key";
 import { useActiveWorkspaceContentReady } from "@/stores/workspace-content-readiness";
@@ -143,7 +144,13 @@ export function KeyedFadeContainer({
           inline transition-duration is 0ms whenever animations are disabled and
           PAGE_TRANSITION_DURATION_MS after any animated transition (see
           e2e/appearance-theme-animations.spec.ts). */}
-      <View pointerEvents="none" style={veilStyle} testID="route-fade-veil" />
+      <PaneOverlay pointerEvents="none" clip>
+        {/* Electron browser guests live in a body-level resident surface so they
+            survive pane and workspace mounts. Keep this veil in the shared
+            foreground plane too, otherwise the guest paints above the routed
+            workspace until its old pane finally parks. */}
+        <View pointerEvents="none" style={veilStyle} testID="route-fade-veil" />
+      </PaneOverlay>
     </View>
   );
 }
