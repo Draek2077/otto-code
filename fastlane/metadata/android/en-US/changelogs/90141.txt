@@ -1,0 +1,9 @@
+Added
+- Seed Search with the text you have selected in the editor, chat, or a text field
+
+Fixed
+- Host one Visualizer window across the whole app, so duplicate PIP windows can't appear across workspaces
+- Keep a profile's model selection intact instead of carrying its identity onto a different provider
+- Keep an explicitly chosen model in place instead of falling back to the default while the provider list is still loading
+
+Full notes: https://paseo.sh/changelog
