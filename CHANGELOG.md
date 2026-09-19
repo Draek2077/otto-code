@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.9.14 - 2026-09-18
+
+### Added
+
+- Seed Search with the text you have selected in the editor, chat, or a text field
+
+### Fixed
+
+- Host one Visualizer window across the whole app, so duplicate PIP windows can't appear across workspaces
+- Keep a profile's model selection intact instead of carrying its identity onto a different provider
+- Keep an explicitly chosen model in place instead of falling back to the default while the provider list is still loading
+- Merge pull requests and change requests on GitLab, Gitea, and Bitbucket, not just GitHub
+- Keep a project's settings, like board and knowledge links, intact when creating a worktree from it
+- Keep merged pull requests in sync with their checkout status
+- Stop chat messages from duplicating text when a streamed thought is rewritten mid-turn
+- Open the Files tab instead of an empty pane when Explorer's default view can't show
+- Show "Starting..." only on the suggested task you actually started
+- Keep observed subagent rows from losing their name or reappearing as running after they're stopped or resumed
+- Stop History from showing a completed subagent task as still running after reopening its chat
+- Show a spinner on the chat being restored from History and lock other rows until it opens
+- Stop workspaces from repeatedly re-checking git and forge status on every snapshot
+- Keep the terminal's monospace font when WebGL rendering is unavailable
+- Clear an agent's tool permissions when it's archived
+- Label tool calls consistently in sentence case throughout chat
+- Draw the title bar and sidebar separators as crisp 1px lines at every zoom level
+
 ## 0.9.13 - 2026-09-17
 
 ### Added
