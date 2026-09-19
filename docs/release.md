@@ -2,6 +2,24 @@
 
 All workspaces share one version and release together.
 
+## Requested version and channel
+
+Release exactly the version and channel the user requests through the normal
+release pipeline. An explicit version takes precedence over default bump rules.
+Create a beta only when the user requests one. When the user ends a beta and
+requests the stable release, publish that stable version and continue forward.
+Do not insert a beta into a stable release request.
+
+A stable release publishes npm packages to `latest`. Moving the existing `beta`
+pointer to that stable version is authorized release housekeeping, not creation
+of a beta release. Handle it during the release with available automation and
+credentials, without asking the user each time. Never turn tag maintenance into
+a manual npm login/2FA task, an end-of-release TODO, or a stable-release blocker.
+If it cannot be done automatically, leave it alone without recurring reminders.
+Do not substitute alternative release paths. Retry failed publishing or builds at the same version through CI. If the
+requested pipeline is blocked, report the specific blocker without substituting
+another version, channel, or publishing method.
+
 ## Google sign-in build input
 
 Desktop release builds read the repository Actions secret
@@ -51,8 +69,9 @@ Once a CI publish has succeeded, set each package's publishing access to
 "Require two-factor authentication and disallow tokens" so only the workflow and
 an interactive 2FA session can publish.
 
-`npm run release:publish` runs the same script from a terminal as a manual
-fallback. It needs an `npm login` with 2FA and the Google registration input above.
+`npm run release:publish` is a user-only terminal command, used only when the user
+explicitly requests manual publication. It is not a fallback agents select during
+a normal release. It needs an `npm login` with 2FA and the Google registration input above.
 See [connectors.md](connectors.md#daemon-ownership-and-publisher-configuration).
 
 The server's `prepublishOnly` hook requires the Google registration input even
@@ -162,20 +181,19 @@ ACP catalog work enters a release through an explicit user request:
 The release authorization covers the requested ACP commit. It ships in the same
 release push as the changelog and version commit.
 
-## Two paths
+## Requested release channel
 
-There are two supported release paths:
+Use only the channel requested by the user:
 
 1. **Direct stable release**: you are ready to ship the resolved release source to everyone immediately (default `origin/main`).
 2. **Beta flow**: release candidates on the `beta` channel. Each beta refreshes the in-flight changelog entry in place, publishes npm only on the explicit `beta` dist-tag, and stays behind the Stable/Beta switch on `/download`.
 
-Otto has one linear release track even though npm dist-tags are independent
-pointers. The npm invariant is:
+The npm dist-tags are independent pointers:
 
 - A beta release moves only `beta`; `latest` remains on the newest stable.
-- A stable release moves both `latest` and `beta` to that stable version. This
-  keeps users who install `@otto-code/cli@beta` on the newest Otto release after
-  a beta is promoted or superseded by a direct stable release.
+- A stable release moves `latest`. Align the existing `beta` pointer as part of
+  the release when available automation and credentials support it, without
+  creating a beta release or asking the user to perform a separate step.
 
 ## Release version decision
 
@@ -224,15 +242,10 @@ The Docker workflow builds images from the checked-out source tree on pull reque
 
 **Releases are always patch.** "Release otto", "release stable", "ship stable", and similar always mean a patch bump from the previous stable. Never bump minor or major to trigger a build, ever - minor and major bumps are reserved for genuinely larger product cuts and require an explicit user instruction with the word "minor" or "major". If you find yourself reaching for `release:minor` to retrigger a failed build, you are doing the wrong thing - push a retry tag instead (see "Fixing a failed release build" below).
 
-```bash
-OTTO_VERSION=$(node -p "require('./package.json').version")
-for package in highlight relay protocol client plugin server brain cli; do
-  npm dist-tag add "@otto-code/$package@$OTTO_VERSION" beta
-done
-```
-
-Verify both npm tags now resolve to `OTTO_VERSION` before considering the
-stable release complete.
+Verify that `latest` resolves to the requested stable version for all eight
+published packages. Handle any `beta` pointer alignment during the release using
+available automation and credentials, without a separate user task or a trailing
+TODO. Another channel's pointer does not block completion of the stable release.
 
 The Docker workflow builds images from the checked-out source tree on pull requests and on `main` as non-publishing checks. Stable `vX.Y.Z` tag pushes publish `ghcr.io/Draek2077/otto-code:X.Y.Z` and `ghcr.io/Draek2077/otto-code:latest`; beta `vX.Y.Z-beta.N` tag pushes publish only `ghcr.io/Draek2077/otto-code:X.Y.Z-beta.N` and never move `latest`.
 
@@ -781,7 +794,7 @@ The scope never narrows to the previous beta. A beta entry is an in-flight draft
 - [ ] Verify the changelog heading follows strict `## X.Y.Z - YYYY-MM-DD` format
 - [ ] `release:patch`/`release:promote` completes successfully and the tag's `npm Publish` workflow is green
 - [ ] npm shows the new version on `latest` (`npm view @otto-code/cli version`)
-- [ ] Move npm's `beta` dist-tag to the new stable version for every published package (this still runs from a terminal with `npm login` and 2FA; trusted publishing only authorizes `npm publish`) and verify both `latest` and `beta` resolve to it
+- [ ] All eight npm packages resolve to the requested stable version on `latest`; any supported `beta` pointer alignment is handled during the release without manual user action or a trailing TODO
 - [ ] The GitHub Release was published only after the required stable manifests were uploaded, and it has the changelog body and every expected asset for the configured desktop platforms plus Android APK
 - [ ] GitHub `Desktop Release` workflow for the `v*` tag is green
 - [ ] The GitHub Release contains `latest-linux.yml` and `latest.yml`, plus `latest-mac.yml` when Apple signing is configured

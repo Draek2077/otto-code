@@ -122,14 +122,23 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
   workflow, check its contract before using it; do not infer its semantics or authorization. Treat
   reported issues as unverified until measured, and distinguish observations from hypotheses in
   task descriptions and handoffs. Ask when ambiguity would change the action.
+- **Release scope:** Release exactly the version and channel the user requests through the normal
+  pipeline. Create a beta release only when requested. When the user ends a beta and requests the
+  stable release, publish that stable version and continue forward. Moving an existing npm `beta`
+  pointer to the stable version is authorized release housekeeping, not a beta release. Handle it
+  during the release through available automation and credentials without asking each time. Never
+  turn it into a manual npm login/2FA task, an end-of-release TODO, or a stable-release blocker.
+  If it cannot be done automatically, leave it alone without recurring reminders. Retry failed CI
+  publishing at the same version; report
+  a genuine pipeline blocker without substituting another version, channel, or publishing method.
 - **Release handoff:** When the user has reviewed the changelog and says “go” for a release, carry
   the release through end to end: commit the approved changelog, then run the release command
   (checks, version commit and tag, push). npm publishing is not a local step: the tag push runs the
   `npm Publish` workflow, which publishes through npm trusted publishing with no login or 2FA and
   reads the Google sign-in registration from a GitHub secret. Never put that registration on a
-  machine. If `npm Publish` fails, rerun it for the tag rather than bumping the version. The
-  terminal fallback `npm run release:publish` needs the user's npm login and 2FA, so only the user
-  runs it; never guess an OTP, and never treat a tool timeout as evidence that the release failed.
+  machine. If `npm Publish` fails, rerun it for the tag rather than bumping the version. Manual npm
+  publishing is user-only and requires an explicit request; it is not an agent-selected fallback.
+  Never guess an OTP, and never treat a tool timeout as evidence that the release failed.
   See [docs/release.md](docs/release.md#npm-publishing-from-ci).
 - **NEVER add auth checks to tests** - agent providers handle their own auth.
 - **Before changing app routes, startup routing, remembered workspace restore, or active workspace selection, read [docs/expo-router.md](docs/expo-router.md).**
