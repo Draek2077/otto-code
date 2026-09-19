@@ -3155,6 +3155,12 @@ export const fr: TranslationResources = {
         "Supprimer vos modifications et restaurer la dernière version enregistrée de ce fichier ?",
       confirm: "Rétablir",
     },
+    reloadDialog: {
+      title: "Recharger depuis le disque ?",
+      message:
+        "Supprimer vos modifications non enregistrées et charger la version de ce fichier actuellement sur le disque ?",
+      confirm: "Recharger",
+    },
     discardDialog: {
       title: "Abandonner les modifications ?",
       message:

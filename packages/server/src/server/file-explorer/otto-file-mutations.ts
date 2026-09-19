@@ -31,7 +31,8 @@ export type WriteExplorerBinaryFileResult =
 
 export interface ExplorerFileIdentity {
   modifiedAt: string;
-  hash: string;
+  /** Null when the file is larger than the caller's hashing limit. */
+  hash: string | null;
   size: number;
 }
 
@@ -489,13 +490,18 @@ async function createContainedParentDirectories({
  * Containment-checked stat (+ hash) used by the file watcher. Returns a null
  * identity when the file does not exist; throws on containment violations.
  * Passing the previous identity skips re-hashing when mtime and size are
- * unchanged.
+ * unchanged. A file over `maxHashBytes` is not read at all: its identity is
+ * mtime and size alone, with a null hash.
  */
 export async function resolveExplorerFileIdentity({
   root,
   relativePath,
   previous,
-}: ReadFileParams & { previous?: ExplorerFileIdentity | null }): Promise<{
+  maxHashBytes,
+}: ReadFileParams & {
+  previous?: ExplorerFileIdentity | null;
+  maxHashBytes?: number;
+}): Promise<{
   resolvedPath: string;
   identity: ExplorerFileIdentity | null;
 }> {
@@ -515,6 +521,12 @@ export async function resolveExplorerFileIdentity({
   const modifiedAt = stats.mtime.toISOString();
   if (previous && previous.modifiedAt === modifiedAt && previous.size === stats.size) {
     return { resolvedPath: filePath.resolvedPath, identity: previous };
+  }
+  if (maxHashBytes !== undefined && stats.size > maxHashBytes) {
+    return {
+      resolvedPath: filePath.resolvedPath,
+      identity: { modifiedAt, hash: null, size: stats.size },
+    };
   }
   const bytes = await fs.readFile(filePath.resolvedPath);
   return {

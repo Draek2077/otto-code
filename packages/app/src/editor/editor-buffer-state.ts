@@ -22,8 +22,8 @@ export interface EditorBufferConflict {
 export type EditorBufferStatus = "loading" | "ready" | "error";
 
 export type EditorDiskChange =
-  | { kind: "changed"; modifiedAt: string; hash: string }
-  | { kind: "deleted" };
+  /** `hash` is null for a file over the daemon's hashing limit. */
+  { kind: "changed"; modifiedAt: string; hash: string | null } | { kind: "deleted" };
 
 export interface EditorBufferState {
   status: EditorBufferStatus;
@@ -157,7 +157,7 @@ export function applyRebaseline(
 
 export function applyDiskChanged(
   state: EditorBufferState,
-  change: { modifiedAt: string; hash: string },
+  change: { modifiedAt: string; hash: string | null },
 ): EditorBufferState {
   return { ...state, diskChange: { kind: "changed", ...change }, missingOnDisk: false };
 }

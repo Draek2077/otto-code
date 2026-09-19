@@ -3139,6 +3139,12 @@ export const es: TranslationResources = {
       message: "¿Descartar tus ediciones y restaurar la última versión guardada de este archivo?",
       confirm: "Revertir",
     },
+    reloadDialog: {
+      title: "¿Recargar desde el disco?",
+      message:
+        "¿Descartar tus ediciones sin guardar y cargar la versión de este archivo que está ahora en el disco?",
+      confirm: "Recargar",
+    },
     discardDialog: {
       title: "¿Descartar los cambios?",
       message: "Este archivo tiene cambios sin guardar. ¿Cerrarlo y descartarlos?",

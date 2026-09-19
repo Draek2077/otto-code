@@ -3099,6 +3099,11 @@ export const en = {
       message: "Discard your edits and restore the last saved version of this file?",
       confirm: "Revert",
     },
+    reloadDialog: {
+      title: "Reload from disk?",
+      message: "Discard your unsaved edits and load the version of this file that is on disk now?",
+      confirm: "Reload",
+    },
     discardDialog: {
       title: "Discard changes?",
       message: "This file has unsaved changes. Close it and discard them?",

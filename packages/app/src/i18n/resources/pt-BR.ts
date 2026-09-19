@@ -3124,6 +3124,12 @@ export const ptBR: TranslationResources = {
       message: "Descartar suas edições e restaurar a última versão salva deste arquivo?",
       confirm: "Reverter",
     },
+    reloadDialog: {
+      title: "Recarregar do disco?",
+      message:
+        "Descartar suas edições não salvas e carregar a versão deste arquivo que está no disco agora?",
+      confirm: "Recarregar",
+    },
     discardDialog: {
       title: "Descartar as alterações?",
       message: "Este arquivo tem alterações não salvas. Fechar e descartá-las?",

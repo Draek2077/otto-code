@@ -14,7 +14,7 @@ Consequences that must survive future changes:
   - The **Solution view** also renders and opens `.csproj` files a solution names outside the workspace root. The solution file is the authority naming those paths; this is still not free disk browsing. See [solution-view.md](solution-view.md#out-of-workspace-projects---stay-out-of-the-way).
 - **Line endings are detected on read (`lf` | `crlf`) and preserved verbatim on save.** A Windows client must not silently rewrite LF files in a WSL checkout. Content travels LF-normalized on the wire; the daemon re-applies the file's detected EOL. Mixed-EOL files normalize to the dominant ending on save (documented majority rule).
 - **Encoding is UTF-8 only.** Non-UTF-8 and binary files stay viewer-only (binary is rejected on the write path with a clear error).
-- **File watching uses daemon `fs.watch` with a polling fallback** - the proven `artifact-watcher.ts` pattern. inotify-inside-WSL is the daemon's problem, invisible to the client.
+- **File watching uses daemon `fs.watch` plus a 2-second poll** - the proven `artifact-watcher.ts` pattern. inotify-inside-WSL is the daemon's problem, invisible to the client. The poll runs even while `fs.watch` is healthy, because on WSL paths reached from Windows, network shares and container bind mounts the watcher can open cleanly and never fire. It costs one `stat` per open file; the file is only read when its mtime or size moved. Above 2 MiB the file is not read or hashed at all, and `file.watch.event` carries `hash: null`: the client then recognises its own save by mtime, and Overwrite preconditions on mtime instead of hash.
 
 All RPCs use dotted namespaces with `.request`/`.response` suffixes (see [rpc-namespacing.md](rpc-namespacing.md)). No fallback paths: an old daemon means the client shows "Update the host to use this."
 
@@ -56,6 +56,9 @@ The client reacts to files changing under the editor by buffer state:
 - **Buffer dirty** → a non-modal inline banner: **Reload from disk** (discard mine) / **Overwrite** (a conditional write against the disk identity you were shown - not a blind clobber) / **Keep editing** (baseline updates to disk state so the next save is honest). A "Show diff" three-way is deferred until a two-string diff surface exists.
 - **File deleted** → informational banner; the buffer is kept so work isn't lost, and save re-creates the file.
 - A stale **save conflict** (`file.write` returning `conflict`) surfaces the same banner choice.
+- **Reload from disk** (toolbar, both editor and preview) is the manual path: it re-reads without waiting on the watcher. A clean buffer reloads straight away, and a read that matches the baseline installs nothing, so the caret and scroll position survive. A dirty buffer asks first, because the reload discards the edits.
+
+Automatic reloads drop their result when the user edits during the read, so `use-editor-buffer.ts` counts edits in `editRevisionRef`. **Only the user's edits may move that counter.** The editor also reports after installing a document itself: a forced dirty report when a baseline is adopted, and a debounced doc sync after every `setDoc`. When those counted, an agent's second write landing within the sync debounce of the first reload looked like typing. The reload was dropped and a clean buffer kept the old text under a "changed on disk" banner.
 
 The buffer store keeps a debounced `draft` mirror of the live document so host remounts and native-webview crashes can't lose edits; saves still round-trip `getDoc` for the exact buffer. Editor buffers do **not** survive a full app reload (known gap). The dirty-guard `confirmClose` runs on single tab close; bulk closes ("close others/all") currently bypass it.
 
@@ -291,7 +294,7 @@ which is the one control that gets the user back to a wider view.
 6. Outline
 7. Word wrap
 
-Everything else stays: save, revert, file history, Add to chat, the external-editor button, Find, the
+Everything else stays: save, revert, Reload from disk, file history, Add to chat, the external-editor button, Find, the
 host's leading slot, and the mode bar. Collapsed actions are **hidden, not moved into an overflow
 menu** - a "..." that only exists when the pane is narrow is a second place to look for a control
 that was somewhere else a moment ago, and each of these has another way in (the file explorer's

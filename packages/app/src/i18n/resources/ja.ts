@@ -3115,6 +3115,11 @@ export const ja: TranslationResources = {
       message: "編集内容を破棄して、このファイルの最後に保存したバージョンに戻しますか？",
       confirm: "元に戻す",
     },
+    reloadDialog: {
+      title: "ディスクから再読み込みしますか？",
+      message: "保存していない編集内容を破棄して、ディスク上の現在のバージョンを読み込みますか？",
+      confirm: "再読み込み",
+    },
     discardDialog: {
       title: "変更を破棄しますか？",
       message: "このファイルには未保存の変更があります。閉じて破棄しますか？",

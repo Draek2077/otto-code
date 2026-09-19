@@ -22,6 +22,26 @@ function registerCheckedDiskIdentity(
   }
 }
 
+/**
+ * A clean buffer whose disk read matches its baseline has nothing to install.
+ * Replacing the document anyway would throw away the caret and scroll position
+ * for a Reload from disk that found no change.
+ */
+function adoptUnchangedDisk(
+  key: string,
+  state: EditorBufferState,
+  file: { hash: string | null; modifiedAt: string },
+): boolean {
+  if (state.dirty || !state.baseline || !file.hash || file.hash !== state.baseline.hash) {
+    return false;
+  }
+  useEditorBufferStore.getState().rebaseline(key, {
+    ...state.baseline,
+    modifiedAt: file.modifiedAt,
+  });
+  return true;
+}
+
 export interface UseEditorBufferInput {
   serverId: string;
   workspaceId: string;
@@ -42,6 +62,7 @@ export interface UseEditorBufferResult {
   overwriteFromDiskChange: () => Promise<void>;
   dismissConflict: () => void;
   reloadFromDisk: () => Promise<void>;
+  refresh: () => Promise<void>;
   diskCheckFailed: boolean;
   diskCheckPending: boolean;
   retryDiskCheck: () => Promise<void>;
@@ -115,9 +136,17 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
     void load();
   }, [client, key, path, workspaceRoot]);
 
+  // `editRevisionRef` must count only the user's edits. The editor also reports
+  // after installing a document itself: a forced dirty report when a baseline is
+  // adopted, and a debounced doc sync after every setDoc. Counting those made an
+  // agent's second write, landing while the first reload's sync was pending,
+  // look like typing - the reload was dropped and a clean buffer kept the old text.
   const onDirtyChanged = useCallback(
     (dirty: boolean) => {
-      editRevisionRef.current += 1;
+      const state = useEditorBufferStore.getState().buffers[key];
+      if (state?.dirty !== dirty) {
+        editRevisionRef.current += 1;
+      }
       useEditorBufferStore.getState().setDirty(key, dirty);
     },
     [key],
@@ -125,7 +154,10 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
 
   const onDocSync = useCallback(
     (doc: string) => {
-      editRevisionRef.current += 1;
+      const state = useEditorBufferStore.getState().buffers[key];
+      if (doc !== state?.baseline?.content) {
+        editRevisionRef.current += 1;
+      }
       useEditorBufferStore.getState().setDraft(key, doc);
     },
     [key],
@@ -247,6 +279,9 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
           registerCheckedDiskIdentity(key, current, file);
           return;
         }
+        if (adoptUnchangedDisk(key, current, file)) {
+          return;
+        }
         useEditorBufferStore.getState().finishLoad(key, {
           content,
           modifiedAt: file.modifiedAt,
@@ -274,6 +309,30 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
 
   const reloadFromDisk = useCallback(() => readDisk(true), [readDisk]);
   const retryDiskCheck = useCallback(() => readDisk(false), [readDisk]);
+
+  /**
+   * The toolbar's Reload from disk: an explicit re-read that does not wait on the
+   * watcher. Unsaved edits are only discarded after the user confirms.
+   */
+  const refresh = useCallback(async () => {
+    const state = useEditorBufferStore.getState().buffers[key];
+    if (!state || state.status !== "ready" || state.saving) {
+      return;
+    }
+    if (state.dirty) {
+      const confirmed = await confirmDialog({
+        title: t("editor.reloadDialog.title"),
+        message: t("editor.reloadDialog.message"),
+        confirmLabel: t("editor.reloadDialog.confirm"),
+        cancelLabel: t("editor.cancel"),
+        destructive: true,
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+    await readDisk(true, true);
+  }, [key, readDisk, t]);
 
   const reloadFromConflict = useCallback(async () => {
     const state = useEditorBufferStore.getState().buffers[key];
@@ -340,6 +399,11 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
       if (state.saving) {
         return;
       }
+      // A file over the daemon's hashing limit reports no hash, so the only
+      // way to recognise our own save echoing back is the mtime it recorded.
+      if (!event.hash && event.modifiedAt === state.baseline.modifiedAt) {
+        return;
+      }
       if (event.hash && event.hash === state.baseline.hash) {
         diskReadTokenRef.current += 1;
         setDiskCheckFailed(false);
@@ -357,9 +421,10 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
         void retryDiskCheck();
         return;
       }
-      if (event.modifiedAt && event.hash) {
+      if (event.modifiedAt) {
         // A newer watcher identity supersedes any in-flight check. Preserve
-        // the edited document and show the newly observed disk version.
+        // the edited document and show the newly observed disk version. Without
+        // a hash, Overwrite preconditions on the mtime instead.
         diskReadTokenRef.current += 1;
         setDiskCheckPending(false);
         setDiskCheckFailed(false);
@@ -419,6 +484,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
     overwriteFromDiskChange,
     dismissConflict,
     reloadFromDisk,
+    refresh,
     diskCheckFailed,
     diskCheckPending,
     retryDiskCheck,

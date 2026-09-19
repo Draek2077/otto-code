@@ -8,9 +8,19 @@ import { resolveExplorerFileIdentity, type ExplorerFileIdentity } from "./servic
 // delete/recreate) with a batch polling fallback - the proven pattern from
 // artifact-watcher.ts. Events fire only when the content identity actually
 // changed: a bare mtime touch with an identical hash is swallowed.
+//
+// Polling runs even while fs.watch is healthy, on purpose: on WSL paths reached
+// from Windows, network shares and container bind mounts the watcher can open
+// cleanly and then never fire, and nothing tells us so. The poll is one stat per
+// open file; the file is only read when its mtime or size moved.
 
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_DEBOUNCE_MS = 200;
+// Above this, a change is detected from mtime and size alone. Hashing exists to
+// swallow touches that leave the content alone; for a large file that keeps
+// changing (a log being appended to) it meant reading and hashing the whole file
+// on every change, which is exactly the file where that costs the most.
+const DEFAULT_MAX_HASH_BYTES = 2 * 1024 * 1024;
 
 export interface FileWatchChange {
   cwd: string;
@@ -26,6 +36,18 @@ export interface SessionFileWatcherOptions {
   logger: pino.Logger;
   pollIntervalMs?: number;
   debounceMs?: number;
+  maxHashBytes?: number;
+  /** Test hook: observe the directory watchers this class opens. */
+  watchDirectory?: (directory: string, onChange: (fileName: string | null) => void) => FSWatcher;
+}
+
+function watchDirectoryWithFs(
+  directory: string,
+  onChange: (fileName: string | null) => void,
+): FSWatcher {
+  return fsWatch(directory, { persistent: false }, (_eventType, changedName) => {
+    onChange(changedName ? changedName.toString() : null);
+  });
 }
 
 interface WatchEntry {
@@ -48,7 +70,16 @@ export class SessionFileWatcher {
   private readonly logger: pino.Logger;
   private readonly pollIntervalMs: number;
   private readonly debounceMs: number;
+  private readonly maxHashBytes: number;
+  private readonly watchDirectory: NonNullable<SessionFileWatcherOptions["watchDirectory"]>;
   private readonly entries = new Map<string, WatchEntry>();
+  // A subscribe awaits a stat before its entry exists. Without these, two
+  // subscribes for one file in that window (a reconnect resubscribing while the
+  // component resubscribes too) each opened a directory watcher, and the one
+  // overwritten in `entries` was never closed.
+  private readonly pending = new Map<string, Promise<void>>();
+  private readonly cancelledPending = new Set<string>();
+  private disposed = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: SessionFileWatcherOptions) {
@@ -56,6 +87,8 @@ export class SessionFileWatcher {
     this.logger = options.logger.child({ module: "session-file-watcher" });
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+    this.maxHashBytes = options.maxHashBytes ?? DEFAULT_MAX_HASH_BYTES;
+    this.watchDirectory = options.watchDirectory ?? watchDirectoryWithFs;
   }
 
   /** Idempotent per (cwd, path). Throws on containment violations. */
@@ -64,10 +97,29 @@ export class SessionFileWatcher {
     if (this.entries.has(key)) {
       return;
     }
+    const inFlight = this.pending.get(key);
+    if (inFlight) {
+      // A later subscribe outranks an unsubscribe that arrived in between.
+      this.cancelledPending.delete(key);
+      return inFlight;
+    }
+    const opening = this.open(key, input).finally(() => {
+      this.pending.delete(key);
+      this.cancelledPending.delete(key);
+    });
+    this.pending.set(key, opening);
+    return opening;
+  }
+
+  private async open(key: string, input: { cwd: string; path: string }): Promise<void> {
     const resolved = await resolveExplorerFileIdentity({
       root: input.cwd,
       relativePath: input.path,
+      maxHashBytes: this.maxHashBytes,
     });
+    if (this.disposed || this.cancelledPending.has(key)) {
+      return;
+    }
     const entry: WatchEntry = {
       cwd: input.cwd,
       relativePath: input.path,
@@ -80,16 +132,23 @@ export class SessionFileWatcher {
     };
     const fileName = path.basename(resolved.resolvedPath);
     try {
-      entry.dirWatcher = fsWatch(
-        path.dirname(resolved.resolvedPath),
-        { persistent: false },
-        (_eventType, changedName) => {
-          // Some platforms omit the filename; check on every ambiguous event.
-          if (!changedName || changedName === fileName) {
-            this.scheduleCheck(key);
-          }
-        },
-      );
+      entry.dirWatcher = this.watchDirectory(path.dirname(resolved.resolvedPath), (changedName) => {
+        // Some platforms omit the filename; check on every ambiguous event.
+        if (!changedName || changedName === fileName) {
+          this.scheduleCheck(key);
+        }
+      });
+      // An FSWatcher with no error listener throws on its error event, which
+      // takes the daemon down - and deleting the watched directory (archiving a
+      // worktree with a tab open) is enough to raise one. Polling carries on.
+      entry.dirWatcher.on("error", (error) => {
+        this.logger.warn(
+          { err: error, path: input.path },
+          "fs.watch failed for watched file; relying on polling fallback",
+        );
+        entry.dirWatcher?.close();
+        entry.dirWatcher = null;
+      });
     } catch (error) {
       this.logger.warn(
         { err: error, path: input.path },
@@ -104,6 +163,9 @@ export class SessionFileWatcher {
     const key = buildWatchKey(input);
     const entry = this.entries.get(key);
     if (!entry) {
+      if (this.pending.has(key)) {
+        this.cancelledPending.add(key);
+      }
       return;
     }
     this.cleanupEntry(entry);
@@ -114,6 +176,7 @@ export class SessionFileWatcher {
   }
 
   dispose(): void {
+    this.disposed = true;
     for (const entry of this.entries.values()) {
       this.cleanupEntry(entry);
     }
@@ -178,6 +241,7 @@ export class SessionFileWatcher {
         root: entry.cwd,
         relativePath: entry.relativePath,
         previous: entry.identity,
+        maxHashBytes: this.maxHashBytes,
       });
       const previous = entry.identity;
       const identity = resolved.identity;
@@ -211,9 +275,11 @@ export class SessionFileWatcher {
         return;
       }
       // Same content, new mtime (a touch): track the identity silently so the
-      // next real change diffs against fresh state, but don't wake clients.
+      // next real change diffs against fresh state, but don't wake clients. A
+      // file over the hashing limit has no hash to compare, so any mtime or size
+      // change reports.
       entry.identity = identity;
-      if (identity.hash === previous.hash) {
+      if (identity.hash !== null && identity.hash === previous.hash) {
         return;
       }
       this.emitEvent({

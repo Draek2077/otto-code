@@ -33,7 +33,7 @@ interface EditorBufferStoreState {
   failSave: (key: string) => void;
   dismissConflict: (key: string) => void;
   rebaseline: (key: string, baseline: EditorBufferBaseline) => void;
-  registerDiskChanged: (key: string, change: { modifiedAt: string; hash: string }) => void;
+  registerDiskChanged: (key: string, change: { modifiedAt: string; hash: string | null }) => void;
   registerDiskDeleted: (key: string) => void;
   dismissDiskChange: (key: string) => void;
   removeBuffer: (key: string) => void;

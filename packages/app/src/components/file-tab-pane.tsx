@@ -24,6 +24,7 @@ import {
   History,
   List,
   MessageSquarePlus,
+  RefreshCw,
   Save,
   Search,
   Terminal,
@@ -187,6 +188,7 @@ const ThemedDownload = withUnistyles(Download);
 const ThemedFileText = withUnistyles(FileText);
 const ThemedSave = withUnistyles(Save);
 const ThemedUndo2 = withUnistyles(Undo2);
+const ThemedRefreshCw = withUnistyles(RefreshCw);
 const ThemedWrapText = withUnistyles(WrapText);
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedArrowDown = withUnistyles(ArrowDown);
@@ -717,8 +719,19 @@ function PreviewOnlyView({
     return `${activeMatchIndex + 1}/${total}`;
   })();
 
+  // Reload from disk: the preview already follows the watcher, so this is the
+  // manual nudge for when the user does not want to wait on it.
+  const [refreshSignal, setRefreshSignal] = useState(0);
+  const handleRefreshPress = useCallback(() => setRefreshSignal((value) => value + 1), []);
+  const reloadAction: CompactFileToolbarAction = {
+    id: "reload-from-disk",
+    label: t("editor.diskChange.reload"),
+    Icon: ThemedRefreshCw,
+    onPress: handleRefreshPress,
+  };
   const compactPrimaryActions: CompactFileToolbarAction[] = findAvailable
     ? [
+        reloadAction,
         {
           id: "find",
           label: t("editor.find.open"),
@@ -727,7 +740,7 @@ function PreviewOnlyView({
           selected: find.open,
         },
       ]
-    : [];
+    : [reloadAction];
   const compactMoreActions: CompactFileToolbarAction[] = [
     ...(handleOpenHistory
       ? [
@@ -844,6 +857,12 @@ function PreviewOnlyView({
             buttons around under the user when they switch mode. */
         <View style={styles.previewToolbar} onLayout={collapse.onToolbarLayout}>
           <View style={styles.toolbarGroup} onLayout={collapse.onLeadingGroupLayout}>
+            <ToolbarIconButton
+              label={t("editor.diskChange.reload")}
+              testID="preview-reload-from-disk"
+              Icon={ThemedRefreshCw}
+              onPress={handleRefreshPress}
+            />
             <FileGitToolbarGroup
               onOpenHistory={handleOpenHistory}
               onNavigateToFile={collapse.keep("findInFiles", onNavigateToFile)}
@@ -918,6 +937,7 @@ function PreviewOnlyView({
         onFindMatchCount={setMatchCount}
         syncRef={previewSyncRef}
         onLinkPress={onMarkdownLinkPress}
+        refreshSignal={refreshSignal}
       />
       {/* Null until the preview has read the file - the bar appears with real
           values rather than flashing zeroes. No caret: there is no editor. */}
@@ -1585,6 +1605,7 @@ function EditorModeView({
     overwriteFromDiskChange,
     dismissConflict,
     reloadFromDisk,
+    refresh,
     diskCheckFailed,
     diskCheckPending,
     retryDiskCheck,
@@ -1804,6 +1825,10 @@ function EditorModeView({
   const handleRevertPress = useCallback(() => {
     void revert();
   }, [revert]);
+
+  const handleRefreshPress = useCallback(() => {
+    void refresh();
+  }, [refresh]);
 
   const handleFindKeyPress = useCallback(
     (event: { nativeEvent: { key: string } }) => {
@@ -2293,6 +2318,14 @@ function EditorModeView({
       disabled: !buffer.dirty || buffer.saving,
     },
     {
+      id: "reload-from-disk",
+      label: t("editor.diskChange.reload"),
+      Icon: ThemedRefreshCw,
+      onPress: handleRefreshPress,
+      disabled: buffer.status !== "ready" || buffer.saving,
+      loading: diskCheckPending,
+    },
+    {
       id: "find",
       label: t("editor.find.open"),
       Icon: ThemedSearch,
@@ -2440,6 +2473,14 @@ function EditorModeView({
               Icon={ThemedUndo2}
               onPress={handleRevertPress}
               disabled={!buffer.dirty || buffer.saving}
+            />
+            <ToolbarIconButton
+              label={t("editor.diskChange.reload")}
+              testID="editor-reload-from-disk"
+              Icon={ThemedRefreshCw}
+              onPress={handleRefreshPress}
+              disabled={buffer.status !== "ready" || buffer.saving}
+              loading={diskCheckPending}
             />
             <FileGitToolbarGroup
               onOpenHistory={handleOpenHistory}

@@ -3036,6 +3036,11 @@ export const zhCN: TranslationResources = {
       message: "放弃你的编辑并恢复此文件上次保存的版本？",
       confirm: "还原",
     },
+    reloadDialog: {
+      title: "从磁盘重新加载？",
+      message: "放弃未保存的编辑，并加载此文件当前在磁盘上的版本？",
+      confirm: "重新加载",
+    },
     discardDialog: {
       title: "放弃更改？",
       message: "此文件有未保存的更改。关闭并放弃这些更改？",

@@ -1036,6 +1036,8 @@ export interface FilePreviewProps {
   onToggleTask?: MarkdownTaskToggle | null;
   /** Handles local document links before the shared renderer tries an external opener. */
   onLinkPress?: (href: string) => boolean;
+  /** Bumped by an explicit Reload from disk; each new value re-reads the file. */
+  refreshSignal?: number;
 }
 
 // eslint-disable-next-line complexity -- query, watch, and preview rendering remain one lifecycle owner.
@@ -1056,6 +1058,7 @@ export function FilePreview({
   onPointerDownSync,
   onToggleTask = null,
   onLinkPress,
+  refreshSignal = 0,
 }: FilePreviewProps) {
   const { t } = useTranslation();
   // Ungated on compact: the app's overlay bar is wanted on mobile web too,
@@ -1208,6 +1211,15 @@ export function FilePreview({
       void refetchFile();
     });
   }, [client, readTarget, refetchFile]);
+
+  const handledRefreshSignalRef = useRef(refreshSignal);
+  useEffect(() => {
+    if (refreshSignal === handledRefreshSignalRef.current) {
+      return;
+    }
+    handledRefreshSignalRef.current = refreshSignal;
+    void refetchFile();
+  }, [refreshSignal, refetchFile]);
 
   const imageDimensions = query.data?.imageDimensions ?? null;
   useReportedFileInfo({
