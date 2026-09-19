@@ -81,6 +81,8 @@ import { WorkspaceDesktopTabsRail } from "@/screens/workspace/workspace-desktop-
 import { useAppSettings } from "@/hooks/use-settings";
 import type { TerminalProfile } from "@otto-code/protocol/messages";
 import { ExplorerSidebarDock } from "@/screens/workspace/explorer-sidebar";
+import { SidebarEdgePeekPanel } from "@/components/sidebar-edge-peek/sidebar-edge-peek-panel";
+import { claimSidebarEdgePeek } from "@/stores/sidebar-edge-peek-store";
 import {
   WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
@@ -844,6 +846,30 @@ export function SplitContainer({
               </Animated.View>
             </>
           ) : null}
+          {/* A collapsed Explorer (or one hidden by focus mode) can still be
+              swooped in from the right screen edge; see docs/sidebar-edge-reveal.md. */}
+          {!renderExplorerSidebarDock && explorerSidebarPane && isWorkspaceFocused ? (
+            <ExplorerSidebarEdgePeek width={explorerSidebarWidth}>
+              <ExplorerSidebarDock
+                pane={explorerSidebarPane}
+                uiTabs={uiTabs}
+                normalizedServerId={normalizedServerId}
+                normalizedWorkspaceId={normalizedWorkspaceId}
+                isWorkspaceFocused={isWorkspaceFocused}
+                hasPullRequest={hasPullRequest}
+                closingTabIds={closingTabIds}
+                onSelectTab={onSelectTabInPane}
+                onCloseTab={onCloseTab}
+                onCreateNewTab={handleCreateExplorerTab}
+                onMoveTabToMain={handleMoveExplorerTabToMain}
+                buildPaneContentModel={buildPaneContentModel}
+                onReorderTabsInPane={onReorderTabsInPane}
+                activeDragTabId={activeDragTabId}
+                tabDropPreview={tabDropPreview}
+                headerAction={renderExplorerSidebarHeaderAction?.()}
+              />
+            </ExplorerSidebarEdgePeek>
+          ) : null}
         </View>
         <WindowOverlay layer={OVERLAY_Z.drag}>
           <DragOverlay dropAnimation={null} zIndex={0}>
@@ -859,6 +885,17 @@ export function SplitContainer({
         </WindowOverlay>
       </DndContext>
     </RenderProfile>
+  );
+}
+
+// Mounted only while this workspace's Explorer is collapsed and on screen, so
+// the right-edge claim follows the focused workspace across the deck.
+function ExplorerSidebarEdgePeek({ width, children }: { width: number; children: ReactNode }) {
+  useEffect(() => claimSidebarEdgePeek("right"), []);
+  return (
+    <SidebarEdgePeekPanel side="right" width={width}>
+      <View style={styles.explorerSidebarPeek}>{children}</View>
+    </SidebarEdgePeekPanel>
   );
 }
 
@@ -1614,6 +1651,12 @@ const styles = StyleSheet.create((theme) => ({
   explorerSidebarDock: {
     flexShrink: 0,
     minWidth: 240,
+    minHeight: 0,
+    backgroundColor: theme.colors.surfaceSidebar,
+  },
+  explorerSidebarPeek: {
+    flex: 1,
+    minWidth: 0,
     minHeight: 0,
     backgroundColor: theme.colors.surfaceSidebar,
   },

@@ -137,14 +137,23 @@ interface DesktopSidebarProps extends SidebarSharedProps {
   handleViewMore: () => void;
 }
 
-export const LeftSidebar = memo(function LeftSidebar({ active = true }: { active?: boolean }) {
+export const LeftSidebar = memo(function LeftSidebar({
+  active = true,
+  forceOpen = false,
+}: {
+  active?: boolean;
+  // Renders the desktop sidebar open regardless of the stored open state. The
+  // screen-edge peek uses it: a peek shows the sidebar without opening it.
+  forceOpen?: boolean;
+}) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const isCompactLayout = useIsCompactFormFactor();
-  const isOpen = usePanelStore((state) =>
+  const isStoredOpen = usePanelStore((state) =>
     selectIsAgentListOpen(state, { isCompact: isCompactLayout }),
   );
+  const isOpen = forceOpen || isStoredOpen;
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
   const brainRail = useBrainRail();
 

@@ -44,6 +44,9 @@ export const WEB_SURFACE_PLANE = {
 
 export const OVERLAY_Z = {
   pane: 1,
+  // A sidebar peeked in from a screen edge: above pane-local overlays, below
+  // the tab-drag chip and every menu the sidebar itself can open.
+  sidebarPeek: 3,
   drag: 5,
   floating: 10,
   modal: 20,

@@ -4,8 +4,8 @@
 
 ## Summary
 
-- **Total indexed entries:** 475
-- **App surface:** 199
+- **Total indexed entries:** 476
+- **App surface:** 200
 - **Host surface:** 276
 - **Persistence scopes:** App, Desktop, Host, and Project. Surface and persistence scope are intentionally separate because some Host pages contain device-local settings.
 - **Dynamic entries:** A single row documents an unbounded runtime collection, such as one row per installed language server or team member. Finite catalogs and keyboard commands are enumerated individually.
@@ -14,7 +14,7 @@
 
 - [App settings](#app-settings)
   - [About (7)](#app-about)
-  - [Appearance (26)](#app-appearance)
+  - [Appearance (27)](#app-appearance)
   - [Chat (25)](#app-chat)
   - [Diagnostics (7)](#app-diagnostics)
   - [Editor (12)](#app-editor)
@@ -101,15 +101,16 @@
 
 #### Layout
 
-| Setting                                | What it does                                                                                 | Scope | Kind       | Choices / actions           | Default     | Audience  | Conditions                 | Persistence              | Source                                                                                                         |
-| -------------------------------------- | -------------------------------------------------------------------------------------------- | ----- | ---------- | --------------------------- | ----------- | --------- | -------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| Chat width                             | Sets the maximum width of chat content.                                                      | App   | Preference | Default; Wide; Full         | Default     | User      | Non-native                 | chatWidth                | [appearance-section.tsx:420](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L420)   |
-| Default tab orientation                | Sets new panes to horizontal tabs or a vertical tab rail.                                    | App   | Preference | Horizontal; Vertical        | Vertical    | User      | Non-native                 | defaultTabOrientation    | [appearance-section.tsx:460](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L460)   |
-| Hide tab toolbar options               | Keeps tab toolbar options hidden until you hover over the tab bar.                           | App   | Preference | On; Off                     | Off         | User      | Non-native                 | hideTabToolbarOptions    | [appearance-section.tsx:1333](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1333) |
-| Reduce space above sidebar             | Collapses extra desktop title-bar spacing above New workspace.                               | App   | Preference | On; Off                     | Off         | User      | Web/desktop layout         | compactSidebarTopSpacing | [appearance-section.tsx:1089](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1089) |
-| Show workspace tools in workspace list | Moves editor, Git, and diff tools from the header to a sidebar tool row.                     | App   | Preference | On; Off                     | On          | Developer | Developer mode; non-native | workspaceToolsPlacement  | [appearance-section.tsx:1101](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1101) |
-| Team switcher in title bar             | Moves the Active Team switcher from the sidebar into the workspace title bar.                | App   | Preference | On; Off                     | Off         | User      | Non-native                 | teamSwitcherPlacement    | [appearance-section.tsx:1120](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1120) |
-| Workspace branch changes indicator     | Chooses whether workspace rows show uncommitted changes, branch divergence, or no indicator. | App   | Preference | Uncommitted; Branch; Hidden | Uncommitted | Developer | Developer mode; non-native | workspaceChangeIndicator | [appearance-section.tsx:494](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L494)   |
+| Setting                                | What it does                                                                                                  | Scope | Kind       | Choices / actions           | Default     | Audience  | Conditions                                | Persistence              | Source                                                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----- | ---------- | --------------------------- | ----------- | --------- | ----------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| Chat width                             | Sets the maximum width of chat content.                                                                       | App   | Preference | Default; Wide; Full         | Default     | User      | Non-native                                | chatWidth                | [appearance-section.tsx:420](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L420)   |
+| Default tab orientation                | Sets new panes to horizontal tabs or a vertical tab rail.                                                     | App   | Preference | Horizontal; Vertical        | Vertical    | User      | Non-native                                | defaultTabOrientation    | [appearance-section.tsx:460](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L460)   |
+| Hide tab toolbar options               | Keeps tab toolbar options hidden until you hover over the tab bar.                                            | App   | Preference | On; Off                     | Off         | User      | Non-native                                | hideTabToolbarOptions    | [appearance-section.tsx:1333](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1333) |
+| Reduce space above sidebar             | Collapses extra desktop title-bar spacing above New workspace.                                                | App   | Preference | On; Off                     | Off         | User      | Web/desktop layout                        | compactSidebarTopSpacing | [appearance-section.tsx:1089](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1089) |
+| Reveal sidebars at screen edges        | Swoops a hidden sidebar in while the pointer rests on the left or right screen edge, and away when it leaves. | App   | Preference | On; Off                     | On          | User      | Electron desktop; maximized or fullscreen | sidebarEdgeReveal        | [appearance-section.tsx:1389](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1389) |
+| Show workspace tools in workspace list | Moves editor, Git, and diff tools from the header to a sidebar tool row.                                      | App   | Preference | On; Off                     | On          | Developer | Developer mode; non-native                | workspaceToolsPlacement  | [appearance-section.tsx:1101](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1101) |
+| Team switcher in title bar             | Moves the Active Team switcher from the sidebar into the workspace title bar.                                 | App   | Preference | On; Off                     | Off         | User      | Non-native                                | teamSwitcherPlacement    | [appearance-section.tsx:1120](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L1120) |
+| Workspace branch changes indicator     | Chooses whether workspace rows show uncommitted changes, branch divergence, or no indicator.                  | App   | Preference | Uncommitted; Branch; Hidden | Uncommitted | Developer | Developer mode; non-native                | workspaceChangeIndicator | [appearance-section.tsx:494](../../packages/app/src/screens/settings/appearance/appearance-section.tsx#L494)   |
 
 #### Theme
 

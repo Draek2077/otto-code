@@ -178,6 +178,10 @@ export interface OttoAppSettings {
   previewServerCloseBehavior: PreviewServerCloseBehavior;
   previewAutoStartOnRestore: boolean;
   compactSidebarTopSpacing: boolean;
+  // Desktop only: while the window is maximized or fullscreen, resting the
+  // pointer on the left or right screen edge swoops that collapsed sidebar in
+  // as an overlay, and leaving it swoops it away. See docs/sidebar-edge-reveal.md.
+  sidebarEdgeReveal: boolean;
   workspaceToolsPlacement: WorkspaceToolsPlacement;
   workspaceChangeIndicator: WorkspaceChangeIndicator;
   // Where the Agent Teams "Active Team" switcher renders. Device-local
@@ -874,6 +878,7 @@ const WORKSPACE_LAYOUT_BOOLEAN_KEYS = [
   "autoExpandReasoning",
   "voiceThinkingTone",
   "compactSidebarTopSpacing",
+  "sidebarEdgeReveal",
   "blackTabBackground",
   "groupConsecutiveActions",
   "chatMetricsBar",
@@ -1540,6 +1545,7 @@ export const DEFAULT_OTTO_SETTINGS: OttoAppSettings = {
   previewServerCloseBehavior: "keep-running",
   previewAutoStartOnRestore: false,
   compactSidebarTopSpacing: false,
+  sidebarEdgeReveal: true,
   workspaceToolsPlacement: "workspaceList",
   workspaceChangeIndicator: "uncommitted",
   teamSwitcherPlacement: "sidebar",

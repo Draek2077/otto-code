@@ -49,7 +49,7 @@ import {
   type Theme,
   type ThemeVariantName,
 } from "@/styles/theme";
-import { isDev, isNative } from "@/constants/platform";
+import { getIsElectron, isDev, isNative } from "@/constants/platform";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { settingsStyles } from "@/styles/settings";
 import { TEXT_EFFECT_THEME_IDS, type TextEffectThemeId } from "@/styles/text-effects";
@@ -1160,6 +1160,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleSidebarEdgeRevealChange = useCallback(
+    (sidebarEdgeReveal: boolean) => {
+      void updateSettings({ sidebarEdgeReveal });
+    },
+    [updateSettings],
+  );
+
   const handleWorkspaceToolsPlacementChange = useCallback(
     (showInWorkspaceList: boolean) => {
       void updateSettings({
@@ -1375,6 +1382,23 @@ export function AppearanceSection() {
                 testID="settings-compact-sidebar-top-spacing-switch"
               />
             </SettingsTargetScope>
+            {/* i18n: English-only pending a translation pass (sidebar edge reveal).
+                Desktop only: a browser tab has no maximized window edge to rest on. */}
+            {getIsElectron() ? (
+              <SettingsTargetScope
+                settingIds={["app-appearance-layout-reveal-sidebars-at-screen-edges"]}
+              >
+                <LayoutToggleRow
+                  title="Reveal sidebars at screen edges"
+                  hint="When the window is maximized or fullscreen, rest the pointer on the left or right edge to bring in a hidden sidebar. It goes away when the pointer leaves it."
+                  accessibilityLabel="Reveal sidebars at screen edges"
+                  value={settings.sidebarEdgeReveal}
+                  withBorder
+                  onValueChange={handleSidebarEdgeRevealChange}
+                  testID="settings-sidebar-edge-reveal-switch"
+                />
+              </SettingsTargetScope>
+            ) : null}
             <SettingsTargetScope
               settingIds={["app-appearance-layout-show-workspace-tools-in-workspace-list"]}
             >

@@ -73,6 +73,7 @@ import {
   resolveDesktopAppChromeLayout,
   resolveDesktopAppContentMinimum,
   resolveDesktopSidebarVisibility,
+  resolveDesktopSidebarWidth,
 } from "@/components/desktop-sidebar-layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { HorizontalScrollProvider } from "@/contexts/horizontal-scroll-context";
@@ -152,10 +153,15 @@ import {
 } from "@/utils/host-routes";
 import { startDesktopResizeReflow } from "@/utils/desktop-window";
 import {
+  useDesktopWindowState,
   useHasWindowChromeObstruction,
   WindowChromeProvider,
   WindowChromeRegion,
 } from "@/utils/window-chrome";
+import { isSidebarEdgeRevealEligible } from "@/components/sidebar-edge-peek/sidebar-edge-reveal";
+import { SidebarEdgePeekPanel } from "@/components/sidebar-edge-peek/sidebar-edge-peek-panel";
+import { useSidebarEdgeReveal } from "@/components/sidebar-edge-peek/use-sidebar-edge-reveal";
+import { claimSidebarEdgePeek, useSidebarEdgePeekStore } from "@/stores/sidebar-edge-peek-store";
 import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import {
@@ -673,6 +679,15 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     }),
   });
   const desktopSidebarRendered = desktopSidebarVisible;
+  const desktopWindowState = useDesktopWindowState();
+  const sidebarEdgeRevealEnabled = isSidebarEdgeRevealEligible({
+    settingEnabled: settings.sidebarEdgeReveal,
+    isElectron: getIsElectronRuntime(),
+    isCompact: isCompactLayout,
+    isMaximized: desktopWindowState.isMaximized,
+    isFullscreen: desktopWindowState.isFullscreen,
+  });
+  useSidebarEdgeReveal(sidebarEdgeRevealEnabled);
   const hasTopLeftWindowControls = useHasWindowChromeObstruction("top-left");
   const appChromeLayout = resolveDesktopAppChromeLayout({
     desktopSidebarRendered: desktopSidebarVisible,
@@ -681,6 +696,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const sidebarChrome = (
     <SidebarChrome
       showSidebar={isCompactLayout ? chromeEnabled : desktopSidebarRendered}
+      edgePeekEnabled={sidebarEdgeRevealEnabled && chromeEnabled && !desktopSidebarRendered}
       keyboardShortcutsEnabled={keyboardShortcutsEnabled}
     />
   );
@@ -778,20 +794,39 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
 
 function SidebarChrome({
   showSidebar,
+  edgePeekEnabled,
   keyboardShortcutsEnabled,
 }: {
   showSidebar: boolean;
+  edgePeekEnabled: boolean;
   keyboardShortcutsEnabled: boolean;
 }) {
   const isCompactLayout = useIsCompactFormFactor();
   const isMobileActive = useIsMobilePanelActive("agent-list");
   const isDesktopOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const isOpen = isCompactLayout ? isMobileActive : isDesktopOpen;
+  const isEdgePeeking = useSidebarEdgePeekStore((state) => state.peekSide === "left");
   return (
-    <SidebarModelProvider active={showSidebar && isOpen}>
+    <SidebarModelProvider active={(showSidebar && isOpen) || (edgePeekEnabled && isEdgePeeking)}>
       {showSidebar ? <LeftSidebar /> : null}
+      {edgePeekEnabled ? <LeftSidebarEdgePeek /> : null}
       <WorkspaceShortcutTargetsSubscriber enabled={keyboardShortcutsEnabled} />
     </SidebarModelProvider>
+  );
+}
+
+// The collapsed app sidebar, swooped in over the workspace from the left
+// screen edge. Mounted only while the peek is possible, so its availability
+// claim ends the moment the sidebar is pinned open or the window restores.
+function LeftSidebarEdgePeek() {
+  const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
+  const { width: viewportWidth } = useWindowDimensions();
+  const width = resolveDesktopSidebarWidth({ requestedWidth: sidebarWidth, viewportWidth });
+  useEffect(() => claimSidebarEdgePeek("left"), []);
+  return (
+    <SidebarEdgePeekPanel side="left" width={width}>
+      <LeftSidebar forceOpen />
+    </SidebarEdgePeekPanel>
   );
 }
 

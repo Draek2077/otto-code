@@ -245,6 +245,11 @@ export function WindowChromeProvider({ children }: { children: ReactNode }) {
   );
 }
 
+export function useDesktopWindowState(): { isFullscreen: boolean; isMaximized: boolean } {
+  const { isFullscreen, isMaximized } = useContext(DesktopWindowChromeContext);
+  return useMemo(() => ({ isFullscreen, isMaximized }), [isFullscreen, isMaximized]);
+}
+
 export function useCustomDesktopWindowControls(): {
   visible: boolean;
   mode: "custom-windows" | "custom-linux" | null;
