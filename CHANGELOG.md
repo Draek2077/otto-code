@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.16 - 2026-09-19
+
+### Fixed
+
+- Stop Android dictation from timing out when connected through the relay
+- Stop interrupted spoken replies from continuing to download in the background
+
 ## 0.9.15 - 2026-09-19
 
 ### Added
