@@ -255,6 +255,7 @@ import {
 } from "@/screens/workspace/workspace-bulk-close";
 import { resolveCloseAgentTabPolicy } from "@/subagents";
 import { findAdjacentPane } from "@/utils/split-navigation";
+import { readSearchSeedFromSelection } from "@/utils/search-seed-from-selection";
 import { useIsCompactFormFactor, supportsDesktopPaneSplits } from "@/constants/layout";
 import { getIsElectron, isNative, isWeb } from "@/constants/platform";
 import { useContainerWidth } from "@/hooks/use-container-width";
@@ -4394,10 +4395,14 @@ function WorkspaceScreenContent({
           handleOpenExplorerTab("files");
           requestFileFinderOpen();
           return true;
-        case "sidebar.open.search":
+        case "sidebar.open.search": {
+          // Read the highlight before opening the tab: moving focus into the
+          // search input is what collapses it.
+          const seed = readSearchSeedFromSelection();
           handleOpenExplorerTab("search");
-          requestProjectSearchFocus();
+          requestProjectSearchFocus(seed);
           return true;
+        }
         case "workspace.tab.target.files":
           handleOpenExplorerTab("files");
           return true;

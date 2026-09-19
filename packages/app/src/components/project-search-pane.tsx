@@ -346,17 +346,6 @@ export function ProjectSearchPane({
   }, []);
 
   const queryInputRef = useRef<TextInput | null>(null);
-  // The search-sidebar keyboard shortcut wants the query input focused, both
-  // when this pane is already visible and when the shortcut just mounted it.
-  // The token is consumed back to 0 so later remounts don't steal focus.
-  const focusToken = usePanelStore((state) => state.projectSearchFocusToken);
-  useEffect(() => {
-    if (focusToken === 0) {
-      return;
-    }
-    usePanelStore.getState().clearProjectSearchFocusRequest();
-    queryInputRef.current?.focus();
-  }, [focusToken]);
 
   // The session - query, options, results - is held per workspace outside this
   // component, so leaving the Search tab to read a hit does not throw the
@@ -457,6 +446,35 @@ export function ProjectSearchPane({
   const handleSubmit = useCallback(() => {
     void runSearch();
   }, [runSearch]);
+
+  // The search-sidebar keyboard shortcut wants the query input focused, both
+  // when this pane is already visible and when the shortcut just mounted it.
+  // Text highlighted when the shortcut fired becomes the query and runs, the
+  // way an IDE's find-in-files does. The token is consumed back to 0 so later
+  // remounts don't steal focus.
+  const focusToken = usePanelStore((state) => state.projectSearchFocusToken);
+  useEffect(() => {
+    if (focusToken === 0) {
+      return;
+    }
+    const { projectSearchSeed: seed, clearProjectSearchFocusRequest } = usePanelStore.getState();
+    clearProjectSearchFocusRequest();
+    const input = queryInputRef.current;
+    // A highlight inside the query itself is the user editing it, not a new term.
+    const seedApplies = seed !== null && !input?.isFocused();
+    input?.focus();
+    if (!seedApplies) {
+      return;
+    }
+    updateSession({ query: seed });
+    // Selected, so typing straight away replaces the seed rather than extending
+    // it. After the next frame: the controlled value lands on re-render, and
+    // writing it would drop a selection made now.
+    if (isWeb) {
+      requestAnimationFrame(() => (input as unknown as HTMLInputElement | null)?.select?.());
+    }
+    void runSearch();
+  }, [focusToken, runSearch, updateSession]);
 
   const toggleFileCollapsed = useCallback(
     (path: string) => {

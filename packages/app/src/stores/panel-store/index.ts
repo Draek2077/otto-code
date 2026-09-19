@@ -103,6 +103,9 @@ export interface PanelState {
   // Ephemeral (not persisted): bumped when a keyboard action wants the project
   // search input focused; the search pane consumes it back to 0.
   projectSearchFocusToken: number;
+  // Ephemeral (not persisted): text highlighted when the focus request was
+  // made, which the search pane takes as its query. Consumed with the token.
+  projectSearchSeed: string | null;
   // Ephemeral (not persisted): bumped when a keyboard action wants the Files
   // tab's filename finder open; the file explorer consumes it back to 0. Mod+F
   // outside an editor means "find a file" - the tab alone is only half of that.
@@ -172,7 +175,7 @@ export interface PanelState {
   setProjectKnowledgeSidebarWidth: (width: number) => void;
   setExplorerSortOption: (option: SortOption) => void;
   toggleExplorerShowHiddenFiles: () => void;
-  requestProjectSearchFocus: () => void;
+  requestProjectSearchFocus: (seed?: string | null) => void;
   clearProjectSearchFocusRequest: () => void;
   requestFileFinderOpen: () => void;
   clearFileFinderOpenRequest: () => void;
@@ -222,6 +225,7 @@ export const usePanelStore = create<PanelState>()(
       explorerSortOption: "name",
       explorerShowHiddenFiles: true,
       projectSearchFocusToken: 0,
+      projectSearchSeed: null,
       fileFinderOpenToken: 0,
       filesRevealRequest: null,
       changesRevealRequest: null,
@@ -401,9 +405,13 @@ export const usePanelStore = create<PanelState>()(
       setExplorerSortOption: (option) => set({ explorerSortOption: option }),
       toggleExplorerShowHiddenFiles: () =>
         set((state) => ({ explorerShowHiddenFiles: !state.explorerShowHiddenFiles })),
-      requestProjectSearchFocus: () =>
-        set((state) => ({ projectSearchFocusToken: state.projectSearchFocusToken + 1 })),
-      clearProjectSearchFocusRequest: () => set({ projectSearchFocusToken: 0 }),
+      requestProjectSearchFocus: (seed) =>
+        set((state) => ({
+          projectSearchFocusToken: state.projectSearchFocusToken + 1,
+          projectSearchSeed: seed ?? null,
+        })),
+      clearProjectSearchFocusRequest: () =>
+        set({ projectSearchFocusToken: 0, projectSearchSeed: null }),
       requestFileFinderOpen: () =>
         set((state) => ({ fileFinderOpenToken: state.fileFinderOpenToken + 1 })),
       clearFileFinderOpenRequest: () => set({ fileFinderOpenToken: 0 }),
