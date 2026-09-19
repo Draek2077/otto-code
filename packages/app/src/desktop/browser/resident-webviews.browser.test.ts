@@ -217,6 +217,69 @@ describe("resident browser webviews", () => {
     expect(webview.parentElement).toBe(permanentParent);
   });
 
+  it.each([0, 0.125, 0.5, 0.875])(
+    "covers every responsive pane edge at fractional offset %s without cropping the guest",
+    (fraction) => {
+      const browserId = `browser-fractional-${fraction}`;
+      const webview = ensureTestBrowser({
+        browserId,
+        workspaceId: "workspace-fractional",
+        url: "https://example.com",
+      })!;
+      const anchor = document.createElement("div");
+      Object.assign(anchor.style, {
+        position: "fixed",
+        left: `${40 + fraction}px`,
+        top: `${60 + fraction}px`,
+        width: "640.25px",
+        height: "480.25px",
+      });
+      document.body.appendChild(anchor);
+      try {
+        presentBrowserWebview(browserId, webview, anchor, anchor, { mode: "responsive" });
+        const pane = anchor.getBoundingClientRect();
+        const surface = webview.parentElement!.getBoundingClientRect();
+        const guest = webview.getBoundingClientRect();
+        expect(surface.left).toBeLessThanOrEqual(pane.left);
+        expect(surface.top).toBeLessThanOrEqual(pane.top);
+        expect(surface.right).toBeGreaterThanOrEqual(pane.right);
+        expect(surface.bottom).toBeGreaterThanOrEqual(pane.bottom);
+        expect(pane.left - surface.left).toBeLessThan(1);
+        expect(pane.top - surface.top).toBeLessThan(1);
+        expect(surface.right - pane.right).toBeLessThan(1);
+        expect(surface.bottom - pane.bottom).toBeLessThan(1);
+        expect(guest.toJSON()).toEqual(surface.toJSON());
+        expect(readResidentBrowserPresentation(browserId)).toMatchObject({
+          viewportWidth: guest.width,
+          viewportHeight: guest.height,
+        });
+      } finally {
+        anchor.remove();
+      }
+    },
+  );
+
+  it.each([
+    { width: 0, height: 480.25 },
+    { width: 640.25, height: 0 },
+  ])("keeps a collapsed fractional pane invisible: %o", (size) => {
+    const browserId = "browser-collapsed";
+    const webview = ensureTestBrowser({
+      browserId,
+      workspaceId: "workspace-collapsed",
+      url: "https://example.com",
+    })!;
+    const anchor = document.createElement("div");
+    Object.defineProperty(anchor, "getBoundingClientRect", {
+      value: () => ({ left: 40.25, top: 60.25, ...size }),
+    });
+    presentBrowserWebview(browserId, webview, anchor, anchor, { mode: "responsive" });
+    const surface = webview.parentElement!;
+    expect(surface.getBoundingClientRect().width).toBe(0);
+    expect(surface.getBoundingClientRect().height).toBe(0);
+    expect(surface.style.pointerEvents).toBe("none");
+  });
+
   it("records viewport and pane geometry for a presented tab, and drops it when parked", () => {
     const browserId = "browser-presented-geometry";
     const webview = ensureTestBrowser({

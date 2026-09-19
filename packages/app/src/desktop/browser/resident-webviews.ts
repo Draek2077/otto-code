@@ -359,17 +359,23 @@ export function presentBrowserWebview(
     anchorBounds.top + anchorBounds.height,
     clipBounds.top + clipBounds.height,
   );
-  const surfaceLeft = Math.ceil(left);
-  const surfaceTop = Math.ceil(top);
-  const surfaceRight = Math.floor(right);
-  const surfaceBottom = Math.floor(bottom);
-  const hasVisibleArea = surfaceRight > surfaceLeft && surfaceBottom > surfaceTop;
+  // Responsive guests cover the pane's fractional edges. Rounding inward exposes
+  // the anchor's white backing beside splitters; snapping the guest's origin and
+  // far edge together avoids both that seam and a permanently cropped 1px margin.
+  // Fixed device previews retain their exact viewport and existing clipping.
+  const responsive = viewport.mode === "responsive";
+  const surfaceLeft = responsive ? Math.floor(left) : Math.ceil(left);
+  const surfaceTop = responsive ? Math.floor(top) : Math.ceil(top);
+  const surfaceRight = responsive ? Math.ceil(right) : Math.floor(right);
+  const surfaceBottom = responsive ? Math.ceil(bottom) : Math.floor(bottom);
+  const hasVisibleArea =
+    right > left && bottom > top && surfaceRight > surfaceLeft && surfaceBottom > surfaceTop;
   surface.setAttribute("aria-hidden", "false");
   surface.style.position = "fixed";
   surface.style.left = `${surfaceLeft}px`;
   surface.style.top = `${surfaceTop}px`;
-  surface.style.width = `${Math.max(0, surfaceRight - surfaceLeft)}px`;
-  surface.style.height = `${Math.max(0, surfaceBottom - surfaceTop)}px`;
+  surface.style.width = `${hasVisibleArea ? surfaceRight - surfaceLeft : 0}px`;
+  surface.style.height = `${hasVisibleArea ? surfaceBottom - surfaceTop : 0}px`;
   surface.style.overflow = "hidden";
   surface.style.opacity = "1";
   surface.style.pointerEvents = hasVisibleArea && isResidentBrowserInputEnabled() ? "auto" : "none";
@@ -378,7 +384,10 @@ export function presentBrowserWebview(
   clearResidentWebviewParkingStyle(webview);
   const webviewDimensions =
     viewport.mode === "responsive"
-      ? { width: anchorBounds.width, height: anchorBounds.height }
+      ? {
+          width: Math.ceil(anchorBounds.left + anchorBounds.width) - Math.floor(anchorBounds.left),
+          height: Math.ceil(anchorBounds.top + anchorBounds.height) - Math.floor(anchorBounds.top),
+        }
       : { width: viewport.width, height: viewport.height };
   applyBrowserWebviewDimensions(webview, webviewDimensions);
   rememberResidentBrowserPresentation(normalizedBrowserId, {
@@ -389,8 +398,8 @@ export function presentBrowserWebview(
     paneHeight: Math.round(clipBounds.height),
   });
   webview.style.position = "absolute";
-  webview.style.left = `${Math.round(anchorBounds.left - surfaceLeft)}px`;
-  webview.style.top = `${Math.round(anchorBounds.top - surfaceTop)}px`;
+  webview.style.left = `${(responsive ? Math.floor(anchorBounds.left) : Math.round(anchorBounds.left)) - surfaceLeft}px`;
+  webview.style.top = `${(responsive ? Math.floor(anchorBounds.top) : Math.round(anchorBounds.top)) - surfaceTop}px`;
 }
 
 export function prepareBrowserWebview(

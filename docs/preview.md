@@ -305,6 +305,12 @@ real composer concurrently with MCP input, including page-created background tab
 
 ### Resident state
 
+Responsive browser surfaces snap their bounds outward to whole CSS pixels, with
+the guest sized from the same snapped edges. Fractional splitter positions must
+not expose the white page backing. This adds less than one CSS pixel per edge;
+fixed device viewports retain their exact dimensions and pane clipping. Collapsed
+panes have no visible surface or pointer target.
+
 Workspace layouts persist browser IDs; `workspace-browser-store` separately maps
 those IDs to URLs and browser metadata in the app's AsyncStorage (localStorage on
 Electron/web). A restored pane waits for that store to hydrate before creating its
