@@ -305,6 +305,43 @@ export function healActiveAgentTeamId(config: MutableDaemonConfig): MutableDaemo
   return { ...config, agentTeams: { ...section, activeTeamId: null } };
 }
 
+// Pre-validation step for the per-project Default Team patch: the patch clears
+// a project's default with `{ [projectId]: null }`, which deep-merge leaves in
+// the record as a null value. Drop those so the stored map only ever holds
+// projectId -> teamId.
+export function dropClearedAgentTeamProjectDefaults<T extends Record<string, unknown>>(
+  merged: T,
+): T {
+  const section = merged["agentTeams"];
+  if (!isRecord(section) || !isRecord(section["projectDefaults"])) {
+    return merged;
+  }
+  const projectDefaults = Object.fromEntries(
+    Object.entries(section["projectDefaults"]).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+  return { ...merged, agentTeams: { ...section, projectDefaults } };
+}
+
+// Post-validation normalization, the Default Team counterpart of
+// healActiveAgentTeamId: a project default pointing at a deleted team is
+// dropped (the project reads as "Not set") instead of lingering on disk.
+export function healAgentTeamProjectDefaults(config: MutableDaemonConfig): MutableDaemonConfig {
+  const section = config.agentTeams;
+  const projectDefaults = section?.projectDefaults;
+  if (!projectDefaults) {
+    return config;
+  }
+  const teamIds = new Set((Array.isArray(section.teams) ? section.teams : []).map((t) => t.id));
+  const entries = Object.entries(projectDefaults);
+  const retained = entries.filter(([, teamId]) => teamIds.has(teamId));
+  if (retained.length === entries.length) {
+    return config;
+  }
+  return { ...config, agentTeams: { ...section, projectDefaults: Object.fromEntries(retained) } };
+}
+
 /**
  * A patch can ask for a provider's config to be deleted two ways, and both are
  * in the schema: Otto's `providers: { id: null }` sentinel, and upstream's
@@ -753,6 +790,7 @@ export function withAgentPersonalities(params: {
 interface AgentTeamsPersistSection {
   teams: PersistedAgentTeam[];
   activeTeamId: string | null;
+  projectDefaults: Record<string, string>;
 }
 
 // Read the teams section out of the mutable config, dropping entries that lack
@@ -764,7 +802,7 @@ interface AgentTeamsPersistSection {
 export function readAgentTeamsSection(mutable: MutableDaemonConfig): AgentTeamsPersistSection {
   const section = mutable.agentTeams;
   if (!isRecord(section)) {
-    return { teams: [], activeTeamId: null };
+    return { teams: [], activeTeamId: null, projectDefaults: {} };
   }
   const rawTeams = section["teams"];
   const teams = Array.isArray(rawTeams)
@@ -774,9 +812,18 @@ export function readAgentTeamsSection(mutable: MutableDaemonConfig): AgentTeamsP
       })
     : [];
   const activeTeamId = section["activeTeamId"];
+  const rawProjectDefaults = section["projectDefaults"];
+  const projectDefaults = isRecord(rawProjectDefaults)
+    ? Object.fromEntries(
+        Object.entries(rawProjectDefaults).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      )
+    : {};
   return {
     teams,
     activeTeamId: typeof activeTeamId === "string" ? activeTeamId : null,
+    projectDefaults,
   };
 }
 

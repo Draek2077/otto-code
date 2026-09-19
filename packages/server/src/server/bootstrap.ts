@@ -624,6 +624,7 @@ export interface OttoDaemonConfig {
   agentTeams?: {
     teams?: PersistedAgentTeam[];
     activeTeamId?: string | null;
+    projectDefaults?: Record<string, string>;
   };
   modelTierOverrides?: PersistedModelTierOverride[];
   modelVisibilityOverrides?: PersistedModelVisibilityOverride[];
@@ -1003,6 +1004,9 @@ function buildInitialAgentTeams(config: OttoDaemonConfig): MutableDaemonConfig["
       config.agentTeams === undefined ? [...DEFAULT_AGENT_TEAMS] : (config.agentTeams.teams ?? []),
     ...(config.agentTeams?.activeTeamId !== undefined
       ? { activeTeamId: config.agentTeams.activeTeamId }
+      : {}),
+    ...(config.agentTeams?.projectDefaults !== undefined
+      ? { projectDefaults: config.agentTeams.projectDefaults }
       : {}),
   };
 }

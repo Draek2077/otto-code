@@ -1269,6 +1269,54 @@ describe("DaemonConfigStore", () => {
     expect(next.agentTeams?.activeTeamId).toBeNull();
   });
 
+  test("project default teams set and clear per project, and heal when the team is deleted", () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
+    tempDirs.push(ottoHome);
+
+    const store = new DaemonConfigStore(
+      ottoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        agentTeams: {
+          teams: [
+            { id: "team-a", name: "A" },
+            { id: "team-b", name: "B" },
+          ],
+          activeTeamId: "team-a",
+        },
+      },
+      undefined,
+    );
+
+    // Each patch touches one project and leaves the others alone.
+    store.patch({ agentTeams: { projectDefaults: { "project-1": "team-a" } } });
+    store.patch({ agentTeams: { projectDefaults: { "project-2": "team-b" } } });
+    expect(loadPersistedConfig(ottoHome).agents?.agentTeams?.projectDefaults).toEqual({
+      "project-1": "team-a",
+      "project-2": "team-b",
+    });
+
+    // Null clears back to "Not set" and never persists as a null value.
+    const cleared = store.patch({ agentTeams: { projectDefaults: { "project-1": null } } });
+    expect(cleared.agentTeams?.projectDefaults).toEqual({ "project-2": "team-b" });
+    expect(loadPersistedConfig(ottoHome).agents?.agentTeams?.projectDefaults).toEqual({
+      "project-2": "team-b",
+    });
+
+    // Deleting a team drops every project default that pointed at it, and the
+    // now-empty map leaves disk entirely.
+    const healed = store.patch({ agentTeams: { teams: [{ id: "team-a", name: "A" }] } });
+    expect(healed.agentTeams?.projectDefaults).toEqual({});
+    expect(healed.agentTeams?.activeTeamId).toBe("team-a");
+    expect(loadPersistedConfig(ottoHome).agents?.agentTeams?.projectDefaults).toBeUndefined();
+  });
+
   test("patch persists browser tools opt-in into config.json", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-daemon-config-store-"));
     tempDirs.push(ottoHome);

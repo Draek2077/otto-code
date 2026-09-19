@@ -15,7 +15,9 @@ import type { AgentProfile, AgentSkillSelection, AgentTeam } from "@otto-code/pr
 
 import {
   buildPersistedGitHosting,
+  dropClearedAgentTeamProjectDefaults,
   healActiveAgentTeamId,
+  healAgentTeamProjectDefaults,
   mergeSpeechIntoPersistedFeatures,
   mergeSpeechOpenAiIntoPersistedProviders,
   normalizeDaemonConfigPatchIntent,
@@ -537,19 +539,21 @@ export class DaemonConfigStore {
     }
     const { removeProviders = [], ...configPatch } = parsedPatch;
     const removedProviders = Array.from(new Set(removeProviders));
-    const merged = deepMerge(this.current, configPatch);
+    const merged = dropClearedAgentTeamProjectDefaults(deepMerge(this.current, configPatch));
     if (parsedPatch.skills?.selection !== undefined) {
       merged.skills = { selection: parsedPatch.skills.selection };
     }
     if (parsedPatch.plugins !== undefined) merged.plugins = parsedPatch.plugins;
     // OTTO: healActiveAgentTeamId clears activeTeamId when the patch deleted the
     // team it pointed at, so a removed team cannot leave the host pinned to a
-    // roster that no longer exists.
-    const next = healActiveAgentTeamId(
-      MutableDaemonConfigSchema.parse(
-        omitMetadataGenerationProvidersFromConfig(
-          omitProvidersFromConfig(merged, removedProviders),
-          removedProviders,
+    // roster that no longer exists. Project Default Teams heal the same way.
+    const next = healAgentTeamProjectDefaults(
+      healActiveAgentTeamId(
+        MutableDaemonConfigSchema.parse(
+          omitMetadataGenerationProvidersFromConfig(
+            omitProvidersFromConfig(merged, removedProviders),
+            removedProviders,
+          ),
         ),
       ),
     );
@@ -1041,6 +1045,16 @@ function mergeAgentTeamsPatch(
     else teams["activeTeamId"] = patch.agentTeams.activeTeamId;
   } else if (patch.agentTeams?.teams !== undefined && section.activeTeamId === null) {
     delete teams["activeTeamId"];
+  }
+  // The mutable map is already merged, null-stripped, and healed, so it is the
+  // value to persist - whether the patch set a default or deleted a team that
+  // some project defaulted to.
+  if (patch.agentTeams?.projectDefaults !== undefined || patch.agentTeams?.teams !== undefined) {
+    if (Object.keys(section.projectDefaults).length > 0) {
+      teams["projectDefaults"] = section.projectDefaults;
+    } else {
+      delete teams["projectDefaults"];
+    }
   }
   return teams;
 }

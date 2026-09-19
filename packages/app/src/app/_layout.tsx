@@ -105,6 +105,7 @@ import { RosettaCalloutSource } from "@/desktop/updates/rosetta-callout-source";
 import { UpdateCalloutSource } from "@/desktop/updates/update-callout-source";
 import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-action";
 import { useGlobalNewWorkspaceAction } from "@/hooks/use-global-new-workspace-action";
+import { useProjectDefaultTeamSwitch } from "@/hooks/use-project-default-team-switch";
 import { useLatchedBoolean } from "@/hooks/use-latched-boolean";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -655,6 +656,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
 
   useActiveWorktreeNewAction();
   useGlobalNewWorkspaceAction();
+  useProjectDefaultTeamSwitch();
 
   // On a desktop-width window the sidebar is not unconditional: it only renders
   // if it can take its width without pushing the content below its own minimum.

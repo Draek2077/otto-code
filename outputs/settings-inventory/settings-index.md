@@ -4,9 +4,9 @@
 
 ## Summary
 
-- **Total indexed entries:** 476
+- **Total indexed entries:** 477
 - **App surface:** 200
-- **Host surface:** 276
+- **Host surface:** 277
 - **Persistence scopes:** App, Desktop, Host, and Project. Surface and persistence scope are intentionally separate because some Host pages contain device-local settings.
 - **Dynamic entries:** A single row documents an unbounded runtime collection, such as one row per installed language server or team member. Finite catalogs and keyboard commands are enumerated individually.
 
@@ -34,7 +34,7 @@
   - [Metadata (4)](#host-metadata)
   - [Pair device (1)](#host-pair-device)
   - [Plugins (4)](#host-plugins)
-  - [Projects / Project settings (29)](#host-projects-project-settings)
+  - [Projects / Project settings (30)](#host-projects-project-settings)
   - [Providers (38)](#host-providers)
   - [Storage (4)](#host-storage)
   - [Teams (31)](#host-teams)
@@ -765,6 +765,12 @@
 | ---------- | --------------------------------------------------------- | ------- | ---------- | --------------------- | ----------- | --------- | ---------------- | ------------------ | -------------------------------------------------------------------------------------------------- |
 | Appearance | Chooses the project icon, image, or automatic appearance. | Project | Preference | Automatic; Icon/image | Automatic   | Developer | Project settings | project.appearance | [project-settings-screen.tsx:250](../../packages/app/src/screens/project-settings-screen.tsx#L250) |
 | Name       | Sets the project's display name.                          | Project | Preference | Text                  | Folder name | Developer | Project settings | project.name       | [project-settings-screen.tsx:200](../../packages/app/src/screens/project-settings-screen.tsx#L200) |
+
+#### Team
+
+| Setting      | What it does                                                                                 | Scope   | Kind       | Choices / actions   | Default | Audience | Conditions                                                               | Persistence                | Source                                                                                                     |
+| ------------ | -------------------------------------------------------------------------------------------- | ------- | ---------- | ------------------- | ------- | -------- | ------------------------------------------------------------------------ | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Default team | Switches the host's active team to this team whenever you enter a workspace of this project. | Project | Preference | Not set; host teams | Not set | User     | Selected project; agentTeamProjectDefaults capability; at least one team | agentTeams.projectDefaults | [project-settings-team-section.tsx:1](../../packages/app/src/screens/project-settings-team-section.tsx#L1) |
 
 #### Kanban
 

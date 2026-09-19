@@ -318,6 +318,11 @@ export const MutableAgentTeamsConfigSchema = z
     // create_chat, schedule runs) must see it, and a patch from any client
     // hot-reloads the switch to every connected client.
     activeTeamId: z.string().nullable().optional(),
+    // Per-project Default Team, keyed by host-local projectId. Absent key =
+    // "Not set". Clients switch activeTeamId to this team when the user enters
+    // a workspace of that project; the daemon only stores it and prunes entries
+    // whose team no longer exists. Gated by features.agentTeamProjectDefaults.
+    projectDefaults: z.record(z.string(), z.string()).optional(),
   })
   .passthrough();
 
@@ -328,6 +333,9 @@ export const MutableAgentTeamsConfigPatchSchema = z
   .object({
     teams: z.array(AgentTeamSchema).optional(),
     activeTeamId: z.string().nullable().optional(),
+    // Merges per project: `{ [projectId]: teamId }` sets one project's default
+    // and `{ [projectId]: null }` clears it, leaving other projects untouched.
+    projectDefaults: z.record(z.string(), z.string().nullable()).optional(),
   })
   .passthrough();
 

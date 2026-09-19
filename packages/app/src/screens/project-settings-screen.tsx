@@ -70,6 +70,7 @@ import {
   type ProjectSummary,
 } from "@/utils/projects";
 import { ProjectKanbanSection } from "./project-settings-kanban-section";
+import { ProjectTeamSection } from "./project-settings-team-section";
 import { ProjectKnowledgeSection } from "./project-settings-knowledge-section";
 import { ProjectBrowserSection } from "./project-settings-browser-section";
 import { ProjectArtifactsSection } from "./project-settings-artifacts-section";
@@ -424,6 +425,8 @@ function ProjectSettingsBody({
         supportsCustomIcon={supportsCustomIcon}
         snapshot={editSnapshot}
       />
+
+      <ProjectTeamSection serverId={selectedHost.serverId} projectId={selectedHost.projectId} />
 
       <ProjectKanbanSection
         serverId={selectedHost.serverId}

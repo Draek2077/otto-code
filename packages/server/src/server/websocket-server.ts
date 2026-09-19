@@ -2247,6 +2247,8 @@ export class VoiceAssistantWebSocketServer {
         hideMergeIntoBaseSetting: true,
         // COMPAT(agentTeams): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         agentTeams: true,
+        // COMPAT(agentTeamProjectDefaults): added in v0.9.17, drop the gate when daemon floor >= v0.9.17.
+        agentTeamProjectDefaults: true,
         // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         modelTierOverrides: true,
         // COMPAT(modelVisibilityOverrides): added in v0.8.18, drop the gate when daemon floor >= v0.8.18.

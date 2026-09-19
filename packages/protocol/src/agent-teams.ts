@@ -25,6 +25,7 @@ export const TEAM_SCHEDULER_PERSONALITY_SENTINEL = "@team-scheduler";
 export interface AgentTeamsConfigView {
   teams?: readonly AgentTeam[] | undefined;
   activeTeamId?: string | null | undefined;
+  projectDefaults?: Readonly<Record<string, string>> | undefined;
 }
 
 export function findAgentTeam(
@@ -45,6 +46,20 @@ export function findAgentTeam(
  */
 export function getActiveAgentTeam(section: AgentTeamsConfigView | undefined): AgentTeam | null {
   return findAgentTeam(section?.teams, section?.activeTeamId);
+}
+
+/**
+ * Resolve a project's Default Team. Unset, or pointing at a deleted team, reads
+ * as null ("Not set") - same read-side tolerance as getActiveAgentTeam.
+ */
+export function getProjectDefaultAgentTeam(
+  section: AgentTeamsConfigView | undefined,
+  projectId: string | null | undefined,
+): AgentTeam | null {
+  if (!projectId) {
+    return null;
+  }
+  return findAgentTeam(section?.teams, section?.projectDefaults?.[projectId]);
 }
 
 export function isTeamMember(

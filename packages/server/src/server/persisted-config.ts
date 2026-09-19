@@ -273,6 +273,7 @@ const AgentTeamsSchema = z
   .object({
     teams: z.array(AgentTeamConfigSchema).optional(),
     activeTeamId: z.string().nullable().optional(),
+    projectDefaults: z.record(z.string(), z.string()).optional(),
   })
   .passthrough();
 

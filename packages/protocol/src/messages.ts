@@ -5672,6 +5672,8 @@ export const ServerInfoStatusPayloadSchema = z
         hideMergeIntoBaseSetting: z.boolean().optional(),
         // COMPAT(agentTeams): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         agentTeams: z.boolean().optional(),
+        // COMPAT(agentTeamProjectDefaults): added in v0.9.17, drop the gate when daemon floor >= v0.9.17.
+        agentTeamProjectDefaults: z.boolean().optional(),
         // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
         modelTierOverrides: z.boolean().optional(),
         // COMPAT(modelVisibilityOverrides): added in v0.8.18, drop the gate when daemon floor >= v0.8.18.
