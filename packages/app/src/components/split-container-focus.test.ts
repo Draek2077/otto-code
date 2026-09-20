@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   hasMultipleVisiblePanes,
+  resolvePaneMaximizeToggle,
   resolveSplitContainerRoot,
   shouldClearMaximizedPane,
   splitNodeContainsPane,
@@ -82,5 +83,37 @@ describe("split focus root", () => {
         root,
       }),
     ).toBe(false);
+  });
+
+  it("focuses an unfocused pane before maximizing it", () => {
+    const transition = resolvePaneMaximizeToggle({
+      maximizedPaneId: null,
+      workspaceKey: "server:workspace",
+      paneId: "left",
+    });
+
+    expect(transition).toEqual({
+      next: { workspaceKey: "server:workspace", paneId: "left" },
+      focusPaneId: "left",
+    });
+    expect(
+      shouldClearMaximizedPane({
+        maximizedPaneId: transition.next?.paneId ?? null,
+        focusedPaneId: transition.focusPaneId,
+        focusModeEnabled: false,
+        workspaceHasMultiplePanes: true,
+        root,
+      }),
+    ).toBe(false);
+  });
+
+  it("restores the maximized pane without manufacturing another focus change", () => {
+    expect(
+      resolvePaneMaximizeToggle({
+        maximizedPaneId: "left",
+        workspaceKey: "server:workspace",
+        paneId: "left",
+      }),
+    ).toEqual({ next: null, focusPaneId: null });
   });
 });

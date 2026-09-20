@@ -28,22 +28,27 @@ import {
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { View, Text, type LayoutChangeEvent } from "react-native";
 import Animated, {
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   type SharedValue,
 } from "react-native-reanimated";
+import { Gesture } from "react-native-gesture-handler";
+import { scheduleOnRN } from "react-native-worklets";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
+import {
+  SIDEBAR_RESIZE_ACTIVATION_OFFSET,
+  SIDEBAR_RESIZE_FAIL_OFFSET,
+} from "@/components/sidebar-resize-handle-layout";
 import { WindowOverlay } from "@/components/ui/pane-overlay";
 import { OVERLAY_Z } from "@/lib/overlay-root";
-import {
-  resolveExplorerSidebarDockSizes,
-  resolveExplorerSidebarWidth,
-} from "@/components/explorer-sidebar-layout";
+import { resolveExplorerSidebarWidth } from "@/components/explorer-sidebar-layout";
 import { RetainedPanel } from "@/components/retained-panel";
 import {
   hasMultipleVisiblePanes,
+  resolvePaneMaximizeToggle,
   resolveSplitContainerRoot,
   shouldClearMaximizedPane,
   splitNodeContainsPane,
@@ -175,7 +180,6 @@ interface SplitPaneDropData {
 
 const EMPTY_SPLIT_NODES: SplitNode[] = [];
 const EMPTY_SPLIT_SIZES: number[] = [];
-const EXPLORER_SIDEBAR_RESIZE_GROUP_ID = "explorer-sidebar";
 
 function isWorkspaceTabDragData(data: unknown): data is WorkspaceTabDragData {
   return typeof data === "object" && data !== null && Reflect.get(data, "kind") === "workspace-tab";
@@ -461,13 +465,17 @@ export function SplitContainer({
   ]);
   const handleTogglePaneMaximized = useCallback(
     (paneId: string) => {
-      setMaximizedPane((current) =>
-        current?.workspaceKey === workspaceKey && current.paneId === paneId
-          ? null
-          : { workspaceKey, paneId },
-      );
+      const transition = resolvePaneMaximizeToggle({
+        maximizedPaneId,
+        workspaceKey,
+        paneId,
+      });
+      if (transition.focusPaneId) {
+        onFocusPane(transition.focusPaneId);
+      }
+      setMaximizedPane(transition.next);
     },
-    [workspaceKey],
+    [maximizedPaneId, onFocusPane, workspaceKey],
   );
   // A split is an explicit request to work with more than one pane. Restore
   // before applying it so the newly created pane is visible in the same paint,
@@ -528,28 +536,26 @@ export function SplitContainer({
     (state) => state.explorerSidebarWidthByWorkspace[workspaceKey],
   );
   const resizeExplorerSidebar = useWorkspaceLayoutStore((state) => state.resizeExplorerSidebar);
+  const hideExplorerSidebar = useWorkspaceLayoutStore((state) => state.hideExplorerSidebar);
   const [workspaceShellWidth, setWorkspaceShellWidth] = useState(0);
   const explorerSidebarWidth = resolveExplorerSidebarWidth({
     requestedWidth: storedExplorerSidebarWidth,
     containerWidth: workspaceShellWidth,
   });
-  // Explorer content is much denser than an ordinary pane. Its live width must
-  // stay off React's render path while the pointer moves, as split panes do.
   const explorerSidebarResizeWidth = useSharedValue(explorerSidebarWidth);
-  const isPreviewingExplorerSidebarResizeRef = useRef(false);
-  useEffect(() => {
-    if (!isPreviewingExplorerSidebarResizeRef.current) {
-      explorerSidebarResizeWidth.value = explorerSidebarWidth;
-    }
-  }, [explorerSidebarResizeWidth, explorerSidebarWidth]);
-  const explorerSidebarDockSizes = useMemo(
-    () =>
-      resolveExplorerSidebarDockSizes({
-        requestedWidth: storedExplorerSidebarWidth,
-        containerWidth: workspaceShellWidth,
-      }),
-    [storedExplorerSidebarWidth, workspaceShellWidth],
+  const explorerSidebarStartWidthRef = useRef(explorerSidebarWidth);
+  const [explorerSidebarResizePressed, setExplorerSidebarResizePressed] = useState(false);
+  const showExplorerSidebarResizeGrip = useCallback(
+    () => setExplorerSidebarResizePressed(true),
+    [],
   );
+  const hideExplorerSidebarResizeGrip = useCallback(
+    () => setExplorerSidebarResizePressed(false),
+    [],
+  );
+  useEffect(() => {
+    explorerSidebarResizeWidth.value = explorerSidebarWidth;
+  }, [explorerSidebarResizeWidth, explorerSidebarWidth]);
   const renderExplorerSidebarDock = Boolean(
     !focusModeEnabled && explorerSidebarPane && explorerSidebarPane.hidden !== true,
   );
@@ -561,38 +567,67 @@ export function SplitContainer({
     () => ({ width: explorerSidebarResizeWidth.value }),
     [explorerSidebarResizeWidth],
   );
-  const explorerSidebarDockStyle = [styles.explorerSidebarDock, explorerSidebarDockResizeStyle];
+  const explorerSidebarDockStyle = useMemo(
+    () => [staticStyles.explorerSidebarDock, explorerSidebarDockResizeStyle],
+    [explorerSidebarDockResizeStyle],
+  );
   const handleWorkspaceShellLayout = useCallback((event: LayoutChangeEvent) => {
     const nextWidth = event.nativeEvent.layout.width;
     setWorkspaceShellWidth((current) => (current === nextWidth ? current : nextWidth));
   }, []);
-  const previewExplorerSidebarResize = useCallback(
-    (_groupId: string, sizes: number[]) => {
-      const nextRatio = sizes[1];
-      if (nextRatio !== undefined) {
-        isPreviewingExplorerSidebarResizeRef.current = true;
-        explorerSidebarResizeWidth.value = resolveExplorerSidebarWidth({
-          requestedWidth: nextRatio * workspaceShellWidth,
-          containerWidth: workspaceShellWidth,
-        });
-      }
-    },
-    [explorerSidebarResizeWidth, workspaceShellWidth],
+  const commitExplorerSidebarWidth = useCallback(
+    (width: number) => resizeExplorerSidebar(workspaceKey, width),
+    [resizeExplorerSidebar, workspaceKey],
   );
-  const commitExplorerSidebarResize = useCallback(
-    (_groupId: string, sizes: number[]) => {
-      isPreviewingExplorerSidebarResizeRef.current = false;
-      const nextRatio = sizes[1];
-      if (nextRatio !== undefined) {
-        const width = resolveExplorerSidebarWidth({
-          requestedWidth: nextRatio * workspaceShellWidth,
-          containerWidth: workspaceShellWidth,
-        });
-        explorerSidebarResizeWidth.value = width;
-        resizeExplorerSidebar(workspaceKey, width);
-      }
-    },
-    [explorerSidebarResizeWidth, resizeExplorerSidebar, workspaceKey, workspaceShellWidth],
+  const closeExplorerSidebar = useCallback(
+    () => hideExplorerSidebar(workspaceKey),
+    [hideExplorerSidebar, workspaceKey],
+  );
+  const explorerSidebarResizeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        // Match the left sidebar: Pan's default activation slop turns a 1px
+        // divider into a dead zone followed by a catch-up jump.
+        .minDistance(0)
+        .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
+        .onBegin(() => scheduleOnRN(showExplorerSidebarResizeGrip))
+        // Horizontal intent leaves vertical scrolling reachable through the
+        // touch grip; anchoring at activation prevents an edge jump.
+        .activeOffsetX([-SIDEBAR_RESIZE_ACTIVATION_OFFSET, SIDEBAR_RESIZE_ACTIVATION_OFFSET])
+        .failOffsetY([-SIDEBAR_RESIZE_FAIL_OFFSET, SIDEBAR_RESIZE_FAIL_OFFSET])
+        .onStart((event) => {
+          explorerSidebarStartWidthRef.current = explorerSidebarWidth + event.translationX;
+          explorerSidebarResizeWidth.value = explorerSidebarWidth;
+        })
+        .onUpdate((event) => {
+          // The right sidebar grows when its inner edge moves left.
+          explorerSidebarResizeWidth.value = resolveExplorerSidebarWidth({
+            requestedWidth: explorerSidebarStartWidthRef.current - event.translationX,
+            containerWidth: workspaceShellWidth,
+          });
+        })
+        .onEnd(() => runOnJS(commitExplorerSidebarWidth)(explorerSidebarResizeWidth.value))
+        .onFinalize(() => scheduleOnRN(hideExplorerSidebarResizeGrip)),
+    [
+      commitExplorerSidebarWidth,
+      explorerSidebarResizeWidth,
+      explorerSidebarWidth,
+      hideExplorerSidebarResizeGrip,
+      showExplorerSidebarResizeGrip,
+      workspaceShellWidth,
+    ],
+  );
+  // Match the left sidebar's handle shortcut: double-tap collapses the dock.
+  const explorerSidebarCloseGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .numberOfTaps(2)
+        .onEnd(() => runOnJS(closeExplorerSidebar)()),
+    [closeExplorerSidebar],
+  );
+  const explorerSidebarResizeHandleGesture = useMemo(
+    () => Gesture.Race(explorerSidebarCloseGesture, explorerSidebarResizeGesture),
+    [explorerSidebarCloseGesture, explorerSidebarResizeGesture],
   );
   const renderRoot = useMemo(() => wrapRootPaneForStableMount(splitRoot.root), [splitRoot.root]);
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -821,39 +856,28 @@ export function SplitContainer({
             </View>
           </WindowChromeRegion>
           {renderExplorerSidebarDock && explorerSidebarPane ? (
-            <>
-              <ResizeHandle
-                testID="workspace-explorer-sidebar-resize-handle"
-                direction="horizontal"
-                hitAreaAlignment="end"
-                groupId={EXPLORER_SIDEBAR_RESIZE_GROUP_ID}
-                index={0}
-                sizes={explorerSidebarDockSizes}
-                containerSize={workspaceShellWidth}
-                onPreviewResizeSplit={previewExplorerSidebarResize}
-                onResizeSplit={commitExplorerSidebarResize}
+            <Animated.View style={explorerSidebarDockStyle}>
+              <ExplorerSidebarDock
+                pane={explorerSidebarPane}
+                uiTabs={uiTabs}
+                normalizedServerId={normalizedServerId}
+                normalizedWorkspaceId={normalizedWorkspaceId}
+                isWorkspaceFocused={isWorkspaceFocused}
+                hasPullRequest={hasPullRequest}
+                closingTabIds={closingTabIds}
+                onSelectTab={onSelectTabInPane}
+                onCloseTab={onCloseTab}
+                onCreateNewTab={handleCreateExplorerTab}
+                onMoveTabToMain={handleMoveExplorerTabToMain}
+                buildPaneContentModel={buildPaneContentModel}
+                onReorderTabsInPane={onReorderTabsInPane}
+                activeDragTabId={activeDragTabId}
+                tabDropPreview={tabDropPreview}
+                resizeGesture={explorerSidebarResizeHandleGesture}
+                resizePressed={explorerSidebarResizePressed}
+                headerAction={renderExplorerSidebarHeaderAction?.()}
               />
-              <Animated.View style={explorerSidebarDockStyle}>
-                <ExplorerSidebarDock
-                  pane={explorerSidebarPane}
-                  uiTabs={uiTabs}
-                  normalizedServerId={normalizedServerId}
-                  normalizedWorkspaceId={normalizedWorkspaceId}
-                  isWorkspaceFocused={isWorkspaceFocused}
-                  hasPullRequest={hasPullRequest}
-                  closingTabIds={closingTabIds}
-                  onSelectTab={onSelectTabInPane}
-                  onCloseTab={onCloseTab}
-                  onCreateNewTab={handleCreateExplorerTab}
-                  onMoveTabToMain={handleMoveExplorerTabToMain}
-                  buildPaneContentModel={buildPaneContentModel}
-                  onReorderTabsInPane={onReorderTabsInPane}
-                  activeDragTabId={activeDragTabId}
-                  tabDropPreview={tabDropPreview}
-                  headerAction={renderExplorerSidebarHeaderAction?.()}
-                />
-              </Animated.View>
-            </>
+            </Animated.View>
           ) : null}
           {/* A collapsed Explorer (or one hidden by focus mode) can still be
               swooped in from the right screen edge; see docs/sidebar-edge-reveal.md. */}
@@ -861,10 +885,6 @@ export function SplitContainer({
             <ExplorerSidebarEdgePeek
               width={explorerSidebarWidth}
               resizeWidth={explorerSidebarResizeWidth}
-              resizeSizes={explorerSidebarDockSizes}
-              containerSize={workspaceShellWidth}
-              onPreviewResize={previewExplorerSidebarResize}
-              onResize={commitExplorerSidebarResize}
             >
               <ExplorerSidebarDock
                 pane={explorerSidebarPane}
@@ -882,6 +902,8 @@ export function SplitContainer({
                 onReorderTabsInPane={onReorderTabsInPane}
                 activeDragTabId={activeDragTabId}
                 tabDropPreview={tabDropPreview}
+                resizeGesture={explorerSidebarResizeHandleGesture}
+                resizePressed={explorerSidebarResizePressed}
                 headerAction={renderExplorerSidebarHeaderAction?.()}
               />
             </ExplorerSidebarEdgePeek>
@@ -909,39 +931,21 @@ export function SplitContainer({
 function ExplorerSidebarEdgePeek({
   width,
   resizeWidth,
-  resizeSizes,
-  containerSize,
-  onPreviewResize,
-  onResize,
   children,
 }: {
   width: number;
   resizeWidth: SharedValue<number>;
-  resizeSizes: number[];
-  containerSize: number;
-  onPreviewResize: (groupId: string, sizes: number[]) => void;
-  onResize: (groupId: string, sizes: number[]) => void;
   children: ReactNode;
 }) {
   const liveWidthStyle = useAnimatedStyle(() => ({ width: resizeWidth.value }), [resizeWidth]);
+  const peekStyle = useMemo(
+    () => [staticStyles.explorerSidebarPeek, liveWidthStyle],
+    [liveWidthStyle],
+  );
   useEffect(() => claimSidebarEdgePeek("right"), []);
   return (
     <SidebarEdgePeekPanel side="right" width={width}>
-      <Animated.View style={[staticStyles.explorerSidebarPeek, liveWidthStyle]}>
-        <View style={styles.explorerSidebarPeekSurface}>{children}</View>
-        <View style={styles.explorerSidebarPeekResizeHandle}>
-          <ResizeHandle
-            testID="workspace-explorer-sidebar-peek-resize-handle"
-            direction="horizontal"
-            groupId={EXPLORER_SIDEBAR_RESIZE_GROUP_ID}
-            index={0}
-            sizes={resizeSizes}
-            containerSize={containerSize}
-            onPreviewResizeSplit={onPreviewResize}
-            onResizeSplit={onResize}
-          />
-        </View>
-      </Animated.View>
+      <Animated.View style={peekStyle}>{children}</Animated.View>
     </SidebarEdgePeekPanel>
   );
 }
@@ -1685,8 +1689,15 @@ function removePaneFromSplitTree(node: SplitNode, paneId: string | null): SplitN
 // Animated.Views must not carry Unistyles theme styles. Keep the moving shell
 // static and put themed paint on its inner surface.
 const staticStyles = {
+  explorerSidebarDock: {
+    position: "relative",
+    overflow: "hidden",
+    flexShrink: 0,
+    minWidth: 240,
+  },
   explorerSidebarPeek: {
     position: "absolute",
+    overflow: "hidden",
     top: 0,
     right: 0,
     bottom: 0,
@@ -1705,25 +1716,6 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     minWidth: 0,
     minHeight: 0,
-  },
-  explorerSidebarDock: {
-    flexShrink: 0,
-    minWidth: 240,
-    minHeight: 0,
-    backgroundColor: theme.colors.surfaceSidebar,
-  },
-  explorerSidebarPeekSurface: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 0,
-    backgroundColor: theme.colors.surfaceSidebar,
-  },
-  explorerSidebarPeekResizeHandle: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    zIndex: 10,
   },
   group: {
     flex: 1,

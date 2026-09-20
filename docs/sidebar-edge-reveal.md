@@ -53,11 +53,12 @@ Timing and geometry rules, all in `sidebar-edge-reveal.ts`:
   button is held (resizing, dragging a tab), and while any web overlay (menu, dialog) is open, so
   a context menu opened from the peeked sidebar does not dismiss it. Otherwise it dismisses 300 ms
   after the pointer leaves.
+- Electron browser guests are clipped one CSS pixel inside each pane edge. The guest keeps its full
+  viewport dimensions, but that app-owned boundary lets the existing screen-edge trigger and
+  between-pane splitter receive the first pointer event before the native guest can consume it.
 
 ## Known limits
 
-- An Electron `<webview>` browser pane swallows pointer events, so a browser pane flush against the
-  right edge prevents the right-edge trigger over that pane.
 - The right edge peeks only a workspace that already has an Explorer pane. A workspace that never
   opened the Explorer has nothing to show.
 - Plain web and native do not peek: a browser tab has no maximized window edge to rest on, and the

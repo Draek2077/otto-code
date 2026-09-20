@@ -12,6 +12,12 @@ const BROWSER_ID_ATTRIBUTE = "data-otto-browser-id";
 const BROWSER_SURFACE_ATTRIBUTE = "data-otto-browser-surface";
 const RESIDENT_VIEWPORT_WIDTH = 1280;
 const RESIDENT_VIEWPORT_HEIGHT = 800;
+// Electron guest surfaces win pointer targeting over ordinary DOM, even when
+// the DOM splitter or screen-edge trigger paints above them. Keep one CSS
+// pixel on every pane edge app-owned so those existing boundary interactions
+// receive the pointer before a drag begins. The webview itself keeps the full
+// viewport dimensions and is clipped by this inset surface.
+const RESIDENT_BROWSER_INPUT_BOUNDARY = 1;
 
 const residentWebviewsByBrowserId = new Map<string, HTMLElement>();
 const residentSurfacesByBrowserId = new Map<string, HTMLElement>();
@@ -359,15 +365,18 @@ export function presentBrowserWebview(
     anchorBounds.top + anchorBounds.height,
     clipBounds.top + clipBounds.height,
   );
-  // Responsive guests cover the pane's fractional edges. Rounding inward exposes
-  // the anchor's white backing beside splitters; snapping the guest's origin and
-  // far edge together avoids both that seam and a permanently cropped 1px margin.
-  // Fixed device previews retain their exact viewport and existing clipping.
+  // The resident surface clips both responsive and fixed guests inside the
+  // app-owned input boundary. Responsive guests still retain the pane's full
+  // viewport dimensions underneath that clip; fixed previews retain their
+  // requested viewport and existing pane clipping.
   const responsive = viewport.mode === "responsive";
-  const surfaceLeft = responsive ? Math.floor(left) : Math.ceil(left);
-  const surfaceTop = responsive ? Math.floor(top) : Math.ceil(top);
-  const surfaceRight = responsive ? Math.ceil(right) : Math.floor(right);
-  const surfaceBottom = responsive ? Math.ceil(bottom) : Math.floor(bottom);
+  // Round inward after applying the boundary. Fractional pane geometry can
+  // otherwise leave only a fraction of a CSS pixel outside the native guest,
+  // which is not a dependable pointer target at every display scale.
+  const surfaceLeft = Math.ceil(left + RESIDENT_BROWSER_INPUT_BOUNDARY);
+  const surfaceTop = Math.ceil(top + RESIDENT_BROWSER_INPUT_BOUNDARY);
+  const surfaceRight = Math.floor(right - RESIDENT_BROWSER_INPUT_BOUNDARY);
+  const surfaceBottom = Math.floor(bottom - RESIDENT_BROWSER_INPUT_BOUNDARY);
   const hasVisibleArea =
     right > left && bottom > top && surfaceRight > surfaceLeft && surfaceBottom > surfaceTop;
   surface.setAttribute("aria-hidden", "false");

@@ -1,7 +1,8 @@
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, type ComponentProps, type ReactNode } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { RetainedPanel } from "@/components/retained-panel";
+import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import { SidebarSeamShadow } from "@/components/sidebar-seam-shadow";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import type { TabDropPreview } from "@/components/split-container-tab-drop-preview";
@@ -38,6 +39,8 @@ interface ExplorerSidebarDockProps {
     tab: WorkspaceTabDescriptor;
     host?: PaneHost;
   }) => WorkspacePaneContentModel;
+  resizeGesture: ComponentProps<typeof SidebarResizeHandle>["gesture"];
+  resizePressed: boolean;
   headerAction?: ReactNode;
 }
 
@@ -58,6 +61,8 @@ export function ExplorerSidebarDock({
   onMoveTabToMain,
   onReorderTabsInPane,
   buildPaneContentModel,
+  resizeGesture,
+  resizePressed,
   headerAction,
 }: ExplorerSidebarDockProps) {
   const isDeveloperMode = useIsDeveloperMode();
@@ -137,6 +142,12 @@ export function ExplorerSidebarDock({
               buildPaneContentModel={buildExplorerPaneContentModel}
             />
           </View>
+          <SidebarResizeHandle
+            edge="left"
+            gesture={resizeGesture}
+            pressed={resizePressed}
+            testID="workspace-explorer-sidebar-resize-handle"
+          />
           <SidebarSeamShadow seam="left" />
         </View>
       </WindowChromeRegion>
@@ -149,6 +160,8 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
+    borderLeftWidth: 1,
+    borderLeftColor: theme.colors.border,
     // Explorer shares the primary sidebar's deepest surface, including its tab
     // rail, pane toolbars, and native caption strip.
     backgroundColor: theme.colors.surfaceSidebarPanel,

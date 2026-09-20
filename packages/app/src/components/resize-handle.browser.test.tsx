@@ -14,12 +14,7 @@ let root: Root;
 let container: HTMLDivElement;
 const topStyle = { height: 149, position: "relative" as const };
 const bottomStyle = { height: 150, position: "relative" as const };
-const rightSidebarResizeHandleStyle = {
-  position: "absolute" as const,
-  top: 0,
-  bottom: 0,
-  left: 0,
-};
+const sidePaneStyle = { width: 150, position: "relative" as const };
 
 afterEach(() => {
   act(() => root?.unmount());
@@ -142,41 +137,49 @@ it.each(["pointerup", "pointercancel", "lostpointercapture", "blur"])(
   },
 );
 
-it("grows a right sidebar when its visible left-edge splitter is dragged left", () => {
+it("keeps the splitter between side-by-side browser panes app-owned and draggable", () => {
   container = document.createElement("div");
-  container.style.cssText = "position:fixed;right:20px;top:20px;width:320px;height:300px;z-index:0";
+  container.style.cssText =
+    "position:fixed;left:20px;top:20px;width:301px;height:300px;z-index:0;display:flex;flex-direction:row";
   document.body.appendChild(container);
   root = createRoot(container);
   const preview = vi.fn();
   const commit = vi.fn();
-
   act(() =>
     root.render(
-      <div style={rightSidebarResizeHandleStyle}>
+      <>
+        <div data-pane="left" style={sidePaneStyle} />
         <ResizeHandle
-          testID="right-sidebar-resize-handle"
           direction="horizontal"
-          groupId="explorer-sidebar"
+          groupId="side-by-side"
           index={0}
-          sizes={[880 / 1200, 320 / 1200]}
-          containerSize={1200}
+          sizes={[0.5, 0.5]}
+          containerSize={300}
           onPreviewResizeSplit={preview}
           onResizeSplit={commit}
         />
-      </div>,
+        <div data-pane="right" style={sidePaneStyle} />
+      </>,
     ),
   );
+  for (const id of ["left", "right"]) {
+    const anchor = container.querySelector<HTMLElement>(`[data-pane="${id}"]`)!;
+    presentBrowserWebview(id, document.createElement("div"), anchor, anchor, {
+      mode: "responsive",
+    });
+  }
 
-  const seam = container.querySelector<HTMLElement>('[data-testid="right-sidebar-resize-handle"]')!;
   const separator = document.querySelector<HTMLElement>('[role="separator"]')!;
-  const panelRect = container.getBoundingClientRect();
-  const seamRect = seam.getBoundingClientRect();
-  expect(seamRect.left).toBe(panelRect.left);
-  expect(seamRect.width).toBe(1);
-
+  const separatorRect = separator.getBoundingClientRect();
+  const surfaces = [...document.querySelectorAll<HTMLElement>("[data-otto-browser-surface]")].map(
+    (surface) => surface.getBoundingClientRect(),
+  );
+  const x = separatorRect.left + separatorRect.width / 2;
+  const y = separatorRect.top + separatorRect.height / 2;
+  expect(surfaces[0].right).toBeLessThan(x);
+  expect(surfaces[1].left).toBeGreaterThan(x);
+  expect(document.elementFromPoint(x, y)).toBe(separator);
   vi.spyOn(separator, "setPointerCapture").mockImplementation(() => {});
-  const x = seamRect.left + seamRect.width / 2;
-  const y = seamRect.top + seamRect.height / 2;
   act(() =>
     separator.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -191,19 +194,12 @@ it("grows a right sidebar when its visible left-edge splitter is dragged left", 
     window.dispatchEvent(
       new PointerEvent("pointermove", {
         pointerId: 1,
-        clientX: x - 120,
+        clientX: x + 60,
         clientY: y,
       }),
     ),
   );
-  expect(preview.mock.lastCall?.[0]).toBe("explorer-sidebar");
-  expect(preview.mock.lastCall?.[1][0]).toBeCloseTo(760 / 1200);
-  expect(preview.mock.lastCall?.[1][1]).toBeCloseTo(440 / 1200);
-  expect(commit).not.toHaveBeenCalled();
-
+  expect(preview).toHaveBeenLastCalledWith("side-by-side", [0.7, 0.30000000000000004]);
   act(() => window.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1 })));
-  expect(commit).toHaveBeenCalledOnce();
-  expect(commit.mock.lastCall?.[0]).toBe("explorer-sidebar");
-  expect(commit.mock.lastCall?.[1][0]).toBeCloseTo(760 / 1200);
-  expect(commit.mock.lastCall?.[1][1]).toBeCloseTo(440 / 1200);
+  expect(commit).toHaveBeenCalledExactlyOnceWith("side-by-side", [0.7, 0.30000000000000004]);
 });
