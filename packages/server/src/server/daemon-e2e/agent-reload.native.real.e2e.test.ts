@@ -14,7 +14,7 @@ import {
   getRealProviderRuntimeSettings,
 } from "./real-provider-test-config.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestPaseoDaemon, type TestPaseoDaemon } from "../test-utils/paseo-daemon.js";
+import { createTestOttoDaemon, type TestOttoDaemon } from "../test-utils/otto-daemon.js";
 
 type NativeProvider = "claude" | "codex" | "opencode";
 
@@ -32,7 +32,7 @@ async function withNativeConversation(
   const cwd = path.join(root, "workspace");
   mkdirSync(cwd);
   const logger = pino({ level: "warn" });
-  let daemon: TestPaseoDaemon | undefined;
+  let daemon: TestOttoDaemon | undefined;
   let client: DaemonClient | undefined;
   let openCode: OpenCodeAgentClient | undefined;
   let openCodeRuntimeRoot: string | undefined;
@@ -54,7 +54,7 @@ async function withNativeConversation(
       providerClient = openCode;
       config = getRealProviderConfig("opencode");
     }
-    daemon = await createTestPaseoDaemon({
+    daemon = await createTestOttoDaemon({
       agentClients: { [provider]: providerClient },
       logger,
       pluginsEnabled: false,

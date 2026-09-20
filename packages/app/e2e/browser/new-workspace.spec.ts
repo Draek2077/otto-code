@@ -214,6 +214,16 @@ test.describe("New workspace flow", () => {
   const createdWorktreeDirectories = new Set<string>();
   const localGithubFixtures = new Set<LocalGhPrFixture>();
 
+  /**
+   * Archiving a workspace leaves its project record behind, and the ownership
+   * guard in `fixtures.ts` reads projects off the workspace list. Tracking the
+   * two together is the only way a test cannot remove one and leak the other.
+   */
+  function trackLocalWorkspace(opened: { workspaceId: string; projectId: string }): void {
+    localWorkspaceIds.add(opened.workspaceId);
+    localProjectIds.add(opened.projectId);
+  }
+
   test.describe.configure({ timeout: 240_000 });
 
   test.beforeEach(async () => {
@@ -260,8 +270,8 @@ test.describe("New workspace flow", () => {
     try {
       const firstWorkspace = await openProjectViaDaemon(client, firstRepo.path);
       const secondWorkspace = await openProjectViaDaemon(client, secondRepo.path);
-      localWorkspaceIds.add(firstWorkspace.workspaceId);
-      localWorkspaceIds.add(secondWorkspace.workspaceId);
+      trackLocalWorkspace(firstWorkspace);
+      trackLocalWorkspace(secondWorkspace);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -316,7 +326,7 @@ test.describe("New workspace flow", () => {
         cwd: repo.path,
         slug: `nav-${Date.now()}`,
       });
-      localWorkspaceIds.add(rootWorkspace.workspaceId);
+      trackLocalWorkspace(rootWorkspace);
       createdWorktreeDirectories.add(worktreeWorkspace.workspaceDirectory);
 
       await gotoAppShell(page);
@@ -392,7 +402,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
+      trackLocalWorkspace(openedProject);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -471,7 +481,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
+      trackLocalWorkspace(openedProject);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -555,7 +565,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
+      trackLocalWorkspace(openedProject);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -612,7 +622,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
+      trackLocalWorkspace(openedProject);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -677,7 +687,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
+      trackLocalWorkspace(openedProject);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -738,7 +748,7 @@ test.describe("New workspace flow", () => {
       repoPath: string,
     ) {
       const openedProject = await openProjectViaDaemon(client, repoPath);
-      localWorkspaceIds.add(openedProject.workspaceId);
+      trackLocalWorkspace(openedProject);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -872,7 +882,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
+      trackLocalWorkspace(openedProject);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -897,7 +907,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
+      trackLocalWorkspace(openedProject);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -927,7 +937,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, pr.localPath);
-      localWorkspaceIds.add(openedProject.workspaceId);
+      trackLocalWorkspace(openedProject);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -962,8 +972,7 @@ test.describe("New workspace flow", () => {
     const { pr, mainCheckout } = fixture;
 
     const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
-    localWorkspaceIds.add(openedProject.workspaceId);
-    localProjectIds.add(openedProject.projectId);
+    trackLocalWorkspace(openedProject);
 
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
@@ -1022,8 +1031,7 @@ test.describe("New workspace flow", () => {
     const { pr, mainCheckout } = fixture;
 
     const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
-    localWorkspaceIds.add(openedProject.workspaceId);
-    localProjectIds.add(openedProject.projectId);
+    trackLocalWorkspace(openedProject);
 
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
@@ -1072,7 +1080,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
+      trackLocalWorkspace(openedProject);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);

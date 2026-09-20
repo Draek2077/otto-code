@@ -702,10 +702,14 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       keyboardShortcutsEnabled={keyboardShortcutsEnabled}
     />
   );
-  let themedSidebarChrome = sidebarChrome;
-  if (isWeb) {
-    themedSidebarChrome = <AppearanceStyleBoundary>{sidebarChrome}</AppearanceStyleBoundary>;
-  }
+  // A `const` ternary, not a reassigned `let`: the merge integration guard
+  // reads this mount statically and a mutable alias reads as an unreviewed
+  // render expression, which it reports as an error.
+  const themedSidebarChrome = isWeb ? (
+    <AppearanceStyleBoundary>{sidebarChrome}</AppearanceStyleBoundary>
+  ) : (
+    sidebarChrome
+  );
   const workspaceChrome = (
     <View style={rowStyle}>
       {!isCompactLayout ? (

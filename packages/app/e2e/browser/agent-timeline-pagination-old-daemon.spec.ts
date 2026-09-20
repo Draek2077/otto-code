@@ -11,12 +11,15 @@ import {
   scrollThroughOlderHistoryPages,
 } from "../support/helpers/timeline-pagination";
 
-test("does not repeat an assistant block when the current app paginates a published 0.2.5 daemon", async ({
+test("does not repeat an assistant block when the current app paginates the oldest published daemon", async ({
   page,
 }) => {
   test.setTimeout(120_000);
   const serverId = `srv_old_pagination_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-  const daemon = await startIsolatedHostDaemon(serverId, { publishedVersion: "0.2.5" });
+  // The oldest `@otto-code/server` on npm. The fork's registry starts at 0.5.0,
+  // so the Paseo-era versions this regression was first written against
+  // (0.2.5) cannot be installed and the run dies at `npm install`.
+  const daemon = await startIsolatedHostDaemon(serverId, { publishedVersion: "0.5.0" });
   const workspace = await seedWorkspace({
     repoPrefix: "timeline-old-daemon-pagination-",
     port: daemon.port,

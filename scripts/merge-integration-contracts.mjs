@@ -6,6 +6,7 @@ const app = "packages/app/src/";
 const server = "packages/server/src/server/";
 const root = app + "app/_layout.tsx";
 const sidebar = app + "components/left-sidebar.tsx";
+const sidebarNavRows = app + "components/sidebar/sidebar-nav-rows.tsx";
 const symbol = (file, name) => ({
   file,
   name,
@@ -36,15 +37,24 @@ export const MOUNT_CONTRACTS = [
       ],
     ],
   },
+  // Paseo v0.8.0 moved the plugin entries from a `PluginSidebarItems` block the
+  // sidebars mounted directly onto a per-group `PluginSidebarItemRow` inside the
+  // shared navigation header. The seam and the compact sidebar's dismissal
+  // binding are unchanged; the chain gained one hop.
   {
     id: "plugin-sidebar-compact",
     edges: [
       [symbol(sidebar, "LeftSidebar"), symbol(sidebar, "MobileSidebar")],
       [
         symbol(sidebar, "MobileSidebar"),
-        symbol(app + "plugins/sidebar-items.tsx", "PluginSidebarItems"),
+        symbol(sidebar, "SidebarNavigationHeader"),
         null,
         { onBeforeNavigate: { parameter: "closeSidebar" } },
+      ],
+      [symbol(sidebar, "SidebarNavigationHeader"), symbol(sidebarNavRows, "SidebarNavRows")],
+      [
+        symbol(sidebarNavRows, "SidebarNavRows"),
+        symbol(app + "plugins/sidebar-items.tsx", "PluginSidebarItemRow"),
       ],
     ],
   },
@@ -52,9 +62,11 @@ export const MOUNT_CONTRACTS = [
     id: "plugin-sidebar-wide",
     edges: [
       [symbol(sidebar, "LeftSidebar"), symbol(sidebar, "DesktopSidebar")],
+      [symbol(sidebar, "DesktopSidebar"), symbol(sidebar, "SidebarNavigationHeader")],
+      [symbol(sidebar, "SidebarNavigationHeader"), symbol(sidebarNavRows, "SidebarNavRows")],
       [
-        symbol(sidebar, "DesktopSidebar"),
-        symbol(app + "plugins/sidebar-items.tsx", "PluginSidebarItems"),
+        symbol(sidebarNavRows, "SidebarNavRows"),
+        symbol(app + "plugins/sidebar-items.tsx", "PluginSidebarItemRow"),
       ],
     ],
   },

@@ -5650,7 +5650,10 @@ test("refresh_agent_request leaves the worktree archived and surfaces a typed er
 });
 
 function createRecreateWorktreeRepo(): { tempDir: string; repoDir: string } {
-  const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "otto-recreate-worktree-")));
+  // `.native`, because plain `realpathSync` leaves Windows 8.3 short names
+  // (`C:\Users\RUNNER~1`) intact while identity normalization resolves
+  // them. The fixture would then name a different project than the daemon does.
+  const tempDir = realpathSync.native(mkdtempSync(path.join(tmpdir(), "otto-recreate-worktree-")));
   try {
     const repoDir = path.join(tempDir, "repo");
     const hooksPath = path.join(tempDir, "empty-hooks");
@@ -9191,6 +9194,10 @@ test("create otto worktree response preserves an explicit non-Git project", asyn
   session.emit = (message: unknown) => {
     if (isSessionOutboundMessage(message)) emitted.push(message);
   };
+  // Derived while the directory still exists: identity normalization resolves
+  // the real path, and on a Windows runner whose TMP is an 8.3 short name
+  // (`RUNNER~1`) that is a different string from the one a deleted path yields.
+  let expectedProjectKey: string;
   try {
     await session.handleCreateOttoWorktreeRequest({
       type: "create_otto_worktree_request",
@@ -9198,6 +9205,12 @@ test("create otto worktree response preserves an explicit non-Git project", asyn
       projectId: explicitProject.projectId,
       worktreeSlug: "worktree-123",
       requestId: "req-worktree",
+    });
+    expectedProjectKey = deriveProjectKey({
+      rootPath: explicitProject.rootPath,
+      remoteUrl: null,
+      worktreeRoot: null,
+      mainRepoRoot: null,
     });
   } finally {
     vi.useRealTimers();
@@ -9222,12 +9235,7 @@ test("create otto worktree response preserves an explicit non-Git project", asyn
   expect(workspaces.has(response?.payload.workspace?.id ?? "")).toBe(true);
   expect(projects.get(explicitProject.projectId)).toEqual({
     ...explicitProject,
-    projectKey: deriveProjectKey({
-      rootPath: explicitProject.rootPath,
-      remoteUrl: null,
-      worktreeRoot: null,
-      mainRepoRoot: null,
-    }),
+    projectKey: expectedProjectKey,
   });
 });
 
