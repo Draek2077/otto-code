@@ -85,7 +85,13 @@ test("a plain client advertises every protocol capability and no browser host", 
     const ready = h.client.connect();
     h.open();
     await ready;
-    const { browserHost: _browser, ...protocolCapabilities } = CLIENT_CAPS;
+    // Browser hosting and Brain log watching both need a resource owner the
+    // caller supplies, so DEFAULT_CLIENT_CAPABILITIES excludes them by type.
+    const {
+      browserHost: _browser,
+      brainLogWatch: _brainLogWatch,
+      ...protocolCapabilities
+    } = CLIENT_CAPS;
     // Every new capability needs a deliberate default or a host-owned exception.
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0].capabilities).toEqual(
@@ -97,9 +103,9 @@ test("a plain client advertises every protocol capability and no browser host", 
 });
 
 test("SDK timeline listeners own their union across unsubscribe and reconnect", async () => {
-  const { createPaseoApi } = await import("./index");
+  const { createOttoApi } = await import("./index");
   const h = connection();
-  const api = createPaseoApi(h.client);
+  const api = createOttoApi(h.client);
   try {
     const ready = h.client.connect();
     h.open();
@@ -130,14 +136,14 @@ test("SDK timeline listeners own their union across unsubscribe and reconnect", 
 });
 
 test("SDK subscribers receive timeline replacement instead of silently losing history", async () => {
-  const { createPaseoApi } = await import("./index");
+  const { createOttoApi } = await import("./index");
   const h = connection();
   const received: unknown[] = [];
   try {
     const ready = h.client.connect();
     h.open();
     await ready;
-    const off = createPaseoApi(h.client)
+    const off = createOttoApi(h.client)
       .agents.ref("agent")
       .timeline.subscribe((event) => received.push(event));
     h.receive({ type: "agent.timeline.replacement", payload: { agentId: "agent", epoch: "next" } });

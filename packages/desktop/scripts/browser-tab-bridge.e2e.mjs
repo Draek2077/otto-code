@@ -129,7 +129,12 @@ function seedOttoHome(ottoHome, listen, workspaceRoot) {
     daemon: {
       listen,
       relay: { enabled: false },
-      mcp: { enabled: true, injectIntoAgents: false },
+      // `injectIntoAgents` is what decides whether an agent may use Otto tools
+      // at all, not merely whether its CLI gets the MCP server injected: with it
+      // off every agent is created with a disabled tool policy, the caller-scoped
+      // MCP session registers no tools, and `tools/call` comes back as JSON-RPC
+      // -32601. The caller agent here drives `browser_*`, so it must be on.
+      mcp: { enabled: true, injectIntoAgents: true },
       browserTools: { enabled: true },
       cors: { allowedOrigins: ["*"] },
     },
@@ -249,7 +254,16 @@ async function connectMcpClient(transport) {
   const client = new McpClient({ name: "browser-tab-bridge-e2e", version: "1.0.0" });
   await client.connect(transport);
   return {
-    callTool: ({ name, args }) => client.callTool({ name, arguments: args }),
+    // Naming the tool on failure: a bare JSON-RPC code says nothing about which
+    // of the forty-odd calls in this regression produced it.
+    callTool: async ({ name, args }) => {
+      try {
+        return await client.callTool({ name, arguments: args });
+      } catch (error) {
+        error.message = `${name}: ${error.message}`;
+        throw error;
+      }
+    },
     close: () => client.close(),
   };
 }
