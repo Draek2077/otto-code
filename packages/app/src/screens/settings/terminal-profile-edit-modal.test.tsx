@@ -4,18 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalProfileEditModal, type ProfileDraft } from "./terminal-profile-edit-modal";
 
-// The real theme, not a hand-written stub: this modal keeps pulling in more
-// shared controls, and a stub only fails once one of them reads a missing token.
-vi.mock("react-native-unistyles", async () => {
-  const { darkTheme } = await import("@/styles/theme");
-  return {
-    StyleSheet: {
-      create: (factory: unknown) => (typeof factory === "function" ? factory(darkTheme) : factory),
-    },
-    useUnistyles: () => ({ theme: darkTheme }),
-  };
-});
-
+// `react-native-unistyles` is aliased to a stub for every test
+// (test-stubs/react-native-unistyles.ts), and that stub answers any scale key.
+// A local re-mock with a hand-written theme only breaks the day a shared
+// control this modal pulls in reads one more token.
 vi.mock("@/constants/platform", () => ({
   isWeb: true,
   isNative: false,
@@ -52,7 +44,11 @@ const inputPropsByTestID = vi.hoisted(() => ({
   map: new Map<string, { onChangeText?: (next: string) => void; onSubmitEditing?: () => void }>(),
 }));
 
-vi.mock("@/components/adaptive-modal-sheet", async () => {
+// Spread the real module: the sheet also exports layout constants that shared
+// controls below it read, and naming only the two components here means any
+// such addition fails this suite at collection.
+vi.mock("@/components/adaptive-modal-sheet", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/adaptive-modal-sheet")>();
   const ReactModule = await import("react");
   const AdaptiveModalSheet = ({
     visible,
@@ -119,7 +115,7 @@ vi.mock("@/components/adaptive-modal-sheet", async () => {
       });
     },
   );
-  return { AdaptiveModalSheet, AdaptiveTextInput };
+  return { ...actual, AdaptiveModalSheet, AdaptiveTextInput };
 });
 
 vi.mock("@/components/ui/button", async () => {

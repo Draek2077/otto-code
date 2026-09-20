@@ -72,18 +72,10 @@ vi.mock("react-native", async (importOriginal) => {
   };
 });
 
-// The real theme, not a hand-written stub: every shared control this surface
-// pulls in reads more tokens, and a stub only fails once one of them is missing.
-vi.mock("react-native-unistyles", async () => {
-  const { darkTheme } = await import("@/styles/theme");
-  return {
-    StyleSheet: {
-      create: (factory: unknown) => (typeof factory === "function" ? factory(darkTheme) : factory),
-    },
-    withUnistyles: <T,>(component: T) => component,
-    useUnistyles: () => ({ theme: darkTheme, rt: { breakpoint: "md" } }),
-  };
-});
+// `react-native-unistyles` is aliased to a stub for every test
+// (test-stubs/react-native-unistyles.ts), and that stub answers any scale key.
+// A local re-mock with a hand-written theme only breaks the day a shared control
+// this surface pulls in reads one more token.
 
 vi.mock("@/constants/platform", () => ({
   getIsElectron: () => false,
