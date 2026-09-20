@@ -101,6 +101,8 @@ describe("openProjectDirectly", () => {
           projectArtifactLocation: null,
           projectWorkflowLocation: null,
           projectCustomIconRevision: null,
+          projectIconRevision: undefined,
+          projectOffline: false,
           projectKind: "git",
           projectRootPath: PROJECT_PATH,
         },
@@ -203,6 +205,8 @@ describe("cloneGithubProjectDirectly", () => {
           projectArtifactLocation: null,
           projectWorkflowLocation: null,
           projectCustomIconRevision: null,
+          projectIconRevision: undefined,
+          projectOffline: false,
         },
       },
     ]);

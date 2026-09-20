@@ -60,8 +60,12 @@ it.each([
       return Boolean(image?.complete && image.naturalWidth === 1200);
     })
     .toBe(true);
+  // The viewport sizes its content from a ResizeObserver callback, so the box is
+  // still 0x0 for a frame after the image itself has loaded.
+  await expect
+    .poll(() => document.querySelector(previewSelector)!.getBoundingClientRect().width)
+    .toBeGreaterThan(240);
   const bounds = document.querySelector(previewSelector)!.getBoundingClientRect();
-  expect(bounds.width).toBeGreaterThan(240);
   expect(bounds.height).toBeGreaterThan(160);
   expect(bounds.left).toBeGreaterThanOrEqual(0);
   expect(bounds.right).toBeLessThanOrEqual(width);

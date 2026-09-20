@@ -91,7 +91,7 @@ describe("installed OAuth connector recovery", () => {
         hosted: { vendorId: "box", connected: true, scopes: ["root_readwrite"] },
       },
     });
-    expect(screen.getByText(/can read tokens while processing/)).toBeTruthy();
+    expect(screen.getByText(/handles sign-in through its shared service/)).toBeTruthy();
     expect(screen.getByText(/user@example.test/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reconnect" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();

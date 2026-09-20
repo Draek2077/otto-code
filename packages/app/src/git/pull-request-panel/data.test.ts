@@ -138,7 +138,7 @@ describe("mapPrPaneData", () => {
         provider: "github",
         name: "legacy status",
         status: "pending",
-        url: "https://github.com/getpaseo/paseo/pull/42",
+        url: "https://github.com/Draek2077/otto-code/pull/42",
       },
     ]);
   });

@@ -12,7 +12,8 @@ vi.mock("@/runtime/host-runtime", () => ({
   useHostRuntimeClient: () => ({ invokePluginRpc: async () => null }) as unknown as DaemonClient,
   useHosts: () => [{ serverId: "host-1", label: "Local" }],
 }));
-vi.mock("@/constants/layout", () => ({
+vi.mock("@/constants/layout", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/constants/layout")>()),
   useIsCompactFormFactor: () => false,
 }));
 vi.mock("../navigation", () => ({

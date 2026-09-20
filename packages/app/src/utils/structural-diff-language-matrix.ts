@@ -158,4 +158,10 @@ export const STRUCTURAL_DIFF_LANGUAGE_FIXTURES: readonly StructuralLanguageFixtu
     before: "<script>\n  let label = 'old';\n</script>\n\n<span>{label}</span>\n",
     after: "<script>\n  let label = 'new';\n</script>\n\n<span>{label}</span>\n",
   },
+  {
+    id: "astro",
+    extensions: ["astro"],
+    before: "---\nconst label = 'old';\n---\n\n<span>{label}</span>\n",
+    after: "---\nconst label = 'new';\n---\n\n<span>{label}</span>\n",
+  },
 ];

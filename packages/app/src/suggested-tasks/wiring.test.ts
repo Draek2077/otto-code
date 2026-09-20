@@ -11,7 +11,7 @@ const SERVER = "host-1";
 const PARENT = "agent-1";
 
 const contextSource = fs.readFileSync(
-  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../contexts/session-context.tsx"),
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../contexts/otto-session-events.ts"),
   "utf8",
 );
 
@@ -21,8 +21,8 @@ const contextSource = fs.readFileSync(
  * and nothing else writes to them.
  *
  * This pairing is asserted because losing it is silent. The Paseo v0.2.5 merge
- * (5e3cc1def) dropped both `client.on(...)` calls out of session-context while
- * leaving the store reducers, the selectors, the overlays and the agent-panel
+ * (5e3cc1def) dropped both `client.on(...)` calls out of the session wiring
+ * while leaving the store reducers, the selectors, the overlays and the agent-panel
  * wiring in place. Everything still typechecked, still linted and still
  * rendered - the suggested-task card simply had no data and returned null
  * forever, so "an agent suggested work" stopped reaching the user at all. A
@@ -41,14 +41,13 @@ describe("daemon push wiring for per-parent task lists", () => {
     expect(contextSource).toContain(`${reducer}(serverId, parentAgentId, tasks)`);
   });
 
-  it.each(PUSH_WIRING)("releases the $message subscription on teardown", ({ message }) => {
-    // The handle name the subscription is assigned to has to appear a second
-    // time, in the effect's cleanup - a subscription that outlives the effect
-    // leaks a handler per reconnect.
-    const assignment = new RegExp(`const (\\w+) = client\\.on\\(\\s*"${message}"`);
-    const handle = assignment.exec(contextSource)?.[1];
-    expect(handle, `no subscription handle found for ${message}`).toBeDefined();
-    expect(contextSource).toContain(`${handle}();`);
+  it("releases every subscription on teardown", () => {
+    // Every `client.on(...)` in this module is collected into one disposal list
+    // that the returned teardown drains - a subscription that outlives the
+    // effect leaks a handler per reconnect.
+    const collection = /const (\w+) = \[/.exec(contextSource)?.[1];
+    expect(collection, "no subscription list found").toBeDefined();
+    expect(contextSource).toContain(`return () => ${collection}.forEach((dispose) => dispose());`);
   });
 });
 

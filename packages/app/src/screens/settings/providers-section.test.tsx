@@ -145,7 +145,8 @@ vi.mock("@/components/icons/material-icons", async (importOriginal) => {
   return Object.fromEntries(Object.keys(actual).map((name) => [name, icon(name)]));
 });
 
-vi.mock("react-i18next", () => ({
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-i18next")>()),
   useTranslation: () => ({
     t: (key: string, values?: Record<string, string | number>) => {
       if (key === "settings.providers.providerDetails") return `${values?.name} provider details`;
@@ -450,6 +451,7 @@ describe("ProvidersSection", () => {
     expect(openProviderSettingsMock).toHaveBeenCalledWith({
       serverId: "server-1",
       provider: "codex",
+      settingId: null,
     });
   });
 

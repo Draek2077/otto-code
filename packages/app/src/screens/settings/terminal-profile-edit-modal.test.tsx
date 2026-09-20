@@ -4,32 +4,17 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalProfileEditModal, type ProfileDraft } from "./terminal-profile-edit-modal";
 
-const { theme } = vi.hoisted(() => ({
-  theme: {
-    spacing: { 2: 8, 3: 12, 4: 16, 6: 24 },
-    fontSize: { sm: 13, base: 15, xs: 11 },
-    fontWeight: { medium: 500 },
-    borderRadius: { md: 6, lg: 8, xl: 12 },
-    borderWidth: { 1: 1 },
-    opacity: { 50: 0.5 },
-    colors: {
-      surface2: "#222",
-      foreground: "#fff",
-      foregroundMuted: "#aaa",
-      border: "#555",
-      accent: "#0a84ff",
-      borderAccent: "#555",
-      palette: { red: { 300: "#f87171" } },
+// The real theme, not a hand-written stub: this modal keeps pulling in more
+// shared controls, and a stub only fails once one of them reads a missing token.
+vi.mock("react-native-unistyles", async () => {
+  const { darkTheme } = await import("@/styles/theme");
+  return {
+    StyleSheet: {
+      create: (factory: unknown) => (typeof factory === "function" ? factory(darkTheme) : factory),
     },
-  },
-}));
-
-vi.mock("react-native-unistyles", () => ({
-  StyleSheet: {
-    create: (factory: unknown) => (typeof factory === "function" ? factory(theme) : factory),
-  },
-  useUnistyles: () => ({ theme }),
-}));
+    useUnistyles: () => ({ theme: darkTheme }),
+  };
+});
 
 vi.mock("@/constants/platform", () => ({
   isWeb: true,

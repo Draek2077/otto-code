@@ -78,6 +78,13 @@ vi.mock("@/components/adaptive-modal-sheet", async () => {
 vi.mock("react-native-reanimated", () => ({
   default: { View: "div" },
   Easing: { ease: "ease", inOut: (value: unknown) => value },
+  Keyframe: class {
+    duration() {
+      return this;
+    }
+  },
+  FadeIn: { duration: () => ({}) },
+  FadeOut: { duration: () => ({}) },
   interpolateColor: (value: number, _input: number[], output: string[]) =>
     value >= 1 ? output[1] : output[0],
   useAnimatedStyle: (factory: () => unknown) => factory(),

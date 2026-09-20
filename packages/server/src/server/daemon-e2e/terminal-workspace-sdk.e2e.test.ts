@@ -10,10 +10,15 @@ import { createTestOttoDaemon, type TestOttoDaemon } from "../test-utils/otto-da
 let daemon: TestOttoDaemon;
 let client: DaemonClient;
 let cwd: string;
+// A second directory, because a directory may back only one live workspace
+// (WorkspaceDirectoryOccupiedError). Terminals still take an explicit cwd, so
+// the shared-directory coverage below is unaffected.
+let otherCwd: string;
 let sdk: OttoClient;
 
 beforeEach(async () => {
   cwd = await mkdtemp(path.join(tmpdir(), "terminal-workspace-sdk-"));
+  otherCwd = await mkdtemp(path.join(tmpdir(), "terminal-workspace-sdk-other-"));
   daemon = await createTestOttoDaemon();
   client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
   await client.connect();
@@ -26,11 +31,12 @@ afterEach(async () => {
   await sdk.close();
   await daemon.close();
   await rm(cwd, { recursive: true, force: true });
+  await rm(otherCwd, { recursive: true, force: true });
 });
 
 test("SDK and workspace handles preserve ownership and actual process directories", async () => {
   const first = await createWorkspace("main");
-  const second = await createWorkspace("feature-work");
+  const second = await createWorkspace("feature-work", otherCwd);
   const nested = path.join(cwd, "nested");
   await mkdir(nested);
   const a = await sdk.terminals.create({ workspaceId: first, name: "Main" });
@@ -172,15 +178,18 @@ export default function contribute(server) {
   }
 }, 30_000);
 
-async function createWorkspace(title: string): Promise<string> {
-  const result = await client.createWorkspace({ source: { kind: "directory", path: cwd }, title });
+async function createWorkspace(title: string, directory: string = cwd): Promise<string> {
+  const result = await client.createWorkspace({
+    source: { kind: "directory", path: directory },
+    title,
+  });
   if (!result.workspace) throw new Error(result.error ?? "Workspace creation failed");
   return result.workspace.id;
 }
 
 test("listing by workspace ID keeps terminals in a shared directory separate", async () => {
   const first = await createWorkspace("main");
-  const second = await createWorkspace("feature-work");
+  const second = await createWorkspace("feature-work", otherCwd);
   await client.createTerminal(cwd, "main terminal", undefined, { workspaceId: first });
   const created = await client.createTerminal(cwd, "feature terminal", undefined, {
     workspaceId: second,

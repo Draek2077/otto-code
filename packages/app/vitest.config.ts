@@ -1,4 +1,5 @@
 import { defineConfig, configDefaults } from "vitest/config";
+import { transformWithEsbuild, type Plugin } from "vite";
 import { playwright } from "@vitest/browser-playwright";
 import path from "path";
 import fs from "fs";
@@ -156,7 +157,32 @@ const webExtensions = [
   ".json",
 ];
 
+/**
+ * Packages that ship JSX inside plain `.js` files, which Vite's own pipeline
+ * refuses: it picks the loader from the extension, so `vite:import-analysis`
+ * (or rollup, in the SSR transform) fails on the first tag and everything
+ * downstream of them fails to collect. The dependency optimizer is already told
+ * to read `.js` as JSX (`optimizeDeps.esbuildOptions.loader` below); the
+ * Node-environment projects transform these in place instead, which is what
+ * this covers.
+ */
+const JSX_IN_JS_PACKAGES = ["react-native-markdown-display", "expo-clipboard"];
+
+function jsxInJsDependencies(): Plugin {
+  return {
+    name: "otto:jsx-in-js-dependencies",
+    enforce: "pre",
+    async transform(code, id) {
+      if (!id.endsWith(".js")) return null;
+      const normalized = id.split(path.sep).join("/");
+      if (!JSX_IN_JS_PACKAGES.some((name) => normalized.includes(`/${name}/`))) return null;
+      return transformWithEsbuild(code, id, { loader: "jsx", jsx: "automatic" });
+    },
+  };
+}
+
 export default defineConfig({
+  plugins: [jsxInJsDependencies()],
   // Expo's tsconfig preserves JSX for Babel, whose preset uses the automatic
   // runtime. Vitest uses esbuild instead, so select the same runtime explicitly.
   esbuild: { jsx: "automatic" },
@@ -198,7 +224,20 @@ export default defineConfig({
         // find it for itself (it bails when a workspace `dist` isn't built yet).
         // The lightbox's expo-image import must also be ready before a click
         // mounts it; lazy optimization reloads the test mid-interaction.
-        optimizeDeps: { include: ["mermaid", "expo-image"] },
+        // Crawl every browser test up front so the optimizer sees the whole
+        // suite's dependency set in one pass. Vitest runs these files serially
+        // against one Vite server, so a dep discovered by the tenth file
+        // re-optimizes and reloads, and whichever file was mid-import dies with
+        // "Failed to fetch dynamically imported module" - a failure that moves
+        // between files as the shard split changes.
+        optimizeDeps: {
+          entries: ["src/**/*.browser.{test,spec}.{ts,tsx}"],
+          // `react/jsx-dev-runtime` is invisible to the scanner: esbuild reads
+          // the source JSX, and only the served transform rewrites it to the
+          // dev runtime. Listing it keeps the very first test from paying for
+          // an optimize-and-reload.
+          include: ["mermaid", "expo-image", "react/jsx-runtime", "react/jsx-dev-runtime"],
+        },
         // expo-router's build output carries JSX in plain `.js` files that the
         // dependency optimizer cannot parse. Any browser test whose import
         // graph reaches the router aborted the optimizer mid-run and every file
@@ -245,7 +284,15 @@ export default defineConfig({
     server: {
       deps: {
         fallbackCJS: true,
-        inline: ["zustand", "@tanstack/react-query", "react-native-web"],
+        // Inlined so Vite transforms them instead of Node `require`-ing them:
+        // externalized, each reaches the real `react-native` past the alias
+        // below and dies on its Flow syntax.
+        inline: [
+          "zustand",
+          "@tanstack/react-query",
+          "react-native-web",
+          "react-native-markdown-display",
+        ],
       },
     },
   },
@@ -341,6 +388,36 @@ export default defineConfig({
       {
         find: /^react-native-reanimated\/scripts\/validate-worklets-version$/,
         replacement: path.resolve(__dirname, "test-stubs/reanimated-validate-worklets-version.ts"),
+      },
+      // A CJS build that `require`s `react-native`; Node resolves that past the
+      // alias below and into the real Flow-typed source. Only the Markdown
+      // renderer reaches it, and only to size a remote image it never loads
+      // here, so the stub is the whole of what tests need.
+      {
+        find: /^react-native-fit-image$/,
+        replacement: path.resolve(__dirname, "test-stubs/react-native-fit-image.ts"),
+      },
+      // Ships no build: the entry is JSX source. Resolved as a bare dependency
+      // it gets externalized and `require`d by Node, which then reaches the real
+      // Flow-typed `react-native`. Pointing at the file makes it a source module
+      // Vite transforms (see the JSX plugin above) with the aliases applied.
+      {
+        find: /^react-native-markdown-display$/,
+        replacement: path.resolve(
+          resolvePackageEntry("react-native-markdown-display"),
+          "src/index.js",
+        ),
+      },
+      // The package's `main` is CJS that `require`s `react-native`, which Node
+      // resolves past Vite's alias and into the real Flow-typed source. Pointing
+      // at the ESM build keeps the import inside Vite, where the react-native
+      // alias below lands it on react-native-web.
+      {
+        find: /^@floating-ui\/react-native$/,
+        replacement: path.resolve(
+          resolvePackageEntry("@floating-ui/react-native"),
+          "dist/floating-ui.react-native.esm.js",
+        ),
       },
       {
         find: /^expo-linking$/,

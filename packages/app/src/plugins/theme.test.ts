@@ -107,7 +107,7 @@ describe("plugin theme palettes", () => {
         cursor: "#cdd6f4",
         cursorAccent: "#1e1e2e",
         black: "#45475a",
-        brightBlack: "#6c7086",
+        brightBlack: "#d4d4d8",
       },
     });
   });

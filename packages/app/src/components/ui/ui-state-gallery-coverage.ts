@@ -37,6 +37,8 @@ export const UI_STATE_GALLERY_COVERED_FILES = [
  */
 export const UI_STATE_GALLERY_EXEMPTIONS: Readonly<Record<string, string>> = {
   "autocomplete-popover.tsx": "Composition of the covered Autocomplete and floating surface.",
+  "bottom-sheet-scope.tsx":
+    "Context provider marking sheet descendants; it renders none of its own chrome.",
   "horizontal-scroll-boundary.tsx":
     "Exports a scroll-boundary hook only; it renders nothing of its own.",
   "overlay-scrollbar/dom-overlay-scrollbar.tsx":
@@ -49,6 +51,14 @@ export const UI_STATE_GALLERY_EXEMPTIONS: Readonly<Record<string, string>> = {
     "Animation driver hook for the skeletons that use it; it renders no element itself.",
   "skeleton-pulse.web.tsx":
     "Web variant of the same driver hook, sharing its timing with the native one.",
+  "text-input/composer-text-input.tsx":
+    "Composer editing primitive with no chrome of its own; image paste stays on the composer's DOM listener.",
+  "text-input/composer-text-input.native.tsx":
+    "Native variant of the same unstyled composer primitive, differing only in paste handling.",
+  "text-input/sheet-aware.tsx":
+    "Registers a field's focus with the enclosing sheet; the wrapping field owns every visible state.",
+  "text-input/text-input.native.tsx":
+    "Native variant of the unstyled editing primitive, differing only in platform input handling.",
   "text-input/text-input.tsx":
     "Editing-surface primitive with no chrome of its own; the fields that wrap it are covered.",
   "text-input/text-input.web.tsx":
@@ -76,6 +86,18 @@ export const UI_STATE_GALLERY_EXEMPTIONS: Readonly<Record<string, string>> = {
     "Submenu variant of the covered MenuItem engine; no gallery fixture opens a submenu page.",
   "menu/menu-surface.tsx":
     "Popover and sheet engine rendered through the covered DropdownMenuContent fixture.",
+  "pane-overlay.tsx":
+    "Native pass-through for the pane overlay layer; it draws nothing on its own.",
+  "pane-overlay.web.tsx":
+    "Web layering and clipping for whatever a pane floats above it; no standalone resting state.",
+  "refresh-button.tsx":
+    "Fixed label and icon over the covered ToolbarIconButton, with no chrome of its own.",
+  "scroll-view.tsx":
+    "Platform scroll-container selection (sheet, gesture, plain); the scrolled content owns the chrome.",
+  "scroll-view.web.tsx":
+    "Web scroll-container variant of the same selection, differing only in overflow handling.",
+  "scroll-viewport-context.tsx":
+    "Publishes the scroll owner and content refs to descendants; it renders no element.",
   "pinnable-toolbar.tsx":
     "Composition of the covered toolbar buttons, dropdown menu, and tooltip primitives.",
   "overlay-scrollbar/use-overlay-flat-list-scrollbar.tsx":

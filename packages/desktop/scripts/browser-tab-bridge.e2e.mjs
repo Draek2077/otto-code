@@ -8,7 +8,7 @@ import path from "node:path";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { experimental_createMCPClient } from "ai";
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { chromium } from "playwright";
 import { verifyComposerFocus } from "../e2e/browser-composer-focus.e2e.mjs";
@@ -240,6 +240,20 @@ function mcpPayload(result, command) {
   return payload.result;
 }
 
+/**
+ * The MCP SDK client behind the `{ name, args }` shape every call site here
+ * uses. The AI SDK's MCP wrapper provided it until v5 removed the export; the
+ * transport was always the MCP SDK's own.
+ */
+async function connectMcpClient(transport) {
+  const client = new McpClient({ name: "browser-tab-bridge-e2e", version: "1.0.0" });
+  await client.connect(transport);
+  return {
+    callTool: ({ name, args }) => client.callTool({ name, arguments: args }),
+    close: () => client.close(),
+  };
+}
+
 async function callBrowserTool(client, name, args = {}) {
   return mcpPayload(await client.callTool({ name, args }), name);
 }
@@ -248,7 +262,7 @@ async function createCallerAgent(daemonPort) {
   const transport = new StreamableHTTPClientTransport(
     new URL(`http://127.0.0.1:${daemonPort}/mcp/agents`),
   );
-  const client = await experimental_createMCPClient({ transport });
+  const client = await connectMcpClient(transport);
   try {
     const response = await client.callTool({
       name: "create_chat",
@@ -518,7 +532,7 @@ async function main() {
         `http://127.0.0.1:${daemonPort}/mcp/agents?callerAgentId=${encodeURIComponent(callerAgentId)}`,
       ),
     );
-    client = await experimental_createMCPClient({ transport });
+    client = await connectMcpClient(transport);
     const composerFocus = await verifyComposerFocus({
       page,
       client,

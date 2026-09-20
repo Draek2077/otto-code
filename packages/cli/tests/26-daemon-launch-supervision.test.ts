@@ -76,8 +76,11 @@ for (const [label, sourcePath] of [
   ["app demo-capture global setup", appDemoGlobalSetupPath],
 ] as const) {
   const source = await readFile(sourcePath, "utf-8");
+  // Two spellings are in use and both are fine: the inline `tsx/cli` argv, and
+  // the `spawnTsx` helper that hides Node's `--import tsx` prelude. The
+  // invariant is the entrypoint and the dev flag, not how tsx is reached.
   assert(
-    source.includes('[tsxCli, "scripts/supervisor-entrypoint.ts", "--dev"]'),
+    /supervisor-entrypoint\.ts",?\s*(?:\[\s*)?"--dev"/.test(source),
     `${label} should spawn supervisor-entrypoint.ts with --dev`,
   );
   assertNoSpawnedWorkerEntrypoint(label, source);

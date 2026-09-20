@@ -24,30 +24,9 @@ import {
 
 void testI18n;
 
-const { theme, pressablePropsByLabel } = vi.hoisted(() => {
+const { pressablePropsByLabel } = vi.hoisted(() => {
   Object.assign(globalThis, { __DEV__: false });
   return {
-    theme: {
-      spacing: { 1: 4, 2: 8, 3: 12 },
-      borderWidth: { 1: 1 },
-      borderRadius: { base: 4, md: 6, lg: 8, xl: 12, full: 999 },
-      opacity: { 50: 0.5 },
-      fontSize: { xs: 11, sm: 13 },
-      fontWeight: { normal: "400", medium: "500" },
-      lineHeight: { diff: 18 },
-      colors: {
-        accent: "#0a84ff",
-        accentForeground: "#fff",
-        border: "#555",
-        destructive: "#ff453a",
-        foreground: "#fff",
-        foregroundMuted: "#aaa",
-        surface1: "#111",
-        surface2: "#222",
-        surface3: "#333",
-        palette: { white: "#fff" },
-      },
-    },
     pressablePropsByLabel: new Map<string, Record<string, unknown>>(),
   };
 });
@@ -93,13 +72,18 @@ vi.mock("react-native", async (importOriginal) => {
   };
 });
 
-vi.mock("react-native-unistyles", () => ({
-  StyleSheet: {
-    create: (factory: unknown) => (typeof factory === "function" ? factory(theme) : factory),
-  },
-  withUnistyles: <T,>(component: T) => component,
-  useUnistyles: () => ({ theme, rt: { breakpoint: "md" } }),
-}));
+// The real theme, not a hand-written stub: every shared control this surface
+// pulls in reads more tokens, and a stub only fails once one of them is missing.
+vi.mock("react-native-unistyles", async () => {
+  const { darkTheme } = await import("@/styles/theme");
+  return {
+    StyleSheet: {
+      create: (factory: unknown) => (typeof factory === "function" ? factory(darkTheme) : factory),
+    },
+    withUnistyles: <T,>(component: T) => component,
+    useUnistyles: () => ({ theme: darkTheme, rt: { breakpoint: "md" } }),
+  };
+});
 
 vi.mock("@/constants/platform", () => ({
   getIsElectron: () => false,
@@ -108,17 +92,14 @@ vi.mock("@/constants/platform", () => ({
   isWeb: true,
 }));
 
-vi.mock("@/components/icons/material-icons", () => {
+// Every icon this tree pulls in - directly or through a shared control - renders
+// as a tagged span. Listing them by name would break whenever an unrelated
+// component beneath the surface reaches for one more glyph.
+vi.mock("@/components/icons/material-icons", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
   const createIcon = (name: string) => (props: Record<string, unknown>) =>
     React.createElement("span", { ...props, "data-icon": name });
-  return {
-    Check: createIcon("Check"),
-    CircleDot: createIcon("CircleDot"),
-    Pencil: createIcon("Pencil"),
-    Plus: createIcon("Plus"),
-    Trash2: createIcon("Trash2"),
-    X: createIcon("X"),
-  };
+  return Object.fromEntries(Object.keys(actual).map((name) => [name, createIcon(name)]));
 });
 
 function target(overrides: Partial<ReviewableDiffTarget> = {}): ReviewableDiffTarget {

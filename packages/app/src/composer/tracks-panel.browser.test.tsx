@@ -1,6 +1,7 @@
 import React, { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Pressable, Text } from "react-native";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComposerTrackPill, ComposerTrackRow, type ComposerTrackPillSegment } from "./tracks";
 
@@ -22,11 +23,14 @@ interface Mounted {
 
 const mounted: Mounted[] = [];
 
+// The menu overlay reads the animations preference through app settings, which
+// is a react-query read; without a provider the surface throws on mount.
 function mount(node: ReactNode): HTMLDivElement {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  act(() => root.render(node));
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  act(() => root.render(<QueryClientProvider client={queryClient}>{node}</QueryClientProvider>));
   mounted.push({ root, container });
   return container;
 }
