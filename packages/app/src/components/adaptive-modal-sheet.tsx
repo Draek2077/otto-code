@@ -1093,7 +1093,18 @@ export function AdaptiveModalSheet({
           style={ABSOLUTE_FILL_STYLE}
           onPress={onClose}
         />
-        <View ref={setWebOverlayScope} style={desktopCardStyle}>
+        {/*
+          The desktop card is portalled straight into the overlay root, so
+          nothing upstream contributes the dialog semantics that React Native's
+          own Modal gives the native path. Same shape the combobox surface uses.
+        */}
+        <View
+          ref={setWebOverlayScope}
+          style={desktopCardStyle}
+          role="dialog"
+          aria-modal
+          aria-label={header.title}
+        >
           {cardInner}
         </View>
       </View>
