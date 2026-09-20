@@ -17,6 +17,7 @@ const sidebar = "packages/app/src/components/left-sidebar.tsx";
 const catalog = "packages/app/src/plugins/catalog-sync.tsx";
 const command = "packages/app/src/plugins/command-center/registration.tsx";
 const sidebarItems = "packages/app/src/plugins/sidebar-items.tsx";
+const sidebarNavRows = "packages/app/src/components/sidebar/sidebar-nav-rows.tsx";
 const migration = SKILL_OWNERS.migration.file;
 const startup = SKILL_OWNERS.startup.file;
 const bootstrap = SKILL_OWNERS.bootstrap.file;
@@ -41,18 +42,24 @@ function AppContainer() {
     [
       sidebar,
       `import { memo } from "react";
-import { PluginSidebarItems as Items } from "@/plugins";
+import { SidebarNavRows } from "@/components/sidebar/sidebar-nav-rows";
 export const LeftSidebar = memo(function LeftSidebar() { return compact ? <MobileSidebar/> : <DesktopSidebar/>; });
-function MobileSidebar({closeSidebar}) { return <Items onBeforeNavigate={closeSidebar}/>; }
-function DesktopSidebar() { return <Items/>; }`,
+function MobileSidebar({closeSidebar}) { return <SidebarNavigationHeader onBeforeNavigate={closeSidebar}/>; }
+function DesktopSidebar() { return <SidebarNavigationHeader/>; }
+function SidebarNavigationHeader({onBeforeNavigate}) { return <SidebarNavRows onBeforeNavigate={onBeforeNavigate}/>; }`,
     ],
     [
       "packages/app/src/plugins/index.ts",
-      'export { PluginCatalogSync } from "./catalog-sync"; export { PluginSidebarItems } from "./sidebar-items";',
+      'export { PluginCatalogSync } from "./catalog-sync"; export { PluginSidebarItemRow } from "./sidebar-items";',
     ],
     [catalog, "export function PluginCatalogSync() { return null; }"],
     [command, "export function PluginCommandCenterActions() { return null; }"],
-    [sidebarItems, "export function PluginSidebarItems() { return null; }"],
+    [sidebarItems, "export function PluginSidebarItemRow() { return null; }"],
+    [
+      sidebarNavRows,
+      `import { PluginSidebarItemRow as Row } from "@/plugins/sidebar-items";
+export function SidebarNavRows({onBeforeNavigate}) { return <Row onBeforeNavigate={onBeforeNavigate}/>; }`,
+    ],
     [
       "packages/app/src/contexts/session-context.tsx",
       "export function SessionProvider({children}) { return children; }",
@@ -132,10 +139,10 @@ for (const [label, file, mount, id] of [
   [
     "compact sidebar",
     sidebar,
-    "<Items onBeforeNavigate={closeSidebar}/>",
+    "<SidebarNavigationHeader onBeforeNavigate={closeSidebar}/>",
     "plugin-sidebar-compact",
   ],
-  ["wide sidebar", sidebar, "<Items/>", "plugin-sidebar-wide"],
+  ["wide sidebar", sidebar, "<SidebarNavigationHeader/>", "plugin-sidebar-wide"],
   ["migration", root, "<LegacyAgentSkillsMigration/>", "skills-renderer"],
 ])
   test(`missing ${label} mount fails despite its import and helper test`, () => {

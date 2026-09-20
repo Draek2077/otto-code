@@ -55,6 +55,15 @@ describe("retained native gesture host appearance placement", () => {
             parent.thenStatement === child
           )
             webOnly = true;
+          // The same gate written as an expression. `const x = isWeb ? <A>…</A> : …`
+          // says what the `if` form says, and the merge integration guard reads a
+          // reassigned `let` as an unreviewed render expression.
+          if (
+            ts.isConditionalExpression(parent) &&
+            parent.condition.getText(source) === "isWeb" &&
+            parent.whenTrue === child
+          )
+            webOnly = true;
           if (
             ts.isJsxElement(parent) &&
             parent.openingElement.tagName.getText(source) === "AppearanceStyleBoundary"
