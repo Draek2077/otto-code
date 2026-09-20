@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.18 - 2026-09-19
+
+### Fixed
+
+- Keep sidebar resize handles visible and usable while the sidebars are docked or temporarily revealed
+- Keep a temporarily revealed sidebar floating when switching tabs
+- Show temporarily revealed sidebars above the Visualizer
+- Reveal collapsed sidebars from the window edge even when a browser pane touches that edge
+- Resize the splitter between side-by-side browser panes
+- Keep an unfocused workspace pane expanded when maximizing it
+
 ## 0.9.17 - 2026-09-19
 
 ### Added
