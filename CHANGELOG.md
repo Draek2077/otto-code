@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.19 - 2026-09-20
+
+### Fixed
+
+- Show browser pages edge to edge without a white frame around the pane
+- Reveal collapsed sidebars from the window edge over a browser pane without shrinking the page
+- Resize side-by-side browser panes from their splitter without shrinking the page
+- Announce desktop dialogs to screen readers as dialogs again
+
 ## 0.9.18 - 2026-09-19
 
 ### Fixed
