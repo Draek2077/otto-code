@@ -22,6 +22,7 @@ import {
   setCommandCenterFocusRestoreElement,
   takeCommandCenterFocusRestoreElement,
 } from "../../utils/command-center-focus-restore";
+import { subscribeSidebarEdgePointer } from "@/components/sidebar-edge-peek/sidebar-edge-pointer";
 
 const RESIDENT_HOST_ID = "otto-browser-resident-webviews";
 
@@ -118,7 +119,7 @@ function expectPermanentHostParking(host: HTMLElement): void {
   expect(host.style.opacity).toBe("1");
   expect(host.style.pointerEvents).toBe("none");
   expect(host.style.display).toBe("block");
-  expect(host.style.zIndex).toBe("0");
+  expect(host.style.zIndex).toBe("");
 }
 
 function expectParkedSurface(surface: HTMLElement): void {
@@ -132,6 +133,8 @@ function expectParkedSurface(surface: HTMLElement): void {
   expect(surface.style.opacity).toBe("1");
   expect(surface.style.pointerEvents).toBe("none");
   expect(surface.style.display).toBe("block");
+  expect(surface.style.zIndex).toBe("-1");
+  expect(surface.style.clipPath).toBe("");
   expect(surface.style.visibility).toBe("visible");
   expect(surface.style.transform).toBe("");
 }
@@ -197,11 +200,13 @@ describe("resident browser webviews", () => {
       mode: "responsive",
     });
     expect(webview.parentElement).toBe(permanentParent);
-    expect(permanentParent.style.left).toBe("41px");
-    expect(permanentParent.style.top).toBe("61px");
-    expect(permanentParent.style.width).toBe("638px");
-    expect(permanentParent.style.height).toBe("478px");
+    expect(permanentParent.style.left).toBe("40px");
+    expect(permanentParent.style.top).toBe("60px");
+    expect(permanentParent.style.width).toBe("640px");
+    expect(permanentParent.style.height).toBe("480px");
     expect(permanentParent.style.pointerEvents).toBe("auto");
+    expect(permanentParent.style.zIndex).toBe("0");
+    expect(permanentParent.style.clipPath).toBe("");
     expect(permanentParent.getAttribute("aria-hidden")).toBe("false");
     expect(webview.style.flex).toBe("0 0 auto");
     expect(webview.style.width).toBe("640px");
@@ -218,7 +223,7 @@ describe("resident browser webviews", () => {
   });
 
   it.each([0, 0.125, 0.5, 0.875])(
-    "leaves every responsive pane boundary app-owned at fractional offset %s",
+    "paints every responsive pane edge-to-edge at fractional offset %s",
     (fraction) => {
       const browserId = `browser-fractional-${fraction}`;
       const webview = ensureTestBrowser({
@@ -240,18 +245,12 @@ describe("resident browser webviews", () => {
         const pane = anchor.getBoundingClientRect();
         const surface = webview.parentElement!.getBoundingClientRect();
         const guest = webview.getBoundingClientRect();
-        expect(surface.left).toBeGreaterThan(pane.left);
-        expect(surface.top).toBeGreaterThan(pane.top);
-        expect(surface.right).toBeLessThan(pane.right);
-        expect(surface.bottom).toBeLessThan(pane.bottom);
-        expect(surface.left - pane.left).toBeGreaterThanOrEqual(1);
-        expect(surface.top - pane.top).toBeGreaterThanOrEqual(1);
-        expect(pane.right - surface.right).toBeGreaterThanOrEqual(1);
-        expect(pane.bottom - surface.bottom).toBeGreaterThanOrEqual(1);
-        expect(guest.left).toBeLessThanOrEqual(pane.left);
-        expect(guest.top).toBeLessThanOrEqual(pane.top);
-        expect(guest.right).toBeGreaterThanOrEqual(pane.right);
-        expect(guest.bottom).toBeGreaterThanOrEqual(pane.bottom);
+        expect(surface.left).toBe(pane.left);
+        expect(surface.top).toBe(pane.top);
+        expect(surface.right).toBe(pane.right);
+        expect(surface.bottom).toBe(pane.bottom);
+        expect(guest.left).toBe(pane.left);
+        expect(guest.top).toBe(pane.top);
         expect(readResidentBrowserPresentation(browserId)).toMatchObject({
           viewportWidth: guest.width,
           viewportHeight: guest.height,
@@ -262,7 +261,7 @@ describe("resident browser webviews", () => {
     },
   );
 
-  it("keeps both outer window edges outside a full-width browser guest", () => {
+  it("paints a full-width browser guest to both outer window edges", () => {
     const browserId = "browser-window-edges";
     const webview = ensureTestBrowser({
       browserId,
@@ -277,8 +276,44 @@ describe("resident browser webviews", () => {
     presentBrowserWebview(browserId, webview, anchor, anchor, { mode: "responsive" });
 
     const surface = webview.parentElement!.getBoundingClientRect();
-    expect(surface.left).toBeGreaterThanOrEqual(1);
-    expect(window.innerWidth - surface.right).toBeGreaterThanOrEqual(1);
+    expect(surface.left).toBe(0);
+    expect(surface.right).toBe(window.innerWidth);
+  });
+
+  it("forwards a guest edge pointer and yields input until it leaves the edge", () => {
+    const browserId = "browser-edge-pointer";
+    const webview = ensureTestBrowser({
+      browserId,
+      workspaceId: "workspace-edge-pointer",
+      url: "https://example.com",
+    })!;
+    const anchor = document.createElement("div");
+    Object.defineProperty(anchor, "getBoundingClientRect", {
+      value: () => ({ left: 40, top: 60, width: 640, height: 480 }),
+    });
+    presentBrowserWebview(browserId, webview, anchor, anchor, { mode: "responsive" });
+    const surface = webview.parentElement!;
+    const received: Array<{ x: number; y: number; buttons: number }> = [];
+    const unsubscribe = subscribeSidebarEdgePointer((input) => received.push(input));
+
+    try {
+      webview.dispatchEvent(
+        Object.assign(new Event("ipc-message"), {
+          channel: "otto-browser-edge-pointer",
+          args: [{ x: 0, y: 20, buttons: 0 }],
+        }),
+      );
+
+      expect(received).toEqual([{ x: 40, y: 80, buttons: 0 }]);
+      expect(surface.style.pointerEvents).toBe("none");
+
+      document.dispatchEvent(
+        new MouseEvent("mousemove", { clientX: 100, clientY: 100, buttons: 0 }),
+      );
+      expect(surface.style.pointerEvents).toBe("auto");
+    } finally {
+      unsubscribe();
+    }
   });
 
   it.each([
@@ -422,21 +457,21 @@ describe("resident browser webviews", () => {
       height: 1440,
     });
 
-    expect(webview.parentElement.style.left).toBe("101px");
-    expect(webview.parentElement.style.top).toBe("151px");
-    expect(webview.parentElement.style.width).toBe("798px");
-    expect(webview.parentElement.style.height).toBe("598px");
-    expect(webview.style.left).toBe("-901px");
-    expect(webview.style.top).toBe("-451px");
+    expect(webview.parentElement.style.left).toBe("100px");
+    expect(webview.parentElement.style.top).toBe("150px");
+    expect(webview.parentElement.style.width).toBe("800px");
+    expect(webview.parentElement.style.height).toBe("600px");
+    expect(webview.style.left).toBe("-900px");
+    expect(webview.style.top).toBe("-450px");
     expect(webview.style.width).toBe("2560px");
     expect(webview.style.height).toBe("1440px");
 
     resizeResidentBrowserWebview({ browserId: "browser-oversized", width: 2560, height: 1440 });
 
-    expect(webview.style.left).toBe("-901px");
-    expect(webview.style.top).toBe("-451px");
-    expect(webview.parentElement.style.width).toBe("798px");
-    expect(webview.parentElement.style.height).toBe("598px");
+    expect(webview.style.left).toBe("-900px");
+    expect(webview.style.top).toBe("-450px");
+    expect(webview.parentElement.style.width).toBe("800px");
+    expect(webview.parentElement.style.height).toBe("600px");
   });
 
   it("creates a resident webview for an agent-created unfocused tab", () => {

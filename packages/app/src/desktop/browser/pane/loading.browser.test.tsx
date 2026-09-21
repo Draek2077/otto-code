@@ -427,6 +427,17 @@ describe("browser loading controls", () => {
 });
 
 describe("browser usability", () => {
+  it("keeps the full-bleed browser underlay non-white", () => {
+    act(() => root.render(<BrowserTab />));
+
+    const clip = container.querySelector<HTMLElement>(
+      `[data-testid="browser-webview-clip-${browserId}"]`,
+    )!;
+    expect((clip.firstElementChild as HTMLElement).style.background).toBe("transparent");
+    expect(getComputedStyle(clip).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+    expect(getComputedStyle(clip).backgroundColor).not.toBe("rgb(255, 255, 255)");
+  });
+
   it("opens find from a guest shortcut only for the addressed tab and restores input focus", async () => {
     act(() => root.render(<BrowserTab />));
     act(() => browserTest.shortcut?.({ action: "find", browserId: "another-tab" }));

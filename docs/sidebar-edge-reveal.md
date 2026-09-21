@@ -53,9 +53,12 @@ Timing and geometry rules, all in `sidebar-edge-reveal.ts`:
   button is held (resizing, dragging a tab), and while any web overlay (menu, dialog) is open, so
   a context menu opened from the peeked sidebar does not dismiss it. Otherwise it dismisses 300 ms
   after the pointer leaves.
-- Electron browser guests are clipped one CSS pixel inside each pane edge. The guest keeps its full
-  viewport dimensions, but that app-owned boundary lets the existing screen-edge trigger and
-  between-pane splitter receive the first pointer event before the native guest can consume it.
+- Electron browser guests remain full-bleed to every pane edge. Their trusted, main-process-owned
+  preload forwards pointer movement near the guest's horizontal edges into this same controller.
+  The resident surface briefly yields input there so the existing splitter can receive pointer-down;
+  once a floating sidebar mounts, browser input stays suspended until the overlay leaves. Browser
+  tabs therefore use the same sidebar and splitter mechanisms as ordinary tabs without reserving a
+  visible frame around the page.
 
 ## Known limits
 

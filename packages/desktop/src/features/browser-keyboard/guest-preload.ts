@@ -4,6 +4,11 @@ import type { BrowserKeyboardPolicy, BrowserShortcutPrefix } from "./policy.js";
 const POLICY_CHANNEL = "otto:browser-keyboard-policy";
 const POLICY_REQUEST_CHANNEL = "otto:browser-keyboard-policy-request";
 const SHORTCUT_INPUT_CHANNEL = "otto:browser-shortcut-input";
+// Sandboxed Electron preloads cannot require neighboring runtime modules. Keep
+// this edge bridge self-contained; the matching host channel is declared in
+// resident-webviews.ts.
+const BROWSER_EDGE_POINTER_CHANNEL = "otto-browser-edge-pointer";
+const BROWSER_EDGE_POINTER_FORWARD_PX = 6;
 
 let browserId: string | null = null;
 let policy: BrowserShortcutPrefix[] = [];
@@ -87,6 +92,29 @@ function stageShortcutForward(event: KeyboardEvent): void {
 }
 
 window.addEventListener("keydown", stageShortcutForward, { capture: true });
+
+function isNearBrowserHorizontalEdge(x: number): boolean {
+  return (
+    window.innerWidth > 0 &&
+    (x <= BROWSER_EDGE_POINTER_FORWARD_PX ||
+      x >= window.innerWidth - 1 - BROWSER_EDGE_POINTER_FORWARD_PX)
+  );
+}
+
+window.addEventListener(
+  "mousemove",
+  (event) => {
+    if (!event.isTrusted || window !== window.top || !isNearBrowserHorizontalEdge(event.clientX)) {
+      return;
+    }
+    ipcRenderer.sendToHost(BROWSER_EDGE_POINTER_CHANNEL, {
+      x: event.clientX,
+      y: event.clientY,
+      buttons: event.buttons,
+    });
+  },
+  { passive: true },
+);
 
 ipcRenderer.on(POLICY_CHANNEL, (_event, value: BrowserKeyboardPolicyPayload) => {
   if (!value || typeof value.browserId !== "string" || !Array.isArray(value.prefixes)) {

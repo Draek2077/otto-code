@@ -13,6 +13,7 @@ import {
   SIDEBAR_EDGE_DWELL_MS,
   type EdgePoint,
 } from "./sidebar-edge-reveal";
+import { subscribeSidebarEdgePointer, type SidebarEdgePointerInput } from "./sidebar-edge-pointer";
 
 /**
  * Watches the pointer for the sidebar edge reveal: resting on a screen edge
@@ -57,10 +58,10 @@ export function useSidebarEdgeReveal(enabled: boolean): void {
       });
     };
 
-    const handlePointerMove = (event: MouseEvent) => {
-      const point = { x: event.clientX, y: event.clientY };
+    const handlePointerInput = ({ x, y, buttons }: SidebarEdgePointerInput) => {
+      const point = { x, y };
       lastPoint = point;
-      lastButtons = event.buttons;
+      lastButtons = buttons;
       const { peekSide, available } = useSidebarEdgePeekStore.getState();
 
       if (peekSide) {
@@ -82,7 +83,7 @@ export function useSidebarEdgeReveal(enabled: boolean): void {
       }
 
       const side =
-        event.buttons === 0
+        buttons === 0
           ? resolveSidebarEdgeSide({ point, viewportWidth: window.innerWidth, available })
           : null;
       if (side === dwellSide) return;
@@ -95,15 +96,20 @@ export function useSidebarEdgeReveal(enabled: boolean): void {
         useSidebarEdgePeekStore.getState().setPeekSide(side);
       }, SIDEBAR_EDGE_DWELL_MS);
     };
+    const handlePointerMove = (event: MouseEvent) => {
+      handlePointerInput({ x: event.clientX, y: event.clientY, buttons: event.buttons });
+    };
 
     // Leaving the window (another monitor, another app) never finishes a dwell.
     const handleWindowLeave = () => cancelDwell();
 
     document.addEventListener("mousemove", handlePointerMove, { passive: true });
+    const unsubscribeGuestPointer = subscribeSidebarEdgePointer(handlePointerInput);
     document.documentElement.addEventListener("mouseleave", handleWindowLeave);
     window.addEventListener("blur", handleWindowLeave);
     return () => {
       document.removeEventListener("mousemove", handlePointerMove);
+      unsubscribeGuestPointer();
       document.documentElement.removeEventListener("mouseleave", handleWindowLeave);
       window.removeEventListener("blur", handleWindowLeave);
       cancelDwell();

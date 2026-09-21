@@ -8,6 +8,7 @@ import {
 } from "@/stores/sidebar-edge-peek-store";
 import { SIDEBAR_EDGE_DISMISS_DELAY_MS, SIDEBAR_EDGE_DWELL_MS } from "./sidebar-edge-reveal";
 import { useSidebarEdgeReveal } from "./use-sidebar-edge-reveal.web";
+import { publishSidebarEdgePointer } from "./sidebar-edge-pointer";
 
 const MID_Y = 300;
 const PANEL_WIDTH = 280;
@@ -64,6 +65,13 @@ describe("useSidebarEdgeReveal in the browser", () => {
 
   it("peeks after the pointer rests on the edge, not before", async () => {
     moveTo(0);
+    expect(peekSide()).toBeNull();
+    await wait(SIDEBAR_EDGE_DWELL_MS + 50);
+    expect(peekSide()).toBe("left");
+  });
+
+  it("uses edge movement forwarded from a resident browser guest", async () => {
+    publishSidebarEdgePointer({ x: 0, y: MID_Y, buttons: 0 });
     expect(peekSide()).toBeNull();
     await wait(SIDEBAR_EDGE_DWELL_MS + 50);
     expect(peekSide()).toBe("left");

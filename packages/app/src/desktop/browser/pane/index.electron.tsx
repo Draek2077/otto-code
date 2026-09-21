@@ -2206,7 +2206,10 @@ function WebviewAnchor({
   hostRef: (node: HTMLDivElement | null) => void;
   style: CSSProperties;
 }) {
-  return createElement("div", { ref: hostRef, style: { ...style, background: "#ffffff" } });
+  // The resident guest supplies its own white backing. Keep the geometry
+  // anchor transparent so it cannot flash as a white frame while the guest is
+  // parked or changing panes.
+  return createElement("div", { ref: hostRef, style: { ...style, background: "transparent" } });
 }
 
 const ThemedCloseIcon = withUnistyles(X);
@@ -2296,6 +2299,9 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minHeight: 0,
     overflow: "hidden",
+    // Paint the immediate guest underlay explicitly so pane transitions cannot
+    // fall through to Electron's white window backing.
+    backgroundColor: theme.colors.surface0,
   },
   // When a fixed device size is active, center the framed webview both axes over
   // a muted backdrop instead of left-aligning it.

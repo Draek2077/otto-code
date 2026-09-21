@@ -17,6 +17,7 @@ import {
   type SidebarEdgeSide,
 } from "@/stores/sidebar-edge-peek-store";
 import { WindowChromeRootRegion } from "@/utils/window-chrome";
+import { suspendResidentBrowserSurfaceInput } from "@/desktop/browser/resident-webviews";
 
 /**
  * Paints a peeked sidebar as a window overlay pinned to its screen edge, so
@@ -57,6 +58,16 @@ export function SidebarEdgePeekPanel({
       if (finished) runOnJS(setMounted)(false);
     });
   }, [active, animationsEnabled, progress]);
+
+  useEffect(() => {
+    if (!mounted) {
+      return;
+    }
+    // A resident Electron guest can otherwise win hit-testing through the
+    // window overlay. The guest keeps painting edge-to-edge; only its input is
+    // suspended while the floating sidebar is on screen.
+    return suspendResidentBrowserSurfaceInput();
+  }, [mounted]);
 
   const offscreen = side === "left" ? -width : width;
   const slideStyle = useAnimatedStyle(
