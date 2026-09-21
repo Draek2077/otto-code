@@ -191,11 +191,9 @@ Use only the channel requested by the user:
 The npm dist-tags are independent pointers:
 
 - A beta release moves only `beta`; `latest` remains on the newest stable.
-- A stable release moves `latest` and leaves `beta` where it is. A stale `beta`
-  is harmless: the only reader is the Beta view on `/download`, which appears
-  only while a newer beta leads stable, and that beta has already moved the
-  pointer. Trusted publishing cannot move dist-tags anyway, so nobody moves it
-  by hand and no release report mentions it.
+- A stable release moves `latest`, then the same `npm Publish` run points `beta`
+  at the new stable ("Point beta at the new stable"), reusing the job's
+  short-lived per-package npm token. Nobody moves it by hand.
 
 ## Release version decision
 

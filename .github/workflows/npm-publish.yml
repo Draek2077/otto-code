@@ -65,3 +65,45 @@ jobs:
           OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
           OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: "1"
         run: node scripts/publish-release-packages.mjs
+
+      # A stable release also points `beta` at itself, so the beta channel never
+      # lags stable. It reuses this job's short-lived per-package npm token (the
+      # same OIDC exchange the publish step performs), so nobody logs in by hand.
+      - name: Point beta at the new stable
+        if: ${{ !contains(env.RELEASE_TAG, '-') }}
+        run: |
+          node --input-type=module <<'EOF'
+          import { RELEASE_PACKAGES } from "./scripts/publish-release-packages.mjs";
+          const version = process.env.RELEASE_TAG.replace(/^v/, "");
+          const idRes = await fetch(
+            `${process.env.ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org`,
+            { headers: { Authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` } },
+          );
+          const { value: idToken } = await idRes.json();
+          let failed = false;
+          for (const name of RELEASE_PACKAGES) {
+            const escaped = name.replace("/", "%2f");
+            const exchange = await fetch(
+              `https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${escaped}`,
+              { method: "POST", headers: { Authorization: `Bearer ${idToken}` } },
+            );
+            if (!exchange.ok) {
+              console.error(`${name}: token exchange ${exchange.status} ${await exchange.text()}`);
+              failed = true;
+              continue;
+            }
+            const { token } = await exchange.json();
+            const res = await fetch(`https://registry.npmjs.org/-/package/${escaped}/dist-tags/beta`, {
+              method: "PUT",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify(version),
+            });
+            if (res.ok) {
+              console.log(`${name}: beta -> ${version}`);
+            } else {
+              console.error(`${name}: dist-tag ${res.status} ${await res.text()}`);
+              failed = true;
+            }
+          }
+          process.exit(failed ? 1 : 0);
+          EOF
