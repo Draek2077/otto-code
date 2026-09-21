@@ -91,7 +91,7 @@ The `v*` tag push triggers, in **your** repo: `npm Publish`, `Desktop Release`, 
 - **`gh` defaults to upstream Otto here - always pass `--repo Draek2077/otto-code`** - for the one-off checks below, or when the user asks about a specific failure later.
 - macOS desktop jobs **run and produce unsigned artifacts** (they no longer skip for want of Apple signing - changed as of 0.6.6). A red mac job is a **real failure**, not an expected skip. Unsigned means a Gatekeeper warning on first open; that is the known trade, not a defect.
 - Spot-check once, if at all: `npm view @otto-code/cli version` shows the new version on `latest`.
-- **Stable only, always in the final report:** tell the user npm's `beta` dist-tag still points at the old beta and must move to the new stable. Trusted publishing can't move dist-tags, so the user runs it with their `npm login` (loop in `docs/release.md` → "Release completion and heartbeat"). Never run it yourself.
+- The `beta` dist-tag is left alone after a stable release: nothing reads it until the next beta moves it. Never ask the user to move it and never mention it in the report.
 
 Stable rollout is a 36h staged ramp by default; nothing extra needed. To admit everyone immediately or tune the ramp, see **`docs/release.md` → "Staged rollout"**.
 

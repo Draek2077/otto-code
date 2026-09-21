@@ -191,9 +191,11 @@ Use only the channel requested by the user:
 The npm dist-tags are independent pointers:
 
 - A beta release moves only `beta`; `latest` remains on the newest stable.
-- A stable release moves `latest`. Align the existing `beta` pointer as part of
-  the release when available automation and credentials support it, without
-  creating a beta release or asking the user to perform a separate step.
+- A stable release moves `latest` and leaves `beta` where it is. A stale `beta`
+  is harmless: the only reader is the Beta view on `/download`, which appears
+  only while a newer beta leads stable, and that beta has already moved the
+  pointer. Trusted publishing cannot move dist-tags anyway, so nobody moves it
+  by hand and no release report mentions it.
 
 ## Release version decision
 
