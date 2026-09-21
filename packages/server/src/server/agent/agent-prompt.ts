@@ -591,6 +591,8 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
 
   function notifySafely(reason: FinishNotificationReason, options: NotifySafelyOptions = {}): void {
     if (stopped) return;
+    // A finish watcher belongs to one prompted turn. Unsubscribe before dispatching
+    // so later turns can never keep waking the original caller.
     if (options.terminal ?? true) stop();
     notificationQueue = notificationQueue
       .then(() => notify(reason, options.permissionRequest))
@@ -621,11 +623,11 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
           return;
         }
         if (event.agent.lifecycle === "error") {
-          void notify("errored");
+          notifySafely("errored");
           return;
         }
         if (event.agent.lifecycle === "idle" && hasSeenRunning) {
-          void notify("finished");
+          notifySafely("finished");
           return;
         }
         if (event.agent.lifecycle === "closed") {
@@ -678,6 +680,6 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
   if (childSnapshot.lifecycle === "running") {
     hasSeenRunning = true;
   } else if (childSnapshot.lifecycle === "error") {
-    void notify("errored");
+    notifySafely("errored");
   }
 }

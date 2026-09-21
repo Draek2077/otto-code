@@ -35,6 +35,8 @@ interface FinishNotificationScenarioOptions {
 interface FinishNotificationScenario {
   startWatchingChild(): void;
   finishChildAndReadParentPrompt(): Promise<string>;
+  finishChild(): void;
+  isWatchingChild(): boolean;
   queuedPrompts: string[];
   parentPrompts(): string[];
   steerAttemptCount(): number;
@@ -132,11 +134,7 @@ function createFinishNotificationScenario(
         logger: createTestLogger(),
       });
     },
-    async finishChildAndReadParentPrompt() {
-      const parentPrompt = new Promise<string>((resolve) => {
-        resolveParentPrompt = resolve;
-      });
-
+    finishChild() {
       childAgent.lifecycle = "running";
       subscriber?.({
         type: "agent_state",
@@ -148,8 +146,17 @@ function createFinishNotificationScenario(
         type: "agent_state",
         agent: childAgent,
       });
+    },
+    async finishChildAndReadParentPrompt() {
+      const parentPrompt = new Promise<string>((resolve) => {
+        resolveParentPrompt = resolve;
+      });
 
+      this.finishChild();
       return parentPrompt;
+    },
+    isWatchingChild() {
+      return subscriber !== null;
     },
     queuedPrompts,
     parentPrompts() {
@@ -354,6 +361,19 @@ test("finish notifications tell the parent the child's last assistant message", 
     ),
   );
   expect(scenario.steerAttemptCount()).toBe(1);
+});
+
+test("finish notifications unsubscribe after the prompted turn settles", async () => {
+  const scenario = createFinishNotificationScenario({
+    childLastAssistantMessage: "Done.",
+  });
+
+  scenario.startWatchingChild();
+  await scenario.finishChildAndReadParentPrompt();
+
+  expect(scenario.isWatchingChild()).toBe(false);
+  scenario.finishChild();
+  expect(scenario.parentPrompts()).toHaveLength(1);
 });
 
 test("a busy parent gets the finish notification queued, not interrupted", async () => {
