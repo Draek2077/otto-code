@@ -117,10 +117,12 @@ The harness launches the unpacked packaged app with isolated user data and daemo
 - the sandboxed preload exposes the desktop bridge;
 - `webContents.printToPDF` returns real PDF bytes through that bridge (the markdown PDF export has
   no headless stand-in, so this is the only tier that can prove it);
+- a native right click on a misspelled editable word reaches the shared menu, offers a dictionary
+  suggestion and **Add to Dictionary**, and applies the replacement through Electron;
 - the renderer starts a fresh desktop-managed daemon through the normal startup bootstrap;
 - the bundled CLI can query that daemon and run a terminal command.
 
-Pull-request CI runs the Linux x64 smoke under Xvfb when the cumulative PR diff changes `packages/desktop/**`. The desktop release matrix runs the harness against each host-native packaged app before publishing. All smoke jobs upload renderer, desktop, and daemon diagnostics on failure.
+Pull-request CI runs the Linux x64 smoke under Xvfb when the cumulative PR diff changes `packages/desktop/**`. The desktop release matrix runs the harness against each host-native packaged app before publishing. Windows runs the spellcheck journey at 225% device scale, matching a common high-DPI desktop configuration. All smoke jobs upload renderer, desktop, and daemon diagnostics on failure.
 
 To exercise the smoke locally on Linux:
 

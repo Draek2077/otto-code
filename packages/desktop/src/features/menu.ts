@@ -48,7 +48,11 @@ export class SpellcheckContextRegistry {
     contents: WebContents,
     params: Electron.ContextMenuParams,
   ): SpellcheckContextSnapshot | null {
-    if (!params.isEditable || !params.spellcheckEnabled || !params.misspelledWord) {
+    // Electron 44 can report spellcheckEnabled=false while simultaneously
+    // providing a misspelledWord and dictionarySuggestions. The concrete word
+    // is the native spellcheck result; rejecting it on the contradictory flag
+    // drops every suggestion from Otto's menu.
+    if (!params.isEditable || !params.misspelledWord) {
       this.contexts.delete(contents.id);
       return null;
     }

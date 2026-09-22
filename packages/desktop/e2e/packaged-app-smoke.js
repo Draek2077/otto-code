@@ -170,6 +170,14 @@ function createDefaultDaemonEnv(extraEnv) {
 }
 
 function createIsolatedDesktopEnv({ home, listen, userData, cdpPort }) {
+  const electronFlags = [
+    "--remote-debugging-address=127.0.0.1",
+    `--remote-debugging-port=${cdpPort}`,
+    // The installed Windows app commonly runs above 200% display scaling. Keep
+    // the native context-menu coordinates and the renderer anchor honest at the
+    // same scale where the shipped spellcheck regression was observed.
+    ...(process.platform === "win32" ? ["--force-device-scale-factor=2.25"] : []),
+  ];
   const env = {
     ...process.env,
     OTTO_HOME: home,
@@ -182,7 +190,7 @@ function createIsolatedDesktopEnv({ home, listen, userData, cdpPort }) {
     // software rendering, and the relaunch takes down the window this smoke is
     // waiting on - which is why no otto://app/ page ever appeared.
     OTTO_FORCE_GPU: "1",
-    OTTO_ELECTRON_FLAGS: `--remote-debugging-address=127.0.0.1 --remote-debugging-port=${cdpPort}`,
+    OTTO_ELECTRON_FLAGS: electronFlags.join(" "),
   };
   // OTTO_DESKTOP_SMOKE means two different things depending on who reads it.
   // after-pack.js reads it as "run the packaged smoke once packing finishes";
@@ -194,6 +202,16 @@ function createIsolatedDesktopEnv({ home, listen, userData, cdpPort }) {
   // coming. Strip it so the launch is an ordinary GUI start.
   delete env.OTTO_DESKTOP_SMOKE;
   return env;
+}
+
+function seedSpellcheckerPreferences(userData) {
+  // Windows and Linux do not auto-select a spellchecker language in Electron.
+  // Seed the isolated Chromium profile instead of relying on the CI runner's
+  // locale, while still exercising the production session and dictionary.
+  fs.writeFileSync(
+    path.join(userData, "Preferences"),
+    `${JSON.stringify({ spellcheck: { dictionaries: ["en-US"], dictionary: "" } })}\n`,
+  );
 }
 
 function configureIsolatedDaemonHome(home, listen) {
@@ -534,6 +552,120 @@ async function assertPackagedRendererLoaded(page, deadline) {
   }
 
   await verifyPrintToPdf(page);
+}
+
+async function waitForPackagedAppSettled(page, deadline) {
+  await page.waitForFunction(
+    () => {
+      const root = document.querySelector("#root");
+      return (
+        location.pathname !== "/" &&
+        root instanceof HTMLElement &&
+        (root.innerText?.trim().length ?? 0) > 0
+      );
+    },
+    undefined,
+    { timeout: remainingTime(deadline) },
+  );
+}
+
+async function verifySpellcheckContextMenu(page, deadline) {
+  const testId = "packaged-spellcheck-input";
+  const misspelling = "mispeling";
+
+  await page.evaluate(
+    async ({ testId: targetTestId }) => {
+      window.__ottoSpellcheckSmoke = { contexts: [], events: [] };
+      await window.ottoDesktop.events.on("spellcheck-context", (context) => {
+        window.__ottoSpellcheckSmoke.contexts.push(context);
+      });
+      window.addEventListener(
+        "contextmenu",
+        (event) => {
+          window.__ottoSpellcheckSmoke.events.push({
+            clientX: event.clientX,
+            clientY: event.clientY,
+            pageX: event.pageX,
+            pageY: event.pageY,
+            defaultPrevented: event.defaultPrevented,
+            target: event.target instanceof Element ? event.target.tagName : null,
+          });
+        },
+        true,
+      );
+      document.querySelector(`[data-testid="${targetTestId}"]`)?.remove();
+      const input = document.createElement("textarea");
+      input.dataset.testid = targetTestId;
+      input.lang = "en-US";
+      input.spellcheck = true;
+      input.setAttribute("aria-label", "Packaged spellcheck input");
+      Object.assign(input.style, {
+        position: "fixed",
+        left: "80px",
+        top: "80px",
+        width: "360px",
+        height: "80px",
+        padding: "12px",
+        font: "20px sans-serif",
+        color: "#111",
+        background: "#fff",
+        zIndex: "0",
+      });
+      document.body.append(input);
+    },
+    { testId },
+  );
+
+  const input = page.locator(`[data-testid="${testId}"]`);
+  await input.click();
+  await page.keyboard.type(`${misspelling} `);
+  const box = await input.boundingBox();
+  if (!box) {
+    throw new Error("Packaged spellcheck input has no bounding box");
+  }
+
+  const menu = page.locator('[data-testid="text-selection-context-menu"]');
+  // Native dictionaries initialize asynchronously after the control receives
+  // text. A single click keeps the journey user-realistic; give the OS-backed
+  // spellchecker time to classify the word instead of retrying the gesture.
+  await delay(2_000);
+  await page.mouse.click(box.x + 24, box.y + 24, { button: "right" });
+  await menu
+    .getByText("Add to Dictionary", { exact: true })
+    .waitFor({
+      timeout: Math.min(3_000, remainingTime(deadline)),
+    })
+    .catch(() => undefined);
+  const menuText = (await menu.isVisible()) ? (await menu.innerText()).trim() : "<menu hidden>";
+
+  if (!menuText.includes("Add to Dictionary")) {
+    const diagnostics = await page.evaluate(() => window.__ottoSpellcheckSmoke);
+    throw new Error(
+      `Packaged spellcheck menu never received a native misspelling context. Last menu text: ${JSON.stringify(menuText)}. Diagnostics: ${JSON.stringify(diagnostics)}`,
+    );
+  }
+
+  const standardActions = new Set(["Cut", "Copy", "Paste", "Select all", "Add to Dictionary"]);
+  const suggestion = menuText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line && !standardActions.has(line));
+  if (!suggestion) {
+    throw new Error(`Packaged spellcheck menu had no dictionary suggestion: ${menuText}`);
+  }
+
+  await menu.getByText(suggestion, { exact: true }).click();
+  await page.waitForFunction(
+    ({ testId: targetTestId, misspelling: targetMisspelling }) => {
+      const element = document.querySelector(`[data-testid="${targetTestId}"]`);
+      return element instanceof HTMLTextAreaElement && !element.value.includes(targetMisspelling);
+    },
+    { testId, misspelling },
+    { timeout: remainingTime(deadline) },
+  );
+  console.log(
+    `Packaged desktop smoke: native spellcheck suggested ${JSON.stringify(suggestion)} and replaced the misspelling`,
+  );
 }
 
 /**
@@ -902,6 +1034,7 @@ async function smokePackagedDesktopApp({ appPath }) {
   await smokeColdCliDaemonStart({ appPath });
 
   const userData = createTempDir("otto-smoke-user-data-");
+  seedSpellcheckerPreferences(userData);
   const daemonHome = createTempDir("otto-smoke-daemon-home-");
   const daemonPort = await reserveLocalTcpPort();
   let cdpPort = await reserveLocalTcpPort();
@@ -995,6 +1128,8 @@ async function smokePackagedDesktopApp({ appPath }) {
       deadline,
     });
     console.log("Packaged desktop smoke: renderer-started desktop daemon reported running");
+    await waitForPackagedAppSettled(page, deadline);
+    await verifySpellcheckContextMenu(page, deadline);
     await smokeCliShim({ appPath, env });
     await smokeCliTerminal({ appPath, env });
     await stopDaemonForCleanup();

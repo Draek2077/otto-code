@@ -157,6 +157,24 @@ describe("SpellcheckContextRegistry", () => {
     expect(contents.addedWords).toEqual(["teh"]);
   });
 
+  it("keeps a concrete native misspelling when Electron reports spellcheck disabled", () => {
+    const registry = new SpellcheckContextRegistry();
+    const contents = new FakeSpellcheckWebContents(11);
+
+    expect(
+      registry.capture(
+        contents as unknown as Electron.WebContents,
+        spellcheckParams({ spellcheckEnabled: false }),
+      ),
+    ).toEqual({
+      token: "spellcheck-1",
+      x: 42,
+      y: 84,
+      suggestions: ["the", "ten"],
+      canAddToDictionary: true,
+    });
+  });
+
   it("does not create a context for controls without an active spellcheck error", () => {
     const registry = new SpellcheckContextRegistry();
     const contents = new FakeSpellcheckWebContents(12);

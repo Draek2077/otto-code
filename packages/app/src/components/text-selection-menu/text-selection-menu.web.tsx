@@ -366,7 +366,15 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
     context: SpellcheckContextSnapshot;
     receivedAt: number;
   } | null>(null);
-  const close = useCallback(() => setState(null), []);
+  const pendingEditableOpen = useRef<{ id: number; timer: number | null }>({ id: 0, timer: null });
+  const close = useCallback(() => {
+    pendingEditableOpen.current.id += 1;
+    if (pendingEditableOpen.current.timer !== null) {
+      window.clearTimeout(pendingEditableOpen.current.timer);
+      pendingEditableOpen.current.timer = null;
+    }
+    setState(null);
+  }, []);
   const handleOpenChange = useCallback(
     (isOpen: boolean) => {
       if (!isOpen) close();
@@ -391,13 +399,36 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
         isSpellcheckContextAtAnchor(pending.context, anchor)
           ? pending.context
           : null;
-      setState({
+      const nextState: TextSelectionMenuState = {
         anchor,
         beforeStandardActions: options.beforeStandardActions ?? null,
         pages: options.pages,
         snapshot,
         spellcheckContext,
-      });
+      };
+      if (snapshot.editableTarget !== null && getIsElectron()) {
+        const requestedAt = Date.now();
+        const requestId = ++pendingEditableOpen.current.id;
+        if (pendingEditableOpen.current.timer !== null) {
+          window.clearTimeout(pendingEditableOpen.current.timer);
+        }
+        // Mounting the menu moves focus to its first action. Let Electron
+        // finish reading the textarea's native spelling context first.
+        pendingEditableOpen.current.timer = window.setTimeout(() => {
+          if (pendingEditableOpen.current.id !== requestId) return;
+          pendingEditableOpen.current.timer = null;
+          const latest = pendingSpellcheckContext.current;
+          const latestContext =
+            latest !== null &&
+            latest.receivedAt >= requestedAt &&
+            isSpellcheckContextAtAnchor(latest.context, anchor)
+              ? latest.context
+              : null;
+          setState({ ...nextState, spellcheckContext: latestContext });
+        }, 0);
+        return true;
+      }
+      setState(nextState);
       return true;
     },
     [],
@@ -456,6 +487,7 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
   }, [open]);
 
   useEffect(() => {
+    const editableOpen = pendingEditableOpen.current;
     const onSpellcheckContext = (input: unknown) => {
       const context = readSpellcheckContext(input);
       if (!context) return;
@@ -486,6 +518,11 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
       .catch(() => undefined);
     return () => {
       disposed = true;
+      editableOpen.id += 1;
+      if (editableOpen.timer !== null) {
+        window.clearTimeout(editableOpen.timer);
+        editableOpen.timer = null;
+      }
       unsubscribe?.();
     };
   }, []);

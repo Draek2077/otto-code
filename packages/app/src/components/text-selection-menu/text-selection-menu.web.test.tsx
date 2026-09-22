@@ -229,6 +229,9 @@ describe("TextSelectionMenuProvider spellcheck", () => {
       // Canceling this DOM event prevents Electron from producing the native
       // spellcheck context below at all.
       expect(event.defaultPrevented).toBe(false);
+      // The menu autofocuses its first row, so it must not mount until Electron
+      // has read the editable target's spelling context.
+      expect(container.textContent).not.toContain("Cut");
       emitSpellcheckContext({
         token: "spellcheck-7",
         x: 42,
@@ -237,7 +240,9 @@ describe("TextSelectionMenuProvider spellcheck", () => {
         canAddToDictionary: true,
       });
     });
-
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(container.textContent).toContain("the");
     expect(container.textContent).toContain("Add to Dictionary");
     expect(container.textContent).toContain("Cut");
