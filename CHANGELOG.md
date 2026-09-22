@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.20 - 2026-09-22
+
+### Improved
+
+- Require a more deliberate pause at the window edge before revealing a collapsed sidebar
+
+### Fixed
+
+- Stop a completed task from notifying its parent chat again on later turns
+- Keep the Autonomous mode button aligned with the message box controls when the toolbar shrinks
+
 ## 0.9.19 - 2026-09-20
 
 ### Fixed
