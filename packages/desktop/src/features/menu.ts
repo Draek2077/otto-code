@@ -8,6 +8,28 @@ interface ShowContextMenuInput {
 
 const SPELLCHECK_CONTEXT_TTL_MS = 30_000;
 
+export function resolveSpellCheckerLanguages(
+  preferredLanguages: readonly string[],
+  availableLanguages: readonly string[],
+): string[] {
+  const availableByLowercase = new Map(
+    availableLanguages.map((language) => [language.toLowerCase(), language]),
+  );
+  const resolved: string[] = [];
+
+  for (const preferredLanguage of preferredLanguages) {
+    const normalized = preferredLanguage.replace("_", "-").toLowerCase();
+    const exact = availableByLowercase.get(normalized);
+    const base = availableByLowercase.get(normalized.split("-")[0] ?? "");
+    const match = exact ?? base;
+    if (match && !resolved.includes(match)) {
+      resolved.push(match);
+    }
+  }
+
+  return resolved;
+}
+
 export interface SpellcheckContextSnapshot {
   token: string;
   x: number;

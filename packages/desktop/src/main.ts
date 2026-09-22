@@ -71,7 +71,11 @@ import { createBrowserCaptureService } from "./features/browser-capture.js";
 import { registerEditorTargetHandlers } from "./features/editor-targets/ipc.js";
 import { resolveDesktopWindowChromeMode, windowChromeModeArgument } from "./window/chrome.js";
 import { resolveAppIconPath } from "./features/stamped-icon.js";
-import { setupApplicationMenu, SpellcheckContextRegistry } from "./features/menu.js";
+import {
+  resolveSpellCheckerLanguages,
+  setupApplicationMenu,
+  SpellcheckContextRegistry,
+} from "./features/menu.js";
 import {
   BROWSER_NEW_TAB_REQUEST_EVENT,
   decideBrowserWindowOpenRequest,
@@ -317,6 +321,29 @@ function registerAppShellContentSecurityPolicy(): void {
     headers["Content-Security-Policy"] = [csp];
     callback({ responseHeaders: headers });
   });
+}
+
+function configureAppShellSpellchecker(): void {
+  if (process.platform === "darwin") {
+    return;
+  }
+
+  const spellcheckerSession = session.defaultSession;
+  const languages = resolveSpellCheckerLanguages(
+    [...app.getPreferredSystemLanguages(), app.getLocale()],
+    spellcheckerSession.availableSpellCheckerLanguages,
+  );
+  spellcheckerSession.setSpellCheckerEnabled(true);
+  if (languages.length === 0) {
+    log.warn("[spellcheck] no supported system language is available");
+    return;
+  }
+
+  // Chromium does not choose a spellchecker language on Windows or Linux.
+  // Configure the production session through Electron's API; profile prefs are
+  // not an equivalent contract and failed on clean packaged installations.
+  spellcheckerSession.setSpellCheckerLanguages(languages);
+  log.info("[spellcheck] configured languages", languages);
 }
 
 function getBrowserPopupWindowOptions(
@@ -1507,6 +1534,7 @@ async function bootstrap(): Promise<void> {
 
   await app.whenReady();
 
+  configureAppShellSpellchecker();
   registerAppShellContentSecurityPolicy();
 
   const appDistDir = getAppDistDir();
