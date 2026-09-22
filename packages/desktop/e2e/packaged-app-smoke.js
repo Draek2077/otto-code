@@ -639,7 +639,12 @@ async function verifySpellcheckContextMenu(page, deadline) {
     throw new Error("Packaged spellcheck input has no bounding box");
   }
 
-  const menu = page.locator('[data-testid="text-selection-context-menu"]');
+  // At high display scaling the desktop window can cross the compact-width
+  // threshold, where the same context menu uses its bottom-sheet surface.
+  // Require the visible real surface in either supported presentation.
+  const menu = page.locator(
+    '[data-testid="text-selection-context-menu"]:visible, [data-testid="text-selection-context-menu-content"]:visible',
+  );
   // Native dictionaries initialize asynchronously after the app selects the
   // system language. A single click keeps the journey user-realistic; give a
   // clean runner time to download and classify instead of retrying the gesture.

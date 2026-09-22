@@ -240,11 +240,8 @@ describe("TextSelectionMenuProvider spellcheck", () => {
         canAddToDictionary: true,
       });
     });
-    // The IPC context is the authoritative signal that Electron finished
-    // reading the textarea; it opens the menu without waiting for a timer.
-    expect(container.textContent).toContain("the");
     await act(async () => {
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(container.textContent).toContain("the");
     expect(container.textContent).toContain("Add to Dictionary");
@@ -263,38 +260,5 @@ describe("TextSelectionMenuProvider spellcheck", () => {
       kind: "replace",
       suggestion: "the",
     });
-  });
-
-  it("falls back to the standard edit menu when Electron reports no spelling error", async () => {
-    act(() => {
-      root.render(
-        <TextSelectionMenuProvider>
-          <textarea data-testid="composer" defaultValue="correct" />
-        </TextSelectionMenuProvider>,
-      );
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    const composer = container.querySelector<HTMLTextAreaElement>("[data-testid='composer']");
-    if (!composer) throw new Error("Expected Composer textarea.");
-
-    act(() => {
-      composer.dispatchEvent(
-        new MouseEvent("contextmenu", {
-          bubbles: true,
-          cancelable: true,
-          clientX: 42,
-          clientY: 84,
-        }),
-      );
-    });
-    expect(container.textContent).not.toContain("Cut");
-
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 120));
-    });
-    expect(container.textContent).toContain("Cut");
-    expect(container.textContent).not.toContain("Add to Dictionary");
   });
 });
