@@ -87,6 +87,7 @@ interface TextSelectionMenuContextValue {
 const TextSelectionMenuContext = createContext<TextSelectionMenuContextValue | null>(null);
 const DISPLAY_CONTENTS: CSSProperties = { display: "contents" };
 const SPELLCHECK_CONTEXT_TTL_MS = 30_000;
+const EDITABLE_MENU_FALLBACK_DELAY_MS = 100;
 
 function getEventTarget(event: unknown): EventTarget | null {
   if (typeof event !== "object" || event === null) return null;
@@ -366,13 +367,19 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
     context: SpellcheckContextSnapshot;
     receivedAt: number;
   } | null>(null);
-  const pendingEditableOpen = useRef<{ id: number; timer: number | null }>({ id: 0, timer: null });
+  const pendingEditableOpen = useRef<{
+    id: number;
+    timer: number | null;
+    requestedAt: number;
+    state: TextSelectionMenuState | null;
+  }>({ id: 0, timer: null, requestedAt: 0, state: null });
   const close = useCallback(() => {
     pendingEditableOpen.current.id += 1;
     if (pendingEditableOpen.current.timer !== null) {
       window.clearTimeout(pendingEditableOpen.current.timer);
       pendingEditableOpen.current.timer = null;
     }
+    pendingEditableOpen.current.state = null;
     setState(null);
   }, []);
   const handleOpenChange = useCallback(
@@ -412,11 +419,15 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
         if (pendingEditableOpen.current.timer !== null) {
           window.clearTimeout(pendingEditableOpen.current.timer);
         }
-        // Mounting the menu moves focus to its first action. Let Electron
-        // finish reading the textarea's native spelling context first.
+        pendingEditableOpen.current.requestedAt = requestedAt;
+        pendingEditableOpen.current.state = nextState;
+        // Mounting the menu moves focus to its first action. A native context
+        // opens it immediately in the IPC handler below; this fallback keeps
+        // ordinary editable right clicks responsive when there is no error.
         pendingEditableOpen.current.timer = window.setTimeout(() => {
           if (pendingEditableOpen.current.id !== requestId) return;
           pendingEditableOpen.current.timer = null;
+          pendingEditableOpen.current.state = null;
           const latest = pendingSpellcheckContext.current;
           const latestContext =
             latest !== null &&
@@ -425,7 +436,7 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
               ? latest.context
               : null;
           setState({ ...nextState, spellcheckContext: latestContext });
-        }, 0);
+        }, EDITABLE_MENU_FALLBACK_DELAY_MS);
         return true;
       }
       setState(nextState);
@@ -491,7 +502,23 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
     const onSpellcheckContext = (input: unknown) => {
       const context = readSpellcheckContext(input);
       if (!context) return;
-      pendingSpellcheckContext.current = { context, receivedAt: Date.now() };
+      const receivedAt = Date.now();
+      pendingSpellcheckContext.current = { context, receivedAt };
+      const pending = pendingEditableOpen.current;
+      if (
+        pending.state?.snapshot.editableTarget &&
+        receivedAt >= pending.requestedAt &&
+        isSpellcheckContextAtAnchor(context, pending.state.anchor)
+      ) {
+        if (pending.timer !== null) {
+          window.clearTimeout(pending.timer);
+          pending.timer = null;
+        }
+        const nextState = pending.state;
+        pending.state = null;
+        setState({ ...nextState, spellcheckContext: context });
+        return;
+      }
       setState((current) => {
         if (
           !current?.snapshot.editableTarget ||
@@ -523,6 +550,7 @@ export function TextSelectionMenuProvider({ children }: PropsWithChildren) {
         window.clearTimeout(editableOpen.timer);
         editableOpen.timer = null;
       }
+      editableOpen.state = null;
       unsubscribe?.();
     };
   }, []);
