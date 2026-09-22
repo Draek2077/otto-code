@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.21 - 2026-09-22
+
+### Added
+
+- Choose Claude Opus 5.5 as the default Claude model on supported Claude Code versions
+
+### Fixed
+
+- Show and apply native spelling suggestions from desktop right-click menus
+
 ## 0.9.20 - 2026-09-22
 
 ### Improved
