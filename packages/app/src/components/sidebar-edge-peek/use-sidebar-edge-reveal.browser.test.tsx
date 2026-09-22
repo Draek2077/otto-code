@@ -79,6 +79,7 @@ describe("useSidebarEdgeReveal in the browser", () => {
 
   it("does not peek when the pointer only passes over the edge", async () => {
     moveTo(0);
+    await wait(SIDEBAR_EDGE_DWELL_MS / 2);
     moveTo(600);
     await wait(SIDEBAR_EDGE_DWELL_MS + 50);
     expect(peekSide()).toBeNull();

@@ -190,6 +190,13 @@ export interface ComposerToolbarLayout {
    * against the row's real edges once the frame is transformed.
    */
   toolbarContentStyle: AnimatedStyle<ViewStyle>;
+  /**
+   * The same shrink for the control pinned above the row's right end (the
+   * Autonomous mode toggle), anchored at its right edge so it stays stacked
+   * over the rightmost toolbar button at every scale.
+   */
+  textAccessoryStyle: AnimatedStyle<ViewStyle>;
+  handleTextAccessoryLayout: (event: LayoutChangeEvent) => void;
   handleToolbarRowLayout: (event: LayoutChangeEvent) => void;
   handleToolbarLeftLayout: (event: LayoutChangeEvent) => void;
   handleToolbarRightLayout: (event: LayoutChangeEvent) => void;
@@ -358,11 +365,32 @@ export function useComposerToolbarLayout({
     return { width: contentWidth.value / scale.value };
   });
 
+  // The text accessory lives outside the row, so it has to be handed the scale
+  // explicitly or the send button shrinks toward the row's right edge while the
+  // accessory keeps its full-size center. Same pivot trick as the frame: its
+  // own width never changes with the transform, so scale about its center and
+  // translate by w * (1 - s) / 2 to re-anchor at the right edge.
+  const accessoryWidth = useSharedValue(0);
+  const handleTextAccessoryLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      accessoryWidth.value = event.nativeEvent.layout.width;
+    },
+    [accessoryWidth],
+  );
+  const textAccessoryStyle = useAnimatedStyle(() => {
+    const width = accessoryWidth.value;
+    const s = scale.value;
+    if (width <= 0 || s === 1) return { transform: [{ translateX: 0 }, { scale: 1 }] };
+    return { transform: [{ translateX: (width * (1 - s)) / 2 }, { scale: s }] };
+  });
+
   return {
     canFitFeatures,
     toolbarStage: COMPOSER_CONTROL_STAGES[stageIndex] ?? COMPOSER_CONTROL_STAGES[0],
     toolbarFrameStyle,
     toolbarContentStyle,
+    textAccessoryStyle,
+    handleTextAccessoryLayout,
     handleToolbarRowLayout,
     handleToolbarLeftLayout,
     handleToolbarRightLayout,

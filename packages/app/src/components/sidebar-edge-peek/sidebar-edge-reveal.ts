@@ -5,7 +5,7 @@ import type { SidebarEdgeSide } from "@/stores/sidebar-edge-peek-store";
 export const SIDEBAR_EDGE_TRIGGER_PX = 2;
 // The pointer has to rest on the edge this long: a cursor thrown across the
 // screen, or on its way to another monitor, must not pop a sidebar out.
-export const SIDEBAR_EDGE_DWELL_MS = 150;
+export const SIDEBAR_EDGE_DWELL_MS = 300;
 // Grace period after the pointer leaves the peeked sidebar, so brushing past
 // its border does not snap it shut.
 export const SIDEBAR_EDGE_DISMISS_DELAY_MS = 300;

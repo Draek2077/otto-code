@@ -43,7 +43,7 @@ that side ends.
 
 Timing and geometry rules, all in `sidebar-edge-reveal.ts`:
 
-- The pointer must be within 2 px of the edge and rest there for 150 ms, so a cursor thrown across
+- The pointer must be within 2 px of the edge and rest there for 300 ms, so a cursor thrown across
   the screen or on its way to another monitor does not trigger a peek. A held mouse button never
   arms one.
 - The top 48 px never trigger. That strip belongs to the title bar and the window controls, and

@@ -4,6 +4,7 @@ import {
   TextInput,
   useWindowDimensions,
   type PressableStateCallbackType,
+  type LayoutChangeEvent,
   NativeSyntheticEvent,
   TextInputContentSizeChangeEventData,
   TextInputKeyPressEventData,
@@ -674,6 +675,8 @@ interface ComposerTextSurfaceProps {
   onSelectionChange: (event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => void;
   inputScrollbar: React.ReactNode;
   textAccessory: React.ReactNode;
+  textAccessoryStyle: AnimatedStyle<import("react-native").ViewStyle>;
+  onTextAccessoryLayout: (event: LayoutChangeEvent) => void;
 }
 
 // How far the button row bleeds past the input's content inset. The text
@@ -828,7 +831,14 @@ function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElemen
         />
         {props.inputScrollbar}
       </View>
-      {props.textAccessory ? <View style={styles.textAccessory}>{props.textAccessory}</View> : null}
+      {props.textAccessory ? (
+        <Animated.View
+          style={[styles.textAccessory, props.textAccessoryStyle]}
+          onLayout={props.onTextAccessoryLayout}
+        >
+          {props.textAccessory}
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -1753,6 +1763,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       toolbarStage,
       toolbarFrameStyle,
       toolbarContentStyle,
+      textAccessoryStyle,
+      handleTextAccessoryLayout,
       handleToolbarRowLayout,
       handleToolbarLeftLayout,
       handleToolbarRightLayout,
@@ -2277,6 +2289,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             onSelectionChange={handleSelectionChange}
             inputScrollbar={inputScrollbar}
             textAccessory={props.textAccessory}
+            textAccessoryStyle={textAccessoryStyle}
+            onTextAccessoryLayout={handleTextAccessoryLayout}
           />
 
           {/* Button row */}
