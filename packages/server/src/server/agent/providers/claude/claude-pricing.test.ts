@@ -36,9 +36,20 @@ describe("claudeModelRates", () => {
       cacheWritePerMTok: 12.5,
     });
     expect(claudeModelRates("claude-fable-5")?.cacheReadPerMTok).toBe(1);
+    expect(claudeModelRates("claude-opus-5-5")).toEqual({
+      inputPerMTok: 4,
+      outputPerMTok: 20,
+      cacheReadPerMTok: 0.2,
+      cacheWritePerMTok: 5,
+    });
     expect(claudeModelRates("claude-opus-5")?.inputPerMTok).toBe(5);
     expect(claudeModelRates("claude-opus-4-8")?.inputPerMTok).toBe(5);
-    expect(claudeModelRates("claude-sonnet-5")?.inputPerMTok).toBe(3);
+    expect(claudeModelRates("claude-sonnet-5")).toEqual({
+      inputPerMTok: 2,
+      outputPerMTok: 10,
+      cacheReadPerMTok: 0.2,
+      cacheWritePerMTok: 2.5,
+    });
   });
 
   it("is case-insensitive on the exact id and undefined for unknown/absent ids", () => {

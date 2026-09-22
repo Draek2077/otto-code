@@ -53,6 +53,8 @@ const CLAUDE_MODEL_RATES: Readonly<Record<string, ClaudeModelRates>> = {
   "claude-fable-5-1": rates(10, 50, 0.025),
   // Fable 5 - $10 in / $50 out, the tier above Opus.
   "claude-fable-5": rates(10, 50),
+  // Opus 5.5 - $4 in / $20 out, with $0.20 cache reads.
+  "claude-opus-5-5": rates(4, 20, 0.05),
   // Opus 5 and Opus 4.6+ - $5 in / $25 out. (The $15/$75 card belonged to
   // Opus 4.1 and earlier; every Opus we list here ships at the lower rate.)
   "claude-opus-5": rates(5, 25),
@@ -60,8 +62,9 @@ const CLAUDE_MODEL_RATES: Readonly<Record<string, ClaudeModelRates>> = {
   "claude-opus-4-7": rates(5, 25),
   "claude-opus-4-6": rates(5, 25),
   "claude-opus-4-5": rates(5, 25),
-  // Sonnet - $3 in / $15 out (standard, ≤200K context).
-  "claude-sonnet-5": rates(3, 15),
+  // Sonnet 5 - $2 in / $10 out. Anthropic made its introductory rate permanent.
+  "claude-sonnet-5": rates(2, 10),
+  // Sonnet 4.6/4.5 - $3 in / $15 out (standard, ≤200K context).
   "claude-sonnet-4-6": rates(3, 15),
   "claude-sonnet-4-5": rates(3, 15),
   // Haiku 4.5 - $1 in / $5 out. Both the plain and the dated API id.

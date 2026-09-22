@@ -23,11 +23,13 @@ interface ClaudeModelManifestEntry {
   minimumClaudeCodeVersion?: string;
   contextWindowMaxTokens?: number;
   effortLevels?: readonly ClaudeEffortLevel[];
+  defaultEffortLevel?: ClaudeEffortLevel;
   supportsFastMode?: boolean;
   // Whether the model accepts `thinking: {type: "disabled"}`. Defaults to true
   // for any model that exposes effort levels; set false only where the API
   // rejects it outright. Off clears `effort` entirely, so Opus 5's
-  // "disabled only at effort <= high" rule is satisfied by construction.
+  // "disabled only at effort <= high" rule is satisfied by construction;
+  // Opus 5.5 uses always-on adaptive thinking and therefore sets this false.
   supportsThinkingOff?: boolean;
   autoModeSupport?: ClaudeAutoModeSupport;
 }
@@ -55,7 +57,7 @@ export const CLAUDE_DEFAULT_THINKING_OPTION_ID = "high";
  * `max_output_tokens`) rather than guessed from the model name:
  *
  * - A `[1m]` entry exists ONLY for models the CLI reports as `window:200000`
- *   AND `supports_1m_beta`. Opus 4.7 / 4.8 / 5, Sonnet 5, and Fable 5 / 5.1 are
+ *   AND `supports_1m_beta`. Opus 4.7 / 4.8 / 5 / 5.5, Sonnet 5, and Fable 5 / 5.1 are
  *   `native_1m` - the plain id already resolves to a 1M window, so a second
  *   "1M" row would be a duplicate of the same model. Opus 4.5 is 200K with no
  *   `supports_1m_beta`, so it gets no 1M row either. Ignore `supports_1m_suffix`
@@ -64,8 +66,8 @@ export const CLAUDE_DEFAULT_THINKING_OPTION_ID = "high";
  *   `xhigh` ladder additionally requires `xhigh_effort`. Opus 4.6 and Sonnet 4.6
  *   carry `effort`/`max_effort` only; Opus 4.5, Sonnet 4.5 and Haiku 4.5 carry
  *   neither, so they expose no thinking options at all.
- * - `supportsFastMode` is Opus 4.8 and Opus 5 only. Opus 4.7's fast mode was
- *   withdrawn (`speed: "fast"` now errors) and Opus 4.6 never had it.
+ * - `supportsFastMode` is Opus 4.8, Opus 5, and Opus 5.5 only. Opus 4.7's fast
+ *   mode was withdrawn (`speed: "fast"` now errors) and Opus 4.6 never had it.
  *
  * Deliberately NOT listed: retired ids (Sonnet 3.7, Haiku 3.5, Sonnet 3.5,
  * Opus 3, Haiku 3); Opus 4.1, Opus 4 and Sonnet 4, which Anthropic has
@@ -73,6 +75,21 @@ export const CLAUDE_DEFAULT_THINKING_OPTION_ID = "high";
  * via Project Glasswing.
  */
 export const CLAUDE_MODEL_MANIFEST = [
+  {
+    id: "claude-opus-5-5",
+    label: "Opus 5.5",
+    description: "Opus 5.5 · Latest release",
+    defaultPriority: 3,
+    minimumClaudeCodeVersion: "2.1.280",
+    contextWindowMaxTokens: 1_000_000,
+    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    defaultEffortLevel: "medium",
+    supportsFastMode: true,
+    // Opus 5.5 uses adaptive thinking on every request; unlike Opus 5, the API
+    // rejects an explicit disabled-thinking setting at every effort level.
+    supportsThinkingOff: false,
+    autoModeSupport: "all",
+  },
   {
     id: "claude-fable-5-1",
     label: "Fable 5.1",
@@ -101,7 +118,7 @@ export const CLAUDE_MODEL_MANIFEST = [
   {
     id: "claude-opus-5",
     label: "Opus 5",
-    description: "Opus 5 · Latest release",
+    description: "Opus 5 · Previous release",
     defaultPriority: 2,
     minimumClaudeCodeVersion: "2.1.219",
     contextWindowMaxTokens: 1_000_000,
@@ -200,6 +217,7 @@ export const CLAUDE_MODEL_MANIFEST = [
 function buildThinkingOptions(
   effortLevels: readonly ClaudeEffortLevel[] | undefined,
   supportsThinkingOff: boolean,
+  defaultEffortLevel: ClaudeEffortLevel = CLAUDE_DEFAULT_THINKING_OPTION_ID,
 ): AgentSelectOption[] | undefined {
   if (!effortLevels) {
     return undefined;
@@ -217,7 +235,7 @@ function buildThinkingOptions(
     ...effortLevels.map((id) => ({
       id,
       label: CLAUDE_EFFORT_LABELS[id],
-      ...(id === CLAUDE_DEFAULT_THINKING_OPTION_ID ? { isDefault: true } : {}),
+      ...(id === defaultEffortLevel ? { isDefault: true } : {}),
     })),
   );
 
@@ -242,6 +260,7 @@ export function getClaudeManifestModels(claudeCodeVersion?: string): AgentModelD
     const thinkingOptions = buildThinkingOptions(
       model.effortLevels,
       model.supportsThinkingOff !== false,
+      model.defaultEffortLevel,
     );
     const definition: AgentModelDefinition = {
       provider: "claude",
@@ -406,32 +425,31 @@ export function normalizeClaudeRuntimeModelId(value: string | null | undefined):
     return null;
   }
 
-  const singleSegmentMatch = trimmed.match(
-    /claude[-_ ](fable|opus|sonnet|haiku)[-_ ]+(\d+)(\[1m\])?/i,
-  );
-  if (singleSegmentMatch) {
-    const normalizedModelId = normalizeSingleSegmentClaudeModelId(
-      singleSegmentMatch[1],
-      singleSegmentMatch[2],
-      Boolean(singleSegmentMatch[3]),
-    );
-    if (normalizedModelId) {
-      return normalizedModelId;
-    }
-  }
-
+  // Match major-minor ids before single-segment ids. Otherwise a provider form
+  // such as `anthropic.claude-opus-5-5` is greedily truncated to Opus 5.
   const runtimeMatch = trimmed.match(
     /claude[-_ ](fable|opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(\[1m\])?/i,
   );
-  if (!runtimeMatch) {
+  if (runtimeMatch) {
+    return normalizeMajorMinorClaudeModelId(
+      runtimeMatch[1],
+      runtimeMatch[2],
+      runtimeMatch[3],
+      trimmed.toLowerCase().includes("[1m]"),
+    );
+  }
+
+  const singleSegmentMatch = trimmed.match(
+    /claude[-_ ](fable|opus|sonnet|haiku)[-_ ]+(\d+)(\[1m\])?/i,
+  );
+  if (!singleSegmentMatch) {
     return null;
   }
 
-  return normalizeMajorMinorClaudeModelId(
-    runtimeMatch[1],
-    runtimeMatch[2],
-    runtimeMatch[3],
-    trimmed.toLowerCase().includes("[1m]"),
+  return normalizeSingleSegmentClaudeModelId(
+    singleSegmentMatch[1],
+    singleSegmentMatch[2],
+    Boolean(singleSegmentMatch[3]),
   );
 }
 
@@ -469,7 +487,7 @@ function normalizeMajorMinorClaudeModelId(
   const suffix = hasOneMillionContext ? "[1m]" : "";
   // Fall back to the undecorated id when the manifest has no `[1m]` row, the
   // same way normalizeSingleSegmentClaudeModelId does. Natively-1M models (Opus
-  // 4.7/4.8/5) ship one entry, but the CLI still accepts the decorated id and a
+  // 4.7/4.8/5/5.5) ship one entry, but the CLI still accepts the decorated id and a
   // persisted agent, personality, or team binding may carry it - without this
   // fallback those resolve to null and silently lose their feature gates. The
   // same applies to the native-1M Fable 5.1 model.

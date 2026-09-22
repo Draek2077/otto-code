@@ -3,6 +3,7 @@ import { catalogTier, inferModelTier, resolveModelTier } from "./model-tiers.js"
 
 describe("model-tiers", () => {
   it("classifies known catalog models, case-insensitively", () => {
+    expect(catalogTier("CLAUDE-OPUS-5-5")).toBe("deep");
     expect(catalogTier("claude-opus-4-8[1m]")).toBe("deep");
     expect(catalogTier("claude-opus-4-8")).toBe("deep");
     expect(catalogTier("claude-fable-5-1")).toBe("deep");
@@ -12,10 +13,12 @@ describe("model-tiers", () => {
     expect(catalogTier("deepseek-chat")).toBe("standard");
   });
 
-  // Opus 4.7/4.8/5 are natively 1M, so their plain ids are deep and the
+  // Opus 4.7/4.8/5/5.5 are natively 1M, so their plain ids are deep and the
   // decorated ones are only kept as aliases. Opus 4.6 is the last Opus where
   // the 1M variant is a genuinely different model from the 200K one.
   it("tiers natively-1M Opus as deep whether or not the id carries [1m]", () => {
+    expect(catalogTier("claude-opus-5-5")).toBe("deep");
+    expect(catalogTier("claude-opus-5-5[1m]")).toBe("deep");
     expect(catalogTier("claude-opus-5")).toBe("deep");
     expect(catalogTier("claude-opus-5[1m]")).toBe("deep");
     expect(catalogTier("claude-opus-4-7")).toBe("deep");

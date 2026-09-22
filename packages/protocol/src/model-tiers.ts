@@ -28,10 +28,12 @@ export const KNOWN_MODEL_TIERS: Readonly<Record<string, ModelTier>> = {
   // "fast". Fable (1M, most powerful) is "deep".
   "claude-fable-5-1": "deep",
   "claude-fable-5": "deep",
-  // Opus 4.7/4.8/5 are natively 1M, so the plain ids are "deep" and the manifest
+  // Opus 4.7/4.8/5/5.5 are natively 1M, so the plain ids are "deep" and the manifest
   // ships no `[1m]` row for them. The decorated ids stay mapped here because the
   // CLI still accepts them and a user's settings.json or an older agent record
   // may carry one.
+  "claude-opus-5-5[1m]": "deep",
+  "claude-opus-5-5": "deep",
   "claude-opus-5[1m]": "deep",
   "claude-opus-5": "deep",
   "claude-opus-4-8[1m]": "deep",
