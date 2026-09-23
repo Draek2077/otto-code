@@ -103,6 +103,8 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
     isSupported: () => ipcRenderer.invoke("otto:notification:isSupported"),
     sendNotification: (payload: { title: string; body?: string; data?: Record<string, unknown> }) =>
       ipcRenderer.invoke("otto:notification:send", payload),
+    reconcile: (input: { serverId: string; agentIds: string[]; workspaceIds: string[] }) =>
+      ipcRenderer.invoke("otto:notification:reconcile", input),
   },
   opener: {
     openUrl: (url: string) => ipcRenderer.invoke("otto:opener:openUrl", url),

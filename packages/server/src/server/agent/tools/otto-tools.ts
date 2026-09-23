@@ -8,6 +8,7 @@ import type { Logger } from "pino";
 
 import type { AgentModelDefinition, AgentProvider } from "../agent-sdk-types.js";
 import type { AgentManager } from "../agent-manager.js";
+import type { AgentWorkspaceTransferResult } from "../agent-workspace-transfer.js";
 import { resolveEffortOption } from "../effort-levels.js";
 import { resolveProfile, type ResolvedProfileSnapshot } from "../agent-profiles.js";
 import type { ProfileMemoryService } from "../profile-memory/profile-memory-service.js";
@@ -206,6 +207,11 @@ export interface OttoToolHostDependencies {
   listActiveWorkspaces?: ArchiveDependencies["listActiveWorkspaces"];
   archiveWorkspaceRecord?: ArchiveDependencies["archiveWorkspaceRecord"];
   emitWorkspaceUpdatesForWorkspaceIds?: ArchiveDependencies["emitWorkspaceUpdatesForWorkspaceIds"];
+  /** Shared chat transfer path used by the workspace tool and the app action. */
+  moveChatToWorkspace?: (input: {
+    agentId: string;
+    workspaceId: string;
+  }) => Promise<AgentWorkspaceTransferResult>;
   workspaceRegistry?: Pick<WorkspaceRegistry, "get" | "upsert" | "list">;
   /**
    * Creates a workspace on an existing directory, for create_workspace's
@@ -5535,6 +5541,46 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       return {
         content: [],
         structuredContent: ensureValidJson({ workspaces }),
+      };
+    },
+  );
+
+  registerTool(
+    "move_chat_to_workspace",
+    {
+      title: "Move chat to workspace",
+      description:
+        "Move an existing chat into another workspace. Use list_chats for the chat id and list_workspaces for the destination id. Omit agentId to move this chat. The chat keeps running in its original working directory; only the workspace that shows it changes. Hidden and archived destinations are unavailable.",
+      inputSchema: {
+        agentId: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Chat to move. Omit to move the calling chat."),
+        workspaceId: z.string().min(1).describe("Destination workspace id."),
+      },
+      outputSchema: {
+        agentId: z.string(),
+        workspaceId: z.string(),
+        previousWorkspaceId: z.string().nullable(),
+        moved: z.boolean(),
+      },
+    },
+    async ({ agentId, workspaceId }: { agentId?: string; workspaceId: string }) => {
+      const resolvedAgentId = agentId ?? callerAgentId;
+      if (!resolvedAgentId) throw new Error("agentId is required outside a chat session");
+      if (!options.moveChatToWorkspace) throw new Error("Chat transfer is not configured");
+      const result = await options.moveChatToWorkspace({ agentId: resolvedAgentId, workspaceId });
+      if (result.status === "refused") throw new Error(result.error);
+      return {
+        content: [],
+        structuredContent: ensureValidJson({
+          agentId: resolvedAgentId,
+          workspaceId: result.workspaceId,
+          previousWorkspaceId:
+            result.status === "transferred" ? result.previousWorkspaceId : workspaceId,
+          moved: result.status === "transferred",
+        }),
       };
     },
   );

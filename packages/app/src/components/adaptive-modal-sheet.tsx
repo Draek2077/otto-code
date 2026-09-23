@@ -263,7 +263,11 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   desktopFill: {
+    // Fixed-height cards must give their body the space left by pinned chrome.
+    // Without shrink, a long tab pane expands past the card instead of scrolling.
     flexGrow: 1,
+    flexShrink: 1,
+    minHeight: 0,
   },
   desktopScroll: {
     flexShrink: 1,

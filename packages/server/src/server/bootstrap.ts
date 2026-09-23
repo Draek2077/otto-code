@@ -1,5 +1,9 @@
 import { assertWorkspaceAutomationAllowedForWorkspace } from "./workspace-automation-gate.js";
 import {
+  clearedArchitecturalViewAuthoringLabels,
+  moveChatToWorkspace,
+} from "./agent/agent-workspace-transfer.js";
+import {
   assertProjectOnline,
   pathWithinRoot,
   protectOfflineWorkspaceRecords,
@@ -2530,6 +2534,46 @@ export async function createOttoDaemon(
     listActiveWorkspaces: listActiveWorkspacesExternal,
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
+    moveChatToWorkspace: (input) =>
+      moveChatToWorkspace(
+        {
+          getAgentWorkspaceId: async (id) => {
+            const live = agentManager.getAgent(id);
+            if (live) return { workspaceId: live.workspaceId };
+            const stored = await agentStorage.get(id);
+            return stored ? { workspaceId: stored.workspaceId } : null;
+          },
+          getWorkspace: (id) => workspaceRegistry.get(id),
+          transfer: (id, target) => agentManager.transferAgentWorkspace(id, target),
+          getAgentLabels: async (id) =>
+            agentManager.getAgent(id)?.labels ?? (await agentStorage.get(id))?.labels,
+          releaseDraftAuthoringAgent: async (draft) => {
+            const source = await workspaceRegistry.get(draft.workspaceId);
+            if (source) {
+              await architecturalViews.releaseDraftAuthoringAgent({
+                cwd: source.cwd,
+                agentId: draft.agentId,
+                viewId: draft.viewId,
+                draftId: draft.draftId,
+              });
+            }
+          },
+          clearAuthoringLabels: async (id) => {
+            await agentManager.updateAgentMetadata(id, {
+              labels: clearedArchitecturalViewAuthoringLabels,
+            });
+          },
+          emitStoredRecord: async (record) => {
+            await Promise.all(
+              (wsServer?.listSessions() ?? []).map((session) =>
+                session.emitStoredAgentRecordForExternalMutation(record),
+              ),
+            );
+          },
+          emitWorkspaceUpdates: emitWorkspaceUpdatesExternal,
+        },
+        input,
+      ),
     workspaceRegistry,
     projectRegistry,
     // Backs create_workspace's "local" isolation. The worktree half rides on

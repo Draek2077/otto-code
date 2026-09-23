@@ -199,6 +199,8 @@ Users can also detach an existing subagent from the subagents track. Detach remo
 
 "Move to workspace" on a chat tab re-stamps which workspace owns the chat, via `agent.workspace.transfer`. Gated by `server_info.features.agentWorkspaceTransfer`.
 
+Agents can make the same move with the workspace-group `move_chat_to_workspace` tool. It takes a destination `workspaceId` from `list_workspaces` and an optional `agentId` from `list_chats`; omitting `agentId` moves the calling chat. An unbound tool caller must supply `agentId`. Both entry points use the same validation, Interactive View draft release, closed-chat notification, and source/target workspace updates.
+
 Ownership is the single `workspaceId` field. Agent state on disk is keyed by agent id, the timeline store is keyed by agent id, and clients decide which workspace shows a chat in exactly one place (`agentBelongsToWorkspace` in `workspace-tabs/agent-visibility.ts`). So a move is one field write plus a broadcast: the tab appears in the target and prunes from the source on every connected client, with nothing to migrate alongside it.
 
 **The move does not change `cwd`, and the target does not have to be over the chat's directory.** `cwd` answers "where does it run", `workspaceId` answers "which workspace owns it", and the daemon has never required them to agree: a chat's cwd can already be a subdirectory of its workspace, and nothing validates one against the other. A moved chat keeps running where it was started, which is the only option that is true to a provider session already rooted on disk. That is also why any workspace is a valid destination, in the same project or a different one.

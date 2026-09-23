@@ -1,4 +1,10 @@
 import type { StoredAgentRecord } from "./agent-storage.js";
+import {
+  ARCHITECTURAL_VIEW_AUTHORING_LABEL,
+  ARCHITECTURAL_VIEW_DRAFT_ID_LABEL,
+  ARCHITECTURAL_VIEW_ID_LABEL,
+  getArchitecturalViewAuthoringLabels,
+} from "@otto-code/protocol/agent-labels";
 
 /**
  * Moving a chat into another workspace.
@@ -31,6 +37,21 @@ export interface AgentWorkspaceTransferDependencies {
     agentId: string,
     workspaceId: string,
   ) => Promise<{ record: StoredAgentRecord; live: boolean }>;
+  /** Runs only after the destination has passed validation and before ownership changes. */
+  beforeTransfer?: (sourceWorkspaceId: string | undefined) => Promise<void>;
+}
+
+export interface MoveChatToWorkspaceDependencies extends AgentWorkspaceTransferDependencies {
+  getAgentLabels: (agentId: string) => Promise<Record<string, string> | undefined>;
+  releaseDraftAuthoringAgent: (input: {
+    workspaceId: string;
+    agentId: string;
+    viewId: string;
+    draftId: string;
+  }) => Promise<void>;
+  clearAuthoringLabels: (agentId: string) => Promise<void>;
+  emitStoredRecord: (record: StoredAgentRecord) => Promise<void>;
+  emitWorkspaceUpdates: (workspaceIds: Iterable<string>) => Promise<void>;
 }
 
 export type AgentWorkspaceTransferResult =
@@ -77,6 +98,7 @@ export async function transferAgentWorkspaceCommand(
     return { status: "refused", error: "That workspace is not available" };
   }
 
+  await dependencies.beforeTransfer?.(agent.workspaceId);
   const { record, live } = await dependencies.transfer(input.agentId, input.workspaceId);
   return {
     status: "transferred",
@@ -86,3 +108,42 @@ export async function transferAgentWorkspaceCommand(
     workspaceId: input.workspaceId,
   };
 }
+
+/** Shared UI and agent-tool path, including draft cleanup and client broadcasts. */
+export async function moveChatToWorkspace(
+  dependencies: MoveChatToWorkspaceDependencies,
+  input: { agentId: string; workspaceId: string },
+): Promise<AgentWorkspaceTransferResult> {
+  const result = await transferAgentWorkspaceCommand(
+    {
+      ...dependencies,
+      beforeTransfer: async (sourceWorkspaceId) => {
+        if (!sourceWorkspaceId) return;
+        const authoring = getArchitecturalViewAuthoringLabels(
+          await dependencies.getAgentLabels(input.agentId),
+        );
+        if (!authoring) return;
+        await dependencies.releaseDraftAuthoringAgent({
+          workspaceId: sourceWorkspaceId,
+          agentId: input.agentId,
+          ...authoring,
+        });
+        await dependencies.clearAuthoringLabels(input.agentId);
+      },
+    },
+    input,
+  );
+  if (result.status !== "transferred") return result;
+
+  if (!result.live) await dependencies.emitStoredRecord(result.record);
+  const affectedWorkspaceIds = new Set([result.workspaceId]);
+  if (result.previousWorkspaceId) affectedWorkspaceIds.add(result.previousWorkspaceId);
+  await dependencies.emitWorkspaceUpdates(affectedWorkspaceIds);
+  return result;
+}
+
+export const clearedArchitecturalViewAuthoringLabels = {
+  [ARCHITECTURAL_VIEW_AUTHORING_LABEL]: "false",
+  [ARCHITECTURAL_VIEW_ID_LABEL]: "",
+  [ARCHITECTURAL_VIEW_DRAFT_ID_LABEL]: "",
+};

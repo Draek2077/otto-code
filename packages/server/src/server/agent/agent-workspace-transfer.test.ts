@@ -1,8 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 import type { StoredAgentRecord } from "./agent-storage.js";
 import {
+  moveChatToWorkspace,
   transferAgentWorkspaceCommand,
   type AgentWorkspaceTransferDependencies,
+  type MoveChatToWorkspaceDependencies,
   type TransferTargetWorkspace,
 } from "./agent-workspace-transfer.js";
 
@@ -122,5 +124,70 @@ describe("transferAgentWorkspaceCommand", () => {
 
     expect(result).toEqual({ status: "refused", error: "That workspace is not available" });
     expect(transfer).not.toHaveBeenCalled();
+  });
+});
+
+describe("moveChatToWorkspace", () => {
+  function moveDeps(
+    overrides: { workspace?: TransferTargetWorkspace | null; live?: boolean } = {},
+  ) {
+    const { dependencies } = deps({ workspace: overrides.workspace });
+    const releaseDraftAuthoringAgent = vi.fn(async () => {});
+    const clearAuthoringLabels = vi.fn(async () => {});
+    const emitStoredRecord = vi.fn(async () => {});
+    const emitWorkspaceUpdates = vi.fn(async () => {});
+    const moveDependencies: MoveChatToWorkspaceDependencies = {
+      ...dependencies,
+      getAgentLabels: async () => ({
+        "otto.architectural-view-authoring": "true",
+        "otto.architectural-view-id": "view_1",
+        "otto.architectural-view-draft-id": "draft_1",
+      }),
+      releaseDraftAuthoringAgent,
+      clearAuthoringLabels,
+      emitStoredRecord,
+      emitWorkspaceUpdates,
+      transfer: async (_id, workspaceId) => ({
+        record: storedRecord(workspaceId),
+        live: overrides.live ?? true,
+      }),
+    };
+    return {
+      moveDependencies,
+      releaseDraftAuthoringAgent,
+      clearAuthoringLabels,
+      emitStoredRecord,
+      emitWorkspaceUpdates,
+    };
+  }
+
+  test("releases an authoring draft and updates both workspaces", async () => {
+    const h = moveDeps();
+    const result = await moveChatToWorkspace(h.moveDependencies, REQUEST);
+    expect(result.status).toBe("transferred");
+    expect(h.releaseDraftAuthoringAgent).toHaveBeenCalledWith({
+      workspaceId: "wks_source",
+      agentId: "agent_1",
+      viewId: "view_1",
+      draftId: "draft_1",
+    });
+    expect(h.clearAuthoringLabels).toHaveBeenCalledWith("agent_1");
+    expect([...h.emitWorkspaceUpdates.mock.calls[0]![0]]).toEqual(["wks_target", "wks_source"]);
+    expect(h.emitStoredRecord).not.toHaveBeenCalled();
+  });
+
+  test("broadcasts a closed chat record", async () => {
+    const h = moveDeps({ live: false });
+    await moveChatToWorkspace(h.moveDependencies, REQUEST);
+    expect(h.emitStoredRecord).toHaveBeenCalledWith(storedRecord("wks_target"));
+  });
+
+  test("leaves authoring state alone for an invalid destination", async () => {
+    const h = moveDeps({ workspace: null });
+    const result = await moveChatToWorkspace(h.moveDependencies, REQUEST);
+    expect(result).toEqual({ status: "refused", error: "Workspace not found" });
+    expect(h.releaseDraftAuthoringAgent).not.toHaveBeenCalled();
+    expect(h.clearAuthoringLabels).not.toHaveBeenCalled();
+    expect(h.emitWorkspaceUpdates).not.toHaveBeenCalled();
   });
 });

@@ -58,6 +58,11 @@ export interface DesktopNotificationBridge {
   sendNotification?: (
     payload: string | { title: string; body?: string; data?: Record<string, unknown> },
   ) => Promise<boolean>;
+  reconcile?: (input: {
+    serverId: string;
+    agentIds: string[];
+    workspaceIds: string[];
+  }) => Promise<void>;
 }
 
 export interface DesktopOpenerBridge {

@@ -322,6 +322,26 @@ defines the session authentication agent and cancellation exit status.
 Debian's [dpkg-query contract](https://manpages.debian.org/trixie/dpkg/dpkg-query.1.en.html)
 defines the package status and version fields used for verification.
 
+## GNOME dock notification badges
+
+GNOME docks such as Dash to Dock can show the count of native notifications still held by
+GNOME. That number is not Otto's current unread count. Otto sends native notifications for
+agent and terminal attention, while the renderer's numeric `setBadgeCount` path is gated to
+macOS.
+
+The desktop notification handler keys Linux notifications by host and agent or terminal.
+After both the agent and workspace directories have hydrated, the renderer sends each
+host's current attention sources to Electron. Electron dismisses notifications whose
+source no longer needs attention. It retains Linux notification handles after a toast's
+`close` event because the desktop may still hold the notification in its list. Repeated
+notifications for one source replace the earlier one. A notification already sent by a
+previous Otto process is outside the current process's handles and may need to be cleared
+once in GNOME's notification center.
+
+The focused source and handler tests cover reconciliation, partial attention, and a send
+that finishes after attention clears. Confirm the dock count on a live GNOME session before
+claiming the desktop integration is fixed there.
+
 ## Diagnostics
 
 - **Logs**: `~/.config/Otto/logs/main.log` (electron-log). This is where the GPU

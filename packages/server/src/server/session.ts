@@ -181,7 +181,10 @@ import {
   setAgentModeCommand,
   updateAgentCommand,
 } from "./agent/lifecycle-command.js";
-import { transferAgentWorkspaceCommand } from "./agent/agent-workspace-transfer.js";
+import {
+  clearedArchitecturalViewAuthoringLabels,
+  moveChatToWorkspace,
+} from "./agent/agent-workspace-transfer.js";
 import {
   buildStoredAgentPayload,
   resolveStoredAgentPayloadUpdatedAt,
@@ -2037,6 +2040,10 @@ export class Session {
 
   async emitWorkspaceUpdatesForExternalWorkspaceIds(workspaceIds: Iterable<string>): Promise<void> {
     await this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds);
+  }
+
+  async emitStoredAgentRecordForExternalMutation(record: StoredAgentRecord): Promise<void> {
+    await this.agentUpdates.emitStoredRecord(record);
   }
 
   async syncWorkspaceGitObserversForExternalWorkspaceIds(
@@ -6214,30 +6221,7 @@ export class Session {
     );
 
     try {
-      const liveAgent = this.agentManager.getAgent(agentId);
-      const storedAgent = liveAgent ? null : await this.agentStorage.get(agentId);
-      const authoring = getArchitecturalViewAuthoringLabels(
-        liveAgent?.labels ?? storedAgent?.labels,
-      );
-      const sourceWorkspaceId = liveAgent?.workspaceId ?? storedAgent?.workspaceId;
-      if (authoring && sourceWorkspaceId) {
-        // A moved chat remains useful, but its visual is rooted in the source
-        // Knowledge store. Leave the unfinished draft there for a later update
-        // and convert the moved chat back to an ordinary chat.
-        await this.architecturalViewsSession.releaseDraftAuthoringAgent({
-          workspaceId: sourceWorkspaceId,
-          agentId,
-          ...authoring,
-        });
-        await this.agentManager.updateAgentMetadata(agentId, {
-          labels: {
-            [ARCHITECTURAL_VIEW_AUTHORING_LABEL]: "false",
-            [ARCHITECTURAL_VIEW_ID_LABEL]: "",
-            [ARCHITECTURAL_VIEW_DRAFT_ID_LABEL]: "",
-          },
-        });
-      }
-      const result = await transferAgentWorkspaceCommand(
+      const result = await moveChatToWorkspace(
         {
           getAgentWorkspaceId: async (id) => {
             const live = this.agentManager.getAgent(id);
@@ -6258,6 +6242,20 @@ export class Session {
               : null;
           },
           transfer: (id, target) => this.agentManager.transferAgentWorkspace(id, target),
+          getAgentLabels: async (id) =>
+            this.agentManager.getAgent(id)?.labels ?? (await this.agentStorage.get(id))?.labels,
+          releaseDraftAuthoringAgent: (input) =>
+            this.architecturalViewsSession.releaseDraftAuthoringAgent(input),
+          clearAuthoringLabels: async (id) => {
+            await this.agentManager.updateAgentMetadata(id, {
+              labels: clearedArchitecturalViewAuthoringLabels,
+            });
+          },
+          emitStoredRecord: async (record) => {
+            await this.agentUpdates.emitStoredRecord(record);
+          },
+          emitWorkspaceUpdates: (workspaceIds) =>
+            this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds, {}),
         },
         { agentId, workspaceId },
       );
@@ -6268,23 +6266,6 @@ export class Session {
           payload: { requestId, agentId, workspaceId: null, accepted: false, error: result.error },
         });
         return;
-      }
-
-      if (result.status === "transferred") {
-        // A closed chat has no live session to broadcast from, so its updated
-        // record has to be pushed explicitly.
-        if (!result.live) {
-          await this.agentUpdates.emitStoredRecord(result.record);
-        }
-        // Both sides, always. The source workspace loses a chat and the target
-        // gains one, and a client showing either needs its counts and tab list
-        // refreshed. Emitting only the target is the bug that leaves a ghost tab
-        // behind in the workspace the chat came from.
-        const affectedWorkspaceIds = new Set<string>([result.workspaceId]);
-        if (result.previousWorkspaceId) {
-          affectedWorkspaceIds.add(result.previousWorkspaceId);
-        }
-        await this.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIds, {});
       }
 
       this.emit({

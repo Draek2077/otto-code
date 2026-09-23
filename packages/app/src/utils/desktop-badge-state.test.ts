@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deriveMacDockBadgeCountFromWorkspaceStatuses,
   isWorkspaceActionableForDesktopBadge,
+  selectDesktopAttentionSnapshots,
 } from "./desktop-badge-state";
 
 describe("desktop-badge-state", () => {
@@ -30,5 +31,26 @@ describe("desktop-badge-state", () => {
         "failed",
       ]),
     ).toBe(3);
+  });
+
+  it("reconciles only hydrated servers and their current attention sources", () => {
+    const ready = {
+      hasHydratedAgents: true,
+      hasHydratedWorkspaces: true,
+      agents: new Map([
+        ["unread", { archivedAt: null, requiresAttention: true, pendingPermissions: [] }],
+        ["archived", { archivedAt: new Date(), requiresAttention: true, pendingPermissions: [] }],
+      ]),
+      workspaces: new Map([
+        ["one", { id: "workspace-one", status: "needs_input" as const }],
+        ["two", { id: "workspace-two", status: "done" as const }],
+      ]),
+    };
+    expect(
+      selectDesktopAttentionSnapshots({
+        ready,
+        loading: { ...ready, hasHydratedAgents: false },
+      }),
+    ).toEqual([{ serverId: "ready", agentIds: ["unread"], workspaceIds: ["workspace-one"] }]);
   });
 });

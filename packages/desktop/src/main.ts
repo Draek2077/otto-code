@@ -1578,7 +1578,7 @@ async function bootstrap(): Promise<void> {
   });
   registerDialogHandlers();
   registerPrintToPdfHandlers();
-  registerNotificationHandlers();
+  registerNotificationHandlers({ requireTrustedSender: requireTrustedMainRenderer });
   const openExternalUrl = createExternalUrlOpener({ open: shell.openExternal });
   ipcMain.handle("otto:opener:openUrl", (event, value: unknown) => {
     requireTrustedMainRenderer(event);

@@ -4,7 +4,10 @@ import { useAgentDirectoryDemand } from "./use-aggregated-agents";
 import { useSessionStore, type SessionState } from "@/stores/session-store";
 import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
 import { useWorkspaceStatusesForBadges } from "@/stores/session-store-hooks";
-import { deriveMacDockBadgeCountFromWorkspaceStatuses } from "@/utils/desktop-badge-state";
+import {
+  deriveMacDockBadgeCountFromWorkspaceStatuses,
+  selectDesktopAttentionSnapshots,
+} from "@/utils/desktop-badge-state";
 import { isNative } from "@/constants/platform";
 
 type FaviconStatus = "none" | "running" | "attention";
@@ -122,6 +125,9 @@ export function useFaviconStatus() {
     isNative ? "none" : deriveFaviconStatus(state.sessions),
   );
   const workspaceStatuses = useWorkspaceStatusesForBadges();
+  const attentionSnapshotsKey = useSessionStore((state) =>
+    JSON.stringify(selectDesktopAttentionSnapshots(state.sessions)),
+  );
   const [colorScheme, setColorScheme] = useState<ColorScheme>(getSystemColorScheme);
   const lastDockBadgeCountRef = useRef<number | undefined>(undefined);
   const lastTrayAttentionRef = useRef<boolean | undefined>(undefined);
@@ -157,4 +163,18 @@ export function useFaviconStatus() {
       void updateTrayAttention(status);
     }
   }, [status, colorScheme, workspaceStatuses]);
+
+  useEffect(() => {
+    const desktop = getDesktopHost();
+    if (desktop?.platform !== "linux") return;
+    const reconcile = desktop.notification?.reconcile;
+    if (!reconcile) return;
+    for (const snapshot of JSON.parse(attentionSnapshotsKey) as ReturnType<
+      typeof selectDesktopAttentionSnapshots
+    >) {
+      void reconcile(snapshot).catch((error) => {
+        console.warn("[useFaviconStatus] Failed to reconcile desktop notifications", error);
+      });
+    }
+  }, [attentionSnapshotsKey]);
 }
