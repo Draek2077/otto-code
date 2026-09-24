@@ -2412,21 +2412,43 @@ export class AgentManager {
       this.dispatch({ type: "provider_subagent", event });
     }
     if (action === "archive") {
-      const label = providerSubagentArchiveLabel(subagentId);
+      await this.archiveProviderSubagentDescriptors(parentAgentId, [subagentId]);
+    }
+  }
+
+  private async archiveProviderSubagentDescriptors(
+    parentAgentId: string,
+    subagentIds: readonly string[],
+  ): Promise<void> {
+    if (subagentIds.length === 0) return;
+    // Clear submits sibling archives concurrently. A stored-only parent reads
+    // and rewrites its labels per call, so serialize writes on the parent's
+    // lane or a slower earlier write can erase later archive tombstones.
+    await this.runLifecycleMutation(parentAgentId, async () => {
       const archivedAt = new Date().toISOString();
+      const labels = Object.fromEntries(
+        subagentIds.map((id) => [providerSubagentArchiveLabel(id), archivedAt]),
+      );
       try {
-        await this.setLabels(parentAgentId, { [label]: archivedAt });
+        await this.setLabels(parentAgentId, labels);
       } catch (error) {
         // setLabels updates the live record before persisting. A failed write
-        // must leave the child visible and retryable on subsequent snapshots.
+        // must leave every child visible and retryable on subsequent snapshots.
         const owner = this.agents.get(parentAgentId);
-        if (owner?.labels[label] === archivedAt) delete owner.labels[label];
+        for (const label of Object.keys(labels)) {
+          if (owner?.labels[label] === archivedAt) delete owner.labels[label];
+        }
         throw error;
       }
-      const archived = this.providerSubagents.get(parentAgentId, subagentId);
-      if (archived)
-        this.dispatch({ type: "provider_subagent", event: { type: "upsert", subagent: archived } });
-    }
+      for (const id of subagentIds) {
+        const archived = this.providerSubagents.get(parentAgentId, id);
+        if (archived)
+          this.dispatch({
+            type: "provider_subagent",
+            event: { type: "upsert", subagent: archived },
+          });
+      }
+    });
   }
 
   listProviderSubagentActivity(): ProviderSubagentDescriptor[] {
@@ -7708,6 +7730,16 @@ export class AgentManager {
         this.logger.debug({ err: error, observedId }, "agent.manager.observed.archive.stop_failed");
       }
     }
+    // The observed projection can shadow a provider descriptor for the same
+    // run. A directory refresh omits archived observed rows, so retire the
+    // provider twin as part of this archive or Clear reveals it again.
+    const key = observedId.slice(`${entry.parentAgentId}::sub::`.length);
+    const twins = this.providerSubagents
+      .list(entry.parentAgentId)
+      .filter((child) => child.id === key || child.toolCallId === key)
+      .filter((child) => !child.archivedAt)
+      .map((child) => child.id);
+    await this.archiveProviderSubagentDescriptors(entry.parentAgentId, twins);
     const archivedAt = new Date().toISOString();
     entry.archivedAt = archivedAt;
     if (last) {

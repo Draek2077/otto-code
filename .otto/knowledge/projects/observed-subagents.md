@@ -6,7 +6,7 @@ status: "confirmed"
 tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "partial"
 created_at: "2026-08-08T06:17:57.301Z"
-updated_at: "2026-09-18T23:01:08.547Z"
+updated_at: "2026-09-23T21:47:34.543Z"
 ---
 # Observed Subagents
 
@@ -322,3 +322,11 @@ Per the repo convention (CLAUDE.md → Docs), once this ships the durable facts 
   kind: "evidence"
   summary: "Investigated the user's stuck subagent, missing-title, and Clear-count reports against the installed local host without interrupting it. Release 0.9.13 (parent 5cc52f4b-1eef-494d-95bf-836784e9c68b) exposed five running observed rows with null titles; matching provider descriptors had task names and statuses completed for three, canceled for one, and running for one. Source verification found Session.enrichAgentPayload mutated registry-owned observed snapshots and replaced both title and archivedAt with null because observed rows have no stored record. A regression reproduces Clear of two completed rows followed by a new completion and late usage; patched enrichment leaves only the new row visible. A separate regression reproduces resumed Claude task progress/completion being keyed to the new tool-call id instead of the original child, stranding the original row. Local patch preserves canonical identity across those events and sidechains, rejects undeclared frames in both projections, settles acknowledged targeted Stops, maps killed to closed, and prevents late usage from reopening terminal rows. Validation: 16 focused tests passed, server typecheck and targeted lint passed. Installed-host behavior after upgrade remains unverified; no daemon restart or live child cancellation was performed. The repository module-size check remains failing on pre-existing oversized modules."
   source: "2026-09-18 read-only installed-host snapshot of Release 0.9.13; docs/chat-lifecycle.md; session.observed-metadata.test.ts; agent.observed-lifecycle.test.ts; age"
+- time: "2026-09-23T20:53:33.208Z"
+  kind: "evidence"
+  summary: "Verified 2026-09-23: An observed subagent can shadow a provider descriptor for the same run. The active agent directory excludes archived observed projections, so clearing only the observed row can reveal its provider twin after refresh and require a second Clear. AgentManager.archiveObservedSubagent now persists archive tombstones for matching provider descriptor ids or tool-call ids before retiring the observed row; persistence failure leaves the observed row retryable. Focused provider-subagent-control tests (8), targeted lint, and server typecheck passed. Installed app behavior remains unverified."
+  source: "docs/chat-lifecycle.md; packages/server/src/server/agent/agent-manager.ts; packages/server/src/server/agent/provider-subagent-control.test.ts"
+- time: "2026-09-23T21:47:34.543Z"
+  kind: "evidence"
+  summary: "Follow-up verification for the reported first-Clear failure: the affected chat was Claude on another computer, so local installed-daemon logs were not incident evidence. Claude's task event path emits a provider descriptor and an observed row with the same key (`providers/claude/agent.ts`, appendObservedSubagentTaskEvent). Added a three-row concurrent Claude archive regression and serialized matching provider archive-marker writes on the parent lifecycle lane. Nine focused tests, targeted server lint, and server typecheck passed. The exact event sequence on the other computer remains unobserved."
+  source: "User clarification 2026-09-23; packages/server/src/server/agent/providers/claude/agent.ts; packages/server/src/server/agent/provider-subagent-control.test.ts"
