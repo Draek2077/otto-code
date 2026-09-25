@@ -135,8 +135,9 @@ export interface Runtime {
 export interface GpuInfo {
   name: string;
   totalBytes: number;
-  usedBytes: number;
-  freeBytes: number;
+  /** Null when the backend exposes a capacity but no system-wide usage counter. */
+  usedBytes: number | null;
+  freeBytes: number | null;
   driver: string;
   computeCapability: string;
 }

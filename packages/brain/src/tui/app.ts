@@ -1992,8 +1992,8 @@ export class App {
     const title = `${style.bold}${style.brightCyan}Otto Brain${style.reset}${style.grey} v${resolveVersion()}${style.reset}`;
     const rt = `${style.grey}llama.cpp ${this.runtime.label} v${this.runtime.version}${style.reset}`;
     const g = this.gpuInfo
-      ? `${style.grey}${this.gpuInfo.name} · ${vram.formatGiB(this.gpuInfo.usedBytes)}/${vram.formatGiB(this.gpuInfo.totalBytes)}${style.reset}`
-      : `${style.yellow}no NVIDIA GPU detected${style.reset}`;
+      ? `${style.grey}${this.gpuInfo.name} · ${this.gpuInfo.usedBytes === null ? "usage unavailable" : `${vram.formatGiB(this.gpuInfo.usedBytes)}/`}${vram.formatGiB(this.gpuInfo.totalBytes)}${style.reset}`
+      : `${style.yellow}no supported GPU memory budget detected${style.reset}`;
     const endpoint = this.routerServer
       ? `${style.grey}serving ${this.listenHost}:${this.listenPort}${style.reset}`
       : `${style.red}router not listening${style.reset}`;
@@ -2253,12 +2253,14 @@ export class App {
       );
       const gpuSample = sys.gpu;
       if (gpuSample) {
-        const hot = gpuSample.utilization >= 90 ? style.brightGreen : style.reset;
+        if (gpuSample.utilization !== null) {
+          const hot = gpuSample.utilization >= 90 ? style.brightGreen : style.reset;
+          bits.push(
+            `${style.grey}gpu${style.reset} ${hot}${String(gpuSample.utilization).padStart(3)}%${style.reset}`,
+          );
+        }
         bits.push(
-          `${style.grey}gpu${style.reset} ${hot}${String(gpuSample.utilization).padStart(3)}%${style.reset}`,
-        );
-        bits.push(
-          `${style.grey}vram${style.reset} ${vram.formatGiB(gpuSample.usedBytes)}/${vram.formatGiB(gpuSample.totalBytes)}`,
+          `${style.grey}vram${style.reset} ${gpuSample.usedBytes === null ? "usage unavailable · " : `${vram.formatGiB(gpuSample.usedBytes)}/`}${vram.formatGiB(gpuSample.totalBytes)}`,
         );
         if (typeof gpuSample.temperature === "number" && gpuSample.temperature > 0) {
           bits.push(`${style.grey}${gpuSample.temperature}C${style.reset}`);

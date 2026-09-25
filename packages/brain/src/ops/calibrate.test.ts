@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, vi, beforeEach } from "vitest";
 
 import { kvSpilledToCpu, maxContextForCalibration, calibrate } from "./calibrate.js";
-import { query, usedBytes } from "../gpu.js";
+import { metalAllocatedBytes, query, usedBytes } from "../gpu.js";
 import * as vram from "../vram.js";
 import type { Model } from "../types.js";
 import type { Profile } from "../config/schema.js";
@@ -47,7 +47,8 @@ const GPU_32GB = { totalBytes: 31.8 * vram.GIB };
 // context well below the YaRN ×2 ceiling of 524,288.
 const PRIOR = { kvBytesPerToken: 28.24 * 1024, baseOverheadBytes: 0.1 * vram.GIB };
 
-vi.mock("../gpu.js", () => ({
+vi.mock("../gpu.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../gpu.js")>()),
   query: vi.fn(),
   usedBytes: vi.fn(),
 }));
@@ -104,15 +105,29 @@ beforeEach(() => {
 
 test("kvSpilledToCpu detects the split-cache banner lines", () => {
   assert.equal(kvSpilledToCpu(["model loaded, ready"]), false);
+  assert.equal(kvSpilledToCpu(["llama_context: CPU output buffer size = 0.98 MiB"]), false);
   assert.equal(
     kvSpilledToCpu([
       "llama_new_context_with_model: KV self size = 4096.00 MiB",
-      "CPU buffer size = 1024.00 MiB",
+      "CPU KV buffer size = 1024.00 MiB",
     ]),
     true,
   );
   assert.equal(kvSpilledToCpu(["offloading 12 layers to cpu"]), true);
   assert.equal(kvSpilledToCpu(["KV cache offloaded to CPU"]), true);
+});
+
+test("Metal allocation reader sums model, KV and compute buffers", () => {
+  assert.equal(metalAllocatedBytes(["llama_context: CPU output buffer size = 0.98 MiB"]), null);
+  assert.equal(
+    metalAllocatedBytes([
+      "load_tensors: Metal_Mapped model buffer size = 1024.00 MiB",
+      "llama_kv_cache: Metal KV buffer size = 128.00 MiB",
+      "llama_context: Metal compute buffer size = 64.00 MiB",
+      "ggml_metal_init: recommendedMaxWorkingSetSize = 10000.00 MiB",
+    ]),
+    1216 * 1024 ** 2,
+  );
 });
 
 test("maxContextForCalibration answers from a prior, null when unknown", () => {
@@ -186,7 +201,7 @@ test("a sample whose KV spilled to CPU fails the calibration", async () => {
     ...loadAtPriorRate(p),
     logLines: [
       "llama_new_context_with_model: KV self size = 1024.00 MiB",
-      "CPU buffer size = 512.00 MiB",
+      "CPU KV buffer size = 512.00 MiB",
     ],
   }));
 
@@ -200,6 +215,29 @@ test("a sample whose KV spilled to CPU fails the calibration", async () => {
     }),
     /KV cache split to CPU/,
   );
+});
+
+test("Metal calibration uses the serving runtime's allocation lines", async () => {
+  mockedQuery.mockResolvedValue({ ...GPU_32GB, driver: "Metal" });
+  useSupervisor((profile) => ({
+    vramAtReadyBytes: null,
+    vramBaselineBytes: null,
+    loadSeconds: 3,
+    logLines: [
+      "load_tensors: Metal_Mapped model buffer size = 1024.00 MiB",
+      `llama_kv_cache: Metal KV buffer size = ${profile.contextSize / 64} MiB`,
+      "llama_context: Metal compute buffer size = 64.00 MiB",
+      "llama_context: CPU output buffer size = 0.98 MiB",
+    ],
+  }));
+  const measured = await calibrate({
+    runtime: {} as never,
+    releaseDelayMs: 0,
+    model: MODEL,
+    profile: makeProfile({ contextSize: 8192 }),
+    samples: [4096, 8192],
+  });
+  assert.equal(measured.kvBytesPerToken, 16384);
 });
 
 test("every load uses the profile's own settings, not calibration's own", async () => {

@@ -110,7 +110,7 @@ failure reads as "model not found" rather than as a routing bug. Model-scoped ro
 ### Resources are opt-in
 
 `/__host/status` is also the daemon's liveness poll, and it runs far more often than any UI. Live
-resource telemetry costs an `nvidia-smi` spawn, so it is only gathered when the caller asks with
+resource telemetry costs a GPU probe, so it is only gathered when the caller asks with
 `?resources=1`. Slot activity stays in the cheap status because the rail and live inference panel
 need it. Only the Brain page's Overview tab, which actually renders the resource numbers, opts in.
 
@@ -142,7 +142,7 @@ The pieces, and why each is the way it is:
   actually true (a brain that came back, or an unreachable one), and reconnects with bounded
   backoff. The brain writes an SSE comment every 20s so an idle stream is not mistaken for a dead
   one, and it ends its streams on shutdown, since `server.close()` waits on open connections.
-- **`resources` is never pushed.** It spawns `nvidia-smi`; see "Resources are opt-in" above. The
+- **`resources` is never pushed.** It probes the GPU; see "Resources are opt-in" above. The
   Overview tab keeps pulling it.
 
 The daemon rebroadcasts each snapshot to its clients as a `brain_status_changed` status message,
@@ -430,6 +430,13 @@ distinct from having no measurement at all, where Brain uses the theoretical bud
 `weights + projector + KV + overhead` against usable VRAM, with a fit verdict. The client can ask for
 the budget of a **hypothetical** model profile by passing the fields as query parameters, so the verdict
 updates as a control is scrubbed without persisting a value the user is dragging past.
+
+On Apple Silicon, capacity is Metal's recommended maximum working set as reported by the selected
+`llama-server --list-devices`, not the Mac's total unified RAM. Metal does not expose the serving
+process's allocation through a separate GPU probe, so Overview shows capacity without a live
+system-wide usage meter. Calibration measures the model's own Metal buffer sizes from each load's
+llama.cpp log, including weights, KV and compute buffers. If those lines are missing, calibration
+fails rather than saving an invented measurement.
 
 The KV figure comes from one of four places, and the UI says which:
 

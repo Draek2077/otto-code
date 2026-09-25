@@ -439,13 +439,17 @@ function VramPanel({ gpu }: { gpu: Record<string, unknown> | null }) {
   if (!total) {
     return null;
   }
-  const fraction = used ? used / total : 0;
+  const fraction = used !== null ? used / total : 0;
   return (
     <View style={styles.panel}>
-      <Text style={styles.panelTitle}>VRAM</Text>
-      <Meter fraction={fraction} tone={fraction > 0.95 ? "danger" : "normal"} />
+      <Text style={styles.panelTitle}>{gpu?.driver === "Metal" ? "GPU working set" : "VRAM"}</Text>
+      {used !== null ? (
+        <Meter fraction={fraction} tone={fraction > 0.95 ? "danger" : "normal"} />
+      ) : null}
       <Text style={styles.panelCaption}>
-        {formatGiB(used)} of {formatGiB(total)}
+        {used !== null
+          ? `${formatGiB(used)} of ${formatGiB(total)}`
+          : `${formatGiB(total)} Metal working set · usage unavailable`}
         {typeof gpu?.name === "string" ? ` · ${gpu.name}` : ""}
       </Text>
     </View>

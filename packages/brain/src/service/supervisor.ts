@@ -11,7 +11,7 @@ import { resolveHostingProfileForLaunch } from "../config/hosting-profiles.js";
 import { getCalibrationForBudget } from "../config/profiles.js";
 import { resolveBrainPaths, type BrainPaths } from "../config/paths.js";
 import { loadProfilesStore } from "../config/store.js";
-import { usedBytes } from "../gpu.js";
+import { metalAllocatedBytes, usedBytes } from "../gpu.js";
 import type { Model, Runtime } from "../types.js";
 import type { Profile, ProfilesStore } from "../config/schema.js";
 import { formatBrainLog, type BrainLogArea } from "./log-format.js";
@@ -259,12 +259,19 @@ export class Supervisor extends EventEmitter {
       if (health) {
         this.loadSeconds = (Date.now() - started) / 1000;
         this.startedAt = new Date();
-        this.vramAtReadyBytes = (await usedBytes()) ?? peakVram;
+        const launchLine = this.logLines.findLastIndex((line) => line.includes("launching:"));
+        this.vramAtReadyBytes =
+          (await usedBytes()) ??
+          metalAllocatedBytes(this.logLines.slice(Math.max(0, launchLine))) ??
+          (peakVram > 0 ? peakVram : null);
         this.#setState("ready");
         this.emit("ready", {
           loadSeconds: this.loadSeconds,
           vramBytes: this.vramAtReadyBytes,
-          deltaBytes: this.vramAtReadyBytes - (this.vramBaselineBytes || 0),
+          deltaBytes:
+            this.vramAtReadyBytes === null
+              ? null
+              : this.vramAtReadyBytes - (this.vramBaselineBytes || 0),
         });
         return this;
       }

@@ -98,7 +98,8 @@ measured-calibration lookup keyed by cache types and attention geometry.
 
 **Discovery** - `gguf.ts` (bounded GGUF header reader), `models/` (walks the model
 dirs, pairs vision projectors, sums shards; `scanModels` unions the managed dir and
-LM Studio), `gpu.ts` (`nvidia-smi`, returns null when absent).
+LM Studio), `gpu.ts` (`nvidia-smi` on NVIDIA hosts; the selected llama.cpp
+runtime's Metal working set on Apple Silicon, with model allocations read from its logs).
 
 **Decision** - `vram.ts` (`budget()`/`maxContextThatFits()`/`fitToBudget()`; the
 theoretical formula is a bound, calibration is preferred).

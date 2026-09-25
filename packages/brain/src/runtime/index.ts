@@ -10,7 +10,7 @@
  * whether an NVIDIA GPU answered - `probeNvidiaGpu` below is the one place that
  * asks, so the download layer stays free of process spawning.
  */
-import { query as queryGpu } from "../gpu.js";
+import { queryNvidia } from "../gpu.js";
 import { resolveBrainPaths } from "../config/paths.js";
 import type { BrainConfig } from "../config/schema.js";
 import type { Runtime } from "../types.js";
@@ -67,7 +67,7 @@ export function listAllRuntimes(env: NodeJS.ProcessEnv = process.env): Runtime[]
  * case on macOS and on AMD/Intel machines.
  */
 export async function probeNvidiaGpu(): Promise<boolean> {
-  return (await queryGpu()) !== null;
+  return (await queryNvidia()) !== null;
 }
 
 /** The runtime to use given config, or null when none is available. */

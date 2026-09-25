@@ -817,7 +817,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
             budget: null,
             maxContextThatFits: null,
             gpu: null,
-            reason: "no NVIDIA GPU detected",
+            reason: "no supported GPU memory budget detected",
           });
           return;
         }
