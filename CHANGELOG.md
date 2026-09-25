@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.23 - 2026-09-25
+
+### Improved
+
+- Apple Silicon: Otto Brain detects Metal memory for model budgets and calibration
+
+### Fixed
+
+- Otto Brain becomes available as a provider when you start or enable it without restarting Otto
+- Model tier and visibility changes save and appear immediately
+
 ## 0.9.22 - 2026-09-25
 
 ### Added
