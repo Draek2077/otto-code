@@ -457,6 +457,7 @@ export class App {
         profile,
         calibration: profiles.getCalibrationForBudget(this.store, target, profile),
         totalVramBytes: info.totalBytes,
+        reserveBytes: vram.reserveBytesForGpu(info),
       });
       if (!fit.adjusted && !fit.budget.fits) throw new Error(fit.reason ?? undefined);
       // Held for the benchmark to record: once `fit.profile` is applied, the
@@ -663,6 +664,7 @@ export class App {
       profile,
       calibration: this.calibration,
       totalVramBytes: info.totalBytes,
+      reserveBytes: vram.reserveBytesForGpu(info),
     });
   }
 
@@ -1031,6 +1033,7 @@ export class App {
       profile,
       calibration: this.calibration,
       totalVramBytes: info.totalBytes,
+      reserveBytes: vram.reserveBytesForGpu(info),
     });
     if (!max) {
       this.setStatus("cannot determine a fitting context - run calibration (c)", "warn");
@@ -1478,6 +1481,7 @@ export class App {
           profile,
           calibration: this.calibration,
           totalVramBytes: info.totalBytes,
+          reserveBytes: vram.reserveBytesForGpu(info),
         });
         if (max && max !== before) {
           profile.contextSize = max;

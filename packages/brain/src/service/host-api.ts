@@ -439,7 +439,13 @@ export function buildInventoryRow(params: {
   const calibration = getCalibrationForBudget(store, model, profile);
 
   const budgetOptions = gpu
-    ? { model, profile, calibration, totalVramBytes: gpu.totalBytes }
+    ? {
+        model,
+        profile,
+        calibration,
+        totalVramBytes: gpu.totalBytes,
+        reserveBytes: vram.reserveBytesForGpu(gpu),
+      }
     : null;
 
   const ranked =
@@ -721,7 +727,13 @@ export function createHostApi(deps: HostApiDeps): HostApi {
           const gpu = await deps.queryGpuInfo();
           const calibration = getCalibrationForBudget(store, model, profile);
           const options = gpu
-            ? { model, profile, calibration, totalVramBytes: gpu.totalBytes }
+            ? {
+                model,
+                profile,
+                calibration,
+                totalVramBytes: gpu.totalBytes,
+                reserveBytes: vram.reserveBytesForGpu(gpu),
+              }
             : null;
           sendJson(res, {
             profile,
@@ -826,6 +838,7 @@ export function createHostApi(deps: HostApiDeps): HostApi {
           profile,
           calibration: getCalibrationForBudget(store, model, profile),
           totalVramBytes: gpu.totalBytes,
+          reserveBytes: vram.reserveBytesForGpu(gpu),
         };
         sendJson(res, {
           profile,

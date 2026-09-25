@@ -578,6 +578,9 @@ export class Scheduler<
       } finally {
         this.#running.delete(job);
         if (this.activeJob === job) this.activeJob = null;
+        // Calibration stops its sample server before yielding. Close this
+        // turn so the next completion loads the saved hosting profile.
+        if (job.kind === "calibrate") this.#turnId = null;
         // OWNERSHIP: settling does NOT erase and does NOT clear the owner entry.
         // The engine keeps a released slot's KV indefinitely (nothing in our
         // configuration clears or parks it - see OWNERSHIP in the header), and
@@ -709,7 +712,9 @@ export class Scheduler<
         // Prefer a model other than the one that just ran, so two sides
         // alternate; fall back to the head when only one model is waiting.
         const pick = this.queue.find((job) => job.modelId !== this.lastTurnId) ?? this.queue[0];
-        if (this.loadedId !== pick.modelId) {
+        // Calibration owns its process lifecycle and must be able to measure a
+        // small sample before the uncalibrated hosting profile has a fit verdict.
+        if (this.loadedId !== pick.modelId && pick.kind !== "calibrate") {
           try {
             this.logger?.(`switching to ${pick.model.displayName}`);
             await this.loadModel(pick.model);

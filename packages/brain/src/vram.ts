@@ -10,9 +10,14 @@
  * bytes-per-token from `calibrate` is preferred whenever one exists.
  */
 import type { Calibration, Profile } from "./config/schema.js";
-import type { Model, ModelMetadata } from "./types.js";
+import type { GpuInfo, Model, ModelMetadata } from "./types.js";
 
 export const GIB = 1024 ** 3;
+
+/** Metal's reported capacity is already a recommended working set below unified RAM. */
+export function reserveBytesForGpu(gpu: Pick<GpuInfo, "driver">): number {
+  return gpu.driver === "Metal" ? 0.25 * GIB : 1.5 * GIB;
+}
 
 // Bytes per element for each KV cache type (block size / elements per block).
 export const CACHE_TYPE_BYTES: Record<string, number> = {
@@ -292,14 +297,38 @@ export function fitToBudget({
     return { profile, adjusted: false, reason: null, budget: initial, requestedContextSize };
   }
 
-  const max = maxContextThatFits({ model, profile, calibration, totalVramBytes, reserveBytes });
-  if (!max || max < 4096) {
+  const coarse = maxContextThatFits({ model, profile, calibration, totalVramBytes, reserveBytes });
+  const max =
+    coarse && coarse >= 4096
+      ? coarse
+      : maxContextThatFits({
+          model,
+          profile,
+          calibration,
+          totalVramBytes,
+          reserveBytes,
+          step: 1024,
+        });
+  if (!max || max < 1024) {
+    const withoutOptionalComponents =
+      initial.componentBytes > 0
+        ? budget({
+            model,
+            profile: { ...profile, contextSize: 1024, enabledComponents: [], vision: false },
+            calibration: null,
+            totalVramBytes,
+            reserveBytes,
+          })
+        : null;
+    const componentHint = withoutOptionalComponents?.fits
+      ? `; enabled companion models add ${formatGiB(initial.componentBytes)} - disable them to try the text-only model`
+      : "";
     return {
       profile,
       adjusted: false,
       reason:
         `does not fit at any usable context (needs ${formatGiB(initial.totalBytes)}, ` +
-        `${formatGiB(initial.usableBytes)} usable)`,
+        `${formatGiB(initial.usableBytes)} usable)${componentHint}`,
       budget: initial,
       requestedContextSize,
     };

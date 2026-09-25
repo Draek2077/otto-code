@@ -129,13 +129,13 @@ test("an exclusive operation waits behind inference, swaps models, then yields t
     return firstA;
   });
   await tick();
-  const calibrate = sched.submit(
+  const benchmark = sched.submit(
     B,
     () => {
-      order.push(`calibrate ${supervisor.model?.id}`);
+      order.push(`benchmark ${supervisor.model?.id}`);
       return Promise.resolve();
     },
-    { kind: "calibrate" },
+    { kind: "benchmark" },
   );
   const nextRequest = sched.submit(A, () => {
     order.push(`api A2 ${supervisor.model?.id}`);
@@ -143,10 +143,30 @@ test("an exclusive operation waits behind inference, swaps models, then yields t
   });
 
   releaseA();
-  await Promise.all([request, calibrate, nextRequest]);
+  await Promise.all([request, benchmark, nextRequest]);
 
-  assert.deepEqual(order, ["api A1", "calibrate b", "api A2 a"]);
+  assert.deepEqual(order, ["api A1", "benchmark b", "api A2 a"]);
   assert.deepEqual(switches, ["b", "a"]);
+});
+
+test("calibration measures an unloaded model before its normal profile is admitted", async () => {
+  const { supervisor, switches, loadModel } = harness(null);
+  const sched = new Scheduler({ supervisor, loadModel });
+
+  await sched.submit(
+    B,
+    async () => {
+      assert.equal(supervisor.state, "stopped");
+      supervisor.model = B;
+      supervisor.state = "ready";
+      supervisor.state = "stopped";
+    },
+    { kind: "calibrate" },
+  );
+  assert.deepEqual(switches, [], "the saved profile must not load before sample one");
+
+  await sched.submit(B, async () => undefined);
+  assert.deepEqual(switches, ["b"], "a later completion still loads the hosting profile");
 });
 
 test("an operation is a hard queue boundary for later requests to its own model", async () => {

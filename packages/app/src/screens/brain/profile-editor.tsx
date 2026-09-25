@@ -516,14 +516,14 @@ function BudgetPanel({
     );
   }
 
-  // The track scales to the WHOLE allocation, not just the usable VRAM. When
-  // the total exceeds VRAM, the bar grows past its 100% line and the excess is
-  // a third, purple segment: that is the cache spilling into system RAM.
+  // The track scales to the whole estimate. Its purple tail is the amount
+  // above the admission budget, not a measured CPU spill on unified memory.
   const spillBytes = Math.max(0, budget.totalBytes - budget.usableBytes);
   const onGpuBytes = Math.min(budget.totalBytes, budget.usableBytes);
   const scaleTotal = Math.max(budget.totalBytes, budget.usableBytes);
   const onGpuPct = scaleTotal > 0 ? (onGpuBytes / scaleTotal) * 100 : 0;
   const spillPct = scaleTotal > 0 ? (spillBytes / scaleTotal) * 100 : 0;
+  const drafterBytes = Math.max(0, (budget.componentBytes ?? 0) - budget.mmprojBytes);
 
   return (
     <View style={styles.budget}>
@@ -537,16 +537,22 @@ function BudgetPanel({
       </View>
       <Text style={budget.fits ? styles.budgetVerdictGood : styles.budgetVerdictBad}>
         {budget.fits
-          ? `Fits entirely on the GPU, ${formatGiB(budget.headroomBytes)} to spare`
-          : `${formatGiB(onGpuBytes)} on the GPU, ${formatGiB(spillBytes)} spills to RAM`}
+          ? `Within GPU budget, ${formatGiB(budget.headroomBytes, 2)} headroom`
+          : `${formatGiB(spillBytes, 2)} over the GPU budget`}
       </Text>
       <Text style={styles.budgetBreakdown}>
         {`weights ${formatGiB(budget.weightsBytes)}`}
         {budget.mmprojBytes > 0 ? ` + projector ${formatGiB(budget.mmprojBytes)}` : ""}
-        {` + KV ${formatGiB(budget.kvBytes)} + overhead ${formatGiB(budget.overheadBytes)}`}
-        {` = ${formatGiB(budget.totalBytes)}`}
-        {` of ${formatGiB(budget.usableBytes)} usable`}
-        {!budget.fits ? ` · ${formatGiB(spillBytes)} over` : ""}
+        {drafterBytes > 0 ? ` + drafter ${formatGiB(drafterBytes)}` : ""}
+        {` + KV ${formatGiB(budget.kvBytes, 2)} + overhead ${formatGiB(budget.overheadBytes)}`}
+        {(budget.drafterKvBytes ?? 0) > 0
+          ? ` + drafter KV ${formatGiB(budget.drafterKvBytes, 2)}`
+          : ""}
+        {(budget.imageProcessingBytes ?? 0) > 0
+          ? ` + image buffers ${formatGiB(budget.imageProcessingBytes)}`
+          : ""}
+        {` = ${formatGiB(budget.totalBytes, 2)}`}
+        {` of ${formatGiB(budget.usableBytes, 2)} usable`}
       </Text>
       {/* Where the KV figure came from decides how much to trust the verdict.
           The theoretical formula overestimates badly on architectures that only
@@ -1389,7 +1395,7 @@ const styles = StyleSheet.create((theme) => {
       height: "100%",
       backgroundColor: theme.colors.accentBright,
     },
-    // The purple tail is the cache that does not fit in VRAM and spills to RAM.
+    // The purple tail is the estimate above the GPU admission budget.
     meterFillSpill: {
       backgroundColor: theme.colors.palette.purple[500],
     },

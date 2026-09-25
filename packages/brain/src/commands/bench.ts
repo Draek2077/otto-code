@@ -237,6 +237,7 @@ async function runBenchSuite(options: BenchOptions, _command: Command): Promise<
         profile,
         calibration,
         totalVramBytes: gpu.totalBytes,
+        reserveBytes: vram.reserveBytesForGpu(gpu),
       });
       if (!fit.adjusted && !fit.budget.fits) {
         process.stderr.write(`\nskipping ${model.displayName}: ${fit.reason}\n`);

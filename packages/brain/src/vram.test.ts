@@ -35,6 +35,23 @@ const PROFILE = {
 
 const RTX5090 = 31.8 * vram.GIB;
 
+test("Metal uses the runtime's already reduced working set without a second large reserve", () => {
+  assert.equal(vram.reserveBytesForGpu({ driver: "Metal" }), 0.25 * vram.GIB);
+  assert.equal(vram.reserveBytesForGpu({ driver: "CUDA" }), 1.5 * vram.GIB);
+  const tightModel = { ...MODEL, sizeBytes: 16.4 * vram.GIB };
+  const profile = { ...PROFILE, contextSize: 1024 };
+  const capacity = 17.8 * vram.GIB;
+  const oldFit = vram.budget({ model: tightModel, profile, totalVramBytes: capacity });
+  const metalFit = vram.budget({
+    model: tightModel,
+    profile,
+    totalVramBytes: capacity,
+    reserveBytes: vram.reserveBytesForGpu({ driver: "Metal" }),
+  });
+  assert.equal(oldFit.fits, false);
+  assert.equal(metalFit.fits, true);
+});
+
 test("cache type byte widths match GGUF block layouts", () => {
   assert.equal(vram.cacheTypeBytes("f16"), 2);
   assert.equal(vram.cacheTypeBytes("q8_0"), 34 / 32);
@@ -242,6 +259,45 @@ test("fitToBudget still reports the requested context when nothing was adjusted"
   assert.equal(fit.adjusted, false);
   assert.equal(fit.requestedContextSize, PROFILE.contextSize);
   assert.equal(fit.profile.contextSize, PROFILE.contextSize);
+});
+
+test("fitToBudget can use a 1024-token context on a tight device", () => {
+  const model = { ...MODEL, sizeBytes: 16 * vram.GIB };
+  const fit = vram.fitToBudget({
+    model,
+    profile: { ...PROFILE, contextSize: 8192 },
+    calibration: null,
+    totalVramBytes: 17.2 * vram.GIB,
+    reserveBytes: 0.25 * vram.GIB,
+  });
+  assert.equal(fit.adjusted, true);
+  assert.ok(fit.profile.contextSize >= 1024 && fit.profile.contextSize < 4096);
+  assert.equal(fit.budget.fits, true);
+});
+
+test("a bundle that exceeds Metal capacity identifies optional companions", () => {
+  const model = {
+    ...MODEL,
+    sizeBytes: 14.8 * vram.GIB,
+    components: [
+      { id: "projector", role: "vision_projector", available: true, bytes: 1.9 * vram.GIB },
+      { id: "drafter", role: "speculative_drafter", available: true, bytes: 1.5 * vram.GIB },
+    ],
+  } as Model;
+  const fit = vram.fitToBudget({
+    model,
+    profile: {
+      ...PROFILE,
+      contextSize: 1024,
+      enabledComponents: ["projector", "drafter"],
+      vision: true,
+    },
+    totalVramBytes: 17.8 * vram.GIB,
+    reserveBytes: 0.25 * vram.GIB,
+  });
+  assert.equal(fit.budget.fits, false);
+  assert.match(fit.reason ?? "", /enabled companion models add 3\.4G/);
+  assert.match(fit.reason ?? "", /text-only model/);
 });
 
 test("a model too large for the card fits nothing", () => {

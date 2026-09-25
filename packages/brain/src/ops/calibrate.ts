@@ -51,9 +51,19 @@ export interface CalibrateProgress {
  * only place the split is stated.
  */
 export function kvSpilledToCpu(logLines: string[]): boolean {
-  return logLines.some((line) =>
-    /KV .*split|CPU KV buffer size|KV cache.*offload|offloading \d+ layers? to cpu/i.test(line),
-  );
+  return logLines.some((line) => {
+    if (
+      /KV .*split|CPU KV buffer size|KV cache.*offload|offloading \d+ layers? to cpu/i.test(line)
+    ) {
+      return true;
+    }
+    // b11181's memory table can be the only place a host-side context appears.
+    const host =
+      /\|\s*-\s*(?:Host|CPU)\b[^|]*\|\s*[\d.]+\s*=\s*[\d.]+\s*\+\s*\(\s*[\d.]+\s*=\s*[\d.]+\s*\+\s*([\d.]+)\s*\+/iu.exec(
+        line,
+      );
+    return host !== null && Number(host[1]) > 0;
+  });
 }
 
 /**
@@ -66,14 +76,19 @@ export function maxContextForCalibration(
   profile: Profile,
   calibration: Calibration | null,
   totalVramBytes: number,
+  reserveBytes?: number,
 ): number | null {
-  const max = vram.maxContextThatFits({
+  const options = {
     model,
     profile,
     calibration,
     totalVramBytes,
-  });
-  return max && max >= 4096 ? max : null;
+    reserveBytes,
+  };
+  const coarse = vram.maxContextThatFits(options);
+  if (coarse && coarse >= 4096) return coarse;
+  const fine = vram.maxContextThatFits({ ...options, step: 1024 });
+  return fine && fine >= 1024 ? fine : null;
 }
 
 export interface CalibrateOptions {
@@ -145,12 +160,20 @@ export async function calibrate({
   // raw ceiling itself. On a card where that depth does not fit, the static
   // budget caps it at the largest context that does. Measuring at a context
   // whose KV spills to CPU understates bytes/token and poisons the budget.
-  const configured = Math.max(4096, profile.contextSize);
+  const configured = Math.max(1024, profile.contextSize);
   let high = configured;
   if (nativeCeiling !== null && high > nativeCeiling) high = nativeCeiling;
 
+  const reserveBytes = gpu ? vram.reserveBytesForGpu(gpu) : undefined;
+  let maxFits: number | null = null;
   if (gpu !== null) {
-    const maxFits = maxContextForCalibration(model, profile, priorCalibration, gpu.totalBytes);
+    maxFits = maxContextForCalibration(
+      model,
+      profile,
+      priorCalibration,
+      gpu.totalBytes,
+      reserveBytes,
+    );
     if (maxFits !== null && high > maxFits) {
       high = maxFits;
       onProgress({
@@ -161,13 +184,17 @@ export async function calibrate({
     }
   }
 
-  // The low sample is a fixed small context far enough below the serving depth
-  // that the KV delta dominates the fixed terms (weights, CUDA context). The
-  // high sample never drops below it: a VRAM cap that pushed the two together
-  // would make the slope a difference of near-equal numbers, and at high == low
-  // a division by zero.
-  const lowContext = 4096;
-  const highContext = Math.max(high, lowContext * 2);
+  // Tight Metal hosts can hold a model at 1024 or 4096 but not at 8192. Keep
+  // both samples inside the estimated fit instead of forcing an OOM at 8192.
+  const sampleCeiling = Math.min(
+    maxFits ?? Number.POSITIVE_INFINITY,
+    nativeCeiling ?? Number.POSITIVE_INFINITY,
+  );
+  const highContext = Math.min(Math.max(high, 8192), sampleCeiling);
+  const lowContext = Math.min(4096, Math.floor(highContext / 2));
+  if (lowContext < 1024 || highContext <= lowContext) {
+    throw new Error("not enough memory to measure two KV cache context sizes");
+  }
   const effectiveSamples = samples ?? [lowContext, highContext];
   if (effectiveSamples.length < 2) throw new Error("calibration needs at least two context sizes");
 
@@ -185,18 +212,37 @@ export async function calibrate({
     }
 
     const supervisor = optionsSupervisor ?? new Supervisor({ runtime, internalPort });
+    const previousLogVerbosity = supervisor.logVerbosity;
+    // Metal has no external allocation counter. Some llama.cpp builds suppress
+    // backend Info lines below verbosity 5, so request full logs for each
+    // measurement and restore the user's serving setting afterward.
+    if (gpu?.driver === "Metal") {
+      supervisor.logVerbosity = Math.max(
+        Number.isFinite(previousLogVerbosity) ? previousLogVerbosity : 3,
+        5,
+      );
+    }
     onProgress({ phase: "loading", contextSize });
 
     const baseline = await usedBytes();
     const logStart = supervisor.logLines.length;
+    let stopped = false;
+    const stopSample = async (): Promise<void> => {
+      if (stopped) return;
+      if (lifecycle) await lifecycle.stop();
+      else await supervisor.stop();
+      stopped = true;
+    };
+    const sampleLines = (): string[] => {
+      if (supervisor.allocationLogLines) return supervisor.allocationLogLines;
+      const launchLine = supervisor.logLines.findLastIndex((line) => line.includes("launching:"));
+      return supervisor.logLines.slice(launchLine >= 0 ? launchLine : logStart);
+    };
     try {
       const sampleProfile = { ...profile, contextSize };
       if (lifecycle) await lifecycle.start(sampleProfile);
       else await supervisor.start(model, sampleProfile);
-      // The supervisor retains a bounded log. Once full, array length no longer
-      // grows, so find this load's launch marker instead of trusting logStart.
-      const launchLine = supervisor.logLines.findLastIndex((line) => line.includes("launching:"));
-      const loadLines = supervisor.logLines.slice(launchLine >= 0 ? launchLine : logStart);
+      let loadLines = sampleLines();
       if (kvSpilledToCpu(loadLines)) {
         const reason = `KV cache split to CPU at ${contextSize.toLocaleString()} context`;
         onProgress({ phase: "failed", contextSize, reason });
@@ -204,7 +250,17 @@ export async function calibrate({
           `${reason} - the context does not fit in VRAM. Lower the context or use a smaller KV cache type before calibrating.`,
         );
       }
-      const metalBytes = gpu?.driver === "Metal" ? metalAllocatedBytes(loadLines) : null;
+      let metalBytes = gpu?.driver === "Metal" ? metalAllocatedBytes(loadLines) : null;
+      if (gpu?.driver === "Metal" && metalBytes === null) {
+        // b11181 prints its memory breakdown while closing the server. Wait
+        // for stream EOF, then read this launch's retained allocation lines.
+        await stopSample();
+        loadLines = sampleLines();
+        if (kvSpilledToCpu(loadLines)) {
+          throw new Error(`KV cache split to CPU at ${contextSize.toLocaleString()} context`);
+        }
+        metalBytes = metalAllocatedBytes(loadLines);
+      }
       if (gpu?.driver === "Metal" && metalBytes === null) {
         throw new Error(
           "Metal allocation lines are missing from the runtime log; cannot calibrate safely",
@@ -222,8 +278,11 @@ export async function calibrate({
       });
       throw error;
     } finally {
-      if (lifecycle) await lifecycle.stop();
-      else await supervisor.stop();
+      try {
+        await stopSample();
+      } finally {
+        if (gpu?.driver === "Metal") supervisor.logVerbosity = previousLogVerbosity;
+      }
       // Let the driver actually release the allocation before the next sample.
       if (releaseDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, releaseDelayMs));
     }

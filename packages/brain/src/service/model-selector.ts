@@ -153,5 +153,7 @@ export function makeVramFitPredicate(gpu: GpuInfo | null): ((model: Model) => bo
   if (!gpu) return undefined;
   const profile = ProfileSchema.parse({ contextSize: PROBE_CONTEXT_TOKENS });
   const totalVramBytes = gpu.totalBytes;
-  return (model: Model): boolean => vram.budget({ model, profile, totalVramBytes }).fits;
+  const reserveBytes = vram.reserveBytesForGpu(gpu);
+  return (model: Model): boolean =>
+    vram.budget({ model, profile, totalVramBytes, reserveBytes }).fits;
 }

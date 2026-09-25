@@ -105,6 +105,7 @@ export async function runCalibrateCommand(
         profile,
         calibration: getCalibrationForBudget(store, model, profile),
         totalVramBytes: gpu.totalBytes,
+        reserveBytes: vram.reserveBytesForGpu(gpu),
       })
     : null;
 

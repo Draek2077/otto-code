@@ -223,7 +223,7 @@ export function calibrationLabel(state: string | null | undefined): string {
     case "inherited":
       return "Measured on a relative";
     case "stale":
-      return "Stale, recalibrate";
+      return "Previous measurement, recalibrate for this setting";
     case "theoretical":
       return "Estimated";
     default:

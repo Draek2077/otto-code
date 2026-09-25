@@ -115,6 +115,14 @@ test("kvSpilledToCpu detects the split-cache banner lines", () => {
   );
   assert.equal(kvSpilledToCpu(["offloading 12 layers to cpu"]), true);
   assert.equal(kvSpilledToCpu(["KV cache offloaded to CPU"]), true);
+  assert.equal(
+    kvSpilledToCpu(["[llama-server] | - Host | 706 = 682 + (706 = 682 + 0 + 24) + 0 |"]),
+    false,
+  );
+  assert.equal(
+    kvSpilledToCpu(["[llama-server] | - Host | 806 = 682 + (806 = 682 + 100 + 24) + 0 |"]),
+    true,
+  );
 });
 
 test("Metal allocation reader sums model, KV and compute buffers", () => {
@@ -127,6 +135,31 @@ test("Metal allocation reader sums model, KV and compute buffers", () => {
       "ggml_metal_init: recommendedMaxWorkingSetSize = 10000.00 MiB",
     ]),
     1216 * 1024 ** 2,
+  );
+  assert.equal(
+    metalAllocatedBytes([
+      "[llama-server] MTL0_Mapped model buffer size = 1024.00 MiB",
+      "[llama-server] MTL0 KV buffer size = 128.00 MiB",
+      "[llama-server] MTL0 compute buffer size = 64.00 MiB",
+    ]),
+    1216 * 1024 ** 2,
+  );
+  assert.equal(
+    metalAllocatedBytes([
+      "[llama-server] MTL0 compute buffer size is 136.2813 MiB, matches expectation",
+    ]),
+    null,
+  );
+});
+
+test("Metal allocation reader prefers the runtime's self allocation table", () => {
+  assert.equal(
+    metalAllocatedBytes([
+      "[llama-server] MTL0_Mapped model buffer size = 15356.00 MiB",
+      "[llama-server] | memory breakdown [MiB] | total | free | self | model | context | compute | unaccounted |",
+      "[llama-server] | - MTL0 (Apple M4 Pro) | 18186 = 1476 + (15714 = 15356 + 221 + 136) + 995 |",
+    ]),
+    15714 * 1024 ** 2,
   );
 });
 
@@ -195,6 +228,34 @@ test("high sample is capped by what fits in VRAM", async () => {
   );
 });
 
+test("a tight Metal budget samples below 8192 instead of forcing an oversized load", async () => {
+  mockedQuery.mockResolvedValue({ totalBytes: 17.8 * vram.GIB, driver: "Metal" });
+  const model = { ...MODEL, sizeBytes: 16.4 * vram.GIB, mmprojBytes: 0 } as Model;
+  const starts: number[] = [];
+  useSupervisor((profile) => {
+    starts.push(profile.contextSize);
+    return {
+      ...loadAtPriorRate(profile),
+      logLines: [
+        "load_tensors: Metal_Mapped model buffer size = 16000.00 MiB",
+        `llama_kv_cache: Metal KV buffer size = ${profile.contextSize / 64} MiB`,
+        "llama_context: Metal compute buffer size = 64.00 MiB",
+      ],
+    };
+  });
+
+  await calibrate({
+    runtime: {} as never,
+    releaseDelayMs: 0,
+    model,
+    profile: makeProfile({ contextSize: 1024, vision: false, contextMultiplier: 1 }),
+    priorCalibration: null,
+  });
+  assert.equal(starts.length, 2);
+  assert.ok(starts[0] < starts[1]);
+  assert.ok(starts[1] < 8192);
+});
+
 test("a sample whose KV spilled to CPU fails the calibration", async () => {
   mockedQuery.mockResolvedValue({ ...GPU_32GB });
   useSupervisor((p) => ({
@@ -238,6 +299,77 @@ test("Metal calibration uses the serving runtime's allocation lines", async () =
     samples: [4096, 8192],
   });
   assert.equal(measured.kvBytesPerToken, 16384);
+});
+
+test("hosted Metal calibration temporarily requests backend allocation lines", async () => {
+  mockedQuery.mockResolvedValue({ ...GPU_32GB, driver: "Metal" });
+  const seenVerbosity: number[] = [];
+  const resident = {
+    logVerbosity: 1,
+    logLines: [] as string[],
+    vramAtReadyBytes: null,
+    vramBaselineBytes: null,
+    loadSeconds: 3,
+  };
+  await calibrate({
+    runtime: {} as never,
+    model: MODEL,
+    profile: makeProfile({ contextSize: 8192 }),
+    samples: [4096, 8192],
+    releaseDelayMs: 0,
+    supervisor: resident as never,
+    lifecycle: {
+      start: async (profile) => {
+        seenVerbosity.push(resident.logVerbosity);
+        resident.logLines.push(
+          "[brain] [model] launching: llama-server",
+          "[llama-server] MTL0_Mapped model buffer size = 1024.00 MiB",
+          `[llama-server] MTL0 KV buffer size = ${profile.contextSize / 64} MiB`,
+        );
+      },
+      stop: async () => {},
+    },
+  });
+  assert.deepEqual(seenVerbosity, [5, 5]);
+  assert.equal(resident.logVerbosity, 1);
+});
+
+test("Metal calibration reads the allocation table emitted on server close", async () => {
+  mockedQuery.mockResolvedValue({ ...GPU_32GB, driver: "Metal" });
+  let contextSize = 0;
+  let stops = 0;
+  const resident = {
+    logVerbosity: 3,
+    logLines: [] as string[],
+    allocationLogLines: [] as string[],
+    vramAtReadyBytes: null,
+    vramBaselineBytes: null,
+    loadSeconds: 3,
+  };
+  const measured = await calibrate({
+    runtime: {} as never,
+    model: MODEL,
+    profile: makeProfile({ contextSize: 8192 }),
+    samples: [4096, 8192],
+    releaseDelayMs: 0,
+    supervisor: resident as never,
+    lifecycle: {
+      start: async (profile) => {
+        contextSize = profile.contextSize;
+        resident.allocationLogLines = [];
+      },
+      stop: async () => {
+        stops += 1;
+        const self = 1024 + contextSize / 64;
+        resident.allocationLogLines.push(
+          `[llama-server] | - MTL0 (Apple M4 Pro) | 18186 = 1476 + (${self} = 1024 + ${contextSize / 64} + 0) + 995 |`,
+        );
+      },
+    },
+  });
+  assert.equal(measured.kvBytesPerToken, 16384);
+  assert.equal(stops, 2);
+  assert.equal(resident.logVerbosity, 3);
 });
 
 test("every load uses the profile's own settings, not calibration's own", async () => {

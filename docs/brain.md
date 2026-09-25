@@ -437,6 +437,17 @@ process's allocation through a separate GPU probe, so Overview shows capacity wi
 system-wide usage meter. Calibration measures the model's own Metal buffer sizes from each load's
 llama.cpp log, including weights, KV and compute buffers. If those lines are missing, calibration
 fails rather than saving an invented measurement.
+Calibration temporarily requests verbosity 5 because some llama.cpp builds hide backend Info lines
+at the normal verbosity 3 setting, then restores the serving setting afterward. It accepts both
+`Metal` and indexed `MTL0` buffer labels. Recent builds may print the complete `MTL0` memory
+breakdown only when the sample server closes; calibration waits for that log before saving a result.
+
+The Metal working set is already below physical unified memory. Budgeting leaves 0.25 GiB inside
+that recommendation; dedicated GPUs keep a 1.5 GiB reserve. These are admission estimates, not a
+guarantee that a load or inference will succeed under current system memory pressure. Calibration
+starts with two contexts inside the estimated fit, down to 1024 tokens on a tight host, without
+first requiring the saved hosting profile to load. A successful measurement replaces the theoretical
+KV estimate before normal hosting is judged again.
 
 The KV figure comes from one of four places, and the UI says which:
 

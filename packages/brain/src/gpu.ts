@@ -70,24 +70,43 @@ export function parseMetalDevice(lines: string[]): GpuQuery | null {
 
 /** Sum the allocations that llama.cpp reports for its own Metal buffers. */
 export function metalAllocatedBytes(logLines: string[]): number | null {
+  // Recent llama.cpp builds print the per-device self allocation in a memory
+  // breakdown table at shutdown. It already includes model, context and compute
+  // buffers, so prefer it over summing any older per-buffer lines also present.
+  let breakdown = 0;
+  let hasBreakdown = false;
+  for (const line of logLines) {
+    const row =
+      /\|\s*-\s*(?:MTL\d+|Metal)\b[^|]*\|\s*[\d.]+\s*=\s*[\d.]+\s*\+\s*\(\s*([\d.]+)\s*=/iu.exec(
+        line,
+      );
+    if (!row) continue;
+    breakdown += Number(row[1]) * MIB;
+    hasBreakdown = true;
+  }
+  if (hasBreakdown) return breakdown;
+
   let total = 0;
-  let found = false;
+  let foundModel = false;
+  let foundKv = false;
   for (const line of logLines) {
     const match =
-      /\bMetal(?:_Mapped)?\s+(?:model|KV|compute|output)\s+buffer size\s*=\s*([\d.]+)\s*(KiB|MiB|GiB)\b/iu.exec(
+      /\b(?:Metal|MTL\d+)(?:_Mapped)?\s+(model|KV|compute|output)\s+buffer size\s*(?:=|is)\s*([\d.]+)\s*(KiB|MiB|GiB)\b/iu.exec(
         line,
       );
     if (!match) continue;
+    if (match[1].toLowerCase() === "model") foundModel = true;
+    if (match[1].toLowerCase() === "kv") foundKv = true;
     const scale =
-      match[2].toLowerCase() === "gib"
+      match[3].toLowerCase() === "gib"
         ? 1024 ** 3
-        : match[2].toLowerCase() === "mib"
+        : match[3].toLowerCase() === "mib"
           ? 1024 ** 2
           : 1024;
-    total += Number(match[1]) * scale;
-    found = true;
+    total += Number(match[2]) * scale;
   }
-  return found ? total : null;
+  // One compute line is incomplete. Wait for model and KV lines or the closing table.
+  return foundModel && foundKv ? total : null;
 }
 
 async function queryMetal(runtime?: Runtime | null): Promise<GpuQuery | null> {

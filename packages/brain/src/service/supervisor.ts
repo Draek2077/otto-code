@@ -17,6 +17,13 @@ import type { Profile, ProfilesStore } from "../config/schema.js";
 import { formatBrainLog, type BrainLogArea } from "./log-format.js";
 
 const LOG_LINES_KEPT = 10_000;
+const ALLOCATION_LINES_KEPT = 512;
+
+function isAllocationDiagnostic(line: string): boolean {
+  return /buffer size|memory breakdown|\|\s*-\s*(?:MTL\d+|Metal|Host|CPU)\b|KV .*split|offloading \d+ layers? to cpu/iu.test(
+    line,
+  );
+}
 
 /**
  * Default loopback port for the private llama-server child. Deliberately clear
@@ -84,6 +91,8 @@ export class Supervisor extends EventEmitter {
   model: Model | null;
   profile: Profile | null;
   logLines: string[];
+  /** Current launch's memory lines, retained even if verbose output evicts its launch marker. */
+  allocationLogLines: string[];
   lastError: string | null;
   startedAt: Date | null;
   loadSeconds: number | null;
@@ -123,6 +132,7 @@ export class Supervisor extends EventEmitter {
     this.model = null;
     this.profile = null;
     this.logLines = [];
+    this.allocationLogLines = [];
     this.lastError = null;
     this.startedAt = null;
     this.loadSeconds = null;
@@ -187,6 +197,7 @@ export class Supervisor extends EventEmitter {
 
     this.model = model;
     this.profile = launchProfile;
+    this.allocationLogLines = [];
     this.lastError = null;
     this.vramBaselineBytes = await usedBytes();
     this.#setState("starting");
@@ -217,13 +228,31 @@ export class Supervisor extends EventEmitter {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    const onChunk = (chunk: Buffer): void => {
-      for (const line of String(chunk).split(/\r?\n/)) {
-        if (line.trim()) this.#log(launch.formatLogLine(line.trim()));
+    const captureLine = (line: string): void => {
+      if (!line.trim()) return;
+      const formatted = launch.formatLogLine(line.trim());
+      this.#log(formatted);
+      if (isAllocationDiagnostic(formatted)) {
+        this.allocationLogLines.push(formatted);
+        if (this.allocationLogLines.length > ALLOCATION_LINES_KEPT) {
+          this.allocationLogLines.shift();
+        }
       }
     };
-    this.child.stdout?.on("data", onChunk);
-    this.child.stderr?.on("data", onChunk);
+    const captureStream = (stream: NodeJS.ReadableStream | null): void => {
+      let pending = "";
+      stream?.on("data", (chunk: Buffer) => {
+        const lines = (pending + String(chunk)).split(/\r?\n/);
+        pending = lines.pop() ?? "";
+        for (const line of lines) captureLine(line);
+      });
+      stream?.on("end", () => {
+        captureLine(pending);
+        pending = "";
+      });
+    };
+    captureStream(this.child.stdout);
+    captureStream(this.child.stderr);
 
     let exitedEarly: { code: number | null; signal: NodeJS.Signals | null } | null = null;
     this.child.once("exit", (code: number | null, signal: NodeJS.Signals | null) => {
@@ -259,10 +288,9 @@ export class Supervisor extends EventEmitter {
       if (health) {
         this.loadSeconds = (Date.now() - started) / 1000;
         this.startedAt = new Date();
-        const launchLine = this.logLines.findLastIndex((line) => line.includes("launching:"));
         this.vramAtReadyBytes =
           (await usedBytes()) ??
-          metalAllocatedBytes(this.logLines.slice(Math.max(0, launchLine))) ??
+          metalAllocatedBytes(this.allocationLogLines) ??
           (peakVram > 0 ? peakVram : null);
         this.#setState("ready");
         this.emit("ready", {
@@ -343,7 +371,9 @@ export class Supervisor extends EventEmitter {
         }
         resolve();
       }, 6000);
-      child.once("exit", () => {
+      // `close` follows stream EOF, so calibration can read shutdown's memory
+      // breakdown immediately after stop() resolves.
+      child.once("close", () => {
         clearTimeout(done);
         resolve();
       });

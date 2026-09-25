@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { MAX_TRUSTED_STD, MIN_TRUSTED_RUNS, selectCodingModel } from "./model-selector.js";
+import {
+  MAX_TRUSTED_STD,
+  MIN_TRUSTED_RUNS,
+  makeVramFitPredicate,
+  selectCodingModel,
+} from "./model-selector.js";
 import type { RankedModel } from "../ops/results.js";
 import type { Model } from "../types.js";
+import { GIB } from "../vram.js";
 
 /** A minimal Model; only the fields the selector reads carry meaning. */
 function model(id: string, over: Partial<Model> = {}): Model {
@@ -23,6 +29,20 @@ function model(id: string, over: Partial<Model> = {}): Model {
 function ranked(displayName: string, overall: number, runs: number, std: number): RankedModel {
   return { id: displayName, displayName, overall, runs, std, grade: "usable" };
 }
+
+it("uses the Metal reserve for route-time model selection", () => {
+  const gpu = {
+    name: "Apple M4",
+    totalBytes: 17.8 * GIB,
+    usedBytes: null,
+    freeBytes: null,
+    driver: "Metal",
+    computeCapability: "",
+  };
+  const candidate = model("qwen", { sizeBytes: 16.4 * GIB });
+  expect(makeVramFitPredicate(gpu)?.(candidate)).toBe(true);
+  expect(makeVramFitPredicate({ ...gpu, driver: "CUDA" })?.(candidate)).toBe(false);
+});
 
 describe("selectCodingModel", () => {
   it("keeps only coding-tagged models as candidates", () => {

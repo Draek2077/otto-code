@@ -15,6 +15,7 @@ import http from "node:http";
 import https from "node:https";
 
 import {
+  getCalibration,
   getCalibrationForBudget,
   forModel,
   loadPersistedConfig,
@@ -602,6 +603,7 @@ export async function startService({
       profile,
       calibration: getCalibrationForBudget(store, model, profile),
       totalVramBytes: gpu.totalBytes,
+      reserveBytes: vram.reserveBytesForGpu(gpu),
     });
     if (!fit.adjusted && !fit.budget.fits) {
       // Starting the host is what exposes the Library and model profile UI.
@@ -653,6 +655,7 @@ export async function startService({
           profile: fitProfile,
           calibration,
           totalVramBytes,
+          reserveBytes: vram.reserveBytesForGpu(gpuInfo),
         });
         if (!exactBudget.fits) {
           throw new Error("the operation profile does not fit beside the other resident models");
@@ -666,6 +669,7 @@ export async function startService({
           // Every resident process keeps its complete budget reserved. Fit this
           // process against the capacity left after those independent allocations.
           totalVramBytes,
+          reserveBytes: vram.reserveBytesForGpu(gpuInfo),
         });
         if (!fit.adjusted && !fit.budget.fits) throw new Error(fit.reason ?? "does not fit");
         fitProfile = fit.profile;
@@ -784,6 +788,7 @@ export async function startService({
         runtime,
         model: targetModel,
         profile,
+        priorCalibration: getCalibration(store, targetModel, profile),
         supervisor,
         lifecycle: process,
         onProgress: (event) => {
@@ -860,6 +865,7 @@ export async function startService({
           profile,
           calibration,
           totalVramBytes: gpuInfo.totalBytes,
+          reserveBytes: vram.reserveBytesForGpu(gpuInfo),
         })
       : null;
     const archiveId = archive.runId(targetModel);
