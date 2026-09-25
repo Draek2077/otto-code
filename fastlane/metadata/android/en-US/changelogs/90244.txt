@@ -1,0 +1,6 @@
+Fixed
+- Apple Silicon model fit checks leave more usable memory for local models
+- Apple Silicon calibration can measure smaller contexts from the runtime's memory report
+- Model profiles show optional component costs and how far a configuration exceeds the GPU budget
+
+Full notes: https://paseo.sh/changelog
