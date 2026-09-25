@@ -3,11 +3,10 @@ id: "oversized-module-inventory-the-standing-refactor-backlog"
 kind: "finding"
 title: "Oversized-module inventory (the standing refactor backlog)"
 status: "confirmed"
-tags: ["refactoring", "module-map", "oversized-modules", "code-health", "archdocs-retirement"]
+tags: ["refactoring","module-map","oversized-modules","code-health","archdocs-retirement"]
 created_at: "2026-08-16T13:26:04.244Z"
-updated_at: "2026-08-16T13:26:04.244Z"
+updated_at: "2026-09-25T14:28:53.387Z"
 ---
-
 # Oversized-module inventory (the standing refactor backlog)
 
 <!-- compiled_truth -->
@@ -40,3 +39,7 @@ The rule going forward: new capability code lands in the decomposed shape (per-d
 - time: "2026-08-16T13:26:04.244Z"
   kind: "evidence"
   summary: "Re-measured 2026-08-16 by reading each file's line count from the working tree (node:fs). Original point-in-time figures from the retired archdocs page 02-module-map (authored 2026-07-19). This is a finding, not architecture: it is a point-in-time measurement of where the refactor debt concentrates, and the numbers will drift."
+- time: "2026-09-25T14:28:53.387Z"
+  kind: "evidence"
+  summary: "Verified 2026-09-25: extracted the 6,500-line Otto tool catalog into domain registrar modules. otto-tools.ts is now 318 lines and its size ceiling is lowered to 318. The catalog retains the shared provider/group/orchestration/workspace policy gate and input validation; registrars cannot access the tool map. Shared caller/personality resolution and host dependency types have separate modules. All 76 literal tool registrations retain identical handler, schema and description ASTs; serialized contracts and order match before/after for host (73 tools), caller (76), and voice-only (4) catalogs. 168 focused tool tests, all-workspace typecheck, lint, and the module ceiling check passed. The original inventory remains a historical measurement; this evidence records the completed tool-catalog decomposition."
+  source: "0.9.22 release preparation; packages/server/src/server/agent/tools/otto-tools.ts; docs/architecture.md"

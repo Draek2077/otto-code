@@ -21,6 +21,15 @@ export interface OttoToolConfig {
   outputSchema?: z.ZodRawShape;
 }
 
+/** All built-in groups register through the catalog's single policy gate. */
+export type RegisterOttoTool = (
+  name: string,
+  config: OttoToolConfig,
+  // Tool inputs are validated against their schema at the catalog execution boundary.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handler: (input: any, context: OttoToolExecutionContext) => Promise<OttoToolResult>,
+) => void;
+
 export interface OttoToolDefinition extends OttoToolConfig {
   name: string;
   description: string;

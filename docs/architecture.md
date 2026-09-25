@@ -372,6 +372,17 @@ The provider contract covers:
 
 Providers that can accept native tool definitions should set `supportsNativeOttoTools` and read `launchContext.ottoTools`. The daemon then passes the shared Otto tool catalog directly and removes the internal Otto MCP server from that provider launch config. Providers that only support MCP continue to receive the same tools through the MCP fallback at `/mcp/agents`.
 
+`server/agent/tools/otto-tools.ts` composes the catalog and owns its registration
+policy and input-validation boundary. Domain modules named `register-*-tools.ts`
+own their schemas, descriptions, handlers, and domain-specific helpers. They
+receive the shared `registerTool` gate rather than the catalog map, so extraction
+cannot bypass provider policy, tool-group selection, orchestration restrictions,
+or workspace access. `otto-tool-context.ts` owns per-catalog caller and personality
+resolution; `otto-tool-host-dependencies.ts` defines the daemon integration ports.
+Graph-node output and query tools retain their separate registration path and
+explicit-name deny checks. Add new tools to their domain module, not the catalog
+composition file.
+
 ## Data flow: running an agent
 
 1. Client sends `CreateAgentRequestMessage` with config (prompt, cwd, provider, model, mode)

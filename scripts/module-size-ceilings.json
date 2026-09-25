@@ -30,7 +30,7 @@
     "packages/app/src/screens/workspace/workspace-screen.tsx": 5992,
     "packages/server/src/server/agent/agent-manager.ts": 8984,
     "packages/server/src/server/agent/providers/claude/agent.ts": 8610,
-    "packages/server/src/server/agent/tools/otto-tools.ts": 6454,
+    "packages/server/src/server/agent/tools/otto-tools.ts": 318,
     "packages/app/src/git/diff-pane.tsx": 2346,
     "packages/app/src/components/combined-model-selector.tsx": 729,
     "packages/app/src/components/provider-diagnostic-sheet.tsx": 1256,
