@@ -30,7 +30,10 @@ interface SeedProjectDescriptor {
  * browser. Domain-specific helpers wrap it for their own flows; specs should
  * prefer those wrappers over reaching for this client directly.
  */
-export interface SeedDaemonClient extends Pick<InternalDaemonClient, "checkoutGitCommit"> {
+export interface SeedDaemonClient extends Pick<
+  InternalDaemonClient,
+  "checkoutGitCommit" | "searchChatMessages" | "resolveChatSearchMessage"
+> {
   connect(): Promise<void>;
   close(): Promise<void>;
   addProject(cwd: string): Promise<{

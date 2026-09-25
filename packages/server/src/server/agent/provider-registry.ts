@@ -529,6 +529,9 @@ function wrapClientProvider(
           launchContext,
         ),
       ),
+    readSearchHistory: inner.readSearchHistory?.bind(inner),
+    getSearchHistoryRevision: inner.getSearchHistoryRevision?.bind(inner),
+    shutdown: inner.shutdown?.bind(inner),
     resumeSession: async (handle, overrides, launchContext, options) =>
       wrapSessionProvider(
         provider,

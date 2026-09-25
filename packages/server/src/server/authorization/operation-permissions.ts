@@ -7,6 +7,8 @@ type OutboundOperation = SessionOutboundMessage["type"];
 export type PermissionRequirement = DaemonPermission | readonly DaemonPermission[] | null;
 
 const INBOUND_PERMISSION = {
+  "search.chats.query.request": "workspace.read",
+  "search.chats.resolve.request": "workspace.read",
   ...OTTO_INBOUND_PERMISSION,
   abort_request: "workspace.write",
   "agent.config.apply.request": ["workspace.write", "hub.execute"],
@@ -206,6 +208,8 @@ const INBOUND_PERMISSION = {
 } as const satisfies Record<InboundOperation, PermissionRequirement>;
 
 const OUTBOUND_PERMISSION = {
+  "search.chats.query.response": "workspace.read",
+  "search.chats.resolve.response": "workspace.read",
   ...OTTO_OUTBOUND_PERMISSION,
   activity_log: "workspace.read",
   "agent.config.apply.response": ["workspace.write", "hub.execute"],

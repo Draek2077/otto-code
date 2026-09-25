@@ -43,7 +43,7 @@ export interface StreamEdgeSlotProps {
 export interface StreamViewportHandle {
   scrollToBottom: (reason?: BottomAnchorLocalRequest["reason"]) => void;
   prepareForViewportChange: () => void;
-  // Only the web viewport implements this. Nothing in Otto calls it yet.
+  // Explicit message navigation, shared by Global Search and the Chat outline.
   scrollToMessage?: (itemId: string) => void;
 }
 

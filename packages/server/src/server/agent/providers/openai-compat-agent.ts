@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import type { Dispatcher } from "undici";
 import type { Logger } from "pino";
@@ -1726,6 +1726,20 @@ export class OpenAICompatAgentClient implements AgentClient {
       managedProcesses: this.managedProcesses,
       ...(this.projectRootResolver ? { resolveProjectRoot: this.projectRootResolver } : {}),
     });
+  }
+
+  async readSearchHistory(handle: AgentPersistenceHandle, cwd: string) {
+    const { collectImportedHistory } = await import("../provider-session-import.js");
+    const session = await this.resumeSession(handle, { cwd });
+    try {
+      return (await collectImportedHistory(session.streamHistory())).timeline;
+    } finally {
+      await session.close();
+    }
+  }
+
+  async getSearchHistoryRevision(handle: AgentPersistenceHandle, _cwd: string) {
+    return createHash("sha256").update(JSON.stringify(handle)).digest("hex");
   }
 
   async resumeSession(

@@ -75,6 +75,7 @@ export const fr: TranslationResources = {
       close: "Fermer le menu",
     },
     commandCenter: {
+      ...en.shell.commandCenter,
       placeholder: "Rechercher des commandes, fichiers, espaces de travail et agents...",
       filePlaceholder: "Rechercher des fichiers...",
       searchingFiles: "Recherche de fichiers...",

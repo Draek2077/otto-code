@@ -130,6 +130,13 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     return [...segments.historyVirtualized, ...segments.historyMounted];
   }, [segments.historyMounted, segments.historyVirtualized]);
   const historyRows = useRevisedHistoryRows(historyItems, historyRowRevision);
+  const messageJumpRef = useRef<{ id: string; attempts: number } | null>(null);
+  const messageJumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelMessageJump = useStableEvent(() => {
+    if (messageJumpTimerRef.current) clearTimeout(messageJumpTimerRef.current);
+    messageJumpTimerRef.current = null;
+    messageJumpRef.current = null;
+  });
   const getHistoryStartPaginationInput = useStableEvent((): HistoryStartPaginationInput => {
     const metrics = streamViewportMetricsRef.current;
     const hasMeasuredViewport =
@@ -276,6 +283,32 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     },
     scrollToBottom,
   });
+  const jumpToMessage = useStableEvent((itemId: string) => {
+    if (!isPaneVisibleRef.current) return;
+    bottomAnchorController.detachByUser();
+    const index = historyRows.findIndex((row) => row.id === itemId);
+    if (index >= 0) {
+      flatListRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.5 });
+    } else if (segments.liveHead.some((row) => row.id === itemId)) {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }
+  });
+  const handleMessageJumpFailure = useStableEvent(
+    (failure: { index: number; averageItemLength: number }) => {
+      const jump = messageJumpRef.current;
+      if (!jump || jump.attempts >= 3) {
+        cancelMessageJump();
+        return;
+      }
+      jump.attempts++;
+      flatListRef.current?.scrollToOffset({
+        offset: failure.averageItemLength * failure.index,
+        animated: false,
+      });
+      messageJumpTimerRef.current = setTimeout(() => jumpToMessage(jump.id), 100);
+    },
+  );
+  useEffect(() => cancelMessageJump, [agentId, cancelMessageJump]);
   useEffect(() => {
     const resumed = isPaneVisible && !wasPaneVisibleRef.current;
     wasPaneVisibleRef.current = isPaneVisible;
@@ -370,6 +403,11 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         bottomAnchorController.prepareForStickyViewportChange();
         markNativeViewportSettling();
       },
+      scrollToMessage: (itemId) => {
+        cancelMessageJump();
+        messageJumpRef.current = { id: itemId, attempts: 0 };
+        jumpToMessage(itemId);
+      },
     };
     viewportRef.current = handle;
     return () => {
@@ -377,7 +415,14 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         viewportRef.current = null;
       }
     };
-  }, [agentId, bottomAnchorController, markNativeViewportSettling, viewportRef]);
+  }, [
+    agentId,
+    bottomAnchorController,
+    markNativeViewportSettling,
+    viewportRef,
+    cancelMessageJump,
+    jumpToMessage,
+  ]);
 
   const isScrollEventNearBottom = useStableEvent(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -430,6 +475,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   });
 
   const handleScrollBeginDrag = useStableEvent((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    cancelMessageJump();
     clearPendingUserScrollEnd();
     isUserScrollActiveRef.current = true;
     scrollKeyboardDismiss.onScrollBeginDrag(event);
@@ -457,6 +503,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   });
 
   const handleMomentumScrollBegin = useStableEvent(() => {
+    cancelMessageJump();
     clearPendingUserScrollEnd();
   });
 
@@ -609,6 +656,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       style={listStyle}
       onLayout={handleListLayout}
       onScroll={handleScroll}
+      onScrollToIndexFailed={handleMessageJumpFailure}
       onScrollBeginDrag={handleScrollBeginDrag}
       onScrollEndDrag={handleScrollEndDrag}
       onMomentumScrollBegin={handleMomentumScrollBegin}

@@ -1,4 +1,5 @@
 import { normalizeFetchAgentOptions, type FetchAgentOptions } from "./fetch-agent-options.js";
+import type { ChatSearchQuery } from "@otto-code/protocol/chat-search";
 export type { FetchAgentOptions } from "./fetch-agent-options.js";
 import { resolveAgentConfig } from "./create-agent-config.js";
 import type { AgentAttentionNotificationPayload } from "@otto-code/protocol/agent-attention-notification";
@@ -2713,28 +2714,10 @@ export class DaemonClient {
   }
 
   async fetchAgentHistory(options?: FetchAgentHistoryOptions): Promise<FetchAgentHistoryPayload> {
-    const resolvedRequestId = this.createRequestId(options?.requestId);
-    const message = SessionInboundMessageSchema.parse({
-      type: "fetch_agent_history_request",
-      requestId: resolvedRequestId,
-      ...(options?.filter ? { filter: options.filter } : {}),
-      ...(options?.search ? { search: options.search } : {}),
-      ...(options?.sort ? { sort: options.sort } : {}),
-      ...(options?.page ? { page: options.page } : {}),
-    });
-    return this.sendRequest({
-      requestId: resolvedRequestId,
-      message,
-      options: { skipQueue: true },
-      select: (msg) => {
-        if (msg.type !== "fetch_agent_history_response") {
-          return null;
-        }
-        if (msg.payload.requestId !== resolvedRequestId) {
-          return null;
-        }
-        return msg.payload;
-      },
+    return this.sendCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: { type: "fetch_agent_history_request", ...options },
+      responseType: "fetch_agent_history_response",
     });
   }
 
@@ -9845,6 +9828,20 @@ export class DaemonClient {
         draftId: options.draftId,
       },
       responseType: "architectural-views.draft.publish.response",
+    });
+  }
+
+  async searchChatMessages(options: ChatSearchQuery) {
+    return this.sendCorrelatedSessionRequest({
+      message: { type: "search.chats.query.request", ...options },
+      responseType: "search.chats.query.response",
+    });
+  }
+
+  async resolveChatSearchMessage(agentId: string, messageKey: string) {
+    return this.sendCorrelatedSessionRequest({
+      message: { type: "search.chats.resolve.request", agentId, messageKey },
+      responseType: "search.chats.resolve.response",
     });
   }
 

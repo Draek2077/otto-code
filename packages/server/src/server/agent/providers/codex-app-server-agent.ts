@@ -7402,6 +7402,8 @@ export class CodexAppServerAgentClient implements AgentClient {
   readonly capabilities = CODEX_APP_SERVER_CAPABILITIES;
   private goalsEnabledPromise: Promise<boolean> | null = null;
   private autoReviewEnabledPromise: Promise<boolean> | null = null;
+  private searchClient: Promise<CodexAppServerClientLike> | null = null;
+  private searchClientTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly logger: Logger,
@@ -7586,6 +7588,63 @@ export class CodexAppServerAgentClient implements AgentClient {
     );
     await session.connect();
     return session;
+  }
+
+  private async getSearchClient(): Promise<CodexAppServerClientLike> {
+    if (this.searchClientTimer) clearTimeout(this.searchClientTimer);
+    this.searchClient ??= (async () => {
+      const child = await this.spawnAppServer();
+      const client =
+        this.deps._createCodexClient?.(child, this.logger, () => ({})) ??
+        new CodexAppServerClient(child, this.logger);
+      try {
+        await client.request("initialize", buildCodexAppServerInitializeParams());
+        client.notify("initialized", {});
+        return client;
+      } catch (error) {
+        await client.dispose();
+        throw error;
+      }
+    })();
+    return this.searchClient;
+  }
+
+  async shutdown(): Promise<void> {
+    if (this.searchClientTimer) clearTimeout(this.searchClientTimer);
+    this.searchClientTimer = null;
+    const pending = this.searchClient;
+    this.searchClient = null;
+    await pending?.then((client) => client.dispose()).catch(() => undefined);
+  }
+
+  async readSearchHistory(handle: AgentPersistenceHandle, cwd: string, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    const abort = () => {
+      void this.shutdown();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      // One read-only helper for a batch, separate from all active writer sessions.
+      const client = await this.getSearchClient();
+      signal?.throwIfAborted();
+      return (
+        await loadCodexThreadHistoryTimeline({
+          threadId: handle.sessionId,
+          cwd,
+          requestThread: (threadId) =>
+            client.request("thread/read", { threadId, includeTurns: true }),
+        })
+      ).timeline;
+    } catch (error) {
+      await this.shutdown();
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      if (this.searchClient) {
+        this.searchClientTimer = setTimeout(() => void this.shutdown(), 10_000);
+        this.searchClientTimer.unref();
+      }
+    }
   }
 
   async listImportableSessions(

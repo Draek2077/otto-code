@@ -69,6 +69,7 @@ import {
   toAgentPersistenceHandle,
 } from "./persistence-hooks.js";
 import { ensureAgentLoaded, ensureUnarchivedAgentLoaded } from "./agent/agent-loading.js";
+import { handleChatSearch } from "./session/search/chat-search-session.js";
 import {
   sendPromptToAgent,
   waitForAgentRunStartWithTimeout,
@@ -3597,6 +3598,14 @@ export class Session {
     switch (msg.type) {
       case "fetch_agents_request":
         return this.handleFetchAgents(msg);
+      case "search.chats.query.request":
+      case "search.chats.resolve.request":
+        return handleChatSearch(msg, {
+          agentManager: this.agentManager,
+          agentStorage: this.agentStorage,
+          logger: this.sessionLogger,
+          emit: (message) => this.emit(message),
+        });
       case "fetch_agent_history_request":
         return this.handleFetchAgentHistory(msg);
       case "fetch_recent_provider_sessions_request":

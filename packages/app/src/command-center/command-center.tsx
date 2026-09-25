@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronRight, Folder, X } from "@/components/icons/material-icons";
+import { Archive, Check, ChevronRight, Folder, X } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   BottomSheetBackdrop,
@@ -20,6 +20,7 @@ import {
   type BottomSheetFlatListMethods,
 } from "@gorhom/bottom-sheet";
 import { AgentStatusDot } from "@/components/agent-status-dot";
+import { getProviderIcon } from "@/components/provider-icons";
 import { MaterialFileIcon } from "@/components/material-file-icon";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
@@ -27,6 +28,7 @@ import {
   type EditingTextInputHandle,
 } from "@/components/ui/text-input";
 import { Shortcut } from "@/components/ui/shortcut";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useIsolatedBottomSheetVisibility } from "@/components/ui/isolated-bottom-sheet-modal";
 import { SheetSurfaceModal } from "@/components/ui/sheet-chrome";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -57,6 +59,7 @@ import { useCommandCenterContributions } from "./provider";
 import { filterAndRankWorkspaces } from "./workspace-search";
 import {
   buildContributionSections,
+  COMMAND_CENTER_MESSAGE_ROW_HEIGHT,
   filterAndRankBuiltInResults,
   joinSubtitleParts,
   moveActiveResultId,
@@ -72,6 +75,8 @@ import {
   type CommandCenterWorkspaceResult,
 } from "./results";
 import { useWorkspaceFileSearch } from "./workspace-file-search";
+import { useChatSearch } from "./chat-search";
+import { useToast } from "@/contexts/toast-context";
 
 const ThemedBottomSheetTextInput = withUnistyles(TextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
@@ -80,6 +85,25 @@ const ThemedTextInput = withUnistyles(TextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
 }));
 const ThemedFolder = withUnistyles(Folder, (theme) => ({ color: theme.colors.foregroundMuted }));
+function SearchProviderIcon({
+  provider,
+  serverId,
+  color,
+}: {
+  provider: string;
+  serverId: string;
+  color?: string;
+}) {
+  const Icon = getProviderIcon(provider, serverId);
+  return <Icon size="sm" color={color} />;
+}
+const ThemedSearchProviderIcon = withUnistyles(SearchProviderIcon, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
+const ThemedArchive = withUnistyles(Archive, (theme) => ({
+  size: theme.fontSize.sm,
+  color: theme.colors.foregroundMuted,
+}));
 const ThemedCheck = withUnistyles(Check, (theme) => ({ color: theme.colors.foreground }));
 const ThemedChevronRight = withUnistyles(ChevronRight, (theme) => ({
   color: theme.colors.foregroundMuted,
@@ -220,6 +244,7 @@ function useBuiltInSections(open: boolean, query: string): CommandCenterResultSe
 }
 
 interface CommandCenterState {
+  chatStatus: string;
   open: boolean;
   scope: CommandCenterScope;
   clearScope(): void;
@@ -239,6 +264,8 @@ interface CommandCenterState {
 }
 
 function useCommandCenterState(): CommandCenterState {
+  const toast = useToast();
+  const onSearchError = useCallback((message: string) => toast.error(message), [toast]);
   const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const { t } = useTranslation();
   const open = useKeyboardShortcutsStore((state) => state.commandCenterOpen);
@@ -251,6 +278,11 @@ function useCommandCenterState(): CommandCenterState {
   const [query, setQueryState] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const builtInSections = useBuiltInSections(open, query);
+  const chatSearch = useChatSearch({
+    enabled: open && scope !== "files",
+    query,
+    onError: onSearchError,
+  });
   const {
     entries: fileSearchEntries,
     loading: fileSearchLoading,
@@ -286,15 +318,15 @@ function useCommandCenterState(): CommandCenterState {
     () => buildContributionSections(snapshot.contributions, query),
     [query, snapshot.contributions],
   );
-  const projection = useMemo(
-    () =>
-      projectCommandCenterRows(
-        scope === "files"
-          ? fileSections
-          : [...contributionSections, ...fileSections, ...builtInSections],
-      ),
-    [builtInSections, contributionSections, fileSections, scope],
-  );
+  const projection = useMemo(() => {
+    if (scope === "files") return projectCommandCenterRows(fileSections);
+    return projectCommandCenterRows([
+      ...chatSearch.sections,
+      ...contributionSections,
+      ...fileSections,
+      ...builtInSections,
+    ]);
+  }, [builtInSections, chatSearch.sections, contributionSections, fileSections, scope]);
   const resolvedActiveId = preserveActiveResultId(activeId, projection.selectableResults);
 
   // Editing the query re-ranks everything, so an arrow-key selection made under the previous
@@ -363,6 +395,7 @@ function useCommandCenterState(): CommandCenterState {
 
   return {
     open,
+    chatStatus: chatSearch.status,
     scope,
     clearScope: () => setScope(null),
     query,
@@ -373,7 +406,7 @@ function useCommandCenterState(): CommandCenterState {
     rowIndexByResultId: projection.rowIndexByResultId,
     offsets: projection.offsets,
     inputRef,
-    fileSearchLoading,
+    fileSearchLoading: fileSearchLoading || chatSearch.loading,
     fileSearchError,
     close,
     select,
@@ -404,6 +437,7 @@ const ResultRow = memo(function ResultRow({ result, active, onSelect }: ResultRo
   const style = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.row,
+      result.kind === "message" && styles.messageRow,
       (result.kind === "agent" ||
         result.kind === "workspace" ||
         (result.kind === "contribution" &&
@@ -432,6 +466,48 @@ const ResultRow = memo(function ResultRow({ result, active, onSelect }: ResultRo
 });
 
 function ResultContent({ result }: { result: CommandCenterResult }) {
+  const { t } = useTranslation();
+  const archivedIcon = useMemo(() => <ThemedArchive />, []);
+  if (result.kind === "message")
+    return (
+      <View style={styles.rowContent} testID="command-center-message-result">
+        <View style={styles.rowMain}>
+          <View
+            style={[styles.iconSlot, styles.messageIconSlot]}
+            testID="command-center-message-provider"
+          >
+            <ThemedSearchProviderIcon provider={result.provider} serverId={result.serverId} />
+          </View>
+          <View style={styles.textContent}>
+            <View style={styles.messageTitleRow}>
+              <Text
+                style={[styles.title, styles.textContent]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                testID="command-center-message-title"
+              >
+                {result.title}
+              </Text>
+              {result.archived ? (
+                <View style={styles.rowShortcut} testID="command-center-message-archived">
+                  <StatusBadge label={t("agentList.badges.archived")} leading={archivedIcon} />
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.subtitle} numberOfLines={1} testID="command-center-message-snippet">
+              {result.snippet}
+            </Text>
+            <Text
+              style={styles.subtitle}
+              numberOfLines={1}
+              testID="command-center-message-metadata"
+            >
+              {result.subtitle}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
   if (result.kind === "file") {
     return (
       <View style={styles.rowContent}>
@@ -663,10 +739,10 @@ export function CommandCenter() {
   const keyExtractor = useCallback((row: CommandCenterListRow) => row.key, []);
   const empty = useMemo(
     () =>
-      state.fileSearchError || state.fileSearchLoading ? null : (
+      state.fileSearchError || state.fileSearchLoading || state.chatStatus ? null : (
         <Text style={styles.emptyText}>{t("shell.commandCenter.noMatches")}</Text>
       ),
-    [state.fileSearchError, state.fileSearchLoading, t],
+    [state.fileSearchError, state.fileSearchLoading, state.chatStatus, t],
   );
   const fileSearchError = useMemo(
     () =>
@@ -763,10 +839,15 @@ export function CommandCenter() {
           />
           <FileSearchLoadingIndicator
             loading={state.fileSearchLoading}
-            label={t("shell.commandCenter.searchingFiles")}
+            label={t("shell.commandCenter.searching")}
           />
         </View>
         {fileSearchError}
+        {state.chatStatus ? (
+          <Text accessibilityLiveRegion="polite" style={styles.searchStatus}>
+            {state.chatStatus}
+          </Text>
+        ) : null}
         <BottomSheetFlatList ref={bottomSheetListRef} {...commonListProps} />
       </SheetSurfaceModal>
     );
@@ -799,10 +880,15 @@ export function CommandCenter() {
               />
               <FileSearchLoadingIndicator
                 loading={state.fileSearchLoading}
-                label={t("shell.commandCenter.searchingFiles")}
+                label={t("shell.commandCenter.searching")}
               />
             </View>
             {fileSearchError}
+            {state.chatStatus ? (
+              <Text accessibilityLiveRegion="polite" style={styles.searchStatus}>
+                {state.chatStatus}
+              </Text>
+            ) : null}
             <FlatList ref={listRef} {...commonListProps} />
           </View>
         </View>
@@ -920,7 +1006,22 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.border,
   },
   row: { height: 36, paddingHorizontal: theme.spacing[4], paddingVertical: theme.spacing[2] },
+  searchStatus: {
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[2],
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
   tallRow: { height: 56 },
+  messageRow: { height: COMMAND_CENTER_MESSAGE_ROW_HEIGHT },
+  // Reserve History's pill height for both active and archived matches.
+  messageTitleRow: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+  },
+  messageIconSlot: { height: 28 },
   activeRow: { backgroundColor: theme.colors.surface1 },
   rowContent: {
     flexDirection: "row",

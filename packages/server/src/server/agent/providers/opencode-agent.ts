@@ -58,7 +58,10 @@ import {
   type ToolCallDetail,
   type ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
-import { importSessionFromPersistence } from "../provider-session-import.js";
+import {
+  importSessionFromPersistence,
+  collectImportedHistory,
+} from "../provider-session-import.js";
 import {
   raceProviderRefreshAbort,
   runProviderRefreshActivity,
@@ -1553,6 +1556,27 @@ export class OpenCodeAgentClient implements AgentClient {
     } catch (error) {
       await acquisition.release();
       throw error;
+    }
+  }
+
+  async readSearchHistory(handle: AgentPersistenceHandle, cwd: string) {
+    const acquisition = await this.serverManager.acquireCurrent();
+    try {
+      const client = this.createOpenCodeClient({ baseUrl: acquisition.server.url, directory: cwd });
+      const session = await client.session.get({ sessionID: handle.sessionId, directory: cwd });
+      if (session.error || !session.data) throw new Error("OpenCode history is unavailable");
+      const response = await client.session.messages({
+        sessionID: handle.sessionId,
+        directory: cwd,
+      });
+      if (response.error || !response.data) throw new Error("OpenCode messages are unavailable");
+      const messages = filterOpenCodeRevertedMessages(response.data, session.data.revert);
+      async function* events() {
+        for (const message of messages) yield* buildOpenCodeReplayTimelineEvents(message);
+      }
+      return (await collectImportedHistory(events())).timeline;
+    } finally {
+      await acquisition.release();
     }
   }
 

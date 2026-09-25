@@ -74,6 +74,7 @@ export const ja: TranslationResources = {
       close: "メニューを閉じる",
     },
     commandCenter: {
+      ...en.shell.commandCenter,
       placeholder: "コマンド、ファイル、ワークスペース、エージェントを検索...",
       filePlaceholder: "ファイルを検索...",
       searchingFiles: "ファイルを検索中...",

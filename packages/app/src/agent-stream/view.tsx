@@ -80,6 +80,7 @@ import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
 import { ChatOutlineRail } from "@/agent-stream/chat-outline/rail";
 import { useChatOutline } from "@/agent-stream/chat-outline/use-chat-outline";
+import { useChatSearchJump } from "@/agent-stream/chat-search-jump";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import {
@@ -830,6 +831,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       visibleItemIds: visibleHistoryItemIds,
       revealLoadedItem: revealLoadedHistory,
       initialPromptIndex,
+    });
+
+    useChatSearchJump({
+      serverId: resolvedServerId,
+      agentId,
+      active: isStreamVisible,
+      ready: isAuthoritativeHistoryReady,
+      items: displayedStreamItems,
+      head: displayedStreamHead,
+      viewportRef,
+      reveal: revealLoadedHistory,
+      onError: handleTimelineHistoryLoadError,
     });
 
     useImperativeHandle(

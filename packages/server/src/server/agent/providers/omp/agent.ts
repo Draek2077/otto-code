@@ -37,7 +37,10 @@ import {
   type ToolCallDetail,
 } from "../../agent-sdk-types.js";
 import type { OttoToolCatalog } from "../../tools/types.js";
-import { importSessionFromPersistence } from "../../provider-session-import.js";
+import {
+  collectImportedHistory,
+  importSessionFromPersistence,
+} from "../../provider-session-import.js";
 import { runProviderRefreshActivity } from "../../provider-refresh-deadline.js";
 import { runProviderTurn } from "../provider-runner.js";
 import {
@@ -2264,6 +2267,23 @@ export class OmpAgentClient implements AgentClient {
       await runtimeSession.close().catch(() => undefined);
       throw error;
     }
+  }
+
+  async readSearchHistory(handle: AgentPersistenceHandle, _cwd: string) {
+    if (!handle.nativeHandle) throw new Error("OMP history requires its session file");
+    const { validateSearchHistoryJsonl } = await import("../../search-history-revision.js");
+    await validateSearchHistoryJsonl(handle.nativeHandle);
+    return (
+      await collectImportedHistory(
+        streamOmpHistory({ sessionFile: handle.nativeHandle, provider: this.provider }),
+      )
+    ).timeline;
+  }
+
+  async getSearchHistoryRevision(handle: AgentPersistenceHandle, _cwd: string) {
+    if (!handle.nativeHandle) throw new Error("OMP history requires its session file");
+    const { searchHistoryFileRevision } = await import("../../search-history-revision.js");
+    return searchHistoryFileRevision(handle.nativeHandle);
   }
 
   async resumeSession(

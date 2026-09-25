@@ -1209,6 +1209,14 @@ export interface ResolveAgentDefaultModeInput {
 }
 
 export interface AgentClient {
+  /** Read persisted history without prompting, resuming a writer, or installing tools. */
+  readSearchHistory?(
+    handle: AgentPersistenceHandle,
+    cwd: string,
+    signal?: AbortSignal,
+  ): Promise<ImportedTimelineEntry[]>;
+  /** Cheap persisted-history revision, without starting a model or resuming a writer. */
+  getSearchHistoryRevision?(handle: AgentPersistenceHandle, cwd: string): Promise<string>;
   readonly provider: AgentProvider;
   readonly capabilities: AgentCapabilityFlags;
   createSession(

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CommandCenterContribution } from "./contributions";
 import {
   buildContributionSections,
+  COMMAND_CENTER_MESSAGE_ROW_HEIGHT,
   filterAndRankBuiltInResults,
   joinSubtitleParts,
   moveActiveResultId,
@@ -510,6 +511,32 @@ describe("filterAndRankBuiltInResults", () => {
     const rows = [workspace("a", "Label as Design")];
 
     expect(filterAndRankBuiltInResults(rows, "lab zzz", visibleOnly, byTitle)).toEqual([]);
+  });
+});
+
+describe("message row projection", () => {
+  it("reserves message-row space for title, metadata, excerpt, and the History pill", () => {
+    const projection = projectCommandCenterRows([
+      {
+        id: "chat-messages",
+        band: PINNED_SECTION_BAND,
+        rank: 1,
+        results: [
+          {
+            kind: "message",
+            provider: "claude",
+            serverId: "host",
+            id: "message:1",
+            title: "A long archived conversation",
+            subtitle: "Project · You",
+            snippet: "Matching text",
+            archived: true,
+            run: async () => {},
+          },
+        ],
+      },
+    ]);
+    expect(projection.rows.at(-1)?.height).toBe(COMMAND_CENTER_MESSAGE_ROW_HEIGHT);
   });
 });
 

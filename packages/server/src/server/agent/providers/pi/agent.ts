@@ -41,6 +41,8 @@ import {
   type ToolCallDetail,
 } from "../../agent-sdk-types.js";
 import { importSessionFromPersistence } from "../../provider-session-import.js";
+import { searchHistoryFileRevision } from "../../search-history-revision.js";
+import { readPiSearchHistory } from "./search-history.js";
 import { runProviderRefreshActivity } from "../../provider-refresh-deadline.js";
 import { runProviderTurn } from "../provider-runner.js";
 import {
@@ -2571,6 +2573,16 @@ export class PiRpcAgentClient implements AgentClient {
       ottoExtension?.cleanup();
       throw error;
     }
+  }
+
+  async readSearchHistory(handle: AgentPersistenceHandle, _cwd: string) {
+    if (!handle.nativeHandle) throw new Error("Pi history requires its session file");
+    return readPiSearchHistory(handle.nativeHandle, this.provider);
+  }
+
+  async getSearchHistoryRevision(handle: AgentPersistenceHandle, _cwd: string) {
+    if (!handle.nativeHandle) throw new Error("Pi history requires its session file");
+    return searchHistoryFileRevision(handle.nativeHandle);
   }
 
   async resumeSession(

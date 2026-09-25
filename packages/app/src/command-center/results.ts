@@ -71,6 +71,18 @@ export interface CommandCenterFileResult {
   run(): void;
 }
 
+export interface CommandCenterMessageResult {
+  kind: "message";
+  provider: string;
+  serverId: string;
+  id: string;
+  title: string;
+  subtitle: string;
+  snippet: string;
+  archived: boolean;
+  run(): Promise<void>;
+}
+
 export interface CommandCenterContributionResult {
   kind: "contribution";
   id: string;
@@ -81,6 +93,7 @@ export interface CommandCenterContributionResult {
 }
 
 export type CommandCenterResult =
+  | CommandCenterMessageResult
   | CommandCenterWorkspaceResult
   | CommandCenterAgentResult
   | CommandCenterFileResult
@@ -173,7 +186,11 @@ function contributionSearchFields(
   return { visible, hidden: contribution.keywords };
 }
 
+// Standard 8px search-row insets, a 28px title/pill line, and two 16px detail lines.
+export const COMMAND_CENTER_MESSAGE_ROW_HEIGHT = 76;
+
 function resultHeight(result: CommandCenterResult): number {
+  if (result.kind === "message") return COMMAND_CENTER_MESSAGE_ROW_HEIGHT;
   if (result.kind === "workspace" || result.kind === "agent") return 56;
   if (result.kind === "file") return 36;
   if (result.contribution.presentation.kind === "action") {

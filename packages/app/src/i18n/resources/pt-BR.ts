@@ -74,6 +74,7 @@ export const ptBR: TranslationResources = {
       close: "Fechar menu",
     },
     commandCenter: {
+      ...en.shell.commandCenter,
       placeholder: "Buscar comandos, arquivos, espaços de trabalho e agentes...",
       filePlaceholder: "Pesquisar arquivos...",
       searchingFiles: "Pesquisando arquivos...",

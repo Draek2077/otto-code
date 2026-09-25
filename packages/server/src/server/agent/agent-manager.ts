@@ -1,3 +1,5 @@
+import { readSearchHistory, getSearchHistoryRevision } from "../chat-search/agent-history.js";
+import { resolveImportedAgentTitle } from "./timeline-display.js";
 import { commandMayHaveChangedExternalState } from "./external-state-command.js";
 export { commandMayHaveChangedExternalState } from "./external-state-command.js";
 import type { PluginLifecycle } from "../plugins/lifecycle/index.js";
@@ -24,7 +26,7 @@ import {
 import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
 import { composeTeamAndPersonalityPrompt } from "./agent-teams.js";
 import { deltaAgentUsage } from "./subagent-usage.js";
-import { normalizeWidgetTimelineItem } from "../widget/widget-timeline.js";
+import { normalizeTimelineItemForDisplay, buildImportedTimelineRows } from "./timeline-display.js";
 import {
   accumulateLifetimeUsage,
   toTurnSpend,
@@ -71,7 +73,6 @@ import {
   type ToolCallTimelineItem,
   type AgentUsage,
   type AgentRuntimeInfo,
-  type ImportedTimelineEntry,
   type ImportableProviderSession,
   type ListImportableSessionsOptions,
   type ObservedSubagentUpdate,
@@ -141,7 +142,6 @@ import {
   buildTodoReconcileMessage,
   findLatestTodoItem,
   isStaleTodoList,
-  stripTrailingTodoNudge,
   todoListSignature,
 } from "./todo-reminders.js";
 import {
@@ -153,11 +153,9 @@ import {
   observeStallSignal,
   type StallGuardState,
 } from "./agent-stall-guard.js";
-import { unwrapSpokenInput } from "../voice-config.js";
 import { applyPluginCreateConfig } from "./otto/plugin-create-config.js";
 import { isStaleProviderSessionError } from "./stale-provider-session-error.js";
 import { stripInternalOttoMcpServer, withRuntimeOttoMcpServer } from "./runtime-mcp-config.js";
-import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import type { OttoToolCatalogFactory } from "./tools/types.js";
 import type { AgentOwner } from "./agent-owner.js";
 import { isOttoToolPolicyEnabled } from "./otto-tool-policy.js";
@@ -489,6 +487,7 @@ export interface AgentManagerOptions {
    */
   onUsageEvent?: (event: UsageEvent) => void;
   durableTimelineStore?: AgentTimelineStore;
+  chatSearch?: import("../chat-search/service.js").ChatSearchService;
   retainedTranscripts?: RetainedTranscriptStore;
   terminalManager?: TerminalManager | null;
   mcpBaseUrl?: string;
@@ -1325,72 +1324,6 @@ function buildExplicitTimelineSeedForRegister(
   };
 }
 
-/**
- * Strip the voice `<spoken-input>` scaffolding from a `user_message` so the chat
- * shows the words the user spoke, not the markup the model was fed (see
- * `wrapSpokenInput`). Display-only and provider-agnostic: applied at the
- * timeline chokepoint so every surface (chat, copy, rewind prefill, title, CLI)
- * gets the clean text. The wrapped prompt was already delivered to the provider
- * for the live turn; this only shapes Otto's own timeline projection. Idempotent
- * and a no-op for every non-spoken message.
- */
-function normalizeUserMessageForDisplay(item: AgentTimelineItem): AgentTimelineItem {
-  if (item.type !== "user_message") {
-    return item;
-  }
-  // Strip the passive todo nudge Otto appended for the model, then unwrap voice
-  // scaffolding. Both are display-only and idempotent (see stripTrailingTodoNudge
-  // and unwrapSpokenInput); the provider already received the full prompt.
-  const cleaned = unwrapSpokenInput(stripTrailingTodoNudge(item.text));
-  if (cleaned === item.text) {
-    return item;
-  }
-  return { ...item, text: cleaned };
-}
-
-/**
- * The single display-normalization pass for timeline items. Both steps are
- * idempotent, which matters: the chokepoint normalizes on the way to the stream
- * AND the store re-normalizes on append, and history import runs it again on
- * replay.
- */
-function normalizeTimelineItemForDisplay(item: AgentTimelineItem): AgentTimelineItem {
-  return normalizeWidgetTimelineItem(normalizeUserMessageForDisplay(item));
-}
-
-function buildImportedTimelineRows(entries: readonly ImportedTimelineEntry[]): AgentTimelineRow[] {
-  const rows: AgentTimelineRow[] = [];
-  for (const entry of entries) {
-    if (entry.item.type === "user_message" && isSystemInjectedEnvelope(entry.item.text)) {
-      continue;
-    }
-    rows.push({
-      seq: rows.length + 1,
-      timestamp: entry.timestamp ?? new Date().toISOString(),
-      // Hydration builds rows directly instead of going through
-      // recordTimeline, so it has to bound for itself. Provider history is
-      // exactly where an unbounded output arrives in bulk.
-      item: limitAgentTimelineItemContent(normalizeTimelineItemForDisplay(entry.item)),
-    });
-  }
-  return rows;
-}
-
-function resolveImportedAgentTitle(
-  config: AgentSessionConfig,
-  timelineRows: readonly AgentTimelineRow[],
-): string | null {
-  const initialPrompt = getFirstUserMessageTextFromRows(timelineRows);
-  if (!initialPrompt) {
-    return null;
-  }
-  const { explicitTitle, provisionalTitle } = resolveCreateAgentTitles({
-    configTitle: config.title,
-    initialPrompt,
-  });
-  return explicitTitle ?? provisionalTitle ?? null;
-}
-
 function shouldDetachFromArchivedParent(
   parent: StoredAgentRecord,
   child: StoredAgentRecord,
@@ -1410,20 +1343,6 @@ function detachedAgentLabelPatch(labels: Record<string, string>): AgentLabelPatc
     }
   }
   return patch;
-}
-
-function getFirstUserMessageTextFromRows(rows: readonly AgentTimelineRow[]): string | null {
-  for (const row of rows) {
-    const item = row.item;
-    if (item.type !== "user_message") {
-      continue;
-    }
-    const text = item.text.trim();
-    if (text) {
-      return text;
-    }
-  }
-  return null;
 }
 
 // Whether a retained-transcript row represents work the agent actually did,
@@ -1454,6 +1373,7 @@ export class AgentManager {
   private readonly idFactory: () => string;
   private readonly registry?: AgentStorage;
   private readonly durableTimelineStore?: AgentTimelineStore;
+  readonly chatSearch?: import("../chat-search/service.js").ChatSearchService;
   // Retained transcripts of internal generation agents (schedule / artifact),
   // keyed by generation agent id. Captured at run end before closeAgent so the
   // chat survives the internal agent's teardown, and served back through the
@@ -1618,6 +1538,7 @@ export class AgentManager {
     this.idFactory = options.idFactory ?? (() => randomUUID());
     this.registry = options.registry;
     this.durableTimelineStore = options.durableTimelineStore;
+    this.chatSearch = options.chatSearch;
     this.retainedTranscripts = options.retainedTranscripts;
     this.onAgentAttention = options.onAgentAttention;
     this.isAgentActivelyWatched = options.isAgentActivelyWatched;
@@ -2241,6 +2162,37 @@ export class AgentManager {
       return await this.durableTimelineStore.getCommittedRows(id);
     }
     return this.timelineStore.getRows(id);
+  }
+
+  getSearchSnapshot(
+    id: string,
+  ): { rows: AgentTimelineRow[]; complete: boolean; busy: boolean } | null {
+    const agent = this.agents.get(id);
+    if (!agent || agent.internal || !this.timelineStore.has(id)) return null;
+    return {
+      rows: this.timelineStore.getRows(id),
+      complete: agent.historyPrimed,
+      busy: agent.lifecycle === "running",
+    };
+  }
+
+  async getSearchHistoryRevision(id: string): Promise<string | null> {
+    return getSearchHistoryRevision(this.registry, this.clients, id);
+  }
+
+  private async captureSearchTimeline(id: string, complete: boolean): Promise<void> {
+    try {
+      await this.chatSearch?.capture(id, this.timelineStore.getRows(id), complete);
+    } catch (error) {
+      // A failed derived search store must not prevent opening/closing a conversation.
+      // Keep it dirty; provider history remains the recovery authority after eviction.
+      this.chatSearch?.schedule(id);
+      this.logger.warn({ err: error, agentId: id }, "Chat search capture will retry");
+    }
+  }
+
+  async readSearchHistory(id: string, signal?: AbortSignal): Promise<AgentTimelineRow[] | null> {
+    return readSearchHistory(this.registry, this.clients, id, signal);
   }
 
   fetchTimeline(id: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
@@ -3119,6 +3071,8 @@ export class AgentManager {
     // close triggered from inside a persistence task then waits on itself.
     await new Promise<void>((resolveTurn) => yieldEventLoopTurn(resolveTurn));
     this.cancelRunningProviderSubagents(agent);
+    this.agentStreamCoalescer.flushAndDiscard(agent.id);
+    if (!agent.internal) await this.captureSearchTimeline(agentId, agent.historyPrimed);
     const closedAgent = this.prepareAgentForClosure(agent, "agent closed");
     // A provider that fails to clean up must not take the closure with it. The
     // error still surfaces to the caller, but the record is persisted and the
@@ -5610,6 +5564,7 @@ export class AgentManager {
   }
 
   async deleteAgentState(agentId: string): Promise<void> {
+    await this.chatSearch?.delete(agentId);
     this.discardRetainedAgentState(agentId);
     await this.deleteCommittedTimeline(agentId);
   }
@@ -6023,6 +5978,7 @@ export class AgentManager {
 
       this.assertAcceptingAgentRegistrations();
       this.agents.set(resolvedAgentId, managed);
+      if (!managed.internal) this.chatSearch?.schedule(resolvedAgentId);
       registered = true;
       // Initialize previousStatus to track transitions
       this.previousStatuses.set(resolvedAgentId, managed.lifecycle);
@@ -6487,6 +6443,7 @@ export class AgentManager {
     broadcast: boolean,
     broadcastTimeline: boolean,
   ): Promise<void> {
+    if (!agent.internal) this.chatSearch?.schedule(agent.id);
     const historyEvents: Extract<AgentStreamEvent, { type: "timeline" }>[] = [];
     const providerSubagentEvents: Extract<AgentStreamEvent, { type: "provider_subagent" }>[] = [];
     for await (const rawEvent of agent.session.streamHistory()) {
@@ -6532,6 +6489,7 @@ export class AgentManager {
         });
       }
     }
+    if (!agent.internal) await this.captureSearchTimeline(agent.id, true);
     this.touchUpdatedAt(agent);
     this.emitState(agent);
   }
@@ -6586,6 +6544,8 @@ export class AgentManager {
       throw error;
     }
     agent.historyPrimed = true;
+
+    if (!agent.internal) await this.captureSearchTimeline(agent.id, true);
 
     if (typeof broadcast !== "function" || !broadcast()) {
       return;
@@ -8247,6 +8207,11 @@ export class AgentManager {
       options,
     );
     this.enqueueDurableTimelineAppend(agentId, row);
+    if (
+      (item.type === "user_message" || item.type === "assistant_message") &&
+      !this.agents.get(agentId)?.internal
+    )
+      this.chatSearch?.schedule(agentId);
     return row;
   }
 

@@ -72,6 +72,7 @@ import { normalizeProviderReplayTimestamp } from "../../provider-history-timesta
 import { SubagentUsageAccumulator, grandTotalTokens } from "../../subagent-usage.js";
 
 import { claudeProjectDirSync } from "./project-dir.js";
+import { resolveClaudeSearchHistoryPath } from "./search-history-path.js";
 import { readClaudeModelUsageSlices, verifyClaudeTreePricing } from "./claude-pricing.js";
 import { readUsageTotals, toClaudeSubagentUsage } from "./claude-subagent-usage.js";
 import { WorkflowTranscriptWatcher } from "./workflow-transcript-watcher.js";
@@ -146,7 +147,10 @@ import {
   type ClaudeSubagentMeta,
 } from "./subagents/replay-source.js";
 import { resolveDefaultAgentCreateConfig } from "../../create-agent-mode.js";
-import { importSessionFromPersistence } from "../../provider-session-import.js";
+import {
+  collectImportedHistory,
+  importSessionFromPersistence,
+} from "../../provider-session-import.js";
 import {
   checkProviderLaunchAvailable,
   createProviderEnv,
@@ -1842,6 +1846,24 @@ export class ClaudeAgentClient implements AgentClient {
     });
   }
 
+  async readSearchHistory(handle: AgentPersistenceHandle, cwd: string) {
+    const { validateSearchHistoryJsonl } = await import("../../search-history-revision.js");
+    await validateSearchHistoryJsonl(resolveClaudeSearchHistoryPath(cwd, handle.sessionId));
+    // Construction only reads persisted history; no query or model request is started.
+    const session = await this.resumeSession(handle, { cwd });
+    try {
+      return (await collectImportedHistory(session.streamHistory())).timeline;
+    } finally {
+      await session.close();
+    }
+  }
+
+  async getSearchHistoryRevision(handle: AgentPersistenceHandle, cwd: string) {
+    const historyPath = resolveClaudeSearchHistoryPath(cwd, handle.sessionId);
+    const { searchHistoryFileRevision } = await import("../../search-history-revision.js");
+    return searchHistoryFileRevision(historyPath);
+  }
+
   async getCatalogCacheKey(_options: FetchCatalogOptions): Promise<string> {
     // This client discovers through host configuration, independent of project cwd.
     return "host";
@@ -3455,7 +3477,7 @@ class ClaudeAgentSession implements AgentSession {
       // (see `claude --help`), so the SDK's persistSession=false is silently dropped
       // in stream-json mode. Sweep the transcript ourselves so ephemeral runs
       // (metadata generator, branch-name generator) don't show up as resumable.
-      const historyPath = this.resolveHistoryPath(this.claudeSessionId);
+      const historyPath = resolveClaudeSearchHistoryPath(this.config.cwd, this.claudeSessionId);
       if (historyPath) {
         try {
           await promises.rm(historyPath, { force: true });
@@ -6802,7 +6824,7 @@ class ClaudeAgentSession implements AgentSession {
 
   private loadPersistedHistory(sessionId: string): void {
     try {
-      const historyPath = this.resolveHistoryPath(sessionId);
+      const historyPath = resolveClaudeSearchHistoryPath(this.config.cwd, sessionId);
       if (!historyPath || !fs.existsSync(historyPath)) {
         return;
       }
@@ -6972,31 +6994,6 @@ class ClaudeAgentSession implements AgentSession {
         })),
       );
     }
-  }
-
-  private resolveHistoryPath(sessionId: string): string | null {
-    const cwd = this.config.cwd;
-    if (!cwd) return null;
-    const configDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
-    const candidates = [cwd];
-    try {
-      const realCwd = fs.realpathSync(cwd);
-      if (realCwd !== cwd) {
-        candidates.push(realCwd);
-      }
-    } catch {
-      // Fall back to the configured cwd when the path has already disappeared.
-    }
-    for (const candidate of candidates) {
-      const historyPath = path.join(
-        claudeProjectDirSync(candidate, { configDir }),
-        `${sessionId}.jsonl`,
-      );
-      if (fs.existsSync(historyPath)) {
-        return historyPath;
-      }
-    }
-    return path.join(claudeProjectDirSync(cwd, { configDir }), `${sessionId}.jsonl`);
   }
 
   /**

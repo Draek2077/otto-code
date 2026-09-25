@@ -74,6 +74,7 @@ export const zhCN: TranslationResources = {
       close: "关闭菜单",
     },
     commandCenter: {
+      ...en.shell.commandCenter,
       placeholder: "搜索命令、文件、工作区和 Agent...",
       filePlaceholder: "搜索文件...",
       searchingFiles: "正在搜索文件...",

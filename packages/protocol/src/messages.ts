@@ -1,4 +1,16 @@
+import {
+  AgentStatusSchema,
+  AgentDirectoryFilterSchema,
+  FetchAgentHistoryRequestMessageSchema,
+} from "./agent-history.js";
+export { AgentStatusSchema, FetchAgentHistoryRequestMessageSchema } from "./agent-history.js";
 import { AgentRateLimitInfoSchema } from "./agent-rate-limit.js";
+import {
+  ChatSearchRequestSchema,
+  ChatSearchResponseSchema,
+  ChatSearchResolveRequestSchema,
+  ChatSearchResolveResponseSchema,
+} from "./chat-search.js";
 export { AgentRateLimitInfoSchema } from "./agent-rate-limit.js";
 import {
   WSPingMessageSchema,
@@ -521,7 +533,6 @@ import {
   ArchitecturalViewsDraftListResponseSchema,
   ArchitecturalViewsOpenNotificationSchema,
 } from "./architectural-views/rpc-schemas.js";
-import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
 import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "./agent-title-limits.js";
 import { AgentProviderSchema } from "./provider-manifest.js";
 import {
@@ -1062,8 +1073,6 @@ import type {
 // WebSocket payloads have already crossed JSON serialization. Keeping this as
 // unknown avoids zod-aot's recursive z.json() object-codegen regression.
 const JsonWireValueSchema = z.unknown() as z.ZodType<JsonValue>;
-
-export const AgentStatusSchema = z.enum(AGENT_LIFECYCLE_STATUSES);
 
 const AgentModeSchema: z.ZodType<AgentMode> = z.object({
   id: z.string(),
@@ -1872,15 +1881,6 @@ export const AudioPlayedMessageSchema = z.object({
   id: z.string(),
 });
 
-const AgentDirectoryFilterSchema = z.object({
-  labels: z.record(z.string(), z.string()).optional(),
-  projectKeys: z.array(z.string()).optional(),
-  statuses: z.array(AgentStatusSchema).optional(),
-  includeArchived: z.boolean().optional(),
-  requiresAttention: z.boolean().optional(),
-  thinkingOptionId: z.string().nullable().optional(),
-});
-
 export const DeleteAgentRequestMessageSchema = z.object({
   type: z.literal("delete_agent_request"),
   agentId: z.string(),
@@ -2316,30 +2316,6 @@ export const ProjectResolveWorkspaceForPathRequestSchema = z.object({
   type: z.literal("project.resolveWorkspaceForPath.request"),
   requestId: z.string(),
   path: z.string(),
-});
-
-export const FetchAgentHistoryRequestMessageSchema = z.object({
-  type: z.literal("fetch_agent_history_request"),
-  requestId: z.string(),
-  filter: AgentDirectoryFilterSchema.optional(),
-  // A ranked free-text query over agent title, workspace name, branch, and
-  // project name. Present only on history: agent subscriptions filter on
-  // structure, not on relevance. Ranking replaces `sort` when it is set.
-  search: z.string().optional(),
-  sort: z
-    .array(
-      z.object({
-        key: z.enum(["status_priority", "created_at", "updated_at", "title"]),
-        direction: z.enum(["asc", "desc"]),
-      }),
-    )
-    .optional(),
-  page: z
-    .object({
-      limit: z.number().int().positive().max(200),
-      cursor: z.string().min(1).optional(),
-    })
-    .optional(),
 });
 
 export const FetchRecentProviderSessionsRequestMessageSchema = z.object({
@@ -4658,6 +4634,8 @@ export const SessionEventsSetSubscriptionResponseSchema = z.object({
 });
 
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+  ChatSearchRequestSchema,
+  ChatSearchResolveRequestSchema,
   SessionEventsSetSubscriptionRequestSchema,
   HubExecutionAgentCreateRequestSchema,
   HubExecutionAgentValidateRequestSchema,
@@ -5338,6 +5316,7 @@ export const ServerInfoStatusPayloadSchema = z
         agentTimelinePromptIndex: z.boolean().optional(),
         // COMPAT(agentHistorySearch): added in v0.3.0, remove gate after 2027-02-07.
         agentHistorySearch: z.boolean().optional(),
+        chatContentSearch: z.boolean().optional(),
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: z.boolean().optional(),
         // COMPAT(gitFetchControl): added in v0.8.11, remove gate after 2027-02-14.
@@ -9293,6 +9272,8 @@ export const AgentSkillsImportLegacySelectionResponseSchema = z.object({
 });
 
 export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
+  ChatSearchResponseSchema,
+  ChatSearchResolveResponseSchema,
   SessionEventsSetSubscriptionResponseSchema,
   HubExecutionAgentCreateResponseSchema,
   HubExecutionAgentValidateResponseSchema,

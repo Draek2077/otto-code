@@ -202,6 +202,7 @@ import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { RetainedTranscriptStore } from "./agent/retained-transcript-store.js";
+import { ChatSearchService } from "./chat-search/service.js";
 import { migrateProfileStorePaths } from "./migrations/profile-store-paths.migration.js";
 import { ProfileStatsStore } from "./agent/profile-stats-store.js";
 import { ProfileMemoryStore } from "./agent/profile-memory/profile-memory-store.js";
@@ -1791,7 +1792,42 @@ export async function createOttoDaemon(
     ottoHome: config.ottoHome,
     logger,
   });
-  const agentManager = new AgentManager({
+  const agentManager: AgentManager = new AgentManager({
+    chatSearch: new ChatSearchService({
+      ottoHome: config.ottoHome,
+      logger,
+      snapshot: (id) => agentManager.getSearchSnapshot(id),
+      backfill: (id, signal) => agentManager.readSearchHistory(id, signal),
+      revision: (id) => agentManager.getSearchHistoryRevision(id),
+      list: async () => {
+        const [records, workspaces, projects] = await Promise.all([
+          agentStorage.list(),
+          workspaceRegistry.list(),
+          projectRegistry.list(),
+        ]);
+        const workspaceById = new Map(
+          workspaces.map((workspace) => [workspace.workspaceId, workspace]),
+        );
+        const projectById = new Map(projects.map((project) => [project.projectId, project]));
+        return records
+          .filter((record) => !record.internal)
+          .map((record) => {
+            const workspace = record.workspaceId
+              ? workspaceById.get(record.workspaceId)
+              : undefined;
+            const project = workspace ? projectById.get(workspace.projectId) : undefined;
+            return {
+              id: record.id,
+              title: record.title ?? "Chat",
+              provider: record.provider,
+              workspaceId: record.workspaceId ?? null,
+              projectId: workspace?.projectId ?? null,
+              projectName: project?.customName ?? project?.displayName ?? "",
+              archived: Boolean(record.archivedAt),
+            };
+          });
+      },
+    }),
     pluginLifecycle: pluginRuntime,
     assertDirectoryAvailable: async (cwd) => {
       const workspaces = await workspaceRegistry.list();
@@ -2817,6 +2853,7 @@ export async function createOttoDaemon(
   logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");
 
   const start = async () => {
+    agentManager.chatSearch?.start();
     let mainStarted = false;
     try {
       if (serviceProxyListenTarget) {
@@ -3154,6 +3191,9 @@ export async function createOttoDaemon(
     await brainOpsManager.shutdown().catch(() => undefined);
     await closeAllAgents(logger, agentManager);
     await agentManager.flushForShutdown().catch(() => undefined);
+    await agentManager.chatSearch
+      ?.close()
+      .catch((error) => logger.warn({ err: error }, "Chat search shutdown failed"));
     detachAgentStoragePersistence();
     await agentStorage.flush().catch(() => undefined);
     // The ledger's write timer is coalesced and unref()'d, so without this every
