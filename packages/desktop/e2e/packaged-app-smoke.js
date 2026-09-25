@@ -204,16 +204,6 @@ function createIsolatedDesktopEnv({ home, listen, userData, cdpPort }) {
   return env;
 }
 
-function seedSpellcheckerPreferences(userData) {
-  // Windows and Linux do not auto-select a spellchecker language in Electron.
-  // Seed the isolated Chromium profile instead of relying on the CI runner's
-  // locale, while still exercising the production session and dictionary.
-  fs.writeFileSync(
-    path.join(userData, "Preferences"),
-    `${JSON.stringify({ spellcheck: { dictionaries: ["en-US"], dictionary: "" } })}\n`,
-  );
-}
-
 function configureIsolatedDaemonHome(home, listen) {
   fs.writeFileSync(
     path.join(home, "config.json"),
@@ -448,6 +438,31 @@ function releaseChildHandles(child) {
   child.unref();
 }
 
+async function waitForPackagedExecutableUnlock(executablePath, timeoutMs = EXIT_TIMEOUT_MS) {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    try {
+      const handle = await fs.promises.open(executablePath, "r+");
+      await handle.close();
+      return;
+    } catch (error) {
+      if (
+        Date.now() >= deadline ||
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        (error.code !== "EBUSY" && error.code !== "EPERM")
+      ) {
+        throw error;
+      }
+      await delay(100);
+    }
+  }
+}
+
 async function removeTempDir(tempDir) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
@@ -624,11 +639,16 @@ async function verifySpellcheckContextMenu(page, deadline) {
     throw new Error("Packaged spellcheck input has no bounding box");
   }
 
-  const menu = page.locator('[data-testid="text-selection-context-menu"]');
-  // Native dictionaries initialize asynchronously after the control receives
-  // text. A single click keeps the journey user-realistic; give the OS-backed
-  // spellchecker time to classify the word instead of retrying the gesture.
-  await delay(2_000);
+  // At high display scaling the desktop window can cross the compact-width
+  // threshold, where the same context menu uses its bottom-sheet surface.
+  // Require the visible real surface in either supported presentation.
+  const menu = page.locator(
+    '[data-testid="text-selection-context-menu"]:visible, [data-testid="text-selection-context-menu-content"]:visible',
+  );
+  // Native dictionaries initialize asynchronously after the app selects the
+  // system language. A single click keeps the journey user-realistic; give a
+  // clean runner time to download and classify instead of retrying the gesture.
+  await delay(10_000);
   await page.mouse.click(box.x + 24, box.y + 24, { button: "right" });
   await menu
     .getByText("Add to Dictionary", { exact: true })
@@ -1034,7 +1054,6 @@ async function smokePackagedDesktopApp({ appPath }) {
   await smokeColdCliDaemonStart({ appPath });
 
   const userData = createTempDir("otto-smoke-user-data-");
-  seedSpellcheckerPreferences(userData);
   const daemonHome = createTempDir("otto-smoke-daemon-home-");
   const daemonPort = await reserveLocalTcpPort();
   let cdpPort = await reserveLocalTcpPort();
@@ -1158,6 +1177,10 @@ async function smokePackagedDesktopApp({ appPath }) {
       }
     }
     releaseChildHandles(child);
+    // Windows can report the process as exited before releasing its executable
+    // image. electron-builder edits that file immediately after afterPack, so
+    // returning early turns a passed smoke into a nondeterministic EBUSY build.
+    await waitForPackagedExecutableUnlock(executablePath);
     await removeTempDir(userData);
     await removeTempDir(daemonHome);
   }

@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { reloadActiveBrowserOrWindow, SpellcheckContextRegistry } from "./menu.js";
+import {
+  reloadActiveBrowserOrWindow,
+  resolveSpellCheckerLanguages,
+  SpellcheckContextRegistry,
+} from "./menu.js";
+
+describe("resolveSpellCheckerLanguages", () => {
+  it("selects supported system languages in preference order", () => {
+    expect(
+      resolveSpellCheckerLanguages(
+        ["fr-CA", "en_US", "fr-CA", "not-a-language"],
+        ["en-US", "fr-CA", "de"],
+      ),
+    ).toEqual(["fr-CA", "en-US"]);
+  });
+
+  it("falls back to a supported base language", () => {
+    expect(resolveSpellCheckerLanguages(["de-AT", "es-MX"], ["de", "en-US"])).toEqual(["de"]);
+  });
+});
 
 class FakeWebContents {
   public readonly reloads: string[] = [];
