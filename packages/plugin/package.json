@@ -1,6 +1,6 @@
 {
   "name": "@otto-code/plugin",
-  "version": "0.9.21",
+  "version": "0.9.22",
   "description": "Otto plugin SDK package",
   "repository": {
     "type": "git",
@@ -70,8 +70,8 @@
     "use-sync-external-store": "^1.6.0"
   },
   "devDependencies": {
-    "@otto-code/client": "0.9.21",
-    "@otto-code/protocol": "0.9.21",
+    "@otto-code/client": "0.9.22",
+    "@otto-code/protocol": "0.9.22",
     "@types/node": "^20.9.0",
     "@types/react": "~19.2.0",
     "react": "19.1.0",
@@ -81,8 +81,8 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@otto-code/client": "0.9.21",
-    "@otto-code/protocol": "0.9.21",
+    "@otto-code/client": "0.9.22",
+    "@otto-code/protocol": "0.9.22",
     "react": "19.1.0",
     "react-native": ">=0.81.5",
     "zod": "^4.4.3"
