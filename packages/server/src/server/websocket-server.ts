@@ -98,6 +98,7 @@ import {
 import type { ScriptHealthState } from "./script-health-monitor.js";
 import type { DevServerManager } from "./preview/dev-server-manager.js";
 import type { BrainManager } from "./brain/brain-manager.js";
+import { attachBrainConfigOwner } from "./brain/brain-config-owner.js";
 import type { BrainOpsManager } from "./brain/brain-ops-manager.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
@@ -727,6 +728,7 @@ export class VoiceAssistantWebSocketServer {
   private eventLoopDelayMonitor: ReturnType<typeof monitorEventLoopDelay> | null = null;
   private unsubscribeSpeechReadiness: (() => void) | null = null;
   private unsubscribeDaemonConfigChange: (() => void) | null = null;
+  private unsubscribeBrainConfigChange: (() => void) | null = null;
   private readonly providerUsageService: ProviderUsageService;
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
@@ -1033,10 +1035,11 @@ export class VoiceAssistantWebSocketServer {
     this.promptTemplateStore = store;
   }
 
-  // Wire the daemon-managed local AI host and apply the current `brain` config
-  // once. Applied (not merely stored): a config that says "enabled + autoStart"
-  // must bring the brain up on daemon start, mirroring lspService.setSettings.
+  // Wire the daemon-managed local AI host and keep its running state in sync
+  // with committed Brain settings, including changes made in this session.
   public setBrainManager(manager: BrainManager | null): void {
+    this.unsubscribeBrainConfigChange?.();
+    this.unsubscribeBrainConfigChange = null;
     this.brainManager = manager;
     if (manager) {
       // The brain publishes its own state; the daemon subscribes once and fans
@@ -1067,8 +1070,10 @@ export class VoiceAssistantWebSocketServer {
         // server_info and restore their compatibility poll.
         onStatusEventSupportChanged: () => this.broadcastCapabilitiesUpdate(),
       });
-      void manager.applySettings(this.daemonConfigStore.get().brain).catch((err: unknown) => {
-        this.logger.warn({ err }, "Failed to apply brain settings");
+      this.unsubscribeBrainConfigChange = attachBrainConfigOwner({
+        store: this.daemonConfigStore,
+        manager,
+        onError: (err) => this.logger.warn({ err }, "Failed to apply brain settings"),
       });
     }
   }
@@ -1393,6 +1398,8 @@ export class VoiceAssistantWebSocketServer {
     this.unsubscribeSpeechReadiness = null;
     this.unsubscribeDaemonConfigChange?.();
     this.unsubscribeDaemonConfigChange = null;
+    this.unsubscribeBrainConfigChange?.();
+    this.unsubscribeBrainConfigChange = null;
     this.unsubscribeTerminalActivity?.();
     this.unsubscribeTerminalActivity = null;
     if (this.runtimeMetricsInterval) {

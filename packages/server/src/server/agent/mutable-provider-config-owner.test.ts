@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { DaemonConfigStore } from "../daemon-config-store.js";
-import type { PersistedConfig } from "../persisted-config.js";
+import { loadPersistedConfig, type PersistedConfig } from "../persisted-config.js";
 import type {
   AgentClient,
   AgentMode,
@@ -106,6 +106,47 @@ afterEach(() => {
 });
 
 describe("mutable provider config owner", () => {
+  test("restamps a loaded model when its tier or visibility changes", async () => {
+    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-provider-config-owner-"));
+    tempDirs.push(ottoHome);
+    const store = new DaemonConfigStore(ottoHome, mutableConfig({ version: 1 }));
+    const manager = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      providerOverrides: CONTROLLED_PROVIDERS,
+      extraClients: { codex: controlledCodexClient(async () => catalog("local-model")) },
+    });
+    const unsubscribe = attachMutableProviderConfigOwner({
+      store,
+      providerSnapshotManager: manager,
+      updateProviderRegistry: () => undefined,
+    });
+    const cwd = path.resolve("/tmp/provider-tier-override");
+
+    try {
+      await manager.getProvider({ cwd, provider: "codex", wait: true });
+      expect(getCodexSnapshot(manager, cwd)?.models?.[0]?.tier).toBeUndefined();
+
+      store.patch({
+        modelTierOverrides: [{ provider: "codex", modelId: "local-model", tier: "deep" }],
+        modelVisibilityOverrides: [{ provider: "codex", modelId: "local-model", visible: false }],
+      });
+      expect(getCodexSnapshot(manager, cwd)?.models?.[0]).toMatchObject({
+        tier: "deep",
+        isVisible: false,
+      });
+      expect(loadPersistedConfig(ottoHome).agents?.modelTierOverrides).toEqual([
+        { provider: "codex", modelId: "local-model", tier: "deep" },
+      ]);
+
+      store.patch({ modelTierOverrides: [], modelVisibilityOverrides: [] });
+      expect(getCodexSnapshot(manager, cwd)?.models?.[0]?.tier).toBeUndefined();
+      expect(getCodexSnapshot(manager, cwd)?.models?.[0]?.isVisible).toBeUndefined();
+    } finally {
+      unsubscribe();
+      manager.destroy();
+    }
+  });
+
   test("restores a partially applied agent registry without publishing the prepared catalog", () => {
     const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-provider-config-owner-"));
     tempDirs.push(ottoHome);

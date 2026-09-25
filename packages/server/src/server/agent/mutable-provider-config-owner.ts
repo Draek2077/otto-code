@@ -12,6 +12,8 @@ export function attachMutableProviderConfigOwner(options: {
   updateProviderRegistry: (state: AgentManagerProviderState) => void;
 }): () => void {
   let commitPendingProviderChange: (() => void) | null = null;
+  let appliedModelTierOverrides = options.store.get().modelTierOverrides;
+  let appliedModelVisibilityOverrides = options.store.get().modelVisibilityOverrides;
 
   const unsubscribeApply = options.store.onApply((config, previous, details) => {
     if (equal(config.providers, previous.providers)) return () => undefined;
@@ -49,10 +51,20 @@ export function attachMutableProviderConfigOwner(options: {
       options.updateProviderRegistry(previousAgentManagerState);
     };
   });
-  const unsubscribeChange = options.store.onChange(() => {
+  const unsubscribeChange = options.store.onChange((config) => {
     const commit = commitPendingProviderChange;
     commitPendingProviderChange = null;
     commit?.();
+    // Catalog metadata is derived from the saved overrides. Restamp only after
+    // the config transaction commits so rejected patches cannot leak into clients.
+    if (!equal(config.modelTierOverrides, appliedModelTierOverrides)) {
+      appliedModelTierOverrides = config.modelTierOverrides;
+      options.providerSnapshotManager.setModelTierOverrides(config.modelTierOverrides);
+    }
+    if (!equal(config.modelVisibilityOverrides, appliedModelVisibilityOverrides)) {
+      appliedModelVisibilityOverrides = config.modelVisibilityOverrides;
+      options.providerSnapshotManager.setModelVisibilityOverrides(config.modelVisibilityOverrides);
+    }
   });
 
   return () => {
