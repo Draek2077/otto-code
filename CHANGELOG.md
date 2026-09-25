@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.24 - 2026-09-25
+
+### Fixed
+
+- Apple Silicon model fit checks leave more usable memory for local models ([#50](https://github.com/Draek2077/otto-code/pull/50))
+- Apple Silicon calibration can measure smaller contexts from the runtime's memory report ([#50](https://github.com/Draek2077/otto-code/pull/50))
+- Model profiles show optional component costs and how far a configuration exceeds the GPU budget ([#50](https://github.com/Draek2077/otto-code/pull/50))
+
 ## 0.9.23 - 2026-09-25
 
 ### Improved
