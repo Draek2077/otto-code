@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.22 - 2026-09-25
+
+### Added
+
+- Search chat messages across projects from global Search
+- Ask agents to move chats between workspaces
+
+### Improved
+
+- Update the provider catalog to newer ACP agent versions
+
+### Fixed
+
+- Show spelling suggestions reliably in installed desktop builds
+- Keep desktop notifications and badges synchronized with chat activity
+- Keep fixed-height desktop dialogs scrollable
+- Clear finished Claude subagents on the first attempt
+
 ## 0.9.21 - 2026-09-22
 
 ### Added
