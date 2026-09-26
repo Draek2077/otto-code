@@ -6,20 +6,22 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnCli, spawnCliSync } from './resolve-cli.mjs';
 import { runWithTransientNetworkRetry } from './transient-retry.mjs';
+import { adapterCommit, manifest, release, releaseSnapshot } from './release-source.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const integrationRoot = path.resolve(here, '..');
 const repoRoot = path.resolve(integrationRoot, '..', '..');
-const PACKAGE_NAME = '@tt-a1i/archify-dsh';
-const PACKAGE_VERSION = '0.1.0';
-const DSH_SPEC = '@deepseek-ai/dsh@0.1.0-rc.6';
+const PACKAGE_NAME = manifest.name;
+const PACKAGE_VERSION = manifest.version;
+const DSH_RELEASE_REF = release.sourceCommit;
+const DSH_SPEC = `@deepseek-ai/dsh@${release.dshVersion}`;
 const PROFILE = 'archify-dsh-acceptance';
 const DSH_RUNTIME_INSTALL_TIMEOUT = process.platform === 'win32' ? 600_000 : 300_000;
 const PLUGIN_MUTATION_TIMEOUT = 180_000;
 
 const receipt = {
   ok: false,
-  adapter: { name: PACKAGE_NAME, version: PACKAGE_VERSION },
+  adapter: { name: PACKAGE_NAME, version: PACKAGE_VERSION, commit: adapterCommit },
   dsh: { spec: DSH_SPEC },
   node: process.version,
   platform: process.platform,
@@ -68,39 +70,6 @@ function listRelativeFiles(root) {
   }
   walkDir(root, '');
   return files.sort();
-}
-
-const CHECKOUT_TEXT_EXTENSIONS = new Set(['.html', '.json', '.md', '.mjs']);
-
-function checkoutContentsEqual(file, left, right, normalizeTextEol) {
-  if (left.equals(right)) return true;
-  if (!normalizeTextEol) return false;
-  const isCheckoutText = path.basename(file) === 'LICENSE'
-    || CHECKOUT_TEXT_EXTENSIONS.has(path.extname(file).toLowerCase());
-  if (!isCheckoutText) return false;
-  return left.toString('utf8').replaceAll('\r\n', '\n')
-    === right.toString('utf8').replaceAll('\r\n', '\n');
-}
-
-function treesMatch(left, right, { normalizeTextEol = false } = {}) {
-  const leftFiles = listRelativeFiles(left);
-  const rightFiles = listRelativeFiles(right);
-  if (leftFiles.join('\n') !== rightFiles.join('\n')) {
-    return { ok: false, leftFiles, rightFiles };
-  }
-  for (const file of leftFiles) {
-    const leftPath = path.join(left, ...file.split('/'));
-    const rightPath = path.join(right, ...file.split('/'));
-    if (!checkoutContentsEqual(
-      file,
-      fs.readFileSync(leftPath),
-      fs.readFileSync(rightPath),
-      normalizeTextEol,
-    )) {
-      return { ok: false, file };
-    }
-  }
-  return { ok: true };
 }
 
 function parseDump(yaml) {
@@ -164,7 +133,7 @@ function waitForProbe(child, file, timeoutMs) {
 }
 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'archify-dsh-acceptance-'));
-const tarball = path.join(scratch, 'tt-a1i-archify-dsh-0.1.0.tgz');
+const tarball = path.join(scratch, `tt-a1i-archify-dsh-${PACKAGE_VERSION}.tgz`);
 const dshHome = path.join(scratch, 'dsh-home');
 const agentsHome = path.join(scratch, 'agents-home');
 const dshRuntime = path.join(scratch, 'dsh-runtime');
@@ -194,7 +163,9 @@ try {
 } catch (error) {
   fail('pack', `pack did not emit JSON: ${error.message}\n${pack.stdout}`);
 }
-if (packReceipt.name !== PACKAGE_NAME || packReceipt.version !== PACKAGE_VERSION || !fs.existsSync(tarball)) {
+if (packReceipt.name !== PACKAGE_NAME || packReceipt.version !== PACKAGE_VERSION
+  || packReceipt.adapterCommit !== adapterCommit || packReceipt.sourceCommit !== release.sourceCommit
+  || !fs.existsSync(tarball)) {
   fail('pack', 'pack receipt identity mismatch', { packReceipt, tarball });
 }
 pass('pack', { filename: packReceipt.filename, fileCount: packReceipt.files?.length });
@@ -399,12 +370,14 @@ pass('resource-base', { resourcePath: resourceReal });
 const skillRoot = fs.existsSync(path.join(resourceReal, 'SKILL.md'))
   ? resourceReal
   : path.join(resourceReal, 'archify');
-const smoke = run(process.execPath, [path.join(repoRoot, 'scripts', 'package-smoke.mjs'), skillRoot], {
-  cwd: repoRoot,
+const sourceSnapshot = path.join(scratch, 'release-source');
+releaseSnapshot(sourceSnapshot);
+const smoke = run(process.execPath, [path.join(sourceSnapshot, 'scripts', 'package-smoke.mjs'), skillRoot], {
+  cwd: sourceSnapshot,
   timeout: 120_000,
 });
-requireStatus('package-smoke', smoke, { command: 'package-smoke.mjs <installed-skill-root>' });
-pass('package-smoke', { skillRoot, output: smoke.stdout.trim() });
+requireStatus('package-smoke', smoke, { command: `${DSH_RELEASE_REF} package-smoke.mjs <installed-skill-root>` });
+pass('package-smoke', { skillRoot, source: DSH_RELEASE_REF, output: smoke.stdout.trim() });
 
 const remove = dsh(['plugin', '--profile', PROFILE, 'remove', PACKAGE_NAME], { timeout: PLUGIN_MUTATION_TIMEOUT });
 requireStatus('uninstall', remove, { command: `dsh plugin --profile ${PROFILE} remove ${PACKAGE_NAME}` });
@@ -429,20 +402,20 @@ const zipBlob = run('git', ['hash-object', 'archify.zip'], { cwd: repoRoot });
 const pkgBlob = run('git', ['hash-object', 'archify/package.json'], { cwd: repoRoot });
 const skipFreshZipRebuild = process.platform === 'win32';
 const committedZip = path.join(repoRoot, 'archify.zip');
-const packedSkill = path.join(inspectRoot, 'package', 'skills', 'archify');
-let unzipContentsIdentical = false;
+let unzipContentsIdentical = 'not-asserted';
 let canonicalZipBytes = 'not-asserted';
 if (skipFreshZipRebuild) {
-  receipt.zipContainerNote = 'Windows validates committed ZIP contents with checkout text EOL normalization; canonical container-byte reproduction is owned by Linux CI.';
+  receipt.zipContainerNote = 'Windows extracts and smokes the committed ZIP; canonical rebuild and fresh-vs-committed equality are owned by Linux CI.';
   const checkedDir = path.join(scratch, 'checked');
   fs.mkdirSync(checkedDir);
   fs.copyFileSync(committedZip, path.join(checkedDir, 'committed.zip'));
   requireStatus('zero-regression', run('tar', ['-xf', 'committed.zip'], { cwd: checkedDir }));
-  const compared = treesMatch(packedSkill, path.join(checkedDir, 'archify'), { normalizeTextEol: true });
-  if (!compared.ok) {
-    fail('zero-regression', 'packed skill drifted from the committed ZIP', compared);
-  }
-  unzipContentsIdentical = true;
+  const currentSmoke = run(process.execPath, [
+    path.join(repoRoot, 'scripts', 'package-smoke.mjs'),
+    path.join(checkedDir, 'archify'),
+  ], { cwd: repoRoot, timeout: 120_000 });
+  requireStatus('zero-regression', currentSmoke, { command: 'current package-smoke.mjs <committed-zip-skill-root>' });
+  unzipContentsIdentical = 'not-asserted-on-windows';
 } else {
   const freshZip = path.join(scratch, 'fresh.zip');
   const freshDir = path.join(scratch, 'fresh');

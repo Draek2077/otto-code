@@ -27,7 +27,18 @@ test('guide page: checked-in HTML is reproducible from the shared recipe source'
 
 test('guide page: ships bilingual recipes and syntactically valid interaction code', () => {
   const html = fs.readFileSync(path.join(repoRoot, 'docs/guide.html'), 'utf8');
+  const packageVersion = JSON.parse(
+    fs.readFileSync(path.join(skillRoot, 'package.json'), 'utf8'),
+  ).version;
+  const releaseIdentity = packageVersion.includes('-') ? 'development' : 'stable';
+  const staticVersionLabel = html.match(
+    /<span data-i18n="versionLabel">([^<]+)<\/span>/,
+  );
   assert.doesNotMatch(html, /\[\[[A-Z0-9_]+\]\]/);
+  assert.equal(
+    staticVersionLabel?.[1],
+    `Scenario guide / ${releaseIdentity} / v${packageVersion}`,
+  );
   assert.match(html, /Question-first diagramming/);
   assert.match(html, /先问题，后图表/);
   assert.match(html, /archify guide &quot;your scenario&quot;|archify guide "your scenario"/);
@@ -45,4 +56,30 @@ test('guide page: ships bilingual recipes and syntactically valid interaction co
   const scriptMatch = html.match(/<script>\n([\s\S]*?)\n  <\/script>\n<\/body>/);
   assert.ok(scriptMatch);
   assert.doesNotThrow(() => new vm.Script(scriptMatch[1]));
+});
+
+test('guide search: preserves s in recipe IDs and matches whitespace-separated signals', () => {
+  const html = fs.readFileSync(path.join(repoRoot, 'docs/guide.html'), 'utf8');
+  const recipes = JSON.parse(html.match(/<script id="guide-data" type="application\/json">([\s\S]*?)<\/script>/)[1]);
+  for (const file of ['docs/guide.html', 'website/src/scripts/guide.js']) {
+    const source = fs.readFileSync(path.join(repoRoot, file), 'utf8');
+    const functions = source.slice(source.indexOf('function normalize('), source.indexOf('function recommendation('));
+    const context = vm.createContext({ recipes });
+    vm.runInContext(functions, context);
+    for (const recipe of recipes) {
+      for (const query of [recipe.id, recipe.id.replaceAll('-', '  \n\t')]) {
+        const winner = context.rank(query)[0];
+        assert.equal(winner.recipe.id, recipe.id, `${file}: ${query}`);
+        assert.equal(winner.score, 100, `${file}: exact ID match`);
+      }
+    }
+    assert.equal(context.normalize('  Ｓystem_STATE\t\n status  '), 'system state status');
+    for (const recipe of recipes) {
+      for (const [signal] of recipe.signals.filter(([signal]) => signal.includes(' '))) {
+        const spaced = signal.replaceAll(' ', '  \n\t');
+        const scores = query => JSON.stringify(context.rank(query).map(({ recipe, score }) => [recipe.id, score]));
+        assert.equal(scores(spaced), scores(signal), `${file}: ${signal}`);
+      }
+    }
+  }
 });

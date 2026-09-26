@@ -350,6 +350,7 @@ let targetId;
 try {
   cdp = await connectCdp(await devtoolsEndpoint(port, chromeProcess, () => chromeStderr));
   ({ targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' }));
+  await cdp.send('Target.activateTarget', { targetId });
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
   await cdp.send('Page.enable', {}, sessionId);
   await cdp.send('Runtime.enable', {}, sessionId);
@@ -357,6 +358,8 @@ try {
   async function navigateReady(file, condition, label) {
     const url = file instanceof URL ? file.href : pathToFileURL(file).href;
     await cdp.send('Page.navigate', { url }, sessionId);
+    await cdp.send('Page.bringToFront', {}, sessionId);
+    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }, sessionId);
     let ready = false;
     for (let attempt = 0; attempt < 100 && !ready; attempt += 1) {
       ready = await evaluate(cdp, sessionId, `document.readyState === "complete" && (${condition})`);
@@ -610,13 +613,25 @@ try {
   }
 
   async function verifyArchitectureDeltaNavigator(file) {
+    await cdp.send('Emulation.setEmulatedMedia', {
+      media: 'screen',
+      features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
+    }, sessionId);
     const readyCondition = '!!document.querySelector("#review-play") && !document.querySelector("#review-play").disabled';
     async function waitForSelected(changeKey, label) {
       for (let attempt = 0; attempt < 80; attempt += 1) {
         if (await evaluate(cdp, sessionId, `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey === ${JSON.stringify(changeKey)}`)) return;
         await delay(50);
       }
-      assert.fail(`${label} did not select ${changeKey} within the bounded wait`);
+      const observed = await evaluate(cdp, sessionId, `({
+        selected: document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey || null,
+        pressed: document.querySelector('#review-play')?.getAttribute('aria-pressed'),
+        label: document.querySelector('#review-play')?.textContent,
+        status: document.querySelector('#review-status')?.textContent,
+        reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        hidden: document.hidden
+      })`);
+      assert.fail(`${label} did not select ${changeKey} within the bounded wait: ${JSON.stringify(observed)}`);
     }
     async function waitForReviewFinished(label) {
       for (let attempt = 0; attempt < 400; attempt += 1) {
@@ -771,7 +786,10 @@ try {
       same: getComputedStyle(document.querySelector('[data-view="delta"] [data-delta-state="same"]')).opacity
     })`);
     assert.deepEqual(printState, { strip: 'none', base: 'none', delta: 'block', head: 'none', current: '1', same: '1' });
-    await cdp.send('Emulation.setEmulatedMedia', { media: 'screen', features: [] }, sessionId);
+    await cdp.send('Emulation.setEmulatedMedia', {
+      media: 'screen',
+      features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
+    }, sessionId);
 
     await navigateReady(file, readyCondition, 'architecture-delta tamper navigator');
     const tampered = await evaluate(cdp, sessionId, `(() => {
@@ -822,12 +840,22 @@ try {
       document.querySelector('.change-row').click();
       var svgB = Archify.deltaExport.canonicalSvg();
       var parsed = new DOMParser().parseFromString(svgB, 'image/svg+xml');
+      var baselineMarkers = Array.from(parsed.querySelectorAll('path[data-edge-id][data-delta-state="removed"], path[data-edge-id][data-delta-state="moved-from"]')).map(function (edge) {
+        var markerId = (edge.getAttribute('marker-end') || '').match(/^url\(#([^)]+)\)$/)?.[1];
+        var marker = markerId ? parsed.getElementById(markerId) : null;
+        return {
+          edge: edge.getAttribute('data-edge-id'),
+          resolved: marker?.localName === 'marker',
+          tone: marker?.querySelector('polygon')?.getAttribute('class') || null
+        };
+      }).sort(function (a, b) { return a.edge.localeCompare(b.edge); });
       var exportStyle = parsed.querySelector('style')?.textContent || '';
       var blob = await Archify.deltaExport.shareCard();
       var bytes = new Uint8Array(await blob.arrayBuffer());
       return {
         explorers: explorers,
         stable: svgA === svgB,
+        baselineMarkers: baselineMarkers,
         reviewResidue: parsed.querySelectorAll('[data-delta-review-current]').length,
         boundaryStyle: exportStyle.includes('text[data-delta-boundary-state="added"]{fill:#34d399!important}'),
         markerStyle: exportStyle.includes('.delta-edge-marker[data-delta-state],.delta-boundary-marker[data-delta-state]{color:var(--delta)}'),
@@ -840,6 +868,11 @@ try {
     })()`, true), 15_000, 'Architecture Delta export');
     assert.deepEqual(exportProof.explorers, [true, true]);
     assert.equal(exportProof.stable, true);
+    assert.deepEqual(exportProof.baselineMarkers, [
+      { edge: 'authorize-payment', resolved: true, tone: 'm-security' },
+      { edge: 'publish-order', resolved: true, tone: 'm-dashed' },
+      { edge: 'session-read', resolved: true, tone: 'm-default' },
+    ]);
     assert.equal(exportProof.reviewResidue, 0);
     assert.equal(exportProof.boundaryStyle, true);
     assert.equal(exportProof.markerStyle, true);
@@ -1011,6 +1044,7 @@ try {
         function stableLiveSnapshot() {
           var clone = svg.cloneNode(true);
           clone.style.removeProperty('transform');
+          clone.style.removeProperty('clip-path');
           clone.removeAttribute('data-view-scale');
           Array.from(clone.querySelectorAll('[data-legend-bridge-runtime]')).forEach(function (element) { element.remove(); });
           return clone.outerHTML;
@@ -1514,6 +1548,7 @@ try {
         function stableLiveSnapshot() {
           var clone = svg.cloneNode(true);
           clone.style.removeProperty('transform');
+          clone.style.removeProperty('clip-path');
           clone.removeAttribute('data-view-scale');
           Array.from(clone.querySelectorAll('[data-legend-bridge-runtime]')).forEach(function (element) { element.remove(); });
           return clone.outerHTML;
