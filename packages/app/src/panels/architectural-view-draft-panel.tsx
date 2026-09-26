@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Text, View, type LayoutChangeEvent } from "react-native";
+import { View, type LayoutChangeEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { Architecture, Publish, RotateCw, Trash2 } from "@/components/icons/material-icons";
-import { ArchitecturalViewHtml } from "@/components/architectural-views/architectural-view-html";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import {
+  InteractiveViewActions,
+  InteractiveViewCanvas,
+  InteractiveViewStatus,
+} from "@/components/architectural-views/interactive-view";
+import { useInteractiveView } from "@/architectural-views/use-interactive-view";
+import { FileEditorWarningBanner } from "@/components/file-editor-warning-banner";
 import { ResizeHandle } from "@/components/resize-handle";
 import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { ChatConversationSurface, storeCreatedWorkspaceAgent } from "@/panels/agent-panel";
@@ -124,6 +129,8 @@ function ArchitecturalViewDraftPanel() {
   const setSplitSizes = useArchitecturalViewAuthoringLayoutStore((state) => state.setSplitSizes);
   const [previewSplitSizes, setPreviewSplitSizes] = useState<number[] | null>(null);
   const [splitContainerWidth, setSplitContainerWidth] = useState(0);
+  const view = useInteractiveView(html);
+  const dismissActionError = useCallback(() => setActionError(null), []);
   // A completed create always becomes an ordinary agent tab carrying the
   // authoring presentation. Older persisted compound targets can contain the
   // same chat id, so promote them on mount too. Keeping a created chat behind
@@ -340,6 +347,8 @@ function ArchitecturalViewDraftPanel() {
           tone="accent"
         />
         <View style={styles.toolbarSpacer} />
+        <InteractiveViewActions controller={view} />
+        <View style={styles.toolbarDivider} />
         <ToolbarIconButton
           label="Delete Interactive View"
           Icon={ThemedTrash2}
@@ -357,7 +366,14 @@ function ArchitecturalViewDraftPanel() {
           disabled={Boolean(action)}
         />
       </View>
-      {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+      {actionError ? (
+        <FileEditorWarningBanner
+          message={actionError}
+          dismissLabel="Dismiss Interactive View error"
+          onDismiss={dismissActionError}
+          testID="architectural-view-authoring-error"
+        />
+      ) : null}
       <View style={styles.authoringSurface} onLayout={handleSplitLayout}>
         <View style={chatPaneStyle} testID="architectural-view-authoring-chat">
           {chat}
@@ -373,14 +389,8 @@ function ArchitecturalViewDraftPanel() {
           onResizeSplit={handleResizeSplit}
         />
         <View style={viewPaneStyle} testID="architectural-view-authoring-preview">
-          {html ? (
-            <ArchitecturalViewHtml html={html} />
-          ) : (
-            <View style={styles.centered}>
-              {loading ? <LoadingSpinner size="small" /> : null}
-              <Text style={styles.message}>{error ?? "Loading Interactive View…"}</Text>
-            </View>
-          )}
+          <InteractiveViewCanvas controller={view} html={html} loading={loading} error={error} />
+          <InteractiveViewStatus controller={view} leading="Draft" />
         </View>
       </View>
     </View>
@@ -416,23 +426,4 @@ const styles = StyleSheet.create((theme) => ({
   authoringSurface: { flex: 1, minHeight: 0, flexDirection: "row" },
   chatPane: { minWidth: 0, minHeight: 0, overflow: "hidden" },
   viewPane: { minWidth: 0, minHeight: 0, overflow: "hidden" },
-  error: {
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-    color: theme.colors.destructive,
-    fontSize: theme.fontSize.xs,
-  },
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing[2],
-    padding: theme.spacing[4],
-    backgroundColor: theme.colors.surface0,
-  },
-  message: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    textAlign: "center",
-  },
 }));

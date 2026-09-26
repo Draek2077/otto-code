@@ -85,7 +85,12 @@ import {
   type ArchitecturalViewKnowledgeReference,
   type ArchitecturalViewSummary,
 } from "@/architectural-views/use-architectural-views";
-import { ArchitecturalViewHtml } from "@/components/architectural-views/architectural-view-html";
+import {
+  InteractiveViewActions,
+  InteractiveViewCanvas,
+  InteractiveViewStatus,
+} from "@/components/architectural-views/interactive-view";
+import { useInteractiveView } from "@/architectural-views/use-interactive-view";
 import {
   resolveKnowledgeDocumentIdentityLayout,
   type KnowledgeDocumentIdentity,
@@ -332,6 +337,9 @@ export function ProjectKnowledgePanel(): ReactElement {
     (state) => state.sessions[serverId]?.serverInfo?.features?.interactiveViewTypes === true,
   );
   const showArchitecturalView = documentMode === "architectural-view";
+  const interactiveView = useInteractiveView(
+    showArchitecturalView ? architecturalViews.html : null,
+  );
   const showWholePageLoading = knowledge.loading && !knowledge.view && !requestedSelection;
   const reviewContent = reviewContentForSelection(selectedRoot, detailedSelection);
   const reviewDocumentKey = selectedRoot
@@ -1448,6 +1456,24 @@ export function ProjectKnowledgePanel(): ReactElement {
   if (showWholePageLoading) {
     return <PageLoading label="Loading project knowledge…" testID="project-knowledge-loading" />;
   }
+  let documentStatus: ReactElement | null = null;
+  if (showArchitecturalView && !formError) {
+    documentStatus = (
+      <InteractiveViewStatus
+        controller={interactiveView}
+        diagramType={architecturalViews.selectedView?.diagramType}
+        sourceStatus={architecturalViews.selectedView?.sourceStatus}
+      />
+    );
+  } else if (selectedRoot || selected || formError) {
+    documentStatus = (
+      <View style={formError ? styles.documentStatusError : styles.documentStatusBar}>
+        <Text numberOfLines={1} style={formError ? styles.statusErrorLabel : styles.pathLabel}>
+          {formError ?? markdownPath ?? "Markdown source unavailable"}
+        </Text>
+      </View>
+    );
+  }
   let architecturalViewToolbar: ReactElement | null = null;
   if (architecturalViews.views.length > 0) {
     architecturalViewToolbar = (
@@ -1459,6 +1485,13 @@ export function ProjectKnowledgePanel(): ReactElement {
             selectedViewId={architecturalViews.selectedView?.id ?? null}
             onSelect={architecturalViews.selectView}
           />
+        ) : null}
+        {showArchitecturalView ? (
+          <>
+            <ToolbarSeparator />
+            <InteractiveViewActions controller={interactiveView} />
+            <ToolbarSeparator />
+          </>
         ) : null}
         {architecturalKnowledgeReference ? (
           <InteractiveViewActionMenu
@@ -1823,10 +1856,12 @@ export function ProjectKnowledgePanel(): ReactElement {
           ) : null}
           <View style={styles.documentCanvas}>
             {showArchitecturalView ? (
-              <ArchitecturalViewCanvas
+              <InteractiveViewCanvas
+                controller={interactiveView}
                 html={architecturalViews.html}
                 loading={architecturalViews.loading}
                 error={architecturalViews.error}
+                sourceStatus={architecturalViews.selectedView?.sourceStatus}
               />
             ) : (
               <ScrollView
@@ -1839,41 +1874,10 @@ export function ProjectKnowledgePanel(): ReactElement {
               </ScrollView>
             )}
           </View>
-          {selectedRoot || selected || formError ? (
-            <View style={formError ? styles.documentStatusError : styles.documentStatusBar}>
-              <Text
-                numberOfLines={1}
-                style={formError ? styles.statusErrorLabel : styles.pathLabel}
-              >
-                {formError ??
-                  (showArchitecturalView
-                    ? (architecturalViews.selectedView?.htmlPath ?? architecturalViews.error)
-                    : markdownPath) ??
-                  "Markdown source unavailable"}
-              </Text>
-            </View>
-          ) : null}
+          {documentStatus}
         </View>
       ) : null}
     </Animated.View>
-  );
-}
-
-function ArchitecturalViewCanvas({
-  html,
-  loading,
-  error,
-}: {
-  html: string | null;
-  loading: boolean;
-  error: string | null;
-}): ReactElement {
-  if (html) return <ArchitecturalViewHtml html={html} />;
-  return (
-    <View style={styles.architecturalViewLoading}>
-      {loading ? <LoadingSpinner size="small" /> : null}
-      <Text style={styles.muted}>{error ?? "Loading Interactive View…"}</Text>
-    </View>
   );
 }
 
@@ -3085,13 +3089,6 @@ const styles = StyleSheet.create((theme) => ({
   architecturalViewSelectorLabel: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
-  },
-  architecturalViewLoading: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing[2],
-    padding: theme.spacing[4],
   },
   documentStatusBar: {
     flexDirection: "row",

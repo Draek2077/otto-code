@@ -32,7 +32,13 @@ import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view
 import { ChatMessageSearchBar, type ChatMessageSearchHandle } from "@/chat/message-search-bar";
 import type { ChatMessageSearchState } from "@/chat/message-search";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { ArchitecturalViewHtml } from "@/components/architectural-views/architectural-view-html";
+import {
+  InteractiveViewActions,
+  InteractiveViewCanvas,
+  InteractiveViewStatus,
+} from "@/components/architectural-views/interactive-view";
+import { useInteractiveView } from "@/architectural-views/use-interactive-view";
+import { FileEditorWarningBanner } from "@/components/file-editor-warning-banner";
 import { architecturalViewAuthoringBrowserId } from "@/architectural-views/browser-id";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ObservedSubagentCallout } from "@/components/observed-subagent-callout";
@@ -842,6 +848,8 @@ export function ArchitecturalViewAuthoringSurface({
   const [previewSplitSizes, setPreviewSplitSizes] = useState<number[] | null>(null);
   const [splitContainerWidth, setSplitContainerWidth] = useState(0);
   const refreshInFlight = useRef(false);
+  const view = useInteractiveView(html);
+  const dismissActionError = useCallback(() => setActionError(null), []);
 
   const refreshPreview = useCallback(async () => {
     if (!client || !supported || refreshInFlight.current) return;
@@ -1066,6 +1074,8 @@ export function ArchitecturalViewAuthoringSurface({
           tone="accent"
         />
         <View style={styles.architecturalAuthoringToolbarSpacer} />
+        <InteractiveViewActions controller={view} />
+        <View style={styles.architecturalAuthoringToolbarDivider} />
         <ToolbarIconButton
           label="Delete Interactive View"
           Icon={ThemedTrash2}
@@ -1083,7 +1093,14 @@ export function ArchitecturalViewAuthoringSurface({
           disabled={Boolean(action)}
         />
       </View>
-      {actionError ? <Text style={styles.architecturalAuthoringError}>{actionError}</Text> : null}
+      {actionError ? (
+        <FileEditorWarningBanner
+          message={actionError}
+          dismissLabel="Dismiss Interactive View error"
+          onDismiss={dismissActionError}
+          testID="architectural-view-authoring-error"
+        />
+      ) : null}
       <View style={styles.architecturalAuthoringSurface} onLayout={handleSplitLayout}>
         <View style={chatPaneStyle} testID="architectural-view-authoring-chat">
           <AgentPanelContent
@@ -1105,16 +1122,14 @@ export function ArchitecturalViewAuthoringSurface({
           onResizeSplit={handleResizeSplit}
         />
         <View style={viewPaneStyle} testID="architectural-view-authoring-preview">
-          {html ? (
-            <ArchitecturalViewHtml html={html} browserAutomation={browserAutomation} />
-          ) : (
-            <View style={styles.architecturalAuthoringEmpty}>
-              {loading ? <LoadingSpinner size="small" /> : null}
-              <Text style={styles.architecturalAuthoringMessage}>
-                {error ?? "Loading Interactive View…"}
-              </Text>
-            </View>
-          )}
+          <InteractiveViewCanvas
+            controller={view}
+            html={html}
+            loading={loading}
+            error={error}
+            browserAutomation={browserAutomation}
+          />
+          <InteractiveViewStatus controller={view} leading="Draft" />
         </View>
       </View>
     </View>
@@ -3085,23 +3100,4 @@ const styles = StyleSheet.create((theme) => ({
   },
   architecturalAuthoringSurface: { flex: 1, minHeight: 0, flexDirection: "row" },
   architecturalAuthoringPane: { minWidth: 0, minHeight: 0, overflow: "hidden" },
-  architecturalAuthoringError: {
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-    color: theme.colors.destructive,
-    fontSize: theme.fontSize.xs,
-  },
-  architecturalAuthoringEmpty: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing[2],
-    padding: theme.spacing[4],
-    backgroundColor: theme.colors.surface0,
-  },
-  architecturalAuthoringMessage: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    textAlign: "center",
-  },
 }));

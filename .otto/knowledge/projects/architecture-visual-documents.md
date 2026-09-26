@@ -9,7 +9,7 @@ progress_completed: 4
 progress_total: 5
 progress_unit: "delivery slices"
 created_at: "2026-08-27T19:16:46.149Z"
-updated_at: "2026-09-06T15:32:22.762Z"
+updated_at: "2026-09-26T17:07:54.067Z"
 ---
 # Architecture visual documents
 
@@ -123,3 +123,8 @@ The renderer is vendored from [[reference-archify]] as a reviewable pinned subtr
   kind: "decision"
   summary: "User renamed the product to Interactive Views, rejected global Visual discovery, and selected explicit-or-detected typed creation on 2026-09-06. Implementation now persists all five renderer contracts and gates typed creation on the daemon capability."
   source: "User product direction and verified implementation, 2026-09-06"
+- time: "2026-09-26T17:07:54.067Z"
+  kind: "evidence"
+  summary: "Otto now owns Interactive View presentation as a document (docs/interactive-views.md). Archify's viewer chrome (theme switch, four visual styles, presentation stage, export menu, navigation dock, title header) is hidden. The Knowledge reader, the published View tab, the authoring split, and the legacy draft tab all compose one toolbar (Find, Semantic lens, Trace a route, Overview map, Zoom out/in, Fit, Motion when trace-enabled, and an Export menu with PNG/SVG/JPEG/WebP/WebM/Copy image). They share dismissible top notices (FileEditorWarningBanner) and a read-only status bar (type, component and relationship counts, freshness, zoom). The single Otto theme maps the active theme onto Archify's CSS variables. The frontend kind, which is also Archify's UI accent, uses Otto's accent; the other kinds use the syntax palette. The content font is the baseline: root size is the content size, family is the UI font, and bundled Inter is embedded offline. Theme changes are pushed live. A client-injected guest bridge drives the viewer through window.Archify, captures blob exports for Otto's download flow, routes alert() to notices, and claims the T/S/F/E shortcuts. No vendor patch is carried. Verified in the agent-lane web app against the published architecture View, in dark and light themes: toolbar commands, live status, Find panel, and a 675 KB PNG export captured and saved. The app typecheck, targeted lint, and 21 unit tests passed. The Electron webview path loads through a bootstrap page whose CSP mirrors the artifact CSP. It was reviewed but not run in Electron."
+  source: "Implementation verified 2026-09-26"
+  affects: ["reference-archify"]

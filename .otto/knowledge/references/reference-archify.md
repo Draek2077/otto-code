@@ -7,7 +7,7 @@ tags: ["architecture","diagrams","documentation","vendor"]
 reference_disposition: "dependency"
 source_url: "https://github.com/tt-a1i/archify"
 created_at: "2026-08-27T19:15:48.882Z"
-updated_at: "2026-09-13T04:53:37.018Z"
+updated_at: "2026-09-26T21:39:55.415Z"
 ---
 # Archify
 
@@ -43,3 +43,12 @@ The current upstream version is a development build. Vendor a pinned subtree com
 - time: "2026-09-13T04:53:37.018Z"
   kind: "note"
   summary: "Status changed through Otto project knowledge review. New status: confirmed."
+- time: "2026-09-26T17:07:55.757Z"
+  kind: "evidence"
+  summary: "Upstream delta review, 2026-09-26: main (9e35d2b0b39b155553ba9fcfe0b4f2a5198dd993) is 90 commits past the vendored pin 9a5060566, and about 25 of them touch the shipped runtime. High-value changes: 10722002b embeds the viewer font and removes the Google Fonts links, and d673e8300 stops large renderer receipts being truncated on a pipe. Also dataflow/sequence/viewer fixes, stricter CLI argument checks, a workflow constraint compiler with schema_version 2 (additive), and bb71ccdd6, which splits the viewer source into viewer/*.js modules and still commits the generated template.html. The schema changes are additive, but the new workflow column-capacity and sequence label-containment checks can reject specs the pin accepted, so stored Views need a re-render smoke test. The window.Archify API and the theme/preset CSS are unchanged. Recommendation: re-pin to main at that SHA, not v2.16.0, which predates both high-value fixes. The in-repo vendor copy matched upstream byte-for-byte apart from line endings (a plain copy, not a git subtree). The re-pin itself is awaiting the user, because agent tooling was not permitted to import upstream code."
+  source: "gh api compare 9a5060566...main, 2026-09-26"
+- time: "2026-09-26T21:39:55.415Z"
+  kind: "evidence"
+  summary: "Re-pinned 2026-09-26 from 9a5060566 to upstream main 9e35d2b0b39b155553ba9fcfe0b4f2a5198dd993 as a plain tree copy (git archive), recorded in vendor/archify/OTTO-PATCHES.md. Still no in-vendor patches. The stored architecture View re-rendered with 9/9 checks passing, and the server Archify renderer and Interactive Views service tests passed (12). The Otto presentation bridge was verified against the new viewer in the agent-lane app: toolbar and status bar, diagram text in the user's mono font, and a PNG export. The SVG export's root font is the Otto mono stack with its face embedded. All six embedded JetBrains Mono @font-face rules are removed; only upstream's font attribution comment remains."
+  source: "Verified 2026-09-26"
+  affects: ["architecture-visual-documents"]
