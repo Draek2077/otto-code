@@ -104,7 +104,6 @@ import {
 } from "@/assistant-file-links";
 import {
   createWorkspaceFileTabTarget,
-  normalizeWorkspaceFileLocation,
   resolveWorkspaceFilePaths,
   type OpenFileDisposition,
   type WorkspaceFileOpenRequest,
@@ -129,6 +128,12 @@ import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
 import { useStreamHistoryWindow } from "./use-stream-history-window";
 import { PluginTimelineItemView, useInstalledTimelineTransform } from "@/plugins/timeline";
 import { projectPluginTimelineItems } from "@/plugins/timeline/projection";
+import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
+import { resolveChatPathOpen } from "./chat-path-open";
+
+function nullableWorkspaceId(workspaceId: string | undefined): string | null {
+  return workspaceId ?? null;
+}
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -516,6 +521,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandAllCommand, setExpandAllCommand] = useState<ExpandAllCommand | null>(null);
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
+    // File tabs belong to the displayed workspace even when the agent runs in another checkout.
+    const paneWorkspaceRoot = useWorkspaceDirectory(
+      resolvedServerId,
+      nullableWorkspaceId(context.workspaceId),
+    );
     const transformTimelineItem = useInstalledTimelineTransform(resolvedServerId);
 
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);
@@ -573,30 +583,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const handleInlinePathPress = useStableEvent(
       (target: InlinePathTarget, disposition: OpenFileDisposition) => {
-        if (!target.path) {
-          return;
-        }
-
-        const normalized = normalizeInlinePathTarget(target.path, context.cwd);
-        if (!normalized) {
-          return;
-        }
-
-        if (normalized.file) {
-          const location = normalizeWorkspaceFileLocation({
-            path: normalized.file,
-            lineStart: target.lineStart,
-            lineEnd: target.lineEnd,
-          });
-          if (!location) {
-            return;
-          }
-
+        const fileRequest = resolveChatPathOpen(target, disposition, paneWorkspaceRoot);
+        if (fileRequest) {
           if (onOpenWorkspaceFile) {
-            onOpenWorkspaceFile({
-              location,
-              disposition,
-            });
+            onOpenWorkspaceFile(fileRequest);
             return;
           }
 
@@ -604,12 +594,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             navigateToWorkspace({
               serverId: resolvedServerId,
               workspaceId: context.workspaceId,
-              target: createWorkspaceFileTabTarget(location),
+              target: createWorkspaceFileTabTarget(fileRequest.location),
             });
           }
           return;
         }
 
+        const normalized = normalizeInlinePathTarget(target.path, context.cwd);
+        if (!normalized) return;
         void requestDirectoryListing(normalized.directory, {
           recordHistory: false,
           setCurrentPath: false,
