@@ -6,6 +6,18 @@
       "runtimeExecutable": "powershell",
       "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "./scripts/dev.ps1"],
       "port": 8081
+    },
+    {
+      "name": "otto-agent",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "./scripts/dev-agent.ps1"
+      ],
+      "port": 8095
     }
   ]
 }
