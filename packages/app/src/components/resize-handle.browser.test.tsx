@@ -15,6 +15,7 @@ let container: HTMLDivElement;
 const topStyle = { height: 149, position: "relative" as const };
 const bottomStyle = { height: 150, position: "relative" as const };
 const sidePaneStyle = { width: 150, position: "relative" as const };
+const widePaneStyle = { width: 300, position: "relative" as const };
 
 afterEach(() => {
   act(() => root?.unmount());
@@ -199,7 +200,83 @@ it("keeps the splitter between side-by-side browser panes app-owned and draggabl
       }),
     ),
   );
-  expect(preview).toHaveBeenLastCalledWith("side-by-side", [0.7, 0.30000000000000004]);
+  const expected = [0.5 + 60 / 301, 0.5 - 60 / 301];
+  expect(preview).toHaveBeenLastCalledWith("side-by-side", expected);
   act(() => window.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1 })));
-  expect(commit).toHaveBeenCalledExactlyOnceWith("side-by-side", [0.7, 0.30000000000000004]);
+  expect(commit).toHaveBeenCalledExactlyOnceWith("side-by-side", expected);
+});
+
+it("resizes the second divider in a three-pane row without moving the first pane", () => {
+  container = document.createElement("div");
+  container.style.cssText =
+    "position:fixed;left:20px;top:20px;width:600px;height:300px;z-index:0;display:flex;flex-direction:row";
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const preview = vi.fn();
+  const commit = vi.fn();
+  const sizes = [0.25, 0.25, 0.5];
+  act(() =>
+    root.render(
+      <>
+        <div data-pane="chat" style={sidePaneStyle} />
+        <ResizeHandle
+          direction="horizontal"
+          groupId="three-pane-row"
+          index={0}
+          sizes={sizes}
+          containerSize={600}
+          onPreviewResizeSplit={preview}
+          onResizeSplit={commit}
+        />
+        <div data-pane="middle-browser" style={sidePaneStyle} />
+        <ResizeHandle
+          direction="horizontal"
+          groupId="three-pane-row"
+          index={1}
+          sizes={sizes}
+          containerSize={0}
+          onPreviewResizeSplit={preview}
+          onResizeSplit={commit}
+        />
+        <div data-pane="right-browser" style={widePaneStyle} />
+      </>,
+    ),
+  );
+  for (const id of ["middle-browser", "right-browser"]) {
+    const anchor = container.querySelector<HTMLElement>(`[data-pane="${id}"]`)!;
+    presentBrowserWebview(id, document.createElement("div"), anchor, anchor, {
+      mode: "responsive",
+    });
+  }
+
+  const separators = [...document.querySelectorAll<HTMLElement>('[role="separator"]')];
+  expect(separators).toHaveLength(2);
+  const second = separators[1]!;
+  const rect = second.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  expect(document.elementFromPoint(x, y)).toBe(second);
+  vi.spyOn(second, "setPointerCapture").mockImplementation(() => {});
+  act(() =>
+    second.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        pointerId: 1,
+        clientX: x,
+        clientY: y,
+      }),
+    ),
+  );
+  act(() =>
+    window.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 1,
+        clientX: x + 60,
+        clientY: y,
+      }),
+    ),
+  );
+  expect(preview).toHaveBeenLastCalledWith("three-pane-row", [0.25, 0.35, 0.4]);
+  act(() => window.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1 })));
+  expect(commit).toHaveBeenCalledExactlyOnceWith("three-pane-row", [0.25, 0.35, 0.4]);
 });

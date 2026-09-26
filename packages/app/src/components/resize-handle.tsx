@@ -49,9 +49,11 @@ export function ResizeHandle({
   onResizeSplit,
 }: ResizeHandleProps) {
   const finePointer = useHasFinePointer();
+  const handleRef = useRef<View>(null);
   const cleanupsRef = useRef(new Set<() => void>());
   const pointerStatesRef = useRef(new Map<number, PointerState>());
   const touchDragRef = useRef<ResizeHandleDrag | null>(null);
+  const touchContainerSizeRef = useRef(0);
   const releaseTouchInputRef = useRef<(() => void) | null>(null);
   const cursorBeforeDragRef = useRef<string | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,6 +70,15 @@ export function ResizeHandle({
     [],
   );
 
+  const getCurrentContainerSize = useCallback(() => {
+    // Nested groups can be visible before their onLayout size reaches React.
+    // Read the rendered group at drag start so a visible divider stays usable.
+    const parent = (handleRef.current as unknown as HTMLElement | null)?.parentElement;
+    const bounds = parent?.getBoundingClientRect();
+    const measured = direction === "horizontal" ? bounds?.width : bounds?.height;
+    return measured && measured > 0 ? measured : containerSize;
+  }, [containerSize, direction]);
+
   const handlePointerDown = useCallback(
     (event: RNPointerEvent) => {
       const hitAreaElement = event.currentTarget as unknown as HTMLElement | null;
@@ -75,7 +86,8 @@ export function ResizeHandle({
         return;
       }
 
-      if (containerSize <= 0) {
+      const currentContainerSize = getCurrentContainerSize();
+      if (currentContainerSize <= 0) {
         return;
       }
 
@@ -88,7 +100,7 @@ export function ResizeHandle({
       const releaseBrowserInput = suspendResidentBrowserSurfaceInput();
 
       pointerStatesRef.current.set(pointerId, {
-        containerSize,
+        containerSize: currentContainerSize,
         pointerStart:
           direction === "horizontal" ? event.nativeEvent.clientX : event.nativeEvent.clientY,
         drag: startResizeHandleDrag({
@@ -170,7 +182,15 @@ export function ResizeHandle({
       window.addEventListener("blur", handleWindowBlur);
       pointerCaptureElement.addEventListener("lostpointercapture", handlePointerUp);
     },
-    [containerSize, direction, groupId, index, onPreviewResizeSplit, onResizeSplit, sizes],
+    [
+      direction,
+      getCurrentContainerSize,
+      groupId,
+      index,
+      onPreviewResizeSplit,
+      onResizeSplit,
+      sizes,
+    ],
   );
 
   const touchGesture = useMemo(() => {
@@ -178,6 +198,7 @@ export function ResizeHandle({
       .runOnJS(true)
       .onBegin(() => setDragging(true))
       .onStart(() => {
+        touchContainerSizeRef.current = getCurrentContainerSize();
         releaseTouchInputRef.current = suspendResidentBrowserSurfaceInput();
         touchDragRef.current = startResizeHandleDrag({
           sizes,
@@ -187,15 +208,16 @@ export function ResizeHandle({
         });
       })
       .onUpdate((event) => {
-        if (containerSize <= 0) return;
+        if (touchContainerSizeRef.current <= 0) return;
         const translation = direction === "horizontal" ? event.translationX : event.translationY;
-        touchDragRef.current?.move(translation / containerSize);
+        touchDragRef.current?.move(translation / touchContainerSizeRef.current);
       })
       .onEnd(() => touchDragRef.current?.finish())
       .onFinalize(() => {
         releaseTouchInputRef.current?.();
         releaseTouchInputRef.current = null;
         touchDragRef.current = null;
+        touchContainerSizeRef.current = 0;
         setDragging(false);
       });
 
@@ -206,7 +228,15 @@ export function ResizeHandle({
       : gesture
           .activeOffsetY([-SIDEBAR_RESIZE_ACTIVATION_OFFSET, SIDEBAR_RESIZE_ACTIVATION_OFFSET])
           .failOffsetX([-SIDEBAR_RESIZE_FAIL_OFFSET, SIDEBAR_RESIZE_FAIL_OFFSET]);
-  }, [containerSize, direction, groupId, index, onPreviewResizeSplit, onResizeSplit, sizes]);
+  }, [
+    direction,
+    getCurrentContainerSize,
+    groupId,
+    index,
+    onPreviewResizeSplit,
+    onResizeSplit,
+    sizes,
+  ]);
 
   const handlePointerEnter = useCallback(() => {
     hoverTimerRef.current = setTimeout(() => {
@@ -273,7 +303,7 @@ export function ResizeHandle({
   );
 
   return (
-    <View style={handleStyle} testID={testID}>
+    <View ref={handleRef} style={handleStyle} testID={testID}>
       <PaneOverlay>
         {highlighted && (
           <View
