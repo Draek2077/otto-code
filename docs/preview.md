@@ -320,10 +320,15 @@ and viewport. The shared snapshot engine supplies stable element references.
 The daemon permits four live hosted pages. A page unused for five minutes is
 suspended, and an unclaimed suspended tab is forgotten after an hour. Repeated
 page crashes quarantine the tab until it is closed. Each presented client
-polls for at most one JPEG frame at a time, about once per second; frames are
-bounded below the relay's 1 MiB message limit and never queued across a slow
-connection. The daemon checks a
-page's Chromium JavaScript heap periodically and quarantines it above 512 MiB;
+polls for at most one JPEG frame at a time, about once per second while idle.
+A drag sends coalesced wheel deltas while the finger moves and temporarily
+polls faster; the host refreshes cached frames at a shorter interval after a
+scroll. Polling remains serial, so slow links reduce the frame rate without
+building a queue. This improves scroll feedback but does not promise native
+display-rate animation. Responsive and fixed viewport presets share a selector
+beside the address field. Frames are bounded below the relay's 1 MiB message
+limit. The daemon checks a page's Chromium JavaScript heap periodically and
+quarantines it above 512 MiB;
 native image and GPU memory are outside that measurement. The host uses Edge,
 Chrome, or a Playwright Chromium installation, and reports an install action
 when none is available. Mobile annotation and `browser_screenshot_element`

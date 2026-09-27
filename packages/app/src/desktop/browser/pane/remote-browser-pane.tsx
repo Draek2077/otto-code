@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Pressable, Text, View, type GestureResponderEvent } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { Pressable, Text, View, type GestureResponderEvent } from "react-native";
+import { Canvas, Image as SkiaImage, Skia, type SkImage } from "@shopify/react-native-skia";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { EditingTextInput, type EditingTextInputHandle } from "@/components/ui/text-input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, Devices } from "@/components/icons/material-icons";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -26,11 +34,17 @@ interface Props {
 }
 
 const SIZES = [
-  { label: "Fit", width: 0, height: 0 },
+  { label: "Responsive", width: 0, height: 0 },
   { label: "Phone", width: 390, height: 844 },
   { label: "Tablet", width: 820, height: 1180 },
   { label: "Desktop", width: 1366, height: 768 },
 ] as const;
+
+const ThemedDevices = withUnistyles(Devices);
+const ThemedChevronDown = withUnistyles(ChevronDown);
+const mutedIcon = (theme: { colors: { foregroundMuted: string } }) => ({
+  color: theme.colors.foregroundMuted,
+});
 
 function errorText(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
@@ -59,7 +73,7 @@ export function BrowserPane({
   const [size, setSize] = useState({ width: 390, height: 700 });
   const [tab, setTab] = useState<RemoteBrowserTab | null>(null);
   const hasTab = Boolean(tab);
-  const [image, setImage] = useState<string | null>(null);
+  const [image, setImage] = useState<SkImage | null>(null);
   const [address, setAddress] = useState("");
   const editingAddress = useRef(false);
   const addressInput = useRef<EditingTextInputHandle>(null);
@@ -67,9 +81,21 @@ export function BrowserPane({
   const [typed, setTyped] = useState("");
   const [error, setError] = useState<string | null>(null);
   const revision = useRef<number | undefined>(undefined);
-  const touch = useRef<{ x: number; y: number } | null>(null);
+  const touch = useRef<{
+    x: number;
+    y: number;
+    lastX: number;
+    lastY: number;
+    moved: boolean;
+  } | null>(null);
   const swiped = useRef(false);
-  const imageSource = useMemo(() => (image ? { uri: image } : undefined), [image]);
+  const fastFrames = useRef(false);
+  const wakeFramePoll = useRef<(() => void) | null>(null);
+  const scrollCooldown = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollPending = useRef({ x: 0, y: 0 });
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollBusy = useRef(false);
+  const scrollMounted = useRef(true);
   const viewport = browser?.viewport;
   const effectiveViewport = useMemo(
     () =>
@@ -83,6 +109,13 @@ export function BrowserPane({
     [viewport, size],
   );
   const displayViewport = tab?.viewport ?? effectiveViewport;
+  const selectedSize = SIZES.find((preset) =>
+    preset.width
+      ? displayViewport.mode === "fixed" &&
+        displayViewport.width === preset.width &&
+        displayViewport.height === preset.height
+      : displayViewport.mode === "responsive",
+  );
 
   useEffect(() => {
     if (hydrated && !browser) useBrowserStore.getState().ensureBrowser(browserId);
@@ -163,8 +196,11 @@ export function BrowserPane({
     if (!presented || !hasTab || !client || !connected || !supported) return;
     let live = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let polling = false;
     let failures = 0;
     const poll = async () => {
+      if (polling) return;
+      polling = true;
       try {
         const response = await client.remoteBrowserExecute(workspaceId, {
           kind: "frame",
@@ -174,8 +210,19 @@ export function BrowserPane({
         if (live) {
           acceptTab(response.tab);
           if (response.frame) {
+            const encoded = Skia.Data.fromBase64(response.frame.dataBase64);
+            let decoded: SkImage | null;
+            try {
+              decoded = Skia.Image.MakeImageFromEncoded(encoded);
+            } finally {
+              encoded.dispose();
+            }
+            if (!decoded)
+              throw new Error("The host sent a browser frame that could not be decoded.");
+            // Keep the last decoded frame mounted until the next one is ready.
+            // Swapping image URIs made the native image view briefly draw blank.
             revision.current = response.frame.revision;
-            setImage(`data:image/jpeg;base64,${response.frame.dataBase64}`);
+            setImage(decoded);
           }
           setError(response.tab?.error ?? null);
           failures = 0;
@@ -184,19 +231,85 @@ export function BrowserPane({
         if (live) setError(errorText(cause));
         failures++;
       } finally {
-        if (live)
-          timer = setTimeout(
-            () => void poll(),
-            failures ? Math.min(15_000, 1_000 * 2 ** failures) : 900,
-          );
+        polling = false;
+        if (live) {
+          let delay = fastFrames.current ? 150 : 900;
+          if (failures) delay = Math.min(15_000, 1_000 * 2 ** failures);
+          timer = setTimeout(() => void poll(), delay);
+        }
       }
+    };
+    wakeFramePoll.current = () => {
+      if (!live || polling) return;
+      if (timer) clearTimeout(timer);
+      timer = null;
+      void poll();
     };
     void poll();
     return () => {
       live = false;
+      wakeFramePoll.current = null;
       if (timer) clearTimeout(timer);
     };
   }, [presented, hasTab, client, connected, supported, workspaceId, browserId, acceptTab]);
+
+  const flushScroll = useCallback(() => {
+    if (!scrollMounted.current || scrollBusy.current || !client || !connected) return;
+    const pending = scrollPending.current;
+    if (!pending.x && !pending.y) return;
+    scrollPending.current = { x: 0, y: 0 };
+    scrollBusy.current = true;
+    void client
+      .remoteBrowserExecute(workspaceId, {
+        kind: "scroll",
+        browserId,
+        x: displayViewport.width / 2,
+        y: displayViewport.height / 2,
+        deltaX: pending.x,
+        deltaY: pending.y,
+      })
+      .catch((cause: unknown) => setError(errorText(cause)))
+      .finally(() => {
+        scrollBusy.current = false;
+        if (scrollMounted.current && (scrollPending.current.x || scrollPending.current.y)) {
+          scrollTimer.current = setTimeout(() => {
+            scrollTimer.current = null;
+            flushScroll();
+          }, 0);
+        }
+      });
+  }, [client, connected, workspaceId, browserId, displayViewport]);
+
+  const queueScroll = useCallback(
+    (dx: number, dy: number) => {
+      const scale = Math.min(
+        size.width / displayViewport.width,
+        size.height / displayViewport.height,
+      );
+      scrollPending.current.x -= dx / scale;
+      scrollPending.current.y -= dy / scale;
+      if (!scrollTimer.current) {
+        scrollTimer.current = setTimeout(() => {
+          scrollTimer.current = null;
+          flushScroll();
+        }, 50);
+      }
+    },
+    [size, displayViewport, flushScroll],
+  );
+
+  useEffect(() => {
+    scrollMounted.current = true;
+    return () => {
+      if (scrollTimer.current) clearTimeout(scrollTimer.current);
+      if (scrollCooldown.current) clearTimeout(scrollCooldown.current);
+      scrollMounted.current = false;
+      scrollTimer.current = null;
+      scrollCooldown.current = null;
+      scrollPending.current = { x: 0, y: 0 };
+      fastFrames.current = false;
+    };
+  }, []);
 
   const act = useCallback(
     (command: RemoteBrowserCommand) => {
@@ -223,31 +336,58 @@ export function BrowserPane({
     [onFocusPane, displayViewport, size, act, browserId],
   );
 
+  const onTouchMove = useCallback(
+    (event: GestureResponderEvent) => {
+      const gesture = touch.current;
+      const point = event.nativeEvent.touches?.[0];
+      if (!gesture || !point) return;
+      if (
+        !gesture.moved &&
+        Math.abs(point.pageX - gesture.x) + Math.abs(point.pageY - gesture.y) < 15
+      )
+        return;
+      if (!gesture.moved) {
+        gesture.moved = true;
+        swiped.current = true;
+        fastFrames.current = true;
+        wakeFramePoll.current?.();
+      }
+      queueScroll(point.pageX - gesture.lastX, point.pageY - gesture.lastY);
+      gesture.lastX = point.pageX;
+      gesture.lastY = point.pageY;
+    },
+    [queueScroll],
+  );
+
   const onTouchEnd = useCallback(
     (event: GestureResponderEvent) => {
-      const start = touch.current;
+      const gesture = touch.current;
       touch.current = null;
-      const changed = event.nativeEvent.changedTouches?.[0];
-      if (!start || !changed) return;
-      const dx = changed.pageX - start.x;
-      const dy = changed.pageY - start.y;
-      if (Math.abs(dx) + Math.abs(dy) < 15) return;
+      const point = event.nativeEvent.changedTouches?.[0];
+      if (!gesture || !point) return;
+      const moved =
+        gesture.moved ||
+        Math.abs(point.pageX - gesture.x) + Math.abs(point.pageY - gesture.y) >= 15;
+      if (!moved) return;
       swiped.current = true;
-      const scale = Math.min(
-        size.width / displayViewport.width,
-        size.height / displayViewport.height,
-      );
-      act({
-        kind: "scroll",
-        browserId,
-        x: displayViewport.width / 2,
-        y: displayViewport.height / 2,
-        deltaX: -dx / scale,
-        deltaY: -dy / scale,
-      });
+      fastFrames.current = true;
+      wakeFramePoll.current?.();
+      queueScroll(point.pageX - gesture.lastX, point.pageY - gesture.lastY);
+      if (scrollCooldown.current) clearTimeout(scrollCooldown.current);
+      scrollCooldown.current = setTimeout(() => {
+        fastFrames.current = false;
+      }, 1_200);
     },
-    [act, browserId, displayViewport, size],
+    [queueScroll],
   );
+
+  const onTouchCancel = useCallback(() => {
+    touch.current = null;
+    if (scrollCooldown.current) clearTimeout(scrollCooldown.current);
+    scrollCooldown.current = setTimeout(() => {
+      fastFrames.current = false;
+    }, 1_200);
+  }, []);
 
   if (connected && !supported)
     return (
@@ -306,26 +446,37 @@ export function BrowserPane({
           selectTextOnFocus
           style={styles.address}
         />
-      </View>
-      <View style={styles.devices}>
-        {SIZES.map((preset) => (
-          <Pressable
-            key={preset.label}
-            accessibilityRole="button"
-            accessibilityLabel={`${preset.label} viewport`}
-            onPress={() =>
-              setViewport(
-                browserId,
-                preset.width
-                  ? createFixedBrowserViewport(preset.width, preset.height)
-                  : { mode: "responsive" },
-              )
-            }
-            style={styles.device}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            accessibilityLabel={`Viewport: ${selectedSize?.label ?? `${displayViewport.width}×${displayViewport.height}`}`}
+            style={styles.button}
           >
-            <Text style={styles.deviceText}>{preset.label}</Text>
-          </Pressable>
-        ))}
+            <View style={styles.viewportTrigger}>
+              <ThemedDevices size={18} uniProps={mutedIcon} />
+              <ThemedChevronDown size={12} uniProps={mutedIcon} />
+            </View>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" side="bottom" minWidth={180}>
+            {SIZES.map((preset) => (
+              <DropdownMenuItem
+                key={preset.label}
+                selected={selectedSize === preset}
+                showSelectedCheck
+                onSelect={() =>
+                  setViewport(
+                    browserId,
+                    preset.width
+                      ? createFixedBrowserViewport(preset.width, preset.height)
+                      : { mode: "responsive" },
+                  )
+                }
+              >
+                {preset.label}
+                {preset.width ? ` · ${preset.width}×${preset.height}` : ""}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </View>
       {error ? (
         <View style={styles.error}>
@@ -348,23 +499,43 @@ export function BrowserPane({
             setSize({ width, height });
         }}
       >
-        {image ? (
-          <Pressable
-            style={styles.imagePress}
-            onPress={onPagePress}
-            onTouchStart={(event) => {
-              const point = event.nativeEvent.touches?.[0];
-              if (point) touch.current = { x: point.pageX, y: point.pageY };
-            }}
-            onTouchEnd={onTouchEnd}
-          >
-            <Image source={imageSource} resizeMode="contain" style={styles.image} />
-          </Pressable>
-        ) : (
-          <View style={styles.center}>
-            <Text style={styles.message}>Connecting to host browser…</Text>
-          </View>
-        )}
+        <Pressable
+          style={styles.imagePress}
+          onPress={onPagePress}
+          onTouchStart={(event) => {
+            const point = event.nativeEvent.touches?.[0];
+            swiped.current = false;
+            if (scrollCooldown.current) clearTimeout(scrollCooldown.current);
+            if (point)
+              touch.current = {
+                x: point.pageX,
+                y: point.pageY,
+                lastX: point.pageX,
+                lastY: point.pageY,
+                moved: false,
+              };
+          }}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onTouchCancel={onTouchCancel}
+        >
+          {image ? (
+            <Canvas style={styles.image}>
+              <SkiaImage
+                image={image}
+                fit="contain"
+                x={0}
+                y={0}
+                width={size.width}
+                height={size.height}
+              />
+            </Canvas>
+          ) : (
+            <View style={styles.center}>
+              <Text style={styles.message}>Connecting to host browser…</Text>
+            </View>
+          )}
+        </Pressable>
       </View>
       <View style={styles.inputRow}>
         <EditingTextInput
@@ -434,9 +605,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: 13,
   },
-  devices: { flexDirection: "row", justifyContent: "center", gap: 4, paddingVertical: 3 },
-  device: { paddingHorizontal: 10, paddingVertical: 5 },
-  deviceText: { color: theme.colors.foregroundMuted, fontSize: 12 },
+  viewportTrigger: { flexDirection: "row", alignItems: "center", gap: 2 },
   page: { flex: 1, overflow: "hidden" },
   imagePress: { flex: 1 },
   image: { width: "100%", height: "100%" },

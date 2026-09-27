@@ -41,6 +41,7 @@ interface Tab {
   error: string | null;
   lastUsed: number;
   lastFrameAt: number;
+  lastScrollAt: number;
   lastHeapCheckAt: number;
   frameRevision: number;
   cachedFrame: Buffer | null;
@@ -58,6 +59,8 @@ const MAX_LIVE_TABS = 4;
 const IDLE_SUSPEND_MS = 5 * 60_000;
 const METADATA_REAP_MS = 60 * 60_000;
 const FRAME_INTERVAL_MS = 700;
+const ACTIVE_SCROLL_FRAME_INTERVAL_MS = 150;
+const ACTIVE_SCROLL_WINDOW_MS = 1_200;
 // JSON/base64 plus relay encryption must fit Cloudflare's 1 MiB WebSocket frame.
 const MAX_FRAME_BYTES = 650_000;
 const MAX_PAGE_JS_HEAP_BYTES = 512 * 1024 * 1024;
@@ -412,6 +415,7 @@ export class RemoteBrowserManager {
           error: null,
           lastUsed: Date.now(),
           lastFrameAt: 0,
+          lastScrollAt: 0,
           lastHeapCheckAt: 0,
           frameRevision: 0,
           cachedFrame: null,
@@ -458,7 +462,11 @@ export class RemoteBrowserManager {
     const page = tab.page!;
     switch (command.kind) {
       case "frame": {
-        if (Date.now() - tab.lastFrameAt >= FRAME_INTERVAL_MS || !tab.cachedFrame) {
+        const frameInterval =
+          Date.now() - tab.lastScrollAt < ACTIVE_SCROLL_WINDOW_MS
+            ? ACTIVE_SCROLL_FRAME_INTERVAL_MS
+            : FRAME_INTERVAL_MS;
+        if (Date.now() - tab.lastFrameAt >= frameInterval || !tab.cachedFrame) {
           if (!tab.frameInFlight) {
             tab.frameInFlight = this.captureFrame(tab, page).finally(() => {
               tab.frameInFlight = null;
@@ -499,6 +507,7 @@ export class RemoteBrowserManager {
       case "scroll":
         await page.mouse.move(command.x, command.y);
         await page.mouse.wheel(command.deltaX, command.deltaY);
+        tab.lastScrollAt = Date.now();
         break;
       case "type":
         await page.keyboard.insertText(command.text);
