@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.9.25 - 2026-09-27
+
+### Added
+
+- Browse the web from your phone in browser tabs that run on the host
+- See the pages your agent opens on every connected device
+- Start and stop Preview servers from the workspace menu on your phone
+- Open a browser tab on the host from the desktop workspace menu
+- See failed tool calls in the Visualizer
+- See when chats touch the same files in the Visualizer
+
+### Improved
+
+- Hosted browser tabs only send data when the page changes
+- Scrolling a hosted browser tab responds much faster
+- Back and Forward in hosted browser tabs reflect the page's history
+- Interactive Views open as documents with a toolbar, export menu and status bar
+- Interactive Views render offline with their font embedded
+- Update the provider catalog to newer ACP agent versions
+
+### Fixed
+
+- Keep split dividers draggable in rows with three or more panes
+- Open file links in the workspace you are viewing
+- Connection sheets on Android open and close correctly
+- Stop showing an error when a connection drops during a subscription update
+
 ## 0.9.24 - 2026-09-25
 
 ### Fixed
