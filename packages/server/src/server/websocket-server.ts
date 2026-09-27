@@ -1,4 +1,5 @@
 import { isSessionRpcAllowed } from "./session/otto-rpc-scopes.js";
+import { appShowsHostedTabs } from "./browser-tools/hosted-tab-support.js";
 import { RemoteBrowserManager } from "./browser-tools/remote-browser-manager.js";
 import type { GoogleConnectorService } from "./connectors/google-connector-service.js";
 import { AgentRequests } from "./agent/requests/index.js";
@@ -836,6 +837,7 @@ export class VoiceAssistantWebSocketServer {
         supportedCommands: this.remoteBrowserManager.supportedCommands,
         // A cold start launches the browser and then loads the page.
         requestTimeoutMs: 45_000,
+        isAvailable: () => this.remoteBrowserManager.hasRuntime(),
         sendBrowserAutomationRequest: async (request) => {
           const response = await this.remoteBrowserManager.executeAutomation(request);
           this.browserToolsBroker?.receiveResponse(response);
@@ -2821,7 +2823,8 @@ export class VoiceAssistantWebSocketServer {
       this.unregisterBrowserToolsClient(registrationKey);
       return;
     }
-    const capabilitySignature = JSON.stringify(browserHostCapability);
+    const showsHostedTabs = appShowsHostedTabs(browserHostCapability, connection.appVersion);
+    const capabilitySignature = JSON.stringify({ browserHostCapability, showsHostedTabs });
     const existing = this.browserToolsRegistrations.get(registrationKey);
     if (existing?.capabilitySignature === capabilitySignature) {
       return;
@@ -2835,6 +2838,7 @@ export class VoiceAssistantWebSocketServer {
       id: connection.principalId === "owner" ? connection.clientId : registrationKey,
       hostKind: browserHostCapability.hostKind,
       supportedCommands: browserHostCapability.supportedCommands,
+      showsHostedTabs,
       sendBrowserAutomationRequest: (request) => {
         this.sendToConnection(connection, wrapSessionMessage(request));
       },

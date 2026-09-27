@@ -503,6 +503,7 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         [CLIENT_CAPS.browserHost]: {
           supportedCommands: [...BROWSER_AUTOMATION_COMMAND_NAMES],
           hostKind: "desktop app",
+          hostedTabs: true,
         },
       }
     : undefined;

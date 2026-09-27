@@ -13,6 +13,10 @@ export interface BrowserHostClient {
   id: string;
   hostKind: string;
   supportedCommands: readonly BrowserAutomationCommandName[];
+  /** The app shows tabs that live on the daemon host. Absent on older apps. */
+  showsHostedTabs?: boolean;
+  /** False while the host cannot serve tabs, such as a daemon with no browser installed. */
+  isAvailable?: () => Promise<boolean>;
   /** A host that may cold-start a browser declares a longer default timeout. */
   requestTimeoutMs?: number;
   sendBrowserAutomationRequest(request: BrowserAutomationExecuteRequest): void | Promise<void>;
@@ -39,6 +43,10 @@ interface RegisteredBrowserHost {
   registeredAt: number;
   supportedCommands: ReadonlySet<BrowserAutomationCommandName>;
 }
+
+type BrowserHostSelection =
+  | { ok: true; value: RegisteredBrowserHost }
+  | { ok: false; payload: BrowserToolsResponsePayload };
 
 export interface BrowserToolsBrokerOptions {
   defaultTimeoutMs?: number;
@@ -136,7 +144,12 @@ export class BrowserToolsBroker {
       return this.executeListTabs({ request: request.data, timeoutMs: input.timeoutMs });
     }
 
-    const host = this.selectHostForCommand(request.data.command, requestId);
+    const selection =
+      request.data.command.command === "new_tab"
+        ? this.selectHostForNewTab(requestId)
+        : this.selectHostForCommand(request.data.command, requestId);
+    // Only a host that must check for a browser makes the choice wait.
+    const host = selection instanceof Promise ? await selection : selection;
     if (!host.ok) {
       return host.payload;
     }
@@ -260,26 +273,37 @@ export class BrowserToolsBroker {
     };
   }
 
-  private selectHostForCommand(
-    command: BrowserAutomationCommand,
+  /**
+   * Agent tabs, preview tabs included, live on the daemon so every connected
+   * client can attach to the same page. Two cases keep them in the desktop app
+   * instead, where they opened before hosted tabs existed.
+   */
+  private selectHostForNewTab(
     requestId: string,
-  ):
-    | { ok: true; value: RegisteredBrowserHost }
-    | { ok: false; payload: BrowserToolsResponsePayload } {
-    if (command.command === "new_tab") {
-      // Agent tabs, preview tabs included, live on the daemon so every
-      // connected client can attach to the same page.
-      const preferred = [...this.clients.values()]
-        .toReversed()
-        .find((entry) => entry.client.hostKind === "daemon-hosted");
-      // COMPAT(daemonHostedNewTab): added in v0.9.25, remove by 2027-03-27.
-      // Broker users without a daemon browser keep the existing desktop path.
-      const host = preferred ?? this.selectMostRecentlyRegisteredHost();
+  ): BrowserHostSelection | Promise<BrowserHostSelection> {
+    const hosts = [...this.clients.values()].toReversed();
+    const daemon = hosts.find((entry) => entry.client.hostKind === "daemon-hosted");
+    const apps = hosts.filter((entry) => entry.client.hostKind !== "daemon-hosted");
+    const choose = (preferred: RegisteredBrowserHost | undefined): BrowserHostSelection => {
+      // With nothing better, the daemon host still answers, so its error can
+      // say how to install a browser.
+      const host = preferred ?? daemon ?? this.selectMostRecentlyRegisteredHost();
       return host
         ? { ok: true, value: host }
         : { ok: false, payload: this.noBrowserHostFailure(requestId) };
-    }
+    };
+    // COMPAT(hostedTabsCapability): added in v0.9.26, remove after 2027-03-28.
+    // An app that cannot show hosted tabs would leave its user looking at nothing.
+    const blindApp = apps.find((entry) => entry.client.showsHostedTabs !== true);
+    if (blindApp || !daemon?.client.isAvailable) return choose(blindApp ?? daemon);
+    // A host with no browser installed cannot serve the tab; an app's webview can.
+    return daemon.client.isAvailable().then((canServe) => choose(canServe ? daemon : apps[0]));
+  }
 
+  private selectHostForCommand(
+    command: BrowserAutomationCommand,
+    requestId: string,
+  ): BrowserHostSelection {
     const browserId = getBrowserIdForCommand(command);
     if (!browserId) {
       const host = this.selectMostRecentlyRegisteredHost();

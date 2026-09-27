@@ -322,7 +322,13 @@ appear in each connected client's ordinary workspace tab strip. A preview tab
 carries its server identity, so each client adopts it as that server's preview
 tab, and opens it beside the focused pane where panes can split. The daemon
 host is preferred even while a desktop app is connected, so a phone sees the
-same tabs the agent drives. Closing a hosted tab closes the daemon page and
+same tabs the agent drives. Two cases keep a new agent tab in the desktop app's
+own webview instead. A host with no browser installed cannot serve the tab, so
+it goes to a connected app; the check is remembered for five minutes, and with
+no app connected the host still answers so its error can say how to install a
+browser. An app that cannot show hosted tabs, meaning one older than 0.9.25 or
+one that declares `hostedTabs: false` in its `browser_host` capability, keeps
+the tab too, because its user would otherwise see nothing. Closing a hosted tab closes the daemon page and
 withdraws it from other clients; a stale client cannot reopen that closed ID.
 `browser_focus_tab` raises a hosted tab in each connected workspace client on
 its next tab poll. AI viewport, full-page, and element screenshots render from

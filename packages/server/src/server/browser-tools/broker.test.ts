@@ -15,15 +15,22 @@ class FakeBrowserHostClient implements BrowserHostClient {
   public readonly receivedRequests: BrowserAutomationExecuteRequest[] = [];
   public readonly hostKind: string;
   public readonly supportedCommands: readonly BrowserAutomationCommandName[];
+  public readonly showsHostedTabs: boolean | undefined;
+  public readonly isAvailable: (() => Promise<boolean>) | undefined;
 
   public constructor(
     public readonly id: string,
     options: {
       hostKind?: string;
       supportedCommands?: readonly BrowserAutomationCommandName[];
+      showsHostedTabs?: boolean;
+      available?: boolean;
     } = {},
   ) {
     this.hostKind = options.hostKind ?? "desktop app";
+    this.showsHostedTabs = options.showsHostedTabs;
+    const available = options.available;
+    this.isAvailable = available === undefined ? undefined : async () => available;
     this.supportedCommands = options.supportedCommands ?? [...BROWSER_AUTOMATION_COMMAND_NAMES];
   }
 
@@ -305,51 +312,84 @@ describe("BrowserToolsBroker", () => {
   test("plain and preview new tabs both use the daemon host", async () => {
     const broker = createBroker();
     const daemon = new FakeBrowserHostClient("daemon", { hostKind: "daemon-hosted" });
-    const desktop = new FakeBrowserHostClient("desktop");
+    const desktop = new FakeBrowserHostClient("desktop", { showsHostedTabs: true });
     broker.registerClient(daemon);
     broker.registerClient(desktop);
 
-    const plain = broker.execute({
+    for (const args of [
+      { url: "https://example.com" },
+      {
+        url: "https://example.com",
+        preview: { serverId: "preview-1", serverName: "app", cwd: "/project" },
+      },
+    ]) {
+      const pending = broker.execute({
+        command: { command: "new_tab", args },
+        workspaceId: "workspace-1",
+      });
+      await vi.waitFor(() => expect(daemon.receivedRequests.length).toBeGreaterThan(0));
+      daemon.resolveLatestWith(broker, {
+        requestId: "req-1",
+        ok: true,
+        result: {
+          command: "new_tab",
+          browserId: BROWSER_ID,
+          workspaceId: "workspace-1",
+          url: "https://example.com",
+        },
+      });
+      await pending;
+      daemon.receivedRequests.length = 0;
+    }
+    expect(desktop.receivedRequests).toHaveLength(0);
+  });
+
+  test("a host with no browser hands new tabs to the desktop app", async () => {
+    const broker = createBroker();
+    const daemon = new FakeBrowserHostClient("daemon", {
+      hostKind: "daemon-hosted",
+      available: false,
+    });
+    const desktop = new FakeBrowserHostClient("desktop", { showsHostedTabs: true });
+    broker.registerClient(daemon);
+    broker.registerClient(desktop);
+
+    void broker.execute({
       command: { command: "new_tab", args: { url: "https://example.com" } },
       workspaceId: "workspace-1",
     });
-    expect(daemon.receivedRequests).toHaveLength(1);
-    expect(desktop.receivedRequests).toHaveLength(0);
-    daemon.resolveLatestWith(broker, {
-      requestId: "req-1",
-      ok: true,
-      result: {
-        command: "new_tab",
-        browserId: BROWSER_ID,
-        workspaceId: "workspace-1",
-        url: "https://example.com",
-      },
-    });
-    await plain;
+    await vi.waitFor(() => expect(desktop.receivedRequests).toHaveLength(1));
+    expect(daemon.receivedRequests).toHaveLength(0);
+  });
 
-    const preview = broker.execute({
-      command: {
-        command: "new_tab",
-        args: {
-          url: "https://example.com",
-          preview: { serverId: "preview-1", serverName: "app", cwd: "/project" },
-        },
-      },
+  test("a host with no browser and no app still answers, so its error is seen", async () => {
+    const broker = createBroker();
+    const daemon = new FakeBrowserHostClient("daemon", {
+      hostKind: "daemon-hosted",
+      available: false,
+    });
+    broker.registerClient(daemon);
+
+    void broker.execute({
+      command: { command: "new_tab", args: { url: "https://example.com" } },
       workspaceId: "workspace-1",
     });
-    expect(daemon.receivedRequests).toHaveLength(2);
-    expect(desktop.receivedRequests).toHaveLength(0);
-    daemon.resolveLatestWith(broker, {
-      requestId: "req-1",
-      ok: true,
-      result: {
-        command: "new_tab",
-        browserId: SECOND_BROWSER_ID,
-        workspaceId: "workspace-1",
-        url: "https://example.com",
-      },
+    await vi.waitFor(() => expect(daemon.receivedRequests).toHaveLength(1));
+  });
+
+  test("an app that cannot show hosted tabs keeps new tabs in its own webview", async () => {
+    const broker = createBroker();
+    const daemon = new FakeBrowserHostClient("daemon", { hostKind: "daemon-hosted" });
+    const oldDesktop = new FakeBrowserHostClient("old-desktop");
+    broker.registerClient(daemon);
+    broker.registerClient(oldDesktop);
+
+    void broker.execute({
+      command: { command: "new_tab", args: { url: "https://example.com" } },
+      workspaceId: "workspace-1",
     });
-    await preview;
+    await vi.waitFor(() => expect(oldDesktop.receivedRequests).toHaveLength(1));
+    expect(daemon.receivedRequests).toHaveLength(0);
   });
 
   test("a host that cold-starts a browser gets its declared timeout", async () => {

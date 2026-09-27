@@ -31,6 +31,9 @@ export const BrowserAutomationHostCapabilitySchema = z
       return supportedCommands;
     }),
     hostKind: z.string().min(1).default("browser host"),
+    // The app projects daemon-hosted tabs into its tab strip, so agent tabs may
+    // open on the host instead of in this app.
+    hostedTabs: z.boolean().optional(),
   })
   .passthrough();
 

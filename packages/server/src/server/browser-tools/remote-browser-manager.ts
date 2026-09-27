@@ -62,6 +62,7 @@ interface Tab extends TabOrigin {
 }
 
 const MAX_LIVE_TABS = 4;
+const RUNTIME_RETRY_MS = 5 * 60_000;
 const IDLE_SUSPEND_MS = 5 * 60_000;
 const METADATA_REAP_MS = 60 * 60_000;
 const MAX_PAGE_JS_HEAP_BYTES = 512 * 1024 * 1024;
@@ -150,6 +151,7 @@ export class RemoteBrowserManager {
   private browser: Browser | null = null;
   private readonly snapshotEngine = new BrowserSnapshotEngine();
   private launching: Promise<Browser> | null = null;
+  private runtimeMissingUntil = 0;
   private startQueue: Promise<void> = Promise.resolve();
   private readonly tabs = new Map<string, Tab>();
   private readonly closedTabs = new Map<string, number>();
@@ -189,6 +191,22 @@ export class RemoteBrowserManager {
   constructor() {
     this.reapTimer = setInterval(() => void this.reap(), 30_000);
     this.reapTimer.unref?.();
+  }
+
+  /**
+   * Whether this host can run a browser. A failure is remembered for a while so
+   * each new tab does not retry three launches, and forgotten so installing a
+   * browser takes effect without restarting the daemon.
+   */
+  async hasRuntime(): Promise<boolean> {
+    if (Date.now() < this.runtimeMissingUntil) return false;
+    try {
+      await this.getBrowser();
+      return true;
+    } catch {
+      this.runtimeMissingUntil = Date.now() + RUNTIME_RETRY_MS;
+      return false;
+    }
   }
 
   private async getBrowser(): Promise<Browser> {
