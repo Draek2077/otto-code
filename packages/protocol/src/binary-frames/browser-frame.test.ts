@@ -11,6 +11,14 @@ describe("browser frame codec", () => {
     expect([...decoded!.image]).toEqual([...image]);
   });
 
+  it("hands back a picture that owns its buffer", () => {
+    const image = new Uint8Array([0xff, 0xd8, 0xff]);
+    const decoded = decodeBrowserFrame(encodeBrowserFrame({ requestId: "frame-7", image }))!;
+
+    expect(decoded.image.byteOffset).toBe(0);
+    expect(decoded.image.buffer.byteLength).toBe(image.byteLength);
+  });
+
   it("rejects bytes that are not a browser frame", () => {
     expect(decodeBrowserFrame(new Uint8Array([0x01, 0, 0, 0]))).toBeNull();
     expect(decodeBrowserFrame(new Uint8Array([0x20, 9, 1]))).toBeNull();

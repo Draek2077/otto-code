@@ -28,6 +28,8 @@ export function decodeBrowserFrame(bytes: Uint8Array): BrowserFrame | null {
   if (requestIdLength === 0 || requestIdLength > bytes.byteLength - 2) return null;
   return {
     requestId: new TextDecoder().decode(bytes.subarray(2, 2 + requestIdLength)),
-    image: bytes.subarray(2 + requestIdLength),
+    // A copy that owns its buffer. A view into the socket's buffer carries an
+    // offset that native image decoders do not honour.
+    image: bytes.slice(2 + requestIdLength),
   };
 }

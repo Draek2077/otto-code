@@ -47,7 +47,6 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
             image.src = `data:image/jpeg;base64,${picture}`;
             await image.decode();
           } else {
-            // Copied, because the bytes may be a view into a larger socket buffer.
             const url = URL.createObjectURL(new Blob([picture.slice()], { type: "image/jpeg" }));
             image.src = url;
             try {
