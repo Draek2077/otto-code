@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -84,6 +84,8 @@ export function AddHostMethodModal({
       header={header}
       visible={visible}
       onClose={onClose}
+      // The animated snap-height wrapper can collapse this menu's scroll body on Android.
+      sizeContentToCurrentSnapPoint={false}
       testID="add-host-method-modal"
     >
       <Pressable

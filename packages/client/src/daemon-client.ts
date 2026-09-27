@@ -1693,8 +1693,15 @@ export class DaemonClient {
   private readonly subscriptions = new ConnectionSubscriptions({
     timelines: (agentIds) => (this.isConnected ? this.sendTimelineSubscription(agentIds) : null),
     events: (events) => this.sendEventSubscription(events),
-    failed: (error) =>
-      this.logger.error({ err: error }, "Failed to update connection subscriptions"),
+    failed: (error) => {
+      // A disconnect rejects in-flight subscription requests. Reconnect restores demand,
+      // so those rejections are expected and must not open React Native's error overlay.
+      if (this.connectionState.status !== "connected") return;
+      this.logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        "Failed to update connection subscriptions",
+      );
+    },
   });
   private transport: DaemonTransport | null = null;
   private transportCleanup: Array<() => void> = [];

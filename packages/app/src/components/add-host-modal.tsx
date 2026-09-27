@@ -524,6 +524,8 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
       visible={visible}
       onClose={handleClose}
       footer={footer}
+      // Keep fields measurable on Android; the animated snap-height wrapper can collapse them.
+      sizeContentToCurrentSnapPoint={false}
       testID="add-host-modal"
     >
       <Text style={styles.helper}>{t("pairing.direct.helper")}</Text>
