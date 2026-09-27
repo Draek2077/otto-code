@@ -183,7 +183,12 @@ import {
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { removeResidentBrowserWebview } from "@/desktop/browser/resident-webviews";
 import { architecturalViewAuthoringBrowserId } from "@/architectural-views/browser-id";
-import { createWorkspaceBrowser, useBrowserStore } from "@/desktop/browser/store";
+import {
+  createWorkspaceBrowser,
+  useBrowserStore,
+  useBrowserStoreHydrated,
+} from "@/desktop/browser/store";
+import { useHostedBrowserTabs } from "@/screens/workspace/use-hosted-browser-tabs";
 import { getDesktopHost } from "@/desktop/host";
 import {
   buildAgentWorkspaceAttachmentScopeKey,
@@ -449,8 +454,9 @@ function closeHostedBrowserTab(
   client: import("@otto-code/client/internal/daemon-client").DaemonClient | null,
   workspaceId: string,
   browserId: string,
+  browserRecord: { renderMode: "native" | "hosted" } | undefined,
 ): void {
-  if (getIsElectron()) return;
+  if (getIsElectron() && browserRecord?.renderMode !== "hosted") return;
   // Closing the workspace tab releases its host page. If the socket is gone,
   // the daemon's idle reaper remains the cleanup path for that page.
   void client
@@ -1202,6 +1208,7 @@ interface WorkspaceHeaderMenuProps {
   currentBranchName: string | null;
   showWorkspaceSetup: boolean;
   showCreateBrowserTab: boolean;
+  showCreateHostedBrowserTab: boolean;
   isMobile: boolean;
   // Fallback items for header buttons the compact width fit dropped (see
   // `resolveCompactHeaderActions`); all false while every button still fits.
@@ -1236,6 +1243,7 @@ interface WorkspaceHeaderMenuProps {
   onCreateTerminal: () => void;
   onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
   onCreateBrowser: () => void;
+  onCreateHostedBrowser: () => void;
   onOpenImportSheet: () => void;
   onCopyWorkspacePath: () => void;
   onCopyBranchName: () => void;
@@ -1247,6 +1255,27 @@ interface HeaderMenuProfileItemProps {
   profile: { id: string; name: string; command: string; args?: string[]; icon?: string };
   disabled: boolean;
   onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
+}
+
+function HostedBrowserMenuItem({
+  visible,
+  icon,
+  onSelect,
+}: {
+  visible: boolean;
+  icon: ReactElement;
+  onSelect: () => void;
+}) {
+  if (!visible) return null;
+  return (
+    <DropdownMenuItem
+      testID="workspace-header-new-hosted-browser"
+      leading={icon}
+      onSelect={onSelect}
+    >
+      New browser on host
+    </DropdownMenuItem>
+  );
 }
 
 function HeaderMenuProfileItem({
@@ -1300,6 +1329,7 @@ function WorkspaceHeaderMenu({
   currentBranchName,
   showWorkspaceSetup,
   showCreateBrowserTab,
+  showCreateHostedBrowserTab,
   isMobile,
   showVisualizerMenuItem,
   showVoiceCuesMenuItem,
@@ -1329,6 +1359,7 @@ function WorkspaceHeaderMenu({
   onCreateTerminal,
   onCreateTerminalWithProfile,
   onCreateBrowser,
+  onCreateHostedBrowser,
   onOpenImportSheet,
   onCopyWorkspacePath,
   onCopyBranchName,
@@ -1421,6 +1452,11 @@ function WorkspaceHeaderMenu({
               {t("workspace.header.actions.newBrowser")}
             </DropdownMenuItem>
           ) : null}
+          <HostedBrowserMenuItem
+            visible={showCreateHostedBrowserTab}
+            icon={menuNewBrowserIcon}
+            onSelect={onCreateHostedBrowser}
+          />
           {supportsArtifacts ? (
             <DropdownMenuItem
               testID="workspace-header-add-artifact"
@@ -1669,6 +1705,7 @@ interface WorkspaceHeaderTitleBarProps {
   liveTerminalIds: string[];
   showWorkspaceSetup: boolean;
   showCreateBrowserTab: boolean;
+  showCreateHostedBrowserTab: boolean;
   isMobile: boolean;
   // Compact responsive drops (see `fitCompactHeaderActions`); always true on desktop.
   showVisualizerAction: boolean;
@@ -1706,6 +1743,7 @@ interface WorkspaceHeaderTitleBarProps {
   onCreateTerminal: () => void;
   onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
   onCreateBrowser: () => void;
+  onCreateHostedBrowser: () => void;
   onOpenImportSheet: () => void;
   onCopyWorkspacePath: () => void;
   onCopyBranchName: () => void;
@@ -1749,6 +1787,7 @@ function WorkspaceHeaderTitleBar({
   liveTerminalIds,
   showWorkspaceSetup,
   showCreateBrowserTab,
+  showCreateHostedBrowserTab,
   isMobile,
   showVisualizerAction,
   showVoiceCuesAction,
@@ -1780,6 +1819,7 @@ function WorkspaceHeaderTitleBar({
   onCreateTerminal,
   onCreateTerminalWithProfile,
   onCreateBrowser,
+  onCreateHostedBrowser,
   onOpenImportSheet,
   onCopyWorkspacePath,
   onCopyBranchName,
@@ -1832,6 +1872,7 @@ function WorkspaceHeaderTitleBar({
           currentBranchName={currentBranchName}
           showWorkspaceSetup={showWorkspaceSetup}
           showCreateBrowserTab={showCreateBrowserTab}
+          showCreateHostedBrowserTab={showCreateHostedBrowserTab}
           isMobile={isMobile}
           showVisualizerMenuItem={showVisualizerMenuItem}
           showVoiceCuesMenuItem={showVoiceCuesMenuItem}
@@ -1861,6 +1902,7 @@ function WorkspaceHeaderTitleBar({
           onCreateTerminal={onCreateTerminal}
           onCreateTerminalWithProfile={onCreateTerminalWithProfile}
           onCreateBrowser={onCreateBrowser}
+          onCreateHostedBrowser={onCreateHostedBrowser}
           onOpenImportSheet={onOpenImportSheet}
           onCopyWorkspacePath={onCopyWorkspacePath}
           onCopyBranchName={onCopyBranchName}
@@ -2767,6 +2809,18 @@ function WorkspaceScreenContent({
     persistenceKey ? state.focusRestorationByWorkspace[persistenceKey]?.restorePaneId : undefined,
   );
   const hasHydratedWorkspaceLayoutStore = useWorkspaceLayoutStoreHydrated();
+  const hasHydratedBrowserStore = useBrowserStoreHydrated();
+  useHostedBrowserTabs({
+    client,
+    workspaceId: normalizedWorkspaceId,
+    workspaceKey: persistenceKey,
+    enabled:
+      isRouteFocused &&
+      isConnected &&
+      supportsRemoteBrowser &&
+      hasHydratedWorkspaceLayoutStore &&
+      hasHydratedBrowserStore,
+  });
   // Report pane-content readiness for the app-wide route-fade veil. A workspace
   // is "ready" to reveal once it has a layout - the tab strip and panes render
   // from it (see desktopSplitContent). On a cold or freshly-seeded workspace this
@@ -2947,7 +3001,7 @@ function WorkspaceScreenContent({
         const { browserId } = input.target;
         // Check isPreview/previewServerId BEFORE removing the record
         const browserRecord = useBrowserStore.getState().browsersById[browserId];
-        closeHostedBrowserTab(client, normalizedWorkspaceId, browserId);
+        closeHostedBrowserTab(client, normalizedWorkspaceId, browserId, browserRecord);
         useBrowserStore.getState().removeBrowser(browserId);
         removeResidentBrowserWebview(browserId);
 
@@ -3687,11 +3741,12 @@ function WorkspaceScreenContent({
   // and can be silenced for good. Agent-driven tab creation
   // (browser-automation/handler.ts) never reaches this and must not warn.
   const launchBrowserTab = useCallback(
-    (destination: WorkspaceTabLaunchDestination) => {
+    (destination: WorkspaceTabLaunchDestination, requestedMode?: "native" | "hosted") => {
       if (!persistenceKey) {
         return;
       }
-      if (!getIsElectron() && !supportsRemoteBrowser) {
+      const renderMode = requestedMode ?? (getIsElectron() ? "native" : "hosted");
+      if (renderMode === "hosted" && !supportsRemoteBrowser) {
         toast.error(t("workspace.browser.updateHost"));
         return;
       }
@@ -3705,7 +3760,7 @@ function WorkspaceScreenContent({
         if (!proceed) {
           return;
         }
-        const { browserId } = createWorkspaceBrowser();
+        const { browserId } = createWorkspaceBrowser({ renderMode });
         if (destination.kind === "replace") {
           replaceWorkspaceTabTarget(persistenceKey, destination.tabId, {
             kind: "browser",
@@ -3740,6 +3795,10 @@ function WorkspaceScreenContent({
     },
     [launchBrowserTab],
   );
+
+  const handleCreateHostedBrowserTab = useCallback(() => {
+    launchBrowserTab({ kind: "open" }, "hosted");
+  }, [launchBrowserTab]);
 
   // Upstream's single entry point for "the user picked something to open" - the
   // New tab panel and the tab-row menu both route through it. Each branch hands
@@ -3788,7 +3847,10 @@ function WorkspaceScreenContent({
       if (!persistenceKey || (!getIsElectron() && !supportsRemoteBrowser)) {
         return;
       }
-      const { browserId } = createWorkspaceBrowser({ initialUrl: url });
+      const { browserId } = createWorkspaceBrowser({
+        initialUrl: url,
+        renderMode: getIsElectron() ? "native" : "hosted",
+      });
       openWorkspaceTabFocused(persistenceKey, { kind: "browser", browserId });
     },
     [openWorkspaceTabFocused, persistenceKey, supportsRemoteBrowser],
@@ -5274,6 +5336,7 @@ function WorkspaceScreenContent({
                 liveTerminalIds={liveTerminalIds}
                 showWorkspaceSetup={showWorkspaceSetup}
                 showCreateBrowserTab={showCreateBrowserTab}
+                showCreateHostedBrowserTab={getIsElectron() && supportsRemoteBrowser}
                 isMobile={isMobile}
                 showVisualizerAction={headerActionFit.showVisualizer}
                 showVoiceCuesAction={headerActionFit.showVoiceCues}
@@ -5305,6 +5368,7 @@ function WorkspaceScreenContent({
                 onCreateTerminal={handleCreateTerminal}
                 onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
                 onCreateBrowser={handleCreateBrowserTab}
+                onCreateHostedBrowser={handleCreateHostedBrowserTab}
                 onOpenImportSheet={openImportSheet}
                 onCopyWorkspacePath={handleCopyWorkspacePath}
                 onCopyBranchName={handleCopyBranchName}
@@ -5335,6 +5399,7 @@ function WorkspaceScreenContent({
       liveTerminalIds,
       showWorkspaceSetup,
       showCreateBrowserTab,
+      supportsRemoteBrowser,
       isMobile,
       headerActionFit,
       showBrainAction,
@@ -5350,6 +5415,7 @@ function WorkspaceScreenContent({
       handleCreateTerminal,
       handleCreateTerminalWithProfile,
       handleCreateBrowserTab,
+      handleCreateHostedBrowserTab,
       openImportSheet,
       handleCopyWorkspacePath,
       handleCopyBranchName,

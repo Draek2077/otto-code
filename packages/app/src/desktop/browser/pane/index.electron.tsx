@@ -80,6 +80,7 @@ import {
 import { useAppSettings } from "@/hooks/use-settings";
 import { useSessionStore } from "@/stores/session-store";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import { BrowserPane as RemoteBrowserPane } from "./remote-browser-pane";
 
 type ElectronWebview = HTMLElement & {
   canGoBack?: () => boolean;
@@ -697,6 +698,7 @@ interface BrowserPaneProps {
 export function BrowserPane(props: BrowserPaneProps) {
   const hasHydratedBrowserStore = useBrowserStoreHydrated();
   const hasBrowserRecord = useBrowserStore((state) => !!state.browsersById[props.browserId]);
+  const renderMode = useBrowserStore((state) => state.browsersById[props.browserId]?.renderMode);
 
   useEffect(() => {
     if (hasHydratedBrowserStore && !hasBrowserRecord) {
@@ -711,6 +713,8 @@ export function BrowserPane(props: BrowserPaneProps) {
       </View>
     );
   }
+
+  if (renderMode === "hosted") return <RemoteBrowserPane {...props} />;
 
   return <BrowserPaneContents {...props} />;
 }

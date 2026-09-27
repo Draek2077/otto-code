@@ -302,6 +302,55 @@ describe("BrowserToolsBroker", () => {
     });
   });
 
+  test("plain new tabs use the daemon while preview tabs stay on desktop", async () => {
+    const broker = createBroker();
+    const daemon = new FakeBrowserHostClient("daemon", { hostKind: "daemon-hosted" });
+    const desktop = new FakeBrowserHostClient("desktop");
+    broker.registerClient(daemon);
+    broker.registerClient(desktop);
+
+    const plain = broker.execute({
+      command: { command: "new_tab", args: { url: "https://example.com" } },
+      workspaceId: "workspace-1",
+    });
+    expect(daemon.receivedRequests).toHaveLength(1);
+    expect(desktop.receivedRequests).toHaveLength(0);
+    daemon.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await plain;
+
+    const preview = broker.execute({
+      command: {
+        command: "new_tab",
+        args: {
+          url: "https://example.com",
+          preview: { serverId: "preview-1", serverName: "app", cwd: "/project" },
+        },
+      },
+      workspaceId: "workspace-1",
+    });
+    expect(desktop.receivedRequests).toHaveLength(1);
+    desktop.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: SECOND_BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await preview;
+  });
+
   test("list tabs aggregates all hosts and seeds browser id affinity", async () => {
     const broker = createBroker();
     const firstHost = new FakeBrowserHostClient("host-1");

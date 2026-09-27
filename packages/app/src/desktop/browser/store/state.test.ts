@@ -53,6 +53,7 @@ describe("createBrowserRecord", () => {
 
     expect(record).toEqual({
       browserId: "b1",
+      renderMode: "native",
       url: "http://localhost:8081",
       title: "",
       isLoading: false,
@@ -68,6 +69,21 @@ describe("createBrowserRecord", () => {
       previewCwd: null,
       previewStatus: "ready",
     });
+  });
+
+  it("keeps hosted ownership across restore while legacy records stay native", () => {
+    const hosted = createBrowserRecord({
+      browserId: "hosted",
+      initialUrl: "https://example.com",
+      now: 1000,
+      renderMode: "hosted",
+    });
+    expect(rehydrateBrowserRecord("hosted", hosted).renderMode).toBe("hosted");
+    expect(
+      normalizeBrowserIndexState({ browsersById: { hosted } }).browsersById.hosted?.renderMode,
+    ).toBe("hosted");
+    const legacy = { ...hosted, renderMode: undefined };
+    expect(rehydrateBrowserRecord("legacy", legacy).renderMode).toBe("native");
   });
 
   it("marks the record as a preview tab when requested", () => {

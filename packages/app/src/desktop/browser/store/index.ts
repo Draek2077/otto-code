@@ -31,6 +31,7 @@ interface BrowserStoreState extends BrowserIndexState {
   ensureBrowser: (browserId: string) => void;
   createBrowser: (input?: {
     initialUrl?: string;
+    renderMode?: "native" | "hosted";
     isPreview?: boolean;
     previewServerId?: string | null;
     previewServerName?: string | null;
@@ -76,6 +77,7 @@ export const useBrowserStore = create<BrowserStoreState>()(
         const record = createBrowserRecord({
           browserId,
           initialUrl: input?.initialUrl,
+          renderMode: input?.renderMode,
           now: Date.now(),
           isPreview: input?.isPreview,
           previewServerId: input?.previewServerId,
@@ -155,6 +157,7 @@ export function getBrowserRecord(browserId: string): BrowserRecord | null {
 
 export function createWorkspaceBrowser(input?: {
   initialUrl?: string;
+  renderMode?: "native" | "hosted";
   isPreview?: boolean;
   previewServerId?: string | null;
   previewServerName?: string | null;

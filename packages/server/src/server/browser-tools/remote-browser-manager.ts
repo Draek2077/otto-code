@@ -101,10 +101,12 @@ export class RemoteBrowserManager {
   private launching: Promise<Browser> | null = null;
   private startQueue: Promise<void> = Promise.resolve();
   private readonly tabs = new Map<string, Tab>();
+  private readonly closedTabs = new Map<string, number>();
   private readonly reapTimer: ReturnType<typeof setInterval>;
 
   readonly supportedCommands: readonly BrowserAutomationCommandName[] = [
     "list_tabs",
+    "new_tab",
     "snapshot",
     "click",
     "fill",
@@ -399,6 +401,8 @@ export class RemoteBrowserManager {
         tabs: [...this.tabs.values()].filter((tab) => tab.workspaceId === workspaceId).map(asTab),
       };
     if (command.kind === "open") {
+      if (this.closedTabs.has(command.browserId))
+        throw new Error("This browser tab was closed on the host. Open a new tab instead.");
       let tab = this.tabs.get(command.browserId);
       if (tab && tab.workspaceId !== workspaceId)
         throw new Error("Browser tab belongs to another workspace.");
@@ -440,6 +444,7 @@ export class RemoteBrowserManager {
       await this.startQueue;
       await this.suspend(tab);
       this.tabs.delete(tab.browserId);
+      this.closedTabs.set(tab.browserId, Date.now());
       return {};
     }
     if (command.kind === "suspend") {
@@ -556,9 +561,34 @@ export class RemoteBrowserManager {
         };
       }
       if (!workspaceId) throw new Error("Workspace is required for a hosted browser tab.");
+      if (command.command === "new_tab") {
+        const browserId = randomUUID();
+        const url = normalUrl(command.args.url);
+        try {
+          await this.execute(workspaceId, { kind: "open", browserId, url });
+        } catch (cause) {
+          this.tabs.delete(browserId);
+          throw cause;
+        }
+        return {
+          type: "browser.automation.execute.response",
+          payload: {
+            requestId,
+            ok: true,
+            result: { command: "new_tab", browserId, workspaceId, url },
+          },
+        };
+      }
       if (!("browserId" in command.args))
-        throw new Error("Open the browser tab from the mobile workspace first.");
+        throw new Error("Open a browser tab in this workspace first.");
       const browserId = command.args.browserId;
+      if (command.command === "close_tab") {
+        await this.execute(workspaceId, { kind: "close", browserId });
+        return {
+          type: "browser.automation.execute.response",
+          payload: { requestId, ok: true, result: { command: "close_tab", browserId } },
+        };
+      }
       const tab = this.get(workspaceId, browserId);
       await this.start(tab);
       const page = tab.page!;
@@ -810,10 +840,6 @@ export class RemoteBrowserManager {
             height: command.args.height,
           } as typeof result;
           break;
-        case "close_tab":
-          await this.execute(workspaceId, { kind: "close", browserId });
-          result = { command: "close_tab", browserId } as typeof result;
-          break;
         case "focus_tab":
           result = { command: "focus_tab", browserId } as typeof result;
           break;
@@ -923,6 +949,8 @@ export class RemoteBrowserManager {
 
   private async reap(): Promise<void> {
     const now = Date.now();
+    for (const [browserId, closedAt] of this.closedTabs)
+      if (now - closedAt > METADATA_REAP_MS) this.closedTabs.delete(browserId);
     for (const tab of this.tabs.values()) {
       if (tab.page && now - tab.lastUsed > IDLE_SUSPEND_MS) await this.suspend(tab);
       if (!tab.page && now - tab.lastUsed > METADATA_REAP_MS) this.tabs.delete(tab.browserId);
@@ -939,6 +967,7 @@ export class RemoteBrowserManager {
     await this.startQueue;
     await Promise.all([...this.tabs.values()].map((tab) => this.suspend(tab)));
     this.tabs.clear();
+    this.closedTabs.clear();
     await this.browser?.close().catch(() => undefined);
     this.browser = null;
   }

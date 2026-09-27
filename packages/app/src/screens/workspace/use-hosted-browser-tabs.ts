@@ -1,0 +1,92 @@
+import { useEffect } from "react";
+import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import { createFixedBrowserViewport, useBrowserStore } from "@/desktop/browser/store";
+import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+
+interface Input {
+  client: DaemonClient | null;
+  workspaceId: string;
+  workspaceKey: string | null;
+  enabled: boolean;
+}
+
+function removeClosedHostedTab(workspaceKey: string, browserId: string): void {
+  if (useBrowserStore.getState().browsersById[browserId]?.renderMode !== "hosted") return;
+  const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+  if (layout) {
+    for (const tab of collectAllTabs(layout.root)) {
+      if (tab.target.kind === "browser" && tab.target.browserId === browserId)
+        useWorkspaceLayoutStore.getState().closeTab(workspaceKey, tab.tabId);
+    }
+  }
+  useBrowserStore.getState().removeBrowser(browserId);
+}
+
+/** Projects daemon-owned tabs into this client's ordinary workspace tab strip. */
+export function useHostedBrowserTabs({ client, workspaceId, workspaceKey, enabled }: Input): void {
+  useEffect(() => {
+    if (!client || !workspaceId || !workspaceKey || !enabled) return;
+    let live = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let knownIds: Set<string> | null = null;
+    let failures = 0;
+
+    const poll = async () => {
+      try {
+        const response = await client.remoteBrowserExecute(workspaceId, { kind: "list" });
+        if (!live) return;
+        const nextIds = new Set<string>();
+        for (const tab of response.tabs ?? []) {
+          nextIds.add(tab.browserId);
+          const browsers = useBrowserStore.getState();
+          browsers.ensureBrowser(tab.browserId);
+          browsers.updateBrowser(tab.browserId, {
+            renderMode: "hosted",
+            url: tab.url,
+            title: tab.title,
+            isLoading: tab.state === "starting",
+            lastError: tab.error,
+            viewport:
+              tab.viewport.mode === "fixed"
+                ? createFixedBrowserViewport(tab.viewport.width, tab.viewport.height)
+                : { mode: "responsive" },
+          });
+          const layoutStore = useWorkspaceLayoutStore.getState();
+          const layout = layoutStore.layoutByWorkspace[workspaceKey];
+          const alreadyOpen =
+            layout &&
+            collectAllTabs(layout.root).some(
+              (item) => item.target.kind === "browser" && item.target.browserId === tab.browserId,
+            );
+          if (!alreadyOpen)
+            layoutStore.openTabInBackground(workspaceKey, {
+              kind: "browser",
+              browserId: tab.browserId,
+            });
+        }
+
+        // A disappearance while this socket stayed live means the host closed
+        // the tab. A fresh connection starts without an absence baseline so
+        // local tabs can reattach after a daemon restart.
+        if (knownIds) {
+          for (const browserId of knownIds) {
+            if (nextIds.has(browserId)) continue;
+            removeClosedHostedTab(workspaceKey, browserId);
+          }
+        }
+        knownIds = nextIds;
+        failures = 0;
+      } catch {
+        failures++;
+      } finally {
+        if (live)
+          timer = setTimeout(poll, failures ? Math.min(15_000, 1_000 * 2 ** failures) : 3_000);
+      }
+    };
+    void poll();
+    return () => {
+      live = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [client, workspaceId, workspaceKey, enabled]);
+}

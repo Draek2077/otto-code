@@ -10,6 +10,7 @@ export type BrowserViewport =
 export const RESPONSIVE_BROWSER_VIEWPORT: BrowserViewport = { mode: "responsive" };
 export interface BrowserRecord {
   browserId: string;
+  renderMode: "native" | "hosted";
   url: string;
   title: string;
   isLoading: boolean;
@@ -48,6 +49,7 @@ const BrowserViewportSchema = z.discriminatedUnion("mode", [
 
 const BrowserRecordSchema = z.strictObject({
   browserId: z.string(),
+  renderMode: z.enum(["native", "hosted"]).optional().default("native"),
   url: z.string(),
   title: z.string(),
   isLoading: z.boolean(),
@@ -149,6 +151,7 @@ export function createBrowserRecord(input: {
   browserId: string;
   initialUrl: string | null | undefined;
   now: number;
+  renderMode?: "native" | "hosted";
   isPreview?: boolean;
   previewServerId?: string | null;
   previewServerName?: string | null;
@@ -157,6 +160,7 @@ export function createBrowserRecord(input: {
 }): BrowserRecord {
   return {
     browserId: input.browserId,
+    renderMode: input.renderMode ?? "native",
     url: normalizeBrowserUrl(input.initialUrl),
     title: "",
     isLoading: false,
@@ -204,6 +208,7 @@ export function rehydrateBrowserRecord(
 
 function normalizePersistedBrowserFields(raw: Partial<BrowserRecord> | undefined): {
   createdAt: number;
+  renderMode: "native" | "hosted";
   isPreview: boolean;
   previewServerId: string | null;
   previewServerName: string | null;
@@ -213,6 +218,7 @@ function normalizePersistedBrowserFields(raw: Partial<BrowserRecord> | undefined
   const isPreview = raw?.isPreview ?? false;
   return {
     createdAt: raw?.createdAt ?? Date.now(),
+    renderMode: raw?.renderMode === "hosted" ? "hosted" : "native",
     isPreview,
     previewServerId: raw?.previewServerId ?? null,
     previewServerName: raw?.previewServerName ?? null,
@@ -258,7 +264,8 @@ export function applyBrowserPatch<S extends BrowserIndexState>(
     nextRecord.previewServerId === existing.previewServerId &&
     nextRecord.previewServerName === existing.previewServerName &&
     nextRecord.previewCwd === existing.previewCwd &&
-    nextRecord.previewStatus === existing.previewStatus
+    nextRecord.previewStatus === existing.previewStatus &&
+    nextRecord.renderMode === existing.renderMode
   ) {
     return state;
   }

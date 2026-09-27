@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View, type GestureResponderEvent } from "react-native";
-import { Canvas, Image as SkiaImage, Skia, type SkImage } from "@shopify/react-native-skia";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { EditingTextInput, type EditingTextInputHandle } from "@/components/ui/text-input";
 import {
@@ -23,6 +22,7 @@ import type {
   RemoteBrowserCommand,
   RemoteBrowserTab,
 } from "@otto-code/protocol/browser-remote/rpc-schemas";
+import { RemoteBrowserFrame, type RemoteBrowserFrameHandle } from "./remote-browser-frame";
 
 interface Props {
   browserId: string;
@@ -70,10 +70,12 @@ export function BrowserPane({
     (state) => state.sessions[serverId]?.serverInfo?.features?.remoteBrowser === true,
   );
   const presented = useRetainedPanelActive() && isInteractive !== false;
-  const [size, setSize] = useState({ width: 390, height: 700 });
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const measured = size.width > 0 && size.height > 0;
   const [tab, setTab] = useState<RemoteBrowserTab | null>(null);
   const hasTab = Boolean(tab);
-  const [image, setImage] = useState<SkImage | null>(null);
+  const [hasFrame, setHasFrame] = useState(false);
+  const frameRef = useRef<RemoteBrowserFrameHandle>(null);
   const [address, setAddress] = useState("");
   const editingAddress = useRef(false);
   const addressInput = useRef<EditingTextInputHandle>(null);
@@ -130,10 +132,15 @@ export function BrowserPane({
         addressInput.current?.replaceText(next.url);
       }
       updateBrowser(browserId, {
+        renderMode: "hosted",
         url: next.url,
         title: next.title,
         lastError: next.error,
         isLoading: next.state === "starting",
+        viewport:
+          next.viewport.mode === "fixed"
+            ? createFixedBrowserViewport(next.viewport.width, next.viewport.height)
+            : { mode: "responsive" },
       });
     },
     [browserId, updateBrowser],
@@ -153,7 +160,7 @@ export function BrowserPane({
   // Open is idempotent: the same tab ID reattaches to its existing page after
   // a socket loss, preserving scroll, forms and history while that page lives.
   useEffect(() => {
-    if (!hydrated || !browser || !client || !connected || !supported) return;
+    if (!hydrated || !browser || !client || !connected || !supported || !measured) return;
     let live = true;
     setError(null);
     void client
@@ -166,12 +173,6 @@ export function BrowserPane({
       .then((response) => {
         if (!live) return undefined;
         acceptTab(response.tab);
-        if (response.tab?.viewport.mode === "fixed") {
-          setViewport(
-            browserId,
-            createFixedBrowserViewport(response.tab.viewport.width, response.tab.viewport.height),
-          );
-        }
         revision.current = undefined;
         return undefined;
       })
@@ -181,16 +182,9 @@ export function BrowserPane({
     return () => {
       live = false;
     };
-    // Viewport changes use the next effect; opening follows connection changes.
+    // Opening follows connection changes; existing host viewport wins on attach.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, Boolean(browser), client, connected, supported, workspaceId, browserId]);
-
-  useEffect(() => {
-    if (!hasTab || !connected || !supported) return;
-    void run({ kind: "viewport", browserId, viewport: effectiveViewport }).catch((cause: unknown) =>
-      setError(errorText(cause)),
-    );
-  }, [hasTab, connected, supported, effectiveViewport, run, browserId]);
+  }, [hydrated, Boolean(browser), client, connected, supported, measured, workspaceId, browserId]);
 
   useEffect(() => {
     if (!presented || !hasTab || !client || !connected || !supported) return;
@@ -210,19 +204,9 @@ export function BrowserPane({
         if (live) {
           acceptTab(response.tab);
           if (response.frame) {
-            const encoded = Skia.Data.fromBase64(response.frame.dataBase64);
-            let decoded: SkImage | null;
-            try {
-              decoded = Skia.Image.MakeImageFromEncoded(encoded);
-            } finally {
-              encoded.dispose();
-            }
-            if (!decoded)
-              throw new Error("The host sent a browser frame that could not be decoded.");
-            // Keep the last decoded frame mounted until the next one is ready.
-            // Swapping image URIs made the native image view briefly draw blank.
+            await frameRef.current?.present(response.frame.dataBase64);
             revision.current = response.frame.revision;
-            setImage(decoded);
+            setHasFrame(true);
           }
           setError(response.tab?.error ?? null);
           failures = 0;
@@ -319,9 +303,21 @@ export function BrowserPane({
     [run],
   );
 
+  const claimViewport = useCallback(() => {
+    if (!tab) return;
+    if (
+      tab.viewport.mode === effectiveViewport.mode &&
+      tab.viewport.width === effectiveViewport.width &&
+      tab.viewport.height === effectiveViewport.height
+    )
+      return;
+    act({ kind: "viewport", browserId, viewport: effectiveViewport });
+  }, [tab, effectiveViewport, act, browserId]);
+
   const onPagePress = useCallback(
     (event: GestureResponderEvent) => {
       onFocusPane?.();
+      claimViewport();
       if (swiped.current) {
         swiped.current = false;
         return;
@@ -333,7 +329,7 @@ export function BrowserPane({
       const y = (locationY - (size.height - vh * scale) / 2) / scale;
       if (x >= 0 && y >= 0 && x <= vw && y <= vh) act({ kind: "tap", browserId, x, y });
     },
-    [onFocusPane, displayViewport, size, act, browserId],
+    [onFocusPane, claimViewport, displayViewport, size, act, browserId],
   );
 
   const onTouchMove = useCallback(
@@ -388,6 +384,29 @@ export function BrowserPane({
       fastFrames.current = false;
     }, 1_200);
   }, []);
+
+  const onWheel = useCallback(
+    (deltaX: number, deltaY: number) => {
+      claimViewport();
+      fastFrames.current = true;
+      wakeFramePoll.current?.();
+      queueScroll(-deltaX, -deltaY);
+      if (scrollCooldown.current) clearTimeout(scrollCooldown.current);
+      scrollCooldown.current = setTimeout(() => {
+        fastFrames.current = false;
+      }, 1_200);
+    },
+    [claimViewport, queueScroll],
+  );
+
+  const onKeyInput = useCallback(
+    (value: string, kind: "text" | "key") => {
+      claimViewport();
+      if (kind === "text") act({ kind: "type", browserId, text: value });
+      else act({ kind: "key", browserId, key: value });
+    },
+    [claimViewport, act, browserId],
+  );
 
   if (connected && !supported)
     return (
@@ -462,14 +481,24 @@ export function BrowserPane({
                 key={preset.label}
                 selected={selectedSize === preset}
                 showSelectedCheck
-                onSelect={() =>
-                  setViewport(
+                onSelect={() => {
+                  const nextViewport = preset.width
+                    ? createFixedBrowserViewport(preset.width, preset.height)
+                    : { mode: "responsive" as const };
+                  setViewport(browserId, nextViewport);
+                  act({
+                    kind: "viewport",
                     browserId,
-                    preset.width
-                      ? createFixedBrowserViewport(preset.width, preset.height)
-                      : { mode: "responsive" },
-                  )
-                }
+                    viewport:
+                      nextViewport.mode === "fixed"
+                        ? nextViewport
+                        : {
+                            mode: "responsive",
+                            width: Math.max(240, Math.round(size.width)),
+                            height: Math.max(240, Math.round(size.height)),
+                          },
+                  });
+                }}
               >
                 {preset.label}
                 {preset.width ? ` · ${preset.width}×${preset.height}` : ""}
@@ -503,6 +532,7 @@ export function BrowserPane({
           style={styles.imagePress}
           onPress={onPagePress}
           onTouchStart={(event) => {
+            claimViewport();
             const point = event.nativeEvent.touches?.[0];
             swiped.current = false;
             if (scrollCooldown.current) clearTimeout(scrollCooldown.current);
@@ -519,22 +549,18 @@ export function BrowserPane({
           onTouchEnd={onTouchEnd}
           onTouchCancel={onTouchCancel}
         >
-          {image ? (
-            <Canvas style={styles.image}>
-              <SkiaImage
-                image={image}
-                fit="contain"
-                x={0}
-                y={0}
-                width={size.width}
-                height={size.height}
-              />
-            </Canvas>
-          ) : (
-            <View style={styles.center}>
+          <RemoteBrowserFrame
+            ref={frameRef}
+            width={size.width}
+            height={size.height}
+            onWheel={onWheel}
+            onKeyInput={onKeyInput}
+          />
+          {!hasFrame ? (
+            <View pointerEvents="none" style={styles.framePlaceholder}>
               <Text style={styles.message}>Connecting to host browser…</Text>
             </View>
-          )}
+          ) : null}
         </Pressable>
       </View>
       <View style={styles.inputRow}>
@@ -608,7 +634,11 @@ const styles = StyleSheet.create((theme) => ({
   viewportTrigger: { flexDirection: "row", alignItems: "center", gap: 2 },
   page: { flex: 1, overflow: "hidden" },
   imagePress: { flex: 1 },
-  image: { width: "100%", height: "100%" },
+  framePlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 16 },
   message: { color: theme.colors.foregroundMuted, textAlign: "center", padding: 8 },
   error: {

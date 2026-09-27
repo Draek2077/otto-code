@@ -308,14 +308,21 @@ real composer concurrently with MCP input, including page-created background tab
 
 ### Resident state
 
-Mobile browser tabs keep the ordinary workspace browser ID and local URL
-record, while the daemon owns the page and its viewport. Android native and
-iOS web clients use `browser.remote.execute.request` to attach to the existing
-page after a socket loss. A live page keeps its scroll, forms, and history;
+Hosted browser tabs keep the ordinary workspace browser ID and local URL
+record, while the daemon owns the page and its viewport. Android native,
+iOS web, and desktop clients use `browser.remote.execute.request` to attach
+to the existing page after a socket loss. A live page keeps its scroll, forms, and history;
 after suspension or daemon restart the same tab ID reloads its last URL. The
-mobile pane sends its measured size for responsive mode or the chosen fixed
-device dimensions. AI screenshots and controls target that same daemon page
-and viewport. The shared snapshot engine supplies stable element references.
+active client sends its measured size for responsive mode or the chosen fixed
+device dimensions when it takes control. Passive viewers keep the host's
+viewport. AI screenshots and controls target that same daemon page and
+viewport. The shared snapshot engine supplies stable element references.
+Plain AI-created tabs use this host and appear in each connected client's
+ordinary workspace tab strip. Closing a hosted tab closes the daemon page and
+withdraws it from other clients; a stale client cannot reopen that closed ID.
+Desktop users can create a hosted page with **New browser on host**; the
+ordinary desktop browser button still opens a native page. Existing native
+pages do not transfer their live form or scroll state to the hosted browser.
 
 The daemon permits four live hosted pages. A page unused for five minutes is
 suspended, and an unclaimed suspended tab is forgotten after an hour. Repeated
@@ -332,9 +339,9 @@ quarantines it above 512 MiB;
 native image and GPU memory are outside that measurement. The host uses Edge,
 Chrome, or a Playwright Chromium installation, and reports an install action
 when none is available. Mobile annotation and `browser_screenshot_element`
-are not supported by this host. Agent-created browser tabs and Preview's
-automatic tab creation still use the desktop host; the mobile Preview button
-is hidden until the hosted tab binding is implemented. Page-created popup
+are not supported by this host. Preview's automatic tab creation still uses
+the desktop host; the mobile Preview button is hidden until the hosted tab
+binding is implemented. Page-created popup
 windows are closed rather than left as untracked daemon pages.
 
 Responsive browser surfaces snap their bounds outward to whole CSS pixels, with

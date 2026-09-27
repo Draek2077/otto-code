@@ -268,7 +268,16 @@ export class BrowserToolsBroker {
     | { ok: true; value: RegisteredBrowserHost }
     | { ok: false; payload: BrowserToolsResponsePayload } {
     if (command.command === "new_tab") {
-      const host = this.selectMostRecentlyRegisteredHost();
+      // Plain agent tabs live on the daemon so another client can attach to the
+      // same page. Preview retains its desktop binding until its workspace UI
+      // can adopt daemon-created preview metadata.
+      const hosts = [...this.clients.values()].toReversed();
+      const preferred = command.args.preview
+        ? hosts.find((entry) => entry.client.hostKind !== "daemon-hosted")
+        : hosts.find((entry) => entry.client.hostKind === "daemon-hosted");
+      // COMPAT(daemonHostedNewTab): added in v0.9.25, remove by 2027-03-27.
+      // Broker users without a daemon browser keep the existing desktop path.
+      const host = preferred ?? this.selectMostRecentlyRegisteredHost();
       return host
         ? { ok: true, value: host }
         : { ok: false, payload: this.noBrowserHostFailure(requestId) };
