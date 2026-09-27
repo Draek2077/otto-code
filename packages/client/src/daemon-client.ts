@@ -8358,7 +8358,6 @@ export class DaemonClient {
     }
     return payload.status;
   }
-
   private readonly browser = new BrowserRequests({
     request: (params) => this.sendNamespacedCorrelatedSessionRequest(params),
   });
@@ -10176,6 +10175,7 @@ export class DaemonClient {
   }
 
   private tryHandleBinaryFrame(rawBytes: Uint8Array): boolean {
+    if (this.browser.handleBinaryFrame(rawBytes)) return true;
     const fileFrame = decodeFileTransferFrame(rawBytes);
     if (fileFrame) {
       this.traceInstant("otto.ws.message.inbound", {

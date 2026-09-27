@@ -1,8 +1,11 @@
 import { Canvas, Image, Skia, type SkImage } from "@shopify/react-native-skia";
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 
+/** A JPEG as the host sent it: bytes, or base64 text. */
+export type RemoteBrowserPicture = Uint8Array | string;
+
 export interface RemoteBrowserFrameHandle {
-  present(dataBase64: string): Promise<void> | void;
+  present(picture: RemoteBrowserPicture): Promise<void> | void;
 }
 
 interface Props {
@@ -18,8 +21,11 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
     const canvasStyle = useMemo(() => ({ width, height }), [width, height]);
 
     useImperativeHandle(ref, () => ({
-      present(dataBase64) {
-        const encoded = Skia.Data.fromBase64(dataBase64);
+      present(picture) {
+        const encoded =
+          typeof picture === "string"
+            ? Skia.Data.fromBase64(picture)
+            : Skia.Data.fromBytes(picture);
         let decoded: SkImage | null;
         try {
           decoded = Skia.Image.MakeImageFromEncoded(encoded);

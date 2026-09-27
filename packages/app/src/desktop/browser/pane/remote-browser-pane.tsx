@@ -27,6 +27,7 @@ import {
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { useAppVisible } from "@/hooks/use-app-visible";
 import {
   createFixedBrowserViewport,
   normalizeWorkspaceBrowserUrl,
@@ -39,6 +40,11 @@ import type {
 } from "@otto-code/protocol/browser-remote/rpc-schemas";
 import { RemoteBrowserFrame, type RemoteBrowserFrameHandle } from "./remote-browser-frame";
 import { useHostedPreviewGate } from "./hosted-preview-gate";
+import { useHostedStreamMeter } from "./use-hosted-stream-meter";
+import {
+  FRAME_LONG_POLL_MS,
+  nextFramePollDelayMs,
+} from "@otto-code/protocol/browser-remote/frame-pacing";
 
 interface Props {
   browserId: string;
@@ -73,6 +79,42 @@ function errorText(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
+function PaneNotices({
+  error,
+  connected,
+  onRetry,
+}: {
+  error: string | null;
+  connected: boolean;
+  onRetry: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {error ? (
+        <View style={styles.error}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable accessibilityRole="button" onPress={onRetry}>
+            <Text style={styles.retry}>{t("common.actions.retry")}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {!connected ? (
+        <Text style={styles.message}>{t("workspace.browser.hosted.disconnected")}</Text>
+      ) : null}
+    </>
+  );
+}
+
+function StreamMeterLine({ text }: { text: string }) {
+  if (!text) return null;
+  return (
+    <Text style={styles.meter} numberOfLines={1}>
+      {text}
+    </Text>
+  );
+}
+
 // The toolbar has many independent controls; stable callbacks matter less than
 // avoiding redundant frame decode. The frame loop is serialized below.
 /* eslint-disable react-perf/jsx-no-new-function-as-prop */
@@ -93,7 +135,11 @@ export function BrowserPane({
   const supported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.remoteBrowser === true,
   );
-  const presented = useRetainedPanelActive() && isInteractive !== false;
+  // A tab nobody can see asks for nothing: not behind another tab, and not
+  // while the app itself is in the background.
+  const appVisible = useAppVisible();
+  const presented = useRetainedPanelActive() && isInteractive !== false && appVisible;
+  const { text: meterText, recordFrame, recordHost } = useHostedStreamMeter(presented);
   const previewGate = useHostedPreviewGate({ browserId, serverId });
   const previewPending = previewGate.pending;
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -120,9 +166,6 @@ export function BrowserPane({
     moved: boolean;
   } | null>(null);
   const swiped = useRef(false);
-  const fastFrames = useRef(false);
-  const wakeFramePoll = useRef<(() => void) | null>(null);
-  const scrollCooldown = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollPending = useRef({ x: 0, y: 0 });
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollBusy = useRef(false);
@@ -231,21 +274,33 @@ export function BrowserPane({
     if (!presented || !hasTab || !client || !connected || !supported) return;
     let live = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    let polling = false;
     let failures = 0;
+    // One request at a time. The host holds it until the page repaints, so a
+    // still page costs nothing and a slow link lowers the frame rate instead
+    // of building a queue.
     const poll = async () => {
-      if (polling) return;
-      polling = true;
+      const requestedAt = Date.now();
+      let receivedFrame = false;
       try {
         const response = await client.remoteBrowserExecute(workspaceId, {
           kind: "frame",
           browserId,
           knownRevision: revision.current,
+          waitMs: FRAME_LONG_POLL_MS,
         });
         if (live) {
           acceptTab(response.tab);
+          if (response.stream) recordHost(response.stream);
           if (response.frame) {
-            await frameRef.current?.present(response.frame.dataBase64);
+            receivedFrame = true;
+            const presentedAt = Date.now();
+            const picture = response.frame.image ?? response.frame.dataBase64 ?? "";
+            await frameRef.current?.present(picture);
+            recordFrame({
+              at: presentedAt,
+              bytes: typeof picture === "string" ? picture.length : picture.byteLength,
+              presentMs: Date.now() - presentedAt,
+            });
             revision.current = response.frame.revision;
             setHasFrame(true);
           }
@@ -256,27 +311,31 @@ export function BrowserPane({
         if (live) setPollError(errorText(cause));
         failures++;
       } finally {
-        polling = false;
         if (live) {
-          let delay = fastFrames.current ? 150 : 900;
-          if (failures) delay = Math.min(15_000, 1_000 * 2 ** failures);
+          const delay = failures
+            ? Math.min(15_000, 1_000 * 2 ** failures)
+            : nextFramePollDelayMs({ receivedFrame, elapsedMs: Date.now() - requestedAt });
           timer = setTimeout(() => void poll(), delay);
         }
       }
     };
-    wakeFramePoll.current = () => {
-      if (!live || polling) return;
-      if (timer) clearTimeout(timer);
-      timer = null;
-      void poll();
-    };
     void poll();
     return () => {
       live = false;
-      wakeFramePoll.current = null;
       if (timer) clearTimeout(timer);
     };
-  }, [presented, hasTab, client, connected, supported, workspaceId, browserId, acceptTab]);
+  }, [
+    presented,
+    hasTab,
+    client,
+    connected,
+    supported,
+    workspaceId,
+    browserId,
+    acceptTab,
+    recordFrame,
+    recordHost,
+  ]);
 
   const flushScroll = useCallback(() => {
     if (!scrollMounted.current || scrollBusy.current || !client || !connected) return;
@@ -327,12 +386,9 @@ export function BrowserPane({
     scrollMounted.current = true;
     return () => {
       if (scrollTimer.current) clearTimeout(scrollTimer.current);
-      if (scrollCooldown.current) clearTimeout(scrollCooldown.current);
       scrollMounted.current = false;
       scrollTimer.current = null;
-      scrollCooldown.current = null;
       scrollPending.current = { x: 0, y: 0 };
-      fastFrames.current = false;
     };
   }, []);
 
@@ -386,8 +442,6 @@ export function BrowserPane({
       if (!gesture.moved) {
         gesture.moved = true;
         swiped.current = true;
-        fastFrames.current = true;
-        wakeFramePoll.current?.();
       }
       queueScroll(point.pageX - gesture.lastX, point.pageY - gesture.lastY);
       gesture.lastX = point.pageX;
@@ -407,35 +461,19 @@ export function BrowserPane({
         Math.abs(point.pageX - gesture.x) + Math.abs(point.pageY - gesture.y) >= 15;
       if (!moved) return;
       swiped.current = true;
-      fastFrames.current = true;
-      wakeFramePoll.current?.();
       queueScroll(point.pageX - gesture.lastX, point.pageY - gesture.lastY);
-      if (scrollCooldown.current) clearTimeout(scrollCooldown.current);
-      scrollCooldown.current = setTimeout(() => {
-        fastFrames.current = false;
-      }, 1_200);
     },
     [queueScroll],
   );
 
   const onTouchCancel = useCallback(() => {
     touch.current = null;
-    if (scrollCooldown.current) clearTimeout(scrollCooldown.current);
-    scrollCooldown.current = setTimeout(() => {
-      fastFrames.current = false;
-    }, 1_200);
   }, []);
 
   const onWheel = useCallback(
     (deltaX: number, deltaY: number) => {
       claimViewport();
-      fastFrames.current = true;
-      wakeFramePoll.current?.();
       queueScroll(-deltaX, -deltaY);
-      if (scrollCooldown.current) clearTimeout(scrollCooldown.current);
-      scrollCooldown.current = setTimeout(() => {
-        fastFrames.current = false;
-      }, 1_200);
     },
     [claimViewport, queueScroll],
   );
@@ -480,7 +518,6 @@ export function BrowserPane({
       </View>
     );
 
-  const shownError = error ?? pollError ?? tab?.error ?? null;
   const canGoBack = tab?.canGoBack === true;
   const canGoForward = tab?.canGoForward === true;
 
@@ -578,17 +615,11 @@ export function BrowserPane({
           </DropdownMenuContent>
         </DropdownMenu>
       </View>
-      {shownError ? (
-        <View style={styles.error}>
-          <Text style={styles.errorText}>{shownError}</Text>
-          <Pressable accessibilityRole="button" onPress={() => act({ kind: "reload", browserId })}>
-            <Text style={styles.retry}>{t("common.actions.retry")}</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {!connected ? (
-        <Text style={styles.message}>{t("workspace.browser.hosted.disconnected")}</Text>
-      ) : null}
+      <PaneNotices
+        error={error ?? pollError ?? tab?.error ?? null}
+        connected={connected}
+        onRetry={() => act({ kind: "reload", browserId })}
+      />
       <View
         style={styles.page}
         onLayout={(event) => {
@@ -605,7 +636,6 @@ export function BrowserPane({
             claimViewport();
             const point = event.nativeEvent.touches?.[0];
             swiped.current = false;
-            if (scrollCooldown.current) clearTimeout(scrollCooldown.current);
             if (point)
               touch.current = {
                 x: point.pageX,
@@ -633,6 +663,7 @@ export function BrowserPane({
           ) : null}
         </Pressable>
       </View>
+      <StreamMeterLine text={meterText} />
       <View style={styles.inputRow}>
         <ThemedTextInput
           ref={typeInput}
@@ -708,6 +739,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   errorText: { flex: 1, color: theme.colors.foreground, fontSize: 12 },
   retry: { color: theme.colors.foreground, fontWeight: "600" },
+  meter: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    textAlign: "right",
+  },
   inputRow: {
     flexDirection: "row",
     alignItems: "center",

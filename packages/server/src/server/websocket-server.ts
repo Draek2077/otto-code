@@ -55,7 +55,11 @@ import {
   type WSOutboundMessage,
   wrapSessionMessage,
 } from "./messages.js";
-import { asUint8Array, decodeBinaryFrame } from "@otto-code/protocol/binary-frames/index";
+import {
+  asUint8Array,
+  decodeBinaryFrame,
+  encodeBrowserFrame,
+} from "@otto-code/protocol/binary-frames/index";
 import type { TerminalActivity } from "@otto-code/protocol/terminal-activity";
 import type { HostnamesConfig } from "./hostnames.js";
 import { isHostnameAllowed } from "./hostnames.js";
@@ -3129,11 +3133,17 @@ export class VoiceAssistantWebSocketServer {
           throw new Error("Browser access is not allowed for this connection.");
         if (!(await this.workspaceRegistry.get(request.workspaceId)))
           throw new Error("Workspace not found.");
-        payload = {
-          requestId: request.requestId,
-          ok: true,
-          ...(await this.remoteBrowserManager.execute(request.workspaceId, request.command)),
-        };
+        const { frameImage, ...result } = await this.remoteBrowserManager.execute(
+          request.workspaceId,
+          request.command,
+        );
+        // The picture goes first so it is waiting when its description arrives.
+        if (frameImage)
+          this.sendBinaryToClient(
+            ws,
+            encodeBrowserFrame({ requestId: request.requestId, image: frameImage }),
+          );
+        payload = { requestId: request.requestId, ok: true, ...result };
       } catch (cause) {
         payload = {
           requestId: request.requestId,

@@ -40,6 +40,19 @@ describe("hosted browser canvas", () => {
     expect(pixel(canvas)[0]).toBeLessThan(100);
   });
 
+  it("draws a picture that arrived as bytes", async () => {
+    const ref = createRef<RemoteBrowserFrameHandle>();
+    const screen = render(<RemoteBrowserFrame ref={ref} width={8} height={8} />);
+    const canvas = screen.container.querySelector("canvas")!;
+    const bytes = Uint8Array.from(atob(jpeg("red")), (character) => character.charCodeAt(0));
+
+    await act(async () => {
+      await ref.current!.present(bytes);
+    });
+    expect(pixel(canvas)[0]).toBeGreaterThan(200);
+    expect(pixel(canvas)[2]).toBeLessThan(100);
+  });
+
   it("routes desktop wheel and keyboard input into the hosted page", () => {
     const onWheel = vi.fn();
     const onKeyInput = vi.fn();

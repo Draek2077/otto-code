@@ -27,6 +27,10 @@ export const RemoteBrowserCommandSchema = z.discriminatedUnion("kind", [
     kind: z.literal("frame"),
     browserId: BrowserAutomationBrowserIdSchema,
     knownRevision: z.number().int().nonnegative().optional(),
+    // The host holds the request until the page repaints, up to this long.
+    waitMs: z.number().int().positive().max(30_000).optional(),
+    // The client takes the picture as a binary frame sent ahead of the response.
+    binary: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("navigate"),
@@ -110,6 +114,24 @@ export const RemoteBrowserExecuteResponseSchema = z.object({
         width: z.number().int().positive(),
         height: z.number().int().positive(),
         revision: z.number().int().nonnegative(),
+      })
+      .optional(),
+    // Describes a picture that was sent as a binary frame for this request.
+    binaryFrame: z
+      .object({
+        width: z.number().int().positive(),
+        height: z.number().int().positive(),
+        revision: z.number().int().nonnegative(),
+      })
+      .optional(),
+    // Host-side counters for the tab's frame stream, for monitoring its cost.
+    stream: z
+      .object({
+        captures: z.number().int().nonnegative(),
+        pushed: z.number().int().nonnegative(),
+        unchanged: z.number().int().nonnegative(),
+        framesSent: z.number().int().nonnegative(),
+        bytesSent: z.number().int().nonnegative(),
       })
       .optional(),
     error: z.string().optional(),

@@ -25,6 +25,7 @@ import {
   type SnapshotPage,
 } from "@otto-code/protocol/browser-automation/snapshot-engine";
 import { browserToolsFailure } from "./errors.js";
+import { TabStream, type StreamStats } from "./remote-browser-stream.js";
 
 type Viewport = RemoteBrowserTab["viewport"];
 type BrowserLogs = Extract<BrowserAutomationResult, { command: "logs" }>;
@@ -48,13 +49,9 @@ interface Tab extends TabOrigin {
   lastClaimed: number;
   canGoBack: boolean;
   canGoForward: boolean;
-  lastFrameAt: number;
-  lastScrollAt: number;
   lastHeapCheckAt: number;
-  frameRevision: number;
   focusRequestId: string | null;
-  cachedFrame: Buffer | null;
-  frameInFlight: Promise<Buffer> | null;
+  stream: TabStream;
   crashCount: number;
   consoleLog: BrowserLogs["console"];
   networkLog: BrowserLogs["network"];
@@ -67,11 +64,6 @@ interface Tab extends TabOrigin {
 const MAX_LIVE_TABS = 4;
 const IDLE_SUSPEND_MS = 5 * 60_000;
 const METADATA_REAP_MS = 60 * 60_000;
-const FRAME_INTERVAL_MS = 700;
-const ACTIVE_SCROLL_FRAME_INTERVAL_MS = 150;
-const ACTIVE_SCROLL_WINDOW_MS = 1_200;
-// JSON/base64 plus relay encryption must fit Cloudflare's 1 MiB WebSocket frame.
-const MAX_FRAME_BYTES = 650_000;
 const MAX_PAGE_JS_HEAP_BYTES = 512 * 1024 * 1024;
 const DEFAULT_VIEWPORT: Viewport = { mode: "responsive", width: 390, height: 844 };
 // Match the desktop browser tool's vision budget, including for tall full-page captures.
@@ -230,7 +222,7 @@ export class RemoteBrowserManager {
               tab.context = null;
               tab.state = "crashed";
               tab.error = "The host browser stopped. Reload this tab to recover.";
-              tab.cachedFrame = null;
+              void tab.stream.detach();
             }
           }
         });
@@ -277,6 +269,7 @@ export class RemoteBrowserManager {
       const page = await context.newPage();
       tab.context = context;
       tab.page = page;
+      tab.stream.attach(page);
       this.observePage(tab, page);
       // Until page-created tabs have workspace-layout binding, discard them at
       // birth so an untracked popup cannot hold another renderer indefinitely.
@@ -291,7 +284,7 @@ export class RemoteBrowserManager {
           tab.state === "quarantined"
             ? "This page crashed repeatedly and was stopped."
             : "The page crashed. Reload to recover.";
-        tab.cachedFrame = null;
+        tab.stream.invalidate();
         void this.suspend(tab, tab.state);
       });
       page.on("framenavigated", (frame) => {
@@ -299,7 +292,7 @@ export class RemoteBrowserManager {
         tab.url = page.url();
         tab.title = "";
         this.snapshotEngine.clearBrowser(tab.browserId);
-        tab.cachedFrame = null;
+        tab.stream.invalidate();
         // A closing page rejects the history read; its state no longer matters.
         void readHistory(tab, page).catch(() => undefined);
       });
@@ -318,8 +311,7 @@ export class RemoteBrowserManager {
     tab.page = null;
     tab.context = null;
     tab.state = state;
-    tab.cachedFrame = null;
-    tab.frameInFlight = null;
+    await tab.stream.detach();
     tab.canGoBack = false;
     tab.canGoForward = false;
     tab.responses.clear();
@@ -355,13 +347,9 @@ export class RemoteBrowserManager {
       lastClaimed: Date.now(),
       canGoBack: false,
       canGoForward: false,
-      lastFrameAt: 0,
-      lastScrollAt: 0,
       lastHeapCheckAt: 0,
-      frameRevision: 0,
       focusRequestId: null,
-      cachedFrame: null,
-      frameInFlight: null,
+      stream: new TabStream(),
       crashCount: 0,
       consoleLog: [],
       networkLog: [],
@@ -455,38 +443,22 @@ export class RemoteBrowserManager {
     return element;
   }
 
-  private async captureFrame(tab: Tab, page: Page): Promise<Buffer> {
-    if (Date.now() - tab.lastHeapCheckAt > 30_000) {
-      tab.lastHeapCheckAt = Date.now();
-      const usedHeap = await page
-        .evaluate(() => {
-          const browserPerformance = performance as Performance & {
-            memory?: { usedJSHeapSize: number };
-          };
-          return browserPerformance.memory?.usedJSHeapSize ?? 0;
-        })
-        .catch(() => 0);
-      if (usedHeap > MAX_PAGE_JS_HEAP_BYTES) {
-        await this.suspend(tab, "quarantined");
-        tab.error = "This page exceeded the host browser memory limit and was stopped.";
-        throw new Error(tab.error);
-      }
+  private async checkHeap(tab: Tab, page: Page): Promise<void> {
+    if (Date.now() - tab.lastHeapCheckAt <= 30_000) return;
+    tab.lastHeapCheckAt = Date.now();
+    const usedHeap = await page
+      .evaluate(() => {
+        const browserPerformance = performance as Performance & {
+          memory?: { usedJSHeapSize: number };
+        };
+        return browserPerformance.memory?.usedJSHeapSize ?? 0;
+      })
+      .catch(() => 0);
+    if (usedHeap > MAX_PAGE_JS_HEAP_BYTES) {
+      await this.suspend(tab, "quarantined");
+      tab.error = "This page exceeded the host browser memory limit and was stopped.";
+      throw new Error(tab.error);
     }
-    for (const quality of [55, 35, 20, 10]) {
-      const buffer = await page.screenshot({
-        type: "jpeg",
-        quality,
-        animations: "disabled",
-        timeout: 10_000,
-      });
-      if (buffer.length <= MAX_FRAME_BYTES) {
-        tab.cachedFrame = buffer;
-        tab.frameRevision++;
-        tab.lastFrameAt = Date.now();
-        return buffer;
-      }
-    }
-    throw new Error("Page frame exceeds the mobile transfer limit. Try a smaller viewport.");
   }
 
   // Each command has its own bounded side effect and shares the same tab lifecycle.
@@ -504,6 +476,10 @@ export class RemoteBrowserManager {
       height: number;
       revision: number;
     };
+    binaryFrame?: { width: number; height: number; revision: number };
+    /** The picture for `binaryFrame`; the socket layer sends it as bytes. */
+    frameImage?: Buffer;
+    stream?: StreamStats;
   }> {
     if (command.kind === "list") {
       const tabs = [...this.tabs.values()].filter((tab) => tab.workspaceId === workspaceId);
@@ -539,38 +515,27 @@ export class RemoteBrowserManager {
           width: command.viewport.width,
           height: command.viewport.height,
         });
-      tab.cachedFrame = null;
+      await tab.stream.resize();
       return { tab: asTab(tab) };
     }
     await this.start(tab);
     const page = tab.page!;
     switch (command.kind) {
       case "frame": {
-        const frameInterval =
-          Date.now() - tab.lastScrollAt < ACTIVE_SCROLL_WINDOW_MS
-            ? ACTIVE_SCROLL_FRAME_INTERVAL_MS
-            : FRAME_INTERVAL_MS;
-        if (Date.now() - tab.lastFrameAt >= frameInterval || !tab.cachedFrame) {
-          if (!tab.frameInFlight) {
-            tab.frameInFlight = this.captureFrame(tab, page).finally(() => {
-              tab.frameInFlight = null;
-            });
-          }
-          await tab.frameInFlight;
-        }
+        await this.checkHeap(tab, page);
+        const frame = await tab.stream.next({
+          size: tab.viewport,
+          knownRevision: command.knownRevision,
+          waitMs: command.waitMs,
+          binary: command.binary === true,
+        });
+        const shared = { tab: asTab(tab), stream: tab.stream.stats() };
+        if (!frame) return shared;
+        const { image, ...described } = frame;
+        if (command.binary) return { ...shared, binaryFrame: described, frameImage: image };
         return {
-          tab: asTab(tab),
-          ...(command.knownRevision === tab.frameRevision
-            ? {}
-            : {
-                frame: {
-                  mimeType: "image/jpeg" as const,
-                  dataBase64: tab.cachedFrame!.toString("base64"),
-                  width: tab.viewport.width,
-                  height: tab.viewport.height,
-                  revision: tab.frameRevision,
-                },
-              }),
+          ...shared,
+          frame: { mimeType: "image/jpeg", dataBase64: image.toString("base64"), ...described },
         };
       }
       case "navigate":
@@ -586,23 +551,26 @@ export class RemoteBrowserManager {
         await page.reload({ waitUntil: "domcontentloaded", timeout: 20_000 });
         break;
       case "tap":
+        tab.stream.noteInput();
         await page.mouse.click(command.x, command.y);
         break;
       case "scroll":
         await page.mouse.move(command.x, command.y);
         await page.mouse.wheel(command.deltaX, command.deltaY);
-        tab.lastScrollAt = Date.now();
+        tab.stream.noteInput();
         break;
       case "type":
+        tab.stream.noteInput();
         await page.keyboard.insertText(command.text);
         break;
       case "key":
+        tab.stream.noteInput();
         await page.keyboard.press(command.key);
         break;
     }
     tab.url = page.url();
     tab.title = await page.title().catch(() => tab.title);
-    tab.cachedFrame = null;
+    tab.stream.invalidate();
     await readHistory(tab, page).catch(() => undefined);
     return { tab: asTab(tab) };
   }
@@ -1101,7 +1069,7 @@ export class RemoteBrowserManager {
       }
       tab.url = page.url();
       tab.title = await page.title().catch(() => tab.title);
-      tab.cachedFrame = null;
+      tab.stream.invalidate();
       return {
         type: "browser.automation.execute.response",
         payload: { requestId, ok: true, result },

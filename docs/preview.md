@@ -341,13 +341,8 @@ declares a 45-second automation timeout, because a cold start launches the
 browser before the page loads. `OTTO_HOSTED_BROWSER_AUTOMATION=0` keeps agent
 tabs off the daemon host; the desktop bridge E2E suites set it so they keep
 covering the native webview. Repeated
-page crashes quarantine the tab until it is closed. Each presented client
-polls for at most one JPEG frame at a time, about once per second while idle.
-A drag sends coalesced wheel deltas while the finger moves and temporarily
-polls faster; the host refreshes cached frames at a shorter interval after a
-scroll. Polling remains serial, so slow links reduce the frame rate without
-building a queue. This improves scroll feedback but does not promise native
-display-rate animation. Responsive and fixed viewport presets share a selector
+page crashes quarantine the tab until it is closed. The frame stream is
+described under [Hosted frame stream](#hosted-frame-stream). Responsive and fixed viewport presets share a selector
 beside the address field. Frames are bounded below the relay's 1 MiB message
 limit. The daemon checks a page's Chromium JavaScript heap periodically and
 quarantines it above 512 MiB;
@@ -368,6 +363,67 @@ longer clears it. Back and Forward reflect the page's real history. On a
 phone, Send with an empty field presses Enter, and Backspace in an empty field
 goes to the page. Other keys (Tab, Escape, arrows) have no phone control yet.
 Page-created popup windows are closed rather than left as untracked daemon pages.
+
+### Hosted frame stream
+
+A hosted tab is watched as a stream of JPEG frames. Four rules keep it cheap,
+and each one was measured before it was kept.
+
+- **The page says when it changed.** Chromium's screencast pushes a frame only
+  when the page repaints, so a still page produces none. Where a Chromium
+  cannot screencast, the host takes screenshots on a timer instead. Either
+  way a frame identical to the one before is dropped.
+- **The request waits for the frame.** A client sends one frame request at a
+  time with `waitMs`, and the host holds it until the page repaints or the
+  wait expires. There is no polling interval, and a slow link lowers the frame
+  rate instead of building a queue.
+- **A byte budget, not a frame rate.** Chromium sends its next frame only after
+  the last is acknowledged, so the host delays the acknowledgement by the
+  frame's size: 40 KB/s while the viewer is idle, 300 KB/s for 1.2 seconds
+  after a tap, scroll, or key. A large frame waits longer than a small one.
+  Input releases a pending acknowledgement at once.
+- **The picture travels as bytes.** A client that sends `binary: true` receives
+  the JPEG as a binary frame (opcode `0x20`) ahead of the JSON response that
+  describes it, which spares the third that base64 adds.
+
+A tab nobody can see asks for nothing: not behind another tab, and not while
+the app is in the background. Five seconds after the last frame request the
+host stops the screencast, and the page idles.
+
+`animations: "disabled"` was removed from frame capture. It fast-forwarded CSS
+animations, so the stream showed a different page than the one the agent's
+screenshot saw.
+
+#### Measuring it
+
+`npm run measure:hosted-browser --workspace=@otto-code/server` drives the
+manager the way a client does against five pages served locally, and reports
+bytes on the wire, frames delivered, scroll-to-frame latency, and CPU. Run it
+before and after any change to capture or pacing. `OTTO_STREAM_BENCH_STRATEGY`
+selects the client loop: `fixed` is the original 900 ms poll and stays so old
+numbers remain reproducible, `push` holds the request, `binary` adds byte
+frames and is what the app uses.
+
+Measured 2026-09-27 on Windows with headless Edge, a 390x844 viewport, 20
+seconds per run. "Before" is the original screenshot poll.
+
+| Page                    | Before MB/hour | After MB/hour | Before frames/s | After frames/s |
+| ----------------------- | -------------: | ------------: | --------------: | -------------: |
+| Still                   |            131 |             5 |            1.08 |           0.05 |
+| Blinking text cursor    |             30 |            39 |            1.07 |           1.95 |
+| Small moving element    |             25 |            61 |            1.07 |           3.74 |
+| Every pixel changing    |            513 |           144 |            1.06 |           0.40 |
+| Scrolling half the time |            549 |           567 |            3.43 |           4.75 |
+
+Scroll-to-frame latency fell from 292 ms (p50) and 646 ms (p95) to 19 ms and
+32 ms. Pages with small constant motion cost more than before because they now
+show two to four frames a second instead of one; the idle budget is the dial
+for that trade. These numbers are from one machine on a local socket. They do
+not include relay encryption or a cellular link.
+
+With the metrics bar enabled, a hosted tab shows its own reading under the
+page: frames per second, KB/s, MB/hour, time to draw a frame, and the host's
+count of pushed frames against screenshots.
 
 Responsive browser surfaces snap their bounds outward to whole CSS pixels, with
 the guest sized from the same snapped edges. Fractional splitter positions must
