@@ -410,14 +410,23 @@ export function VisualizerSurface({
     void updateAppSettings({
       visualizerPanelFileAttention: !settings.visualizerPanelFileAttention,
       visualizerPanelCostOverlay: false,
+      visualizerPanelFailures: false,
     });
   }, [settings.visualizerPanelFileAttention, updateAppSettings]);
   const handleToggleCost = useCallback(() => {
     void updateAppSettings({
       visualizerPanelCostOverlay: !settings.visualizerPanelCostOverlay,
       visualizerPanelFileAttention: false,
+      visualizerPanelFailures: false,
     });
   }, [settings.visualizerPanelCostOverlay, updateAppSettings]);
+  const handleToggleFailures = useCallback(() => {
+    void updateAppSettings({
+      visualizerPanelFailures: !settings.visualizerPanelFailures,
+      visualizerPanelFileAttention: false,
+      visualizerPanelCostOverlay: false,
+    });
+  }, [settings.visualizerPanelFailures, updateAppSettings]);
   const handleToggleAudio = useCallback(() => {
     void updateAppSettings({ visualizerSoundMuted: !settings.visualizerSoundMuted });
   }, [settings.visualizerSoundMuted, updateAppSettings]);
@@ -496,6 +505,8 @@ export function VisualizerSurface({
           handleToggleFiles();
         } else if (message.panel === "cost") {
           handleToggleCost();
+        } else if (message.panel === "failures") {
+          handleToggleFailures();
         } else {
           handleToggleStats();
         }
@@ -535,6 +546,7 @@ export function VisualizerSurface({
       handleToggleTimeline,
       handleToggleFiles,
       handleToggleCost,
+      handleToggleFailures,
       handleToggleStats,
       settings.visualizerHudHidden,
     ],
@@ -578,6 +590,7 @@ export function VisualizerSurface({
           timeline: panelsOn && settings.visualizerPanelTimeline,
           fileAttention: panelsOn && settings.visualizerPanelFileAttention,
           costOverlay: panelsOn && settings.visualizerPanelCostOverlay,
+          failures: panelsOn && settings.visualizerPanelFailures,
           stats: panelsOn && settings.visualizerPanelStats,
         },
         render: {
@@ -617,6 +630,7 @@ export function VisualizerSurface({
     settings.visualizerPanelTimeline,
     settings.visualizerPanelFileAttention,
     settings.visualizerPanelCostOverlay,
+    settings.visualizerPanelFailures,
     settings.visualizerPanelStats,
     settings.visualizerRenderBloom,
     settings.visualizerRenderNodeGlow,
@@ -800,12 +814,14 @@ export function VisualizerSurface({
           timelineOpen={settings.visualizerPanelTimeline}
           filesOpen={settings.visualizerPanelFileAttention}
           costOpen={settings.visualizerPanelCostOverlay}
+          failuresOpen={settings.visualizerPanelFailures}
           statsOpen={settings.visualizerPanelStats}
           soundMuted={settings.visualizerSoundMuted}
           hudHidden={settings.visualizerHudHidden}
           onToggleTimeline={handleToggleTimeline}
           onToggleFiles={handleToggleFiles}
           onToggleCost={handleToggleCost}
+          onToggleFailures={handleToggleFailures}
           onToggleStats={handleToggleStats}
           onZoomToFit={handleZoomToFit}
           onRestart={handleRestart}

@@ -15,6 +15,7 @@ import type {
 } from "@otto-code/protocol/agent-types";
 import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
 import type { SimulationEvent } from "@/visualizer/visualizer-view-types";
+import { canonicalFileIdentity } from "@/visualizer/visualizer-file-collisions";
 
 export type VisualizerRuntime =
   | "claude"
@@ -819,6 +820,7 @@ function toolCallStartEvents(input: {
   const { ctx, item, time } = input;
   const rawFilePath = toolCallDetailFilePath(item.detail);
   const filePath = rawFilePath ? relativizeStringPaths(rawFilePath, ctx.workspaceRoot) : undefined;
+  const fileIdentity = rawFilePath ? canonicalFileIdentity(rawFilePath, ctx.workspaceRoot) : null;
   // For a file tool (read/edit/write) the args summary IS the file path, so
   // reuse the same workspace-relative form. Other tools carry a freeform summary
   // (shell command, search query) that may EMBED an absolute path - the same
@@ -835,8 +837,18 @@ function toolCallStartEvents(input: {
         // Friendly, namespace-stripped label ("mcp__otto__suggest_task" ->
         // "Suggest task") - shared with the chat rows so nodes read the same way.
         tool: getToolDisplayName(item.name),
+        callId: item.callId,
         args,
-        ...(filePath ? { inputData: { file_path: filePath } } : {}),
+        ...(filePath
+          ? {
+              inputData: {
+                file_path: filePath,
+                ...(fileIdentity ? { file_identity: fileIdentity } : {}),
+                file_access: item.detail.type === "read" ? "read" : "write",
+                call_id: item.callId,
+              },
+            }
+          : {}),
       },
     },
   ];
@@ -885,6 +897,7 @@ function toolCallToSimulationEvents(input: {
       // Friendly, namespace-stripped label ("mcp__otto__suggest_task" ->
       // "Suggest task") - shared with the chat rows so nodes read the same way.
       tool: getToolDisplayName(item.name),
+      callId: item.callId,
       result: summarizeToolCallResult(item.detail),
       isError,
       ...(tokenCost != null ? { tokenCost } : {}),

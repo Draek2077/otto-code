@@ -1,5 +1,5 @@
 import { COLORS } from '@/lib/colors'
-import { NODE, type Discovery } from '@/lib/agent-types'
+import { NODE, type Discovery, type ToolCallNode } from '@/lib/agent-types'
 import { TOOL_DEDUP_WINDOW_S } from '@/lib/canvas-constants'
 import { pushTimelineBlock, type ProcessEventContext, type MutableEventState } from './process-event'
 import { appendConversation, asString, asBoolean, LABEL_LEN_PARTICLE, LABEL_LEN_TIMELINE } from './types'
@@ -59,6 +59,7 @@ export function handleToolCallStart(
 ): void {
   const agentName = asString(payload.agent)
   const toolName = asString(payload.tool)
+  const callId = asString(payload.callId)
   const args = asString(payload.args)
   const inputData = (payload.inputData && typeof payload.inputData === 'object' && !Array.isArray(payload.inputData))
     ? payload.inputData as Record<string, unknown> : undefined
@@ -69,12 +70,21 @@ export function handleToolCallStart(
     // created within the last 3 seconds (race between Hook Server and Session Watcher)
     let isDuplicate = false
     for (const tc of state.toolCalls.values()) {
-      if (tc.agentId === agentName && tc.toolName === toolName && tc.state === 'running' && (currentTime - tc.startTime) < TOOL_DEDUP_WINDOW_S) {
+      if (tc.agentId === agentName && tc.toolName === toolName && tc.state === 'running' &&
+          (callId ? tc.callId === callId : (currentTime - tc.startTime) < TOOL_DEDUP_WINDOW_S)) {
         isDuplicate = true
         break
       }
     }
     if (isDuplicate) return
+
+    // OTTO PATCH (OTTO-PATCHES.md): record a later identical attempt against
+    // each earlier failure, even after its canvas card has faded away.
+    for (const [id, failure] of state.failedToolCalls) {
+      if (failure.agentId === agentName && failure.toolName === toolName && failure.args === args.slice(0, 500)) {
+        state.failedToolCalls.set(id, { ...failure, retries: failure.retries + 1 })
+      }
+    }
 
     state.agents.set(agentName, {
       ...agent,
@@ -83,12 +93,12 @@ export function handleToolCallStart(
       toolCalls: agent.toolCalls + 1
     })
 
-    const toolId = `tool-${agentName}-${toolName}-${currentTime}`
+    const toolId = callId ? `tool-${agentName}-${callId}` : `tool-${agentName}-${toolName}-${currentTime}`
 
     const pos = ctx.findToolSlot(agent, state.agents, state.toolCalls, currentTime)
 
     state.toolCalls.set(toolId, {
-      id: toolId, agentId: agentName, toolName,
+      id: toolId, callId: callId || undefined, agentId: agentName, toolName,
       state: 'running',
       args,
       inputData,
@@ -145,6 +155,7 @@ export function handleToolCallEnd(
 ): void {
   const agentName = asString(payload.agent)
   const toolName = asString(payload.tool)
+  const callId = asString(payload.callId)
   const result = asString(payload.result, 'Done')
   const tokenCost = typeof payload.tokenCost === 'number' ? payload.tokenCost : undefined
   const isError = asBoolean(payload.isError)
@@ -160,9 +171,23 @@ export function handleToolCallEnd(
     })
 
     const toolState: 'error' | 'complete' = isError ? 'error' : 'complete'
+    let matchedTool: ToolCallNode | undefined
     for (const [id, tc] of state.toolCalls) {
-      if (tc.agentId === agentName && tc.toolName === toolName && tc.state === 'running') {
+      if (tc.agentId === agentName && tc.toolName === toolName && tc.state === 'running' &&
+          (!callId || !tc.callId || tc.callId === callId)) {
+        matchedTool = tc
         state.toolCalls.set(id, { ...tc, state: toolState, completeTime: currentTime, result, tokenCost, errorMessage: isError ? (errorMessage || result) : undefined })
+        if (isError) {
+          state.failedToolCalls.set(id, {
+            id, agentId: agentName, toolName, args: tc.args.slice(0, 500),
+            errorMessage: (errorMessage || result).slice(0, 2000), tokenCost, time: currentTime, retries: 0,
+          })
+          // Bound retained diagnostic data independently of the event log.
+          if (state.failedToolCalls.size > 100) {
+            const oldest = state.failedToolCalls.keys().next().value
+            if (oldest) state.failedToolCalls.delete(oldest)
+          }
+        }
 
         const edgeId = `edge-${id}`
         // Snap any still-traveling outgoing particle to the end
@@ -195,8 +220,7 @@ export function handleToolCallEnd(
 
     // File attention token cost
     if (tokenCost) {
-      const matchedTc = Array.from(state.toolCalls.values()).find(tc => tc.agentId === agentName && tc.toolName === toolName)
-      const filePath = extractFilePath(matchedTc?.inputData, matchedTc?.args)
+      const filePath = extractFilePath(matchedTool?.inputData, matchedTool?.args)
       if (filePath) {
         const existing = state.fileAttention.get(filePath)
         if (existing) {

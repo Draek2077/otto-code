@@ -18,7 +18,7 @@ export type VisualizerHostMessage =
   // forwards the request instead of flipping page-local state - the host flips
   // the matching device-local setting and the change round-trips back to the
   // page via the config.panels push (OTTO PATCH).
-  | { type: "panel-toggle"; panel: "timeline" | "files" | "cost" | "stats" }
+  | { type: "panel-toggle"; panel: "timeline" | "files" | "cost" | "failures" | "stats" }
   // The page's live session list + selection, mirrored to the host so the Otto
   // toolbar's chats dropdown can render + drive them (OTTO PATCH). Emitted
   // whenever the page's sessions, selection, or unseen-activity set changes.
@@ -46,6 +46,7 @@ export type SimulationEventType =
   | "model_detected"
   | "tool_call_start"
   | "tool_call_end"
+  | "file_collision"
   | "subagent_dispatch"
   | "subagent_return"
   | "permission_requested";
@@ -112,6 +113,7 @@ export type VisualizerHostToPageMessage =
           timeline: boolean;
           fileAttention: boolean;
           costOverlay: boolean;
+          failures: boolean;
           // Per-node stats readout overlay, driven by the toolbar's "Toggle
           // Stats" button (OTTO PATCH).
           stats: boolean;

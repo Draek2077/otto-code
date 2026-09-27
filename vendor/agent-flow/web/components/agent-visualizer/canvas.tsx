@@ -24,6 +24,7 @@ import { useCanvasCamera, type CameraFramingConfig } from '@/hooks/use-canvas-ca
 import { BUBBLE_DRAW, BUBBLE_MAX_LINES, PERSISTENT_BUBBLE_MAX_LINES } from '@/lib/canvas-constants'
 import { useCanvasInteraction } from '@/hooks/use-canvas-interaction'
 import { isRenderPaused, onRenderResume } from '@/lib/render-gate'
+import { drawCollisionTrails } from './canvas/draw-collisions'
 
 interface CanvasProps {
   /** Ref to simulation state — read every frame without React re-renders */
@@ -322,6 +323,7 @@ export function AgentCanvas({
 
       drawDiscoveryConnections(ctx, discoveries, agents)
       drawEdges(ctx, edges, agents, toolCalls, activeEdgeIds, timeRef.current)
+      drawCollisionTrails(ctx, simulationRef.current.fileCollisions, agents, simTime)
       drawToolCalls(ctx, toolCalls, timeRef.current, selectedToolCallId)
       drawDiscoveries(ctx, discoveries, agents, selectedDiscoveryId)
       drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current, nodeShape, showNodeGlow, contextDisplay)

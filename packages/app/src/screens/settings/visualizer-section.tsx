@@ -208,12 +208,33 @@ export function VisualizerSection() {
     [setSetting],
   );
   const handleFileAttentionChange = useCallback(
-    (value: boolean) => setSetting("visualizerPanelFileAttention", value),
-    [setSetting],
+    (value: boolean) => {
+      void updateSettings({
+        visualizerPanelFileAttention: value,
+        ...(value ? { visualizerPanelCostOverlay: false, visualizerPanelFailures: false } : {}),
+      });
+    },
+    [updateSettings],
   );
   const handleCostOverlayChange = useCallback(
-    (value: boolean) => setSetting("visualizerPanelCostOverlay", value),
-    [setSetting],
+    (value: boolean) => {
+      void updateSettings({
+        visualizerPanelCostOverlay: value,
+        ...(value ? { visualizerPanelFileAttention: false, visualizerPanelFailures: false } : {}),
+      });
+    },
+    [updateSettings],
+  );
+  const handleFailuresChange = useCallback(
+    (value: boolean) => {
+      void updateSettings({
+        visualizerPanelFailures: value,
+        ...(value
+          ? { visualizerPanelFileAttention: false, visualizerPanelCostOverlay: false }
+          : {}),
+      });
+    },
+    [updateSettings],
   );
   const handleVolumeCommit = useCallback(
     (value: number) => setSetting("visualizerSoundVolume", value),
@@ -436,6 +457,17 @@ export function VisualizerSection() {
                   withBorder
                   onValueChange={handleCostOverlayChange}
                   testID="settings-visualizer-cost-overlay-switch"
+                />
+              </SettingsTargetScope>
+              <SettingsTargetScope settingIds={["app-visualizer-panels-failures"]}>
+                <ToggleRow
+                  title="Failures"
+                  hint="Show failed tool calls and retry counts. Shares the panel position with File attention and Cost overlay."
+                  accessibilityLabel="Failures"
+                  value={settings.visualizerPanelFailures}
+                  withBorder
+                  onValueChange={handleFailuresChange}
+                  testID="settings-visualizer-failures-switch"
                 />
               </SettingsTargetScope>
             </View>

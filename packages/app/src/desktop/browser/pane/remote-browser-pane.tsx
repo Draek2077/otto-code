@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Devices } from "@/components/icons/material-icons";
+import { ChevronDown, Devices, Send } from "@/components/icons/material-icons";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -42,6 +42,10 @@ const SIZES = [
 
 const ThemedDevices = withUnistyles(Devices);
 const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedSend = withUnistyles(Send);
+const ThemedTextInput = withUnistyles(EditingTextInput, (theme) => ({
+  placeholderTextColor: theme.colors.foregroundMuted,
+}));
 const mutedIcon = (theme: { colors: { foregroundMuted: string } }) => ({
   color: theme.colors.foregroundMuted,
 });
@@ -408,6 +412,19 @@ export function BrowserPane({
     [claimViewport, act, browserId],
   );
 
+  // One control serves both inputs a page needs: text, then Enter. An empty
+  // field sends Enter so a form can be submitted without a second button.
+  const sendTyped = useCallback(() => {
+    claimViewport();
+    if (!typed) {
+      act({ kind: "key", browserId, key: "Enter" });
+      return;
+    }
+    act({ kind: "type", browserId, text: typed });
+    setTyped("");
+    typeInput.current?.reset();
+  }, [claimViewport, typed, act, browserId]);
+
   if (connected && !supported)
     return (
       <View style={styles.center}>
@@ -442,7 +459,7 @@ export function BrowserPane({
         >
           <Text style={styles.buttonText}>↻</Text>
         </Pressable>
-        <EditingTextInput
+        <ThemedTextInput
           ref={addressInput}
           accessibilityLabel="Address"
           initialValue={address}
@@ -564,39 +581,25 @@ export function BrowserPane({
         </Pressable>
       </View>
       <View style={styles.inputRow}>
-        <EditingTextInput
+        <ThemedTextInput
           ref={typeInput}
           accessibilityLabel="Type into page"
           placeholder="Type into page"
           onChangeText={setTyped}
-          onSubmitEditing={() => {
-            if (typed) {
-              act({ kind: "type", browserId, text: typed });
-              setTyped("");
-              typeInput.current?.reset();
-            }
-          }}
-          style={styles.input}
+          onSubmitEditing={sendTyped}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="send"
+          submitBehavior="submit"
+          style={styles.address}
         />
         <Pressable
           accessibilityRole="button"
-          onPress={() => {
-            if (typed) {
-              act({ kind: "type", browserId, text: typed });
-              setTyped("");
-              typeInput.current?.reset();
-            }
-          }}
+          accessibilityLabel="Send to page"
+          onPress={sendTyped}
           style={styles.button}
         >
-          <Text style={styles.buttonText}>Type</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => act({ kind: "key", browserId, key: "Enter" })}
-          style={styles.button}
-        >
-          <Text style={styles.buttonText}>↵</Text>
+          <ThemedSend size={18} uniProps={mutedIcon} />
         </Pressable>
       </View>
     </View>
@@ -653,9 +656,9 @@ const styles = StyleSheet.create((theme) => ({
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 4,
+    gap: 4,
+    padding: 5,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
   },
-  input: { flex: 1, minHeight: 34, color: theme.colors.foreground, paddingHorizontal: 8 },
 }));

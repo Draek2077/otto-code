@@ -19,6 +19,7 @@ export type PanelsConfig = Partial<{
   timeline: boolean
   fileAttention: boolean
   costOverlay: boolean
+  failures: boolean
   // OTTO PATCH (OTTO-PATCHES.md): per-node stats readout overlay. Seeded from
   // the host's `visualizerPanelStats` device-local setting so the Otto toolbar's
   // "Toggle Stats" button is a config-driven follower like the other panels.
@@ -38,7 +39,7 @@ export type PanelsConfig = Partial<{
 export type ViewportCommand = 'zoom-to-fit' | 'restart' | 'cold-restart'
 /** OTTO PATCH (OTTO-PATCHES.md): the panels a page keyboard shortcut can ask
  * the host to toggle (page -> host `panel-toggle` — see `togglePanel`). */
-export type TogglablePanel = 'timeline' | 'files' | 'cost' | 'stats'
+export type TogglablePanel = 'timeline' | 'files' | 'cost' | 'failures' | 'stats'
 /** Host-toggleable canvas render controls (OTTO PATCH, see OTTO-PATCHES.md).
  * Omitted keys keep the current behavior. `bloom` is the whole-viewport blurred
  * additive pass (a soft blurry echo of the scene), `nodeGlow` the per-agent-node

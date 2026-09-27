@@ -7,6 +7,44 @@ here (rather than a fork-wide diff) are the exception, logged one entry per
 patch, oldest first. Each entry should be small enough to re-apply by hand
 after a `git subtree pull` if the upstream diff conflicts with it.
 
+## 2026-09-26 — replay safety, persistent failures, and file-overlap visibility
+
+Adapted the useful render-side portions of upstream open proposals #78, #84,
+and #85 to Otto's provider-neutral event stream. No upstream transcript watcher,
+model price table, or session relay was imported.
+
+- `web/hooks/use-agent-simulation.ts`, `web/components/agent-visualizer/index.tsx`:
+  apply an unread event-log suffix before new live events, settle paused review
+  snapshots at the live end on a session switch, and clear the snapshot cache
+  when the selected session is removed. The previously carried paused-event and
+  same-session-start fixes remain intact.
+- `web/hooks/simulation/handle-tool-events.ts`, `web/hooks/simulation/types.ts`,
+  `web/hooks/simulation/process-event.ts`, `web/lib/agent-types.ts`:
+  match start/end by the host's stable `callId` when present, retain up to 100
+  failed calls after their canvas cards fade, and count later identical attempts.
+  The failure record is part of simulation state, so seeking and session restore
+  reconstruct it from the event log.
+- `web/components/agent-visualizer/failures-panel.tsx`,
+  `web/lib/vscode-bridge.ts`, `web/components/agent-visualizer/index.tsx`:
+  add a host-configured Failures panel alongside the existing mutually exclusive
+  Files/Cost panels. It shows the agent, tool, arguments, full expandable error,
+  later-attempt count, and estimated result tokens without inventing dollar cost.
+  Error text is capped at 2,000 characters per retained call.
+- `web/components/agent-visualizer/canvas/draw-collisions.ts`,
+  `web/components/agent-visualizer/collision-strip.tsx`,
+  `web/components/agent-visualizer/canvas.tsx`: consume bounded `file_collision`
+  notices from Otto's adapter. A brief dashed trail links both visible agents;
+  the expandable strip keeps cross-session overlaps inspectable when only one
+  chat is selected. The strip stays out of the compact PIP and hidden HUD.
+
+Otto-side counterparts: `packages/app/src/visualizer/visualizer-file-collisions.ts`
+compares canonical physical paths and real wall-clock times across sessions;
+`visualizer-event-adapter.ts` carries file identity, access mode and call id;
+`use-visualizer-event-adapter.ts` emits the collision notices before session
+filtering; `visualizer-surface.tsx`, `visualizer-view-types.ts`,
+`visualizer-toolbar.tsx`, and device-local settings own the Failures toggle.
+Rebuild with `npm run build:visualizer` after any vendor change.
+
 ## 2026-09-17 — nothing draws while the surface is off screen
 
 The page ran three `requestAnimationFrame` loops (canvas draw, simulation,

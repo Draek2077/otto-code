@@ -250,6 +250,17 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
     // Process captured external events (snapshotted outside the main
     // processing to avoid React strict mode double-invocation issues)
     if (capturedEvents) {
+      // OTTO PATCH (OTTO-PATCHES.md): a live event must not skip the unread
+      // suffix of a restored or scrubbed event log when eventIndex is moved to
+      // the tail below. Apply that suffix before the newly arrived events.
+      if (!useMockData) {
+        while (newEventIndex < currentState.eventLog.length) {
+          const evt = currentState.eventLog[newEventIndex]
+          currentState = { ...processEventWithContext(evt, { ...currentState, currentTime: evt.time }), currentTime: evt.time }
+          newEventIndex++
+        }
+        newTime = Math.max(newTime, currentState.currentTime)
+      }
       for (const event of capturedEvents) {
         const activeFilter = sessionFilterRef.current
         if (activeFilter && activeFilter !== ALL_ACTIVE_CHATS_SESSION_ID && event.sessionId && event.sessionId !== activeFilter) {
@@ -453,9 +464,25 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
 
   const restoreSnapshot = useCallback((snapshot: { simState: SimulationState; blockId: number }) => {
     blockIdCounter.current = snapshot.blockId
-    commitState({ ...snapshot.simState, isPlaying: true })
-    setTimeout(() => syncForceSimulation(snapshot.simState.agents, snapshot.simState.edges), 0)
-  }, [syncForceSimulation, commitState])
+    let restored = snapshot.simState
+    // OTTO PATCH (OTTO-PATCHES.md): review/seek is component-level state. A
+    // snapshot saved mid-review must be settled at its live end before a tab
+    // switch restores it, or old events play beneath a LIVE label.
+    if (!useMockData && restored.eventIndex < restored.eventLog.length) {
+      skipForceSyncRef.current = true
+      try {
+        for (const evt of restored.eventLog.slice(restored.eventIndex)) {
+          restored = { ...processEventWithContext(evt, { ...restored, currentTime: evt.time }), currentTime: evt.time }
+        }
+      } finally {
+        skipForceSyncRef.current = false
+      }
+      const time = Math.max(restored.currentTime, restored.maxTimeReached)
+      restored = { ...snapVisualState(restored, time), currentTime: time, eventIndex: restored.eventLog.length }
+    }
+    commitState({ ...restored, isPlaying: true })
+    setTimeout(() => syncForceSimulation(restored.agents, restored.edges), 0)
+  }, [syncForceSimulation, commitState, useMockData, processEventWithContext])
 
   // OTTO PATCH (OTTO-PATCHES.md): regular Visualizer surfaces deliberately
   // suppress every transient chat bubble. The focused chat background is the
@@ -504,7 +531,8 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
     // Canvas reads frameRef directly for 60fps rendering
     frameRef,
     // UI components use React state (updated only on events/user actions)
-    agents: state.agents, toolCalls: state.toolCalls,
+    agents: state.agents, toolCalls: state.toolCalls, failedToolCalls: state.failedToolCalls,
+    fileCollisions: state.fileCollisions,
     particles: state.particles, edges: state.edges,
     discoveries: state.discoveries,
     fileAttention: state.fileAttention,

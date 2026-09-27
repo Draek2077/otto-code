@@ -361,6 +361,7 @@ export interface OttoAppSettings {
   visualizerPanelTimeline: boolean;
   visualizerPanelFileAttention: boolean;
   visualizerPanelCostOverlay: boolean;
+  visualizerPanelFailures: boolean;
   // Whether the per-node stats readout overlay is drawn on the canvas (sent to
   // the page as config.panels.stats - see vendor/agent-flow/OTTO-PATCHES.md).
   // Off by default, mirroring the vendored page's showStats default. Toggled
@@ -1271,6 +1272,9 @@ export function pickVisualizerSettings(stored: Partial<AppSettings>): Partial<Ap
   if (typeof stored.visualizerPanelCostOverlay === "boolean") {
     result.visualizerPanelCostOverlay = stored.visualizerPanelCostOverlay;
   }
+  if (typeof stored.visualizerPanelFailures === "boolean") {
+    result.visualizerPanelFailures = stored.visualizerPanelFailures;
+  }
   if (typeof stored.visualizerPanelStats === "boolean") {
     result.visualizerPanelStats = stored.visualizerPanelStats;
   }
@@ -1583,6 +1587,7 @@ export const DEFAULT_OTTO_SETTINGS: OttoAppSettings = {
   visualizerPanelTimeline: false,
   visualizerPanelFileAttention: false,
   visualizerPanelCostOverlay: false,
+  visualizerPanelFailures: false,
   visualizerPanelStats: false,
   visualizerRenderBloom: false,
   visualizerRenderNodeGlow: true,

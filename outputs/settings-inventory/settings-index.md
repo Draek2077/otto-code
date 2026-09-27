@@ -4,8 +4,8 @@
 
 ## Summary
 
-- **Total indexed entries:** 476
-- **App surface:** 199
+- **Total indexed entries:** 477
+- **App surface:** 200
 - **Host surface:** 277
 - **Persistence scopes:** App, Desktop, Host, and Project. Surface and persistence scope are intentionally separate because some Host pages contain device-local settings.
 - **Dynamic entries:** A single row documents an unbounded runtime collection, such as one row per installed language server or team member. Finite catalogs and keyboard commands are enumerated individually.
@@ -23,7 +23,7 @@
   - [Layout (6)](#app-layout)
   - [Permissions (5)](#app-permissions)
   - [Shortcuts (63)](#app-shortcuts)
-  - [Visualizer (14)](#app-visualizer)
+  - [Visualizer (15)](#app-visualizer)
 - [Host settings](#host-settings)
   - [Agents (18)](#host-agents)
   - [Brain (37)](#host-brain)
@@ -455,11 +455,12 @@
 
 #### Panels
 
-| Setting        | What it does                            | Scope | Kind       | Choices / actions | Default | Audience  | Conditions                             | Persistence                  | Source                                                                                            |
-| -------------- | --------------------------------------- | ----- | ---------- | ----------------- | ------- | --------- | -------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------- |
-| Cost overlay   | Shows the token-cost overlay.           | App   | Preference | On; Off           | Off     | Developer | Mutually exclusive with File attention | visualizerPanelCostOverlay   | [visualizer-section.tsx:390](../../packages/app/src/screens/settings/visualizer-section.tsx#L390) |
-| File attention | Shows the file-attention heatmap panel. | App   | Preference | On; Off           | Off     | Developer | Mutually exclusive with Cost overlay   | visualizerPanelFileAttention | [visualizer-section.tsx:379](../../packages/app/src/screens/settings/visualizer-section.tsx#L379) |
-| Timeline       | Shows the Visualizer timeline panel.    | App   | Preference | On; Off           | Off     | Developer | Visualizer enabled                     | visualizerPanelTimeline      | [visualizer-section.tsx:370](../../packages/app/src/screens/settings/visualizer-section.tsx#L370) |
+| Setting        | What it does                              | Scope | Kind       | Choices / actions | Default | Audience  | Conditions                                          | Persistence                  | Source                                                                                            |
+| -------------- | ----------------------------------------- | ----- | ---------- | ----------------- | ------- | --------- | --------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------- |
+| Cost overlay   | Shows the token-cost overlay.             | App   | Preference | On; Off           | Off     | Developer | Shares a panel with File attention and Failures     | visualizerPanelCostOverlay   | [visualizer-section.tsx:451](../../packages/app/src/screens/settings/visualizer-section.tsx#L451) |
+| Failures       | Shows failed tool calls and retry counts. | App   | Preference | On; Off           | Off     | Developer | Shares a panel with File attention and Cost overlay | visualizerPanelFailures      | [visualizer-section.tsx:464](../../packages/app/src/screens/settings/visualizer-section.tsx#L464) |
+| File attention | Shows the file-attention heatmap panel.   | App   | Preference | On; Off           | Off     | Developer | Shares a panel with Cost overlay and Failures       | visualizerPanelFileAttention | [visualizer-section.tsx:438](../../packages/app/src/screens/settings/visualizer-section.tsx#L438) |
+| Timeline       | Shows the Visualizer timeline panel.      | App   | Preference | On; Off           | Off     | Developer | Visualizer enabled                                  | visualizerPanelTimeline      | [visualizer-section.tsx:370](../../packages/app/src/screens/settings/visualizer-section.tsx#L370) |
 
 #### Rendering
 

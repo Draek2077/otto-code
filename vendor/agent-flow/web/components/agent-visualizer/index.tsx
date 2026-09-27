@@ -14,6 +14,8 @@ import { ToolDetailPopup } from "./tool-detail-popup"
 import { DiscoveryDetailPopup } from "./discovery-detail-popup"
 import { FileAttentionPanel } from "./file-attention-panel"
 import { CostPanel } from "./cost-panel"
+import { FailuresPanel } from "./failures-panel"
+import { CollisionStrip } from "./collision-strip"
 import { TimelinePanel } from "./timeline-panel"
 import { OpenFileProvider } from "./tool-content-renderer"
 import { stopPropagationHandlers } from "./shared-ui"
@@ -39,6 +41,8 @@ export function AgentVisualizer() {
   const {
     frameRef,
     agents,
+    failedToolCalls,
+    fileCollisions,
     toolCalls,
     particles,
     edges,
@@ -89,6 +93,7 @@ export function AgentVisualizer() {
   const [showCostOverlay, setShowCostOverlay] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
   const [showFileAttention, setShowFileAttention] = useState(false)
+  const [showFailures, setShowFailures] = useState(false)
 
   // Otto patch (OTTO-PATCHES.md): whole-HUD visibility. When true, every HUD
   // panel/bar/popup is hidden and only the canvas graph plus the HUD toggle
@@ -126,9 +131,10 @@ export function AgentVisualizer() {
   // Mutually exclusive panel toggling — opening one closes the others.
   // OTTO PATCH (OTTO-PATCHES.md): the transcript ("Chat") panel was removed
   // from Otto's embed, so the exclusive group is just files/cost now.
-  const toggleExclusivePanel = useCallback((panel: 'files' | 'cost') => {
+  const toggleExclusivePanel = useCallback((panel: 'files' | 'cost' | 'failures') => {
     setShowFileAttention(prev => panel === 'files' ? !prev : false)
     setShowCostOverlay(prev => panel === 'cost' ? !prev : false)
+    setShowFailures(prev => panel === 'failures' ? !prev : false)
   }, [])
 
   // Otto patch (OTTO-PATCHES.md): apply a host-seeded initial panel config
@@ -148,15 +154,18 @@ export function AgentVisualizer() {
     // OTTO PATCH (OTTO-PATCHES.md): the transcript ("Chat") and message-feed
     // panels were removed from Otto's embed, so only the files/cost exclusive
     // pair is seeded here.
-    if (panels.fileAttention || panels.costOverlay) {
+    if (panels.fileAttention || panels.costOverlay || panels.failures) {
       setShowFileAttention(Boolean(panels.fileAttention))
       setShowCostOverlay(!panels.fileAttention && Boolean(panels.costOverlay))
+      setShowFailures(!panels.fileAttention && !panels.costOverlay && Boolean(panels.failures))
     } else if (
       panels.fileAttention !== undefined ||
-      panels.costOverlay !== undefined
+      panels.costOverlay !== undefined ||
+      panels.failures !== undefined
     ) {
       setShowFileAttention(false)
       setShowCostOverlay(false)
+      setShowFailures(false)
     }
   }, [bridge.panelsConfig])
 
@@ -183,6 +192,9 @@ export function AgentVisualizer() {
   const prevSelectedRef = useRef<string | null>(null)
   useLayoutEffect(() => {
     if (bridge.selectedSessionId && bridge.selectedSessionId !== prevSelectedRef.current) {
+      // OTTO PATCH (OTTO-PATCHES.md): review belongs to the outgoing view.
+      // Restored sessions resume at their live end, never under stale review UI.
+      setIsReviewing(false)
       // Save outgoing session state (if any)
       if (prevSelectedRef.current !== null) {
         sessionCacheRef.current.set(prevSelectedRef.current, {
@@ -216,6 +228,8 @@ export function AgentVisualizer() {
       // canvas empties and the "Waiting for chat activity" empty state shows,
       // instead of leaving the final agent frozen in the center.
       restart()
+      sessionCacheRef.current.clear()
+      setIsReviewing(false)
       prevSelectedRef.current = null
     }
   }, [bridge.selectedSessionId, restart, bridge.flushSessionEvents, saveSnapshot, restoreSnapshot, bridge.getSessionEventCount])
@@ -583,6 +597,16 @@ export function AgentVisualizer() {
         agents={agents}
         toolCalls={toolCalls}
       />
+
+      {!hudHidden && !hudCompact && (
+        <CollisionStrip
+          key={bridge.selectedSessionId ?? 'none'}
+          collisions={fileCollisions}
+          onOpenFile={bridge.isVSCode ? openFile : undefined}
+        />
+      )}
+
+      <FailuresPanel visible={showFailures} failures={failedToolCalls} />
 
       {/* OTTO PATCH (OTTO-PATCHES.md): the session transcript ("Chat") panel
           was removed from Otto's embed — it duplicated the real chat the user

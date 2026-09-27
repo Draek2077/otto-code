@@ -3976,12 +3976,12 @@ export const en = {
         },
         fileAttention: {
           title: "File attention",
-          hint: "Show the file-attention heatmap panel. Only one of File attention and Cost overlay is visible at a time",
+          hint: "Show the file-attention heatmap panel. Shares the panel position with Cost overlay and Failures.",
           accessibilityLabel: "File attention",
         },
         costOverlay: {
           title: "Cost overlay",
-          hint: "Show the token-cost overlay. Only one of File attention and Cost overlay is visible at a time",
+          hint: "Show the token-cost overlay. Shares the panel position with File attention and Failures.",
           accessibilityLabel: "Cost overlay",
         },
       },

@@ -15,6 +15,7 @@ import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
 import { getHostRuntimeStore, useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import { resolveRootAgentId } from "./visualizer-session-identity";
+import { FileCollisionIndex, type FileTouch } from "./visualizer-file-collisions";
 import {
   buildAgentCompleteEvent,
   buildAgentIdleEvent,
@@ -154,6 +155,7 @@ interface AdapterState {
    * of them at once and the vendor simulation keys agents by name. */
   sessionNames: Map<string, Set<string>>;
   pending: SimulationEvent[];
+  fileCollisions: FileCollisionIndex;
   pendingSessionMessages: VisualizerHostToPageMessage[];
   /** Agent ids that just got a node and still need their timeline fetched. */
   pendingBackfill: string[];
@@ -207,6 +209,7 @@ function createAdapterState(): AdapterState {
     nodes: new Map(),
     sessionNames: new Map(),
     pending: [],
+    fileCollisions: new FileCollisionIndex(),
     pendingSessionMessages: [],
     pendingBackfill: [],
     backfillDrain: null,
@@ -955,6 +958,58 @@ function orderSessionMessagesForSelection(
     .flatMap((group) => group.messages);
 }
 
+function fileCollisionEvents(
+  state: AdapterState,
+  events: readonly SimulationEvent[],
+): SimulationEvent[] {
+  const result: SimulationEvent[] = [];
+  for (const event of events) {
+    if (event.type !== "tool_call_start" || !event.sessionId) continue;
+    const input = event.payload.inputData;
+    if (!input || typeof input !== "object" || Array.isArray(input)) continue;
+    const data = input as Record<string, unknown>;
+    if (
+      typeof data.file_identity !== "string" ||
+      typeof data.file_path !== "string" ||
+      typeof data.call_id !== "string" ||
+      (data.file_access !== "read" && data.file_access !== "write") ||
+      typeof event.payload.agent !== "string"
+    )
+      continue;
+    const anchor = state.sessionEpochMs.get(event.sessionId);
+    if (anchor == null) continue;
+    const touch: FileTouch = {
+      callId: data.call_id,
+      sessionId: event.sessionId,
+      agent: event.payload.agent,
+      path: data.file_identity,
+      displayPath: data.file_path,
+      mode: data.file_access,
+      atMs: anchor + event.time * 1000,
+    };
+    for (const collision of state.fileCollisions.add(touch)) {
+      // Send to both sessions. The All active simulation deduplicates by id.
+      for (const sessionId of new Set([collision.left.sessionId, collision.right.sessionId])) {
+        result.push({
+          type: "file_collision",
+          sessionId,
+          time: toSimTime(state, collision.atMs, sessionId),
+          payload: {
+            id: collision.id,
+            path: collision.path,
+            fileIdentity: touch.path,
+            leftAgent: collision.left.agent,
+            rightAgent: collision.right.agent,
+            leftMode: collision.left.mode,
+            rightMode: collision.right.mode,
+          },
+        });
+      }
+    }
+  }
+  return result;
+}
+
 function flush(
   state: AdapterState,
   postMessage: (message: VisualizerHostToPageMessage) => void,
@@ -966,13 +1021,17 @@ function flush(
   if (state.pending.length > 0) {
     const events = state.pending;
     state.pending = [];
+    // OTTO PATCH (OTTO-PATCHES.md): detect across every chat before the page
+    // filters to its selected session. Real per-session anchors give file
+    // touches comparable wall-clock times even during history hydration.
+    const collisions = fileCollisionEvents(state, events);
     // While `hydrating` (the one-shot backfill window), tag the batch so the
     // page settles it to the end state instead of replaying the whole history
     // animation - the user is bringing an existing chat into view, not
     // watching it happen. Live batches after the window animate normally.
     postMessage({
       type: "agent-event-batch",
-      events,
+      events: [...events, ...collisions],
       ...(state.hydrating ? { hydrate: true } : {}),
     });
   }

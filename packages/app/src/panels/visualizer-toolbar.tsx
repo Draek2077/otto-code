@@ -4,6 +4,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   BarChart,
   DollarSign,
+  Error,
   Eye,
   EyeOff,
   Files,
@@ -33,6 +34,7 @@ import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
 const ThemedFiles = withUnistyles(Files);
 const ThemedTimeline = withUnistyles(Timeline);
 const ThemedDollarSign = withUnistyles(DollarSign);
+const ThemedError = withUnistyles(Error);
 const ThemedVolume2 = withUnistyles(Volume2);
 const ThemedVolumeX = withUnistyles(VolumeX);
 const ThemedEye = withUnistyles(Eye);
@@ -51,7 +53,7 @@ const ThemedPictureInPicture = withUnistyles(PictureInPicture);
 // last: Timeline → Files → Cost → Pin → Stats. Everything else (chat picker,
 // audio, zoom, restart, HUD) always stays. Hiding is a pure function of the
 // measured bar width - no measure/hide feedback loop - so it can't oscillate.
-const COLLAPSE_ORDER = ["timeline", "files", "cost", "pin", "stats"] as const;
+const COLLAPSE_ORDER = ["failures", "timeline", "files", "cost", "pin", "stats"] as const;
 type CollapsibleControl = (typeof COLLAPSE_ORDER)[number];
 
 // Width budget (px). Estimates, not pixel-exact: the goal is to drop a control a
@@ -107,12 +109,14 @@ export interface VisualizerToolbarProps {
   timelineOpen: boolean;
   filesOpen: boolean;
   costOpen: boolean;
+  failuresOpen: boolean;
   statsOpen: boolean;
   soundMuted: boolean;
   hudHidden: boolean;
   onToggleTimeline: () => void;
   onToggleFiles: () => void;
   onToggleCost: () => void;
+  onToggleFailures: () => void;
   onToggleStats: () => void;
   onZoomToFit: () => void;
   onRestart: () => void;
@@ -165,6 +169,46 @@ function renderBackgroundToolbarButton(onPress: (() => void) | null) {
   );
 }
 
+function renderCostToolbarButton(
+  hidden: boolean,
+  disabled: boolean,
+  selected: boolean,
+  onPress: () => void,
+) {
+  if (hidden) return null;
+  return (
+    <ToolbarIconButton
+      key="cost"
+      label="Cost"
+      Icon={ThemedDollarSign}
+      selected={!disabled && selected}
+      onPress={onPress}
+      disabled={disabled}
+      testID="visualizer-toolbar-cost"
+    />
+  );
+}
+
+function renderFailuresToolbarButton(
+  hidden: boolean,
+  disabled: boolean,
+  selected: boolean,
+  onPress: () => void,
+) {
+  if (hidden) return null;
+  return (
+    <ToolbarIconButton
+      key="failures"
+      label="Failed tool calls"
+      Icon={ThemedError}
+      selected={!disabled && selected}
+      onPress={onPress}
+      disabled={disabled}
+      testID="visualizer-toolbar-failures"
+    />
+  );
+}
+
 export function VisualizerToolbar({
   sessions,
   selectedSessionId,
@@ -174,12 +218,14 @@ export function VisualizerToolbar({
   timelineOpen,
   filesOpen,
   costOpen,
+  failuresOpen,
   statsOpen,
   soundMuted,
   hudHidden,
   onToggleTimeline,
   onToggleFiles,
   onToggleCost,
+  onToggleFailures,
   onToggleStats,
   onZoomToFit,
   onRestart,
@@ -254,16 +300,17 @@ export function VisualizerToolbar({
       testID="visualizer-toolbar-files"
     />
   );
-  const costNode = hidden.has("cost") ? null : (
-    <ToolbarIconButton
-      key="cost"
-      label="Cost"
-      Icon={ThemedDollarSign}
-      selected={!panelsDisabled && costOpen}
-      onPress={onToggleCost}
-      disabled={panelsDisabled}
-      testID="visualizer-toolbar-cost"
-    />
+  const costNode = renderCostToolbarButton(
+    hidden.has("cost"),
+    panelsDisabled,
+    costOpen,
+    onToggleCost,
+  );
+  const failuresNode = renderFailuresToolbarButton(
+    hidden.has("failures"),
+    panelsDisabled,
+    failuresOpen,
+    onToggleFailures,
   );
   const hudNode = (
     <ToolbarIconButton
@@ -291,7 +338,7 @@ export function VisualizerToolbar({
     );
   const toggleClusters = [
     { id: "timeline", nodes: [timelineNode] },
-    { id: "panels", nodes: [filesNode, costNode] },
+    { id: "panels", nodes: [filesNode, costNode, failuresNode] },
     { id: "hud", nodes: [hudNode] },
     {
       id: "surface",

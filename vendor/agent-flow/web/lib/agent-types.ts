@@ -102,6 +102,8 @@ export interface MessageBubble {
 // Rich tool call with actual content
 export interface ToolCallNode {
   id: string
+  /** OTTO PATCH: stable provider-neutral call identity when the host supplies it. */
+  callId?: string
   agentId: string
   toolName: string
   state: 'running' | 'complete' | 'error'
@@ -115,6 +117,30 @@ export interface ToolCallNode {
   startTime: number
   completeTime?: number // when the tool call completed (for minimum display duration)
   opacity: number
+}
+
+/** OTTO PATCH (OTTO-PATCHES.md): failures survive the brief canvas tool-card
+ * lifetime so the user can inspect them after the graph settles. */
+export interface FailedToolCall {
+  id: string
+  agentId: string
+  toolName: string
+  args: string
+  errorMessage: string
+  tokenCost?: number
+  time: number
+  retries: number
+}
+
+export interface FileCollisionNotice {
+  id: string
+  path: string
+  fileIdentity: string
+  leftAgent: string
+  rightAgent: string
+  leftMode: 'read' | 'write'
+  rightMode: 'read' | 'write'
+  time: number
 }
 
 // Discovery — something the agent found and "pinned"
@@ -204,6 +230,7 @@ export interface SimulationEvent {
     | 'model_detected'
     | 'tool_call_start'
     | 'tool_call_end'
+    | 'file_collision'
     | 'subagent_dispatch'
     | 'subagent_return'
     | 'permission_requested'

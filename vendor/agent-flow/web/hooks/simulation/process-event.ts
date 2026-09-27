@@ -24,6 +24,8 @@ export interface ProcessEventContext {
 export interface MutableEventState {
   agents: Map<string, Agent>
   toolCalls: Map<string, ToolCallNode>
+  failedToolCalls: SimulationState['failedToolCalls']
+  fileCollisions: SimulationState['fileCollisions']
   particles: SimulationState['particles']
   edges: Edge[]
   discoveries: SimulationState['discoveries']
@@ -62,6 +64,8 @@ export function processEvent(event: SimulationEvent, prev: SimulationState, ctx:
       const state: MutableEventState = {
         agents: new Map(prev.agents),
         toolCalls: new Map(prev.toolCalls),
+        failedToolCalls: new Map(prev.failedToolCalls),
+        fileCollisions: new Map(prev.fileCollisions),
         particles: [...prev.particles],
         edges: [...prev.edges],
         discoveries: [...prev.discoveries],
@@ -78,6 +82,21 @@ export function processEvent(event: SimulationEvent, prev: SimulationState, ctx:
         case 'model_detected':    handleModelDetected(event.payload, state, ctx); break
         case 'tool_call_start':   handleToolCallStart(event.payload, prev.currentTime, state, ctx); break
         case 'tool_call_end':     handleToolCallEnd(event.payload, prev.currentTime, state, ctx); break
+        case 'file_collision': {
+          const { id, path, fileIdentity, leftAgent, rightAgent, leftMode, rightMode } = event.payload
+          if (typeof id === 'string' && typeof path === 'string' && typeof fileIdentity === 'string' &&
+              typeof leftAgent === 'string' && typeof rightAgent === 'string' &&
+              (leftMode === 'read' || leftMode === 'write') &&
+              (rightMode === 'read' || rightMode === 'write') &&
+              !state.fileCollisions.has(id)) {
+            state.fileCollisions.set(id, { id, path, fileIdentity, leftAgent, rightAgent, leftMode, rightMode, time: prev.currentTime })
+            if (state.fileCollisions.size > 50) {
+              const oldest = state.fileCollisions.keys().next().value
+              if (oldest) state.fileCollisions.delete(oldest)
+            }
+          }
+          break
+        }
         case 'message':           handleMessage(event.payload, prev.currentTime, state); break
         case 'context_update':    handleContextUpdate(event.payload, state); break
         case 'subagent_dispatch': handleSubagentDispatch(event.payload, prev.currentTime, state); break
@@ -90,6 +109,8 @@ export function processEvent(event: SimulationEvent, prev: SimulationState, ctx:
       return {
         ...prev,
         agents: state.agents, toolCalls: state.toolCalls,
+        failedToolCalls: mapsEqual(prev.failedToolCalls, state.failedToolCalls) ? prev.failedToolCalls : state.failedToolCalls,
+        fileCollisions: mapsEqual(prev.fileCollisions, state.fileCollisions) ? prev.fileCollisions : state.fileCollisions,
         particles: state.particles, edges: state.edges,
         discoveries: state.discoveries,
         fileAttention: mapsEqual(prev.fileAttention, state.fileAttention) ? prev.fileAttention : state.fileAttention,

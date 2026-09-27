@@ -604,8 +604,14 @@ describe("timelineItemToSimulationEvents", () => {
         payload: {
           agent: "Main Agent",
           tool: "Edit",
+          callId: "call-1",
           args: "/src/app.ts",
-          inputData: { file_path: "/src/app.ts" },
+          inputData: {
+            file_path: "/src/app.ts",
+            file_identity: "/src/app.ts",
+            file_access: "write",
+            call_id: "call-1",
+          },
         },
       },
     ]);
@@ -792,6 +798,7 @@ describe("timelineItemToSimulationEvents", () => {
         payload: {
           agent: "Main Agent",
           tool: "Bash",
+          callId: "call-1",
           result: "",
           isError: true,
           // ~4 chars/token over the serialized detail (32 chars here).
@@ -918,8 +925,14 @@ describe("timelineItemToSimulationEvents", () => {
       payload: {
         agent: "Main Agent",
         tool: "Read",
+        callId: "call-3",
         args: "/src/auth.ts",
-        inputData: { file_path: "/src/auth.ts" },
+        inputData: {
+          file_path: "/src/auth.ts",
+          file_identity: "/src/auth.ts",
+          file_access: "read",
+          call_id: "call-3",
+        },
       },
     });
     expect(events[1]?.payload).toMatchObject({ tool: "Read", isError: false });
