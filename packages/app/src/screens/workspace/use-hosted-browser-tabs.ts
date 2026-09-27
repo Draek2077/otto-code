@@ -1,12 +1,18 @@
 import { useEffect } from "react";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { RemoteBrowserTab } from "@otto-code/protocol/browser-remote/rpc-schemas";
 import { createFixedBrowserViewport, useBrowserStore } from "@/desktop/browser/store";
+import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
 import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { findSplitRightTarget } from "@/workspace-tabs/split-right-target";
 
 interface Input {
   client: DaemonClient | null;
+  serverId: string;
   workspaceId: string;
   workspaceKey: string | null;
+  /** False where panes cannot split; a preview tab then joins the tab strip. */
+  canSplitPanes: boolean;
   enabled: boolean;
 }
 
@@ -22,8 +28,77 @@ function removeClosedHostedTab(workspaceKey: string, browserId: string): void {
   useBrowserStore.getState().removeBrowser(browserId);
 }
 
+interface Adoption {
+  serverId: string;
+  workspaceKey: string;
+  canSplitPanes: boolean;
+}
+
+function adoptHostedTab(
+  tab: RemoteBrowserTab,
+  { serverId, workspaceKey, canSplitPanes }: Adoption,
+): void {
+  const browsers = useBrowserStore.getState();
+  browsers.ensureBrowser(tab.browserId);
+  browsers.updateBrowser(tab.browserId, {
+    renderMode: "hosted",
+    url: tab.url,
+    title: tab.title,
+    isLoading: tab.state === "starting",
+    lastError: tab.error,
+    viewport:
+      tab.viewport.mode === "fixed"
+        ? createFixedBrowserViewport(tab.viewport.width, tab.viewport.height)
+        : { mode: "responsive" },
+    ...(tab.preview
+      ? {
+          isPreview: true,
+          previewServerId: tab.preview.serverId,
+          previewServerName: tab.preview.serverName,
+          previewCwd: tab.preview.cwd,
+          previewStatus: "ready" as const,
+        }
+      : {}),
+  });
+  const layoutStore = useWorkspaceLayoutStore.getState();
+  const layout = layoutStore.layoutByWorkspace[workspaceKey];
+  const alreadyOpen =
+    layout &&
+    collectAllTabs(layout.root).some(
+      (item) => item.target.kind === "browser" && item.target.browserId === tab.browserId,
+    );
+  if (!alreadyOpen) {
+    const splitTarget =
+      canSplitPanes && tab.layout === "split-right" ? findSplitRightTarget(workspaceKey) : null;
+    const tabId = layoutStore.openTabInBackground(workspaceKey, {
+      kind: "browser",
+      browserId: tab.browserId,
+    });
+    if (tabId && splitTarget) {
+      layoutStore.splitPane(workspaceKey, {
+        tabId,
+        targetPaneId: splitTarget,
+        position: "right",
+      });
+      // Reveal the preview without moving keyboard ownership to it.
+      layoutStore.focusPane(workspaceKey, splitTarget);
+    }
+    if (tab.preview)
+      usePreviewRunningServersStore
+        .getState()
+        .markRunning(serverId, tab.preview.cwd, tab.preview.serverId);
+  }
+}
+
 /** Projects daemon-owned tabs into this client's ordinary workspace tab strip. */
-export function useHostedBrowserTabs({ client, workspaceId, workspaceKey, enabled }: Input): void {
+export function useHostedBrowserTabs({
+  client,
+  serverId,
+  workspaceId,
+  workspaceKey,
+  canSplitPanes,
+  enabled,
+}: Input): void {
   useEffect(() => {
     if (!client || !workspaceId || !workspaceKey || !enabled) return;
     let live = true;
@@ -39,31 +114,8 @@ export function useHostedBrowserTabs({ client, workspaceId, workspaceKey, enable
         const nextIds = new Set<string>();
         for (const tab of response.tabs ?? []) {
           nextIds.add(tab.browserId);
-          const browsers = useBrowserStore.getState();
-          browsers.ensureBrowser(tab.browserId);
-          browsers.updateBrowser(tab.browserId, {
-            renderMode: "hosted",
-            url: tab.url,
-            title: tab.title,
-            isLoading: tab.state === "starting",
-            lastError: tab.error,
-            viewport:
-              tab.viewport.mode === "fixed"
-                ? createFixedBrowserViewport(tab.viewport.width, tab.viewport.height)
-                : { mode: "responsive" },
-          });
+          adoptHostedTab(tab, { serverId, workspaceKey, canSplitPanes });
           const layoutStore = useWorkspaceLayoutStore.getState();
-          const layout = layoutStore.layoutByWorkspace[workspaceKey];
-          const alreadyOpen =
-            layout &&
-            collectAllTabs(layout.root).some(
-              (item) => item.target.kind === "browser" && item.target.browserId === tab.browserId,
-            );
-          if (!alreadyOpen)
-            layoutStore.openTabInBackground(workspaceKey, {
-              kind: "browser",
-              browserId: tab.browserId,
-            });
 
           if (tab.focusRequestId && tab.focusRequestId !== seenFocusRequests.get(tab.browserId)) {
             const currentLayout =
@@ -102,5 +154,5 @@ export function useHostedBrowserTabs({ client, workspaceId, workspaceKey, enable
       live = false;
       if (timer) clearTimeout(timer);
     };
-  }, [client, workspaceId, workspaceKey, enabled]);
+  }, [client, serverId, workspaceId, workspaceKey, canSplitPanes, enabled]);
 }

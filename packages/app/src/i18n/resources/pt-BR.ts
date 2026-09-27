@@ -988,6 +988,19 @@ export const ptBR: TranslationResources = {
     },
     browser: {
       updateHost: "Atualize o host para usar abas do navegador no celular.",
+      hosted: {
+        address: "Endereço",
+        typeIntoPage: "Digitar na página",
+        sendToPage: "Enviar para a página",
+        connecting: "Conectando ao navegador do host…",
+        disconnected: "Host desconectado. Esta aba será reconectada automaticamente.",
+        sizes: {
+          responsive: "Responsivo",
+          phone: "Celular",
+          tablet: "Tablet",
+          desktop: "Desktop",
+        },
+      },
       unavailable: {
         title: "O navegador é exclusivo do desktop",
         subtitle: "Abra este workspace no Electron para usar o navegador integrado.",
@@ -1232,6 +1245,7 @@ export const ptBR: TranslationResources = {
         newAgent: "Novo chat",
         newTerminal: "Novo terminal",
         newBrowser: "Nova aba de navegador",
+        newHostedBrowser: "Novo navegador no host",
         importSession: "Importar sessão",
         copyPath: "Copiar caminho do workspace",
         copyBranchName: "Copiar nome da branch",

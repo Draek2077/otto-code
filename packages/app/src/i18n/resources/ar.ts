@@ -973,6 +973,19 @@ export const ar: TranslationResources = {
     },
     browser: {
       updateHost: "حدّث المضيف لاستخدام علامات تبويب المتصفح على الهاتف.",
+      hosted: {
+        address: "العنوان",
+        typeIntoPage: "اكتب في الصفحة",
+        sendToPage: "إرسال إلى الصفحة",
+        connecting: "جارٍ الاتصال بمتصفح المضيف…",
+        disconnected: "انقطع الاتصال بالمضيف. ستعيد هذه العلامة الاتصال تلقائيًا.",
+        sizes: {
+          responsive: "متجاوب",
+          phone: "هاتف",
+          tablet: "جهاز لوحي",
+          desktop: "سطح المكتب",
+        },
+      },
       unavailable: {
         title: "المتصفح مخصص لسطح المكتب فقط",
         subtitle: "افتح مساحة العمل هذه في Electron لاستخدام المتصفح المدمج.",
@@ -1216,6 +1229,7 @@ export const ar: TranslationResources = {
         newAgent: "محادثة جديدة",
         newTerminal: "محطة جديدة",
         newBrowser: "علامة تبويب متصفح جديدة",
+        newHostedBrowser: "متصفح جديد على المضيف",
         importSession: "جلسة الاستيراد",
         copyPath: "نسخ مسار مساحة العمل",
         copyBranchName: "انسخ اسم الفرع",

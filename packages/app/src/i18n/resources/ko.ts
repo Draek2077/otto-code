@@ -984,6 +984,19 @@ export const ko: TranslationResources = {
     },
     browser: {
       updateHost: "모바일 브라우저 탭을 사용하려면 호스트를 업데이트하세요.",
+      hosted: {
+        address: "주소",
+        typeIntoPage: "페이지에 입력",
+        sendToPage: "페이지로 보내기",
+        connecting: "호스트 브라우저에 연결하는 중…",
+        disconnected: "호스트 연결이 끊어졌습니다. 이 탭은 자동으로 다시 연결됩니다.",
+        sizes: {
+          responsive: "반응형",
+          phone: "휴대폰",
+          tablet: "태블릿",
+          desktop: "데스크톱",
+        },
+      },
       unavailable: {
         title: "브라우저는 데스크톱 전용입니다",
         subtitle: "내장 브라우저를 사용하려면 이 워크스페이스를 Electron에서 여세요.",
@@ -1228,6 +1241,7 @@ export const ko: TranslationResources = {
         newAgent: "새 에이전트",
         newTerminal: "새 터미널",
         newBrowser: "새 브라우저 탭",
+        newHostedBrowser: "호스트의 새 브라우저",
         importSession: "세션 가져오기",
         copyPath: "워크스페이스 경로 복사",
         copyBranchName: "브랜치 이름 복사",

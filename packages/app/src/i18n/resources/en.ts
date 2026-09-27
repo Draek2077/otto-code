@@ -989,6 +989,19 @@ export const en = {
     },
     browser: {
       updateHost: "Update the host to use mobile browser tabs.",
+      hosted: {
+        address: "Address",
+        typeIntoPage: "Type into page",
+        sendToPage: "Send to page",
+        connecting: "Connecting to host browser…",
+        disconnected: "Host disconnected. This tab will reconnect automatically.",
+        sizes: {
+          responsive: "Responsive",
+          phone: "Phone",
+          tablet: "Tablet",
+          desktop: "Desktop",
+        },
+      },
       unavailable: {
         title: "Browser is desktop-only",
         subtitle: "Open this workspace in Electron to use the built-in browser.",
@@ -1233,6 +1246,7 @@ export const en = {
         newAgent: "New chat",
         newTerminal: "New terminal",
         newBrowser: "New browser tab",
+        newHostedBrowser: "New browser on host",
         importSession: "Import session",
         copyPath: "Copy workspace path",
         copyBranchName: "Copy branch name",

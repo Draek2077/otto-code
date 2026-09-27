@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Text, View, type GestureResponderEvent } from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+  type GestureResponderEvent,
+  type NativeSyntheticEvent,
+  type TextInputKeyPressEventData,
+} from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { EditingTextInput, type EditingTextInputHandle } from "@/components/ui/text-input";
 import {
@@ -8,7 +16,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Devices, Send } from "@/components/icons/material-icons";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  Devices,
+  RotateCw,
+  Send,
+} from "@/components/icons/material-icons";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -23,6 +38,7 @@ import type {
   RemoteBrowserTab,
 } from "@otto-code/protocol/browser-remote/rpc-schemas";
 import { RemoteBrowserFrame, type RemoteBrowserFrameHandle } from "./remote-browser-frame";
+import { useHostedPreviewGate } from "./hosted-preview-gate";
 
 interface Props {
   browserId: string;
@@ -34,15 +50,18 @@ interface Props {
 }
 
 const SIZES = [
-  { label: "Responsive", width: 0, height: 0 },
-  { label: "Phone", width: 390, height: 844 },
-  { label: "Tablet", width: 820, height: 1180 },
-  { label: "Desktop", width: 1366, height: 768 },
+  { id: "responsive", width: 0, height: 0 },
+  { id: "phone", width: 390, height: 844 },
+  { id: "tablet", width: 820, height: 1180 },
+  { id: "desktop", width: 1366, height: 768 },
 ] as const;
 
 const ThemedDevices = withUnistyles(Devices);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedSend = withUnistyles(Send);
+const ThemedArrowLeft = withUnistyles(ArrowLeft);
+const ThemedArrowRight = withUnistyles(ArrowRight);
+const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedTextInput = withUnistyles(EditingTextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
 }));
@@ -64,6 +83,7 @@ export function BrowserPane({
   isInteractive,
   onFocusPane,
 }: Props) {
+  const { t } = useTranslation();
   const hydrated = useBrowserStoreHydrated();
   const browser = useBrowserStore((state) => state.browsersById[browserId] ?? null);
   const updateBrowser = useBrowserStore((state) => state.updateBrowser);
@@ -74,6 +94,8 @@ export function BrowserPane({
     (state) => state.sessions[serverId]?.serverInfo?.features?.remoteBrowser === true,
   );
   const presented = useRetainedPanelActive() && isInteractive !== false;
+  const previewGate = useHostedPreviewGate({ browserId, serverId });
+  const previewPending = previewGate.pending;
   const [size, setSize] = useState({ width: 0, height: 0 });
   const measured = size.width > 0 && size.height > 0;
   const [tab, setTab] = useState<RemoteBrowserTab | null>(null);
@@ -85,7 +107,10 @@ export function BrowserPane({
   const addressInput = useRef<EditingTextInputHandle>(null);
   const typeInput = useRef<EditingTextInputHandle>(null);
   const [typed, setTyped] = useState("");
+  // An action's failure stays until the next action. A poll failure clears on
+  // the next good poll, so it must not erase the action's message.
   const [error, setError] = useState<string | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
   const revision = useRef<number | undefined>(undefined);
   const touch = useRef<{
     x: number;
@@ -152,19 +177,21 @@ export function BrowserPane({
 
   const run = useCallback(
     async (command: RemoteBrowserCommand) => {
-      if (!client || !connected)
-        throw new Error("The host is disconnected. This tab will reconnect automatically.");
+      if (!client || !connected) throw new Error(t("workspace.browser.hosted.disconnected"));
       const response = await client.remoteBrowserExecute(workspaceId, command);
       acceptTab(response.tab);
       return response;
     },
-    [client, connected, workspaceId, acceptTab],
+    [client, connected, workspaceId, acceptTab, t],
   );
 
+  const hasBrowser = Boolean(browser);
   // Open is idempotent: the same tab ID reattaches to its existing page after
   // a socket loss, preserving scroll, forms and history while that page lives.
   useEffect(() => {
     if (!hydrated || !browser || !client || !connected || !supported || !measured) return;
+    // A preview tab has no page to show until its dev server is up.
+    if (previewPending) return;
     let live = true;
     setError(null);
     void client
@@ -188,7 +215,17 @@ export function BrowserPane({
     };
     // Opening follows connection changes; existing host viewport wins on attach.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, Boolean(browser), client, connected, supported, measured, workspaceId, browserId]);
+  }, [
+    hydrated,
+    hasBrowser,
+    client,
+    connected,
+    supported,
+    measured,
+    previewPending,
+    workspaceId,
+    browserId,
+  ]);
 
   useEffect(() => {
     if (!presented || !hasTab || !client || !connected || !supported) return;
@@ -212,11 +249,11 @@ export function BrowserPane({
             revision.current = response.frame.revision;
             setHasFrame(true);
           }
-          setError(response.tab?.error ?? null);
+          setPollError(null);
           failures = 0;
         }
       } catch (cause) {
-        if (live) setError(errorText(cause));
+        if (live) setPollError(errorText(cause));
         failures++;
       } finally {
         polling = false;
@@ -425,43 +462,60 @@ export function BrowserPane({
     typeInput.current?.reset();
   }, [claimViewport, typed, act, browserId]);
 
+  // A phone has no key events for the page itself. Backspace in an empty field
+  // has nothing local to delete, so it goes to the page.
+  const onTypeKeyPress = useCallback(
+    (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
+      if (event.nativeEvent.key !== "Backspace" || typed) return;
+      claimViewport();
+      act({ kind: "key", browserId, key: "Backspace" });
+    },
+    [typed, claimViewport, act, browserId],
+  );
+
   if (connected && !supported)
     return (
       <View style={styles.center}>
-        <Text style={styles.message}>Update the host to use mobile browser tabs.</Text>
+        <Text style={styles.message}>{t("workspace.browser.updateHost")}</Text>
       </View>
     );
+
+  const shownError = error ?? pollError ?? tab?.error ?? null;
+  const canGoBack = tab?.canGoBack === true;
+  const canGoForward = tab?.canGoForward === true;
 
   return (
     <View style={styles.root}>
       <View style={styles.toolbar}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back"
+          accessibilityLabel={t("workspace.browser.controls.back")}
+          disabled={!canGoBack}
           onPress={() => act({ kind: "back", browserId })}
-          style={styles.button}
+          style={[styles.button, !canGoBack && styles.buttonDisabled]}
         >
-          <Text style={styles.buttonText}>‹</Text>
+          <ThemedArrowLeft size={18} uniProps={mutedIcon} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Forward"
+          accessibilityLabel={t("workspace.browser.controls.forward")}
+          disabled={!canGoForward}
           onPress={() => act({ kind: "forward", browserId })}
-          style={styles.button}
+          style={[styles.button, !canGoForward && styles.buttonDisabled]}
         >
-          <Text style={styles.buttonText}>›</Text>
+          <ThemedArrowRight size={18} uniProps={mutedIcon} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Reload"
+          accessibilityLabel={t("workspace.browser.controls.refresh")}
           onPress={() => act({ kind: "reload", browserId })}
           style={styles.button}
         >
-          <Text style={styles.buttonText}>↻</Text>
+          <ThemedRotateCw size={18} uniProps={mutedIcon} />
         </Pressable>
         <ThemedTextInput
           ref={addressInput}
-          accessibilityLabel="Address"
+          accessibilityLabel={t("workspace.browser.hosted.address")}
           initialValue={address}
           onChangeText={setAddress}
           onFocus={() => {
@@ -484,7 +538,7 @@ export function BrowserPane({
         />
         <DropdownMenu>
           <DropdownMenuTrigger
-            accessibilityLabel={`Viewport: ${selectedSize?.label ?? `${displayViewport.width}×${displayViewport.height}`}`}
+            accessibilityLabel={t("workspace.browser.devices.label")}
             style={styles.button}
           >
             <View style={styles.viewportTrigger}>
@@ -495,7 +549,7 @@ export function BrowserPane({
           <DropdownMenuContent align="end" side="bottom" minWidth={180}>
             {SIZES.map((preset) => (
               <DropdownMenuItem
-                key={preset.label}
+                key={preset.id}
                 selected={selectedSize === preset}
                 showSelectedCheck
                 onSelect={() => {
@@ -517,25 +571,23 @@ export function BrowserPane({
                   });
                 }}
               >
-                {preset.label}
+                {t(`workspace.browser.hosted.sizes.${preset.id}`)}
                 {preset.width ? ` · ${preset.width}×${preset.height}` : ""}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
       </View>
-      {error ? (
+      {shownError ? (
         <View style={styles.error}>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>{shownError}</Text>
           <Pressable accessibilityRole="button" onPress={() => act({ kind: "reload", browserId })}>
-            <Text style={styles.retry}>Retry</Text>
+            <Text style={styles.retry}>{t("common.actions.retry")}</Text>
           </Pressable>
         </View>
       ) : null}
       {!connected ? (
-        <Text style={styles.message}>
-          Host disconnected. This tab will reconnect automatically.
-        </Text>
+        <Text style={styles.message}>{t("workspace.browser.hosted.disconnected")}</Text>
       ) : null}
       <View
         style={styles.page}
@@ -545,8 +597,9 @@ export function BrowserPane({
             setSize({ width, height });
         }}
       >
+        {previewGate.overlay}
         <Pressable
-          style={styles.imagePress}
+          style={previewPending ? styles.hidden : styles.imagePress}
           onPress={onPagePress}
           onTouchStart={(event) => {
             claimViewport();
@@ -575,7 +628,7 @@ export function BrowserPane({
           />
           {!hasFrame ? (
             <View pointerEvents="none" style={styles.framePlaceholder}>
-              <Text style={styles.message}>Connecting to host browser…</Text>
+              <Text style={styles.message}>{t("workspace.browser.hosted.connecting")}</Text>
             </View>
           ) : null}
         </Pressable>
@@ -583,9 +636,10 @@ export function BrowserPane({
       <View style={styles.inputRow}>
         <ThemedTextInput
           ref={typeInput}
-          accessibilityLabel="Type into page"
-          placeholder="Type into page"
+          accessibilityLabel={t("workspace.browser.hosted.typeIntoPage")}
+          placeholder={t("workspace.browser.hosted.typeIntoPage")}
           onChangeText={setTyped}
+          onKeyPress={onTypeKeyPress}
           onSubmitEditing={sendTyped}
           autoCapitalize="none"
           autoCorrect={false}
@@ -595,7 +649,7 @@ export function BrowserPane({
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Send to page"
+          accessibilityLabel={t("workspace.browser.hosted.sendToPage")}
           onPress={sendTyped}
           style={styles.button}
         >
@@ -623,7 +677,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     paddingHorizontal: 6,
   },
-  buttonText: { color: theme.colors.foreground, fontSize: 18 },
+  buttonDisabled: { opacity: 0.45 },
   address: {
     flex: 1,
     minHeight: 34,
@@ -637,6 +691,7 @@ const styles = StyleSheet.create((theme) => ({
   viewportTrigger: { flexDirection: "row", alignItems: "center", gap: 2 },
   page: { flex: 1, overflow: "hidden" },
   imagePress: { flex: 1 },
+  hidden: { display: "none" },
   framePlaceholder: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",

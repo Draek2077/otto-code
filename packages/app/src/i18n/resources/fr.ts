@@ -989,6 +989,19 @@ export const fr: TranslationResources = {
     },
     browser: {
       updateHost: "Mettez à jour l’hôte pour utiliser les onglets du navigateur sur mobile.",
+      hosted: {
+        address: "Adresse",
+        typeIntoPage: "Saisir dans la page",
+        sendToPage: "Envoyer à la page",
+        connecting: "Connexion au navigateur de l'hôte…",
+        disconnected: "Hôte déconnecté. Cet onglet se reconnectera automatiquement.",
+        sizes: {
+          responsive: "Adaptatif",
+          phone: "Téléphone",
+          tablet: "Tablette",
+          desktop: "Ordinateur",
+        },
+      },
       unavailable: {
         title: "Le navigateur est réservé au bureau",
         subtitle: "Ouvrez cet espace de travail dans Electron pour utiliser le navigateur intégré.",
@@ -1235,6 +1248,7 @@ export const fr: TranslationResources = {
         newAgent: "Nouvelle conversation",
         newTerminal: "Nouvelle borne",
         newBrowser: "Nouvel onglet du navigateur",
+        newHostedBrowser: "Nouveau navigateur sur l'hôte",
         importSession: "Session d'importation",
         copyPath: "Copier le chemin de l'espace de travail",
         copyBranchName: "Copier le nom de la branche",

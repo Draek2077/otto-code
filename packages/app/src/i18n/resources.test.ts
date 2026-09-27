@@ -210,7 +210,7 @@ describe("translation resources", () => {
     expect(en.shell.menu.open).toBe("Open menu");
     expect(en.shell.menu.close).toBe("Close menu");
     expect(en.shell.commandCenter.placeholder).toBe(
-      "Search commands, files, workspaces, and agents...",
+      "Search commands, files, workspaces, and chats...",
     );
     expect(en.shell.commandCenter.filePlaceholder).toBe("Search files...");
     expect(en.shell.commandCenter.files).toBe("Files");

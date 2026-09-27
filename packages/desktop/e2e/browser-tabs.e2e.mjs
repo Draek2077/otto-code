@@ -1150,6 +1150,7 @@ async function main() {
       OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0",
       OTTO_DICTATION_ENABLED: "0",
       OTTO_VOICE_MODE_ENABLED: "0",
+      OTTO_HOSTED_BROWSER_AUTOMATION: "0",
       FORCE_COLOR: "0",
       NO_COLOR: "1",
     };

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Theme } from "@/styles/theme";
+import { getIsElectron } from "@/constants/platform";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import {
   confirmPreviewNeedsBrowserTools,
@@ -164,6 +165,7 @@ export function useWorkspacePreviewController({
     (cwd: string, serverName: string, initial?: { url: string; serverId: string }) => {
       const { browserId } = createWorkspaceBrowser({
         isPreview: true,
+        renderMode: getIsElectron() ? "native" : "hosted",
         previewServerName: serverName,
         previewCwd: cwd,
         ...(initial
@@ -178,6 +180,12 @@ export function useWorkspacePreviewController({
         serverId: normalizedServerId,
         workspaceId: normalizedWorkspaceId,
       });
+      if (workspaceKey && !paneId) {
+        // No pane to split beside (the phone layout): reveal the tab instead.
+        useWorkspaceLayoutStore
+          .getState()
+          .openTab({ workspaceKey, target: { kind: "browser", browserId }, intent: "reveal" });
+      }
       if (workspaceKey && paneId) {
         const layoutStore = useWorkspaceLayoutStore.getState();
         const newTabId = layoutStore.openTabInBackground(workspaceKey, {

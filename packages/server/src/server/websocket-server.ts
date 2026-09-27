@@ -823,11 +823,15 @@ export class VoiceAssistantWebSocketServer {
     this.daemonVersion = requireDaemonVersion(daemonVersion);
     this.daemonRuntimeConfig = daemonRuntimeConfig;
     this.browserToolsBroker = orNull(browserToolsBroker);
-    if (this.browserToolsBroker) {
+    // The desktop bridge E2E sets this to keep agent tabs on the native host it
+    // verifies. Hosted tabs opened by a client are unaffected.
+    if (this.browserToolsBroker && process.env.OTTO_HOSTED_BROWSER_AUTOMATION !== "0") {
       this.unregisterRemoteBrowserHost = this.browserToolsBroker.registerClient({
         id: "daemon-remote-browser",
         hostKind: "daemon-hosted",
         supportedCommands: this.remoteBrowserManager.supportedCommands,
+        // A cold start launches the browser and then loads the page.
+        requestTimeoutMs: 45_000,
         sendBrowserAutomationRequest: async (request) => {
           const response = await this.remoteBrowserManager.executeAutomation(request);
           this.browserToolsBroker?.receiveResponse(response);

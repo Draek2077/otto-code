@@ -1,9 +1,7 @@
 import { normalizeFetchAgentOptions, type FetchAgentOptions } from "./fetch-agent-options.js";
 import type { ChatSearchQuery } from "@otto-code/protocol/chat-search";
-import type {
-  RemoteBrowserCommand,
-  RemoteBrowserExecuteResponse,
-} from "@otto-code/protocol/browser-remote/rpc-schemas";
+import type { RemoteBrowserCommand } from "@otto-code/protocol/browser-remote/rpc-schemas";
+import { BrowserRequests } from "./browser/index.js";
 export type { FetchAgentOptions } from "./fetch-agent-options.js";
 import { resolveAgentConfig } from "./create-agent-config.js";
 import type { AgentAttentionNotificationPayload } from "@otto-code/protocol/agent-attention-notification";
@@ -8360,43 +8358,21 @@ export class DaemonClient {
     }
     return payload.status;
   }
-  async searchBrowserHistory(workspaceId: string, query: string) {
-    const result =
-      await this.sendNamespacedCorrelatedSessionRequest<"browser.history.search.response">({
-        message: { type: "browser.history.search.request", workspaceId, query },
-      });
-    if (result.error) throw new Error(result.error);
-    return result.entries;
-  }
 
-  async remoteBrowserExecute(
-    workspaceId: string,
-    command: RemoteBrowserCommand,
-  ): Promise<RemoteBrowserExecuteResponse["payload"]> {
-    const result =
-      await this.sendNamespacedCorrelatedSessionRequest<"browser.remote.execute.response">({
-        message: { type: "browser.remote.execute.request", workspaceId, command },
-        timeout: command.kind === "frame" ? 15_000 : 30_000,
-      });
-    if (!result.ok)
-      throw new Error(result.error ?? "The host browser could not complete this action.");
-    return result;
+  private readonly browser = new BrowserRequests({
+    request: (params) => this.sendNamespacedCorrelatedSessionRequest(params),
+  });
+  searchBrowserHistory(workspaceId: string, query: string) {
+    return this.browser.searchHistory(workspaceId, query);
   }
-
-  async recordBrowserHistory(workspaceId: string, url: string, title: string) {
-    const result =
-      await this.sendNamespacedCorrelatedSessionRequest<"browser.history.record.response">({
-        message: { type: "browser.history.record.request", workspaceId, url, title },
-      });
-    if (result.error) throw new Error(result.error);
+  remoteBrowserExecute(workspaceId: string, command: RemoteBrowserCommand) {
+    return this.browser.executeRemote(workspaceId, command);
   }
-
-  async clearBrowserHistory(projectId: string) {
-    const result =
-      await this.sendNamespacedCorrelatedSessionRequest<"browser.history.clear.response">({
-        message: { type: "browser.history.clear.request", projectId },
-      });
-    if (result.error) throw new Error(result.error);
+  recordBrowserHistory(workspaceId: string, url: string, title: string) {
+    return this.browser.recordHistory(workspaceId, url, title);
+  }
+  clearBrowserHistory(projectId: string) {
+    return this.browser.clearHistory(projectId);
   }
 
   async getProjectIcon(

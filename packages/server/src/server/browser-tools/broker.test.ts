@@ -302,7 +302,7 @@ describe("BrowserToolsBroker", () => {
     });
   });
 
-  test("plain new tabs use the daemon while preview tabs stay on desktop", async () => {
+  test("plain and preview new tabs both use the daemon host", async () => {
     const broker = createBroker();
     const daemon = new FakeBrowserHostClient("daemon", { hostKind: "daemon-hosted" });
     const desktop = new FakeBrowserHostClient("desktop");
@@ -337,8 +337,9 @@ describe("BrowserToolsBroker", () => {
       },
       workspaceId: "workspace-1",
     });
-    expect(desktop.receivedRequests).toHaveLength(1);
-    desktop.resolveLatestWith(broker, {
+    expect(daemon.receivedRequests).toHaveLength(2);
+    expect(desktop.receivedRequests).toHaveLength(0);
+    daemon.resolveLatestWith(broker, {
       requestId: "req-1",
       ok: true,
       result: {
@@ -349,6 +350,36 @@ describe("BrowserToolsBroker", () => {
       },
     });
     await preview;
+  });
+
+  test("a host that cold-starts a browser gets its declared timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const broker = createBroker();
+      const daemon = new FakeBrowserHostClient("daemon", { hostKind: "daemon-hosted" });
+      Object.assign(daemon, { requestTimeoutMs: 45_000 });
+      broker.registerClient(daemon);
+
+      let settled = false;
+      const pending = broker
+        .execute({
+          command: { command: "new_tab", args: { url: "https://example.com" } },
+          workspaceId: "workspace-1",
+        })
+        .then((payload) => {
+          settled = true;
+          return payload;
+        });
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(15_000);
+      await expect(pending).resolves.toMatchObject({
+        ok: false,
+        error: { code: "browser_timeout" },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("list tabs aggregates all hosts and seeds browser id affinity", async () => {

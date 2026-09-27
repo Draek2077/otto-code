@@ -47,7 +47,14 @@ describe("hosted browser tab projection", () => {
     const client = { remoteBrowserExecute } as unknown as DaemonClient;
 
     const hook = renderHook(() =>
-      useHostedBrowserTabs({ client, workspaceId: "workspace", workspaceKey, enabled: true }),
+      useHostedBrowserTabs({
+        client,
+        serverId: "host",
+        workspaceId: "workspace",
+        workspaceKey,
+        canSplitPanes: false,
+        enabled: true,
+      }),
     );
     await act(async () => {
       await Promise.resolve();
@@ -104,7 +111,14 @@ describe("hosted browser tab projection", () => {
       });
     const client = { remoteBrowserExecute } as unknown as DaemonClient;
     const hook = renderHook(() =>
-      useHostedBrowserTabs({ client, workspaceId: "workspace", workspaceKey, enabled: true }),
+      useHostedBrowserTabs({
+        client,
+        serverId: "host",
+        workspaceId: "workspace",
+        workspaceKey,
+        canSplitPanes: false,
+        enabled: true,
+      }),
     );
     await act(async () => {
       await Promise.resolve();
@@ -135,6 +149,47 @@ describe("hosted browser tab projection", () => {
       await vi.advanceTimersByTimeAsync(3_000);
     });
     expect(focusedId()).toBe(otherBrowserId);
+    hook.unmount();
+  });
+
+  it("adopts a preview tab with its server identity", async () => {
+    const remoteBrowserExecute = vi.fn().mockResolvedValue({
+      tabs: [
+        {
+          browserId,
+          workspaceId: "workspace",
+          url: "http://localhost:5173/",
+          title: "App",
+          viewport: { mode: "responsive", width: 390, height: 844 },
+          state: "ready",
+          error: null,
+          preview: { serverId: "preview-1", serverName: "web", cwd: "/project" },
+          layout: "split-right",
+        },
+      ],
+    });
+    const client = { remoteBrowserExecute } as unknown as DaemonClient;
+    const hook = renderHook(() =>
+      useHostedBrowserTabs({
+        client,
+        serverId: "host",
+        workspaceId: "workspace",
+        workspaceKey,
+        canSplitPanes: false,
+        enabled: true,
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(useBrowserStore.getState().browsersById[browserId]).toMatchObject({
+      renderMode: "hosted",
+      isPreview: true,
+      previewServerId: "preview-1",
+      previewServerName: "web",
+      previewCwd: "/project",
+      previewStatus: "ready",
+    });
     hook.unmount();
   });
 });

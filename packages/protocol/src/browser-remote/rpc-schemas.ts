@@ -88,6 +88,12 @@ export const RemoteBrowserTabSchema = z.object({
   error: z.string().nullable(),
   // A host focus request is consumed by each connected workspace client once.
   focusRequestId: z.string().min(1).optional(),
+  // Set when preview_start opened the tab, so each client adopts it as that
+  // server's preview tab.
+  preview: z
+    .object({ serverId: z.string().min(1), serverName: z.string(), cwd: z.string() })
+    .optional(),
+  layout: z.enum(["split-right"]).optional(),
 });
 
 export const RemoteBrowserExecuteResponseSchema = z.object({

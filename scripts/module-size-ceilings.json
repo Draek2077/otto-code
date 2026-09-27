@@ -26,8 +26,8 @@
   "ceilings": {
     "packages/protocol/src/messages.ts": 10441,
     "packages/server/src/server/session.ts": 12932,
-    "packages/client/src/daemon-client.ts": 10965,
-    "packages/app/src/screens/workspace/workspace-screen.tsx": 5992,
+    "packages/client/src/daemon-client.ts": 10963,
+    "packages/app/src/screens/workspace/workspace-screen.tsx": 5953,
     "packages/server/src/server/agent/agent-manager.ts": 8984,
     "packages/server/src/server/agent/providers/claude/agent.ts": 8610,
     "packages/server/src/server/agent/tools/otto-tools.ts": 318,
@@ -43,7 +43,7 @@
     "packages/server/src/server/file-explorer/service.ts": 704,
     "packages/app/src/keyboard/keyboard-shortcuts.ts": 2149,
     "packages/app/src/screens/settings-screen.tsx": 3470,
-    "packages/app/src/screens/workspace/workspace-desktop-tabs-row.tsx": 2950,
+    "packages/app/src/screens/workspace/workspace-desktop-tabs-row.tsx": 2899,
     "packages/app/src/components/file-explorer-pane.tsx": 2151
   }
 }

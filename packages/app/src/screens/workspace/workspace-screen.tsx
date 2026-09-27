@@ -144,11 +144,6 @@ import { isMobileWorkspaceSwitcherTarget } from "@/workspace-tabs/mobile-switche
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useAppSettingValue, useSettings, type AppSettings } from "@/hooks/use-settings";
-import {
-  confirmBrowserToolsOffBeforeOpening,
-  useBrowserToolsWarningCopy,
-  useOpenBrowserToolsSettings,
-} from "@/utils/browser-tools-warning";
 import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
@@ -183,12 +178,12 @@ import {
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { removeResidentBrowserWebview } from "@/desktop/browser/resident-webviews";
 import { architecturalViewAuthoringBrowserId } from "@/architectural-views/browser-id";
+import { useBrowserStore } from "@/desktop/browser/store";
 import {
-  createWorkspaceBrowser,
-  useBrowserStore,
-  useBrowserStoreHydrated,
-} from "@/desktop/browser/store";
-import { useHostedBrowserTabs } from "@/screens/workspace/use-hosted-browser-tabs";
+  closeHostedBrowserTab,
+  useHeaderBrowserMenu,
+  useWorkspaceBrowserTabs,
+} from "@/screens/workspace/workspace-browser-tabs";
 import { getDesktopHost } from "@/desktop/host";
 import {
   buildAgentWorkspaceAttachmentScopeKey,
@@ -448,20 +443,6 @@ function decodeSegment(value: string): string {
   } catch {
     return value;
   }
-}
-
-function closeHostedBrowserTab(
-  client: import("@otto-code/client/internal/daemon-client").DaemonClient | null,
-  workspaceId: string,
-  browserId: string,
-  browserRecord: { renderMode: "native" | "hosted" } | undefined,
-): void {
-  if (getIsElectron() && browserRecord?.renderMode !== "hosted") return;
-  // Closing the workspace tab releases its host page. If the socket is gone,
-  // the daemon's idle reaper remains the cleanup path for that page.
-  void client
-    ?.remoteBrowserExecute(workspaceId, { kind: "close", browserId })
-    .catch(() => undefined);
 }
 
 function useSyncWorkspaceActiveBrowser(input: {
@@ -1208,7 +1189,6 @@ interface WorkspaceHeaderMenuProps {
   currentBranchName: string | null;
   showWorkspaceSetup: boolean;
   showCreateBrowserTab: boolean;
-  showCreateHostedBrowserTab: boolean;
   isMobile: boolean;
   // Fallback items for header buttons the compact width fit dropped (see
   // `resolveCompactHeaderActions`); all false while every button still fits.
@@ -1255,27 +1235,6 @@ interface HeaderMenuProfileItemProps {
   profile: { id: string; name: string; command: string; args?: string[]; icon?: string };
   disabled: boolean;
   onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
-}
-
-function HostedBrowserMenuItem({
-  visible,
-  icon,
-  onSelect,
-}: {
-  visible: boolean;
-  icon: ReactElement;
-  onSelect: () => void;
-}) {
-  if (!visible) return null;
-  return (
-    <DropdownMenuItem
-      testID="workspace-header-new-hosted-browser"
-      leading={icon}
-      onSelect={onSelect}
-    >
-      New browser on host
-    </DropdownMenuItem>
-  );
 }
 
 function HeaderMenuProfileItem({
@@ -1329,7 +1288,6 @@ function WorkspaceHeaderMenu({
   currentBranchName,
   showWorkspaceSetup,
   showCreateBrowserTab,
-  showCreateHostedBrowserTab,
   isMobile,
   showVisualizerMenuItem,
   showVoiceCuesMenuItem,
@@ -1383,6 +1341,12 @@ function WorkspaceHeaderMenu({
   // "Add artifact" item below flips it open after this menu dismisses.
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const handleOpenArtifacts = useCallback(() => setArtifactsOpen(true), []);
+  const browserMenu = useHeaderBrowserMenu({
+    serverId: normalizedServerId,
+    workspaceId: normalizedWorkspaceId,
+    icon: menuNewBrowserIcon,
+    onCreateHosted: onCreateHostedBrowser,
+  });
   // The collapsed Play fallback works the same way: its dropdown is anchored to
   // a hidden zero-size WorkspaceScriptsButton below, opened after this menu
   // dismisses.
@@ -1452,11 +1416,7 @@ function WorkspaceHeaderMenu({
               {t("workspace.header.actions.newBrowser")}
             </DropdownMenuItem>
           ) : null}
-          <HostedBrowserMenuItem
-            visible={showCreateHostedBrowserTab}
-            icon={menuNewBrowserIcon}
-            onSelect={onCreateHostedBrowser}
-          />
+          {browserMenu.items}
           {supportsArtifacts ? (
             <DropdownMenuItem
               testID="workspace-header-add-artifact"
@@ -1612,6 +1572,7 @@ function WorkspaceHeaderMenu({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {browserMenu.anchor}
       {/* Host for the "Add artifact" flow (added in fb74fb6b2). There is NO
           visible artifact button here - the entry point is the "Add artifact"
           item in the "..." menu above, which flips `artifactsOpen` on. On compact
@@ -1705,7 +1666,6 @@ interface WorkspaceHeaderTitleBarProps {
   liveTerminalIds: string[];
   showWorkspaceSetup: boolean;
   showCreateBrowserTab: boolean;
-  showCreateHostedBrowserTab: boolean;
   isMobile: boolean;
   // Compact responsive drops (see `fitCompactHeaderActions`); always true on desktop.
   showVisualizerAction: boolean;
@@ -1787,7 +1747,6 @@ function WorkspaceHeaderTitleBar({
   liveTerminalIds,
   showWorkspaceSetup,
   showCreateBrowserTab,
-  showCreateHostedBrowserTab,
   isMobile,
   showVisualizerAction,
   showVoiceCuesAction,
@@ -1872,7 +1831,6 @@ function WorkspaceHeaderTitleBar({
           currentBranchName={currentBranchName}
           showWorkspaceSetup={showWorkspaceSetup}
           showCreateBrowserTab={showCreateBrowserTab}
-          showCreateHostedBrowserTab={showCreateHostedBrowserTab}
           isMobile={isMobile}
           showVisualizerMenuItem={showVisualizerMenuItem}
           showVoiceCuesMenuItem={showVoiceCuesMenuItem}
@@ -2457,13 +2415,6 @@ function WorkspaceScreenContent({
       .catch(() => undefined);
   }, [normalizedServerId, normalizedWorkspaceId, workspaceDescriptor]);
   const workspaceScripts = getWorkspaceScripts(workspaceDescriptor);
-  // Browser-tools-off heads-up wiring for handleCreateBrowserTab below.
-  const { config: browserToolsConfig } = useDaemonConfig(normalizedServerId);
-  const browserToolsCopy = useBrowserToolsWarningCopy();
-  const openBrowserToolsSettings = useOpenBrowserToolsSettings(normalizedServerId);
-  const suppressBrowserToolsWarning = useAppSettingValue(
-    (settings) => settings.suppressBrowserToolsWarning,
-  );
   // How many of the focused pane's tabs stay mounted behind the frontmost one.
   // Unset resolves per device, which on this path is usually the compact one.
   // See screens/workspace/mounted-tab-retention.ts.
@@ -2485,9 +2436,6 @@ function WorkspaceScreenContent({
 
   const client = useHostRuntimeClient(normalizedServerId);
   const isConnected = useHostRuntimeIsConnected(normalizedServerId);
-  const supportsRemoteBrowser = useSessionStore(
-    (state) => state.sessions[normalizedServerId]?.serverInfo?.features?.remoteBrowser === true,
-  );
   const supportsProvidersSnapshot = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.serverInfo?.features?.providersSnapshot === true,
   );
@@ -2809,17 +2757,21 @@ function WorkspaceScreenContent({
     persistenceKey ? state.focusRestorationByWorkspace[persistenceKey]?.restorePaneId : undefined,
   );
   const hasHydratedWorkspaceLayoutStore = useWorkspaceLayoutStoreHydrated();
-  const hasHydratedBrowserStore = useBrowserStoreHydrated();
-  useHostedBrowserTabs({
-    client,
+  const {
+    launchBrowserTab,
+    handleCreateBrowserTab,
+    handleCreateHostedBrowserTab,
+    handleOpenUrlInBrowserTab,
+  } = useWorkspaceBrowserTabs({
+    serverId: normalizedServerId,
     workspaceId: normalizedWorkspaceId,
-    workspaceKey: persistenceKey,
-    enabled:
-      isRouteFocused &&
-      isConnected &&
-      supportsRemoteBrowser &&
-      hasHydratedWorkspaceLayoutStore &&
-      hasHydratedBrowserStore,
+    persistenceKey,
+    client,
+    projectionEnabled: isRouteFocused && isConnected && hasHydratedWorkspaceLayoutStore,
+    canSplitPanes: !isMobile && supportsDesktopPaneSplits(),
+    openWorkspaceTabFocused,
+    replaceWorkspaceTabTarget,
+    placementForPane: paneLocalPlacement,
   });
   // Report pane-content readiness for the app-wide route-fade veil. A workspace
   // is "ready" to reveal once it has a layout - the tab strip and panes render
@@ -3735,71 +3687,6 @@ function WorkspaceScreenContent({
     [createTerminal],
   );
 
-  // Every user-driven "new browser tab" path funnels through here, so this is
-  // the one place the Browser-tools-off heads-up has to live. Informational
-  // only - the tab is still useful to the human - so it proceeds on "Not now"
-  // and can be silenced for good. Agent-driven tab creation
-  // (browser-automation/handler.ts) never reaches this and must not warn.
-  const launchBrowserTab = useCallback(
-    (destination: WorkspaceTabLaunchDestination, requestedMode?: "native" | "hosted") => {
-      if (!persistenceKey) {
-        return;
-      }
-      const renderMode = requestedMode ?? (getIsElectron() ? "native" : "hosted");
-      if (renderMode === "hosted" && !supportsRemoteBrowser) {
-        toast.error(t("workspace.browser.updateHost"));
-        return;
-      }
-      void (async () => {
-        const proceed = await confirmBrowserToolsOffBeforeOpening({
-          config: browserToolsConfig,
-          copy: browserToolsCopy,
-          suppressed: suppressBrowserToolsWarning,
-          onOpenSettings: openBrowserToolsSettings,
-        });
-        if (!proceed) {
-          return;
-        }
-        const { browserId } = createWorkspaceBrowser({ renderMode });
-        if (destination.kind === "replace") {
-          replaceWorkspaceTabTarget(persistenceKey, destination.tabId, {
-            kind: "browser",
-            browserId,
-          });
-          return;
-        }
-        openWorkspaceTabFocused(
-          persistenceKey,
-          { kind: "browser", browserId },
-          paneLocalPlacement(destination.paneId),
-        );
-      })();
-    },
-    [
-      browserToolsConfig,
-      browserToolsCopy,
-      openBrowserToolsSettings,
-      openWorkspaceTabFocused,
-      persistenceKey,
-      replaceWorkspaceTabTarget,
-      suppressBrowserToolsWarning,
-      supportsRemoteBrowser,
-      t,
-      toast,
-    ],
-  );
-
-  const handleCreateBrowserTab = useCallback(
-    (input?: { paneId?: string }) => {
-      launchBrowserTab(input?.paneId ? { kind: "open", paneId: input.paneId } : { kind: "open" });
-    },
-    [launchBrowserTab],
-  );
-
-  const handleCreateHostedBrowserTab = useCallback(() => {
-    launchBrowserTab({ kind: "open" }, "hosted");
-  }, [launchBrowserTab]);
-
   // Upstream's single entry point for "the user picked something to open" - the
   // New tab panel and the tab-row menu both route through it. Each branch hands
   // off to the handler that already owns that surface, so Otto's Browser-tools
@@ -3840,20 +3727,6 @@ function WorkspaceScreenContent({
       persistenceKey,
       replaceWorkspaceTabTarget,
     ],
-  );
-
-  const handleOpenUrlInBrowserTab = useCallback(
-    (url: string) => {
-      if (!persistenceKey || (!getIsElectron() && !supportsRemoteBrowser)) {
-        return;
-      }
-      const { browserId } = createWorkspaceBrowser({
-        initialUrl: url,
-        renderMode: getIsElectron() ? "native" : "hosted",
-      });
-      openWorkspaceTabFocused(persistenceKey, { kind: "browser", browserId });
-    },
-    [openWorkspaceTabFocused, persistenceKey, supportsRemoteBrowser],
   );
 
   useDesktopBrowserNewTabRequests({
@@ -5336,7 +5209,6 @@ function WorkspaceScreenContent({
                 liveTerminalIds={liveTerminalIds}
                 showWorkspaceSetup={showWorkspaceSetup}
                 showCreateBrowserTab={showCreateBrowserTab}
-                showCreateHostedBrowserTab={getIsElectron() && supportsRemoteBrowser}
                 isMobile={isMobile}
                 showVisualizerAction={headerActionFit.showVisualizer}
                 showVoiceCuesAction={headerActionFit.showVoiceCues}
@@ -5399,7 +5271,6 @@ function WorkspaceScreenContent({
       liveTerminalIds,
       showWorkspaceSetup,
       showCreateBrowserTab,
-      supportsRemoteBrowser,
       isMobile,
       headerActionFit,
       showBrainAction,

@@ -20,7 +20,7 @@ import {
   WORKSPACE_TABS_RAIL_MAX_WIDTH,
   WORKSPACE_TABS_RAIL_MIN_WIDTH,
 } from "@/constants/layout";
-import { getIsElectron, isWeb } from "@/constants/platform";
+import { isWeb } from "@/constants/platform";
 import { useHasFinePointer } from "@/hooks/use-fine-pointer";
 import { persistAppSettings, useAppSettingValue } from "@/hooks/use-settings";
 import type { AppSettings } from "@/hooks/use-settings/storage";
@@ -29,7 +29,6 @@ import {
   ResolvedDesktopTabChip,
   TabOrientationToggleButton,
   tabKeyExtractor,
-  usePaneTabAgentFacts,
   WorkspaceTabRowExtras,
   type WorkspaceDesktopTabRowItem,
 } from "@/screens/workspace/workspace-desktop-tabs-row";
@@ -43,6 +42,7 @@ import {
   TAB_ICON_WIDTH,
 } from "@/screens/workspace/workspace-tab-layout";
 import type { WorkspaceTabMenuLabels } from "@/screens/workspace/workspace-tab-menu";
+import { usePaneTabAgentFacts } from "@/screens/workspace/pane-tab-agent-facts";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useResizeHandleHighlight } from "@/components/use-resize-handle-highlight";
@@ -330,12 +330,11 @@ export function WorkspaceDesktopTabsRail({
     router.push(buildSettingsHostSectionRoute(normalizedServerId, "terminals") as Href);
   }, [normalizedServerId, router]);
 
-  const { focusedAgentId, focusedPreviewCwd, paneHasEditableAgentTab, paneHasPreviewTab } =
-    usePaneTabAgentFacts({
-      tabs,
-      focusedTab,
-      normalizedServerId,
-    });
+  const { focusedAgentId, focusedPreviewCwd, showPreviewButton } = usePaneTabAgentFacts({
+    tabs,
+    focusedTab,
+    normalizedServerId,
+  });
   const terminalDisabled = disableCreateTerminal || isWaitingOnTerminalReadiness;
 
   const renderTab = useCallback(
@@ -455,7 +454,7 @@ export function WorkspaceDesktopTabsRail({
             focusedAgentId={focusedAgentId}
             focusedPreviewCwd={focusedPreviewCwd}
             showCreateBrowserTab={showCreateBrowserTab}
-            showPreviewButton={getIsElectron() && (paneHasEditableAgentTab || paneHasPreviewTab)}
+            showPreviewButton={showPreviewButton}
             terminalDisabled={terminalDisabled}
             onSplitRight={onSplitRight}
             onSplitDown={onSplitDown}

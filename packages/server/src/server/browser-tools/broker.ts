@@ -13,6 +13,8 @@ export interface BrowserHostClient {
   id: string;
   hostKind: string;
   supportedCommands: readonly BrowserAutomationCommandName[];
+  /** A host that may cold-start a browser declares a longer default timeout. */
+  requestTimeoutMs?: number;
   sendBrowserAutomationRequest(request: BrowserAutomationExecuteRequest): void | Promise<void>;
 }
 
@@ -131,10 +133,7 @@ export class BrowserToolsBroker {
     }
 
     if (request.data.command.command === "list_tabs") {
-      return this.executeListTabs({
-        request: request.data,
-        timeoutMs: input.timeoutMs ?? this.defaultTimeoutMs,
-      });
+      return this.executeListTabs({ request: request.data, timeoutMs: input.timeoutMs });
     }
 
     const host = this.selectHostForCommand(request.data.command, requestId);
@@ -154,7 +153,7 @@ export class BrowserToolsBroker {
     return this.sendRequest({
       host: host.value,
       request: request.data,
-      timeoutMs: input.timeoutMs ?? this.defaultTimeoutMs,
+      timeoutMs: this.timeoutFor(host.value, input.timeoutMs),
     });
   }
 
@@ -199,7 +198,7 @@ export class BrowserToolsBroker {
 
   private async executeListTabs(params: {
     request: BrowserAutomationExecuteRequest;
-    timeoutMs: number;
+    timeoutMs: number | undefined;
   }): Promise<BrowserToolsResponsePayload> {
     const hosts = Array.from(this.clients.values());
     if (hosts.length === 0) {
@@ -221,7 +220,7 @@ export class BrowserToolsBroker {
       return this.sendRequest({
         host: hosts[0],
         request: params.request,
-        timeoutMs: params.timeoutMs,
+        timeoutMs: this.timeoutFor(hosts[0], params.timeoutMs),
       });
     }
 
@@ -235,7 +234,7 @@ export class BrowserToolsBroker {
             requestId: `${params.request.requestId}:${host.client.id}`,
           },
           rememberAffinity: false,
-          timeoutMs: params.timeoutMs,
+          timeoutMs: this.timeoutFor(host, params.timeoutMs),
         }),
       })),
     );
@@ -268,13 +267,11 @@ export class BrowserToolsBroker {
     | { ok: true; value: RegisteredBrowserHost }
     | { ok: false; payload: BrowserToolsResponsePayload } {
     if (command.command === "new_tab") {
-      // Plain agent tabs live on the daemon so another client can attach to the
-      // same page. Preview retains its desktop binding until its workspace UI
-      // can adopt daemon-created preview metadata.
-      const hosts = [...this.clients.values()].toReversed();
-      const preferred = command.args.preview
-        ? hosts.find((entry) => entry.client.hostKind !== "daemon-hosted")
-        : hosts.find((entry) => entry.client.hostKind === "daemon-hosted");
+      // Agent tabs, preview tabs included, live on the daemon so every
+      // connected client can attach to the same page.
+      const preferred = [...this.clients.values()]
+        .toReversed()
+        .find((entry) => entry.client.hostKind === "daemon-hosted");
       // COMPAT(daemonHostedNewTab): added in v0.9.25, remove by 2027-03-27.
       // Broker users without a daemon browser keep the existing desktop path.
       const host = preferred ?? this.selectMostRecentlyRegisteredHost();
@@ -336,6 +333,10 @@ export class BrowserToolsBroker {
         message: `Browser tab ${browserId} is not associated with a connected browser automation host. Call browser_list_tabs and use one of the returned browserId values.`,
       }),
     };
+  }
+
+  private timeoutFor(host: RegisteredBrowserHost, requested: number | undefined): number {
+    return requested ?? host.client.requestTimeoutMs ?? this.defaultTimeoutMs;
   }
 
   private selectMostRecentlyRegisteredHost(): RegisteredBrowserHost | null {

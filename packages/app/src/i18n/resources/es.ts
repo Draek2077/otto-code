@@ -986,6 +986,19 @@ export const es: TranslationResources = {
     },
     browser: {
       updateHost: "Actualiza el host para usar pestañas del navegador en el móvil.",
+      hosted: {
+        address: "Dirección",
+        typeIntoPage: "Escribir en la página",
+        sendToPage: "Enviar a la página",
+        connecting: "Conectando con el navegador del host…",
+        disconnected: "Host desconectado. Esta pestaña se reconectará automáticamente.",
+        sizes: {
+          responsive: "Adaptable",
+          phone: "Teléfono",
+          tablet: "Tableta",
+          desktop: "Escritorio",
+        },
+      },
       unavailable: {
         title: "El navegador es solo para escritorio",
         subtitle: "Abra este espacio de trabajo en Electron para usar el navegador integrado.",
@@ -1232,6 +1245,7 @@ export const es: TranslationResources = {
         newAgent: "Nuevo chat",
         newTerminal: "Nueva terminal",
         newBrowser: "Nueva pestaña del navegador",
+        newHostedBrowser: "Nuevo navegador en el host",
         importSession: "Importar sesión",
         copyPath: "Copiar ruta del espacio de trabajo",
         copyBranchName: "Copiar nombre de sucursal",

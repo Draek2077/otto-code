@@ -317,8 +317,12 @@ active client sends its measured size for responsive mode or the chosen fixed
 device dimensions when it takes control. Passive viewers keep the host's
 viewport. AI screenshots and controls target that same daemon page and
 viewport. The shared snapshot engine supplies stable element references.
-Plain AI-created tabs use this host and appear in each connected client's
-ordinary workspace tab strip. Closing a hosted tab closes the daemon page and
+AI-created tabs, including the tab `preview_start` opens, use this host and
+appear in each connected client's ordinary workspace tab strip. A preview tab
+carries its server identity, so each client adopts it as that server's preview
+tab, and opens it beside the focused pane where panes can split. The daemon
+host is preferred even while a desktop app is connected, so a phone sees the
+same tabs the agent drives. Closing a hosted tab closes the daemon page and
 withdraws it from other clients; a stale client cannot reopen that closed ID.
 `browser_focus_tab` raises a hosted tab in each connected workspace client on
 its next tab poll. AI viewport, full-page, and element screenshots render from
@@ -330,7 +334,13 @@ ordinary desktop browser button still opens a native page. Existing native
 pages do not transfer their live form or scroll state to the hosted browser.
 
 The daemon permits four live hosted pages. A page unused for five minutes is
-suspended, and an unclaimed suspended tab is forgotten after an hour. Repeated
+suspended. A suspended tab is forgotten after an hour in which no client
+listed its workspace; a connected client's tab poll counts as a claim, so an
+idle tab is not withdrawn from a client that still shows it. The daemon host
+declares a 45-second automation timeout, because a cold start launches the
+browser before the page loads. `OTTO_HOSTED_BROWSER_AUTOMATION=0` keeps agent
+tabs off the daemon host; the desktop bridge E2E suites set it so they keep
+covering the native webview. Repeated
 page crashes quarantine the tab until it is closed. Each presented client
 polls for at most one JPEG frame at a time, about once per second while idle.
 A drag sends coalesced wheel deltas while the finger moves and temporarily
@@ -344,8 +354,19 @@ quarantines it above 512 MiB;
 native image and GPU memory are outside that measurement. The host uses Edge,
 Chrome, or a Playwright Chromium installation, and reports an install action
 when none is available. Mobile annotation is not supported by this host.
-Preview's automatic tab creation still uses the desktop host; the mobile
-Preview button is hidden until the hosted tab binding is implemented.
+Preview is offered wherever a tab can carry it. The desktop tab row shows
+the button on Electron, and on any other client whose host supports hosted
+tabs. The phone layout has no tab row, so Preview is an entry in the
+workspace "..." menu there, with the server picker opening after the menu
+dismisses. A user-started preview tab is hosted on every client except
+Electron. It opens before the server is up, so the hosted pane holds off the
+host page until the tab is ready, showing the same starting, failed, and
+start-manually states as the native pane. A restored hosted preview tab
+restarts its server under the same auto-start setting.
+A failed action keeps its message until the next action; frame polling no
+longer clears it. Back and Forward reflect the page's real history. On a
+phone, Send with an empty field presses Enter, and Backspace in an empty field
+goes to the page. Other keys (Tab, Escape, arrows) have no phone control yet.
 Page-created popup windows are closed rather than left as untracked daemon pages.
 
 Responsive browser surfaces snap their bounds outward to whole CSS pixels, with

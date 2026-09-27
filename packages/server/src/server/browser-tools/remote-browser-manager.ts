@@ -29,7 +29,11 @@ import { browserToolsFailure } from "./errors.js";
 type Viewport = RemoteBrowserTab["viewport"];
 type BrowserLogs = Extract<BrowserAutomationResult, { command: "logs" }>;
 type BrowserNetwork = Extract<BrowserAutomationResult, { command: "network" }>;
-interface Tab {
+interface TabOrigin {
+  preview?: RemoteBrowserTab["preview"];
+  layout?: RemoteBrowserTab["layout"];
+}
+interface Tab extends TabOrigin {
   browserId: string;
   workspaceId: string;
   url: string;
@@ -40,6 +44,10 @@ interface Tab {
   state: RemoteBrowserTab["state"];
   error: string | null;
   lastUsed: number;
+  // A client that still lists the workspace holds its tabs, even while idle.
+  lastClaimed: number;
+  canGoBack: boolean;
+  canGoForward: boolean;
   lastFrameAt: number;
   lastScrollAt: number;
   lastHeapCheckAt: number;
@@ -119,11 +127,25 @@ function asTab(tab: Tab): RemoteBrowserTab {
     title: tab.title,
     viewport: tab.viewport,
     state: tab.state,
-    canGoBack: false,
-    canGoForward: false,
+    canGoBack: tab.canGoBack,
+    canGoForward: tab.canGoForward,
     error: tab.error,
     ...(tab.focusRequestId ? { focusRequestId: tab.focusRequestId } : {}),
+    ...(tab.preview ? { preview: tab.preview } : {}),
+    ...(tab.layout ? { layout: tab.layout } : {}),
   };
+}
+
+async function readHistory(tab: Tab, page: Page): Promise<void> {
+  const session = await page.context().newCDPSession(page);
+  try {
+    const history = await session.send("Page.getNavigationHistory");
+    if (tab.page !== page) return;
+    tab.canGoBack = history.currentIndex > 0;
+    tab.canGoForward = history.currentIndex < history.entries.length - 1;
+  } finally {
+    await session.detach().catch(() => undefined);
+  }
 }
 
 function appendBounded<T>(items: T[], item: T, limit = 200): void {
@@ -278,6 +300,8 @@ export class RemoteBrowserManager {
         tab.title = "";
         this.snapshotEngine.clearBrowser(tab.browserId);
         tab.cachedFrame = null;
+        // A closing page rejects the history read; its state no longer matters.
+        void readHistory(tab, page).catch(() => undefined);
       });
       await page.goto(tab.url, { waitUntil: "domcontentloaded", timeout: 20_000 });
       tab.title = await page.title();
@@ -296,11 +320,58 @@ export class RemoteBrowserManager {
     tab.state = state;
     tab.cachedFrame = null;
     tab.frameInFlight = null;
+    tab.canGoBack = false;
+    tab.canGoForward = false;
     tab.responses.clear();
     tab.requestIds = new WeakMap();
     tab.requestStartedAt = new WeakMap();
     this.snapshotEngine.clearBrowser(tab.browserId);
     if (context) await context.close().catch(() => undefined);
+  }
+
+  private ensureTab(
+    workspaceId: string,
+    command: Extract<RemoteBrowserCommand, { kind: "open" }>,
+    origin: TabOrigin = {},
+  ): Tab {
+    if (this.closedTabs.has(command.browserId))
+      throw new Error("This browser tab was closed on the host. Open a new tab instead.");
+    const existing = this.tabs.get(command.browserId);
+    if (existing && existing.workspaceId !== workspaceId)
+      throw new Error("Browser tab belongs to another workspace.");
+    if (existing) return existing;
+    const tab: Tab = {
+      ...origin,
+      browserId: command.browserId,
+      workspaceId,
+      url: normalUrl(command.url),
+      title: "",
+      viewport: command.viewport ?? DEFAULT_VIEWPORT,
+      context: null,
+      page: null,
+      state: "suspended",
+      error: null,
+      lastUsed: Date.now(),
+      lastClaimed: Date.now(),
+      canGoBack: false,
+      canGoForward: false,
+      lastFrameAt: 0,
+      lastScrollAt: 0,
+      lastHeapCheckAt: 0,
+      frameRevision: 0,
+      focusRequestId: null,
+      cachedFrame: null,
+      frameInFlight: null,
+      crashCount: 0,
+      consoleLog: [],
+      networkLog: [],
+      networkRequests: [],
+      requestIds: new WeakMap(),
+      requestStartedAt: new WeakMap(),
+      responses: new Map(),
+    };
+    this.tabs.set(tab.browserId, tab);
+    return tab;
   }
 
   private get(workspaceId: string, browserId: string): Tab {
@@ -434,48 +505,17 @@ export class RemoteBrowserManager {
       revision: number;
     };
   }> {
-    if (command.kind === "list")
-      return {
-        tabs: [...this.tabs.values()].filter((tab) => tab.workspaceId === workspaceId).map(asTab),
-      };
+    if (command.kind === "list") {
+      const tabs = [...this.tabs.values()].filter((tab) => tab.workspaceId === workspaceId);
+      for (const tab of tabs) tab.lastClaimed = Date.now();
+      return { tabs: tabs.map(asTab) };
+    }
     if (command.kind === "open") {
-      if (this.closedTabs.has(command.browserId))
-        throw new Error("This browser tab was closed on the host. Open a new tab instead.");
-      let tab = this.tabs.get(command.browserId);
-      if (tab && tab.workspaceId !== workspaceId)
-        throw new Error("Browser tab belongs to another workspace.");
-      if (!tab) {
-        tab = {
-          browserId: command.browserId,
-          workspaceId,
-          url: normalUrl(command.url),
-          title: "",
-          viewport: command.viewport ?? DEFAULT_VIEWPORT,
-          context: null,
-          page: null,
-          state: "suspended",
-          error: null,
-          lastUsed: Date.now(),
-          lastFrameAt: 0,
-          lastScrollAt: 0,
-          lastHeapCheckAt: 0,
-          frameRevision: 0,
-          focusRequestId: null,
-          cachedFrame: null,
-          frameInFlight: null,
-          crashCount: 0,
-          consoleLog: [],
-          networkLog: [],
-          networkRequests: [],
-          requestIds: new WeakMap(),
-          requestStartedAt: new WeakMap(),
-          responses: new Map(),
-        };
-        this.tabs.set(tab.browserId, tab);
-      }
+      const tab = this.ensureTab(workspaceId, command);
       // Reattachment is idempotent. The daemon's current page wins over stale
       // local tab metadata after a transient disconnect.
       await this.start(tab);
+      if (tab.page) await readHistory(tab, tab.page).catch(() => undefined);
       return { tab: asTab(tab) };
     }
     const tab = this.get(workspaceId, command.browserId);
@@ -563,6 +603,7 @@ export class RemoteBrowserManager {
     tab.url = page.url();
     tab.title = await page.title().catch(() => tab.title);
     tab.cachedFrame = null;
+    await readHistory(tab, page).catch(() => undefined);
     return { tab: asTab(tab) };
   }
 
@@ -603,6 +644,16 @@ export class RemoteBrowserManager {
       if (command.command === "new_tab") {
         const browserId = randomUUID();
         const url = normalUrl(command.args.url);
+        // The tab is born with its preview identity so a client that lists it
+        // mid-start adopts it correctly.
+        this.ensureTab(
+          workspaceId,
+          { kind: "open", browserId, url },
+          {
+            ...(command.args.preview ? { preview: command.args.preview } : {}),
+            ...(command.args.layout === "split-right" ? { layout: "split-right" } : {}),
+          },
+        );
         try {
           await this.execute(workspaceId, { kind: "open", browserId, url });
         } catch (cause) {
@@ -1074,7 +1125,8 @@ export class RemoteBrowserManager {
       if (now - closedAt > METADATA_REAP_MS) this.closedTabs.delete(browserId);
     for (const tab of this.tabs.values()) {
       if (tab.page && now - tab.lastUsed > IDLE_SUSPEND_MS) await this.suspend(tab);
-      if (!tab.page && now - tab.lastUsed > METADATA_REAP_MS) this.tabs.delete(tab.browserId);
+      if (!tab.page && now - Math.max(tab.lastUsed, tab.lastClaimed) > METADATA_REAP_MS)
+        this.tabs.delete(tab.browserId);
     }
     if (this.browser && ![...this.tabs.values()].some((tab) => tab.page)) {
       const browser = this.browser;

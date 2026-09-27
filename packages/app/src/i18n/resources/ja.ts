@@ -990,6 +990,19 @@ export const ja: TranslationResources = {
     },
     browser: {
       updateHost: "モバイルのブラウザータブを使用するには、ホストを更新してください。",
+      hosted: {
+        address: "アドレス",
+        typeIntoPage: "ページに入力",
+        sendToPage: "ページに送信",
+        connecting: "ホストのブラウザに接続中…",
+        disconnected: "ホストとの接続が切れました。このタブは自動的に再接続します。",
+        sizes: {
+          responsive: "レスポンシブ",
+          phone: "スマートフォン",
+          tablet: "タブレット",
+          desktop: "デスクトップ",
+        },
+      },
       unavailable: {
         title: "ブラウザはデスクトップ専用です",
         subtitle: "組み込みブラウザを使用するには、このワークスペースをElectronで開いてください。",
@@ -1233,6 +1246,7 @@ export const ja: TranslationResources = {
         newAgent: "新しいチャット",
         newTerminal: "新しいターミナル",
         newBrowser: "新しいブラウザタブ",
+        newHostedBrowser: "ホスト上の新しいブラウザ",
         importSession: "セッションをインポート",
         copyPath: "ワークスペースパスをコピー",
         copyBranchName: "ブランチ名をコピー",

@@ -967,6 +967,19 @@ export const zhCN: TranslationResources = {
     },
     browser: {
       updateHost: "更新主机以使用移动端浏览器标签页。",
+      hosted: {
+        address: "地址",
+        typeIntoPage: "在页面中输入",
+        sendToPage: "发送到页面",
+        connecting: "正在连接主机浏览器…",
+        disconnected: "主机已断开连接。此标签页将自动重新连接。",
+        sizes: {
+          responsive: "响应式",
+          phone: "手机",
+          tablet: "平板",
+          desktop: "桌面",
+        },
+      },
       unavailable: {
         title: "浏览器仅桌面端可用",
         subtitle: "在 Electron 中打开此 workspace 以使用内置浏览器。",
@@ -1207,6 +1220,7 @@ export const zhCN: TranslationResources = {
         newAgent: "新建对话",
         newTerminal: "新建 Terminal",
         newBrowser: "新建浏览器标签",
+        newHostedBrowser: "在主机上新建浏览器",
         importSession: "导入会话",
         copyPath: "复制 workspace 路径",
         copyBranchName: "复制分支名称",

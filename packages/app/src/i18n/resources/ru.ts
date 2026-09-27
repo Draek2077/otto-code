@@ -984,6 +984,19 @@ export const ru: TranslationResources = {
     },
     browser: {
       updateHost: "Обновите хост, чтобы использовать вкладки браузера на мобильном устройстве.",
+      hosted: {
+        address: "Адрес",
+        typeIntoPage: "Ввести на странице",
+        sendToPage: "Отправить на страницу",
+        connecting: "Подключение к браузеру хоста…",
+        disconnected: "Хост отключён. Эта вкладка переподключится автоматически.",
+        sizes: {
+          responsive: "Адаптивный",
+          phone: "Телефон",
+          tablet: "Планшет",
+          desktop: "Компьютер",
+        },
+      },
       unavailable: {
         title: "Браузер доступен только на рабочем столе",
         subtitle:
@@ -1230,6 +1243,7 @@ export const ru: TranslationResources = {
         newAgent: "Новый чат",
         newTerminal: "Новый терминал",
         newBrowser: "Новая вкладка браузера",
+        newHostedBrowser: "Новый браузер на хосте",
         importSession: "Импортировать сеанс",
         copyPath: "Копировать путь к рабочей области",
         copyBranchName: "Скопировать название ветки",

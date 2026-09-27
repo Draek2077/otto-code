@@ -74,6 +74,9 @@ vi.mock("@/attachments/workspace-attachments-store", () => {
   };
 });
 vi.mock("@/attachments/service", () => ({ persistAttachmentFromDataUrl: async () => null }));
+// This suite covers the native webview pane; the hosted pane brings the whole
+// session runtime with it.
+vi.mock("./remote-browser-pane", () => ({ BrowserPane: () => null }));
 vi.mock("expo-clipboard", () => ({ setStringAsync: async () => {} }));
 vi.mock("react-i18next", () => {
   const t = (key: string) => key;
