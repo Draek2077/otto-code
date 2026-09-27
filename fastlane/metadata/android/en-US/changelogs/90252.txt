@@ -1,0 +1,12 @@
+Added
+- Browse the web from your phone in browser tabs that run on the host
+- See the pages your agent opens on every connected device
+- Start and stop Preview servers from the workspace menu on your phone
+- Open a browser tab on the host from the desktop workspace menu
+- See failed tool calls in the Visualizer
+- See when chats touch the same files in the Visualizer
+
+Improved
+- Hosted browser tabs only send data when the page changes
+
+Full notes: https://paseo.sh/changelog
