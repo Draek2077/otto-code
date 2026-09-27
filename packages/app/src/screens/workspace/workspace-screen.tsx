@@ -445,6 +445,19 @@ function decodeSegment(value: string): string {
   }
 }
 
+function closeHostedBrowserTab(
+  client: import("@otto-code/client/internal/daemon-client").DaemonClient | null,
+  workspaceId: string,
+  browserId: string,
+): void {
+  if (getIsElectron()) return;
+  // Closing the workspace tab releases its host page. If the socket is gone,
+  // the daemon's idle reaper remains the cleanup path for that page.
+  void client
+    ?.remoteBrowserExecute(workspaceId, { kind: "close", browserId })
+    .catch(() => undefined);
+}
+
 function useSyncWorkspaceActiveBrowser(input: {
   workspaceLayout: WorkspaceLayout | null;
   isRouteFocused: boolean;
@@ -2430,6 +2443,9 @@ function WorkspaceScreenContent({
 
   const client = useHostRuntimeClient(normalizedServerId);
   const isConnected = useHostRuntimeIsConnected(normalizedServerId);
+  const supportsRemoteBrowser = useSessionStore(
+    (state) => state.sessions[normalizedServerId]?.serverInfo?.features?.remoteBrowser === true,
+  );
   const supportsProvidersSnapshot = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.serverInfo?.features?.providersSnapshot === true,
   );
@@ -2931,6 +2947,7 @@ function WorkspaceScreenContent({
         const { browserId } = input.target;
         // Check isPreview/previewServerId BEFORE removing the record
         const browserRecord = useBrowserStore.getState().browsersById[browserId];
+        closeHostedBrowserTab(client, normalizedWorkspaceId, browserId);
         useBrowserStore.getState().removeBrowser(browserId);
         removeResidentBrowserWebview(browserId);
 
@@ -3671,7 +3688,11 @@ function WorkspaceScreenContent({
   // (browser-automation/handler.ts) never reaches this and must not warn.
   const launchBrowserTab = useCallback(
     (destination: WorkspaceTabLaunchDestination) => {
-      if (!persistenceKey || !getIsElectron()) {
+      if (!persistenceKey) {
+        return;
+      }
+      if (!getIsElectron() && !supportsRemoteBrowser) {
+        toast.error(t("workspace.browser.updateHost"));
         return;
       }
       void (async () => {
@@ -3707,6 +3728,9 @@ function WorkspaceScreenContent({
       persistenceKey,
       replaceWorkspaceTabTarget,
       suppressBrowserToolsWarning,
+      supportsRemoteBrowser,
+      t,
+      toast,
     ],
   );
 
@@ -3761,13 +3785,13 @@ function WorkspaceScreenContent({
 
   const handleOpenUrlInBrowserTab = useCallback(
     (url: string) => {
-      if (!persistenceKey || !getIsElectron()) {
+      if (!persistenceKey || (!getIsElectron() && !supportsRemoteBrowser)) {
         return;
       }
       const { browserId } = createWorkspaceBrowser({ initialUrl: url });
       openWorkspaceTabFocused(persistenceKey, { kind: "browser", browserId });
     },
-    [openWorkspaceTabFocused, persistenceKey],
+    [openWorkspaceTabFocused, persistenceKey, supportsRemoteBrowser],
   );
 
   useDesktopBrowserNewTabRequests({
@@ -5174,7 +5198,7 @@ function WorkspaceScreenContent({
     () => createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
     [createTerminalMutation.isPending, pendingTerminalCreateInput],
   );
-  const showCreateBrowserTab = getIsElectron();
+  const showCreateBrowserTab = true;
   const hasPullRequest = useHasPullRequest({
     serverId: normalizedServerId,
     cwd: workspaceDirectory,

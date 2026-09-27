@@ -20,7 +20,7 @@ import {
   WORKSPACE_TABS_RAIL_MAX_WIDTH,
   WORKSPACE_TABS_RAIL_MIN_WIDTH,
 } from "@/constants/layout";
-import { isWeb } from "@/constants/platform";
+import { getIsElectron, isWeb } from "@/constants/platform";
 import { useHasFinePointer } from "@/hooks/use-fine-pointer";
 import { persistAppSettings, useAppSettingValue } from "@/hooks/use-settings";
 import type { AppSettings } from "@/hooks/use-settings/storage";
@@ -455,9 +455,7 @@ export function WorkspaceDesktopTabsRail({
             focusedAgentId={focusedAgentId}
             focusedPreviewCwd={focusedPreviewCwd}
             showCreateBrowserTab={showCreateBrowserTab}
-            showPreviewButton={
-              showCreateBrowserTab && (paneHasEditableAgentTab || paneHasPreviewTab)
-            }
+            showPreviewButton={getIsElectron() && (paneHasEditableAgentTab || paneHasPreviewTab)}
             terminalDisabled={terminalDisabled}
             onSplitRight={onSplitRight}
             onSplitDown={onSplitDown}

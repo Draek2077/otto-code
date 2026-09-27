@@ -989,6 +989,7 @@ export const ja: TranslationResources = {
       },
     },
     browser: {
+      updateHost: "モバイルのブラウザータブを使用するには、ホストを更新してください。",
       unavailable: {
         title: "ブラウザはデスクトップ専用です",
         subtitle: "組み込みブラウザを使用するには、このワークスペースをElectronで開いてください。",

@@ -596,6 +596,10 @@ import {
   BrowserAutomationExecuteResponseSchema,
 } from "./browser-automation/rpc-schemas.js";
 import {
+  RemoteBrowserExecuteRequestSchema,
+  RemoteBrowserExecuteResponseSchema,
+} from "./browser-remote/rpc-schemas.js";
+import {
   OttoConfigRawSchema,
   OttoLifecycleCommandRawSchema,
   OttoMetadataGenerationEntrySchema,
@@ -4641,6 +4645,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   HubExecutionAgentValidateRequestSchema,
   HubExecutionControlRequestSchema,
   BrowserAutomationExecuteResponseSchema,
+  RemoteBrowserExecuteRequestSchema,
   VoiceAudioChunkMessageSchema,
   AbortRequestMessageSchema,
   AudioPlayedMessageSchema,
@@ -5427,6 +5432,8 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
         browserHistory: z.boolean().optional(),
+        // COMPAT(remoteBrowser): added in v0.9.25, remove gate after 2027-03-26.
+        remoteBrowser: z.boolean().optional(),
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
         providerRemove: z.boolean().optional(),
         // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.
@@ -9281,6 +9288,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   HubExecutionAgentUpdateSchema,
   HubExecutionAgentStreamSchema,
   BrowserAutomationExecuteRequestSchema,
+  RemoteBrowserExecuteResponseSchema,
   PluginCatalogGetResponseSchema,
   PluginListResponseSchema,
   PluginLogsGetResponseSchema,

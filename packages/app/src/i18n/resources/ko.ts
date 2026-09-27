@@ -983,6 +983,7 @@ export const ko: TranslationResources = {
       },
     },
     browser: {
+      updateHost: "모바일 브라우저 탭을 사용하려면 호스트를 업데이트하세요.",
       unavailable: {
         title: "브라우저는 데스크톱 전용입니다",
         subtitle: "내장 브라우저를 사용하려면 이 워크스페이스를 Electron에서 여세요.",

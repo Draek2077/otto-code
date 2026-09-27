@@ -985,6 +985,7 @@ export const es: TranslationResources = {
       },
     },
     browser: {
+      updateHost: "Actualiza el host para usar pestañas del navegador en el móvil.",
       unavailable: {
         title: "El navegador es solo para escritorio",
         subtitle: "Abra este espacio de trabajo en Electron para usar el navegador integrado.",

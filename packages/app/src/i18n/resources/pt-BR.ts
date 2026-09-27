@@ -987,6 +987,7 @@ export const ptBR: TranslationResources = {
       },
     },
     browser: {
+      updateHost: "Atualize o host para usar abas do navegador no celular.",
       unavailable: {
         title: "O navegador é exclusivo do desktop",
         subtitle: "Abra este workspace no Electron para usar o navegador integrado.",

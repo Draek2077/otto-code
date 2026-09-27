@@ -1,4 +1,5 @@
 import { isSessionRpcAllowed } from "./session/otto-rpc-scopes.js";
+import { RemoteBrowserManager } from "./browser-tools/remote-browser-manager.js";
 import type { GoogleConnectorService } from "./connectors/google-connector-service.js";
 import { AgentRequests } from "./agent/requests/index.js";
 import { getHostedConnectorAuthorization } from "./connectors/hosted-connector-authorization.js";
@@ -732,6 +733,8 @@ export class VoiceAssistantWebSocketServer {
   private readonly providerUsageService: ProviderUsageService;
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
+  private readonly remoteBrowserManager = new RemoteBrowserManager();
+  private unregisterRemoteBrowserHost: (() => void) | null = null;
   private readonly hubRelationships: HubRelationshipManagement | null;
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
   private readonly previewDevServers: DevServerManager | null;
@@ -820,6 +823,17 @@ export class VoiceAssistantWebSocketServer {
     this.daemonVersion = requireDaemonVersion(daemonVersion);
     this.daemonRuntimeConfig = daemonRuntimeConfig;
     this.browserToolsBroker = orNull(browserToolsBroker);
+    if (this.browserToolsBroker) {
+      this.unregisterRemoteBrowserHost = this.browserToolsBroker.registerClient({
+        id: "daemon-remote-browser",
+        hostKind: "daemon-hosted",
+        supportedCommands: this.remoteBrowserManager.supportedCommands,
+        sendBrowserAutomationRequest: async (request) => {
+          const response = await this.remoteBrowserManager.executeAutomation(request);
+          this.browserToolsBroker?.receiveResponse(response);
+        },
+      });
+    }
     this.previewDevServers = orNull(previewDevServers);
     this.hubRelationships = orNull(hubRelationships);
     this.pluginRuntime = pluginRuntime;
@@ -1493,6 +1507,9 @@ export class VoiceAssistantWebSocketServer {
     for (const clientId of this.browserToolsRegistrations.keys()) {
       this.unregisterBrowserToolsClient(clientId);
     }
+    this.unregisterRemoteBrowserHost?.();
+    this.unregisterRemoteBrowserHost = null;
+    await this.remoteBrowserManager.close();
     this.wss.close();
   }
 
@@ -2171,6 +2188,8 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: true,
         browserHistory: true,
+        // COMPAT(remoteBrowser): added in v0.9.25, remove gate after 2027-03-26.
+        remoteBrowser: true,
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
         providerRemove: true,
         // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.
@@ -3092,6 +3111,36 @@ export class VoiceAssistantWebSocketServer {
         return;
       }
       this.browserToolsBroker?.receiveResponse(message.message as BrowserAutomationExecuteResponse);
+      return;
+    }
+
+    if (message.message.type === "browser.remote.execute.request") {
+      const request = message.message;
+      let payload: Extract<
+        SessionOutboundMessage,
+        { type: "browser.remote.execute.response" }
+      >["payload"];
+      try {
+        if (!activeConnection.session.allowsInbound(request))
+          throw new Error("Browser access is not allowed for this connection.");
+        if (!(await this.workspaceRegistry.get(request.workspaceId)))
+          throw new Error("Workspace not found.");
+        payload = {
+          requestId: request.requestId,
+          ok: true,
+          ...(await this.remoteBrowserManager.execute(request.workspaceId, request.command)),
+        };
+      } catch (cause) {
+        payload = {
+          requestId: request.requestId,
+          ok: false,
+          error: cause instanceof Error ? cause.message : String(cause),
+        };
+      }
+      this.sendToClient(
+        ws,
+        wrapSessionMessage({ type: "browser.remote.execute.response", payload }),
+      );
       return;
     }
 

@@ -966,6 +966,7 @@ export const zhCN: TranslationResources = {
       },
     },
     browser: {
+      updateHost: "更新主机以使用移动端浏览器标签页。",
       unavailable: {
         title: "浏览器仅桌面端可用",
         subtitle: "在 Electron 中打开此 workspace 以使用内置浏览器。",

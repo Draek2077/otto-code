@@ -48,7 +48,7 @@ import type {
   DraggableListDragHandleProps,
   DraggableRenderItemInfo,
 } from "@/components/draggable-list.types";
-import { isNative, isWeb } from "@/constants/platform";
+import { getIsElectron, isNative, isWeb } from "@/constants/platform";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -2194,7 +2194,7 @@ function ResolvedWorkspaceDesktopTabsRow({
         focusedAgentId={focusedAgentId}
         focusedPreviewCwd={focusedPreviewCwd}
         showCreateBrowserTab={showCreateBrowserTab}
-        showPreviewButton={showCreateBrowserTab && (paneHasEditableAgentTab || paneHasPreviewTab)}
+        showPreviewButton={getIsElectron() && (paneHasEditableAgentTab || paneHasPreviewTab)}
         terminalDisabled={terminalDisabled}
         onSplitRight={onSplitRight}
         onSplitDown={onSplitDown}

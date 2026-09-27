@@ -972,6 +972,7 @@ export const ar: TranslationResources = {
       },
     },
     browser: {
+      updateHost: "حدّث المضيف لاستخدام علامات تبويب المتصفح على الهاتف.",
       unavailable: {
         title: "المتصفح مخصص لسطح المكتب فقط",
         subtitle: "افتح مساحة العمل هذه في Electron لاستخدام المتصفح المدمج.",

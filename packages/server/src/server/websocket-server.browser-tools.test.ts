@@ -87,7 +87,7 @@ describe("WebSocketServer browser tools wiring", () => {
 
     expect(request).toMatchObject({
       type: "browser.automation.execute.request",
-      requestId: "req-1",
+      requestId: expect.stringMatching(/^req-1:/),
       command: { command: "list_tabs", args: {} },
     });
 
@@ -101,7 +101,7 @@ describe("WebSocketServer browser tools wiring", () => {
     });
 
     await expect(resultPromise).resolves.toEqual({
-      requestId: request.requestId,
+      requestId: "req-1",
       ok: true,
       result: { command: "list_tabs", tabs: [] },
     });
@@ -124,16 +124,13 @@ describe("WebSocketServer browser tools wiring", () => {
 
     await browserHost.disconnect();
 
-    expect(harness.broker.getRegisteredClientCount()).toBe(0);
+    expect(harness.broker.getRegisteredClientCount()).toBe(1);
     expect(harness.broker.getPendingRequestCount()).toBe(0);
     await pendingExpectation;
 
     await expect(
       harness.broker.execute({ command: { command: "list_tabs", args: {} } }),
-    ).resolves.toMatchObject({
-      ok: false,
-      error: { code: "browser_no_host" },
-    });
+    ).resolves.toMatchObject({ ok: true, result: { command: "list_tabs", tabs: [] } });
   });
 
   it("keeps browser automation registered when a browser host client resumes", async () => {
@@ -148,6 +145,7 @@ describe("WebSocketServer browser tools wiring", () => {
       clientId,
       capabilities: browserHostCapabilities(),
     });
+    await rememberBrowserTab(harness, resumedBrowserHost);
 
     const resultPromise = harness.broker.execute({
       command: { command: "click", args: { browserId: BROWSER_ID, ref: "@e1" } },
@@ -175,6 +173,7 @@ describe("WebSocketServer browser tools wiring", () => {
       clientId,
       capabilities: browserHostCapabilities(),
     });
+    await rememberBrowserTab(harness, browserHost);
 
     const pendingResult = harness.broker.execute({
       command: { command: "snapshot", args: { browserId: BROWSER_ID } },
@@ -191,10 +190,42 @@ describe("WebSocketServer browser tools wiring", () => {
       ok: false,
       error: { code: "browser_no_host", retryable: true },
     });
-    expect(harness.broker.getRegisteredClientCount()).toBe(1);
+    expect(harness.broker.getRegisteredClientCount()).toBe(2);
     expect(harness.broker.getPendingRequestCount()).toBe(0);
   });
 });
+
+async function rememberBrowserTab(
+  harness: BrowserToolsDaemonHarness,
+  host: BrowserHostClientHandle,
+): Promise<void> {
+  const listing = harness.broker.execute({
+    workspaceId: "workspace-test",
+    command: { command: "list_tabs", args: {} },
+  });
+  const request = await host.nextBrowserRequest();
+  host.respondToBrowserRequest({
+    type: "browser.automation.execute.response",
+    payload: {
+      requestId: request.requestId,
+      ok: true,
+      result: {
+        command: "list_tabs",
+        tabs: [
+          {
+            browserId: BROWSER_ID,
+            workspaceId: "workspace-test",
+            url: "https://example.com",
+            title: "Example",
+            isActive: true,
+            isLoading: false,
+          },
+        ],
+      },
+    },
+  });
+  await listing;
+}
 
 async function startBrowserToolsDaemonHarness(): Promise<BrowserToolsDaemonHarness> {
   const httpServer = createServer();
@@ -235,7 +266,7 @@ async function startBrowserToolsDaemonHarness(): Promise<BrowserToolsDaemonHarne
           requests.close();
           clients.delete(client);
           await client.close();
-          await waitFor(() => broker.getRegisteredClientCount() === 0);
+          await waitFor(() => broker.getRegisteredClientCount() === 1);
         },
       };
     },

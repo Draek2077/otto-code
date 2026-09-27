@@ -988,6 +988,7 @@ export const en = {
       },
     },
     browser: {
+      updateHost: "Update the host to use mobile browser tabs.",
       unavailable: {
         title: "Browser is desktop-only",
         subtitle: "Open this workspace in Electron to use the built-in browser.",

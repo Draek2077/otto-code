@@ -983,6 +983,7 @@ export const ru: TranslationResources = {
       },
     },
     browser: {
+      updateHost: "Обновите хост, чтобы использовать вкладки браузера на мобильном устройстве.",
       unavailable: {
         title: "Браузер доступен только на рабочем столе",
         subtitle:

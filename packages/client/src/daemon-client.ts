@@ -1,5 +1,9 @@
 import { normalizeFetchAgentOptions, type FetchAgentOptions } from "./fetch-agent-options.js";
 import type { ChatSearchQuery } from "@otto-code/protocol/chat-search";
+import type {
+  RemoteBrowserCommand,
+  RemoteBrowserExecuteResponse,
+} from "@otto-code/protocol/browser-remote/rpc-schemas";
 export type { FetchAgentOptions } from "./fetch-agent-options.js";
 import { resolveAgentConfig } from "./create-agent-config.js";
 import type { AgentAttentionNotificationPayload } from "@otto-code/protocol/agent-attention-notification";
@@ -8356,6 +8360,20 @@ export class DaemonClient {
       });
     if (result.error) throw new Error(result.error);
     return result.entries;
+  }
+
+  async remoteBrowserExecute(
+    workspaceId: string,
+    command: RemoteBrowserCommand,
+  ): Promise<RemoteBrowserExecuteResponse["payload"]> {
+    const result =
+      await this.sendNamespacedCorrelatedSessionRequest<"browser.remote.execute.response">({
+        message: { type: "browser.remote.execute.request", workspaceId, command },
+        timeout: command.kind === "frame" ? 15_000 : 30_000,
+      });
+    if (!result.ok)
+      throw new Error(result.error ?? "The host browser could not complete this action.");
+    return result;
   }
 
   async recordBrowserHistory(workspaceId: string, url: string, title: string) {

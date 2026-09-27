@@ -988,6 +988,7 @@ export const fr: TranslationResources = {
       },
     },
     browser: {
+      updateHost: "Mettez à jour l’hôte pour utiliser les onglets du navigateur sur mobile.",
       unavailable: {
         title: "Le navigateur est réservé au bureau",
         subtitle: "Ouvrez cet espace de travail dans Electron pour utiliser le navigateur intégré.",

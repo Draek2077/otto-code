@@ -20,9 +20,12 @@ live in this doc.)
   it by `serverId`, captures stdout/stderr into a bounded ring buffer, polls
   the port for readiness, and tree-kills on stop.
 - **Browser tools** (`packages/server/src/server/browser-tools/`) - the
-  verification half. Snapshot, inspect, click, fill, eval, network, console
-  logs, resize, screenshot all execute against a real tab in the Otto browser
-  pane - never a headless browser and never the system browser.
+  verification half. Desktop commands execute against the visible Electron
+  guest. On mobile a daemon Chromium page renders into the workspace browser
+  pane and supports snapshot, inspect, evaluate, click, fill, wait, type,
+  keypress, select, hover, drag, upload, navigation, scroll, resize, screenshot,
+  console and network inspection, page text, and color scheme
+  commands against that same page.
 
 Agents get both as tool groups: `preview_start` / `preview_stop` /
 `preview_list` / `preview_logs` for lifecycle, and `browser_*` tools
@@ -304,6 +307,30 @@ The full desktop `test:e2e:browser-tab-bridge` harness verifies native typing in
 real composer concurrently with MCP input, including page-created background tabs.
 
 ### Resident state
+
+Mobile browser tabs keep the ordinary workspace browser ID and local URL
+record, while the daemon owns the page and its viewport. Android native and
+iOS web clients use `browser.remote.execute.request` to attach to the existing
+page after a socket loss. A live page keeps its scroll, forms, and history;
+after suspension or daemon restart the same tab ID reloads its last URL. The
+mobile pane sends its measured size for responsive mode or the chosen fixed
+device dimensions. AI screenshots and controls target that same daemon page
+and viewport. The shared snapshot engine supplies stable element references.
+
+The daemon permits four live hosted pages. A page unused for five minutes is
+suspended, and an unclaimed suspended tab is forgotten after an hour. Repeated
+page crashes quarantine the tab until it is closed. Each presented client
+polls for at most one JPEG frame at a time, about once per second; frames are
+bounded below the relay's 1 MiB message limit and never queued across a slow
+connection. The daemon checks a
+page's Chromium JavaScript heap periodically and quarantines it above 512 MiB;
+native image and GPU memory are outside that measurement. The host uses Edge,
+Chrome, or a Playwright Chromium installation, and reports an install action
+when none is available. Mobile annotation and `browser_screenshot_element`
+are not supported by this host. Agent-created browser tabs and Preview's
+automatic tab creation still use the desktop host; the mobile Preview button
+is hidden until the hosted tab binding is implemented. Page-created popup
+windows are closed rather than left as untracked daemon pages.
 
 Responsive browser surfaces snap their bounds outward to whole CSS pixels, with
 the guest sized from the same snapped edges. Fractional splitter positions must
