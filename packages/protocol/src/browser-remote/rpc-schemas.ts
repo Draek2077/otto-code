@@ -86,6 +86,8 @@ export const RemoteBrowserTabSchema = z.object({
   canGoBack: z.boolean(),
   canGoForward: z.boolean(),
   error: z.string().nullable(),
+  // A host focus request is consumed by each connected workspace client once.
+  focusRequestId: z.string().min(1).optional(),
 });
 
 export const RemoteBrowserExecuteResponseSchema = z.object({

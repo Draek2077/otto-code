@@ -44,6 +44,7 @@ interface Tab {
   lastScrollAt: number;
   lastHeapCheckAt: number;
   frameRevision: number;
+  focusRequestId: string | null;
   cachedFrame: Buffer | null;
   frameInFlight: Promise<Buffer> | null;
   crashCount: number;
@@ -65,6 +66,41 @@ const ACTIVE_SCROLL_WINDOW_MS = 1_200;
 const MAX_FRAME_BYTES = 650_000;
 const MAX_PAGE_JS_HEAP_BYTES = 512 * 1024 * 1024;
 const DEFAULT_VIEWPORT: Viewport = { mode: "responsive", width: 390, height: 844 };
+// Match the desktop browser tool's vision budget, including for tall full-page captures.
+const SCREENSHOT_MAX_LONG_EDGE = 1568;
+const SCREENSHOT_MAX_PIXELS = 1_150_000;
+const ELEMENT_CAPTURE_MAX_SCALE = 3;
+const ELEMENT_CAPTURE_PADDING_PX = 8;
+
+function screenshotScale(width: number, height: number, maxScale: number): number {
+  return Math.min(
+    maxScale,
+    SCREENSHOT_MAX_LONG_EDGE / Math.max(width, height),
+    Math.sqrt(SCREENSHOT_MAX_PIXELS / (width * height)),
+  );
+}
+
+async function captureScreenshot(
+  page: Page,
+  clip: { x: number; y: number; width: number; height: number },
+  scale: number,
+): Promise<Buffer> {
+  const session = await page.context().newCDPSession(page);
+  try {
+    // CDP re-renders the clip at scale. Resizing a PNG after capture would blur
+    // small text and leave device-pixel-ratio inflation in the AI image.
+    const capture = await session.send("Page.captureScreenshot", {
+      format: "png",
+      captureBeyondViewport: true,
+      clip: { ...clip, scale },
+    });
+    return Buffer.from(capture.data, "base64");
+  } finally {
+    // A page crash can close the CDP session during capture. Preserve the
+    // capture error so the tool reports the actual failure to the caller.
+    await session.detach().catch(() => undefined);
+  }
+}
 
 function normalUrl(value: string | undefined): string {
   const url = value || "https://example.com";
@@ -86,6 +122,7 @@ function asTab(tab: Tab): RemoteBrowserTab {
     canGoBack: false,
     canGoForward: false,
     error: tab.error,
+    ...(tab.focusRequestId ? { focusRequestId: tab.focusRequestId } : {}),
   };
 }
 
@@ -118,6 +155,7 @@ export class RemoteBrowserManager {
     "forward",
     "reload",
     "screenshot",
+    "screenshot_element",
     "logs",
     "network",
     "upload",
@@ -422,6 +460,7 @@ export class RemoteBrowserManager {
           lastScrollAt: 0,
           lastHeapCheckAt: 0,
           frameRevision: 0,
+          focusRequestId: null,
           cachedFrame: null,
           frameInFlight: null,
           crashCount: 0,
@@ -752,11 +791,37 @@ export class RemoteBrowserManager {
           result = { command: "reload", browserId } as typeof result;
           break;
         case "screenshot": {
-          const data = await page.screenshot({
-            type: "png",
-            fullPage: command.args.fullPage,
-            timeout: 10_000,
-          });
+          const viewport = page.viewportSize();
+          if (!viewport) throw new Error("Browser viewport is unavailable for screenshot.");
+          const clip = command.args.fullPage
+            ? await page.evaluate(
+                ({ width, height }) => ({
+                  x: 0,
+                  y: 0,
+                  width: Math.max(
+                    width,
+                    document.documentElement.scrollWidth,
+                    document.body?.scrollWidth ?? 0,
+                  ),
+                  height: Math.max(
+                    height,
+                    document.documentElement.scrollHeight,
+                    document.body?.scrollHeight ?? 0,
+                  ),
+                }),
+                viewport,
+              )
+            : await page.evaluate(
+                ({ width, height }) => ({
+                  x: window.scrollX,
+                  y: window.scrollY,
+                  width,
+                  height,
+                }),
+                viewport,
+              );
+          const scale = screenshotScale(clip.width, clip.height, 1);
+          const data = await captureScreenshot(page, clip, scale);
           result = {
             command: "screenshot",
             browserId,
@@ -764,7 +829,48 @@ export class RemoteBrowserManager {
             dataBase64: data.toString("base64"),
             width: data.readUInt32BE(16),
             height: data.readUInt32BE(20),
+            scale,
           } as typeof result;
+          break;
+        }
+        case "screenshot_element": {
+          if (!ref) throw new Error("Element reference is required.");
+          const element = await this.elementForRef(page, browserId, ref);
+          try {
+            const rect = await element.evaluate((node) => {
+              if (!(node instanceof Element))
+                throw new Error("Element reference is not an element.");
+              const box = node.getBoundingClientRect();
+              return {
+                x: box.x + window.scrollX,
+                y: box.y + window.scrollY,
+                width: box.width,
+                height: box.height,
+              };
+            });
+            if (rect.width <= 0 || rect.height <= 0)
+              throw new Error(`Element ${ref} has no visible box to capture.`);
+            const clip = {
+              x: Math.max(0, rect.x - ELEMENT_CAPTURE_PADDING_PX),
+              y: Math.max(0, rect.y - ELEMENT_CAPTURE_PADDING_PX),
+              width: rect.width + ELEMENT_CAPTURE_PADDING_PX * 2,
+              height: rect.height + ELEMENT_CAPTURE_PADDING_PX * 2,
+            };
+            const scale = screenshotScale(clip.width, clip.height, ELEMENT_CAPTURE_MAX_SCALE);
+            const data = await captureScreenshot(page, clip, scale);
+            result = {
+              command: "screenshot_element",
+              browserId,
+              ref,
+              mimeType: "image/png",
+              dataBase64: data.toString("base64"),
+              width: data.readUInt32BE(16),
+              height: data.readUInt32BE(20),
+              scale,
+            } as typeof result;
+          } finally {
+            await element.dispose();
+          }
           break;
         }
         case "logs":
@@ -841,6 +947,7 @@ export class RemoteBrowserManager {
           } as typeof result;
           break;
         case "focus_tab":
+          tab.focusRequestId = randomUUID();
           result = { command: "focus_tab", browserId } as typeof result;
           break;
         case "page_text": {
@@ -876,8 +983,22 @@ export class RemoteBrowserManager {
           break;
         case "evaluate": {
           const element = ref ? await this.elementForRef(page, browserId, ref) : null;
-          const value = await page.evaluate(command.args.function, element);
-          await element?.dispose();
+          let value: unknown;
+          try {
+            value = await page.evaluate(
+              async ({ functionSource, target }) => {
+                // Match desktop: browser_evaluate accepts a function and invokes it,
+                // with the snapshot element as its first argument when supplied.
+                const userFunction: unknown = (0, eval)(`(${functionSource})`);
+                if (typeof userFunction !== "function")
+                  throw new Error("browser_evaluate input must evaluate to a function.");
+                return target ? await userFunction(target) : await userFunction();
+              },
+              { functionSource: command.args.function, target: element },
+            );
+          } finally {
+            await element?.dispose();
+          }
           const serialized = JSON.stringify(value) ?? "null";
           result = {
             command: "evaluate",
@@ -925,7 +1046,7 @@ export class RemoteBrowserManager {
           break;
         }
         default:
-          throw new Error(`The hosted browser does not support ${command.command} yet.`);
+          throw new Error("The hosted browser does not support this command yet.");
       }
       tab.url = page.url();
       tab.title = await page.title().catch(() => tab.title);

@@ -29,6 +29,7 @@ export function useHostedBrowserTabs({ client, workspaceId, workspaceKey, enable
     let live = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let knownIds: Set<string> | null = null;
+    const seenFocusRequests = new Map<string, string>();
     let failures = 0;
 
     const poll = async () => {
@@ -63,6 +64,18 @@ export function useHostedBrowserTabs({ client, workspaceId, workspaceKey, enable
               kind: "browser",
               browserId: tab.browserId,
             });
+
+          if (tab.focusRequestId && tab.focusRequestId !== seenFocusRequests.get(tab.browserId)) {
+            const currentLayout =
+              useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+            const localTab =
+              currentLayout &&
+              collectAllTabs(currentLayout.root).find(
+                (item) => item.target.kind === "browser" && item.target.browserId === tab.browserId,
+              );
+            if (localTab) layoutStore.focusTab(workspaceKey, localTab.tabId);
+          }
+          if (tab.focusRequestId) seenFocusRequests.set(tab.browserId, tab.focusRequestId);
         }
 
         // A disappearance while this socket stayed live means the host closed
@@ -72,6 +85,7 @@ export function useHostedBrowserTabs({ client, workspaceId, workspaceKey, enable
           for (const browserId of knownIds) {
             if (nextIds.has(browserId)) continue;
             removeClosedHostedTab(workspaceKey, browserId);
+            seenFocusRequests.delete(browserId);
           }
         }
         knownIds = nextIds;

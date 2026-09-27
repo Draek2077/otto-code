@@ -320,6 +320,11 @@ viewport. The shared snapshot engine supplies stable element references.
 Plain AI-created tabs use this host and appear in each connected client's
 ordinary workspace tab strip. Closing a hosted tab closes the daemon page and
 withdraws it from other clients; a stale client cannot reopen that closed ID.
+`browser_focus_tab` raises a hosted tab in each connected workspace client on
+its next tab poll. AI viewport, full-page, and element screenshots render from
+the host page. Captures respect the selected CSS viewport and the same
+1568-pixel / 1.15-megapixel image budget as desktop; element captures can
+re-render at up to 3x for legible text.
 Desktop users can create a hosted page with **New browser on host**; the
 ordinary desktop browser button still opens a native page. Existing native
 pages do not transfer their live form or scroll state to the hosted browser.
@@ -338,11 +343,10 @@ limit. The daemon checks a page's Chromium JavaScript heap periodically and
 quarantines it above 512 MiB;
 native image and GPU memory are outside that measurement. The host uses Edge,
 Chrome, or a Playwright Chromium installation, and reports an install action
-when none is available. Mobile annotation and `browser_screenshot_element`
-are not supported by this host. Preview's automatic tab creation still uses
-the desktop host; the mobile Preview button is hidden until the hosted tab
-binding is implemented. Page-created popup
-windows are closed rather than left as untracked daemon pages.
+when none is available. Mobile annotation is not supported by this host.
+Preview's automatic tab creation still uses the desktop host; the mobile
+Preview button is hidden until the hosted tab binding is implemented.
+Page-created popup windows are closed rather than left as untracked daemon pages.
 
 Responsive browser surfaces snap their bounds outward to whole CSS pixels, with
 the guest sized from the same snapped edges. Fractional splitter positions must
