@@ -1,6 +1,9 @@
-import React, { useCallback, useEffect, useState, type ReactElement } from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { Linking, Pressable, Text, View } from "react-native";
 import { EditingTextInput } from "@/components/ui/text-input";
+import { Button } from "@/components/ui/button";
+import { TabbedModalSheet } from "@/components/ui/tabbed-modal-sheet";
+import type { SegmentedControlOption } from "@/components/ui/segmented-control";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   KanbanCard,
@@ -12,6 +15,15 @@ import type {
 } from "@otto-code/protocol/kanban";
 import { normalizeKanbanFieldKind } from "@otto-code/protocol/kanban";
 import { confirmDialog } from "@/utils/confirm-dialog";
+
+type CardDetailTab = "details" | "description" | "people" | "fields";
+
+const DETAIL_TABS: SegmentedControlOption<CardDetailTab>[] = [
+  { value: "details", label: "Details" },
+  { value: "description", label: "Description" },
+  { value: "people", label: "People" },
+  { value: "fields", label: "Fields" },
+];
 
 export function KanbanCardDetail({
   card,
@@ -32,7 +44,30 @@ export function KanbanCardDetail({
 }): ReactElement {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<CardDetailTab>("details");
   const valueMap = new Map(values.map((entry) => [entry.fieldId, entry]));
+  const detailFields = fields.filter((field) =>
+    ["title", "status", "state"].includes(field.name.toLowerCase()),
+  );
+  const descriptionFields = fields.filter((field) =>
+    ["description", "body"].includes(field.name.toLowerCase()),
+  );
+  const peopleFields = fields.filter(
+    (field) => ["users", "labels"].includes(field.kind) || field.name.toLowerCase() === "assignees",
+  );
+  const otherFields = fields.filter(
+    (field) =>
+      !detailFields.includes(field) &&
+      !descriptionFields.includes(field) &&
+      !peopleFields.includes(field),
+  );
+  const tabs = DETAIL_TABS.filter(
+    (tab) =>
+      tab.value === "details" ||
+      (tab.value === "description" && (descriptionFields.length > 0 || !!card.body)) ||
+      (tab.value === "people" && peopleFields.length > 0) ||
+      (tab.value === "fields" && otherFields.length > 0),
+  );
 
   const update = useCallback(
     async (fieldId: string, value: KanbanFieldValueInput): Promise<void> => {
@@ -69,45 +104,87 @@ export function KanbanCardDetail({
     }
   }, [onDelete, onClose]);
 
-  return (
-    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.sheet} testID="kanban-card-detail">
-          <View style={styles.heading}>
-            <Text style={styles.title}>{card.title}</Text>
-            <Pressable onPress={onClose} accessibilityRole="button" testID="kanban-detail-close">
-              <Text style={styles.action}>Close</Text>
-            </Pressable>
-          </View>
-          <ScrollView contentContainerStyle={styles.content}>
-            <Text style={styles.subtle}>{card.status}</Text>
-            {fields.length === 0 ? (
-              <Text style={styles.subtle}>This board has no card fields Otto can edit.</Text>
-            ) : (
-              fields.map((field) => (
-                <KanbanFieldEditor
-                  key={field.id}
-                  field={field}
-                  current={valueMap.get(field.id)}
-                  disabled={busy}
-                  onSave={update}
-                />
-              ))
-            )}
-            {error ? (
-              <Text style={styles.error} testID="kanban-detail-error">
-                {error}
-              </Text>
-            ) : null}
-            {canDelete ? (
-              <Pressable disabled={busy} onPress={remove} testID="kanban-detail-delete">
-                <Text style={styles.delete}>Remove from board</Text>
-              </Pressable>
-            ) : null}
-          </ScrollView>
-        </View>
+  const openLink = useCallback(() => {
+    if (card.url) void Linking.openURL(card.url).catch(() => undefined);
+  }, [card.url]);
+  const removePress = useCallback(() => void remove(), [remove]);
+  const header = useMemo(
+    () => ({ title: card.title, subtitle: card.status }),
+    [card.title, card.status],
+  );
+  const footer = useMemo(
+    () => (
+      <View style={styles.footer}>
+        {canDelete ? (
+          <Button
+            variant="destructive"
+            size="sm"
+            onPress={removePress}
+            disabled={busy}
+            testID="kanban-detail-delete"
+          >
+            Remove from board
+          </Button>
+        ) : null}
+        <View style={styles.footerSpacer} />
+        <Button variant="secondary" size="sm" onPress={onClose} testID="kanban-detail-close">
+          Close
+        </Button>
       </View>
-    </Modal>
+    ),
+    [busy, canDelete, onClose, removePress],
+  );
+  let visibleFields = detailFields;
+  if (activeTab === "description") visibleFields = descriptionFields;
+  if (activeTab === "people") visibleFields = peopleFields;
+  if (activeTab === "fields") visibleFields = otherFields;
+  let emptyMessage: string | null = null;
+  if (visibleFields.length === 0) {
+    if (activeTab !== "details" && activeTab !== "description")
+      emptyMessage = "No fields in this section";
+    else if (activeTab === "details" && fields.length === 0)
+      emptyMessage = "This board has no card fields Otto can edit.";
+  }
+
+  return (
+    <TabbedModalSheet
+      header={header}
+      visible
+      onClose={onClose}
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      desktopMaxWidth={640}
+      testID="kanban-card-detail"
+      tabsTestID="kanban-detail-tabs"
+      footer={footer}
+    >
+      {activeTab === "details" && card.url ? (
+        <View style={styles.summary}>
+          <Button variant="ghost" size="sm" onPress={openLink}>
+            Open source
+          </Button>
+        </View>
+      ) : null}
+      {activeTab === "description" && descriptionFields.length === 0 && card.body ? (
+        <Text style={styles.summaryBody}>{card.body}</Text>
+      ) : null}
+      {error ? (
+        <Text style={styles.error} testID="kanban-detail-error">
+          {error}
+        </Text>
+      ) : null}
+      {visibleFields.map((field) => (
+        <KanbanFieldEditor
+          key={field.id}
+          field={field}
+          current={valueMap.get(field.id)}
+          disabled={busy}
+          onSave={update}
+        />
+      ))}
+      {emptyMessage ? <Text style={styles.subtle}>{emptyMessage}</Text> : null}
+    </TabbedModalSheet>
   );
 }
 
@@ -264,7 +341,7 @@ function TextFieldEditor({
         editable={!disabled}
         multiline={kind === "richText"}
         placeholder={kind === "date" ? "YYYY-MM-DD" : field.name}
-        style={styles.input}
+        style={[styles.input, kind === "richText" ? styles.multilineInput : null]}
         testID={`kanban-field-input-${field.id}`}
       />
       <SaveFieldButton fieldId={field.id} disabled={disabled} onPress={submit} />
@@ -345,42 +422,25 @@ function SelectChoice({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  backdrop: {
+  footer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#0008",
-    padding: 16,
-  },
-  sheet: {
-    width: "100%",
-    maxWidth: 560,
-    maxHeight: "90%",
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  heading: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    padding: 16,
+    gap: theme.spacing[2],
+  },
+  footerSpacer: { flex: 1 },
+  summary: {
+    alignItems: "flex-start",
+    gap: theme.spacing[2],
+    paddingBottom: theme.spacing[3],
     borderBottomWidth: 1,
-    borderColor: theme.colors.border,
+    borderBottomColor: theme.colors.border,
   },
-  title: {
-    flex: 1,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  content: { gap: 16, padding: 16 },
+  summaryBody: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   field: { gap: 8 },
   label: { color: theme.colors.foreground, fontWeight: theme.fontWeight.semibold },
   subtle: { color: theme.colors.foregroundMuted },
   action: { color: theme.colors.accent, fontWeight: theme.fontWeight.semibold },
-  delete: { color: theme.colors.destructive },
   error: { color: theme.colors.destructive },
   text: { color: theme.colors.foreground },
   input: {
@@ -391,6 +451,10 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.base,
+  },
+  multilineInput: {
+    minHeight: 180,
+    textAlignVertical: "top",
   },
   options: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   option: {

@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+/* oxlint-disable react-perf/jsx-no-new-function-as-prop -- Mock tabs bridge DOM events to React Native callbacks. */
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,14 +8,13 @@ import { KanbanCardDetail } from "./kanban-card-detail";
 
 vi.mock("react-native-unistyles", () => ({ StyleSheet: { create: () => ({}) } }));
 vi.mock("react-native", () => ({
-  Modal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   View: ({ children, testID }: { children: React.ReactNode; testID?: string }) => (
     <div data-testid={testID}>{children}</div>
   ),
-  ScrollView: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   Text: ({ children, testID }: { children: React.ReactNode; testID?: string }) => (
     <span data-testid={testID}>{children}</span>
   ),
+  Linking: { openURL: vi.fn() },
   Pressable: ({
     children,
     onPress,
@@ -29,6 +29,51 @@ vi.mock("react-native", () => ({
     <button type="button" data-testid={testID} disabled={disabled} onClick={onPress}>
       {children}
     </button>
+  ),
+}));
+vi.mock("@/components/ui/button", () => ({
+  Button: ({
+    children,
+    onPress,
+    testID,
+    disabled,
+  }: {
+    children: React.ReactNode;
+    onPress(): void;
+    testID?: string;
+    disabled?: boolean;
+  }) => (
+    <button type="button" data-testid={testID} disabled={disabled} onClick={onPress}>
+      {children}
+    </button>
+  ),
+}));
+vi.mock("@/components/ui/tabbed-modal-sheet", () => ({
+  TabbedModalSheet: ({
+    children,
+    footer,
+    tabs,
+    activeTab,
+    onTabChange,
+    testID,
+  }: {
+    children: React.ReactNode;
+    footer: React.ReactNode;
+    tabs: { value: string; label: string }[];
+    activeTab: string;
+    onTabChange(value: string): void;
+    testID: string;
+  }) => (
+    <div data-testid={testID}>
+      {tabs.map((tab) => (
+        <button key={tab.value} type="button" onClick={() => onTabChange(tab.value)}>
+          {tab.label}
+          {tab.value === activeTab ? " (selected)" : ""}
+        </button>
+      ))}
+      {children}
+      {footer}
+    </div>
   ),
 }));
 vi.mock("@/components/ui/text-input", () => ({
@@ -55,6 +100,9 @@ const card: KanbanCard = {
   assignees: [],
   rawProviderId: "item-1",
 };
+const cardWithBody: KanbanCard = { ...card, body: "Long migrated issue description" };
+const titleFields: KanbanField[] = [{ id: "title", name: "Title", kind: "text", editable: true }];
+const titleValues = [{ fieldId: "title", display: card.title }];
 const fields: KanbanField[] = [
   { id: "notes", name: "Notes", kind: "text", editable: true },
   { id: "locked", name: "Locked", kind: "text", editable: false, readOnlyReason: "No access" },
@@ -76,6 +124,8 @@ describe("Kanban card detail", () => {
         onDelete={vi.fn()}
       />,
     );
+    expect(screen.getByText("Fields")).toBeTruthy();
+    fireEvent.click(screen.getByText("Fields"));
     expect(screen.getByText(/No access/)).toBeTruthy();
     expect(screen.queryByTestId("kanban-detail-delete")).toBeNull();
     fireEvent.change(screen.getByTestId("kanban-field-input-notes"), {
@@ -100,6 +150,7 @@ describe("Kanban card detail", () => {
         onDelete={vi.fn()}
       />,
     );
+    fireEvent.click(screen.getByText("Fields"));
     fireEvent.change(screen.getByTestId("kanban-field-input-notes"), {
       target: { value: "Change" },
     });
@@ -108,5 +159,22 @@ describe("Kanban card detail", () => {
       "Provider rejected edit",
     );
     expect(screen.getByTestId("kanban-card-detail")).toBeTruthy();
+  });
+
+  it("keeps a long card body off the details tab", () => {
+    render(
+      <KanbanCardDetail
+        card={cardWithBody}
+        fields={titleFields}
+        values={titleValues}
+        canDelete={false}
+        onClose={vi.fn()}
+        onUpdate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("Long migrated issue description")).toBeNull();
+    fireEvent.click(screen.getByText("Description"));
+    expect(screen.getByText("Long migrated issue description")).toBeTruthy();
   });
 });

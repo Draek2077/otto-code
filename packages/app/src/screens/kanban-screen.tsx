@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, ScrollView, Text, View } from "react-native";
+import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { isWeb } from "@/constants/platform";
+import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { useShallow } from "zustand/shallow";
@@ -26,8 +28,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   ListChevronsUpDown,
   MoreVertical,
@@ -38,6 +41,7 @@ import {
 import { useKanbanBoard, useKanbanBoards, useKanbanConnectionScope } from "@/kanban/kanban-hooks";
 import { KanbanRemediationBlock } from "@/screens/kanban-remediation-block";
 import { KanbanCardDetail } from "@/screens/kanban-card-detail";
+import { KanbanCardActionSheet } from "@/screens/kanban-card-action-sheet";
 import { useProjects } from "@/hooks/use-projects";
 import { buildProjectSettingsRoute } from "@/utils/host-routes";
 import { KANBAN_NOT_CONFIGURED } from "@otto-code/protocol/kanban";
@@ -55,16 +59,6 @@ import {
 import type { IconSizeProp } from "@/components/icons/icon-size";
 
 // ── Shared types ────────────────────────────────────────────────────────────
-
-/**
- * Structural layout-event type (matches the context-menu / dropdown-menu
- * handlers): the runtime event carries `nativeEvent.layout`.
- */
-interface LayoutEvent {
-  nativeEvent: {
-    layout: { x: number; y: number; width: number; height: number };
-  };
-}
 
 interface KanbanSelection {
   serverId: string;
@@ -860,7 +854,11 @@ function KanbanBoardView({
     (state) => state.sessions[serverId]?.serverInfo?.features?.kanbanBoardWatch === true,
   );
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [cardAction, setCardAction] = useState<"create" | "link" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const openCreate = useCallback(() => setCardAction("create"), []);
+  const openLink = useCallback(() => setCardAction("link"), []);
+  const closeAction = useCallback(() => setCardAction(null), []);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
@@ -962,7 +960,7 @@ function KanbanBoardView({
   );
 
   const createCard = useCallback(
-    async (columnId: string, title: string) => {
+    async (columnId: string, title: string, body?: string) => {
       if (!client) throw new Error("Host disconnected");
       setActionError(null);
       try {
@@ -972,6 +970,7 @@ function KanbanBoardView({
           ...(connectionProjectId ? { projectId: connectionProjectId } : {}),
           columnId,
           title,
+          ...(body ? { body } : {}),
         });
         if (payload.error) throw new Error(payload.error);
         refresh();
@@ -1023,20 +1022,31 @@ function KanbanBoardView({
 
   return (
     <>
+      <View style={styles.boardToolbar}>
+        <Button variant="secondary" size="sm" onPress={openLink} testID="kanban-link-task">
+          Link existing
+        </Button>
+        <Button size="sm" leftIcon={Plus} onPress={openCreate} testID="kanban-add-card">
+          New card
+        </Button>
+      </View>
       {actionError ? (
         <Text style={styles.messageSub} testID="kanban-action-error">
           {actionError}
         </Text>
       ) : null}
-      <KanbanColumns
-        board={board}
-        providerId={providerId}
-        onMoveCard={moveCard}
-        onCreateCard={createCard}
-        onOpenCard={setSelectedCardId}
-        onLinkTask={linkTask}
-        onActionError={setActionError}
-      />
+      <KanbanColumns board={board} onMoveCard={moveCard} onOpenCard={setSelectedCardId} />
+      {cardAction ? (
+        <KanbanCardActionSheet
+          key={cardAction}
+          action={cardAction}
+          firstColumn={board.columns[0]}
+          providerId={providerId}
+          onClose={closeAction}
+          onCreate={createCard}
+          onLink={linkTask}
+        />
+      ) : null}
       {selectedCard ? (
         <KanbanCardDetail
           card={selectedCard}
@@ -1054,10 +1064,8 @@ function KanbanBoardView({
 
 // ── Columns + drag ──────────────────────────────────────────────────────────
 //
-// Drop targeting is content-relative, not window-relative: columns and cards
-// record their layout rects (relative to the board content container / their
-// column), and the gesture translation moves a content-space point. This works
-// identically on web and native - `measureInWindow` is a native-only API.
+// Gesture and drop coordinates are window-relative. Only the visual preview
+// needs conversion to the board's local coordinates.
 
 interface Rect {
   x: number;
@@ -1069,11 +1077,8 @@ interface Rect {
 interface DragState {
   card: KanbanCard;
   sourceColumnId: string;
-  /** Card origin in board-content coordinates at drag start. */
-  origin: Rect;
-  /** Current finger offset from the drag origin, in board-content coordinates. */
-  x: number;
-  y: number;
+  boardOrigin: { x: number; y: number };
+  pointer: { x: number; y: number };
 }
 
 function containsPoint(rect: Rect, x: number, y: number): boolean {
@@ -1082,261 +1087,391 @@ function containsPoint(rect: Rect, x: number, y: number): boolean {
 
 function KanbanColumns({
   board,
-  providerId,
   onMoveCard,
-  onCreateCard,
   onOpenCard,
-  onLinkTask,
-  onActionError,
 }: {
   board: { columns: KanbanColumn[] };
-  providerId: string;
   onMoveCard: (cardId: string, targetColumnId: string) => Promise<void>;
-  onCreateCard: (columnId: string, title: string) => Promise<void>;
   onOpenCard: (cardId: string) => void;
-  onLinkTask: (externalId: string, columnId?: string) => Promise<void>;
-  onActionError: (error: string | null) => void;
 }): ReactElement {
   const isCompact = useIsCompactFormFactor();
   const [drag, setDrag] = useState<DragState | null>(null);
+  const isDragging = drag !== null;
+  const dragRef = useRef<DragState | null>(null);
+  const [hoveredColumnId, setHoveredColumnId] = useState<string | null>(null);
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
-  const [linking, setLinking] = useState(false);
-  const [externalId, setExternalId] = useState("");
-  const [linkPending, setLinkPending] = useState(false);
-  const startLinking = useCallback(() => setLinking(true), []);
-  const cancelLinking = useCallback(() => setLinking(false), []);
-  const submitLink = useCallback(async () => {
-    if (!externalId.trim() || linkPending) return;
-    setLinkPending(true);
-    onActionError(null);
-    try {
-      await onLinkTask(externalId.trim());
-      setExternalId("");
-      setLinking(false);
-    } catch (cause) {
-      onActionError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setLinkPending(false);
+  const boardRef = useRef<View>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const columnRefs = useRef<Map<string, View>>(new Map());
+  const [selectedColumnId, setSelectedColumnId] = useState(board.columns[0]?.id ?? "");
+  const [scrollX, setScrollX] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const [contentWidth, setContentWidth] = useState(0);
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  useEffect(() => {
+    if (!board.columns.some((column) => column.id === selectedColumnId)) {
+      setSelectedColumnId(board.columns[0]?.id ?? "");
     }
-  }, [externalId, linkPending, onLinkTask, onActionError]);
-  const columnRectsRef = useRef<Map<string, Rect>>(new Map());
-  const cardRectsRef = useRef<Map<string, Rect>>(new Map());
+  }, [board.columns, selectedColumnId]);
 
-  const recordColumnRect = useCallback((columnId: string, event: LayoutEvent) => {
-    const { x, y, width, height } = event.nativeEvent.layout;
-    columnRectsRef.current.set(columnId, { x, y, width, height });
+  const setColumnRef = useCallback((columnId: string, view: View | null) => {
+    if (view) columnRefs.current.set(columnId, view);
+    else columnRefs.current.delete(columnId);
   }, []);
 
-  const recordCardRect = useCallback((cardId: string, event: LayoutEvent) => {
-    const { x, y, width, height } = event.nativeEvent.layout;
-    cardRectsRef.current.set(cardId, { x, y, width, height });
-  }, []);
-
-  const findColumnAt = useCallback(
-    (x: number, y: number): KanbanColumn | null => {
-      for (const column of board.columns) {
-        const rect = columnRectsRef.current.get(column.id);
-        if (rect && containsPoint(rect, x, y)) {
-          return column;
-        }
-      }
-      return null;
-    },
-    [board],
+  const columnAtPoint = useCallback(
+    (x: number, y: number) =>
+      board.columns.find((column) => {
+        const element = columnRefs.current.get(column.id) as unknown as HTMLElement | undefined;
+        if (!element) return false;
+        const rect = element.getBoundingClientRect();
+        return containsPoint(rect, x, y);
+      }),
+    [board.columns],
   );
 
-  const handleDragStart = useCallback((card: KanbanCard, sourceColumnId: string) => {
-    const columnRect = columnRectsRef.current.get(sourceColumnId);
-    const cardRect = cardRectsRef.current.get(card.id);
-    if (!columnRect || !cardRect) return;
-    setDrag({
-      card,
-      sourceColumnId,
-      origin: {
-        x: columnRect.x + cardRect.x,
-        y: columnRect.y + cardRect.y,
-        width: cardRect.width,
-        height: cardRect.height,
-      },
-      x: 0,
-      y: 0,
-    });
-    setDraggingCardId(card.id);
-  }, []);
+  const handleDragStart = useCallback(
+    (card: KanbanCard, sourceColumnId: string, pointer: { x: number; y: number }) => {
+      const boardElement = boardRef.current as unknown as HTMLElement | null;
+      if (!boardElement) return;
+      const boardRect = boardElement.getBoundingClientRect();
+      const next = {
+        card,
+        sourceColumnId,
+        boardOrigin: { x: boardRect.x, y: boardRect.y },
+        pointer,
+      };
+      dragRef.current = next;
+      setDrag(next);
+      setDraggingCardId(card.id);
+    },
+    [],
+  );
 
-  const handleDragChange = useCallback((event: { x: number; y: number }) => {
-    setDrag((prev) => (prev ? { ...prev, x: event.x, y: event.y } : prev));
-  }, []);
+  const handleDragChange = useCallback(
+    (pointer: { x: number; y: number }) => {
+      const previous = dragRef.current;
+      if (!previous) return;
+      const target = columnAtPoint(pointer.x, pointer.y);
+      setHoveredColumnId(target?.id === previous.sourceColumnId ? null : (target?.id ?? null));
+      const next = { ...previous, pointer };
+      dragRef.current = next;
+      setDrag(next);
+    },
+    [columnAtPoint],
+  );
 
   const handleDragEnd = useCallback(
-    (event: { x: number; y: number }) => {
-      const prev = drag;
+    (event: { absoluteX: number; absoluteY: number }) => {
+      const prev = dragRef.current;
+      dragRef.current = null;
       setDrag(null);
       setDraggingCardId(null);
+      setHoveredColumnId(null);
       if (!prev) return;
-      const dropX = prev.origin.x + prev.origin.width / 2 + event.x;
-      const dropY = prev.origin.y + prev.origin.height / 2 + event.y;
-      const target = findColumnAt(dropX, dropY);
+      const target = columnAtPoint(event.absoluteX, event.absoluteY);
       if (target && target.id !== prev.sourceColumnId) {
         void onMoveCard(prev.card.id, target.id);
       }
     },
-    [drag, findColumnAt, onMoveCard],
+    [columnAtPoint, onMoveCard],
   );
+
+  const cancelDrag = useCallback(() => {
+    dragRef.current = null;
+    setDrag(null);
+    setDraggingCardId(null);
+    setHoveredColumnId(null);
+  }, []);
+
+  useEffect(() => {
+    if (!isDragging || !isWeb) return;
+    const scrollElement = (
+      boardRef.current as unknown as HTMLElement | null
+    )?.querySelector<HTMLElement>('[data-testid="kanban-board-scroll"]');
+    if (!scrollElement) return;
+    const timer = window.setInterval(() => {
+      const pointer = dragRef.current?.pointer;
+      if (!pointer) return;
+      const rect = scrollElement.getBoundingClientRect();
+      if (pointer.y < rect.top || pointer.y > rect.bottom) return;
+      let direction = 0;
+      if (pointer.x < rect.left + 56) direction = -1;
+      else if (pointer.x > rect.right - 56) direction = 1;
+      if (!direction) return;
+      scrollElement.scrollLeft += direction * 16;
+      const target = columnAtPoint(pointer.x, pointer.y);
+      setHoveredColumnId(
+        target?.id === dragRef.current?.sourceColumnId ? null : (target?.id ?? null),
+      );
+    }, 16);
+    return () => window.clearInterval(timer);
+  }, [columnAtPoint, isDragging]);
+
+  const maxScroll = Math.max(0, contentWidth - viewportWidth);
+  const hasOverflow = maxScroll > 1;
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    setScrollX(event.nativeEvent.contentOffset.x);
+  }, []);
+  const handleViewportLayout = useCallback((event: LayoutChangeEvent) => {
+    setViewportWidth(event.nativeEvent.layout.width);
+  }, []);
+  const handleTrackLayout = useCallback((event: LayoutChangeEvent) => {
+    setTrackWidth(event.nativeEvent.layout.width);
+  }, []);
+  const scrollBy = useCallback(
+    (direction: -1 | 1) => {
+      scrollRef.current?.scrollTo({
+        x: Math.max(0, Math.min(maxScroll, scrollX + direction * 320)),
+        animated: true,
+      });
+    },
+    [maxScroll, scrollX],
+  );
+  const scrollLeft = useCallback(() => scrollBy(-1), [scrollBy]);
+  const scrollRight = useCallback(() => scrollBy(1), [scrollBy]);
+
+  useEffect(() => {
+    if (!isWeb || isCompact || !hasOverflow || isDragging) return;
+    const boardElement = boardRef.current as unknown as HTMLElement | null;
+    const scrollElement = boardElement?.querySelector<HTMLElement>(
+      '[data-testid="kanban-board-scroll"]',
+    );
+    if (!boardElement || !scrollElement) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.metaKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY))
+        return;
+      // A column keeps an ordinary wheel gesture while its card list can
+      // consume it. Shift + wheel always navigates columns.
+      let target = event.target as HTMLElement | null;
+      while (!event.shiftKey && target && target !== scrollElement) {
+        if (
+          ["auto", "scroll"].includes(window.getComputedStyle(target).overflowY) &&
+          target.scrollHeight > target.clientHeight + 1 &&
+          ((event.deltaY > 0 && target.scrollTop < target.scrollHeight - target.clientHeight - 1) ||
+            (event.deltaY < 0 && target.scrollTop > 1))
+        )
+          return;
+        target = target.parentElement;
+      }
+      const next = Math.max(0, Math.min(maxScroll, scrollElement.scrollLeft + event.deltaY));
+      if (next !== scrollElement.scrollLeft) {
+        event.preventDefault();
+        scrollElement.scrollLeft = next;
+      }
+    };
+    boardElement.addEventListener("wheel", handleWheel, { passive: false });
+    return () => boardElement.removeEventListener("wheel", handleWheel);
+  }, [hasOverflow, isCompact, isDragging, maxScroll]);
+
+  const displayedColumns = isCompact
+    ? board.columns.filter((column) => column.id === selectedColumnId)
+    : board.columns;
+  const thumbWidth =
+    contentWidth > 0 ? Math.max(24, (trackWidth * viewportWidth) / contentWidth) : 0;
+  const thumbLeft = maxScroll > 0 ? ((trackWidth - thumbWidth) * scrollX) / maxScroll : 0;
 
   const ghostStyle = useMemo(
     () =>
       drag
         ? [
             styles.dragGhost,
-            {
-              left: drag.origin.x + drag.x,
-              top: drag.origin.y + drag.y,
-              width: drag.origin.width,
-            },
+            inlineUnistylesStyle({
+              left: drag.pointer.x - drag.boardOrigin.x + 12,
+              top: drag.pointer.y - drag.boardOrigin.y + 12,
+            }),
           ]
         : null,
     [drag],
   );
 
   return (
-    <View style={styles.board} testID="kanban-board">
-      {linking ? (
-        <View style={styles.createRow}>
-          <TextInput
-            style={styles.createInput}
-            value={externalId}
-            onChangeText={setExternalId}
-            placeholder={
-              providerId === "jira"
-                ? "Jira issue key"
-                : "GitHub issue or PR URL, node ID, or number"
-            }
-            testID="kanban-link-input"
-          />
-          <Button
-            size="xs"
-            onPress={submitLink}
-            disabled={linkPending || !externalId.trim()}
-            testID="kanban-link-confirm"
-          >
-            Link
-          </Button>
-          <Button size="xs" variant="ghost" onPress={cancelLinking}>
-            Cancel
-          </Button>
-        </View>
-      ) : (
-        <Button size="xs" variant="ghost" onPress={startLinking} testID="kanban-link-task">
-          Link existing issue or PR
-        </Button>
-      )}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.boardContent}
-      >
-        {board.columns.map((column) => (
+    <View ref={boardRef} style={styles.board} testID="kanban-board">
+      {isCompact ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator
+          style={styles.columnPicker}
+          contentContainerStyle={styles.columnPickerContent}
+          testID="kanban-column-picker"
+        >
+          {board.columns.map((column) => (
+            <KanbanColumnPickerItem
+              key={column.id}
+              column={column}
+              selected={column.id === selectedColumnId}
+              onSelect={setSelectedColumnId}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+      {isCompact ? (
+        displayedColumns.map((column) => (
           <KanbanColumnView
             key={column.id}
             column={column}
             columns={board.columns}
-            onLayoutColumn={recordColumnRect}
-            onLayoutCard={recordCardRect}
+            onColumnRef={setColumnRef}
             onDragStart={handleDragStart}
-            isDropTarget={
-              draggingCardId !== null && drag !== null && column.id !== drag.sourceColumnId
-            }
-            draggingCardId={draggingCardId}
+            onDragCancel={cancelDrag}
+            isDropTarget={hoveredColumnId === column.id}
+            draggingCardId={null}
             onCardDragChange={handleDragChange}
             onCardDragEnd={handleDragEnd}
             onMoveCard={onMoveCard}
-            onCreateCard={onCreateCard}
             onOpenCard={onOpenCard}
-            isCompact={isCompact}
+            isCompact
           />
-        ))}
-        {drag && ghostStyle ? (
-          <View pointerEvents="none" style={ghostStyle}>
-            <Text style={styles.dragGhostText} numberOfLines={2}>
-              {drag.card.title}
-            </Text>
-          </View>
-        ) : null}
-      </ScrollView>
+        ))
+      ) : (
+        <>
+          <ScrollView
+            ref={scrollRef}
+            horizontal
+            showsHorizontalScrollIndicator
+            scrollEnabled={!drag}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            onLayout={handleViewportLayout}
+            onContentSizeChange={setContentWidth}
+            contentContainerStyle={styles.boardContent}
+            testID="kanban-board-scroll"
+          >
+            {displayedColumns.map((column) => (
+              <KanbanColumnView
+                key={column.id}
+                column={column}
+                columns={board.columns}
+                onColumnRef={setColumnRef}
+                onDragStart={handleDragStart}
+                onDragCancel={cancelDrag}
+                isDropTarget={hoveredColumnId === column.id}
+                draggingCardId={draggingCardId}
+                onCardDragChange={handleDragChange}
+                onCardDragEnd={handleDragEnd}
+                onMoveCard={onMoveCard}
+                onOpenCard={onOpenCard}
+                isCompact={false}
+              />
+            ))}
+          </ScrollView>
+          {drag && ghostStyle ? (
+            <View pointerEvents="none" style={ghostStyle} testID="kanban-drag-preview">
+              <Text style={styles.dragGhostText} numberOfLines={2}>
+                {drag.card.title}
+              </Text>
+            </View>
+          ) : null}
+          {board.columns.length > 1 ? (
+            <View style={styles.boardNavigation}>
+              <Button
+                variant="ghost"
+                size="sm"
+                leftIcon={ChevronLeft}
+                onPress={scrollLeft}
+                disabled={!hasOverflow || scrollX <= 1}
+                accessibilityLabel="Scroll board left"
+                testID="kanban-scroll-left"
+              />
+              <View style={styles.scrollTrack} onLayout={handleTrackLayout}>
+                {hasOverflow ? (
+                  <View
+                    style={[
+                      styles.scrollThumb,
+                      inlineUnistylesStyle({
+                        width: thumbWidth,
+                        transform: [{ translateX: thumbLeft }],
+                      }),
+                    ]}
+                  />
+                ) : null}
+              </View>
+              <Button
+                variant="ghost"
+                size="sm"
+                leftIcon={ChevronRight}
+                onPress={scrollRight}
+                disabled={!hasOverflow || scrollX >= maxScroll - 1}
+                accessibilityLabel="Scroll board right"
+                testID="kanban-scroll-right"
+              />
+              {hasOverflow ? (
+                <Text style={styles.scrollHint}>Shift + wheel to scroll columns</Text>
+              ) : null}
+            </View>
+          ) : null}
+        </>
+      )}
     </View>
+  );
+}
+
+function KanbanColumnPickerItem({
+  column,
+  selected,
+  onSelect,
+}: {
+  column: KanbanColumn;
+  selected: boolean;
+  onSelect: (columnId: string) => void;
+}): ReactElement {
+  const handlePress = useCallback(() => onSelect(column.id), [column.id, onSelect]);
+  const accessibilityState = useMemo(() => ({ selected }), [selected]);
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={[styles.columnPickerItem, selected ? styles.columnPickerItemSelected : null]}
+      accessibilityRole="tab"
+      accessibilityState={accessibilityState}
+      testID={`kanban-select-column-${column.id}`}
+    >
+      <Text style={styles.columnPickerLabel}>{column.name}</Text>
+      <Text style={styles.columnCount}>{column.cards.length}</Text>
+    </Pressable>
   );
 }
 
 function KanbanColumnView({
   column,
   columns,
-  onLayoutColumn,
-  onLayoutCard,
+  onColumnRef,
   onDragStart,
+  onDragCancel,
   isDropTarget,
   draggingCardId,
   onCardDragChange,
   onCardDragEnd,
   onMoveCard,
-  onCreateCard,
   onOpenCard,
   isCompact,
 }: {
   column: KanbanColumn;
   columns: KanbanColumn[];
-  onLayoutColumn: (columnId: string, event: LayoutEvent) => void;
-  onLayoutCard: (cardId: string, event: LayoutEvent) => void;
-  onDragStart: (card: KanbanCard, sourceColumnId: string) => void;
+  onColumnRef: (columnId: string, view: View | null) => void;
+  onDragStart: (
+    card: KanbanCard,
+    sourceColumnId: string,
+    pointer: { x: number; y: number },
+  ) => void;
+  onDragCancel: () => void;
   isDropTarget: boolean;
   draggingCardId: string | null;
-  onCardDragChange: (event: { x: number; y: number }) => void;
-  onCardDragEnd: (event: { x: number; y: number }) => void;
+  onCardDragChange: (pointer: { x: number; y: number }) => void;
+  onCardDragEnd: (event: { absoluteX: number; absoluteY: number }) => void;
   onMoveCard: (cardId: string, targetColumnId: string) => Promise<void>;
-  onCreateCard: (columnId: string, title: string) => Promise<void>;
   onOpenCard: (cardId: string) => void;
   isCompact: boolean;
 }): ReactElement {
-  const { t } = useTranslation();
-  const [creating, setCreating] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleColumnLayout = useCallback(
-    (event: LayoutEvent) => onLayoutColumn(column.id, event),
-    [onLayoutColumn, column.id],
+  const setRef = useCallback(
+    (view: View | null) => onColumnRef(column.id, view),
+    [onColumnRef, column.id],
   );
 
   const handleCardDragStart = useCallback(
-    (card: KanbanCard) => onDragStart(card, column.id),
+    (card: KanbanCard, pointer: { x: number; y: number }) => onDragStart(card, column.id, pointer),
     [onDragStart, column.id],
   );
-
-  const submitNewCard = useCallback(async () => {
-    const title = newTitle.trim();
-    if (!title || submitting) return;
-    setSubmitting(true);
-    try {
-      await onCreateCard(column.id, title);
-      setNewTitle("");
-      setCreating(false);
-    } catch {
-      // The board keeps the action error visible and this input stays open.
-    } finally {
-      setSubmitting(false);
-    }
-  }, [newTitle, submitting, onCreateCard, column.id]);
-
-  const cancelNewCard = useCallback(() => {
-    setCreating(false);
-    setNewTitle("");
-  }, []);
-
-  const startCreating = useCallback(() => setCreating(true), []);
-
-  const submitOnBlur = useCallback(() => {
-    void submitNewCard();
-  }, [submitNewCard]);
 
   const columnStyle = useMemo(
     () => [
@@ -1349,7 +1484,7 @@ function KanbanColumnView({
 
   return (
     <View
-      onLayout={handleColumnLayout}
+      ref={setRef}
       style={columnStyle}
       testID={`kanban-column-${column.id}`}
       accessibilityLabel={`${column.name}, ${column.cards.length} cards`}
@@ -1371,55 +1506,16 @@ function KanbanColumnView({
             card={card}
             sourceColumnId={column.id}
             columns={columns}
-            onLayout={onLayoutCard}
             isDragging={draggingCardId === card.id}
             onDragStart={handleCardDragStart}
+            onDragCancel={onDragCancel}
             onDragChange={onCardDragChange}
             onDragEnd={onCardDragEnd}
             onMoveCard={onMoveCard}
             onOpenCard={onOpenCard}
+            enableDrag={isWeb && !isCompact}
           />
         ))}
-        {creating ? (
-          <View style={styles.createRow}>
-            <TextInput
-              style={styles.createInput}
-              placeholder={t("kanban.cardTitlePlaceholder")}
-              placeholderTextColor={styles.createInputPlaceholder.color}
-              value={newTitle}
-              onChangeText={setNewTitle}
-              onEndEditing={submitOnBlur}
-              testID="kanban-new-card-input"
-              returnKeyType="done"
-            />
-            <Button
-              size="xs"
-              variant="ghost"
-              leftIcon={Check}
-              onPress={submitOnBlur}
-              disabled={newTitle.trim().length === 0 || submitting}
-              testID="kanban-new-card-confirm"
-            />
-            <Button
-              size="xs"
-              variant="ghost"
-              onPress={cancelNewCard}
-              testID="kanban-new-card-cancel"
-            >
-              <Text style={styles.cancelText}>{t("kanban.cancel")}</Text>
-            </Button>
-          </View>
-        ) : (
-          <Pressable
-            onPress={startCreating}
-            style={styles.addCardButton}
-            testID={`kanban-add-card-${column.id}`}
-            accessibilityRole="button"
-          >
-            <KanbanIcon icon={Plus} size="md" color={styles.addCardText.color} />
-            <Text style={styles.addCardText}>{t("kanban.addCard")}</Text>
-          </Pressable>
-        )}
       </ScrollView>
     </View>
   );
@@ -1429,53 +1525,91 @@ function KanbanCardView({
   card,
   sourceColumnId,
   columns,
-  onLayout,
   isDragging,
   onDragStart,
+  onDragCancel,
   onDragChange,
   onDragEnd,
   onMoveCard,
   onOpenCard,
+  enableDrag,
 }: {
   card: KanbanCard;
   sourceColumnId: string;
   columns: KanbanColumn[];
-  onLayout: (cardId: string, event: LayoutEvent) => void;
   isDragging: boolean;
-  onDragStart: (card: KanbanCard) => void;
-  onDragChange: (event: { x: number; y: number }) => void;
-  onDragEnd: (event: { x: number; y: number }) => void;
+  onDragStart: (card: KanbanCard, pointer: { x: number; y: number }) => void;
+  onDragCancel: () => void;
+  onDragChange: (pointer: { x: number; y: number }) => void;
+  onDragEnd: (event: { absoluteX: number; absoluteY: number }) => void;
   onMoveCard: (cardId: string, targetColumnId: string) => Promise<void>;
   onOpenCard: (cardId: string) => void;
+  enableDrag: boolean;
 }): ReactElement {
-  const handleLayout = useCallback(
-    (event: LayoutEvent) => onLayout(card.id, event),
-    [onLayout, card.id],
-  );
-
-  const startDrag = useCallback(() => onDragStart(card), [onDragStart, card]);
-
-  const handleGestureStart = useCallback(() => startDrag(), [startDrag]);
-  const handleGestureUpdate = useCallback(
-    (event: { translationX: number; translationY: number }) =>
-      onDragChange({ x: event.translationX, y: event.translationY }),
-    [onDragChange],
-  );
-  const handleGestureEnd = useCallback(
-    (event: { translationX: number; translationY: number }) =>
-      onDragEnd({ x: event.translationX, y: event.translationY }),
-    [onDragEnd],
-  );
-
-  const dragGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .minDistance(8)
-        .onStart(handleGestureStart)
-        .onUpdate(handleGestureUpdate)
-        .onEnd(handleGestureEnd),
-    [handleGestureStart, handleGestureUpdate, handleGestureEnd],
-  );
+  const cardRef = useRef<View>(null);
+  useEffect(() => {
+    if (!isWeb || !enableDrag) return;
+    const element = cardRef.current as unknown as HTMLElement | null;
+    if (!element) return;
+    let start: { x: number; y: number; pointerId: number } | null = null;
+    let dragging = false;
+    let suppressClickUntil = 0;
+    const stopTracking = () => {
+      document.removeEventListener("pointermove", pointerMove);
+      document.removeEventListener("pointerup", pointerUp);
+      document.removeEventListener("pointercancel", pointerCancel);
+      start = null;
+      dragging = false;
+    };
+    const pointerDown = (event: PointerEvent) => {
+      if (event.button !== 0 || start) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-testid^="kanban-card-link-"], [data-testid^="kanban-card-menu-"]'))
+        return;
+      start = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+      document.addEventListener("pointermove", pointerMove);
+      document.addEventListener("pointerup", pointerUp);
+      document.addEventListener("pointercancel", pointerCancel);
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (!start || event.pointerId !== start.pointerId) return;
+      if (!dragging && Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 8) {
+        dragging = true;
+        onDragStart(card, { x: event.clientX, y: event.clientY });
+      }
+      if (dragging) {
+        event.preventDefault();
+        onDragChange({ x: event.clientX, y: event.clientY });
+      }
+    };
+    const pointerUp = (event: PointerEvent) => {
+      if (!start || event.pointerId !== start.pointerId) return;
+      if (dragging) {
+        suppressClickUntil = Date.now() + 500;
+        onDragEnd({ absoluteX: event.clientX, absoluteY: event.clientY });
+      }
+      stopTracking();
+    };
+    const pointerCancel = (event: PointerEvent) => {
+      if (!start || event.pointerId !== start.pointerId) return;
+      onDragCancel();
+      stopTracking();
+    };
+    const click = (event: MouseEvent) => {
+      if (Date.now() >= suppressClickUntil) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      suppressClickUntil = 0;
+    };
+    element.addEventListener("pointerdown", pointerDown, true);
+    element.addEventListener("click", click, true);
+    return () => {
+      element.removeEventListener("pointerdown", pointerDown, true);
+      if (dragging) onDragCancel();
+      stopTracking();
+      element.removeEventListener("click", click, true);
+    };
+  }, [card, enableDrag, onDragStart, onDragChange, onDragEnd, onDragCancel]);
 
   const cardStyle = useMemo(
     () => [styles.card, isDragging ? styles.cardDragging : null],
@@ -1489,50 +1623,52 @@ function KanbanCardView({
   }, [card.url]);
   const openDetail = useCallback(() => onOpenCard(card.id), [onOpenCard, card.id]);
 
-  return (
-    <GestureDetector gesture={dragGesture}>
-      <View onLayout={handleLayout} style={cardStyle} accessibilityLabel={card.title}>
-        <Pressable
-          onPress={openDetail}
-          accessibilityRole="button"
-          testID={`kanban-card-detail-${card.id}`}
-        >
-          <Text style={styles.cardTitle} numberOfLines={3}>
-            {card.title}
-          </Text>
-        </Pressable>
-        {card.body ? (
-          <Text style={styles.cardDescription} numberOfLines={2}>
-            {card.body}
+  const cardContent = (
+    <View ref={cardRef} style={cardStyle} accessibilityLabel={card.title}>
+      <Pressable
+        onPress={openDetail}
+        accessibilityRole="button"
+        testID={`kanban-card-detail-${card.id}`}
+      >
+        <Text style={styles.cardTitle} numberOfLines={3}>
+          {card.title}
+        </Text>
+      </Pressable>
+      {card.body ? (
+        <Text style={styles.cardDescription} numberOfLines={1}>
+          {card.body}
+        </Text>
+      ) : null}
+      <View style={styles.cardFooter}>
+        {enableDrag ? (
+          <KanbanIcon icon={ListChevronsUpDown} size="sm" color={styles.cardAssignees.color} />
+        ) : null}
+        {card.assignees.length > 0 ? (
+          <Text style={styles.cardAssignees} numberOfLines={1}>
+            {card.assignees.join(", ")}
           </Text>
         ) : null}
-        <View style={styles.cardFooter}>
-          <KanbanIcon icon={ListChevronsUpDown} size="sm" color={styles.cardAssignees.color} />
-          {card.assignees.length > 0 ? (
-            <Text style={styles.cardAssignees} numberOfLines={1}>
-              {card.assignees.join(", ")}
-            </Text>
-          ) : null}
-          {card.url ? (
-            <Pressable
-              onPress={openLink}
-              style={styles.cardLink}
-              testID={`kanban-card-link-${card.id}`}
-              accessibilityRole="link"
-            >
-              <KanbanIcon icon={ExternalLink} size="sm" color={styles.cardAssignees.color} />
-            </Pressable>
-          ) : null}
-          <KanbanCardMoveMenu
-            card={card}
-            sourceColumnId={sourceColumnId}
-            columns={columns}
-            onMoveCard={onMoveCard}
-          />
-        </View>
+        <View style={styles.cardFooterSpacer} />
+        {card.url ? (
+          <Pressable
+            onPress={openLink}
+            style={styles.cardLink}
+            testID={`kanban-card-link-${card.id}`}
+            accessibilityRole="link"
+          >
+            <KanbanIcon icon={ExternalLink} size="sm" color={styles.cardAssignees.color} />
+          </Pressable>
+        ) : null}
+        <KanbanCardMoveMenu
+          card={card}
+          sourceColumnId={sourceColumnId}
+          columns={columns}
+          onMoveCard={onMoveCard}
+        />
       </View>
-    </GestureDetector>
+    </View>
   );
+  return cardContent;
 }
 
 function KanbanCardMoveMenu({
@@ -1663,12 +1799,65 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minHeight: 0,
   },
+  boardToolbar: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+    paddingTop: theme.spacing[3],
+  },
   boardContent: {
     gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[3],
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingTop: theme.spacing[3],
-    paddingBottom: theme.spacing[4],
+    paddingBottom: theme.spacing[2],
   },
+  boardNavigation: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+    paddingBottom: theme.spacing[3],
+  },
+  scrollTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface2,
+    overflow: "hidden",
+  },
+  scrollThumb: {
+    height: 6,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.foregroundMuted,
+  },
+  scrollHint: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  columnPicker: { flexGrow: 0, flexShrink: 0 },
+  columnPickerContent: {
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[3],
+  },
+  columnPickerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    minHeight: 40,
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+  },
+  columnPickerItemSelected: {
+    borderColor: theme.colors.borderAccent,
+    backgroundColor: theme.colors.surface2,
+  },
+  columnPickerLabel: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   column: {
     width: 300,
     maxWidth: "80%",
@@ -1679,7 +1868,12 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 120,
   },
   columnCompact: {
-    width: 260,
+    width: "100%",
+    maxWidth: "100%",
+    flex: 1,
+    borderRadius: 0,
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
   },
   columnDropTarget: {
     borderColor: theme.colors.borderAccent,
@@ -1743,49 +1937,13 @@ const styles = StyleSheet.create((theme) => ({
   cardAssignees: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
-    flex: 1,
   },
+  cardFooterSpacer: { flex: 1 },
   cardLink: {
     padding: 2,
   },
   cardMenuButton: {
     padding: 2,
-  },
-  createRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  createInput: {
-    flex: 1,
-    minHeight: 32,
-    borderRadius: theme.borderRadius.base,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface0,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    paddingHorizontal: theme.spacing[2],
-  },
-  createInputPlaceholder: {
-    color: theme.colors.foregroundMuted,
-  },
-  cancelText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
-  addCardButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing[1],
-    paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.base,
-  },
-  addCardText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
   },
   dragGhost: {
     position: "absolute",
