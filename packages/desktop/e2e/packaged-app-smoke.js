@@ -589,6 +589,8 @@ async function waitForPackagedAppSettled(page, deadline) {
 async function verifySpellcheckContextMenu(page, deadline) {
   const testId = "packaged-spellcheck-input";
   const misspelling = "mispeling";
+  // macOS detects the spelling language from context, so use a real sentence.
+  const prefix = "This is a ";
 
   await page.evaluate(
     async ({ testId: targetTestId }) => {
@@ -635,11 +637,27 @@ async function verifySpellcheckContextMenu(page, deadline) {
 
   const input = page.locator(`[data-testid="${testId}"]`);
   await input.click();
-  await page.keyboard.type(`${misspelling} `);
+  await page.keyboard.type(`${prefix}${misspelling} in an English sentence.`);
   const box = await input.boundingBox();
   if (!box) {
     throw new Error("Packaged spellcheck input has no bounding box");
   }
+  // Click the middle of the typo instead of the padding or a glyph boundary.
+  const wordCenterX = await input.evaluate(
+    (element, { prefix: beforeWord, misspelling: word }) => {
+      const style = getComputedStyle(element);
+      const context = document.createElement("canvas").getContext("2d");
+      if (!context) throw new Error("Cannot measure packaged spellcheck word");
+      context.font = style.font;
+      return (
+        (Number.parseFloat(style.borderLeftWidth) || 0) +
+        (Number.parseFloat(style.paddingLeft) || 0) +
+        context.measureText(beforeWord).width +
+        context.measureText(word).width / 2
+      );
+    },
+    { prefix, misspelling },
+  );
 
   // At high display scaling the desktop window can cross the compact-width
   // threshold, where the same context menu uses its bottom-sheet surface.
@@ -651,7 +669,7 @@ async function verifySpellcheckContextMenu(page, deadline) {
   // system language. A single click keeps the journey user-realistic; give a
   // clean runner time to download and classify instead of retrying the gesture.
   await delay(20_000);
-  await page.mouse.click(box.x + 24, box.y + 24, { button: "right" });
+  await page.mouse.click(box.x + wordCenterX, box.y + 24, { button: "right" });
   await menu
     .getByText("Add to Dictionary", { exact: true })
     .waitFor({
