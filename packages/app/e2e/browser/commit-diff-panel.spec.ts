@@ -14,7 +14,6 @@ const COMMIT_SUBJECT = "Show commit timestamps";
 // panels/register-panels.ts for the @/git/diff-pane restructure that gates it.
 // Left active these fail deterministically and burn three attempts each under
 // the CI retry policy. Un-skip in the same change that registers the panel.
-// Tracked in projects/README.md.
 test.skip("commit history explains when the workspace has no commits ahead of its base", async ({
   page,
   withWorkspace,

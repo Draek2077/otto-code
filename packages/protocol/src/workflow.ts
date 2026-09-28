@@ -4,7 +4,7 @@ import { JudgeVerdictSchema } from "./judge-verdict.js";
 
 // The orchestration data model - a daemon-owned "Run": one execution of a
 // declared multi-agent plan, and its observable/resumable projection to clients.
-// See projects/agent-orchestration/agent-orchestration.md. This is Otto's
+// See .otto/knowledge/projects/agent-orchestration.md. This is Otto's
 // provider-agnostic answer to a harness "Workflow": the conductor (an
 // orchestrator-role agent) DECLARES the shape (typed phases, assignments, the
 // loop target) via `start_workflow`, and the daemon runtime drives control flow -

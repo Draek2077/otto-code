@@ -132,8 +132,6 @@ using the installed Codex binary and an isolated Responses endpoint.
 
 ## Known open questions
 
-Tracked in the [projects ledger](../projects/README.md#providers--accounting):
-
 - A **pinned metadata-generation provider silently falls through** when it cannot do a tool-less
   completion, so the pin is bypassed and another provider is billed. Product question: warn, or keep
   re-routing silently?

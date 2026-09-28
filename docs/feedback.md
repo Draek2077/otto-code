@@ -87,7 +87,7 @@ feedback is not accepting reports right now.
 
 ## What this does not do
 
-The [bug-reporting charter](../projects/README.md) also described a **host-owner sink**: a daemon
+The [bug-reporting charter](../.otto/knowledge/projects/bug-reporting.md) also described a **host-owner sink**: a daemon
 that files a GitHub issue into an owner-configured repo with its own `gh` credentials, so a team's
 coworkers report into that team's tracker. That half is unbuilt, and it is a different feature with
 a different audience - it needs `createIssue` on the forge layer

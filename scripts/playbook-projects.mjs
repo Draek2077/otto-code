@@ -6,7 +6,7 @@
 // convenience: an agent driving Otto by hand and a spec asserting about Otto have
 // to be working against identical ground truth, or a green suite stops being
 // evidence about the thing the agent just looked at. See
-// projects/usage-playbooks/usage-playbooks.md.
+// .otto/knowledge/projects/usage-playbooks.md.
 //
 // A materialized repo has:
 //   - `main` at one commit: the template's tree/ verbatim, which builds green

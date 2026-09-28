@@ -2,7 +2,7 @@
  * Themed team presets - the type layer.
  *
  * Three layers keep the system tractable (see the design in
- * projects/first-time-wizard/first-time-wizard.md):
+ * docs/onboarding.md):
  *
  *  1. Blueprint  - a team type's fixed role skeleton (6 slots, one orchestrator).
  *                  Never randomizes; this is what guarantees balance.

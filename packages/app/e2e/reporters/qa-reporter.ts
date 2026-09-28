@@ -23,7 +23,7 @@ import {
  *   3. Can I eyeball the whole suite at once?-> money-shots/index.md (contact sheet)
  *   4. What broke?                           -> failures.md
  *
- * Module grouping is derived from `projects/e2e-qa-coverage/coverage-matrix.md`
+ * Module grouping is derived from `docs/e2e-coverage-matrix.md`
  * rather than per-spec tags, so the matrix stays the single source of truth for
  * what belongs where. `scripts/e2e-coverage-check.mjs` already guarantees every
  * spec on disk is claimed by exactly one matrix section, so any spec landing in
@@ -133,15 +133,8 @@ class QaReporter implements Reporter {
       ? path.dirname(config.configFile)
       : path.resolve(config.rootDir, "..");
     this.outputDir = path.resolve(configDir, this.options.outputDir ?? "e2e-report");
-    // packages/app -> repo root -> projects/e2e-qa-coverage/coverage-matrix.md
-    this.matrixPath = path.resolve(
-      configDir,
-      "..",
-      "..",
-      "projects",
-      "e2e-qa-coverage",
-      "coverage-matrix.md",
-    );
+    // packages/app -> repo root -> docs/e2e-coverage-matrix.md
+    this.matrixPath = path.resolve(configDir, "..", "..", "docs", "e2e-coverage-matrix.md");
     this.startedAt = new Date();
   }
 

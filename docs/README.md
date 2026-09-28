@@ -6,12 +6,11 @@ system design, subsystem behaviour, conventions and the gotchas you cannot deriv
 It is the **specification we build against**. When the code and a page here disagree, that is a
 defect in one of them, not a matter of taste.
 
-| Tree                                                               | Holds                                                                                                                                                                 | Tense                                 |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| **`docs/`** (here)                                                 | How Otto works                                                                                                                                                        | Present - _this is how it behaves_    |
-| [`projects/`](../projects/README.md)                               | Charters for work not yet done, and the single open-work ledger                                                                                                       | Future - _this is what we will build_ |
-| [`CLAUDE.md`](../CLAUDE.md)                                        | Working rules for AI agents in this repo                                                                                                                              | Imperative - _do this, never that_    |
-| **Otto Knowledge** (`.otto/knowledge/`, or host-local per project) | Durable records: architecture, decisions, findings, projects, references. Manages the system-level architecture record that used to live in `archdocs/` (now retired) | Present, durable, wide-angle          |
+| Tree                                                               | Holds                                                                                                                    | Tense                              |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| **`docs/`** (here)                                                 | How Otto works                                                                                                           | Present - _this is how it behaves_ |
+| [`CLAUDE.md`](../CLAUDE.md)                                        | Working rules for AI agents in this repo                                                                                 | Imperative - _do this, never that_ |
+| **Otto Knowledge** (`.otto/knowledge/`, or host-local per project) | Durable records: project charters and status, architecture, decisions, findings, references. The only home for open work | Present, durable, wide-angle       |
 
 `CLAUDE.md` is deliberately **not** a documentation index. It is agent context - rules, gates and
 constraints. This file is the index.
@@ -19,8 +18,8 @@ constraints. This file is the index.
 ## What belongs here
 
 A page earns its place in `docs/` when its content will still be true after the current work ships.
-Point-in-time plans, build sequencing, and status belong in
-[`projects/`](../projects/README.md). Code-level facts belong in comments next to the code.
+Point-in-time plans, build sequencing, and status belong in Otto Knowledge project pages.
+Code-level facts belong in comments next to the code.
 
 **When you learn something meta** - a gotcha, a convention, a workflow, a piece of system context
 that will outlive the current task - update the relevant page here or add one, and list it below.
@@ -159,6 +158,7 @@ An unlisted page is an invisible page.
 | Page                                                     | What's in it                                                                                                                                                                              |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [testing.md](testing.md)                                 | TDD workflow, determinism, real dependencies over mocks, test organization, the fast structural-diff corpus, **the three app E2E tiers** (mock / local-AI / real) and the coverage matrix |
+| [e2e-coverage-matrix.md](e2e-coverage-matrix.md)         | One row per feature behavior with its E2E status and tier. Every browser spec must be claimed by a row; `npm run e2e:coverage` fails CI on drift                                          |
 | [mobile-testing.md](mobile-testing.md)                   | Maestro and mobile test workflows                                                                                                                                                         |
 | [ad-hoc-daemon-testing.md](ad-hoc-daemon-testing.md)     | The isolated in-process daemon test harness                                                                                                                                               |
 | [browser-capture-harness.md](browser-capture-harness.md) | The real-Electron browser screenshot harness and the compositor-surface gotcha                                                                                                            |
@@ -182,7 +182,6 @@ An unlisted page is an invisible page.
 
 | Page                                                                   | What's in it                                                                                                                                                                        |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [references.md](references.md)                                         | Legacy read-only source used to migrate external references into first-class Otto Knowledge pages; retained temporarily for parity review                                           |
 | [glossary.md](glossary.md)                                             | Authoritative terminology                                                                                                                                                           |
 | [writing-style.md](writing-style.md)                                   | House prose rules for everything a reader outside this repo sees - **no em-dashes**, what to use instead, and the first-person voice. Site, manual, release notes, marketing drafts |
 | [opencode-global-event-baseline.md](opencode-global-event-baseline.md) | OpenCode global event verification baseline - a dated snapshot, kept as evidence rather than as a live spec                                                                         |

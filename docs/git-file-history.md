@@ -5,7 +5,7 @@ touched it, what each of those commits did to it, who wrote each line, and who
 created the file in the first place. JetBrains' "Show History / Annotate", from
 the file tab.
 
-Shipped 0.6.6. The point-in-time charter is archived at `archive/projects/git-file-history/`.
+Shipped 0.6.6.
 
 ## This is local git, and it is not a provider feature
 

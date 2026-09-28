@@ -26,8 +26,8 @@ import { MATH_RENDER_DEBOUNCE_MS } from "./math-webview/math-webview-contract";
 // Block math has its own `View` (see the MATH_BLOCK_TOKEN rule in renderer.tsx),
 // so it can. Rendering inline math too means letting a paragraph that contains a
 // formula opt out of the `UITextView` path the way `containsImage` already does,
-// which is a change to paragraph selection semantics: tracked in
-// projects/README.md rather than smuggled in here.
+// which is a change to paragraph selection semantics, so it needs its own
+// change rather than being smuggled in here.
 
 const ORIGIN_WHITELIST = ["*"];
 

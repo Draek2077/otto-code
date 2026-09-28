@@ -10,7 +10,7 @@ screen with a working, themed agent roster and at least one team ready to go.
 
 Related: [agent-profiles.md](agent-profiles.md) · [agent-teams.md](agent-teams.md) ·
 [expo-router.md](expo-router.md) (route ownership and startup restore) ·
-[sidebar-reveal](../projects/README.md#active-charters) for the unbuilt tutorial workspace step.
+[Sidebar Reveal](../.otto/knowledge/projects/sidebar-reveal.md) for the unbuilt tutorial workspace step.
 
 ## Interface mode preserves useful capabilities
 
@@ -119,11 +119,9 @@ cover, carries the summary, and hosts the tutorial yes/no.
 The in-app spotlight tutorial (`tutorial/`) is offered at step 5 and has its **own** one-time flag
 (`hasCompletedTutorial`), so it never re-fires uninvited regardless of the wizard's state.
 
-> **The spotlight is currently disabled.** Re-enabling it is tracked in the projects ledger; the
-> tutorial's unbuilt create-workspace step has its plan in
-> [`projects/sidebar-reveal/`](../projects/sidebar-reveal/sidebar-reveal.md).
+> **The spotlight is currently disabled.** The tutorial's unbuilt create-workspace step has its plan
+> on the [Sidebar Reveal project page](../.otto/knowledge/projects/sidebar-reveal.md).
 
 ## Known tail
 
-The wizard shipped English-only. i18n for its strings is tracked in the
-[projects ledger](../projects/README.md#i18n).
+The wizard shipped English-only; its strings are not translated yet.

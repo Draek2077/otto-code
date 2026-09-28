@@ -281,7 +281,7 @@ export interface OttoAppSettings {
   chatBubbleGradient: boolean;
   // Animation theme for the "working" text sweep on activity labels (tool
   // calls, reasoning, action groups). Device-local presentation only. See
-  // styles/text-effects.ts and projects/text-effects/text-effects.md.
+  // styles/text-effects.ts and docs/text-effects.md.
   textEffectTheme: TextEffectThemeId;
   // Soft-wrap long lines in chat code/tool output (shell commands, tool result
   // bodies, diffs) instead of scrolling horizontally. Device-local presentation
@@ -516,7 +516,7 @@ export type ChatTimestampDisplay = "absolute" | "relative";
 export type SubagentTrackPresentation = "panels" | "pills";
 
 // Device-local display depth chosen in the setup wizard's first step. Presentation
-// only - never synced to the daemon. See projects/first-time-wizard/interface-modes.md.
+// only - never synced to the daemon. See docs/onboarding.md.
 export type InterfaceMode = "user" | "developer";
 
 // What screen the app opens to. "workspaces" (default) restores the last

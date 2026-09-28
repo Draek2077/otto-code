@@ -445,7 +445,7 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
  *      - client-credentials grant: PayPal
  *      - static API token: Bitbucket tools on the Atlassian endpoint
  *    Endpoints for every one of these are recorded in
- *    projects/connectors/connectors.md. Do not re-research them.
+ *    .otto/knowledge/projects/connectors.md. Do not re-research them.
  *
  * 2. NO OFFICIAL SERVER EXISTS. Checked per vendor, not by a broad sweep:
  *    Zendesk (they are an MCP client, not a server publisher), Todoist, Google

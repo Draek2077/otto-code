@@ -540,7 +540,7 @@ export type AgentStreamEvent =
       timestamp: string;
     }
   // A provider-managed subagent's lifecycle changed. The daemon materializes it
-  // as a read-only "observed subagent" agent record. See projects/observed-subagents/observed-subagents.md.
+  // as a read-only "observed subagent" agent record. See .otto/knowledge/projects/observed-subagents.md.
   | {
       type: "observed_subagent_updated";
       provider: AgentProvider;
@@ -574,7 +574,7 @@ export function getAgentStreamEventTurnId(event: AgentStreamEvent): string | und
  * provider so the daemon can promote it to a read-only, separately-watchable
  * "observed subagent". `key` is a provider-local stable identifier (Claude: the
  * Task tool_use id); the daemon namespaces it under the owning agent. See
- * projects/observed-subagents/observed-subagents.md.
+ * .otto/knowledge/projects/observed-subagents.md.
  */
 export interface ObservedSubagentUpdate {
   key: string;

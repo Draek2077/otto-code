@@ -404,7 +404,7 @@ assert on the assistant's wording.
 
 ### Coverage matrix and run reports
 
-`projects/e2e-qa-coverage/coverage-matrix.md` is the single source of truth for what is covered:
+[`e2e-coverage-matrix.md`](e2e-coverage-matrix.md) is the single source of truth for what is covered:
 one section per feature category, one row per behaviour, marked ✅ / 🟡 / ❌ with the covering spec
 files named inline. **It is live tooling, not a plan** - two things read it at runtime:
 

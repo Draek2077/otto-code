@@ -194,7 +194,7 @@ export function summarizeProfileForSelection(
 // the sole orchestrator role at spawn. It chooses direct work, a dedicated
 // chat, a suggested task, or an orchestration by the task's actual needs rather than
 // treating orchestration as the default. Kept here as one exported constant so
-// the wording is testable and shared. See projects/agent-orchestration/agent-orchestration.md.
+// the wording is testable and shared. See .otto/knowledge/projects/agent-orchestration.md.
 export const OTTO_WORK_VOCABULARY_DIRECTIVE =
   "Otto work vocabulary: a suggested task is deferred work for the user and does not start work; a chat is an active Otto chat session; a child chat is created by another chat; a Personality is a reusable provider, model, mode, effort, and behavior template; a Workflow coordinates multiple chats; a schedule starts a background chat when due; a heartbeat sends a reminder or prompt and does not start a chat. Use suggest_task for concrete work to preserve for later, create_chat to start one chat now, and start_workflow only for managed multi-chat coordination. Use list_agent_profiles, optionally filtered by roles, before choosing a Personality. Never substitute a harness-native agent-spawn tool for suggest_task, and when a user names an Otto tool exactly, use that exact Otto tool.";
 

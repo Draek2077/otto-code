@@ -4,7 +4,7 @@ Real, per-sub-agent token + cost accounting in the Metrics ledger: every sub-age
 
 Claude is the shipped **reference implementation** (Task fan-out + workflows). This doc is the adapter guide for giving the same to every other provider - the core is provider-neutral, so a new provider is fill-in-the-blanks, not a re-derivation.
 
-Companion to the **track-row / read-only-pane** adapter contract in [projects/observed-subagents/provider-adapters.md](../projects/observed-subagents/provider-adapters.md) (the `observed_subagent_updated` + `observed_subagent_timeline` events). Accounting rides on those same events; this doc covers only the token/cost half.
+Companion to the **track-row / read-only-pane** adapter contract on [the Observed Subagents project page](../.otto/knowledge/projects/observed-subagents.md) (the `observed_subagent_updated` + `observed_subagent_timeline` events). Accounting rides on those same events; this doc covers only the token/cost half.
 
 ## The boundary (why porting is cheap)
 
@@ -143,6 +143,6 @@ Reuse from `agent/subagent-usage.ts` in every case; only steps 3 and 5 are provi
 
 ## Cross-references
 
-- [projects/observed-subagents/provider-adapters.md](../projects/observed-subagents/provider-adapters.md) - the track-row/pane adapter contract this rides on, and per-provider observed-subagent recon (OpenCode, Codex, ACP family, Pi).
+- [the Observed Subagents project page](../.otto/knowledge/projects/observed-subagents.md) - the track-row/pane adapter contract this rides on, and per-provider observed-subagent recon (OpenCode, Codex, ACP family, Pi).
 - [activity-stats.md](activity-stats.md) - the daemon-wide counter store + the itemized `UsageEvent` ledger these rows land in.
 - [providers.md](providers.md) - adding a provider end-to-end.

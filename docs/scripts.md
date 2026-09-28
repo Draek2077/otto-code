@@ -182,4 +182,4 @@ workspace's files.
 
 Related: [service-proxy.md](service-proxy.md) for exposing a declared service Script at a public
 URL. Open work and the source roadmap:
-[projects/script-discovery](../projects/script-discovery/script-discovery.md).
+[Script Discovery project page](../.otto/knowledge/projects/script-discovery.md).

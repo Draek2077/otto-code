@@ -524,8 +524,7 @@ Block math has its own `View` (the `math_block` rule), which is why it can host 
 Rendering inline math too means letting a paragraph that contains a formula opt out of the
 `UITextView` path, the way `containsImage` already does for paragraph images. That trades
 cross-inline drag selection in that paragraph for a rendered formula, and it mounts one webview per
-inline formula. Tracked in [`projects/README.md`](../projects/README.md#file-rendering) rather than
-decided here.
+inline formula. Not decided yet.
 
 ## Export: HTML, and PDF as printed HTML
 
@@ -579,6 +578,5 @@ see [testing.md](testing.md).
 
 ## What is still missing
 
-Tracked in the File rendering section of [`projects/README.md`](../projects/README.md#file-rendering):
 CSV/TSV table view, Jupyter notebooks, inline math on native (see above), and PDF _viewing_ -
 which is a different problem from the PDF _export_ above, and the heavier one.

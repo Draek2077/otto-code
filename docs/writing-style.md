@@ -2,10 +2,10 @@
 
 Applies to **everything a reader outside this repo sees**: the marketing site
 (`packages/website`), the user manual (`public-docs/`), release notes, store listings, and the
-marketing source material in `projects/marketing-strategy/` and `projects/outreach/`.
+marketing source material on the Marketing Strategy and Outreach project pages.
 
-It does **not** govern code, or the internal engineering trees (`docs/`, Otto Knowledge, the rest of
-`projects/`). Those are written for people who work on Otto, and consistency there matters less than
+It does **not** govern code, or the internal engineering trees (`docs/` and the rest of Otto
+Knowledge). Those are written for people who work on Otto, and consistency there matters less than
 precision.
 
 For terminology (which word to use for a thing) see [glossary.md](glossary.md). The UI label wins,
@@ -66,7 +66,7 @@ Should return nothing outside code blocks and quoted output.
   "we built" and never "the team". There is no team.
 - **Say the thing, then stop.** No throat-clearing, no "in today's fast-moving landscape".
 - **Claims are traceable.** A capability named on the site exists in
-  [feature-inventory.md](../projects/marketing-strategy/feature-inventory.md), which was verified
+  the feature inventory on the [Marketing Strategy project page](../.otto/knowledge/projects/marketing-strategy.md), which was verified
   against the fork point. Marketing copy does not get to invent features, and it does not get to
   describe a simulated screenshot as a real one.
 - **Credit is loud and specific.** Otto and Agent Flow are named, linked, and thanked wherever

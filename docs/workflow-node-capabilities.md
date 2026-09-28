@@ -2,8 +2,7 @@
 
 What a **Graph** node can declare beyond a prompt, and how the daemon enforces it.
 Everything here is opt-in: a node that declares none of it behaves exactly as it did
-before these fields existed. See `archive/projects/orchestration-graphs/enhancement-plan.md` (archived)
-for the staged plan this implements, and the Orchestration records in Otto Knowledge
+before these fields existed. See the Orchestration records in Otto Knowledge
 (`orchestration-domain-model-and-engine-invariants`, `orchestration-phase-run-engine`,
 `orchestration-graph-engine-execution-model`, `orchestration-agent-binding-and-provider-coverage`,
 and the "Decided, not built" design records) for the architecture — reconciled to code; where

@@ -2236,7 +2236,7 @@ function isClaudeSubagentToolName(name: string | undefined): boolean {
 
 // Claude's shell tool used with run_in_background: true reports its lifecycle
 // through the same task_started/task_progress/task_notification stream as
-// subagents. See projects/observed-subagents/observed-subagents.md's note
+// subagents. See .otto/knowledge/projects/observed-subagents.md's note
 // that Otto today ignores shell/monitor/workflow task events.
 //
 // The tool is named "Bash" on POSIX hosts and "PowerShell" on Windows ones, so
@@ -2256,7 +2256,7 @@ function isClaudeBackgroundShellToolName(name: string | undefined): boolean {
 // subagent it is backgrounded (its tool_result is an immediate "running" ack, real
 // completion arrives via task_notification), so it is settled like a background
 // shell task, not on tool_result. We surface the orchestration run as a read-only
-// observed subagent so it can be watched. See projects/observed-subagents/observed-subagents.md.
+// observed subagent so it can be watched. See .otto/knowledge/projects/observed-subagents.md.
 function isClaudeWorkflowToolName(name: string | undefined): boolean {
   return name === "Workflow";
 }
@@ -2567,7 +2567,7 @@ class ClaudeAgentSession implements AgentSession {
     needsSyntheticParentToolCard: (toolUseId) =>
       this.taskProtocolSource.needsSyntheticParentToolCard(toolUseId),
   });
-  // Observed-subagent bookkeeping (projects/observed-subagents/observed-subagents.md). Keys are the
+  // Observed-subagent bookkeeping (.otto/knowledge/projects/observed-subagents.md). Keys are the
   // parent Task tool_use ids seen live this session - history replay never
   // announces, so stale tasks from persisted history cannot materialize rows.
   private readonly announcedObservedSubagents = new Set<string>();
@@ -4122,7 +4122,7 @@ class ClaudeAgentSession implements AgentSession {
       // Forward the full subagent conversation (not just tool_use/tool_result
       // heartbeats) and periodic progress summaries so observed subagents can be
       // promoted to first-class, separately-watchable track rows. See
-      // projects/observed-subagents/observed-subagents.md.
+      // .otto/knowledge/projects/observed-subagents.md.
       forwardSubagentText: true,
       hooks: this.buildSubagentEffortHooks(),
       // Periodic AI progress summaries for observed subagents. Gated by the
@@ -5083,7 +5083,7 @@ class ClaudeAgentSession implements AgentSession {
    * lifecycle + timeline events, alongside the parent Task row's summary log.
    * Partial stream events are skipped: with forwardSubagentText enabled the
    * complete assistant/user messages carry the full conversation, which is
-   * enough for the read-only pane. See projects/observed-subagents/observed-subagents.md.
+   * enough for the read-only pane. See .otto/knowledge/projects/observed-subagents.md.
    */
   private appendObservedSubagentSidechainEvents(
     message: SDKMessage,
@@ -5838,7 +5838,7 @@ class ClaudeAgentSession implements AgentSession {
   /**
    * True when a task_* system message belongs to a Bash run_in_background
    * call rather than a Task-tool subagent. See
-   * isClaudeBackgroundShellToolName and projects/observed-subagents/observed-subagents.md's
+   * isClaudeBackgroundShellToolName and .otto/knowledge/projects/observed-subagents.md's
    * note that Otto previously ignored shell task events entirely.
    */
   /**
@@ -5977,7 +5977,7 @@ class ClaudeAgentSession implements AgentSession {
   /**
    * Map a task_* system message onto the observed subagent's lifecycle. Only
    * subagent tasks qualify - shell/monitor/workflow background tasks are
-   * ignored. See projects/observed-subagents/observed-subagents.md.
+   * ignored. See .otto/knowledge/projects/observed-subagents.md.
    */
   // Builds the two provider-neutral projections from one provider lifecycle update.
   // eslint-disable-next-line complexity
@@ -6070,7 +6070,7 @@ class ClaudeAgentSession implements AgentSession {
   /**
    * Map a task_* system message onto a background shell task's lifecycle
    * (Bash run_in_background). Sibling of appendObservedSubagentTaskEvent for
-   * the non-AI shell case - see projects/observed-subagents/observed-subagents.md's
+   * the non-AI shell case - see .otto/knowledge/projects/observed-subagents.md's
    * note that Otto previously ignored these entirely.
    */
   private appendBackgroundShellTaskEvent(
@@ -6122,7 +6122,7 @@ class ClaudeAgentSession implements AgentSession {
     // tool_use_id pointing at the parent's subagent tool call. Keep them out of
     // the parent timeline, but map them onto the observed subagent's lifecycle
     // - this is where a failed/stopped subagent (e.g. usage exhaustion) becomes
-    // visible. See projects/observed-subagents/observed-subagents.md.
+    // visible. See .otto/knowledge/projects/observed-subagents.md.
     const taskUseId = message.tool_use_id;
     const cachedTool = taskUseId ? this.toolUseCache.get(taskUseId) : undefined;
     if (

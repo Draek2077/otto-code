@@ -14,16 +14,16 @@ The same leveling-up pattern has since shipped artifacts, the natively-tooled Op
 
 ## Documentation
 
-Four trees. Know which one you are in before you write anything down.
+Three homes. Know which one you are in before you write anything down.
 
-| Tree                                  | What it holds                                                                                | Tense               |
-| ------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------- |
-| **[`docs/`](docs/README.md)**         | The official software documentation - how Otto works. **This is the spec we build against.** | Present             |
-| [`.otto/knowledge/projects/`](.otto/knowledge/projects/) | Project charters, delivery status, progress, and history; manage through Otto Knowledge      | Future and history  |
-| [`.otto/knowledge/references/`](.otto/knowledge/references/) | External sources and their project-specific evaluation                                    | Present and history |
-| [`projects/`](projects/README.md)     | Temporary read-only migration source for legacy charters; do not update                      | Legacy              |
-| **Otto Knowledge** (`.otto/knowledge/`, or host-local when a project is configured that way) | The durable system-level architecture record (architecture, decisions, findings, projects, references) - retired from `archdocs/` | Present, durable, wide-angle |
-| **This file**                         | Working rules for agents in this repo                                                        | Imperative          |
+| Home                                   | What it holds                                                                                                                                  | Tense                        |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| **[`docs/`](docs/README.md)**          | The official software documentation - how Otto works. **This is the spec we build against.**                                                   | Present                      |
+| **Otto Knowledge** (`.otto/knowledge/`) | Everything else that must last: project charters and delivery status, findings, decisions, architecture, and references. Manage it through Otto Knowledge | Durable, future and history  |
+| **This file**                          | Working rules for agents in this repo                                                                                                          | Imperative                   |
+
+There is no other place. Do not start a work ledger, TODO list, dated report folder, or `archive/`
+anywhere in the repo; open work is a project page, and finished history is git.
 
 **The documentation index is [`docs/README.md`](docs/README.md).** Every chat receives the compact
 active Knowledge catalog. At the start of non-trivial work, read the relevant confirmed Knowledge
@@ -83,9 +83,6 @@ Non-negotiable. Each one exists because someone got it wrong first.
 Fold durable product facts into the relevant `docs/` page, update the project page's charter and
 delivery metadata with reasons, then mark it complete. Keep the append-only project timeline as
 history. Cancel or defer work through delivery status rather than moving it into a second archive.
-
-The legacy `projects/` tree and `docs/references.md` are retained only until their migrated pages and
-management UI receive final review. Do not update them or treat them as current truth.
 
 ## Quick start
 

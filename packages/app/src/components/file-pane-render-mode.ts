@@ -76,9 +76,8 @@ export function exceedsHighlightBudget(content: string): boolean {
 }
 
 // Formats whose preview is not just the highlighted source: rendered (SVG as
-// an image), viewable-only (images, media), or binary. Grows as the
-// File rendering section of projects/README.md ships more rich previews
-// (CSV, notebooks).
+// an image), viewable-only (images, media), or binary. Grows as more rich
+// previews ship (CSV, notebooks).
 const PREVIEW_FIRST_EXTENSIONS = new Set([
   // Images (the viewer renders them; SVG renders as an image, not XML).
   "png",

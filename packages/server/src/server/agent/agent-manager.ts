@@ -296,7 +296,7 @@ export type {
 export type AgentManagerEvent =
   | { type: "agent_state"; agent: ManagedAgent }
   // A synthetic snapshot for an observed subagent (no ManagedAgent runtime).
-  // Forwarded to clients like a normal agent update. See projects/observed-subagents/observed-subagents.md.
+  // Forwarded to clients like a normal agent update. See .otto/knowledge/projects/observed-subagents.md.
   | { type: "observed_agent_state"; payload: AgentSnapshotPayload }
   // Otto's provider-reported subagents. Distinct from Otto's observed
   // subagents above: those are registry projections Otto synthesizes, these are
@@ -1414,7 +1414,7 @@ export class AgentManager {
   private readonly pendingSubagentCostMicroUsdByParent = new Map<string, number>();
   // Observed subagents (Claude Task / ultracode fan-out): id -> resolution info
   // for the stop RPC. These are ephemeral projections, not ManagedAgents. See
-  // projects/observed-subagents/observed-subagents.md.
+  // .otto/knowledge/projects/observed-subagents.md.
   private readonly observedSubagents = new Map<
     string,
     {
@@ -2291,7 +2291,7 @@ export class AgentManager {
    * so nothing runs the normal agent-registration path that seeds the timeline
    * store - without this, every observed timeline append/fetch throws
    * "Unknown agent" and the subagent's transcript is silently lost (no live
-   * stream, no backfill). See projects/observed-subagents/observed-subagents.md.
+   * stream, no backfill). See .otto/knowledge/projects/observed-subagents.md.
    */
   private ensureObservedTimelineState(id: string): void {
     if (!this.timelineStore.has(id)) {
@@ -2302,7 +2302,7 @@ export class AgentManager {
   /**
    * Last emitted snapshot for an observed subagent, or null when the id is not
    * an observed subagent. Lets read paths (timeline fetch) serve observed rows
-   * that have no ManagedAgent or stored record. See projects/observed-subagents/observed-subagents.md.
+   * that have no ManagedAgent or stored record. See .otto/knowledge/projects/observed-subagents.md.
    */
   getObservedSubagentPayload(id: string): AgentSnapshotPayload | null {
     return this.observedSubagents.get(id)?.lastPayload ?? null;
@@ -2314,7 +2314,7 @@ export class AgentManager {
    * feeding the agent-list fetch, a client that (re)connects mid-run has no
    * way to learn about running subagents until the provider's next task event,
    * so a page refresh left the subagents track and the visualizer blind to
-   * in-flight children. See projects/observed-subagents/observed-subagents.md.
+   * in-flight children. See .otto/knowledge/projects/observed-subagents.md.
    */
   listObservedSubagentPayloads(): AgentSnapshotPayload[] {
     const payloads: AgentSnapshotPayload[] = [];
@@ -7634,7 +7634,7 @@ export class AgentManager {
 
   /**
    * Stop a running observed subagent by resolving it to its owning provider
-   * session's task. See projects/observed-subagents/observed-subagents.md.
+   * session's task. See .otto/knowledge/projects/observed-subagents.md.
    */
   async stopObservedSubagent(observedId: string): Promise<void> {
     const entry = this.observedSubagents.get(observedId);
@@ -7777,7 +7777,7 @@ export class AgentManager {
   /**
    * Stop a running background shell task (Claude Bash run_in_background) by
    * resolving it to its owning provider session's task. See
-   * projects/observed-subagents/observed-subagents.md (the sibling flow this
+   * .otto/knowledge/projects/observed-subagents.md (the sibling flow this
    * mirrors) for the shape stopObservedSubagent already established.
    */
   async stopBackgroundShellTask(id: string): Promise<void> {

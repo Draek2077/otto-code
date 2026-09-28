@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Cross-references projects/e2e-qa-coverage/coverage-matrix.md against the spec
+// Cross-references docs/e2e-coverage-matrix.md against the spec
 // files that actually exist in packages/app/e2e/browser/. Fails when the matrix
 // names a spec that is gone (stale row) or a spec on disk has no matrix row
 // (unmapped), so coverage bookkeeping cannot silently drift. Pure file analysis;
@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const e2eDir = path.join(repoRoot, "packages", "app", "e2e", "browser");
-const matrixPath = path.join(repoRoot, "projects", "e2e-qa-coverage", "coverage-matrix.md");
+const matrixPath = path.join(repoRoot, "docs", "e2e-coverage-matrix.md");
 
 const diskSpecs = new Set(
   (await readdir(e2eDir)).filter((name) => name.endsWith(".spec.ts")).sort(),
@@ -86,9 +86,7 @@ if (unmapped.length > 0) {
   failed = true;
   console.error("\nUnmapped specs (on disk but no matrix row claims them):");
   for (const name of unmapped) console.error(`  - ${name}`);
-  console.error(
-    "\nAdd each spec to a category row in projects/e2e-qa-coverage/coverage-matrix.md.",
-  );
+  console.error("\nAdd each spec to a category row in docs/e2e-coverage-matrix.md.");
 }
 
 process.exit(failed ? 1 : 0);

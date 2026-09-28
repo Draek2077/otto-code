@@ -4,7 +4,7 @@ import type { Logger } from "pino";
  * A source of runnable Scripts that a project already declares for itself:
  * `package.json` scripts, Makefile targets, .NET launch profiles, and so on.
  *
- * See projects/script-discovery/script-discovery.md. Three contract rules make
+ * See .otto/knowledge/projects/script-discovery.md. Three contract rules make
  * this survivable as sources are added:
  *
  * 1. **Detection is discovery.** There is no separate `detect()` step - a

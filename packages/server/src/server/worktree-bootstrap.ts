@@ -749,7 +749,7 @@ export interface SpawnWorkspaceScriptOptions {
    *
    * Always run as a plain script: a service needs a declared port and the
    * intent to serve HTTP, and neither is inferable from a discovered command.
-   * See projects/script-discovery/script-discovery.md.
+   * See .otto/knowledge/projects/script-discovery.md.
    */
   resolvedScript?: {
     command: string;

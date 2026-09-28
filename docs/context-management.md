@@ -20,8 +20,8 @@ Gated by `server_info.features.contextManagement` (`COMPAT(contextManagement)`, 
 | **Hard / import** - UI: _"Always load"_  | `@docs/foo.md`                               | **Yes**, inlined recursively at load    |
 | **Soft / reference** - UI: _"Link only"_ | `[foo](docs/foo.md)`, or prose naming a path | **No.** Only the link text costs tokens |
 
-Get this wrong and every number is a lie. This repo's own root `CLAUDE.md` links ~45 `docs/*.md`
-and ~30 `projects/*.md` files and **loads none of them**. A scanner that treated a markdown link as
+Get this wrong and every number is a lie. This repo's own root `CLAUDE.md` linked ~45 `docs/*.md`
+and ~30 legacy project charter files and **loaded none of them**. A scanner that treated a markdown link as
 a context edge would report several hundred thousand tokens against a true cost of ~6K.
 
 Soft edges are still worth drawing, because they are **read magnets** - a documented invitation for

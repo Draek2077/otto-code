@@ -644,8 +644,8 @@ These carry across merges. Revisit only when the stated trigger fires.
 
   So: still take the daemon side verbatim, still keep our presentation for our
   own rows, and **do** take their row kind, their panel, and the `${row.kind}_`
-  presentation-key prefix that stops the two id spaces colliding. See
-  `projects/upstream-subagent-convergence/`.
+  presentation-key prefix that stops the two id spaces colliding. See the
+  [Upstream Subagent Convergence project page](../.otto/knowledge/projects/upstream-subagent-convergence.md).
 
 ### Dropped at v0.6.1, to revisit
 

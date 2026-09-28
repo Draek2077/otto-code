@@ -316,7 +316,7 @@ someone to run it by hand.
 ## 11a. Brain
 
 The page is a top-level route outside workspaces (`/brain`), reached from the Brain icon in the
-bottom-left rail. See [docs/brain.md](../../docs/brain.md). Everything here is T1: the daemon's brain
+bottom-left rail. See [docs/brain.md](brain.md). Everything here is T1: the daemon's brain
 manager and the brain itself are both mockable at the RPC boundary, and no row needs a real GPU.
 
 | Behavior                                                                                         | Status | Specs / plan                                                                      | Tier | Pri |

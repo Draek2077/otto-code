@@ -83,7 +83,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
       <PhoneShowcase />
 
       {/* Content section. Order and grouping: see
-          projects/marketing-strategy/website-showcase.md */}
+          .otto/knowledge/projects/marketing-strategy.md */}
       <div className="bg-background">
         <main className="site-frame site-frame-content">
           <div className="space-y-24">

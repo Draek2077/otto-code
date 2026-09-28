@@ -68,7 +68,7 @@ export interface AgentUpdatesService {
   /**
    * Forward a pre-built snapshot (e.g. an observed subagent that has no
    * ManagedAgent runtime) through the same filter/placement path as a live
-   * agent. See projects/observed-subagents/observed-subagents.md.
+   * agent. See .otto/knowledge/projects/observed-subagents.md.
    */
   forwardLiveAgentPayload(payload: AgentSnapshotPayload): Promise<void>;
   emitStoredRecord(record: StoredAgentRecord): Promise<AgentSnapshotPayload>;

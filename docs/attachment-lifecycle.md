@@ -139,4 +139,4 @@ device-local row still renders, because it needs no daemon at all.
 referenced from three transcripts; "this workspace's images" is an ownership that does not exist and
 would have to be invented - an index maintained at materialize time, kept honest across chat delete
 and workspace archive. Age plus a global clear carries the feature. Revisit only if someone asks for
-scope, and see `projects/README.md` before starting.
+scope.

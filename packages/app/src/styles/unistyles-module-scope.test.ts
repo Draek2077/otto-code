@@ -74,8 +74,7 @@ function findEagerModuleStyleReads(filePath: string): string[] {
 // - a module-level read can bake in the pre-theme value, which is how settings
 // dividers once rendered light inside a dark card), but 42 files predate the
 // guard. The baseline is a ratchet, not an exemption: it may only shrink, and a
-// file that no longer offends must leave it. Draining it is tracked in
-// projects/README.md.
+// file that no longer offends must leave it.
 const BASELINE: string[] = JSON.parse(
   readFileSync(path.join(__dirname, "unistyles-module-scope.baseline.json"), "utf8"),
 ) as string[];

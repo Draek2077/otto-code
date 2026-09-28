@@ -22,7 +22,7 @@ interface ObservedSubagentCalloutProps {
  * Read-only composer replacement for an observed subagent (Claude Task /
  * ultracode fan-out). The user can watch the conversation but cannot message it
  * or change its settings; the only live action is Stop while it is running.
- * See projects/observed-subagents/observed-subagents.md.
+ * See .otto/knowledge/projects/observed-subagents.md.
  */
 export function ObservedSubagentCallout({ serverId, agentId }: ObservedSubagentCalloutProps) {
   const { t } = useTranslation();

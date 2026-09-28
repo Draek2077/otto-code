@@ -215,8 +215,6 @@ Use the documentation tree for its intended audience:
 | Otto Knowledge (`.otto/knowledge/`)  | Project charters, delivery history, architecture, decisions, findings and references, managed through Otto Knowledge |
 | [AGENTS.md](AGENTS.md)               | Working rules for agents; CLAUDE.md delegates to this file                                                           |
 
-The legacy [projects/](projects/README.md) tree is a read-only migration source. Current plans and progress belong in first-class Knowledge project pages.
-
 ### Quick links into `docs/`
 
 **Start here** - [Product](docs/product.md) ·

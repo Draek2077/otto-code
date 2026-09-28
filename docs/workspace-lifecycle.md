@@ -75,7 +75,7 @@ explicitly seeded same-`cwd` records therefore still require per-`workspaceId` i
 `workspace-same-cwd-isolation.e2e.test.ts`. This contract does not assert that the current host has
 duplicate records or authorize migrating agents between them.
 
-Full reasoning and evidence: `archive/projects/duplicate-base-workspaces/` - archived, closed, **do not re-open**.
+The investigation is closed. **Do not re-open it.**
 
 Gated behind `server_info.features.worktreeArchiveBranchCleanup` (`COMPAT(worktreeArchiveBranchCleanup)`, added in v0.6.7) and `features.worktreeReattach`. Without them the client archives exactly as before - risk warning only, branch untouched. Key files: `workspace-archive-branch.ts` (`detectWorktreeArchiveBranch`, `deleteLocalBranch`), `worktree-reattach.ts`, `workspace-archive-service.ts`, and on the client `git/worktree-archive-warning.ts` + `workspace/use-workspace-archive.ts`.
 

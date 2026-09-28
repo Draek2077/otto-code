@@ -229,7 +229,7 @@ export function toAgentPayload(
     // approve/prompt them - render their tab read-only like an observed
     // subagent. Other ManagedAgents stay attended; true observed subagents
     // are produced by a separate projection (see observed-subagent-registry).
-    // See projects/observed-subagents/observed-subagents.md.
+    // See .otto/knowledge/projects/observed-subagents.md.
     attend: agent.internal ? "observed" : "attended",
   };
 
@@ -405,7 +405,7 @@ function buildStoredAgentPayloadTail(
 // Observed subagents have no Otto runtime - all interactive capabilities are
 // false so the client hides model/mode/thinking/rewind controls, leaving a
 // read-only pane. Tool invocations stay true so the transcript renders tool
-// calls. See projects/observed-subagents/observed-subagents.md.
+// calls. See .otto/knowledge/projects/observed-subagents.md.
 const OBSERVED_SUBAGENT_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: false,
   supportsSessionPersistence: false,

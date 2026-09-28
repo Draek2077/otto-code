@@ -2394,7 +2394,7 @@ function WorkspaceScreenContent({
   const isMobile = useIsCompactFormFactor();
   // User interface mode hides the developer surfaces (explorer, terminals, file
   // tabs, git actions, scripts). Presentation only - the stores/daemon are
-  // untouched (see projects/first-time-wizard/interface-modes.md).
+  // untouched (see docs/onboarding.md).
   const isDeveloperMode = useIsDeveloperMode();
   // The mobile diff/explorer toggle sits in the menu button's auto-sized chrome,
   // so its icon scales at 1.5x instead of the usual compact doubling.

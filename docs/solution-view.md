@@ -249,6 +249,6 @@ Phase 1 is **read-only**, and the sidecar has no mutation verb at all - the chea
 
 **Solution filters (`.slnf`) are not supported.** Noted so nobody assumes they work.
 
-Mutation is Phase 2 and 3, tracked in [`projects/README.md`](../projects/README.md). Phase 2 -
+Mutation is Phase 2 and 3, tracked on the [Solution View project page](../.otto/knowledge/projects/solution-view.md). Phase 2 -
 general file create/delete/rename/move - is a prerequisite strictly larger than this view and is not
 .NET work; it benefits the Files lens identically and must not be smuggled in as a .NET feature.

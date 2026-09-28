@@ -9,7 +9,7 @@ import * as React from "react";
  * produce it, so the page doubles as the capture backlog and no section can
  * point at an asset with no producer.
  *
- * The manifest is projects/marketing-strategy/website-showcase.md.
+ * The manifest is .otto/knowledge/projects/marketing-strategy.md.
  *
  * Assets live in `public/shots/<id>.png` (or `.webm` for loops), a committed
  * directory, hand-picked out of the gitignored `public/demos/` run output. The

@@ -2523,7 +2523,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
   // Observed subagents (Claude Task / ultracode fan-out) are read-only: replace
   // the composer with a disabled callout that only offers Stop. Interactive
   // parameter controls hide themselves off the subagent's all-false
-  // capabilities. See projects/observed-subagents/observed-subagents.md.
+  // capabilities. See .otto/knowledge/projects/observed-subagents.md.
   if (isObserved) {
     return <ObservedSubagentCallout serverId={serverId} agentId={agentId} />;
   }

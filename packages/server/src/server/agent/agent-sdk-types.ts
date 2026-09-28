@@ -653,7 +653,7 @@ export type AgentStreamEvent =
       info: AgentRateLimitInfo;
     }
   // A provider-managed subagent's lifecycle changed. The daemon materializes it
-  // as a read-only "observed subagent" agent record. See projects/observed-subagents/observed-subagents.md.
+  // as a read-only "observed subagent" agent record. See .otto/knowledge/projects/observed-subagents.md.
   | {
       type: "observed_subagent_updated";
       provider: AgentProvider;
@@ -689,7 +689,7 @@ export type AgentStreamEvent =
  * A provider-managed subagent (Claude `Task` / ultracode fan-out) reported by a
  * provider so the daemon can promote it to a read-only "observed subagent".
  * `key` is a provider-local stable identifier (Claude: the Task tool_use id);
- * the daemon namespaces it under the owning agent. See projects/observed-subagents/observed-subagents.md.
+ * the daemon namespaces it under the owning agent. See .otto/knowledge/projects/observed-subagents.md.
  */
 export interface ObservedSubagentUpdate {
   key: string;
@@ -989,7 +989,7 @@ export interface AgentPersonalityUpdate {
  * as optional-with-default, and the manager resolves "absent/undefined = on"
  * before handing them to a session. Providers that cannot honor a given
  * behavior simply ignore it (no-op, no error) per the provider-parity rule.
- * See docs and projects/token-cost-fixes/wp-e-behavior-toggles.md.
+ * See docs and docs/token-economy.md.
  */
 export interface AgentBehaviorSettings {
   /** Emit predicted next-user-prompt suggestions after each turn (Claude). */
@@ -1070,7 +1070,7 @@ export interface AgentSession {
   /**
    * Stop a provider-managed subagent task by its provider task id (Claude:
    * `query.stopTask`). Present only on providers that surface observed
-   * subagents. See projects/observed-subagents/observed-subagents.md.
+   * subagents. See .otto/knowledge/projects/observed-subagents.md.
    */
   stopTask?(taskId: string): Promise<void>;
   /** Stop one provider-descriptor child without interrupting its parent. */

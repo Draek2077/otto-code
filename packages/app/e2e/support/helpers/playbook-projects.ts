@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
  * the point, not a convenience: a spec asserting about Otto and an agent driving it
  * by hand have to be working against identical ground truth, or a green suite stops
  * being evidence about the thing the agent just looked at. See
- * `projects/usage-playbooks/usage-playbooks.md`.
+ * `.otto/knowledge/projects/usage-playbooks.md`.
  *
  * Loaded through a file URL at call time rather than a static import, the same way
  * `daemon-client-loader.ts` reaches `packages/client/dist`. The materializer is a

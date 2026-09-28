@@ -230,8 +230,8 @@ preflights the provider list and tells you to restart the lane instead.
 
 Where this is going - boilerplate language projects, branch-backed workspaces,
 full local git, and per-feature playbooks for artifacts, schedules, teams and the
-visualizer - is charted in
-[projects/usage-playbooks](../projects/usage-playbooks/usage-playbooks.md).
+visualizer - is charted on the
+[Usage Playbooks project page](../.otto/knowledge/projects/usage-playbooks.md).
 
 **Tests and demos stay dynamic on purpose - do not pin them to a band.** Both run
 through `e2e/global-setup.ts`, which mints a throwaway `mkdtemp` `OTTO_HOME` per

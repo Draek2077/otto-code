@@ -2,7 +2,7 @@
 
 IDE-grade text editing inside Otto - a companion to the AI tooling, not a replacement for an IDE. The goal is that you never feel locked down and need to escape to a real editor for the small stuff: read a file, navigate a project, make a scoped edit, or describe a bigger change and let an agent do it. Bare-minimum configuration, no external processes, no unbundleable dependencies.
 
-Shipped 0.4.4 (Phases 1–5). This doc is the durable architecture; the point-in-time build plan lived in `projects/text-editor/` and was folded in here on completion.
+Shipped 0.4.4 (Phases 1–5). This doc is the durable architecture.
 
 ## The core principle: the daemon owns everything file-shaped
 

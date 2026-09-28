@@ -1,6 +1,6 @@
 // Text effect themes - the registry behind the "working" text sweep that plays
 // across tool-call / activity labels while an agent is running (the shimmer in
-// components/message.tsx). See projects/text-effects/text-effects.md.
+// components/message.tsx). See docs/text-effects.md.
 //
 // Everything here is static data: specs are module-level constants, so
 // component memos keyed on a spec reference never churn, and neither platform

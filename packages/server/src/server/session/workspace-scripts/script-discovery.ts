@@ -11,7 +11,7 @@ import {
 /**
  * Every script provider, in the order their groups appear beneath Otto's own.
  * Adding a source is a line here plus one file - that is the whole point of the
- * contract. See projects/script-discovery/script-discovery.md.
+ * contract. See .otto/knowledge/projects/script-discovery.md.
  */
 export function createScriptProviders(): ScriptProvider[] {
   return [createNpmScriptProvider()];

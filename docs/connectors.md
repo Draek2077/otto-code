@@ -41,8 +41,8 @@ sweep that had simply missed them. Slack, HubSpot, monday.com, Box, Airtable,
 Dropbox, ClickUp, Trello, Ahrefs, Netlify and Square all publish official
 endpoints. **Absence of evidence is not evidence of absence: check the vendor's
 own developer docs per connector before recording one as unavailable**, and log
-the negative result so the next person does not redo the search. That ledger is
-[projects/connectors/connectors.md](../projects/connectors/connectors.md).
+the negative result so the next person does not redo the search. Record it on the
+[Connectors project page](../.otto/knowledge/projects/connectors.md).
 
 Treat a `verifiedOn` older than about six months as unverified. These are third
 party endpoints and they move.
@@ -175,8 +175,8 @@ An Otto-native connector is code we own forever: API drift, pagination, rate
 limits, token refresh, token economy, tests. Write one because the integration is
 needed, never because it is possible.
 
-Per-service API research (endpoints, scopes, gotchas) lives in
-[projects/connectors/connectors.md](../projects/connectors/connectors.md) section 7.
+Per-service API research (endpoints, scopes, gotchas) lives on the
+[Connectors project page](../.otto/knowledge/projects/connectors.md).
 The first target is Google Search Console, whose `searchAnalytics.query` can
 return 25,000 rows in one call. Low default row limits and compact aggregates are
 part of the initial design, not a later optimization. See

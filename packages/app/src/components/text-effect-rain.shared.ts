@@ -7,7 +7,7 @@
 // replaces the text. Columns are a fixed pitch across the measured text span,
 // so a 4-character label and a 40-character one cost the same per column.
 //
-// See projects/text-effects/text-effects.md and styles/text-effects.ts
+// See docs/text-effects.md and styles/text-effects.ts
 // (GLYPH_EFFECT_PHASES is the one timeline both renderers derive from).
 
 import { StyleSheet } from "react-native-unistyles";

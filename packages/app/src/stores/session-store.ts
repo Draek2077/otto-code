@@ -156,7 +156,7 @@ export interface Agent {
    * "observed" marks a provider-managed subagent the user can watch but not
    * prompt or reconfigure. The pane renders read-only and interactive controls
    * are disabled. Absent (from older daemons) is treated as "attended". See
-   * projects/observed-subagents/observed-subagents.md.
+   * .otto/knowledge/projects/observed-subagents.md.
    */
   attend?: "attended" | "observed";
   /**
