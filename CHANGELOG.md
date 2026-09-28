@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.27 - 2026-09-28
+
+### Improved
+
+- Drag Kanban cards with a preview that stays beside the pointer
+- Scroll across wide Kanban boards with visible navigation controls
+- Create and link Kanban cards from the board toolbar
+- Edit Kanban card details in separate tabs
+- Browse Kanban boards one column at a time on narrow screens
+- Move cards from a column menu on narrow screens
+- Keep the working pane focused when Preview opens another browser tab
+- Update the MiniMax Code agent to version 0.5.6
+
+### Fixed
+
+- Open GitHub Projects boards with each project's selected Git connection
+
 ## 0.9.26 - 2026-09-27
 
 ### Added
