@@ -618,6 +618,9 @@ jobs:
             echo "::error::Apple signing configuration could not be determined; the release remains a draft"
             exit 1
           fi
+          # Single-platform retries skip the Linux/Windows artifact downloads.
+          # Their existing manifests are recovered from the published release below.
+          mkdir -p release-manifests
           cd release-manifests
           manifests_dir="$PWD/final"
           mkdir -p "$manifests_dir"

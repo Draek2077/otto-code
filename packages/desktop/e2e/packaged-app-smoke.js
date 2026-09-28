@@ -8,7 +8,9 @@ const { chromium } = require("playwright");
 const { extractFile } = require("@electron/asar");
 
 const EXECUTABLE_NAME = "Otto";
-const SMOKE_TIMEOUT_MS = 60_000;
+// A cold packaged macOS runner can spend most of a minute starting the renderer
+// and daemon before the native dictionary is ready for the spellcheck journey.
+const SMOKE_TIMEOUT_MS = 120_000;
 const EXIT_TIMEOUT_MS = 10_000;
 const TERMINAL_CAPTURE_ATTEMPTS = 20;
 const TERMINAL_CAPTURE_INTERVAL_MS = 500;
@@ -648,7 +650,7 @@ async function verifySpellcheckContextMenu(page, deadline) {
   // Native dictionaries initialize asynchronously after the app selects the
   // system language. A single click keeps the journey user-realistic; give a
   // clean runner time to download and classify instead of retrying the gesture.
-  await delay(10_000);
+  await delay(20_000);
   await page.mouse.click(box.x + 24, box.y + 24, { button: "right" });
   await menu
     .getByText("Add to Dictionary", { exact: true })
