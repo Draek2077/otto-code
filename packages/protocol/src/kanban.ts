@@ -1,5 +1,20 @@
 import { z } from "zod";
 
+/** Capability leaves live with their Kanban RPC schemas, not the message registry. */
+export const KanbanServerFeaturesShape = {
+  // COMPAT(kanbanBoard): added in v0.8.11, drop the gate when floor >= v0.8.11.
+  // The provider-agnostic Kanban board surface is present (kanban.* RPCs + /kanban).
+  kanbanBoard: z.boolean().optional(),
+  // COMPAT(kanbanCardFields): added in v0.9.25, drop the gate when floor >= v0.9.25.
+  // Board reads carry field definitions and values; update and delete are served.
+  kanbanCardFields: z.boolean().optional(),
+  // COMPAT(kanbanBoardWatch): added in v0.9.25, drop the gate when floor >= v0.9.25.
+  // Watch requests and board.changed notifications are served.
+  kanbanBoardWatch: z.boolean().optional(),
+  // COMPAT(kanbanConnectionScope): added in v0.9.27, remove after 2027-03-27.
+  kanbanConnectionScope: z.boolean().optional(),
+};
+
 /**
  * Provider-agnostic Kanban wire model.
  *

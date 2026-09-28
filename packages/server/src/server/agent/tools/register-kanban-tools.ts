@@ -1,7 +1,6 @@
 import { relative, resolve } from "node:path";
 import { z } from "zod";
-import { parseGitHubRemoteUrl } from "@otto-code/protocol/git-remote";
-import { resolveForgeConnectionRemote } from "../../../services/git-hosting/connection-drivers.js";
+import { readKanbanProjectGitHubRemote } from "../../kanban/project-remote.js";
 import { KanbanFieldValueInputSchema } from "@otto-code/protocol/kanban";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 import type { ForgeConnectionStore } from "../../../services/git-hosting/connection-store.js";
@@ -18,6 +17,7 @@ import type {
   WorkspaceRegistry,
 } from "../../workspace-registry.js";
 import type { OttoToolContext } from "./otto-tool-context.js";
+import type { OttoToolHostDependencies } from "./otto-tool-host-dependencies.js";
 import type { RegisterOttoTool } from "./types.js";
 
 type Dependencies = Pick<
@@ -31,6 +31,20 @@ type Dependencies = Pick<
   workspaceRegistry?: Pick<WorkspaceRegistry, "list" | "get">;
   createRegistry?: (options: KanbanRegistryOptions) => KanbanRegistry;
 };
+
+export function registerKanbanCatalogTools(
+  registration: Dependencies,
+  options: OttoToolHostDependencies,
+): void {
+  registerKanbanTools({
+    ...registration,
+    readKanbanConfig: options.readKanbanConfig,
+    connections: options.kanbanConnections,
+    projectRegistry: options.kanbanProjectRegistry,
+    workspaceRegistry: options.kanbanWorkspaceRegistry,
+    createRegistry: options.createKanbanRegistry,
+  });
+}
 
 /** A Kanban tool can only address a board configured on the caller's project. */
 async function resolveProject(deps: Dependencies): Promise<PersistedProjectRecord> {
@@ -74,16 +88,11 @@ async function boardContext(project: PersistedProjectRecord): Promise<KanbanBoar
     ...(target.boardOwner ? { targetBoardOwner: target.boardOwner } : {}),
   };
   if (target.adapter === "github") {
-    try {
-      const location = await resolveForgeConnectionRemote(project.rootPath);
-      const remote = location?.host === "github.com" ? parseGitHubRemoteUrl(location.url) : null;
-      if (remote) {
-        context.owner = remote.owner;
-        context.repo = remote.repo;
-        context.targetBoardOwner ??= remote.owner;
-      }
-    } catch {
-      // An explicit target remains usable without a GitHub remote.
+    const remote = await readKanbanProjectGitHubRemote(project.rootPath);
+    if (remote) {
+      context.owner = remote.owner;
+      context.repo = remote.repo;
+      context.targetBoardOwner ??= remote.owner;
     }
   }
   return context;

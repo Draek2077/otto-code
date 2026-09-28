@@ -2,6 +2,16 @@ import { normalizeFetchAgentOptions, type FetchAgentOptions } from "./fetch-agen
 import type { ChatSearchQuery } from "@otto-code/protocol/chat-search";
 import type { RemoteBrowserCommand } from "@otto-code/protocol/browser-remote/rpc-schemas";
 import { BrowserRequests } from "./browser/index.js";
+import {
+  kanbanRequest,
+  type KanbanListBoardsInput,
+  type KanbanMoveCardInput,
+  type KanbanCreateCardInput,
+  type KanbanLinkTaskInput,
+  type KanbanUpdateCardInput,
+  type KanbanDeleteCardInput,
+  type KanbanWatchBoardInput,
+} from "./kanban-requests.js";
 export type { FetchAgentOptions } from "./fetch-agent-options.js";
 import { resolveAgentConfig } from "./create-agent-config.js";
 import type { AgentAttentionNotificationPayload } from "@otto-code/protocol/agent-attention-notification";
@@ -112,17 +122,9 @@ import type {
   StashSaveResponse,
   StashPopResponse,
   StashListResponse,
-  KanbanBoardsListResponse,
   ProjectKanbanTarget,
   ProjectKnowledgeStoreDescriptor,
   ProjectKnowledgeStoreLocationValue,
-  KanbanBoardGetResponse,
-  KanbanCardMoveResponse,
-  KanbanCardCreateResponse,
-  KanbanTaskLinkResponse,
-  KanbanCardUpdateResponse,
-  KanbanCardDeleteResponse,
-  KanbanBoardWatchResponse,
   ValidateBranchResponse,
   BranchSuggestionsResponse,
   FileVersion,
@@ -4214,32 +4216,11 @@ export class DaemonClient {
     });
   }
 
-  /**
-   * The provider-agnostic Kanban board surface. Each call names its provider
-   * ("memory", "github", ...) - the daemon dispatches to the registered
-   * KanbanProvider implementation and the wire never carries provider-native
-   * identifiers beyond the opaque board/card/column ids.
-   *
-   * A project-scoped request is authoritative: the daemon resolves the
-   * project's configured board target and overrides providerId from it. The
-   * wire still carries providerId so older clients keep working; pass an inert
-   * value (e.g. "github") when a project is supplied.
-   */
-  async kanbanListBoards(
-    input: { providerId: string; projectId?: string; projectKey?: string },
-    requestId?: string,
-  ): Promise<KanbanBoardsListResponse["payload"]> {
-    return this.sendNamespacedCorrelatedSessionRequest<"kanban.boards.list.response">({
-      requestId,
-      message: {
-        type: "kanban.boards.list.request",
-        providerId: input.providerId,
-        ...(input.projectId ? { projectId: input.projectId } : {}),
-        ...(input.projectKey ? { projectKey: input.projectKey } : {}),
-        requestId: "",
-      },
-      timeout: 60000,
-    });
+  /** Project scope selects the configured board; providerId stays on the wire for old clients. */
+  async kanbanListBoards(input: KanbanListBoardsInput, requestId?: string) {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.boards.list.response">(
+      kanbanRequest("kanban.boards.list.request", input, requestId),
+    );
   }
 
   async kanbanGetBoard(
@@ -4247,109 +4228,46 @@ export class DaemonClient {
     boardId: string,
     requestId?: string,
     projectId?: string,
-  ): Promise<KanbanBoardGetResponse["payload"]> {
-    return this.sendNamespacedCorrelatedSessionRequest<"kanban.board.get.response">({
-      requestId,
-      message: {
-        type: "kanban.board.get.request",
-        providerId,
-        boardId,
-        ...(projectId ? { projectId } : {}),
-        requestId: "",
-      },
-      timeout: 60000,
-    });
+  ) {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.board.get.response">(
+      kanbanRequest("kanban.board.get.request", { providerId, boardId, projectId }, requestId),
+    );
   }
 
-  async kanbanMoveCard(
-    input: {
-      providerId: string;
-      boardId: string;
-      cardId: string;
-      targetColumnId: string;
-      projectId?: string;
-    },
-    requestId?: string,
-  ): Promise<KanbanCardMoveResponse["payload"]> {
-    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.move.response">({
-      requestId,
-      message: { ...input, type: "kanban.card.move.request", requestId: "" },
-      timeout: 60000,
-    });
+  async kanbanMoveCard(input: KanbanMoveCardInput, requestId?: string) {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.move.response">(
+      kanbanRequest("kanban.card.move.request", input, requestId),
+    );
   }
 
-  async kanbanCreateCard(
-    input: {
-      providerId: string;
-      boardId: string;
-      projectId?: string;
-      columnId?: string;
-      title: string;
-      body?: string;
-    },
-    requestId?: string,
-  ): Promise<KanbanCardCreateResponse["payload"]> {
-    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.create.response">({
-      requestId,
-      message: { ...input, type: "kanban.card.create.request", requestId: "" },
-      timeout: 60000,
-    });
+  async kanbanCreateCard(input: KanbanCreateCardInput, requestId?: string) {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.create.response">(
+      kanbanRequest("kanban.card.create.request", input, requestId),
+    );
   }
 
-  async kanbanLinkTask(
-    input: {
-      providerId: string;
-      boardId: string;
-      externalId: string;
-      columnId?: string;
-      projectId?: string;
-      projectKey?: string;
-    },
-    requestId?: string,
-  ): Promise<KanbanTaskLinkResponse["payload"]> {
-    return this.sendNamespacedCorrelatedSessionRequest<"kanban.task.link.response">({
-      requestId,
-      message: { ...input, type: "kanban.task.link.request", requestId: "" },
-      timeout: 60000,
-    });
+  async kanbanLinkTask(input: KanbanLinkTaskInput, requestId?: string) {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.task.link.response">(
+      kanbanRequest("kanban.task.link.request", input, requestId),
+    );
   }
 
-  async kanbanUpdateCard(input: {
-    providerId: string;
-    boardId: string;
-    projectId?: string;
-    cardId: string;
-    fieldId: string;
-    value: import("@otto-code/protocol/kanban").KanbanFieldValueInput;
-  }): Promise<KanbanCardUpdateResponse["payload"]> {
-    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.update.response">({
-      message: { ...input, type: "kanban.card.update.request", requestId: "" },
-      timeout: 60000,
-    });
+  async kanbanUpdateCard(input: KanbanUpdateCardInput) {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.update.response">(
+      kanbanRequest("kanban.card.update.request", input),
+    );
   }
 
-  async kanbanDeleteCard(input: {
-    providerId: string;
-    boardId: string;
-    projectId?: string;
-    cardId: string;
-  }): Promise<KanbanCardDeleteResponse["payload"]> {
-    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.delete.response">({
-      message: { ...input, type: "kanban.card.delete.request", requestId: "" },
-      timeout: 60000,
-    });
+  async kanbanDeleteCard(input: KanbanDeleteCardInput) {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.delete.response">(
+      kanbanRequest("kanban.card.delete.request", input),
+    );
   }
 
-  async kanbanWatchBoard(input: {
-    providerId: string;
-    boardId: string;
-    projectId?: string;
-    watch: boolean;
-  }): Promise<KanbanBoardWatchResponse["payload"]> {
-    return this.sendNamespacedCorrelatedSessionRequest<"kanban.board.watch.response">({
-      message: { ...input, type: "kanban.board.watch.request", requestId: "" },
-      timeout: 60000,
-    });
+  async kanbanWatchBoard(input: KanbanWatchBoardInput) {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.board.watch.response">(
+      kanbanRequest("kanban.board.watch.request", input),
+    );
   }
 
   async getCommitFileDiff(

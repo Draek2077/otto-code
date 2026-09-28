@@ -108,6 +108,7 @@ import {
   GitHostingProviderIdWireSchema,
 } from "./git-hosting.js";
 import {
+  KanbanServerFeaturesShape,
   ProjectKanbanTargetSchema,
   KanbanProjectTargetSetRequestSchema,
   KanbanProjectTargetSetResponseSchema,
@@ -5336,20 +5337,7 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutRefresh: z.boolean().optional(),
         // COMPAT(gitFetchControl): added in v0.8.11, remove gate after 2027-02-14.
         gitFetchControl: z.boolean().optional(),
-        // COMPAT(kanbanBoard): added in v0.8.11, drop the gate when floor >= v0.8.11.
-        // The provider-agnostic Kanban board surface is present (kanban.*
-        // RPCs + the /kanban screen).
-        kanbanBoard: z.boolean().optional(),
-        // COMPAT(kanbanCardFields): added in v0.9.25, drop the gate when floor
-        // >= v0.9.25. The board read carries a field schema and per-card field
-        // values, and kanban.card.update / kanban.card.delete are served.
-        kanbanCardFields: z.boolean().optional(),
-        // COMPAT(kanbanBoardWatch): added in v0.9.25, drop the gate when floor
-        // >= v0.9.25. kanban.board.watch is served and the daemon emits
-        // kanban.board.changed when a watched board moves.
-        kanbanBoardWatch: z.boolean().optional(),
-        // COMPAT(kanbanConnectionScope): added in v0.9.27, remove after 2027-03-27.
-        kanbanConnectionScope: z.boolean().optional(),
+        ...KanbanServerFeaturesShape,
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -5357,10 +5345,7 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: z.boolean().optional(),
         // COMPAT(projectScaffold): added in v0.6.9, drop the gate when floor >= v0.6.9.
-        // The daemon can create a project directory from scratch (mkdir, git
-        // init/clone, optional remote creation) instead of only adopting one
-        // that already exists. Without it the New project page offers the
-        // open-an-existing-folder path only.
+        // Older daemons can adopt existing folders but cannot create project directories.
         projectScaffold: z.boolean().optional(),
         // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
         worktreeRestore: z.boolean().optional(),

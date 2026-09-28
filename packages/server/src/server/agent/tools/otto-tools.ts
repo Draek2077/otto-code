@@ -25,25 +25,7 @@ import type { OttoToolHostDependencies } from "./otto-tool-host-dependencies.js"
 import { createOttoToolContext } from "./otto-tool-context.js";
 import { registerArchitecturalViewsTools } from "./register-architectural-views-tools.js";
 import { registerVoiceTools } from "./register-voice-tools.js";
-import { registerChatCreationTools } from "./register-chat-creation-tools.js";
-import { registerProfilesTools } from "./register-profiles-tools.js";
-import { registerChatMessagingTools } from "./register-chat-messaging-tools.js";
-import { registerChatStatusTools } from "./register-chat-status-tools.js";
-import { registerWidgetsTools } from "./register-widgets-tools.js";
-import { registerTasksTools } from "./register-tasks-tools.js";
-import { registerKanbanTools } from "./register-kanban-tools.js";
-import { registerMemoryTools } from "./register-memory-tools.js";
-import { registerKnowledgeTools } from "./register-knowledge-tools.js";
-import { registerChatMutationsTools } from "./register-chat-mutations-tools.js";
-import { registerWorkspaceRenameTools } from "./register-workspace-rename-tools.js";
-import { registerArtifactsTools } from "./register-artifacts-tools.js";
-import { registerTerminalsTools } from "./register-terminals-tools.js";
-import { registerSchedulesTools } from "./register-schedules-tools.js";
-import { registerProvidersTools } from "./register-providers-tools.js";
-import { registerWorkspacesTools } from "./register-workspaces-tools.js";
-import { registerChatActivityTools } from "./register-chat-activity-tools.js";
-import { registerPermissionsTools } from "./register-permissions-tools.js";
-import { registerOrchestrationTools } from "./register-orchestration-tools.js";
+import { registerStandardTools } from "./register-standard-tools.js";
 
 // The caller's workspace-access ceiling (agent/workspace-access.ts), read from
 // its stored config the same way the orchestration policy is read from its
@@ -267,50 +249,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     });
   }
 
-  registerChatCreationTools(registration);
-
-  registerProfilesTools(registration);
-
-  registerChatMessagingTools(registration);
-
-  registerChatStatusTools(registration);
-
-  registerWidgetsTools(registration);
-
-  registerTasksTools(registration);
-
-  registerKanbanTools({
-    ...registration,
-    readKanbanConfig: options.readKanbanConfig,
-    connections: options.kanbanConnections,
-    projectRegistry: options.kanbanProjectRegistry,
-    workspaceRegistry: options.kanbanWorkspaceRegistry,
-    createRegistry: options.createKanbanRegistry,
-  });
-
-  registerMemoryTools(registration);
-
-  registerKnowledgeTools(registration);
-
-  registerChatMutationsTools(registration);
-
-  registerWorkspaceRenameTools(registration);
-
-  registerArtifactsTools(registration);
-
-  registerTerminalsTools(registration);
-
-  registerSchedulesTools(registration);
-
-  registerProvidersTools(registration);
-
-  registerWorkspacesTools(registration);
-
-  registerChatActivityTools(registration);
-
-  registerPermissionsTools(registration);
-
-  registerOrchestrationTools(registration);
+  registerStandardTools(registration, options);
 
   registerGraphNodeTools({
     tools,

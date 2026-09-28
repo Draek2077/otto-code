@@ -401,8 +401,7 @@ import {
 } from "./worktree-session.js";
 import { detectWorktreeArchiveBranch } from "./workspace-archive-branch.js";
 import { buildReattachCandidates } from "./worktree-reattach.js";
-import { parseGitHubRemoteUrl } from "@otto-code/protocol/git-remote";
-import { resolveForgeConnectionRemote } from "../services/git-hosting/connection-drivers.js";
+import { readKanbanProjectGitHubRemote } from "./kanban/project-remote.js";
 import { normalizeCloneRepository } from "./session/project-config/clone-repository-input.js";
 import {
   WorktreeRequestError,
@@ -9219,7 +9218,7 @@ export class Session {
     // URL preserves that owner; older number-only records fall back to the
     // project's remote owner. The remote also scopes the zero-config board
     // discovery path.
-    const remote = await this.readProjectGitHubRemote(project.rootPath);
+    const remote = await readKanbanProjectGitHubRemote(project.rootPath);
     return {
       projectId: project.projectId,
       adapter: "github",
@@ -9227,22 +9226,6 @@ export class Session {
       ...(target.boardOwner ? { boardOwner: target.boardOwner } : {}),
       ...(remote ? { owner: remote.owner, repo: remote.repo } : {}),
     };
-  }
-
-  private async readProjectGitHubRemote(
-    rootPath: string,
-  ): Promise<{ owner: string; repo: string } | null> {
-    try {
-      // Resolve SSH aliases before checking the host; github.com-ttc is still
-      // github.com for API routing and owner discovery.
-      const remote = await resolveForgeConnectionRemote(rootPath);
-      const parsed = remote?.host === "github.com" ? parseGitHubRemoteUrl(remote.url) : null;
-      return parsed ? { owner: parsed.owner, repo: parsed.repo } : null;
-    } catch {
-      // A project without a readable origin simply has no repo scoping; the
-      // provider falls back to the account's own boards.
-      return null;
-    }
   }
 
   private buildWorkspaceGitHubRuntimePayload(
