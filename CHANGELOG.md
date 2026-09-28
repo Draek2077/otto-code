@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.26 - 2026-09-27
+
+### Added
+
+- Choose a GitHub Projects or Jira board for each project and manage its cards in Kanban
+- Create, link, move, and edit supported cards directly from the board
+- Ask agents to work with cards on the project's configured board
+
+### Improved
+
+- Keep agent and Preview browser tabs available in the desktop app when the host cannot provide a browser
+- Keep workspace splitters usable while browser panes change layout
+
+### Fixed
+
+- Click links and controls in hosted pages from the desktop app
+- Show the browser's page when a site cannot load instead of surfacing raw automation errors
+
 ## 0.9.25 - 2026-09-27
 
 ### Added
