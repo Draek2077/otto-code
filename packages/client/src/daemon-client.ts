@@ -4246,16 +4246,29 @@ export class DaemonClient {
     providerId: string,
     boardId: string,
     requestId?: string,
+    projectId?: string,
   ): Promise<KanbanBoardGetResponse["payload"]> {
     return this.sendNamespacedCorrelatedSessionRequest<"kanban.board.get.response">({
       requestId,
-      message: { type: "kanban.board.get.request", providerId, boardId, requestId: "" },
+      message: {
+        type: "kanban.board.get.request",
+        providerId,
+        boardId,
+        ...(projectId ? { projectId } : {}),
+        requestId: "",
+      },
       timeout: 60000,
     });
   }
 
   async kanbanMoveCard(
-    input: { providerId: string; boardId: string; cardId: string; targetColumnId: string },
+    input: {
+      providerId: string;
+      boardId: string;
+      cardId: string;
+      targetColumnId: string;
+      projectId?: string;
+    },
     requestId?: string,
   ): Promise<KanbanCardMoveResponse["payload"]> {
     return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.move.response">({
@@ -4269,6 +4282,7 @@ export class DaemonClient {
     input: {
       providerId: string;
       boardId: string;
+      projectId?: string;
       columnId?: string;
       title: string;
       body?: string;
@@ -4303,6 +4317,7 @@ export class DaemonClient {
   async kanbanUpdateCard(input: {
     providerId: string;
     boardId: string;
+    projectId?: string;
     cardId: string;
     fieldId: string;
     value: import("@otto-code/protocol/kanban").KanbanFieldValueInput;
@@ -4316,6 +4331,7 @@ export class DaemonClient {
   async kanbanDeleteCard(input: {
     providerId: string;
     boardId: string;
+    projectId?: string;
     cardId: string;
   }): Promise<KanbanCardDeleteResponse["payload"]> {
     return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.delete.response">({
@@ -4327,6 +4343,7 @@ export class DaemonClient {
   async kanbanWatchBoard(input: {
     providerId: string;
     boardId: string;
+    projectId?: string;
     watch: boolean;
   }): Promise<KanbanBoardWatchResponse["payload"]> {
     return this.sendNamespacedCorrelatedSessionRequest<"kanban.board.watch.response">({

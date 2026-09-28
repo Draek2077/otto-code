@@ -2570,6 +2570,8 @@ export class VoiceAssistantWebSocketServer {
         kanbanBoard: true,
         kanbanCardFields: true,
         kanbanBoardWatch: true,
+        // COMPAT(kanbanConnectionScope): added in v0.9.27, remove after 2027-03-27.
+        kanbanConnectionScope: true,
         // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
         projectCustomIcon: true,
         // COMPAT(fsEntryOps): added in v0.3.0, remove gate after 2027-02-08.

@@ -69,8 +69,9 @@ export class KanbanBoardWatcher {
     providerId: string,
     boardId: string,
     readRevision: () => Promise<string | null>,
+    projectId?: string,
   ): number {
-    const key = watchKey(providerId, boardId);
+    const key = watchKey(providerId, boardId, projectId);
     if (this.entries.has(key)) {
       return this.pollIntervalMs;
     }
@@ -90,8 +91,8 @@ export class KanbanBoardWatcher {
     return this.pollIntervalMs;
   }
 
-  public unwatch(providerId: string, boardId: string): void {
-    const key = watchKey(providerId, boardId);
+  public unwatch(providerId: string, boardId: string, projectId?: string): void {
+    const key = watchKey(providerId, boardId, projectId);
     const entry = this.entries.get(key);
     if (entry) {
       clearInterval(entry.timer);
@@ -158,6 +159,6 @@ export class KanbanBoardWatcher {
   }
 }
 
-function watchKey(providerId: string, boardId: string): string {
-  return `${providerId}::${boardId}`;
+function watchKey(providerId: string, boardId: string, projectId?: string): string {
+  return `${projectId ?? ""}::${providerId}::${boardId}`;
 }

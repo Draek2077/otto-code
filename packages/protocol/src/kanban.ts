@@ -286,6 +286,8 @@ export const KanbanBoardGetRequestSchema = z
     type: z.literal("kanban.board.get.request"),
     providerId: z.string().min(1),
     boardId: z.string().min(1),
+    // COMPAT(kanbanConnectionScope): added in v0.9.27, remove after 2027-03-27.
+    projectId: z.string().min(1).optional(),
     requestId: z.string(),
   })
   .strict();
@@ -327,6 +329,7 @@ export const KanbanCardMoveRequestSchema = z
     type: z.literal("kanban.card.move.request"),
     providerId: z.string().min(1),
     boardId: z.string().min(1),
+    projectId: z.string().min(1).optional(),
     cardId: z.string().min(1),
     targetColumnId: z.string().min(1),
     requestId: z.string(),
@@ -356,6 +359,7 @@ export const KanbanCardCreateRequestSchema = z
     type: z.literal("kanban.card.create.request"),
     providerId: z.string().min(1),
     boardId: z.string().min(1),
+    projectId: z.string().min(1).optional(),
     columnId: z.string().min(1).optional(),
     title: z.string().trim().min(1),
     body: z.string().optional(),
@@ -434,6 +438,7 @@ export const KanbanCardUpdateRequestSchema = z
     type: z.literal("kanban.card.update.request"),
     providerId: z.string().min(1),
     boardId: z.string().min(1),
+    projectId: z.string().min(1).optional(),
     cardId: z.string().min(1),
     fieldId: z.string().min(1),
     value: KanbanFieldValueInputSchema,
@@ -473,6 +478,7 @@ export const KanbanCardDeleteRequestSchema = z
     type: z.literal("kanban.card.delete.request"),
     providerId: z.string().min(1),
     boardId: z.string().min(1),
+    projectId: z.string().min(1).optional(),
     cardId: z.string().min(1),
     requestId: z.string(),
   })
@@ -507,6 +513,7 @@ export const KanbanBoardWatchRequestSchema = z
     type: z.literal("kanban.board.watch.request"),
     providerId: z.string().min(1),
     boardId: z.string().min(1),
+    projectId: z.string().min(1).optional(),
     /** False to stop watching. */
     watch: z.boolean(),
     requestId: z.string(),

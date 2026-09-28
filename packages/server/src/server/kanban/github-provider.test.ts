@@ -784,6 +784,37 @@ describe("GitHubProjectV2Provider", () => {
     expect((error as Error).message).toContain("read:project");
   });
 
+  it("names the project's selected CLI account before refreshing its scopes", async () => {
+    const provider = makeScopeFailureProvider();
+    await provider.initialize({
+      githubToken: "gho_test",
+      githubAccount: "PhilTasty",
+      githubCredentialMethod: "cli",
+    });
+    const error = (await provider
+      .listBoards({})
+      .catch((e: unknown) => e)) as KanbanRemediationError;
+    expect(error.message).toContain("PhilTasty");
+    expect(error.remediation.steps.map((step) => step.display)).toEqual([
+      "gh auth switch --user PhilTasty",
+      "gh auth refresh -s read:project,project",
+    ]);
+  });
+
+  it("sends saved-token users to Git connections instead of gh refresh", async () => {
+    const provider = makeScopeFailureProvider();
+    await provider.initialize({
+      githubToken: "gho_test",
+      githubAccount: "PhilTasty",
+      githubCredentialMethod: "token",
+    });
+    const error = (await provider
+      .listBoards({})
+      .catch((e: unknown) => e)) as KanbanRemediationError;
+    expect(error.message).toContain("Git connections");
+    expect(error.remediation.steps).toEqual([]);
+  });
+
   it("reads the granted scopes from the response header when the message omits them", async () => {
     const provider = makeScopeFailureProvider({
       message:

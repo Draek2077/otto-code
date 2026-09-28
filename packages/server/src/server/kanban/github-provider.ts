@@ -380,6 +380,8 @@ export class GitHubProjectV2Provider implements KanbanProvider {
   private readonly fetchImpl: typeof fetch;
   private readonly apiBaseUrl: string;
   private token: string | null = null;
+  private credentialAccount: string | undefined;
+  private credentialMethod: "cli" | "token" | undefined;
   /**
    * Per-board layout, read on demand and refreshed by every board read. A card
    * mutation does not change it, so it deliberately survives one: dragging two
@@ -412,6 +414,8 @@ export class GitHubProjectV2Provider implements KanbanProvider {
   async initialize(config: MutableKanbanProviderConfig): Promise<void> {
     const token = (config.githubToken ?? "").trim();
     this.token = token.length > 0 ? token : null;
+    this.credentialAccount = config.githubAccount;
+    this.credentialMethod = config.githubCredentialMethod;
     // A new credential can see a different set of boards, so nothing the old
     // one resolved survives the rotation.
     this.clearCaches();
@@ -1175,11 +1179,17 @@ export class GitHubProjectV2Provider implements KanbanProvider {
     );
     payload = { ...payload, ...(errors ? { errors } : {}) };
     if (!response.ok || (payload.errors && payload.errors.length > 0)) {
-      const scopeFailure = describeScopeFailure(payload.errors, response, this.apiBaseUrl);
+      const scopeFailure = describeScopeFailure(
+        payload.errors,
+        response,
+        this.apiBaseUrl,
+        this.credentialAccount,
+        this.credentialMethod,
+      );
       if (scopeFailure) {
-        // GitHub repeats the same scope complaint once per requested field and
-        // signs it off with a link to the personal-access-token page, which is
-        // the wrong page for a gh CLI credential. Replace all of it.
+        // GitHub repeats the scope complaint once per field and links to a
+        // token page even when the selected credential belongs to gh. Give a
+        // recovery route for the actual selected credential instead.
         throw new KanbanRemediationError(scopeFailure.message, scopeFailure.remediation);
       }
       const message =
@@ -1257,6 +1267,8 @@ function describeScopeFailure(
   errors: GitHubGraphQLError[] | undefined,
   response: Response,
   apiBaseUrl: string,
+  account?: string,
+  method?: "cli" | "token",
 ): { message: string; remediation: KanbanRemediation } | null {
   const scopeErrors = (errors ?? []).filter(
     (error) => error.type === "INSUFFICIENT_SCOPES" || SCOPE_FAILURE_PATTERN.test(error.message),
@@ -1282,16 +1294,37 @@ function describeScopeFailure(
     (scope) => !granted.has(scope),
   );
   const args = ["auth", "refresh", ...ghHostFlag(apiBaseUrl), "-s", PROJECT_SCOPES.join(",")];
+  if (method === "token") {
+    return {
+      message: `The Git connection for ${account ?? "this project"} is missing Projects access${missing.length ? ` (${missing.join(", ")})` : ""}. Grant access to its token and reconnect it in Git connections.`,
+      remediation: {
+        reason: KANBAN_REMEDIATION_GITHUB_SCOPES,
+        ...(missing.length > 0 ? { missingScopes: missing } : {}),
+        steps: [],
+      },
+    };
+  }
+  const steps = account
+    ? [
+        {
+          command: "gh",
+          args: ["auth", "switch", ...ghHostFlag(apiBaseUrl), "--user", account],
+          display: `gh auth switch ${[...ghHostFlag(apiBaseUrl), "--user", account].join(" ")}`,
+        },
+        { command: "gh", args, display: `gh ${args.join(" ")}` },
+      ]
+    : [{ command: "gh", args, display: `gh ${args.join(" ")}` }];
   return {
     message:
-      "The GitHub CLI credential is missing Projects access" +
+      `The GitHub CLI credential${account ? ` for ${account}` : ""} is missing Projects access` +
       (missing.length > 0 ? ` (${missing.join(", ")})` : "") +
-      ". Otto signs in to GitHub through the gh CLI, so the personal access token page GitHub" +
-      " links to does not apply: grant the scopes to the CLI instead.",
+      (account
+        ? ". Switch gh to that account, then grant it the scopes. Refresh acts only on the active gh account."
+        : ". Grant the scopes to the active gh account."),
     remediation: {
       reason: KANBAN_REMEDIATION_GITHUB_SCOPES,
       ...(missing.length > 0 ? { missingScopes: missing } : {}),
-      steps: [{ command: "gh", args, display: `gh ${args.join(" ")}` }],
+      steps,
       url: GH_REFRESH_DOC_URL,
     },
   };

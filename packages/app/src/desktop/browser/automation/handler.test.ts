@@ -271,9 +271,9 @@ function currentBrowserTabs() {
   }));
 }
 
-function newTabResultFrom(payload: BrowserAutomationResponsePayload) {
+function newTabResultFrom(payload: BrowserAutomationResponsePayload, requestId = "req-new") {
   expect(payload).toMatchObject({
-    requestId: "req-new",
+    requestId,
     ok: true,
     result: { command: "new_tab", workspaceId: "wks_workspace_a", url: "https://example.com" },
   });
@@ -372,7 +372,7 @@ describe("mountBrowserAutomationHandler", () => {
     ]);
   });
 
-  test("preview new_tab with split-right layout opens a new pane instead of joining the focused pane", async () => {
+  test("split-right previews share a side pane and preserve the focused pane", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     const workspaceKey = buildWorkspaceTabPersistenceKey({
       serverId: "server-1",
@@ -397,6 +397,19 @@ describe("mountBrowserAutomationHandler", () => {
     expect(openedTabs[0]?.tabId).not.toBe(previousFocusedTabId);
     const focusedPane = findPaneById(layout!.root, layout!.focusedPaneId);
     expect(focusedPane?.focusedTabId).toBe(previousFocusedTabId);
+
+    browser.receive({ ...previewNewTabRequest(), requestId: "req-new-2" });
+    await flushAsyncWork();
+    const second = newTabResultFrom(browser.client.payloadAt(1), "req-new-2");
+    const nextLayout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    const panes = collectAllPanes(nextLayout!.root);
+    const firstPreviewPane = panes.find((pane) => pane.tabIds.includes(openedTabs[0]!.tabId));
+    const secondPreviewTab = workspaceBrowserTabs(workspaceKey, second.browserId)[0];
+    expect(firstPreviewPane?.tabIds).toContain(secondPreviewTab?.tabId);
+    expect(panes.filter((pane) => pane.id !== EXPLORER_SIDEBAR_PANE_ID)).toHaveLength(2);
+    expect(findPaneById(nextLayout!.root, nextLayout!.focusedPaneId)?.focusedTabId).toBe(
+      previousFocusedTabId,
+    );
   });
 
   test("preview new_tab with split-right layout skips the split when the focused pane was empty", async () => {

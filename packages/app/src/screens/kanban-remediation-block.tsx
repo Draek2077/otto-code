@@ -114,7 +114,7 @@ export function KanbanRemediationBlock({
         >
           {t("kanban.remediation.copy")}
         </Button>
-        {client && hostConnected && cwd ? (
+        {client && hostConnected && cwd && remediation.steps.length === 1 ? (
           <Button variant="ghost" size="sm" onPress={runInTerminal} testID="kanban-remediation-run">
             {t("kanban.remediation.run")}
           </Button>

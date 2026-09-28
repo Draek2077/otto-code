@@ -1,10 +1,11 @@
 import { relative, resolve } from "node:path";
 import { z } from "zod";
 import { parseGitHubRemoteUrl } from "@otto-code/protocol/git-remote";
+import { resolveForgeConnectionRemote } from "../../../services/git-hosting/connection-drivers.js";
 import { KanbanFieldValueInputSchema } from "@otto-code/protocol/kanban";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
+import type { ForgeConnectionStore } from "../../../services/git-hosting/connection-store.js";
 import { ensureValidJson } from "../../json-utils.js";
-import { runGitCommand } from "../../../utils/run-git-command.js";
 import {
   createKanbanRegistry,
   type KanbanRegistryOptions,
@@ -25,6 +26,7 @@ type Dependencies = Pick<
 > & {
   registerTool: RegisterOttoTool;
   readKanbanConfig?: () => MutableDaemonConfig;
+  connections?: ForgeConnectionStore;
   projectRegistry?: Pick<ProjectRegistry, "list">;
   workspaceRegistry?: Pick<WorkspaceRegistry, "list" | "get">;
   createRegistry?: (options: KanbanRegistryOptions) => KanbanRegistry;
@@ -73,11 +75,8 @@ async function boardContext(project: PersistedProjectRecord): Promise<KanbanBoar
   };
   if (target.adapter === "github") {
     try {
-      const { stdout } = await runGitCommand(["remote", "get-url", "origin"], {
-        cwd: project.rootPath,
-        envOverlay: { GIT_TERMINAL_PROMPT: "0" },
-      });
-      const remote = parseGitHubRemoteUrl(stdout.trim());
+      const location = await resolveForgeConnectionRemote(project.rootPath);
+      const remote = location?.host === "github.com" ? parseGitHubRemoteUrl(location.url) : null;
       if (remote) {
         context.owner = remote.owner;
         context.repo = remote.repo;
@@ -102,6 +101,8 @@ async function withBoard<T>(
   const project = await resolveProject(deps);
   const registry = (deps.createRegistry ?? createKanbanRegistry)({
     readConfig: deps.readKanbanConfig!,
+    projectId: project.projectId,
+    ...(deps.connections ? { connections: deps.connections } : {}),
   });
   try {
     const provider = registry.getProvider(project.kanban!.adapter);
@@ -162,6 +163,8 @@ export function registerKanbanTools(deps: Dependencies): void {
       const project = await resolveProject(deps);
       const registry = (deps.createRegistry ?? createKanbanRegistry)({
         readConfig: deps.readKanbanConfig!,
+        projectId: project.projectId,
+        ...(deps.connections ? { connections: deps.connections } : {}),
       });
       try {
         const provider = registry.getProvider(project.kanban!.adapter)!;

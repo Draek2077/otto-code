@@ -5348,6 +5348,8 @@ export const ServerInfoStatusPayloadSchema = z
         // >= v0.9.25. kanban.board.watch is served and the daemon emits
         // kanban.board.changed when a watched board moves.
         kanbanBoardWatch: z.boolean().optional(),
+        // COMPAT(kanbanConnectionScope): added in v0.9.27, remove after 2027-03-27.
+        kanbanConnectionScope: z.boolean().optional(),
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.

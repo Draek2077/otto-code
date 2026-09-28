@@ -34,6 +34,7 @@ import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import type { OttoToolDefinition } from "./types.js";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 import type { KanbanRegistry, KanbanRegistryOptions } from "../../kanban/kanban-registry.js";
+import type { ForgeConnectionStore } from "../../../services/git-hosting/connection-store.js";
 
 export interface OttoToolHostDependencies {
   connectorTools?: readonly OttoToolDefinition[];
@@ -104,6 +105,7 @@ export interface OttoToolHostDependencies {
   projectRegistry?: Pick<ProjectRegistry, "get">;
   /** Current host configuration, used only by daemon-owned Kanban providers. */
   readKanbanConfig?: () => MutableDaemonConfig;
+  kanbanConnections?: ForgeConnectionStore;
   kanbanProjectRegistry?: Pick<ProjectRegistry, "list">;
   kanbanWorkspaceRegistry?: Pick<WorkspaceRegistry, "list" | "get">;
   /** Fixture seam for provider-backed Kanban tool tests. */

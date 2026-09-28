@@ -172,6 +172,16 @@ describe("kanban response schemas", () => {
       requestId: "r1",
     });
     expect(parsed.boardId).toBe("b1");
+    expect(parsed.projectId).toBeUndefined();
+    expect(
+      KanbanBoardGetRequestSchema.parse({
+        type: "kanban.board.get.request",
+        providerId: "github",
+        boardId: "b1",
+        projectId: "project-1",
+        requestId: "r2",
+      }).projectId,
+    ).toBe("project-1");
   });
 });
 

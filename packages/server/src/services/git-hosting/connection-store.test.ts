@@ -66,6 +66,12 @@ describe("Forge connection selection", () => {
     expect(await store.forCwd("/personal", "github", "github.com")).toBe(hostService);
     expect(await readers.get(`${personal.id}:1`)!()).toBe("fixture-personal");
     expect(await readers.get(`${work.id}:1`)!()).toBe("fixture-work");
+    expect(await store.selectedCredential("github", "github.com", "work")?.readSecret()).toBe(
+      "fixture-work",
+    );
+    expect(await store.selectedCredential("github", "github.com", "personal")?.readSecret()).toBe(
+      "fixture-personal",
+    );
     await store.manage({
       kind: "select",
       forge: "github",

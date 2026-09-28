@@ -2613,6 +2613,7 @@ export async function createOttoDaemon(
     workspaceRegistry,
     projectRegistry,
     readKanbanConfig: () => daemonConfigStore.get(),
+    kanbanConnections: forgeConnections,
     kanbanProjectRegistry: projectRegistry,
     kanbanWorkspaceRegistry: workspaceRegistry,
     // Backs create_workspace's "local" isolation. The worktree half rides on

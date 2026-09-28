@@ -89,10 +89,10 @@ export const BrowserAutomationNewTabCommandSchema = z.object({
     .object({
       url: BrowserAutomationHttpUrlSchema.optional(),
       /**
-       * "split-right" opens the tab in its own pane to the right of whatever
-       * pane currently has focus, instead of joining that pane's tab strip.
-       * Used by preview_start so the preview tab is always visible alongside
-       * the pane the user was already looking at.
+       * "split-right" opens the tab in the workspace's remembered side pane,
+       * creating that pane on first use. Later tabs join its tab strip instead
+       * of creating additional panes. Used by preview_start so previews remain
+       * visible alongside the pane the user was already looking at.
        */
       layout: z.enum(["default", "split-right"]).optional(),
       /**

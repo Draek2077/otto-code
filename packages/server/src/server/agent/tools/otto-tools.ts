@@ -282,6 +282,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   registerKanbanTools({
     ...registration,
     readKanbanConfig: options.readKanbanConfig,
+    connections: options.kanbanConnections,
     projectRegistry: options.kanbanProjectRegistry,
     workspaceRegistry: options.kanbanWorkspaceRegistry,
     createRegistry: options.createKanbanRegistry,

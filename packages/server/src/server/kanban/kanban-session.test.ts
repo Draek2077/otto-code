@@ -163,6 +163,77 @@ describe("KanbanSession remediation", () => {
 });
 
 describe("KanbanSession configured target", () => {
+  it("keeps project provider instances separate when switching projects", async () => {
+    const emitted: SessionOutboundMessage[] = [];
+    const created: Array<string | undefined> = [];
+    const session = new KanbanSession({
+      emit: (message) => emitted.push(message),
+      readConfig: () => ({}) as MutableDaemonConfig,
+      resolveProjectTarget: async ({ projectId }) => ({
+        projectId,
+        adapter: "github",
+        boardId: null,
+      }),
+      log: { info: () => {}, error: () => {} },
+      createRegistry: ({ projectId }) => {
+        created.push(projectId);
+        const provider: KanbanProvider = {
+          providerId: "github",
+          async initialize() {},
+          async listBoards() {
+            return [{ providerId: "github", boardId: projectId!, title: projectId! }];
+          },
+          async getBoard() {
+            return {
+              board: { id: projectId!, title: projectId!, columns: [] },
+              fields: [],
+              cardFields: {},
+            };
+          },
+          async moveCard() {},
+          async createCard() {
+            throw new Error("not used");
+          },
+          async linkExternalTask() {
+            throw new Error("not used");
+          },
+        };
+        return {
+          listProviderIds: () => ["github"],
+          getProvider: () => provider,
+          initialize: async () => provider.initialize({}),
+          dispose: () => {},
+        };
+      },
+    });
+    for (const projectId of ["work", "personal", "work"]) {
+      await session.handleBoardsListRequest({
+        type: "kanban.boards.list.request",
+        providerId: "github",
+        projectId,
+        requestId: projectId,
+      });
+    }
+    expect(created).toEqual(["work", "personal"]);
+    expect(emitted.map((message) => boardsListPayload(message).boards[0]?.boardId)).toEqual([
+      "work",
+      "personal",
+      "work",
+    ]);
+    await session.handleBoardGetRequest({
+      type: "kanban.board.get.request",
+      providerId: "github",
+      boardId: "personal",
+      projectId: "personal",
+      requestId: "read-personal",
+    });
+    expect(emitted[3]).toMatchObject({
+      type: "kanban.board.get.response",
+      payload: { board: { title: "personal" }, error: null },
+    });
+    session.dispose();
+  });
+
   it("passes the explicit board and its owner to the provider", async () => {
     let context: KanbanBoardListContext | null = null;
     const provider: KanbanProvider = {

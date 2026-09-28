@@ -12,7 +12,12 @@ import {
   getBrowserRecord,
   useBrowserStore,
 } from "@/desktop/browser/store";
-import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import {
+  collectAllPanes,
+  collectAllTabs,
+  findPaneById,
+  useWorkspaceLayoutStore,
+} from "@/stores/workspace-layout-store";
 import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { findSplitRightTarget } from "@/workspace-tabs/split-right-target";
@@ -440,24 +445,11 @@ async function openBrowserTabForRequest(params: {
     });
   }
 
-  const wantsSplitRight = command.args.layout === "split-right";
-  const splitTarget = wantsSplitRight ? findSplitRightTarget(workspaceKey) : null;
-
-  const newTabId = useWorkspaceLayoutStore.getState().openTabInBackground(workspaceKey, {
-    kind: "browser",
+  openBrowserWorkspaceTab({
+    workspaceKey,
     browserId,
+    wantsSplitRight: command.args.layout === "split-right",
   });
-
-  if (newTabId && splitTarget) {
-    useWorkspaceLayoutStore.getState().splitPane(workspaceKey, {
-      tabId: newTabId,
-      targetPaneId: splitTarget,
-      position: "right",
-    });
-    // Otto automation can reveal the preview without moving keyboard ownership
-    // to the new pane. Reuse the layout store's public focus operation.
-    useWorkspaceLayoutStore.getState().focusPane(workspaceKey, splitTarget);
-  }
 
   // Registration happens when the webview actually attaches, in
   // browser-webview-resident.ts, because the daemon binds by webContentsId and
@@ -490,6 +482,73 @@ async function openBrowserTabForRequest(params: {
     ok: true,
     result: { command: "new_tab", browserId, workspaceId, url: normalizedUrl },
   };
+}
+
+/** Open preview tabs in the remembered side pane instead of growing a split per tab. */
+function openBrowserWorkspaceTab(input: {
+  workspaceKey: string;
+  browserId: string;
+  wantsSplitRight: boolean;
+}): string | null {
+  const { workspaceKey, browserId, wantsSplitRight } = input;
+  const splitTarget = wantsSplitRight ? findSplitRightTarget(workspaceKey) : null;
+  const layoutStore = useWorkspaceLayoutStore.getState();
+  const rememberedSidePaneId = layoutStore.sidePaneIdByWorkspace[workspaceKey];
+  const currentLayout = layoutStore.layoutByWorkspace[workspaceKey];
+  const rememberedSidePane =
+    currentLayout && rememberedSidePaneId
+      ? findPaneById(currentLayout.root, rememberedSidePaneId)
+      : null;
+  const browserRecords = useBrowserStore.getState().browsersById;
+  const tabsById = new Map(
+    (currentLayout ? collectAllTabs(currentLayout.root) : []).map((tab) => [tab.tabId, tab]),
+  );
+  const existingPreviewPane = currentLayout
+    ? collectAllPanes(currentLayout.root).find(
+        (pane) =>
+          pane.id !== splitTarget &&
+          pane.tabIds.some((tabId) => {
+            const tab = tabsById.get(tabId);
+            return (
+              tab?.target.kind === "browser" &&
+              browserRecords[tab.target.browserId]?.isPreview === true
+            );
+          }),
+      )
+    : null;
+  const sidePaneId =
+    wantsSplitRight && (splitTarget || rememberedSidePane || existingPreviewPane)
+      ? (rememberedSidePane?.id ??
+        existingPreviewPane?.id ??
+        layoutStore.ensureSidePane(workspaceKey))
+      : null;
+  const newTabId = sidePaneId
+    ? layoutStore.openTab({
+        workspaceKey,
+        target: { kind: "browser", browserId },
+        intent: "background",
+        placement: { mode: "pane", paneId: sidePaneId },
+      })
+    : layoutStore.openTabInBackground(workspaceKey, {
+        kind: "browser",
+        browserId,
+      });
+
+  if (newTabId && splitTarget) {
+    if (!sidePaneId) {
+      // Preserve the old split-right behavior if the workspace cannot create
+      // or recover its remembered side pane.
+      layoutStore.splitPane(workspaceKey, {
+        tabId: newTabId,
+        targetPaneId: splitTarget,
+        position: "right",
+      });
+    }
+    // A background tab placed in an existing pane can still move pane focus.
+    // Return keyboard ownership to the pane the user was working in.
+    layoutStore.focusPane(workspaceKey, splitTarget);
+  }
+  return newTabId;
 }
 
 async function waitForBrowserRegistration(params: {

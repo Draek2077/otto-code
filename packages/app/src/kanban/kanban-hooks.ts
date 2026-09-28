@@ -19,6 +19,13 @@ export function useKanbanBoardFeature(serverId: string): boolean {
   );
 }
 
+/** COMPAT(kanbanConnectionScope): added in v0.9.27, remove after 2027-03-27. */
+export function useKanbanConnectionScope(serverId: string): boolean {
+  return useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.kanbanConnectionScope === true,
+  );
+}
+
 /**
  * Live board list for one project. Fetched once per (host, project) pair and
  * re-fetched when refreshKey bumps (the screen's refresh action). The app
@@ -98,6 +105,7 @@ export function useKanbanBoard(
   providerId: string | null,
   boardId: string | null,
   refreshKey: number,
+  projectId: string | null,
 ): {
   board: KanbanBoard | null;
   fields: KanbanField[];
@@ -137,7 +145,12 @@ export function useKanbanBoard(
     setRemediation(null);
     const load = async (): Promise<void> => {
       try {
-        const payload = await client.kanbanGetBoard(providerId, boardId);
+        const payload = await client.kanbanGetBoard(
+          providerId,
+          boardId,
+          undefined,
+          projectId ?? undefined,
+        );
         if (cancelled) return;
         setBoard(payload.board);
         setFields(payload.fields ?? []);
@@ -160,7 +173,7 @@ export function useKanbanBoard(
     return () => {
       cancelled = true;
     };
-  }, [enabled, providerId, boardId, client, refreshKey]);
+  }, [enabled, providerId, boardId, projectId, client, refreshKey]);
 
   return { board, fields, cardFields, canDeleteCards, isLoading, error, remediation };
 }

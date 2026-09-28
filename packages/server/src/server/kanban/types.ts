@@ -119,8 +119,10 @@ export interface KanbanProvider {
  * configured".
  */
 export interface MutableKanbanProviderConfig {
-  /** GitHub OAuth token resolved from the gh CLI; null when gh is absent or signed out. */
+  /** GitHub token from the selected project connection or ambient gh login. */
   githubToken?: string | null;
+  githubAccount?: string;
+  githubCredentialMethod?: "cli" | "token";
   /** Atlassian account email, shared with Bitbucket git hosting. */
   atlassianEmail?: string | null;
   /** Atlassian API token, shared with Bitbucket git hosting. */

@@ -402,6 +402,7 @@ import {
 import { detectWorktreeArchiveBranch } from "./workspace-archive-branch.js";
 import { buildReattachCandidates } from "./worktree-reattach.js";
 import { parseGitHubRemoteUrl } from "@otto-code/protocol/git-remote";
+import { resolveForgeConnectionRemote } from "../services/git-hosting/connection-drivers.js";
 import { normalizeCloneRepository } from "./session/project-config/clone-repository-input.js";
 import {
   WorktreeRequestError,
@@ -1278,15 +1279,7 @@ export class Session {
       worktreesRoot: this.worktreesRoot,
       logger: this.sessionLogger,
     });
-    this.kanbanSession = new KanbanSession({
-      emit: (msg) => this.emit(msg),
-      readConfig: () => this.daemonConfigStore.get(),
-      resolveProjectTarget: (input) => this.resolveKanbanProjectTarget(input),
-      log: {
-        info: (message) => this.sessionLogger.info(message),
-        error: (message, error) => this.sessionLogger.error({ err: error }, message),
-      },
-    });
+    this.kanbanSession = this.createKanbanSession();
     this.voiceCueGenerator = createVoiceCueGenerator({
       generation: createAgentStructuredTextGeneration({
         agentManager: this.agentManager,
@@ -1788,6 +1781,19 @@ export class Session {
     this.subscribeToRegistryMutations();
 
     this.sessionLogger.trace({}, "agent.session.lifecycle.created");
+  }
+
+  private createKanbanSession(): KanbanSession {
+    return new KanbanSession({
+      emit: (msg) => this.emit(msg),
+      readConfig: () => this.daemonConfigStore.get(),
+      connections: this.gitHostingResolver?.connections,
+      resolveProjectTarget: (input) => this.resolveKanbanProjectTarget(input),
+      log: {
+        info: (message) => this.sessionLogger.info(message),
+        error: (message, error) => this.sessionLogger.error({ err: error }, message),
+      },
+    });
   }
 
   /**
@@ -9207,7 +9213,7 @@ export class Session {
       // Jira boards are site-scoped, not repo-scoped: the board id is the whole
       // address, and an unset one is a misconfiguration the settings form
       // prevents.
-      return { adapter: "jira", boardId: target.boardId };
+      return { projectId: project.projectId, adapter: "jira", boardId: target.boardId };
     }
     // A GitHub board number is only unique within an owner. A pasted Projects
     // URL preserves that owner; older number-only records fall back to the
@@ -9215,6 +9221,7 @@ export class Session {
     // discovery path.
     const remote = await this.readProjectGitHubRemote(project.rootPath);
     return {
+      projectId: project.projectId,
       adapter: "github",
       boardId: target.boardId,
       ...(target.boardOwner ? { boardOwner: target.boardOwner } : {}),
@@ -9226,11 +9233,10 @@ export class Session {
     rootPath: string,
   ): Promise<{ owner: string; repo: string } | null> {
     try {
-      const { stdout } = await runGitCommand(["remote", "get-url", "origin"], {
-        cwd: rootPath,
-        envOverlay: { GIT_TERMINAL_PROMPT: "0" },
-      });
-      const parsed = parseGitHubRemoteUrl(stdout.trim());
+      // Resolve SSH aliases before checking the host; github.com-ttc is still
+      // github.com for API routing and owner discovery.
+      const remote = await resolveForgeConnectionRemote(rootPath);
+      const parsed = remote?.host === "github.com" ? parseGitHubRemoteUrl(remote.url) : null;
       return parsed ? { owner: parsed.owner, repo: parsed.repo } : null;
     } catch {
       // A project without a readable origin simply has no repo scoping; the

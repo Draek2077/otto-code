@@ -35,7 +35,7 @@ import {
   RefreshCw,
   type IconComponent,
 } from "@/components/icons/material-icons";
-import { useKanbanBoard, useKanbanBoards } from "@/kanban/kanban-hooks";
+import { useKanbanBoard, useKanbanBoards, useKanbanConnectionScope } from "@/kanban/kanban-hooks";
 import { KanbanRemediationBlock } from "@/screens/kanban-remediation-block";
 import { KanbanCardDetail } from "@/screens/kanban-card-detail";
 import { useProjects } from "@/hooks/use-projects";
@@ -852,8 +852,9 @@ function KanbanBoardView({
   remediationCwd: string | null;
 }): ReactElement {
   const [refreshKey, setRefreshKey] = useState(0);
+  const connectionProjectId = useKanbanConnectionScope(serverId) ? projectId : undefined;
   const { board, fields, cardFields, canDeleteCards, isLoading, error, remediation } =
-    useKanbanBoard(serverId, providerId, boardId, refreshKey);
+    useKanbanBoard(serverId, providerId, boardId, refreshKey, connectionProjectId ?? null);
   const client = getHostRuntimeStore().getClient(serverId);
   const canWatch = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.kanbanBoardWatch === true,
@@ -868,12 +869,26 @@ function KanbanBoardView({
     const unsubscribe = client.on("kanban.board.changed", (event) => {
       if (event.payload.providerId === providerId && event.payload.boardId === boardId) refresh();
     });
-    void client.kanbanWatchBoard({ providerId, boardId, watch: true }).catch(() => undefined);
+    void client
+      .kanbanWatchBoard({
+        providerId,
+        boardId,
+        ...(connectionProjectId ? { projectId: connectionProjectId } : {}),
+        watch: true,
+      })
+      .catch(() => undefined);
     return () => {
       unsubscribe();
-      void client.kanbanWatchBoard({ providerId, boardId, watch: false }).catch(() => undefined);
+      void client
+        .kanbanWatchBoard({
+          providerId,
+          boardId,
+          ...(connectionProjectId ? { projectId: connectionProjectId } : {}),
+          watch: false,
+        })
+        .catch(() => undefined);
     };
-  }, [client, canWatch, providerId, boardId, refresh]);
+  }, [client, canWatch, providerId, boardId, connectionProjectId, refresh]);
 
   const updateCard = useCallback(
     async (cardId: string, fieldId: string, value: KanbanFieldValueInput) => {
@@ -881,6 +896,7 @@ function KanbanBoardView({
       const payload = await client.kanbanUpdateCard({
         providerId,
         boardId,
+        ...(connectionProjectId ? { projectId: connectionProjectId } : {}),
         cardId,
         fieldId,
         value,
@@ -888,17 +904,22 @@ function KanbanBoardView({
       if (payload.error) throw new Error(payload.error);
       refresh();
     },
-    [client, providerId, boardId, refresh],
+    [client, providerId, boardId, connectionProjectId, refresh],
   );
 
   const deleteCard = useCallback(
     async (cardId: string) => {
       if (!client) throw new Error("Host disconnected");
-      const payload = await client.kanbanDeleteCard({ providerId, boardId, cardId });
+      const payload = await client.kanbanDeleteCard({
+        providerId,
+        boardId,
+        ...(connectionProjectId ? { projectId: connectionProjectId } : {}),
+        cardId,
+      });
       if (payload.error) throw new Error(payload.error);
       refresh();
     },
-    [client, providerId, boardId, refresh],
+    [client, providerId, boardId, connectionProjectId, refresh],
   );
 
   const linkTask = useCallback(
@@ -926,6 +947,7 @@ function KanbanBoardView({
         const payload = await client.kanbanMoveCard({
           providerId,
           boardId,
+          ...(connectionProjectId ? { projectId: connectionProjectId } : {}),
           cardId,
           targetColumnId,
         });
@@ -936,7 +958,7 @@ function KanbanBoardView({
         refresh();
       }
     },
-    [client, providerId, boardId, refresh],
+    [client, providerId, boardId, connectionProjectId, refresh],
   );
 
   const createCard = useCallback(
@@ -944,7 +966,13 @@ function KanbanBoardView({
       if (!client) throw new Error("Host disconnected");
       setActionError(null);
       try {
-        const payload = await client.kanbanCreateCard({ providerId, boardId, columnId, title });
+        const payload = await client.kanbanCreateCard({
+          providerId,
+          boardId,
+          ...(connectionProjectId ? { projectId: connectionProjectId } : {}),
+          columnId,
+          title,
+        });
         if (payload.error) throw new Error(payload.error);
         refresh();
       } catch (cause) {
@@ -952,7 +980,7 @@ function KanbanBoardView({
         throw cause;
       }
     },
-    [client, providerId, boardId, refresh],
+    [client, providerId, boardId, connectionProjectId, refresh],
   );
 
   const selectedCard = board?.columns

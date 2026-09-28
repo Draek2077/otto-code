@@ -99,7 +99,11 @@ export class ForgeConnectionStore {
     return this.resolve(forge, host, await this.options.resolveProjectId(cwd));
   }
 
-  resolve(forge: string, host: string, projectId: string | null = null): ForgeService | null {
+  selectedCredential(
+    forge: string,
+    host: string,
+    projectId: string | null = null,
+  ): { connection: ForgeConnection; readSecret: () => Promise<string> } | null {
     host = normalizeForgeHost(host);
     const matches = (binding: { forge: string; host: string }) =>
       binding.forge === forge && binding.host === host;
@@ -113,11 +117,9 @@ export class ForgeConnectionStore {
         "The selected Git connection is unavailable. Choose a connection in Project Settings.",
       );
     }
-    const key = `${connection.id}:${connection.revision}`;
-    let service = this.services.get(key);
-    if (!service) {
-      service = this.options.createService(connection, async () => {
-        // Retired adapters cannot execute queued work under a replaced identity.
+    return {
+      connection,
+      readSecret: async () => {
         if (
           !this.data.connections.some(
             (c) => c.id === connection.id && c.revision === connection.revision,
@@ -128,7 +130,18 @@ export class ForgeConnectionStore {
         const secret = await this.options.authorization.readSecret(this.secretKey(connection));
         if (!secret) throw new Error(`Reconnect ${connection.label} in Git connections.`);
         return secret;
-      });
+      },
+    };
+  }
+
+  resolve(forge: string, host: string, projectId: string | null = null): ForgeService | null {
+    const selected = this.selectedCredential(forge, host, projectId);
+    if (!selected) return null;
+    const { connection, readSecret } = selected;
+    const key = `${connection.id}:${connection.revision}`;
+    let service = this.services.get(key);
+    if (!service) {
+      service = this.options.createService(connection, readSecret);
       this.services.set(key, service);
     }
     return service;
