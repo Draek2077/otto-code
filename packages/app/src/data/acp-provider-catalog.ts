@@ -320,10 +320,10 @@ const CATALOG_DATA = [
     id: "minimax-code",
     title: "MiniMax Code",
     description: "MiniMax's coding agent for the terminal",
-    version: "0.5.5",
+    version: "0.5.6",
     iconId: "minimax-code",
     installLink: "https://agent.minimax.io",
-    command: ["npx", "-y", "@minimax-ai/code@0.5.5", "acp"],
+    command: ["npx", "-y", "@minimax-ai/code@0.5.6", "acp"],
   },
   {
     id: "minion-code",
