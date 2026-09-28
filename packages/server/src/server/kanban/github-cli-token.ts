@@ -17,13 +17,17 @@ import type { ForgeConnectionStore } from "../../services/git-hosting/connection
 
 const GH_TOKEN_TIMEOUT_MS = 10_000;
 
-// Clear ambient token overrides so --user actually selects the saved account.
-// A signed-out gh must not block the daemon on an interactive prompt.
-const GH_TOKEN_ENV = {
+// Clear ambient token overrides only for a named account so --user selects it.
+// The fallback keeps the ambient token used by older, unbound projects.
+const GH_NAMED_ACCOUNT_ENV = {
   GH_TOKEN: "",
   GITHUB_TOKEN: "",
   GH_ENTERPRISE_TOKEN: "",
   GITHUB_ENTERPRISE_TOKEN: "",
+} as const;
+
+// A signed-out gh must not block the daemon on an interactive prompt.
+const GH_CLI_ENV = {
   GH_PROMPT_DISABLED: "1",
   NO_COLOR: "1",
 } as const;
@@ -41,7 +45,7 @@ export async function resolveGitHubCliToken(
       ghPath,
       ["auth", "token", "--hostname", host, ...(account ? ["--user", account] : [])],
       {
-        envOverlay: GH_TOKEN_ENV,
+        envOverlay: { ...GH_CLI_ENV, ...(account ? GH_NAMED_ACCOUNT_ENV : {}) },
         timeout: GH_TOKEN_TIMEOUT_MS,
       },
     );

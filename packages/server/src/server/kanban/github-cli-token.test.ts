@@ -22,6 +22,20 @@ describe("Kanban GitHub credential selection", () => {
     );
   });
 
+  it("preserves ambient token overrides when no Git connection is selected", async () => {
+    vi.mocked(execCommand).mockClear();
+    expect(await resolveKanbanGitHubCredential(undefined, "project-1")).toEqual({
+      token: "named-token",
+    });
+    expect(execCommand).toHaveBeenCalledWith(
+      "gh",
+      ["auth", "token", "--hostname", "github.com"],
+      expect.objectContaining({
+        envOverlay: { GH_PROMPT_DISABLED: "1", NO_COLOR: "1" },
+      }),
+    );
+  });
+
   it("uses a selected token connection without consulting gh", async () => {
     vi.mocked(execCommand).mockClear();
     const connections = {
