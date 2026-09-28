@@ -1,4 +1,4 @@
-// Generated from outputs/settings-inventory/settings-index.md by
+// Generated from docs/settings-inventory.md by
 // scripts/generate-settings-search-catalog.mjs. Do not edit by hand.
 import type { SettingsSearchItem } from "@/screens/settings-search-catalog";
 

@@ -311,7 +311,7 @@ The legacy [projects/](projects/README.md) tree is a read-only migration source.
 
 ## License
 
-Otto retains its **AGPL-3.0** license. The historical Paseo fork base used AGPL-3.0; the Paseo 0.8.0 intake carries Apache-2.0. See [LICENSE](LICENSE), [LICENSE-Paseo-0.8.0](LICENSE-Paseo-0.8.0) and [NOTICE](NOTICE).
+Otto retains its **AGPL-3.0** license. The historical Paseo fork base used AGPL-3.0; the Paseo 0.8.0 intake carries Apache-2.0. See [LICENSE](LICENSE), [LICENSE-Paseo](LICENSE-Paseo) and [NOTICE](NOTICE).
 
 ## Credits & attribution
 

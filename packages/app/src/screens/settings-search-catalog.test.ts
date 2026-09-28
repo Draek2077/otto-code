@@ -6,9 +6,7 @@ import { SETTINGS_SEARCH_ITEMS, searchSettingsCatalog } from "./settings-search-
 import { HOST_SECTION_SLUGS, SETTINGS_SECTION_SLUGS } from "@/utils/host-routes";
 
 function inventoryMarkdownPath() {
-  return fileURLToPath(
-    new URL("../../../../outputs/settings-inventory/settings-index.md", import.meta.url),
-  );
+  return fileURLToPath(new URL("../../../../docs/settings-inventory.md", import.meta.url));
 }
 
 function readInventoryRows() {
@@ -152,11 +150,11 @@ describe("Settings search catalog", () => {
   it("keeps every inventory source link pointed at an existing source line", () => {
     const inventoryPath = inventoryMarkdownPath();
     const inventory = readFileSync(inventoryPath, "utf8");
-    const sourceLinks = [...inventory.matchAll(/\]\(\.\.\/\.\.\/([^)#]+)#L(\d+)\)/g)];
+    const sourceLinks = [...inventory.matchAll(/\]\(\.\.\/([^)#]+)#L(\d+)\)/g)];
 
     expect(sourceLinks).toHaveLength(readInventoryRows().length);
     for (const [, sourcePath, sourceLine] of sourceLinks) {
-      const source = resolve(dirname(inventoryPath), "..", "..", sourcePath);
+      const source = resolve(dirname(inventoryPath), "..", sourcePath);
       expect(existsSync(source)).toBe(true);
       expect(Number(sourceLine)).toBeLessThanOrEqual(
         readFileSync(source, "utf8").split(/\r?\n/).length,

@@ -2,8 +2,10 @@
 
 This is a stock copy of [tt-a1i/archify](https://github.com/tt-a1i/archify) at
 `9e35d2b0b39b155553ba9fcfe0b4f2a5198dd993` (main, 2026-09-23; `2.17.0-dev.1`, past `v2.16.0`).
-It is a plain tree copy, not a git subtree: update it by replacing the tree with `git archive` of
-the new upstream commit, keeping this file.
+It is a plain tree copy, not a git subtree, trimmed to what Otto ships: the `archify/` runtime
+package plus the root `LICENSE` and `THIRD_PARTY_NOTICES.md`. Upstream's research notes,
+benchmarks, experiments, website, and build tooling are not copied. Update it by replacing
+`archify/` and those two files from a `git archive` of the new upstream commit, keeping this file.
 
 No in-vendor patches are carried. Otto's integration lives outside this directory:
 
@@ -22,3 +24,5 @@ are retained with this copy.
   receipts, the workflow constraint compiler (`schema_version` 2, additive), dataflow, sequence,
   and viewer fixes, and stricter CLI argument checks. Smoke render of the stored architecture View
   passed 9/9 checks.
+- 2026-09-27: trimmed the copy to the shipped runtime (`archify/`, `LICENSE`,
+  `THIRD_PARTY_NOTICES.md`). No runtime file changed.

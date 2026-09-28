@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 import vm from "node:vm";
 
 const root = resolve(import.meta.dirname, "..");
-const inventoryPath = resolve(root, "outputs/settings-inventory/settings-index.md");
+const inventoryPath = resolve(root, "docs/settings-inventory.md");
 const generatedPath = resolve(root, "packages/app/src/screens/settings-search-generated.ts");
 
 const sectionForCategory = {
@@ -185,7 +185,7 @@ const rows = readInventory().map((row) => {
   ];
 });
 
-const generated = `// Generated from outputs/settings-inventory/settings-index.md by\n// scripts/generate-settings-search-catalog.mjs. Do not edit by hand.\nimport type { SettingsSearchItem } from "@/screens/settings-search-catalog";\n\nconst ROWS = ${JSON.stringify(rows, null, 2)} as const;\n\nexport const GENERATED_SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = ROWS.map(\n  ([id, title, description, keywords, scope, section, host, category, group, audience, kind, choices, defaultValue, conditions, persistence, advanced, developerOnly]) => ({\n    id,\n    title,\n    description,\n    keywords,\n    scope,\n    section,\n    host,\n    category,\n    group,\n    audience,\n    kind,\n    choices,\n    defaultValue,\n    conditions,\n    persistence,\n    advanced,\n    developerOnly,\n  }),\n);\n`;
+const generated = `// Generated from docs/settings-inventory.md by\n// scripts/generate-settings-search-catalog.mjs. Do not edit by hand.\nimport type { SettingsSearchItem } from "@/screens/settings-search-catalog";\n\nconst ROWS = ${JSON.stringify(rows, null, 2)} as const;\n\nexport const GENERATED_SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = ROWS.map(\n  ([id, title, description, keywords, scope, section, host, category, group, audience, kind, choices, defaultValue, conditions, persistence, advanced, developerOnly]) => ({\n    id,\n    title,\n    description,\n    keywords,\n    scope,\n    section,\n    host,\n    category,\n    group,\n    audience,\n    kind,\n    choices,\n    defaultValue,\n    conditions,\n    persistence,\n    advanced,\n    developerOnly,\n  }),\n);\n`;
 
 writeFileSync(generatedPath, generated);
 console.log(`Generated ${rows.length} Settings search entries.`);
