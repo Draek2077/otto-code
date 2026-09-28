@@ -1,0 +1,10 @@
+Added
+- Choose a GitHub Projects or Jira board for each project and manage its cards in Kanban
+- Create, link, move, and edit supported cards directly from the board
+- Ask agents to work with cards on the project's configured board
+
+Improved
+- Keep agent and Preview browser tabs available in the desktop app when the host cannot provide a browser
+- Keep workspace splitters usable while browser panes change layout
+
+Full notes: https://paseo.sh/changelog
