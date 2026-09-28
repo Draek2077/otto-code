@@ -433,8 +433,8 @@ function normalizeSizes(input: NormalizeSizesInput): number[] {
   return sanitized.map((value) => value / total);
 }
 
-export function clampNormalizedSizes(sizes: number[]): number[] {
-  return normalizeSizes({ sizes, count: sizes.length });
+export function clampNormalizedSizes(sizes: number[], count = sizes.length): number[] {
+  return normalizeSizes({ sizes, count });
 }
 
 function asInternalNode(node: SplitNode): SplitNodeInternal {

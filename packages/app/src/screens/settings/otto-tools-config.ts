@@ -39,6 +39,11 @@ export const OTTO_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
     description: "Propose and dismiss follow-up work as task cards (suggest_task, dismiss_task).",
   },
   {
+    group: "kanban",
+    label: "Kanban",
+    description: "Read and update the current project's configured board.",
+  },
+  {
     group: "terminals",
     label: "Terminals",
     description: "Run commands in workspace terminals.",

@@ -3398,6 +3398,10 @@ export class Session {
     if (provider !== parent.provider || model !== parent.config.model) {
       delete passthroughConfig.model;
       delete passthroughConfig.thinkingOptionId;
+      // A profile snapshot binds identity and behavior to its provider/model.
+      // Once the user chooses a different model in the suggested-task picker,
+      // the new chat is a plain model chat and must not retain that profile.
+      delete passthroughConfig.profileSnapshot;
       // Never let the provider pick the effort: carry the parent's onto the
       // chosen model instead of silently falling to a low provider default.
       const carriedEffort = model
@@ -4317,6 +4321,12 @@ export class Session {
         return this.kanbanSession.handleCardCreateRequest(msg);
       case "kanban.task.link.request":
         return this.kanbanSession.handleTaskLinkRequest(msg);
+      case "kanban.card.update.request":
+        return this.kanbanSession.handleCardUpdateRequest(msg);
+      case "kanban.card.delete.request":
+        return this.kanbanSession.handleCardDeleteRequest(msg);
+      case "kanban.board.watch.request":
+        return this.kanbanSession.handleBoardWatchRequest(msg);
       case "checkout_merge_request":
         return this.checkoutSession.handleCheckoutMergeRequest(msg);
       case "checkout_merge_from_base_request":

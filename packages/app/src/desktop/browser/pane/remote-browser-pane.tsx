@@ -23,6 +23,7 @@ import {
   Devices,
   RotateCw,
   Send,
+  Square,
 } from "@/components/icons/material-icons";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
@@ -69,6 +70,7 @@ const ThemedSend = withUnistyles(Send);
 const ThemedArrowLeft = withUnistyles(ArrowLeft);
 const ThemedArrowRight = withUnistyles(ArrowRight);
 const ThemedRotateCw = withUnistyles(RotateCw);
+const ThemedSquare = withUnistyles(Square);
 const ThemedTextInput = withUnistyles(EditingTextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
 }));
@@ -78,6 +80,20 @@ const mutedIcon = (theme: { colors: { foregroundMuted: string } }) => ({
 
 function errorText(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+function loadingForCommand(command: RemoteBrowserCommand): boolean | null {
+  switch (command.kind) {
+    case "navigate":
+    case "back":
+    case "forward":
+    case "reload":
+      return true;
+    case "stop":
+      return false;
+    default:
+      return null;
+  }
 }
 
 function PaneNotices({
@@ -119,6 +135,8 @@ function StreamMeterLine({ text }: { text: string }) {
 // The toolbar has many independent controls; stable callbacks matter less than
 // avoiding redundant frame decode. The frame loop is serialized below.
 /* eslint-disable react-perf/jsx-no-new-function-as-prop */
+// The hosted pane coordinates controls, frame delivery, and page input in one mounted surface.
+// eslint-disable-next-line complexity
 export function BrowserPane({
   browserId,
   serverId,
@@ -135,6 +153,10 @@ export function BrowserPane({
   const connected = useHostRuntimeIsConnected(serverId);
   const supported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.remoteBrowser === true,
+  );
+  // COMPAT(remoteBrowserLoadStatus): added in v0.9.26, remove gate after 2027-03-27.
+  const supportsLoadStatus = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.remoteBrowserLoadStatus === true,
   );
   // A tab nobody can see asks for nothing: not behind another tab, and not
   // while the app itself is in the background.
@@ -159,6 +181,9 @@ export function BrowserPane({
   const [error, setError] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const revision = useRef<number | undefined>(undefined);
+  const observationId = useRef(0);
+  const navigationAction = useRef(0);
+  const pendingLoadAction = useRef<{ id: number; loading: boolean } | null>(null);
   const touch = useRef<{
     x: number;
     y: number;
@@ -199,6 +224,8 @@ export function BrowserPane({
   const acceptTab = useCallback(
     (next: RemoteBrowserTab | undefined) => {
       if (!next) return;
+      if (next.observationId !== undefined && next.observationId < observationId.current) return;
+      if (next.observationId !== undefined) observationId.current = next.observationId;
       setTab(next);
       if (!editingAddress.current) {
         setAddress(next.url);
@@ -209,20 +236,23 @@ export function BrowserPane({
         url: next.url,
         title: next.title,
         lastError: next.error,
-        isLoading: next.state === "starting",
+        isLoading: supportsLoadStatus
+          ? (pendingLoadAction.current?.loading ?? next.isLoading === true)
+          : next.state === "starting",
         viewport:
           next.viewport.mode === "fixed"
             ? createFixedBrowserViewport(next.viewport.width, next.viewport.height)
             : { mode: "responsive" },
       });
     },
-    [browserId, updateBrowser],
+    [browserId, supportsLoadStatus, updateBrowser],
   );
 
   const run = useCallback(
-    async (command: RemoteBrowserCommand) => {
+    async (command: RemoteBrowserCommand, loadActionId?: number) => {
       if (!client || !connected) throw new Error(t("workspace.browser.hosted.disconnected"));
       const response = await client.remoteBrowserExecute(workspaceId, command);
+      if (loadActionId === pendingLoadAction.current?.id) pendingLoadAction.current = null;
       acceptTab(response.tab);
       return response;
     },
@@ -237,6 +267,8 @@ export function BrowserPane({
     // A preview tab has no page to show until its dev server is up.
     if (previewPending) return;
     let live = true;
+    observationId.current = 0;
+    pendingLoadAction.current = null;
     setError(null);
     void client
       .remoteBrowserExecute(workspaceId, {
@@ -396,9 +428,20 @@ export function BrowserPane({
   const act = useCallback(
     (command: RemoteBrowserCommand) => {
       setError(null);
-      void run(command).catch((cause: unknown) => setError(errorText(cause)));
+      const loading = supportsLoadStatus ? loadingForCommand(command) : null;
+      const action = loading === null ? navigationAction.current : ++navigationAction.current;
+      if (loading !== null) {
+        pendingLoadAction.current = { id: action, loading };
+        updateBrowser(browserId, { isLoading: loading, lastError: null });
+      }
+      void run(command, loading === null ? undefined : action).catch((cause: unknown) => {
+        if (action !== navigationAction.current) return;
+        pendingLoadAction.current = null;
+        if (loading !== null) updateBrowser(browserId, { isLoading: false });
+        setError(errorText(cause));
+      });
     },
-    [run],
+    [browserId, run, supportsLoadStatus, updateBrowser],
   );
 
   const claimViewport = useCallback(() => {
@@ -518,6 +561,7 @@ export function BrowserPane({
 
   const canGoBack = tab?.canGoBack === true;
   const canGoForward = tab?.canGoForward === true;
+  const isPageLoading = supportsLoadStatus && browser?.isLoading === true;
 
   return (
     <View style={styles.root}>
@@ -542,11 +586,19 @@ export function BrowserPane({
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t("workspace.browser.controls.refresh")}
-          onPress={() => act({ kind: "reload", browserId })}
+          accessibilityLabel={
+            isPageLoading
+              ? t("workspace.browser.controls.stopLoading")
+              : t("workspace.browser.controls.refresh")
+          }
+          onPress={() => act({ kind: isPageLoading ? "stop" : "reload", browserId })}
           style={styles.button}
         >
-          <ThemedRotateCw size={18} uniProps={mutedIcon} />
+          {isPageLoading ? (
+            <ThemedSquare size={18} uniProps={mutedIcon} />
+          ) : (
+            <ThemedRotateCw size={18} uniProps={mutedIcon} />
+          )}
         </Pressable>
         <ThemedTextInput
           ref={addressInput}
@@ -661,7 +713,6 @@ export function BrowserPane({
           ) : null}
         </Pressable>
       </View>
-      <StreamMeterLine text={meterText} />
       <View style={styles.inputRow}>
         <ThemedTextInput
           ref={typeInput}
@@ -685,6 +736,7 @@ export function BrowserPane({
           <ThemedSend size={18} uniProps={mutedIcon} />
         </Pressable>
       </View>
+      <StreamMeterLine text={meterText} />
     </View>
   );
 }

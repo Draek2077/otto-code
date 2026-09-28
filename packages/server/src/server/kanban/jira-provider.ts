@@ -1,6 +1,16 @@
-import type { KanbanBoard, KanbanBoardRef, KanbanCard } from "@otto-code/protocol/kanban";
 import type {
+  KanbanBoardRef,
+  KanbanCard,
+  KanbanCardFieldValue,
+  KanbanField,
+  KanbanFieldOption,
+  KanbanFieldValueInput,
+} from "@otto-code/protocol/kanban";
+import type {
+  KanbanBoardSnapshot,
   KanbanBoardListContext,
+  KanbanCardFieldWrite,
+  KanbanCardUpdateResult,
   KanbanProvider,
   MutableKanbanProviderConfig,
 } from "./types.js";
@@ -69,7 +79,28 @@ interface RawJiraIssue {
     description?: unknown;
     status?: { id?: string | number; name?: string } | null;
     assignee?: { displayName?: string; name?: string } | null;
+    labels?: string[];
+    duedate?: string | null;
+    priority?: { id?: string; name?: string } | null;
+    [key: string]: unknown;
   };
+}
+
+interface JiraEditField {
+  name?: string;
+  schema?: { type?: string; items?: string; custom?: string };
+  operations?: string[];
+  allowedValues?: Array<{
+    id?: string | number;
+    accountId?: string;
+    name?: string;
+    value?: string;
+    displayName?: string;
+  }>;
+}
+
+interface JiraEditMeta {
+  fields?: Record<string, JiraEditField>;
 }
 
 interface RawJiraTransition {
@@ -147,17 +178,13 @@ export class JiraKanbanProvider implements KanbanProvider {
     return (page.values ?? []).map((board) => this.boardRef(board));
   }
 
-  async getBoard(boardId: string): Promise<KanbanBoard> {
-    const [board, configuration, issuePage, projectPage] = await Promise.all([
+  async getBoard(boardId: string): Promise<KanbanBoardSnapshot> {
+    const [board, configuration, issues, projectPage] = await Promise.all([
       this.http<RawJiraBoard>(`${AGILE_API}/board/${boardId}`, { method: "GET" }),
       this.http<RawJiraBoardConfiguration>(`${AGILE_API}/board/${boardId}/configuration`, {
         method: "GET",
       }),
-      this.http<{ issues?: RawJiraIssue[] }>(
-        `${AGILE_API}/board/${boardId}/issue?maxResults=${PAGE_SIZE}` +
-          `&fields=summary,description,status,assignee`,
-        { method: "GET" },
-      ),
+      this.getBoardIssues(boardId),
       this.http<JiraPage<{ key?: string }>>(`${AGILE_API}/board/${boardId}/project?maxResults=1`, {
         method: "GET",
       }),
@@ -168,7 +195,6 @@ export class JiraKanbanProvider implements KanbanProvider {
       name: column.name || "Untitled column",
       statusIds: new Set((column.statuses ?? []).map((status) => String(status.id))),
     }));
-    const issues = issuePage.issues ?? [];
     this.layoutCache.set(boardId, {
       columns,
       projectKey: projectPage.values?.[0]?.key ?? issues[0]?.key.split("-")[0] ?? "",
@@ -203,10 +229,69 @@ export class JiraKanbanProvider implements KanbanProvider {
       });
     }
 
+    const metadata = new Map<string, JiraEditMeta>();
+    // editmeta is issue-specific (screen, permissions, and field context). Read
+    // it per card; a board-wide guess could offer writes Jira rejects.
+    for (let index = 0; index < issues.length; index += 5) {
+      await Promise.all(
+        issues.slice(index, index + 5).map(async (issue) => {
+          metadata.set(issue.key, await this.getEditMeta(issue.key));
+        }),
+      );
+    }
+    const fields = new Map<string, KanbanField>();
+    const cardFields: Record<string, KanbanCardFieldValue[]> = {};
+    for (const issue of issues) {
+      const perCard = jiraFieldsFromMeta(metadata.get(issue.key)!);
+      for (const field of perCard) {
+        const prior = fields.get(field.id);
+        fields.set(field.id, prior?.editable ? prior : field);
+      }
+    }
+    for (const issue of issues) {
+      const perCard = new Map(
+        jiraFieldsFromMeta(metadata.get(issue.key)!).map((field) => [field.id, field]),
+      );
+      cardFields[issue.key] = [...fields.values()].map((boardField) => {
+        const cardField = perCard.get(boardField.id);
+        const value = jiraValue(issue, cardField ?? boardField);
+        if (!cardField?.editable && boardField.editable) {
+          value.editable = false;
+          value.readOnlyReason =
+            cardField?.readOnlyReason ?? "Jira does not allow editing this field on this issue.";
+        }
+        if (cardField?.options) value.options = cardField.options;
+        return value;
+      });
+    }
+
     return {
-      id: boardId,
-      title: board.name || "Jira Board",
-      columns: wireColumns,
+      board: {
+        id: boardId,
+        title: board.name || "Jira Board",
+        columns: wireColumns,
+      },
+      fields: [...fields.values()],
+      cardFields,
+    };
+  }
+
+  async updateCardField(write: KanbanCardFieldWrite): Promise<KanbanCardUpdateResult> {
+    const metadata = await this.getEditMeta(write.cardId);
+    const field = jiraFieldsFromMeta(metadata).find((candidate) => candidate.id === write.fieldId);
+    if (!field?.editable) throw new Error("Jira does not allow editing this field on this issue.");
+    const jiraValueToWrite = jiraWriteValue(field, metadata.fields?.[write.fieldId], write.value);
+    await this.http<unknown>(`${PLATFORM_API}/issue/${encodeURIComponent(write.cardId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ fields: { [write.fieldId]: jiraValueToWrite } }),
+    });
+    const issue = await this.getIssue(write.cardId);
+    const layout = this.requireLayout(write.boardId);
+    return {
+      card: this.cardFromIssue(issue, this.columnNameForIssue(layout, issue)),
+      fieldValues: jiraFieldsFromMeta(await this.getEditMeta(write.cardId)).map((entry) =>
+        jiraValue(issue, entry),
+      ),
     };
   }
 
@@ -291,9 +376,16 @@ export class JiraKanbanProvider implements KanbanProvider {
     const issue = await this.getIssue(external.externalId);
     if (columnId && columnId !== JIRA_UNASSIGNED_COLUMN_ID) {
       await this.moveCard(boardId, issue.key, columnId);
-      return this.cardFromIssue(issue, columnId);
     }
-    return this.cardFromIssue(issue, this.columnNameForIssue(this.requireLayout(boardId), issue));
+    const snapshot = await this.getBoard(boardId);
+    const card = snapshot.board.columns
+      .flatMap((column) => column.cards)
+      .find((candidate) => candidate.id === issue.key);
+    if (!card)
+      throw new Error(
+        `Jira did not include ${issue.key} on this board. Check its project and board filter.`,
+      );
+    return card;
   }
 
   dispose(): void {
@@ -304,10 +396,37 @@ export class JiraKanbanProvider implements KanbanProvider {
   // ── Normalization ─────────────────────────────────────────────────────────
 
   private getIssue(key: string): Promise<RawJiraIssue> {
-    return this.http<RawJiraIssue>(
-      `${PLATFORM_API}/issue/${key}?fields=summary,description,status,assignee`,
+    return this.http<RawJiraIssue>(`${PLATFORM_API}/issue/${encodeURIComponent(key)}?fields=*all`, {
+      method: "GET",
+    });
+  }
+
+  private async getBoardIssues(boardId: string): Promise<RawJiraIssue[]> {
+    const first = await this.http<{ issues?: RawJiraIssue[]; total?: number }>(
+      `${AGILE_API}/board/${boardId}/issue?maxResults=${PAGE_SIZE}&fields=*all`,
       { method: "GET" },
     );
+    const issues = [...(first.issues ?? [])];
+    for (
+      let startAt = issues.length;
+      first.total !== undefined && startAt < first.total;
+      startAt = issues.length
+    ) {
+      const page = await this.http<{ issues?: RawJiraIssue[] }>(
+        `${AGILE_API}/board/${boardId}/issue?startAt=${startAt}&maxResults=${PAGE_SIZE}&fields=*all`,
+        { method: "GET" },
+      );
+      if (!page.issues?.length)
+        throw new Error("Jira stopped paginating this board before all issues were returned.");
+      issues.push(...page.issues);
+    }
+    return issues;
+  }
+
+  private getEditMeta(key: string): Promise<JiraEditMeta> {
+    return this.http<JiraEditMeta>(`${PLATFORM_API}/issue/${encodeURIComponent(key)}/editmeta`, {
+      method: "GET",
+    });
   }
 
   private columnNameForIssue(layout: BoardLayout, issue: RawJiraIssue): string {
@@ -421,6 +540,120 @@ function jiraErrorMessage(payload: unknown, status: number): string {
     return `Jira rejected the credentials (HTTP ${status}). Check the Atlassian email, API token, and token scopes.`;
   }
   return `Jira HTTP ${status}`;
+}
+
+const JIRA_FIELD_KINDS: Record<string, string> = {
+  summary: "text",
+  description: "richText",
+  assignee: "users",
+  labels: "labels",
+  duedate: "date",
+  priority: "singleSelect",
+};
+const JIRA_SCHEMA_KINDS: Record<string, string> = {
+  string: "text",
+  number: "number",
+  date: "date",
+  option: "singleSelect",
+};
+
+function jiraWriteValue(
+  field: KanbanField,
+  raw: JiraEditField | undefined,
+  value: KanbanFieldValueInput,
+): unknown {
+  if (value.kind === "clear") return null;
+  if (value.kind === "text") {
+    if (field.kind === "text") return value.text;
+    if (field.kind === "richText") return toAtlassianDocument(value.text);
+  }
+  if (value.kind === "number" && field.kind === "number") return value.number;
+  if (value.kind === "date" && field.kind === "date" && /^\d{4}-\d{2}-\d{2}$/.test(value.date))
+    return value.date;
+  if (value.kind === "options") {
+    if (field.kind === "labels") return value.optionIds;
+    if (value.optionIds.length === 1 && field.kind === "users")
+      return { accountId: value.optionIds[0] };
+    if (value.optionIds.length === 1 && field.kind === "singleSelect") {
+      if (!raw?.allowedValues?.some((choice) => String(choice.id) === value.optionIds[0]))
+        throw new Error("That Jira choice is no longer available for this issue.");
+      return { id: value.optionIds[0] };
+    }
+  }
+  throw new Error(`Invalid value for Jira field ${field.name}.`);
+}
+
+function jiraFieldsFromMeta(metadata: JiraEditMeta): KanbanField[] {
+  return Object.entries(metadata.fields ?? {}).flatMap(([id, raw]): KanbanField[] => {
+    // Jira Cloud's textarea custom fields use ADF even though editmeta calls
+    // their schema type "string". Sending plain text would reject the update.
+    const kind = raw.schema?.custom?.endsWith(":textarea")
+      ? "richText"
+      : (JIRA_FIELD_KINDS[id] ?? JIRA_SCHEMA_KINDS[raw.schema?.type ?? ""]);
+    if (!kind) return [];
+    const choices: KanbanFieldOption[] = (raw.allowedValues ?? []).flatMap((choice) => {
+      const optionId = choice.accountId ?? (choice.id === undefined ? null : String(choice.id));
+      const name = choice.displayName ?? choice.name ?? choice.value;
+      return optionId && name ? [{ id: optionId, name }] : [];
+    });
+    const hasChoices = (kind !== "singleSelect" && kind !== "users") || choices.length > 0;
+    const editable = (raw.operations ?? []).includes("set") && hasChoices;
+    const field: KanbanField = {
+      id,
+      name: raw.name ?? id,
+      kind,
+      editable,
+      ...(kind === "labels" ? { allowCustomOptions: true } : {}),
+    };
+    if (!editable)
+      field.readOnlyReason = hasChoices
+        ? "Jira does not allow setting this field on this issue."
+        : "Jira did not provide choices for this field.";
+    if (choices.length) field.options = choices;
+    return [field];
+  });
+}
+
+function jiraValue(issue: RawJiraIssue, field: KanbanField): KanbanCardFieldValue {
+  const raw = issue.fields[field.id];
+  const result: KanbanCardFieldValue = { fieldId: field.id, display: "" };
+  if (raw === null || raw === undefined || raw === "") return result;
+  if (field.kind === "richText") {
+    result.display = fromAtlassianDocument(raw);
+    result.value = { kind: "text", text: result.display };
+  } else if (field.kind === "text" && typeof raw === "string") {
+    result.display = raw;
+    result.value = { kind: "text", text: raw };
+  } else if (field.kind === "number" && typeof raw === "number") {
+    result.display = String(raw);
+    result.value = { kind: "number", number: raw };
+  } else if (field.kind === "date" && typeof raw === "string") {
+    result.display = raw;
+    result.value = { kind: "date", date: raw };
+  } else if (field.kind === "labels" && Array.isArray(raw)) {
+    const labels = raw.filter((entry): entry is string => typeof entry === "string");
+    result.display = labels.join(", ");
+    result.value = { kind: "options", optionIds: labels };
+    result.options = labels.map((label) => ({ id: label, name: label }));
+  } else if (typeof raw === "object" && !Array.isArray(raw)) return jiraChoiceValue(field.id, raw);
+  return result;
+}
+
+function jiraChoiceValue(fieldId: string, raw: object): KanbanCardFieldValue {
+  const choice = raw as {
+    id?: string | number;
+    accountId?: string;
+    name?: string;
+    displayName?: string;
+    value?: string;
+  };
+  const result: KanbanCardFieldValue = {
+    fieldId,
+    display: choice.displayName ?? choice.name ?? choice.value ?? "",
+  };
+  const id = choice.accountId ?? (choice.id === undefined ? null : String(choice.id));
+  if (id) result.value = { kind: "options", optionIds: [id] };
+  return result;
 }
 
 /**

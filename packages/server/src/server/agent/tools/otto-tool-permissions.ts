@@ -66,6 +66,8 @@ export const OTTO_READ_ONLY_TOOL_NAMES: readonly string[] = [
   "list_pending_permissions",
   "list_artifacts",
   "inspect_artifact",
+  "kanban_list_boards",
+  "kanban_get_board",
 ];
 
 const READ_ONLY_TOOLS = new Set(OTTO_READ_ONLY_TOOL_NAMES);

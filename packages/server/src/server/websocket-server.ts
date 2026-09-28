@@ -2201,6 +2201,7 @@ export class VoiceAssistantWebSocketServer {
         browserHistory: true,
         // COMPAT(remoteBrowser): added in v0.9.25, remove gate after 2027-03-26.
         remoteBrowser: true,
+        remoteBrowserLoadStatus: true,
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
         providerRemove: true,
         // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.
@@ -2567,6 +2568,8 @@ export class VoiceAssistantWebSocketServer {
         // Projects v2 registered. Unconditionally true: the mock provider
         // makes the surface work on every host without credentials.
         kanbanBoard: true,
+        kanbanCardFields: true,
+        kanbanBoardWatch: true,
         // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
         projectCustomIcon: true,
         // COMPAT(fsEntryOps): added in v0.3.0, remove gate after 2027-02-08.

@@ -1,4 +1,42 @@
-import type { KanbanBoard, KanbanBoardRef, KanbanCard } from "@otto-code/protocol/kanban";
+import type {
+  KanbanBoard,
+  KanbanBoardRef,
+  KanbanCard,
+  KanbanCardFieldValue,
+  KanbanField,
+  KanbanFieldValueInput,
+} from "@otto-code/protocol/kanban";
+
+/**
+ * One board read: its columns, the fields its cards carry, and each card's
+ * values.
+ *
+ * Fields come back with the board rather than from a second call because a
+ * provider reads them in the same round trip, and because a field's editability
+ * is a property of this board's configuration - not of the provider in general.
+ * A provider that exposes no editable fields answers with an empty list, which
+ * the UI renders as "this board has no fields Otto can edit" rather than as an
+ * absence of information.
+ */
+export interface KanbanBoardSnapshot {
+  board: KanbanBoard;
+  fields: KanbanField[];
+  /** Field values keyed by card id. A card with no values may be omitted. */
+  cardFields: Record<string, KanbanCardFieldValue[]>;
+}
+
+/** What a provider reports after writing one field. */
+export interface KanbanCardUpdateResult {
+  card: KanbanCard;
+  fieldValues: KanbanCardFieldValue[];
+}
+
+export interface KanbanCardFieldWrite {
+  boardId: string;
+  cardId: string;
+  fieldId: string;
+  value: KanbanFieldValueInput;
+}
 
 /**
  * The Kanban service provider interface (SPI).
@@ -25,10 +63,28 @@ export interface KanbanProvider {
   initialize(config: MutableKanbanProviderConfig): Promise<void>;
   /** Lists the boards this provider exposes for the given context. */
   listBoards(context: KanbanBoardListContext): Promise<KanbanBoardRef[]>;
-  /** Fetches the complete structure of one board. */
-  getBoard(boardId: string): Promise<KanbanBoard>;
+  /** Fetches the complete structure of one board, with its fields and values. */
+  getBoard(boardId: string): Promise<KanbanBoardSnapshot>;
   /** Moves a card into a different column. */
   moveCard(boardId: string, cardId: string, targetColumnId: string): Promise<void>;
+  /**
+   * Writes one field on one card. Absent when the provider cannot write fields
+   * at all; a provider that can write some fields and not others reports that
+   * per field on the board snapshot and throws here for the rest.
+   */
+  updateCardField?(write: KanbanCardFieldWrite): Promise<KanbanCardUpdateResult>;
+  /**
+   * Removes a card from its board. Board-scoped: this detaches a linked work
+   * item from the board, and only deletes an item outright when that item exists
+   * nowhere else (a GitHub draft issue).
+   */
+  deleteCard?(boardId: string, cardId: string): Promise<void>;
+  /**
+   * An opaque marker that moves when anything on the board changes, for the
+   * freshness poller. Null when the provider cannot report one cheaply, which
+   * the poller reads as "compare the board itself instead".
+   */
+  readBoardRevision?(boardId: string): Promise<string | null>;
   /** Creates a new card in the given (or the provider's default) column. */
   createCard(
     boardId: string,

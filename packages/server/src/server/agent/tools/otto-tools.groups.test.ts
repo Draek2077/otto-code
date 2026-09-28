@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { OTTO_TOOL_GROUPS, ottoToolGroupForName } from "@otto-code/protocol/provider-config";
+import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { createOttoToolCatalog, type OttoToolHostDependencies } from "./otto-tools.js";
 
@@ -76,5 +77,83 @@ describe("domain registrars share one Otto catalog boundary", () => {
     const catalog = createOttoToolCatalog(host({ moveChatToWorkspace }));
     await expect(catalog.executeTool("move_chat_to_workspace", {})).rejects.toThrow();
     expect(moveChatToWorkspace).not.toHaveBeenCalled();
+  });
+
+  test("routes every Kanban tool into its own group before suggested tasks", () => {
+    for (const name of [
+      "kanban_list_boards",
+      "kanban_get_board",
+      "kanban_link_task",
+      "kanban_update_card",
+    ]) {
+      expect(ottoToolGroupForName(name)).toBe("kanban");
+    }
+  });
+
+  test("Kanban tools only mutate a board configured for the caller's project", async () => {
+    const card = {
+      id: "ISSUE-1",
+      title: "Work",
+      status: "To Do",
+      assignees: [],
+      rawProviderId: "ISSUE-1",
+    };
+    const getBoard = vi.fn(async () => ({
+      board: {
+        id: "board-1",
+        title: "Board",
+        columns: [{ id: "todo", name: "To Do", cards: [card] }],
+      },
+      fields: [],
+      cardFields: {},
+    }));
+    const createCard = vi.fn(async () => card);
+    const provider = {
+      providerId: "jira",
+      listBoards: vi.fn(async () => [{ providerId: "jira", boardId: "board-1", title: "Board" }]),
+      getBoard,
+      createCard,
+    };
+    const dispose = vi.fn();
+    const catalog = createOttoToolCatalog(
+      host({
+        enabledOttoToolGroups: ["kanban"],
+        readKanbanConfig: () => ({}) as MutableDaemonConfig,
+        kanbanProjectRegistry: {
+          list: async () =>
+            [
+              {
+                projectId: "project-1",
+                rootPath: "/project",
+                kanban: { adapter: "jira", boardId: "board-1" },
+              },
+            ] as never,
+        },
+        kanbanWorkspaceRegistry: { get: async () => null, list: async () => [] },
+        createKanbanRegistry: () => ({
+          listProviderIds: () => ["jira"],
+          getProvider: () => provider as never,
+          initialize: async () => {},
+          dispose,
+        }),
+      }),
+    );
+    expect([...catalog.tools.keys()]).toEqual([
+      "kanban_list_boards",
+      "kanban_get_board",
+      "kanban_create_card",
+      "kanban_link_task",
+      "kanban_move_card",
+      "kanban_update_card",
+      "kanban_delete_card",
+    ]);
+    await expect(
+      catalog.executeTool("kanban_create_card", { boardId: "other-board", title: "New" }),
+    ).rejects.toThrow(/unavailable/);
+    expect(createCard).not.toHaveBeenCalled();
+    await catalog.executeTool("kanban_create_card", { title: "New" });
+    expect(createCard).toHaveBeenCalledWith("board-1", null, { title: "New" });
+    expect(getBoard).toHaveBeenCalledTimes(1);
+    expect(dispose).toHaveBeenCalledTimes(2);
   });
 });

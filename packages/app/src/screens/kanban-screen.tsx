@@ -37,10 +37,16 @@ import {
 } from "@/components/icons/material-icons";
 import { useKanbanBoard, useKanbanBoards } from "@/kanban/kanban-hooks";
 import { KanbanRemediationBlock } from "@/screens/kanban-remediation-block";
+import { KanbanCardDetail } from "@/screens/kanban-card-detail";
 import { useProjects } from "@/hooks/use-projects";
 import { buildProjectSettingsRoute } from "@/utils/host-routes";
 import { KANBAN_NOT_CONFIGURED } from "@otto-code/protocol/kanban";
-import type { KanbanCard, KanbanColumn, KanbanRemediation } from "@otto-code/protocol/kanban";
+import type {
+  KanbanCard,
+  KanbanColumn,
+  KanbanFieldValueInput,
+  KanbanRemediation,
+} from "@otto-code/protocol/kanban";
 import {
   resolveKanbanProjectSelection,
   resolveKanbanScreenBodyState,
@@ -705,6 +711,8 @@ export function KanbanScreen(): ReactElement {
           serverId={selection.serverId}
           providerId={boardProviderId}
           boardId={selection.boardId}
+          projectId={selection.projectId}
+          projectKey={selection.projectKey}
           remediationCwd={remediationTarget?.cwd ?? null}
         />
       ) : (
@@ -831,60 +839,139 @@ function KanbanBoardView({
   serverId,
   providerId,
   boardId,
+  projectId,
+  projectKey,
   remediationCwd,
 }: {
   serverId: string;
   providerId: string;
   boardId: string;
+  projectId: string;
+  projectKey: string | null;
   /** Project root for a fix-it command; null leaves copy as the only route. */
   remediationCwd: string | null;
 }): ReactElement {
   const [refreshKey, setRefreshKey] = useState(0);
-  const { board, isLoading, error, remediation } = useKanbanBoard(
-    serverId,
-    providerId,
-    boardId,
-    refreshKey,
-  );
+  const { board, fields, cardFields, canDeleteCards, isLoading, error, remediation } =
+    useKanbanBoard(serverId, providerId, boardId, refreshKey);
   const client = getHostRuntimeStore().getClient(serverId);
+  const canWatch = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.kanbanBoardWatch === true,
+  );
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
+
+  useEffect(() => {
+    if (!client || !canWatch) return;
+    const unsubscribe = client.on("kanban.board.changed", (event) => {
+      if (event.payload.providerId === providerId && event.payload.boardId === boardId) refresh();
+    });
+    void client.kanbanWatchBoard({ providerId, boardId, watch: true }).catch(() => undefined);
+    return () => {
+      unsubscribe();
+      void client.kanbanWatchBoard({ providerId, boardId, watch: false }).catch(() => undefined);
+    };
+  }, [client, canWatch, providerId, boardId, refresh]);
+
+  const updateCard = useCallback(
+    async (cardId: string, fieldId: string, value: KanbanFieldValueInput) => {
+      if (!client) throw new Error("Host disconnected");
+      const payload = await client.kanbanUpdateCard({
+        providerId,
+        boardId,
+        cardId,
+        fieldId,
+        value,
+      });
+      if (payload.error) throw new Error(payload.error);
+      refresh();
+    },
+    [client, providerId, boardId, refresh],
+  );
+
+  const deleteCard = useCallback(
+    async (cardId: string) => {
+      if (!client) throw new Error("Host disconnected");
+      const payload = await client.kanbanDeleteCard({ providerId, boardId, cardId });
+      if (payload.error) throw new Error(payload.error);
+      refresh();
+    },
+    [client, providerId, boardId, refresh],
+  );
+
+  const linkTask = useCallback(
+    async (externalId: string, columnId?: string) => {
+      if (!client) throw new Error("Host disconnected");
+      const payload = await client.kanbanLinkTask({
+        providerId,
+        boardId,
+        externalId,
+        projectId,
+        ...(projectKey ? { projectKey } : {}),
+        ...(columnId ? { columnId } : {}),
+      });
+      if (payload.error) throw new Error(payload.error);
+      refresh();
+    },
+    [client, providerId, boardId, projectId, projectKey, refresh],
+  );
 
   const moveCard = useCallback(
     async (cardId: string, targetColumnId: string) => {
       if (!client) return;
-      const payload = await client.kanbanMoveCard({
-        providerId,
-        boardId,
-        cardId,
-        targetColumnId,
-      });
-      if (payload.error) {
-        throw new Error(payload.error);
+      setActionError(null);
+      try {
+        const payload = await client.kanbanMoveCard({
+          providerId,
+          boardId,
+          cardId,
+          targetColumnId,
+        });
+        if (payload.error) throw new Error(payload.error);
+      } catch (cause) {
+        setActionError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        refresh();
       }
-      refresh();
     },
     [client, providerId, boardId, refresh],
   );
 
   const createCard = useCallback(
     async (columnId: string, title: string) => {
-      if (!client) return;
-      const payload = await client.kanbanCreateCard({
-        providerId,
-        boardId,
-        columnId,
-        title,
-      });
-      if (payload.error) {
-        throw new Error(payload.error);
+      if (!client) throw new Error("Host disconnected");
+      setActionError(null);
+      try {
+        const payload = await client.kanbanCreateCard({ providerId, boardId, columnId, title });
+        if (payload.error) throw new Error(payload.error);
+        refresh();
+      } catch (cause) {
+        setActionError(cause instanceof Error ? cause.message : String(cause));
+        throw cause;
       }
-      refresh();
     },
     [client, providerId, boardId, refresh],
   );
 
-  if (isLoading) {
+  const selectedCard = board?.columns
+    .flatMap((column) => column.cards)
+    .find((card) => card.id === selectedCardId);
+  const closeDetail = useCallback(() => setSelectedCardId(null), []);
+  const updateSelectedCard = useCallback(
+    (fieldId: string, value: KanbanFieldValueInput) => {
+      if (!selectedCardId) throw new Error("No card selected");
+      return updateCard(selectedCardId, fieldId, value);
+    },
+    [selectedCardId, updateCard],
+  );
+  const deleteSelectedCard = useCallback(() => {
+    if (!selectedCardId) throw new Error("No card selected");
+    return deleteCard(selectedCardId);
+  }, [selectedCardId, deleteCard]);
+
+  if (isLoading && !board) {
     return (
       <View style={styles.centered}>
         <LoadingSpinner size="large" />
@@ -906,7 +993,35 @@ function KanbanBoardView({
     );
   }
 
-  return <KanbanColumns board={board} onMoveCard={moveCard} onCreateCard={createCard} />;
+  return (
+    <>
+      {actionError ? (
+        <Text style={styles.messageSub} testID="kanban-action-error">
+          {actionError}
+        </Text>
+      ) : null}
+      <KanbanColumns
+        board={board}
+        providerId={providerId}
+        onMoveCard={moveCard}
+        onCreateCard={createCard}
+        onOpenCard={setSelectedCardId}
+        onLinkTask={linkTask}
+        onActionError={setActionError}
+      />
+      {selectedCard ? (
+        <KanbanCardDetail
+          card={selectedCard}
+          fields={fields}
+          values={cardFields[selectedCard.id] ?? []}
+          canDelete={canDeleteCards}
+          onClose={closeDetail}
+          onUpdate={updateSelectedCard}
+          onDelete={deleteSelectedCard}
+        />
+      ) : null}
+    </>
+  );
 }
 
 // ── Columns + drag ──────────────────────────────────────────────────────────
@@ -939,16 +1054,43 @@ function containsPoint(rect: Rect, x: number, y: number): boolean {
 
 function KanbanColumns({
   board,
+  providerId,
   onMoveCard,
   onCreateCard,
+  onOpenCard,
+  onLinkTask,
+  onActionError,
 }: {
   board: { columns: KanbanColumn[] };
+  providerId: string;
   onMoveCard: (cardId: string, targetColumnId: string) => Promise<void>;
   onCreateCard: (columnId: string, title: string) => Promise<void>;
+  onOpenCard: (cardId: string) => void;
+  onLinkTask: (externalId: string, columnId?: string) => Promise<void>;
+  onActionError: (error: string | null) => void;
 }): ReactElement {
   const isCompact = useIsCompactFormFactor();
   const [drag, setDrag] = useState<DragState | null>(null);
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [externalId, setExternalId] = useState("");
+  const [linkPending, setLinkPending] = useState(false);
+  const startLinking = useCallback(() => setLinking(true), []);
+  const cancelLinking = useCallback(() => setLinking(false), []);
+  const submitLink = useCallback(async () => {
+    if (!externalId.trim() || linkPending) return;
+    setLinkPending(true);
+    onActionError(null);
+    try {
+      await onLinkTask(externalId.trim());
+      setExternalId("");
+      setLinking(false);
+    } catch (cause) {
+      onActionError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLinkPending(false);
+    }
+  }, [externalId, linkPending, onLinkTask, onActionError]);
   const columnRectsRef = useRef<Map<string, Rect>>(new Map());
   const cardRectsRef = useRef<Map<string, Rect>>(new Map());
 
@@ -1031,6 +1173,36 @@ function KanbanColumns({
 
   return (
     <View style={styles.board} testID="kanban-board">
+      {linking ? (
+        <View style={styles.createRow}>
+          <TextInput
+            style={styles.createInput}
+            value={externalId}
+            onChangeText={setExternalId}
+            placeholder={
+              providerId === "jira"
+                ? "Jira issue key"
+                : "GitHub issue or PR URL, node ID, or number"
+            }
+            testID="kanban-link-input"
+          />
+          <Button
+            size="xs"
+            onPress={submitLink}
+            disabled={linkPending || !externalId.trim()}
+            testID="kanban-link-confirm"
+          >
+            Link
+          </Button>
+          <Button size="xs" variant="ghost" onPress={cancelLinking}>
+            Cancel
+          </Button>
+        </View>
+      ) : (
+        <Button size="xs" variant="ghost" onPress={startLinking} testID="kanban-link-task">
+          Link existing issue or PR
+        </Button>
+      )}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -1052,6 +1224,7 @@ function KanbanColumns({
             onCardDragEnd={handleDragEnd}
             onMoveCard={onMoveCard}
             onCreateCard={onCreateCard}
+            onOpenCard={onOpenCard}
             isCompact={isCompact}
           />
         ))}
@@ -1079,6 +1252,7 @@ function KanbanColumnView({
   onCardDragEnd,
   onMoveCard,
   onCreateCard,
+  onOpenCard,
   isCompact,
 }: {
   column: KanbanColumn;
@@ -1092,6 +1266,7 @@ function KanbanColumnView({
   onCardDragEnd: (event: { x: number; y: number }) => void;
   onMoveCard: (cardId: string, targetColumnId: string) => Promise<void>;
   onCreateCard: (columnId: string, title: string) => Promise<void>;
+  onOpenCard: (cardId: string) => void;
   isCompact: boolean;
 }): ReactElement {
   const { t } = useTranslation();
@@ -1117,6 +1292,8 @@ function KanbanColumnView({
       await onCreateCard(column.id, title);
       setNewTitle("");
       setCreating(false);
+    } catch {
+      // The board keeps the action error visible and this input stays open.
     } finally {
       setSubmitting(false);
     }
@@ -1172,6 +1349,7 @@ function KanbanColumnView({
             onDragChange={onCardDragChange}
             onDragEnd={onCardDragEnd}
             onMoveCard={onMoveCard}
+            onOpenCard={onOpenCard}
           />
         ))}
         {creating ? (
@@ -1229,6 +1407,7 @@ function KanbanCardView({
   onDragChange,
   onDragEnd,
   onMoveCard,
+  onOpenCard,
 }: {
   card: KanbanCard;
   sourceColumnId: string;
@@ -1239,6 +1418,7 @@ function KanbanCardView({
   onDragChange: (event: { x: number; y: number }) => void;
   onDragEnd: (event: { x: number; y: number }) => void;
   onMoveCard: (cardId: string, targetColumnId: string) => Promise<void>;
+  onOpenCard: (cardId: string) => void;
 }): ReactElement {
   const handleLayout = useCallback(
     (event: LayoutEvent) => onLayout(card.id, event),
@@ -1279,13 +1459,20 @@ function KanbanCardView({
       void Linking.openURL(card.url).catch(() => undefined);
     }
   }, [card.url]);
+  const openDetail = useCallback(() => onOpenCard(card.id), [onOpenCard, card.id]);
 
   return (
     <GestureDetector gesture={dragGesture}>
       <View onLayout={handleLayout} style={cardStyle} accessibilityLabel={card.title}>
-        <Text style={styles.cardTitle} numberOfLines={3}>
-          {card.title}
-        </Text>
+        <Pressable
+          onPress={openDetail}
+          accessibilityRole="button"
+          testID={`kanban-card-detail-${card.id}`}
+        >
+          <Text style={styles.cardTitle} numberOfLines={3}>
+            {card.title}
+          </Text>
+        </Pressable>
         {card.body ? (
           <Text style={styles.cardDescription} numberOfLines={2}>
             {card.body}

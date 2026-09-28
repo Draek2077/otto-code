@@ -1,4 +1,5 @@
 import type { KanbanBoard, KanbanBoardRef, KanbanCard } from "@otto-code/protocol/kanban";
+import type { KanbanBoardSnapshot } from "./types.js";
 import type {
   KanbanBoardListContext,
   KanbanProvider,
@@ -111,9 +112,11 @@ export class InMemoryKanbanProvider implements KanbanProvider {
     }));
   }
 
-  async getBoard(boardId: string): Promise<KanbanBoard> {
+  async getBoard(boardId: string): Promise<KanbanBoardSnapshot> {
     // Deep copy: the provider must not hand the session its live state.
-    return structuredClone(this.requireBoard(boardId));
+    // The mock exposes no editable fields, which is a truthful answer rather
+    // than a gap: there is no backing tracker for a field write to reach.
+    return { board: structuredClone(this.requireBoard(boardId)), fields: [], cardFields: {} };
   }
 
   async moveCard(boardId: string, cardId: string, targetColumnId: string): Promise<void> {

@@ -691,6 +691,8 @@ function toolGroupLabel(t: TFunction, group: OttoToolGroup): string {
       return t("settings.providers.tools.groups.tasks");
     case "voice":
       return t("settings.providers.tools.groups.voice");
+    case "kanban":
+      return "Kanban";
   }
 }
 

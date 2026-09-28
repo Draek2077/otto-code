@@ -38,6 +38,7 @@ import { scheduleOnRN } from "react-native-worklets";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ResizeHandle } from "@/components/resize-handle";
+import { clampNormalizedSizes } from "@/stores/workspace-layout-actions";
 import {
   SIDEBAR_RESIZE_ACTIVATION_OFFSET,
   SIDEBAR_RESIZE_FAIL_OFFSET,
@@ -1173,8 +1174,14 @@ function SplitNodeView({
     groupId ? state.splitSizesByWorkspace[workspaceKey]?.[groupId] : undefined,
   );
   const groupChildren = node.kind === "group" ? node.group.children : EMPTY_SPLIT_NODES;
-  const groupSizes =
+  const savedGroupSizes =
     storedGroupSizes ?? (node.kind === "group" ? node.group.sizes : EMPTY_SPLIT_SIZES);
+  // Saved ratios can outlive a split or pane removal. Layout and dragging must
+  // share a complete size list, or a new divider has no right-hand size to move.
+  const groupSizes = useMemo(
+    () => clampNormalizedSizes(savedGroupSizes, groupChildren.length),
+    [savedGroupSizes, groupChildren.length],
+  );
   const visibleFlex = useMemo(
     () => resolveVisibleGroupFlex(groupChildren, groupSizes, maximizedPaneId),
     [groupChildren, groupSizes, maximizedPaneId],

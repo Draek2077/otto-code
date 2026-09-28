@@ -1,6 +1,5 @@
 import {
   KANBAN_NOT_CONFIGURED,
-  type KanbanBoard,
   type KanbanBoardRef,
   type KanbanCard,
   type KanbanRemediation,
@@ -8,14 +7,22 @@ import {
 import type {
   KanbanBoardGetRequest,
   KanbanBoardsListRequest,
+  KanbanBoardWatchRequest,
   KanbanCardCreateRequest,
+  KanbanCardDeleteRequest,
   KanbanCardMoveRequest,
+  KanbanCardUpdateRequest,
   KanbanTaskLinkRequest,
   SessionOutboundMessage,
 } from "@otto-code/protocol/messages";
 import { createKanbanRegistry, type KanbanRegistry } from "./kanban-registry.js";
 import { remediationOf } from "./kanban-remediation.js";
-import type { KanbanBoardListContext } from "./types.js";
+import type {
+  KanbanBoardListContext,
+  KanbanBoardSnapshot,
+  KanbanCardUpdateResult,
+} from "./types.js";
+import { KanbanBoardWatcher } from "./kanban-board-watcher.js";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 
 // The "this project has no board yet" message lives with the wire model in
@@ -72,11 +79,23 @@ export class KanbanSession {
   private readonly registry: KanbanRegistry;
   private readonly host: KanbanSessionHost;
   private initializedProviders = new Set<string>();
+  private readonly watcher: KanbanBoardWatcher;
 
   constructor(host: KanbanSessionHost) {
     this.host = host;
     const create = host.createRegistry ?? createKanbanRegistry;
     this.registry = create({ readConfig: host.readConfig });
+    this.watcher = new KanbanBoardWatcher({
+      host: {
+        onChanged: ({ providerId, boardId, revision }) => {
+          this.host.emit({
+            type: "kanban.board.changed",
+            payload: { providerId, boardId, ...(revision ? { revision } : {}) },
+          });
+        },
+        log: this.host.log,
+      },
+    });
   }
 
   async handleBoardsListRequest(msg: KanbanBoardsListRequest): Promise<void> {
@@ -139,7 +158,7 @@ export class KanbanSession {
 
   async handleBoardGetRequest(msg: KanbanBoardGetRequest): Promise<void> {
     const emit = (
-      board: KanbanBoard | null,
+      snapshot: KanbanBoardSnapshot | null,
       error: string | null,
       remediation: KanbanRemediation | null = null,
     ) => {
@@ -147,7 +166,14 @@ export class KanbanSession {
         type: "kanban.board.get.response",
         payload: {
           providerId: msg.providerId,
-          board,
+          board: snapshot?.board ?? null,
+          // The field sidecar is omitted entirely when a provider exposes no
+          // fields, so a client cannot tell "no fields" apart from "an older
+          // daemon" by accident - the capability flag is the one signal.
+          ...(snapshot && snapshot.fields.length > 0
+            ? { fields: snapshot.fields, cardFields: snapshot.cardFields }
+            : {}),
+          ...(snapshot ? { canDeleteCards: Boolean(provider?.deleteCard) } : {}),
           error,
           remediation,
           requestId: msg.requestId,
@@ -166,6 +192,138 @@ export class KanbanSession {
       this.host.log.error("kanban.board.get failed", error);
       emit(null, ...this.failure(msg.providerId, error));
     }
+  }
+
+  async handleCardUpdateRequest(msg: KanbanCardUpdateRequest): Promise<void> {
+    const emit = (
+      result: KanbanCardUpdateResult | null,
+      error: string | null,
+      remediation: KanbanRemediation | null = null,
+    ) => {
+      this.host.emit({
+        type: "kanban.card.update.response",
+        payload: {
+          providerId: msg.providerId,
+          boardId: msg.boardId,
+          cardId: msg.cardId,
+          fieldId: msg.fieldId,
+          card: result?.card ?? null,
+          ...(result ? { cardFields: result.fieldValues } : {}),
+          error,
+          remediation,
+          requestId: msg.requestId,
+        },
+      });
+    };
+    const provider = this.registry.getProvider(msg.providerId);
+    if (!provider) {
+      emit(null, `Unknown kanban provider: ${msg.providerId}`);
+      return;
+    }
+    if (!provider.updateCardField) {
+      emit(null, `${msg.providerId} boards cannot edit card fields from Otto.`);
+      return;
+    }
+    try {
+      await this.ensureInitialized(msg.providerId);
+      emit(
+        await provider.updateCardField({
+          boardId: msg.boardId,
+          cardId: msg.cardId,
+          fieldId: msg.fieldId,
+          value: msg.value,
+        }),
+        null,
+      );
+    } catch (error) {
+      this.host.log.error("kanban.card.update failed", error);
+      emit(null, ...this.failure(msg.providerId, error));
+    }
+  }
+
+  async handleCardDeleteRequest(msg: KanbanCardDeleteRequest): Promise<void> {
+    const emit = (error: string | null, remediation: KanbanRemediation | null = null) => {
+      this.host.emit({
+        type: "kanban.card.delete.response",
+        payload: {
+          providerId: msg.providerId,
+          boardId: msg.boardId,
+          cardId: msg.cardId,
+          error,
+          remediation,
+          requestId: msg.requestId,
+        },
+      });
+    };
+    const provider = this.registry.getProvider(msg.providerId);
+    if (!provider) {
+      emit(`Unknown kanban provider: ${msg.providerId}`);
+      return;
+    }
+    if (!provider.deleteCard) {
+      emit(`${msg.providerId} boards cannot delete cards from Otto.`);
+      return;
+    }
+    try {
+      await this.ensureInitialized(msg.providerId);
+      await provider.deleteCard(msg.boardId, msg.cardId);
+      emit(null);
+    } catch (error) {
+      this.host.log.error("kanban.card.delete failed", error);
+      emit(...this.failure(msg.providerId, error));
+    }
+  }
+
+  async handleBoardWatchRequest(msg: KanbanBoardWatchRequest): Promise<void> {
+    const emit = (watching: boolean, error: string | null, pollIntervalMs?: number) => {
+      this.host.emit({
+        type: "kanban.board.watch.response",
+        payload: {
+          providerId: msg.providerId,
+          boardId: msg.boardId,
+          watching,
+          ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
+          error,
+          requestId: msg.requestId,
+        },
+      });
+    };
+    if (!msg.watch) {
+      this.watcher.unwatch(msg.providerId, msg.boardId);
+      emit(false, null);
+      return;
+    }
+    const provider = this.registry.getProvider(msg.providerId);
+    if (!provider) {
+      emit(false, `Unknown kanban provider: ${msg.providerId}`);
+      return;
+    }
+    if (!provider.readBoardRevision) {
+      // Not an error: the board simply will not refresh itself, and the client
+      // keeps its manual refresh. Saying so beats a watch that silently never
+      // fires.
+      emit(false, `${msg.providerId} boards cannot report changes to Otto.`);
+      return;
+    }
+    try {
+      await this.ensureInitialized(msg.providerId);
+      const interval = this.watcher.watch(msg.providerId, msg.boardId, () =>
+        this.readRevision(msg.providerId, msg.boardId),
+      );
+      emit(true, null, interval);
+    } catch (error) {
+      this.host.log.error("kanban.board.watch failed", error);
+      emit(false, describeError(error));
+    }
+  }
+
+  private async readRevision(providerId: string, boardId: string): Promise<string | null> {
+    const provider = this.registry.getProvider(providerId);
+    if (!provider?.readBoardRevision) {
+      return null;
+    }
+    await this.ensureInitialized(providerId);
+    return provider.readBoardRevision(boardId);
   }
 
   async handleCardMoveRequest(msg: KanbanCardMoveRequest): Promise<void> {
@@ -265,13 +423,43 @@ export class KanbanSession {
       await this.ensureInitialized(msg.providerId);
       const card = await provider.linkExternalTask(
         msg.boardId,
-        { externalId: msg.externalId },
+        { externalId: msg.externalId, ...(await this.resolveLinkRepo(msg)) },
         msg.columnId ?? null,
       );
       emit(msg.columnId ?? "default", card, null);
     } catch (error) {
       this.host.log.error("kanban.task.link failed", error);
       emit(msg.columnId ?? "default", null, ...this.failure(msg.providerId, error));
+    }
+  }
+
+  /**
+   * The repository a bare issue or pull-request number should resolve against.
+   *
+   * Derived from the project, never taken from the client: a number alone is
+   * ambiguous across repositories, and letting the caller name one would let a
+   * link point at an issue from somewhere else entirely. A project with no
+   * readable git remote yields nothing, and the provider then asks for a URL
+   * rather than guessing.
+   */
+  private async resolveLinkRepo(msg: KanbanTaskLinkRequest): Promise<{
+    owner?: string;
+    repo?: string;
+  }> {
+    if (!msg.projectId && !msg.projectKey) {
+      return {};
+    }
+    try {
+      const target = await this.host.resolveProjectTarget({
+        ...(msg.projectId ? { projectId: msg.projectId } : {}),
+        ...(msg.projectKey ? { projectKey: msg.projectKey } : {}),
+      });
+      return target?.owner && target.repo ? { owner: target.owner, repo: target.repo } : {};
+    } catch (error) {
+      // The link itself may still succeed with a node id, so a project lookup
+      // failure is context we lack rather than a reason to refuse.
+      this.host.log.error("kanban.task.link project lookup failed", error);
+      return {};
     }
   }
 
@@ -301,6 +489,7 @@ export class KanbanSession {
   }
 
   dispose(): void {
+    this.watcher.dispose();
     this.registry.dispose();
     this.initializedProviders.clear();
   }

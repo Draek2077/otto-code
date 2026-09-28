@@ -40,6 +40,7 @@ export const RemoteBrowserCommandSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("back"), browserId: BrowserAutomationBrowserIdSchema }),
   z.object({ kind: z.literal("forward"), browserId: BrowserAutomationBrowserIdSchema }),
   z.object({ kind: z.literal("reload"), browserId: BrowserAutomationBrowserIdSchema }),
+  z.object({ kind: z.literal("stop"), browserId: BrowserAutomationBrowserIdSchema }),
   z.object({
     kind: z.literal("tap"),
     browserId: BrowserAutomationBrowserIdSchema,
@@ -87,6 +88,8 @@ export const RemoteBrowserTabSchema = z.object({
   title: z.string(),
   viewport: ViewportSchema,
   state: z.enum(["suspended", "starting", "ready", "crashed", "quarantined"]),
+  isLoading: z.boolean().optional(),
+  observationId: z.number().int().nonnegative().optional(),
   canGoBack: z.boolean(),
   canGoForward: z.boolean(),
   error: z.string().nullable(),

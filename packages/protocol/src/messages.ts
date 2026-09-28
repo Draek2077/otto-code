@@ -121,6 +121,13 @@ import {
   KanbanCardCreateResponseSchema,
   KanbanTaskLinkRequestSchema,
   KanbanTaskLinkResponseSchema,
+  KanbanCardUpdateRequestSchema,
+  KanbanCardUpdateResponseSchema,
+  KanbanCardDeleteRequestSchema,
+  KanbanCardDeleteResponseSchema,
+  KanbanBoardWatchRequestSchema,
+  KanbanBoardWatchResponseSchema,
+  KanbanBoardChangedEventSchema,
 } from "./kanban.js";
 import {
   WorkspaceArchivePreflightRequestSchema,
@@ -4927,6 +4934,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   KanbanCardMoveRequestSchema,
   KanbanCardCreateRequestSchema,
   KanbanTaskLinkRequestSchema,
+  KanbanCardUpdateRequestSchema,
+  KanbanCardDeleteRequestSchema,
+  KanbanBoardWatchRequestSchema,
   ValidateBranchRequestSchema,
   BranchSuggestionsRequestSchema,
   ForgeSearchRequestSchema,
@@ -5330,6 +5340,14 @@ export const ServerInfoStatusPayloadSchema = z
         // The provider-agnostic Kanban board surface is present (kanban.*
         // RPCs + the /kanban screen).
         kanbanBoard: z.boolean().optional(),
+        // COMPAT(kanbanCardFields): added in v0.9.25, drop the gate when floor
+        // >= v0.9.25. The board read carries a field schema and per-card field
+        // values, and kanban.card.update / kanban.card.delete are served.
+        kanbanCardFields: z.boolean().optional(),
+        // COMPAT(kanbanBoardWatch): added in v0.9.25, drop the gate when floor
+        // >= v0.9.25. kanban.board.watch is served and the daemon emits
+        // kanban.board.changed when a watched board moves.
+        kanbanBoardWatch: z.boolean().optional(),
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
@@ -5434,6 +5452,8 @@ export const ServerInfoStatusPayloadSchema = z
         browserHistory: z.boolean().optional(),
         // COMPAT(remoteBrowser): added in v0.9.25, remove gate after 2027-03-26.
         remoteBrowser: z.boolean().optional(),
+        // COMPAT(remoteBrowserLoadStatus): added in v0.9.26, remove gate after 2027-03-27.
+        remoteBrowserLoadStatus: z.boolean().optional(),
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
         providerRemove: z.boolean().optional(),
         // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.
@@ -9580,6 +9600,10 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   KanbanCardMoveResponseSchema,
   KanbanCardCreateResponseSchema,
   KanbanTaskLinkResponseSchema,
+  KanbanCardUpdateResponseSchema,
+  KanbanCardDeleteResponseSchema,
+  KanbanBoardWatchResponseSchema,
+  KanbanBoardChangedEventSchema,
   ValidateBranchResponseSchema,
   BranchSuggestionsResponseSchema,
   ForgeSearchResponseSchema,

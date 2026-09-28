@@ -152,6 +152,43 @@ describe("hosted browser tab projection", () => {
     hook.unmount();
   });
 
+  it("projects page loading into a background tab until the host finishes", async () => {
+    const tab = (isLoading: boolean) => ({
+      browserId,
+      workspaceId: "workspace",
+      url: "https://example.com/",
+      title: "Shared page",
+      viewport: { mode: "responsive", width: 390, height: 844 },
+      state: "ready",
+      isLoading,
+      error: null,
+    });
+    const remoteBrowserExecute = vi
+      .fn()
+      .mockResolvedValueOnce({ tabs: [tab(true)] })
+      .mockResolvedValueOnce({ tabs: [tab(false)] });
+    const client = { remoteBrowserExecute } as unknown as DaemonClient;
+    const hook = renderHook(() =>
+      useHostedBrowserTabs({
+        client,
+        serverId: "host",
+        workspaceId: "workspace",
+        workspaceKey,
+        canSplitPanes: false,
+        enabled: true,
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(useBrowserStore.getState().browsersById[browserId]?.isLoading).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(useBrowserStore.getState().browsersById[browserId]?.isLoading).toBe(false);
+    hook.unmount();
+  });
+
   it("adopts a preview tab with its server identity", async () => {
     const remoteBrowserExecute = vi.fn().mockResolvedValue({
       tabs: [

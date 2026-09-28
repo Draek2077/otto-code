@@ -101,6 +101,11 @@ export class TabStream {
     if (!this.session) this.stale = true;
   }
 
+  /** Let a held frame request report page status even when pixels did not change. */
+  noteStatusChange(): void {
+    this.release();
+  }
+
   /** The viewport changed, so pushed frames must be resized. */
   async resize(): Promise<void> {
     this.stale = true;

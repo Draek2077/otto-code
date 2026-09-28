@@ -120,6 +120,9 @@ import type {
   KanbanCardMoveResponse,
   KanbanCardCreateResponse,
   KanbanTaskLinkResponse,
+  KanbanCardUpdateResponse,
+  KanbanCardDeleteResponse,
+  KanbanBoardWatchResponse,
   ValidateBranchResponse,
   BranchSuggestionsResponse,
   FileVersion,
@@ -4280,12 +4283,54 @@ export class DaemonClient {
   }
 
   async kanbanLinkTask(
-    input: { providerId: string; boardId: string; externalId: string; columnId?: string },
+    input: {
+      providerId: string;
+      boardId: string;
+      externalId: string;
+      columnId?: string;
+      projectId?: string;
+      projectKey?: string;
+    },
     requestId?: string,
   ): Promise<KanbanTaskLinkResponse["payload"]> {
     return this.sendNamespacedCorrelatedSessionRequest<"kanban.task.link.response">({
       requestId,
       message: { ...input, type: "kanban.task.link.request", requestId: "" },
+      timeout: 60000,
+    });
+  }
+
+  async kanbanUpdateCard(input: {
+    providerId: string;
+    boardId: string;
+    cardId: string;
+    fieldId: string;
+    value: import("@otto-code/protocol/kanban").KanbanFieldValueInput;
+  }): Promise<KanbanCardUpdateResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.update.response">({
+      message: { ...input, type: "kanban.card.update.request", requestId: "" },
+      timeout: 60000,
+    });
+  }
+
+  async kanbanDeleteCard(input: {
+    providerId: string;
+    boardId: string;
+    cardId: string;
+  }): Promise<KanbanCardDeleteResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.card.delete.response">({
+      message: { ...input, type: "kanban.card.delete.request", requestId: "" },
+      timeout: 60000,
+    });
+  }
+
+  async kanbanWatchBoard(input: {
+    providerId: string;
+    boardId: string;
+    watch: boolean;
+  }): Promise<KanbanBoardWatchResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"kanban.board.watch.response">({
+      message: { ...input, type: "kanban.board.watch.request", requestId: "" },
       timeout: 60000,
     });
   }

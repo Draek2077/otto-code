@@ -18,7 +18,7 @@ describe("InMemoryKanbanProvider", () => {
     expect(boards).toHaveLength(1);
     expect(boards[0].title).toBe("Local Demo Board");
 
-    const board = await provider.getBoard(boards[0].boardId);
+    const { board } = await provider.getBoard(boards[0].boardId);
     expect(board.columns.map((c) => c.name)).toEqual(["To Do", "In Progress", "Done"]);
     expect(board.columns[0].cards.length).toBeGreaterThan(0);
   });
@@ -27,12 +27,12 @@ describe("InMemoryKanbanProvider", () => {
     const provider = makeProvider();
     await init(provider);
     const boardId = (await provider.listBoards({}))[0].boardId;
-    const board = await provider.getBoard(boardId);
+    const { board } = await provider.getBoard(boardId);
     const card = board.columns[0].cards[0];
 
     await provider.moveCard(boardId, card.id, "done");
 
-    const after = await provider.getBoard(boardId);
+    const { board: after } = await provider.getBoard(boardId);
     const doneColumn = after.columns.find((c) => c.id === "done");
     expect(doneColumn?.cards.map((c) => c.id)).toContain(card.id);
     const moved = doneColumn?.cards.find((c) => c.id === card.id);
@@ -43,7 +43,7 @@ describe("InMemoryKanbanProvider", () => {
     const provider = makeProvider();
     await init(provider);
     const boardId = (await provider.listBoards({}))[0].boardId;
-    const before = (await provider.getBoard(boardId)).columns[1].cards.length;
+    const before = (await provider.getBoard(boardId)).board.columns[1].cards.length;
 
     const created = await provider.createCard(boardId, "in-progress", {
       title: "New work",
@@ -52,7 +52,7 @@ describe("InMemoryKanbanProvider", () => {
     expect(created.title).toBe("New work");
     expect(created.status).toBe("in-progress");
 
-    const after = (await provider.getBoard(boardId)).columns[1].cards.length;
+    const after = (await provider.getBoard(boardId)).board.columns[1].cards.length;
     expect(after).toBe(before + 1);
   });
 
@@ -66,7 +66,7 @@ describe("InMemoryKanbanProvider", () => {
     const provider = makeProvider();
     await init(provider);
     const boardId = (await provider.listBoards({}))[0].boardId;
-    const card = (await provider.getBoard(boardId)).columns[0].cards[0];
+    const card = (await provider.getBoard(boardId)).board.columns[0].cards[0];
     await expect(provider.moveCard(boardId, card.id, "no-such-column")).rejects.toThrow(
       /Unknown column/,
     );

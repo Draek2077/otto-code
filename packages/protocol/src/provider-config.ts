@@ -86,6 +86,7 @@ export const OTTO_TOOL_GROUPS = [
   "providers",
   "tasks",
   "voice",
+  "kanban",
 ] as const;
 
 export type OttoToolGroup = (typeof OTTO_TOOL_GROUPS)[number];
@@ -245,6 +246,7 @@ const OTTO_TOOL_GROUP_RULES: readonly OttoToolGroupRule[] = [
   { group: "knowledge", contains: ["project_"] },
   { group: "memory", contains: ["lesson"] },
   { group: "permissions", contains: ["permission"] },
+  { group: "kanban", prefixes: ["kanban_"] },
   { group: "tasks", contains: ["task"] },
   // "model" must stay below the rules above it: it is one character from
   // matching set_chat_mode, which belongs to the chat family.

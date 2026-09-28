@@ -31,6 +31,7 @@ import { registerChatMessagingTools } from "./register-chat-messaging-tools.js";
 import { registerChatStatusTools } from "./register-chat-status-tools.js";
 import { registerWidgetsTools } from "./register-widgets-tools.js";
 import { registerTasksTools } from "./register-tasks-tools.js";
+import { registerKanbanTools } from "./register-kanban-tools.js";
 import { registerMemoryTools } from "./register-memory-tools.js";
 import { registerKnowledgeTools } from "./register-knowledge-tools.js";
 import { registerChatMutationsTools } from "./register-chat-mutations-tools.js";
@@ -277,6 +278,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   registerWidgetsTools(registration);
 
   registerTasksTools(registration);
+
+  registerKanbanTools({
+    ...registration,
+    readKanbanConfig: options.readKanbanConfig,
+    projectRegistry: options.kanbanProjectRegistry,
+    workspaceRegistry: options.kanbanWorkspaceRegistry,
+    createRegistry: options.createKanbanRegistry,
+  });
 
   registerMemoryTools(registration);
 

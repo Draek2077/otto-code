@@ -2612,6 +2612,9 @@ export async function createOttoDaemon(
       ),
     workspaceRegistry,
     projectRegistry,
+    readKanbanConfig: () => daemonConfigStore.get(),
+    kanbanProjectRegistry: projectRegistry,
+    kanbanWorkspaceRegistry: workspaceRegistry,
     // Backs create_workspace's "local" isolation. The worktree half rides on
     // createOttoWorktree below, so both isolations reach the same services the
     // New Workspace screen uses.

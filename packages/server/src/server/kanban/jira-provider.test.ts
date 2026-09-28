@@ -11,9 +11,11 @@ interface StubIssue {
   statusName?: string;
   assignee?: string;
   description?: unknown;
+  labels?: string[];
 }
 
 interface StubOptions {
+  pageSize?: number;
   boards?: Array<{ id: number; name: string }>;
   columns?: Array<{ name: string; statusIds: string[] }>;
   issues?: StubIssue[];
@@ -21,6 +23,7 @@ interface StubOptions {
   /** Transitions the stub offers for any issue: transition id -> target status id. */
   transitions?: Array<{ id: string; toStatusId: string }>;
   createdKey?: string;
+  editFields?: Record<string, unknown>;
 }
 
 const DEFAULT_COLUMNS = [
@@ -50,6 +53,7 @@ function makeProvider(options: StubOptions = {}) {
       description: issue.description ?? null,
       status: { id: issue.statusId, name: issue.statusName ?? "Status" },
       assignee: issue.assignee ? { displayName: issue.assignee } : null,
+      labels: issue.labels ?? [],
     },
   });
 
@@ -62,6 +66,22 @@ function makeProvider(options: StubOptions = {}) {
     // A transition POST answers 204 with no body, exactly as Jira does.
     if (url.pathname.endsWith("/transitions") && method !== "GET") {
       return new Response(null, { status: 204 });
+    }
+    if (url.pathname.startsWith("/rest/api/3/issue/") && method === "PUT") {
+      const key = url.pathname.slice("/rest/api/3/issue/".length);
+      const issue = issues.find((entry) => entry.key === key);
+      const fields = JSON.parse(body ?? "{}").fields;
+      if (issue && typeof fields.summary === "string") issue.summary = fields.summary;
+      if (issue && Array.isArray(fields.labels)) issue.labels = fields.labels;
+      return new Response(null, { status: 204 });
+    }
+    if (url.pathname === "/rest/agile/1.0/board/100/issue" && options.pageSize) {
+      const startAt = Number(url.searchParams.get("startAt") ?? "0");
+      const page = issues.slice(startAt, startAt + options.pageSize);
+      return new Response(JSON.stringify({ issues: page.map(asIssue), total: issues.length }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }
     return new Response(JSON.stringify(routeJira(url.pathname, method, options, issues, asIssue)), {
       status: 200,
@@ -118,11 +138,29 @@ function routeJira(
     return { key: options.createdKey ?? "ENG-9" };
   }
   if (path.startsWith("/rest/api/3/issue/")) {
-    const key = path.slice("/rest/api/3/issue/".length);
-    const found = issues.find((issue) => issue.key === key);
-    return asIssue(found ?? { key, summary: `Summary for ${key}`, statusId: "1" });
+    return routeIssue(path, options, issues, asIssue);
   }
   return {};
+}
+
+function routeIssue(
+  path: string,
+  options: StubOptions,
+  issues: StubIssue[],
+  asIssue: (issue: StubIssue) => unknown,
+): unknown {
+  const key = path.slice("/rest/api/3/issue/".length);
+  if (key.endsWith("/editmeta")) return { fields: options.editFields ?? defaultEditFields() };
+  const found = issues.find((issue) => issue.key === key);
+  return asIssue(found ?? { key, summary: `Summary for ${key}`, statusId: "1" });
+}
+
+function defaultEditFields(): Record<string, unknown> {
+  return {
+    summary: { name: "Summary", schema: { type: "string" }, operations: ["set"] },
+    description: { name: "Description", schema: { type: "string" }, operations: ["set"] },
+    labels: { name: "Labels", schema: { type: "array", items: "string" }, operations: ["set"] },
+  };
 }
 
 const CREDENTIALS = {
@@ -192,7 +230,7 @@ describe("JiraKanbanProvider", () => {
   it("normalizes a board into its configured columns", async () => {
     const { provider } = makeProvider();
     await provider.initialize(CREDENTIALS);
-    const board = await provider.getBoard("100");
+    const { board } = await provider.getBoard("100");
 
     expect(board.title).toBe("Sprint Board");
     expect(board.columns.map((column) => column.id)).toEqual(["To Do", "In Progress"]);
@@ -210,7 +248,7 @@ describe("JiraKanbanProvider", () => {
       ],
     });
     await provider.initialize(CREDENTIALS);
-    const board = await provider.getBoard("100");
+    const { board } = await provider.getBoard("100");
 
     const unassigned = board.columns.find((column) => column.id === JIRA_UNASSIGNED_COLUMN_ID);
     expect(unassigned?.cards.map((card) => card.id)).toEqual(["ENG-3"]);
@@ -231,13 +269,91 @@ describe("JiraKanbanProvider", () => {
     calls.length = 0;
     await provider.getBoard("100");
 
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(4 + DEFAULT_ISSUES.length);
+  });
+
+  it("follows Jira issue pages to the end of the configured board", async () => {
+    const issues = Array.from({ length: 101 }, (_, index) => ({
+      key: `ENG-${index + 1}`,
+      summary: `Issue ${index + 1}`,
+      statusId: "1",
+    }));
+    const { provider, calls } = makeProvider({ issues, pageSize: 100 });
+    await provider.initialize(CREDENTIALS);
+    const snapshot = await provider.getBoard("100");
+    expect(snapshot.board.columns[0].cards).toHaveLength(101);
+    expect(calls.filter((call) => call.path === "/rest/agile/1.0/board/100/issue")).toHaveLength(2);
+  });
+
+  it("uses each issue's edit metadata to expose and write supported fields", async () => {
+    const { provider, calls } = makeProvider({
+      issues: [{ key: "ENG-1", summary: "Before", statusId: "1", labels: ["triage"] }],
+    });
+    await provider.initialize(CREDENTIALS);
+    const snapshot = await provider.getBoard("100");
+    expect(snapshot.fields.map((field) => [field.id, field.editable])).toEqual([
+      ["summary", true],
+      ["description", true],
+      ["labels", true],
+    ]);
+    expect(snapshot.cardFields["ENG-1"]?.find((field) => field.fieldId === "labels")?.display).toBe(
+      "triage",
+    );
+    const updated = await provider.updateCardField({
+      boardId: "100",
+      cardId: "ENG-1",
+      fieldId: "summary",
+      value: { kind: "text", text: "After" },
+    });
+    expect(updated.card.title).toBe("After");
+    expect(calls.find((call) => call.method === "PUT")?.body).toBe(
+      JSON.stringify({ fields: { summary: "After" } }),
+    );
+  });
+
+  it("writes Jira textarea custom fields as Atlassian documents", async () => {
+    const { provider, calls } = makeProvider({
+      issues: [{ key: "ENG-1", summary: "A", statusId: "1" }],
+      editFields: {
+        customfield_10001: {
+          name: "Notes",
+          schema: {
+            type: "string",
+            custom: "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+          },
+          operations: ["set"],
+        },
+      },
+    });
+    await provider.initialize(CREDENTIALS);
+    const snapshot = await provider.getBoard("100");
+    expect(snapshot.fields[0]).toMatchObject({
+      id: "customfield_10001",
+      kind: "richText",
+      editable: true,
+    });
+
+    await provider.updateCardField({
+      boardId: "100",
+      cardId: "ENG-1",
+      fieldId: "customfield_10001",
+      value: { kind: "text", text: "A note" },
+    });
+    expect(JSON.parse(calls.find((call) => call.method === "PUT")?.body ?? "{}")).toEqual({
+      fields: {
+        customfield_10001: {
+          type: "doc",
+          version: 1,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "A note" }] }],
+        },
+      },
+    });
   });
 
   it("gives cards a browse URL rather than the REST self link", async () => {
     const { provider } = makeProvider();
     await provider.initialize(CREDENTIALS);
-    const board = await provider.getBoard("100");
+    const { board } = await provider.getBoard("100");
 
     expect(board.columns[0].cards[0].url).toBe(`${SITE}/browse/ENG-1`);
   });
@@ -322,7 +438,7 @@ describe("JiraKanbanProvider", () => {
       ],
     });
     await provider.initialize(CREDENTIALS);
-    const board = await provider.getBoard("100");
+    const { board } = await provider.getBoard("100");
 
     expect(board.columns[0].cards[0].body).toBe("Body text");
   });

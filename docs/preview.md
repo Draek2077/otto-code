@@ -372,6 +372,15 @@ colour codes. A failed action keeps its message until the next action; frame pol
 longer clears it. Back and Forward reflect the page's real history. On a
 phone, Send with an empty field presses Enter, and Backspace in an empty field
 goes to the page. Other keys (Tab, Escape, arrows) have no phone control yet.
+
+Hosted tabs report main-frame navigation from the host page rather than from
+the command response. The tab spinner and Reload/Stop control stay active until
+the page's load event or a failed navigation. Reload and address navigation
+show progress immediately, and Stop asks Chromium to cancel the active load.
+A held frame request wakes for a loading-state change even if the page pixels
+do not change. Hosts advertise `remoteBrowserLoadStatus` for this behavior;
+older hosts retain their existing browser controls.
+
 Page-created popup windows are closed rather than left as untracked daemon pages.
 
 ### Hosted frame stream
@@ -431,8 +440,8 @@ show two to four frames a second instead of one; the idle budget is the dial
 for that trade. These numbers are from one machine on a local socket. They do
 not include relay encryption or a cellular link.
 
-With the metrics bar enabled, a hosted tab shows its own reading under the
-page: frames per second, KB/s, MB/hour, time to draw a frame, and the host's
+With the metrics bar enabled, a hosted tab shows its own reading below the
+page text box: frames per second, KB/s, MB/hour, time to draw a frame, and the host's
 count of pushed frames against screenshots.
 
 Responsive browser surfaces snap their bounds outward to whole CSS pixels, with

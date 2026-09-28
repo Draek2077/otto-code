@@ -44,7 +44,7 @@ function adoptHostedTab(
     renderMode: "hosted",
     url: tab.url,
     title: tab.title,
-    isLoading: tab.state === "starting",
+    isLoading: tab.isLoading ?? tab.state === "starting",
     lastError: tab.error,
     viewport:
       tab.viewport.mode === "fixed"

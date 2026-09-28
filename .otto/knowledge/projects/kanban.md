@@ -2,14 +2,14 @@
 id: "kanban"
 kind: "project"
 title: "Kanban"
-status: "confirmed"
+status: "proposed"
 tags: ["kanban","github-projects","jira","project-settings","v0.9"]
 delivery_status: "in_build"
-progress_completed: 1
+progress_completed: 2
 progress_total: 5
 progress_unit: "0.9 delivery slices"
 created_at: "2026-08-27T00:35:28.410Z"
-updated_at: "2026-08-27T02:06:52.068Z"
+updated_at: "2026-09-28T01:56:54.267Z"
 ---
 # Kanban
 
@@ -35,25 +35,21 @@ A field appears only when the selected provider and board can actually read or w
 
 ## Verified current baseline
 
-### Existing end-to-end seams
+### Code and focused verification
 
-- **Capability gate:** `server_info.features.kanbanBoard` is the central client gate in `packages/app/src/kanban/kanban-hooks.ts`. The protocol field is optional for old peers, and the client does not create a legacy fallback.
-- **Project scope and target storage:** a project carries a non-secret `projectKanban` target. Project Settings stages GitHub/Jira target changes with the page-level Save action, and the daemon normalizes/rejects token-shaped or invalid values before persisting them.
-- **Host and project resolution:** `/kanban` selects a Kanban-capable host then a project, preferring current/last workspace context without overriding an explicit Kanban choice. An unconfigured project renders a Project Settings route.
-- **Authoritative explicit targets:** GitHub Project URLs retain their user/organization owner alongside the board number; node ids remain direct. The session passes an explicit target to the provider, GitHub resolves it deterministically, and Jira reads that board directly. Old number-only records fall back to the project remote owner.
-- **Provider services:** a provider-neutral `KanbanProvider` SPI registers GitHub Projects v2, Jira Cloud, and memory test infrastructure. Both real providers reuse host-owned authentication: GitHub reads the `gh` CLI credential; Jira reads the shared Atlassian email/API-token/site configuration.
-- **Board interaction:** the screen loads a board, refreshes it, creates a title-only card, moves it by drag or menu, opens a card URL externally, and shows daemon-supplied GitHub scope recovery with copy/run-in-terminal.
-- **Provider implementation:** GitHub Projects reads GraphQL fields/items and mutates item status/create/link; Jira uses the real Agile board configuration and issue transitions, creates Jira tasks, and links a Jira issue key. Jira exposes no writable quick-filter fiction.
-- **Focused evidence:** protocol, project-target, provider, session, screen-state, and Project Settings draft tests exist. GitHub remediation detection and cached-credential invalidation are unit-covered.
+- A project stores a non-secret GitHub Projects v2 or Jira board target. Project Settings stages that target with Save; Kanban selects its host and project and resolves an explicit target rather than choosing an arbitrary accessible board.
+- The daemon owns GitHub `gh` CLI and shared Atlassian credentials, provider requests, and normalized board responses. GitHub GraphQL documents now validate against the live schema (22 checked, 0 invalid). This proves document validity, not that a real board accepts a read or mutation.
+- GitHub item and field pages, Jira issue pages, card fields, card updates, linking, movement, and GitHub board-item removal are implemented. Bounded or overflowing provider data produces an explicit error instead of a knowingly partial board. Jira edits use per-issue `editmeta`; GitHub board changes use polling.
+- The app has a card detail editor, link and remove actions, provider error display, and board re-read after mutations and GitHub change notifications. Card fields remain in the response sidecar because the board/card wire schemas are strict.
+- The optional Kanban Otto tool group exposes list, get, create, link, move, update, and delete. Tools resolve the caller's configured project board and apply workspace access permission gates.
+- Focused evidence on 2026-09-27: 97 Kanban provider/tool tests, 2 card-detail UI tests, and 41 workspace permission tests passed; protocol/client build, server and app typechecks, targeted lint, formatting, and `git diff --check` passed. `docs/kanban.md` describes this implementation and its proof boundary.
 
-### Verified gaps and constraints
+### Remaining release gates
 
-- Read pagination is bounded rather than complete: GitHub lists 50 boards and reads 200 items/20 fields/50 options in one GraphQL request; Jira lists and reads 100 rows. “Full board” therefore remains unproven.
-- The normalized card contract has only title, optional body, status, assignees, URL, and opaque provider id. There is no provider capability descriptor and no wire/model/UI path for card title/description updates, labels, priority, due date, assignee mutation, or field-level editability.
-- `kanban.task.link` has protocol/client/server plumbing but no UI caller. In addition, its GitHub numeric issue path is missing resolved project owner/repo context, so it cannot correctly resolve a repository issue number from the screen.
-- GitHub Project scope remediation is actionable and provider-neutral on the wire, but the preflight host card only checks generic GitHub hosting authentication. The Atlassian card checks Bitbucket hosting rather than Jira site/board accessibility. Neither is sufficient proof that the configured Kanban provider can operate the selected board.
-- Jira transition availability is discovered only while moving. Otto correctly shows an error when a transition is unavailable, but does not yet disclose unreachable target columns before a drag/menu attempt.
-- Contract tests use injected HTTP/GraphQL responses. No GitHub sandbox or Jira Cloud sandbox/live proof is recorded, and no Kanban T1/T2 coverage row is yet verified in the release matrix.
+- No configured GitHub Projects or Jira board was exercised end to end. The repository owner `Draek2077` had zero visible GitHub Projects under the active `gh` credential on 2026-09-27. Injected provider responses and live schema validation do not prove provider acceptance.
+- The charter's T1 and T2 release journeys, a controlled provider mutation/read-back, operation-specific Kanban auth preflight, and provider-supplied board external-open behavior remain unverified or unimplemented. The preflight host cards are still generic hosting checks.
+- Jira transition availability is checked on move, not before a drag/menu choice. Jira cannot remove a board card through this provider. GitHub polling is periodic, not a push webhook.
+- The completion ledger stays open and the project remains in build. A passing code fixture is not a completed end-user provider proof.
 
 ## 0.9 delivery inventory
 
@@ -137,7 +133,7 @@ Before expanding the feature, keep the existing claims honest with focused tests
 - Project Settings persists the target; host/project selection survives navigation and opens the selected project scope.
 - Refresh, create, move, card external open, and GitHub scope remediation have a UI-state or T1 assertion in addition to provider request fixtures.
 - Current bounded-read limits are tested as limits, not passed off as complete-board proof.
-- The absence of a link UI, field-edit path, board external URL, capability descriptor, Jira preflight, and live proof remains represented as an open ledger row rather than a passing test.
+- The absence of board external-open, operation-specific Jira preflight, T1/T2 release journeys, and live provider proof remains represented as open ledger work rather than a passing test.
 
 ### Final release journeys
 
@@ -180,9 +176,9 @@ A row may be marked complete only with linked evidence naming the relevant fixtu
 ## Delivery sequence
 
 1. **Authoritative target resolution** — **completed and unit-verified.** GitHub target identity is preserved, explicit targets flow through the provider boundary, and GitHub/Jira return only the configured board.
-2. **Complete bounded reads** — provider pagination/reconciliation and full-board error semantics, with real-shape contract fixtures.
-3. **Capability disclosure and auth preflight** — provider/board field-action capabilities plus configured-provider connection checks and remediation.
-4. **Practical mutation loop** — finish link with project context, then capability-gated edit fields and post-mutation reconciliation.
+2. **Complete bounded reads** — implemented and focused-test verified for GitHub and Jira, with explicit overflow errors; live board acceptance remains open.
+3. **Capability disclosure and auth preflight** — field and action disclosure is implemented; configured-provider preflight remains open.
+4. **Practical mutation loop** — tool and UI paths for link, edit, move, and supported removal are implemented and fixture-tested; provider mutation/read-back remains open.
 5. **Release proof and end-user documentation** — T1/T2/live-sandbox journeys, support matrix, setup/remediation documentation, and matrix/runbook evidence.
 
 ## Explicit non-goals
@@ -236,3 +232,17 @@ The feature is complete only when the Completion ledger is entirely satisfied wi
   summary: "The user directed that the charter capture how current software assertions and final end-user claims will be tested. The plan now defines cumulative proof tiers, current-claim audit tests, per-provider release journeys, and evidence requirements."
   source: "Kanban completion assessment and user direction, 2026-08-27"
   affects: ["release-0-9-product-completion","e2e-qa-coverage"]
+- time: "2026-09-28T00:51:32.497Z"
+  kind: "note"
+  summary: "Slice 2 (complete bounded reads) is done for GitHub Projects v2, and the charter's \"Verified current baseline\" claim that the provider \"reads GraphQL fields/items and mutates item status/create/link\" is withdrawn as false: every GraphQL document in github-provider.ts was invalid against the real schema, so no board read or mutation had ever succeeded. See [[finding-2026-09-27-kanban-github-graphql-invalid]]. All 22 documents are now proven valid against the live schema by `npm run validate:kanban-graphql -w @otto-code/server`, item reads paginate, and card field read/write, card delete and a polling freshness watcher are served end to end on the daemon. Remaining in this effort: Kanban Otto tools as an optional tool group, the client UI for field editing / link / delete / auto-refresh, Jira field parity, and docs/kanban.md. No live GitHub board has been exercised."
+  affects: ["kanban"]
+- time: "2026-09-28T01:53:44.666Z"
+  kind: "evidence"
+  summary: "Implemented the optional Kanban Otto tool group (list/get/create/link/move/update/delete) with caller-project board scoping and workspace access permission gates; added the app card-detail editor, link and delete actions, and handling of polling board-change notifications; Jira now derives editable fields per issue from editmeta and writes supported values, including ADF textarea fields. Added docs/kanban.md and its index entry, with explicit provider and proof limits. Verification: GitHub live schema validation accepted 22/22 GraphQL documents; focused Kanban/provider/tool tests passed 97/97, card-detail UI tests 2/2, and workspace access tests 41/41; protocol/client build, server and app typechecks, targeted lint, formatting, and git diff --check passed. No real GitHub or Jira board mutation, T1/T2 release journey, or operation-specific auth preflight was exercised. Keep the charter in_build at 2/5 delivery slices; these implementation and fixture checks do not satisfy its live-proof completion ledger."
+  source: "Kanban implementation and focused verification, 2026-09-27"
+  affects: ["kanban","e2e-qa-coverage"]
+- time: "2026-09-28T01:56:54.267Z"
+  kind: "decision"
+  summary: "Replace the invalid provider-read baseline and stale gap list with the focused evidence from the Kanban tool, UI, Jira field, documentation, and GraphQL validation work. Preserve the open end-to-end and provider-proof gates. Status returned to proposed for review."
+  source: "User withdrawal of the prior baseline claim and focused Kanban verification, 2026-09-27"
+  affects: ["kanban","e2e-qa-coverage"]

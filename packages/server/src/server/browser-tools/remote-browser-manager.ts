@@ -44,6 +44,10 @@ interface Tab extends TabOrigin {
   context: BrowserContext | null;
   page: Page | null;
   state: RemoteBrowserTab["state"];
+  isLoading: boolean;
+  loadingRequest: Request | null;
+  /** Orders tab snapshots so a late command response cannot replace newer page state. */
+  observationId: number;
   error: string | null;
   lastUsed: number;
   // A client that still lists the workspace holds its tabs, even while idle.
@@ -60,6 +64,21 @@ interface Tab extends TabOrigin {
   requestIds: WeakMap<Request, string>;
   requestStartedAt: WeakMap<Request, number>;
   responses: Map<string, Response>;
+}
+
+function setPageLoading(tab: Tab, loading: boolean): void {
+  if (tab.isLoading === loading) return;
+  tab.isLoading = loading;
+  tab.stream.noteStatusChange();
+}
+
+function isMainFrameNavigation(page: Page, request: Request): boolean {
+  if (!request.isNavigationRequest()) return false;
+  try {
+    return request.frame() === page.mainFrame();
+  } catch {
+    return false;
+  }
 }
 
 const MAX_LIVE_TABS = 4;
@@ -121,6 +140,8 @@ function asTab(tab: Tab): RemoteBrowserTab {
     title: tab.title,
     viewport: tab.viewport,
     state: tab.state,
+    isLoading: tab.isLoading,
+    observationId: ++tab.observationId,
     canGoBack: tab.canGoBack,
     canGoForward: tab.canGoForward,
     error: tab.error,
@@ -255,6 +276,7 @@ export class RemoteBrowserManager {
               tab.page = null;
               tab.context = null;
               tab.state = "crashed";
+              setPageLoading(tab, false);
               tab.error = "The host browser stopped. Reload this tab to recover.";
               void tab.stream.detach();
             }
@@ -293,6 +315,8 @@ export class RemoteBrowserManager {
       await this.suspend(dormant);
     }
     tab.state = "starting";
+    tab.loadingRequest = null;
+    setPageLoading(tab, true);
     tab.error = null;
     try {
       const browser = await this.getBrowser();
@@ -347,6 +371,8 @@ export class RemoteBrowserManager {
     tab.page = null;
     tab.context = null;
     tab.state = state;
+    tab.loadingRequest = null;
+    setPageLoading(tab, false);
     await tab.stream.detach();
     tab.canGoBack = false;
     tab.canGoForward = false;
@@ -378,6 +404,9 @@ export class RemoteBrowserManager {
       context: null,
       page: null,
       state: "suspended",
+      isLoading: false,
+      loadingRequest: null,
+      observationId: 0,
       error: null,
       lastUsed: Date.now(),
       lastClaimed: Date.now(),
@@ -407,6 +436,11 @@ export class RemoteBrowserManager {
   }
 
   private observePage(tab: Tab, page: Page): void {
+    page.on("load", () => {
+      if (tab.page !== page) return;
+      tab.loadingRequest = null;
+      setPageLoading(tab, false);
+    });
     page.on("console", (message) => {
       appendBounded(tab.consoleLog, {
         level: message.type(),
@@ -415,6 +449,10 @@ export class RemoteBrowserManager {
       });
     });
     page.on("request", (request) => {
+      if (tab.page === page && isMainFrameNavigation(page, request)) {
+        tab.loadingRequest = request;
+        setPageLoading(tab, true);
+      }
       const requestId = randomUUID();
       tab.requestIds.set(request, requestId);
       tab.requestStartedAt.set(request, Date.now());
@@ -453,9 +491,13 @@ export class RemoteBrowserManager {
       });
     };
     page.on("requestfinished", (request) => finish(request));
-    page.on("requestfailed", (request) =>
-      finish(request, request.failure()?.errorText ?? "Request failed"),
-    );
+    page.on("requestfailed", (request) => {
+      finish(request, request.failure()?.errorText ?? "Request failed");
+      if (tab.page === page && tab.loadingRequest === request) {
+        tab.loadingRequest = null;
+        setPageLoading(tab, false);
+      }
+    });
   }
 
   private snapshotPage(page: Page): SnapshotPage {
@@ -544,6 +586,20 @@ export class RemoteBrowserManager {
       return { tab: asTab(tab) };
     }
     if (command.kind === "get") return { tab: asTab(tab) };
+    if (command.kind === "stop") {
+      const page = tab.page;
+      if (page && !page.isClosed()) {
+        const session = await page.context().newCDPSession(page);
+        try {
+          await session.send("Page.stopLoading");
+        } finally {
+          await session.detach().catch(() => undefined);
+        }
+      }
+      tab.loadingRequest = null;
+      setPageLoading(tab, false);
+      return { tab: asTab(tab) };
+    }
     if (command.kind === "viewport") {
       tab.viewport = command.viewport;
       if (tab.page)
@@ -578,16 +634,26 @@ export class RemoteBrowserManager {
         const url = normalUrl(command.url);
         // Kept as the tab's address if the page answers with an error page.
         tab.url = url;
+        setPageLoading(tab, true);
         await navigate(() => page.goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 }));
         break;
       }
       case "back":
-        await navigate(() => page.goBack({ waitUntil: "domcontentloaded", timeout: 20_000 }));
+        setPageLoading(tab, true);
+        await navigate(async () => {
+          if (!(await page.goBack({ waitUntil: "domcontentloaded", timeout: 20_000 })))
+            setPageLoading(tab, false);
+        });
         break;
       case "forward":
-        await navigate(() => page.goForward({ waitUntil: "domcontentloaded", timeout: 20_000 }));
+        setPageLoading(tab, true);
+        await navigate(async () => {
+          if (!(await page.goForward({ waitUntil: "domcontentloaded", timeout: 20_000 })))
+            setPageLoading(tab, false);
+        });
         break;
       case "reload":
+        setPageLoading(tab, true);
         await navigate(() => page.reload({ waitUntil: "domcontentloaded", timeout: 20_000 }));
         break;
       case "tap":

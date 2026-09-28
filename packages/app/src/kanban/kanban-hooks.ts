@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import type { KanbanBoard, KanbanBoardRef, KanbanRemediation } from "@otto-code/protocol/kanban";
+import type {
+  KanbanBoard,
+  KanbanBoardRef,
+  KanbanCardFieldValue,
+  KanbanField,
+  KanbanRemediation,
+} from "@otto-code/protocol/kanban";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 
@@ -94,6 +100,9 @@ export function useKanbanBoard(
   refreshKey: number,
 ): {
   board: KanbanBoard | null;
+  fields: KanbanField[];
+  cardFields: Record<string, KanbanCardFieldValue[]>;
+  canDeleteCards: boolean;
   isLoading: boolean;
   error: string | null;
   remediation: KanbanRemediation | null;
@@ -104,6 +113,9 @@ export function useKanbanBoard(
   const enabled = Boolean(serverId && providerId && boardId && client && isConnected && supported);
 
   const [board, setBoard] = useState<KanbanBoard | null>(null);
+  const [fields, setFields] = useState<KanbanField[]>([]);
+  const [cardFields, setCardFields] = useState<Record<string, KanbanCardFieldValue[]>>({});
+  const [canDeleteCards, setCanDeleteCards] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [remediation, setRemediation] = useState<KanbanRemediation | null>(null);
@@ -111,6 +123,9 @@ export function useKanbanBoard(
   useEffect(() => {
     if (!enabled || !client || !providerId || !boardId) {
       setBoard(null);
+      setFields([]);
+      setCardFields({});
+      setCanDeleteCards(false);
       setIsLoading(false);
       setError(null);
       setRemediation(null);
@@ -125,11 +140,17 @@ export function useKanbanBoard(
         const payload = await client.kanbanGetBoard(providerId, boardId);
         if (cancelled) return;
         setBoard(payload.board);
+        setFields(payload.fields ?? []);
+        setCardFields(payload.cardFields ?? {});
+        setCanDeleteCards(payload.canDeleteCards === true);
         setError(payload.error);
         setRemediation(payload.remediation ?? null);
       } catch (err: unknown) {
         if (cancelled) return;
         setBoard(null);
+        setFields([]);
+        setCardFields({});
+        setCanDeleteCards(false);
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -141,5 +162,5 @@ export function useKanbanBoard(
     };
   }, [enabled, providerId, boardId, client, refreshKey]);
 
-  return { board, isLoading, error, remediation };
+  return { board, fields, cardFields, canDeleteCards, isLoading, error, remediation };
 }

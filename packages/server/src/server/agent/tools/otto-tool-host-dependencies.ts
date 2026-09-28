@@ -32,6 +32,8 @@ import type { ArchitecturalViewsService } from "../../architectural-views/archit
 import type { ActivityIncrementFn } from "../../activity-stats/activity-stats-store.js";
 import type { ArtifactMetadata } from "@otto-code/protocol/artifacts/types";
 import type { OttoToolDefinition } from "./types.js";
+import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
+import type { KanbanRegistry, KanbanRegistryOptions } from "../../kanban/kanban-registry.js";
 
 export interface OttoToolHostDependencies {
   connectorTools?: readonly OttoToolDefinition[];
@@ -100,6 +102,12 @@ export interface OttoToolHostDependencies {
    * path-shaped projectId the client's create sheet stores.
    */
   projectRegistry?: Pick<ProjectRegistry, "get">;
+  /** Current host configuration, used only by daemon-owned Kanban providers. */
+  readKanbanConfig?: () => MutableDaemonConfig;
+  kanbanProjectRegistry?: Pick<ProjectRegistry, "list">;
+  kanbanWorkspaceRegistry?: Pick<WorkspaceRegistry, "list" | "get">;
+  /** Fixture seam for provider-backed Kanban tool tests. */
+  createKanbanRegistry?: (options: KanbanRegistryOptions) => KanbanRegistry;
   markWorkspaceArchiving?: ArchiveDependencies["markWorkspaceArchiving"];
   clearWorkspaceArchiving?: ArchiveDependencies["clearWorkspaceArchiving"];
   createOttoWorktree?: CreateOttoWorktreeWorkflowFn;

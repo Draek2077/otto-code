@@ -88,6 +88,11 @@ export const OTTO_EXECUTE_TOOL_NAMES = [
   "send_terminal_keys",
   "kill_terminal",
   "browser_upload",
+  "kanban_create_card",
+  "kanban_link_task",
+  "kanban_move_card",
+  "kanban_update_card",
+  "kanban_delete_card",
 ] as const;
 
 /**
@@ -118,6 +123,8 @@ export const OTTO_NONE_DENIED_TOOL_NAMES = [
   "generate_artifact",
   "preview_start",
   "preview_stop",
+  "kanban_list_boards",
+  "kanban_get_board",
 ] as const;
 
 /**
@@ -132,6 +139,7 @@ const OTTO_NONE_DENIED_GROUPS: ReadonlySet<OttoToolGroup> = new Set([
   "workspace",
   "artifacts",
   "preview",
+  "kanban",
 ]);
 
 /**
