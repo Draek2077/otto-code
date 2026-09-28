@@ -39,6 +39,7 @@ import type {
   RemoteBrowserTab,
 } from "@otto-code/protocol/browser-remote/rpc-schemas";
 import { RemoteBrowserFrame, type RemoteBrowserFrameHandle } from "./remote-browser-frame";
+import { pagePointFromPane, pressPointInPane } from "./hosted-page-point";
 import { useHostedPreviewGate } from "./hosted-preview-gate";
 import { useHostedStreamMeter } from "./use-hosted-stream-meter";
 import {
@@ -419,12 +420,9 @@ export function BrowserPane({
         swiped.current = false;
         return;
       }
-      const { locationX, locationY } = event.nativeEvent;
-      const { width: vw, height: vh } = displayViewport;
-      const scale = Math.min(size.width / vw, size.height / vh);
-      const x = (locationX - (size.width - vw * scale) / 2) / scale;
-      const y = (locationY - (size.height - vh * scale) / 2) / scale;
-      if (x >= 0 && y >= 0 && x <= vw && y <= vh) act({ kind: "tap", browserId, x, y });
+      const pressed = pressPointInPane(event);
+      const point = pressed && pagePointFromPane(pressed, size, displayViewport);
+      if (point) act({ kind: "tap", browserId, ...point });
     },
     [onFocusPane, claimViewport, displayViewport, size, act, browserId],
   );
@@ -721,7 +719,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   viewportTrigger: { flexDirection: "row", alignItems: "center", gap: 2 },
   page: { flex: 1, overflow: "hidden" },
-  imagePress: { flex: 1 },
+  // The page is not one big button, so the desktop keeps its arrow over it.
+  imagePress: { flex: 1, cursor: "auto" },
   hidden: { display: "none" },
   framePlaceholder: {
     ...StyleSheet.absoluteFillObject,

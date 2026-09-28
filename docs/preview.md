@@ -364,7 +364,11 @@ Electron. It opens before the server is up, so the hosted pane holds off the
 host page until the tab is ready, showing the same starting, failed, and
 start-manually states as the native pane. A restored hosted preview tab
 restarts its server under the same auto-start setting.
-A failed action keeps its message until the next action; frame polling no
+A page that will not load is not an error of the tab. Chromium draws its own
+error page, the tab keeps the address that was asked for, and the viewer
+reloads like in any browser; the banner is for failures of the host or the
+stream. A reported message is cut at Playwright's call log and stripped of
+colour codes. A failed action keeps its message until the next action; frame polling no
 longer clears it. Back and Forward reflect the page's real history. On a
 phone, Send with an empty field presses Enter, and Backspace in an empty field
 goes to the page. Other keys (Tab, Escape, arrows) have no phone control yet.

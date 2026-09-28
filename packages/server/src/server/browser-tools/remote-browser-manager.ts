@@ -25,6 +25,7 @@ import {
   type SnapshotPage,
 } from "@otto-code/protocol/browser-automation/snapshot-engine";
 import { browserToolsFailure } from "./errors.js";
+import { browserErrorText, isErrorPageUrl, isPageLoadFailure } from "./page-load-errors.js";
 import { TabStream, type StreamStats } from "./remote-browser-stream.js";
 
 type Viewport = RemoteBrowserTab["viewport"];
@@ -127,6 +128,21 @@ function asTab(tab: Tab): RemoteBrowserTab {
     ...(tab.preview ? { preview: tab.preview } : {}),
     ...(tab.layout ? { layout: tab.layout } : {}),
   };
+}
+
+/** The page's address, or the one it was asked for while an error page shows. */
+function visibleUrl(tab: Tab, page: Page): string {
+  const url = page.url();
+  return isErrorPageUrl(url) ? tab.url : url;
+}
+
+/** Runs a navigation. A page that will not load shows that itself. */
+async function navigate(action: () => Promise<unknown>): Promise<void> {
+  try {
+    await action();
+  } catch (cause) {
+    if (!isPageLoadFailure(cause)) throw cause;
+  }
 }
 
 async function readHistory(tab: Tab, page: Page): Promise<void> {
@@ -307,19 +323,21 @@ export class RemoteBrowserManager {
       });
       page.on("framenavigated", (frame) => {
         if (frame !== page.mainFrame()) return;
-        tab.url = page.url();
+        tab.url = visibleUrl(tab, page);
         tab.title = "";
         this.snapshotEngine.clearBrowser(tab.browserId);
         tab.stream.invalidate();
         // A closing page rejects the history read; its state no longer matters.
         void readHistory(tab, page).catch(() => undefined);
       });
-      await page.goto(tab.url, { waitUntil: "domcontentloaded", timeout: 20_000 });
-      tab.title = await page.title();
+      const url = tab.url;
+      await navigate(() => page.goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 }));
+      // An error page replacing the failed load can still be arriving.
+      tab.title = await page.title().catch(() => "");
       tab.state = "ready";
     } catch (cause) {
       await this.suspend(tab, "crashed");
-      tab.error = cause instanceof Error ? cause.message : String(cause);
+      tab.error = browserErrorText(cause);
       throw new Error(tab.error, { cause });
     }
   }
@@ -556,17 +574,21 @@ export class RemoteBrowserManager {
           frame: { mimeType: "image/jpeg", dataBase64: image.toString("base64"), ...described },
         };
       }
-      case "navigate":
-        await page.goto(normalUrl(command.url), { waitUntil: "domcontentloaded", timeout: 20_000 });
+      case "navigate": {
+        const url = normalUrl(command.url);
+        // Kept as the tab's address if the page answers with an error page.
+        tab.url = url;
+        await navigate(() => page.goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 }));
         break;
+      }
       case "back":
-        await page.goBack({ waitUntil: "domcontentloaded", timeout: 20_000 });
+        await navigate(() => page.goBack({ waitUntil: "domcontentloaded", timeout: 20_000 }));
         break;
       case "forward":
-        await page.goForward({ waitUntil: "domcontentloaded", timeout: 20_000 });
+        await navigate(() => page.goForward({ waitUntil: "domcontentloaded", timeout: 20_000 }));
         break;
       case "reload":
-        await page.reload({ waitUntil: "domcontentloaded", timeout: 20_000 });
+        await navigate(() => page.reload({ waitUntil: "domcontentloaded", timeout: 20_000 }));
         break;
       case "tap":
         tab.stream.noteInput();
@@ -586,7 +608,7 @@ export class RemoteBrowserManager {
         await page.keyboard.press(command.key);
         break;
     }
-    tab.url = page.url();
+    tab.url = visibleUrl(tab, page);
     tab.title = await page.title().catch(() => tab.title);
     tab.stream.invalidate();
     await readHistory(tab, page).catch(() => undefined);
@@ -1085,7 +1107,7 @@ export class RemoteBrowserManager {
         default:
           throw new Error("The hosted browser does not support this command yet.");
       }
-      tab.url = page.url();
+      tab.url = visibleUrl(tab, page);
       tab.title = await page.title().catch(() => tab.title);
       tab.stream.invalidate();
       return {
@@ -1098,7 +1120,7 @@ export class RemoteBrowserManager {
         payload: browserToolsFailure({
           requestId,
           code: "browser_unknown_error",
-          message: cause instanceof Error ? cause.message : String(cause),
+          message: browserErrorText(cause),
           retryable: true,
         }),
       };

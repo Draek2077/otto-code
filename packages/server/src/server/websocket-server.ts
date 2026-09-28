@@ -1,5 +1,6 @@
 import { isSessionRpcAllowed } from "./session/otto-rpc-scopes.js";
 import { appShowsHostedTabs } from "./browser-tools/hosted-tab-support.js";
+import { browserErrorText } from "./browser-tools/page-load-errors.js";
 import { RemoteBrowserManager } from "./browser-tools/remote-browser-manager.js";
 import type { GoogleConnectorService } from "./connectors/google-connector-service.js";
 import { AgentRequests } from "./agent/requests/index.js";
@@ -3152,7 +3153,7 @@ export class VoiceAssistantWebSocketServer {
         payload = {
           requestId: request.requestId,
           ok: false,
-          error: cause instanceof Error ? cause.message : String(cause),
+          error: browserErrorText(cause),
         };
       }
       this.sendToClient(
