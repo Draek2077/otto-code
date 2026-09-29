@@ -46,6 +46,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Logger } from "pino";
 import { z } from "zod";
 import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js";
+import { configureDotnetChildEnvironment } from "./process-tree.js";
 
 export type ListenTarget =
   | { type: "tcp"; host: string; port: number }
@@ -1121,6 +1122,10 @@ export async function createOttoDaemon(
   rootLogger: Logger,
   dependencies: OttoDaemonDependencies = {},
 ): Promise<OttoDaemon> {
+  // Agents, terminals, scripts, and provider tool loops inherit this environment. The
+  // .NET registry covers only Otto's own C# server and Solution sidecar; builds launched
+  // by an agent need the same process policy before any child can start.
+  configureDotnetChildEnvironment(process.env);
   configureGitProcessPolicy(config.git);
   const logger = rootLogger.child({ module: "bootstrap" });
   const obsoleteTimelineDirectory = path.join(config.ottoHome, "agent-timelines");

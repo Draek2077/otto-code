@@ -71,8 +71,15 @@ export function killProcessTree(child: ChildProcess, signal: NodeJS.Signals = "S
  * server we reaped and answering to nobody. We trade a slightly slower cold project
  * load for nodes that exit with the work that started them.
  */
-export const MSBUILD_ENV: Readonly<Record<string, string>> = {
+export const MSBUILD_ENV = {
   MSBUILDDISABLENODEREUSE: "1",
   DOTNET_CLI_TELEMETRY_OPTOUT: "1",
   DOTNET_NOLOGO: "1",
-};
+} as const satisfies Readonly<Record<string, string>>;
+
+/** Default for local .NET commands launched by Otto, including agent-run builds. */
+export function configureDotnetChildEnvironment(env: NodeJS.ProcessEnv): void {
+  // Retained MSBuild nodes outlive the build parent, so a direct-child registry cannot
+  // account for or sweep them. This applies to provider tools and terminals as well.
+  env.MSBUILDDISABLENODEREUSE = MSBUILD_ENV.MSBUILDDISABLENODEREUSE;
+}

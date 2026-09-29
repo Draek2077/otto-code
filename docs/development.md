@@ -82,6 +82,12 @@ The fixed lanes get fixed ports because you need to _find_ them - you type
 port with `OTTO_DEV_DAEMON_PORT` and the CDP port with
 `OTTO_ELECTRON_REMOTE_DEBUGGING_PORT`.
 
+The daemon sets `MSBUILDDISABLENODEREUSE=1` before starting local agents, terminals,
+and workspace scripts. MSBuild may still use parallel workers during a build, but
+ordinary builds launched through Otto should release them when the build ends. The
+daemon's .NET process registry separately caps Otto's C# language servers and Solution
+sidecars; it does not count build processes launched by agents or terminal commands.
+
 #### The agent lane
 
 `npm run dev:win:agent` (Windows) / `npm run dev:agent` starts a daemon **and** an
