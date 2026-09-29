@@ -35,12 +35,21 @@ import {
   useBrowserStore,
   useBrowserStoreHydrated,
 } from "../store";
-import type {
-  RemoteBrowserCommand,
-  RemoteBrowserTab,
+import {
+  REMOTE_BROWSER_TYPE_TEXT_MAX,
+  type RemoteBrowserCommand,
+  type RemoteBrowserTab,
 } from "@otto-code/protocol/browser-remote/rpc-schemas";
 import { RemoteBrowserFrame, type RemoteBrowserFrameHandle } from "./remote-browser-frame";
 import { pagePointFromPane, pressPointInPane } from "./hosted-page-point";
+import {
+  advanceTouch,
+  beginTouch,
+  endTouch,
+  scrollDeltaForDrag,
+  type TouchDelta,
+  type TouchGesture,
+} from "./hosted-touch-gesture";
 import { useHostedPreviewGate } from "./hosted-preview-gate";
 import { useHostedStreamMeter } from "./use-hosted-stream-meter";
 import {
@@ -184,13 +193,7 @@ export function BrowserPane({
   const observationId = useRef(0);
   const navigationAction = useRef(0);
   const pendingLoadAction = useRef<{ id: number; loading: boolean } | null>(null);
-  const touch = useRef<{
-    x: number;
-    y: number;
-    lastX: number;
-    lastY: number;
-    moved: boolean;
-  } | null>(null);
+  const touch = useRef<TouchGesture | null>(null);
   const swiped = useRef(false);
   const scrollPending = useRef({ x: 0, y: 0 });
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -398,13 +401,10 @@ export function BrowserPane({
   }, [client, connected, workspaceId, browserId, displayViewport]);
 
   const queueScroll = useCallback(
-    (dx: number, dy: number) => {
-      const scale = Math.min(
-        size.width / displayViewport.width,
-        size.height / displayViewport.height,
-      );
-      scrollPending.current.x -= dx / scale;
-      scrollPending.current.y -= dy / scale;
+    (delta: TouchDelta) => {
+      const scrolled = scrollDeltaForDrag(delta, size, displayViewport);
+      scrollPending.current.x += scrolled.dx;
+      scrollPending.current.y += scrolled.dy;
       if (!scrollTimer.current) {
         scrollTimer.current = setTimeout(() => {
           scrollTimer.current = null;
@@ -470,23 +470,16 @@ export function BrowserPane({
     [onFocusPane, claimViewport, displayViewport, size, act, browserId],
   );
 
+  // A drag scrolls the page and cancels the tap the press would otherwise be.
   const onTouchMove = useCallback(
     (event: GestureResponderEvent) => {
       const gesture = touch.current;
       const point = event.nativeEvent.touches?.[0];
       if (!gesture || !point) return;
-      if (
-        !gesture.moved &&
-        Math.abs(point.pageX - gesture.x) + Math.abs(point.pageY - gesture.y) < 15
-      )
-        return;
-      if (!gesture.moved) {
-        gesture.moved = true;
-        swiped.current = true;
-      }
-      queueScroll(point.pageX - gesture.lastX, point.pageY - gesture.lastY);
-      gesture.lastX = point.pageX;
-      gesture.lastY = point.pageY;
+      const delta = advanceTouch(gesture, point);
+      if (!delta) return;
+      swiped.current = true;
+      queueScroll(delta);
     },
     [queueScroll],
   );
@@ -497,12 +490,10 @@ export function BrowserPane({
       touch.current = null;
       const point = event.nativeEvent.changedTouches?.[0];
       if (!gesture || !point) return;
-      const moved =
-        gesture.moved ||
-        Math.abs(point.pageX - gesture.x) + Math.abs(point.pageY - gesture.y) >= 15;
-      if (!moved) return;
+      const delta = endTouch(gesture, point);
+      if (!delta) return;
       swiped.current = true;
-      queueScroll(point.pageX - gesture.lastX, point.pageY - gesture.lastY);
+      queueScroll(delta);
     },
     [queueScroll],
   );
@@ -514,7 +505,7 @@ export function BrowserPane({
   const onWheel = useCallback(
     (deltaX: number, deltaY: number) => {
       claimViewport();
-      queueScroll(-deltaX, -deltaY);
+      queueScroll({ dx: -deltaX, dy: -deltaY });
     },
     [claimViewport, queueScroll],
   );
@@ -528,18 +519,29 @@ export function BrowserPane({
     [claimViewport, act, browserId],
   );
 
+  // Every route text takes into the page ends here - the send bar, and Ctrl+V
+  // over the page - clamped to what one command may carry. The page puts it
+  // wherever it has focus, which is the field the viewer last clicked.
+  const typeIntoPage = useCallback(
+    (text: string) => {
+      claimViewport();
+      act({ kind: "type", browserId, text: text.slice(0, REMOTE_BROWSER_TYPE_TEXT_MAX) });
+    },
+    [claimViewport, act, browserId],
+  );
+
   // One control serves both inputs a page needs: text, then Enter. An empty
   // field sends Enter so a form can be submitted without a second button.
   const sendTyped = useCallback(() => {
-    claimViewport();
     if (!typed) {
+      claimViewport();
       act({ kind: "key", browserId, key: "Enter" });
       return;
     }
-    act({ kind: "type", browserId, text: typed });
+    typeIntoPage(typed);
     setTyped("");
     typeInput.current?.reset();
-  }, [claimViewport, typed, act, browserId]);
+  }, [claimViewport, typed, act, browserId, typeIntoPage]);
 
   // A phone has no key events for the page itself. Backspace in an empty field
   // has nothing local to delete, so it goes to the page.
@@ -686,14 +688,7 @@ export function BrowserPane({
             claimViewport();
             const point = event.nativeEvent.touches?.[0];
             swiped.current = false;
-            if (point)
-              touch.current = {
-                x: point.pageX,
-                y: point.pageY,
-                lastX: point.pageX,
-                lastY: point.pageY,
-                moved: false,
-              };
+            if (point) touch.current = beginTouch(point);
           }}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
@@ -705,6 +700,7 @@ export function BrowserPane({
             height={size.height}
             onWheel={onWheel}
             onKeyInput={onKeyInput}
+            onPasteText={typeIntoPage}
           />
           {!hasFrame ? (
             <View pointerEvents="none" style={styles.framePlaceholder}>

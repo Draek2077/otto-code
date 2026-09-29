@@ -6,12 +6,22 @@ interface Props {
   height: number;
   onWheel?: (deltaX: number, deltaY: number) => void;
   onKeyInput?: (value: string, kind: "text" | "key") => void;
+  onPasteText?: (text: string) => void;
+}
+
+/**
+ * Ctrl+V, or Cmd+V. The chord belongs to the viewer's clipboard, not to the
+ * host's, so it is never forwarded as a key: the page would paste whatever the
+ * daemon's own Chromium happens to hold.
+ */
+function isPasteChord(event: React.KeyboardEvent): boolean {
+  return (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v";
 }
 
 const canvasStyle = { display: "block", width: "100%", height: "100%" } as const;
 
 export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
-  function RemoteBrowserFrame({ width, height, onWheel, onKeyInput }, ref) {
+  function RemoteBrowserFrame({ width, height, onWheel, onKeyInput, onPasteText }, ref) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const imageRef = useRef<HTMLImageElement | null>(null);
 
@@ -73,6 +83,9 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
     const handleKeyDown = useCallback(
       (event: React.KeyboardEvent<HTMLCanvasElement>) => {
         if (["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+        // Left alone on purpose: preventing the default here would also cancel
+        // the paste event the chord is about to raise on this canvas.
+        if (isPasteChord(event)) return;
         event.preventDefault();
         if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
           onKeyInput?.(event.key, "text");
@@ -89,6 +102,17 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
       [onKeyInput],
     );
 
+    // The clipboard's text goes into whatever the page has focused, which is
+    // the field the viewer last clicked, exactly as the send bar below does.
+    const handlePaste = useCallback(
+      (event: React.ClipboardEvent<HTMLCanvasElement>) => {
+        event.preventDefault();
+        const text = event.clipboardData?.getData("text/plain") ?? "";
+        if (text) onPasteText?.(text);
+      },
+      [onPasteText],
+    );
+
     const focusCanvas = useCallback(() => canvasRef.current?.focus(), []);
 
     return (
@@ -99,6 +123,7 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
         onPointerDown={focusCanvas}
         onWheel={handleWheel}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
       />
     );
   },

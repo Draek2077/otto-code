@@ -14,6 +14,19 @@ function jpeg(color: string): string {
   return canvas.toDataURL("image/jpeg").split(",")[1]!;
 }
 
+/**
+ * Chromium empties a DataTransfer that no real copy filled, so the payload is
+ * the one part of a paste a test has to stand in for. Everything else - the
+ * dispatch, React's listener, the handler - is the real thing.
+ */
+function firePaste(element: Element, text: string): void {
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", {
+    value: { getData: (type: string) => (type === "text/plain" ? text : "") },
+  });
+  element.dispatchEvent(event);
+}
+
 function pixel(canvas: HTMLCanvasElement): number[] {
   return [...canvas.getContext("2d")!.getImageData(4, 4, 1, 1).data];
 }
@@ -67,5 +80,38 @@ describe("hosted browser canvas", () => {
     expect(onWheel).toHaveBeenCalledWith(3, 42);
     expect(onKeyInput).toHaveBeenNthCalledWith(1, "a", "text");
     expect(onKeyInput).toHaveBeenNthCalledWith(2, "Backspace", "key");
+  });
+
+  it("puts the viewer's clipboard into the page rather than pressing the chord on the host", () => {
+    const onKeyInput = vi.fn();
+    const onPasteText = vi.fn();
+    const screen = render(
+      <RemoteBrowserFrame width={8} height={8} onKeyInput={onKeyInput} onPasteText={onPasteText} />,
+    );
+    const canvas = screen.container.querySelector("canvas")!;
+
+    const chord = new KeyboardEvent("keydown", {
+      key: "v",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    canvas.dispatchEvent(chord);
+    firePaste(canvas, "pasted text");
+
+    // Forwarding the chord would paste whatever the host's own Chromium holds.
+    expect(onKeyInput).not.toHaveBeenCalled();
+    // The default must survive keydown, or the browser raises no paste at all.
+    expect(chord.defaultPrevented).toBe(false);
+    expect(onPasteText).toHaveBeenCalledWith("pasted text");
+  });
+
+  it("ignores a paste that carries no text", () => {
+    const onPasteText = vi.fn();
+    const screen = render(<RemoteBrowserFrame width={8} height={8} onPasteText={onPasteText} />);
+
+    firePaste(screen.container.querySelector("canvas")!, "");
+
+    expect(onPasteText).not.toHaveBeenCalled();
   });
 });

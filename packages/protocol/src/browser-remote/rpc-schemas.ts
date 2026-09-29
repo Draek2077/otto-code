@@ -14,6 +14,12 @@ const ViewportSchema = z.discriminatedUnion("mode", [
   }),
 ]);
 
+/**
+ * The most text one type command may carry. A paste is clamped to it in the
+ * client so an oversized clipboard is truncated rather than rejected on the wire.
+ */
+export const REMOTE_BROWSER_TYPE_TEXT_MAX = 100_000;
+
 export const RemoteBrowserCommandSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("list") }),
   z.object({
@@ -58,7 +64,7 @@ export const RemoteBrowserCommandSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("type"),
     browserId: BrowserAutomationBrowserIdSchema,
-    text: z.string().max(100_000),
+    text: z.string().max(REMOTE_BROWSER_TYPE_TEXT_MAX),
   }),
   z.object({
     kind: z.literal("key"),
