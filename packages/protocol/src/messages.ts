@@ -5441,6 +5441,7 @@ export const ServerInfoStatusPayloadSchema = z
         remoteBrowser: z.boolean().optional(),
         // COMPAT(remoteBrowserLoadStatus): added in v0.9.26, remove gate after 2027-03-27.
         remoteBrowserLoadStatus: z.boolean().optional(),
+        remoteBrowserGestures: z.boolean().optional(),
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
         providerRemove: z.boolean().optional(),
         // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.

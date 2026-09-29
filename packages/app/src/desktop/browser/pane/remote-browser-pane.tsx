@@ -42,6 +42,7 @@ import {
 } from "@otto-code/protocol/browser-remote/rpc-schemas";
 import { RemoteBrowserFrame, type RemoteBrowserFrameHandle } from "./remote-browser-frame";
 import { pagePointFromPane, pressPointInPane } from "./hosted-page-point";
+import { cancelHostedTap, queueHostedTap, type PendingTap } from "./hosted-tap-sequence";
 import {
   advanceTouch,
   beginTouch,
@@ -167,6 +168,10 @@ export function BrowserPane({
   const supportsLoadStatus = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.remoteBrowserLoadStatus === true,
   );
+  // COMPAT(remoteBrowserGestures): added in v0.9.28, remove gate after 2027-03-29.
+  const supportsGestures = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.remoteBrowserGestures === true,
+  );
   // A tab nobody can see asks for nothing: not behind another tab, and not
   // while the app itself is in the background.
   const appVisible = useAppVisible();
@@ -195,6 +200,10 @@ export function BrowserPane({
   const pendingLoadAction = useRef<{ id: number; loading: boolean } | null>(null);
   const touch = useRef<TouchGesture | null>(null);
   const swiped = useRef(false);
+  const longPressed = useRef(false);
+  // Mobile web may raise both contextmenu and onLongPress for one held finger.
+  const lastTouchContextMenu = useRef(0);
+  const pendingTap = useRef<PendingTap | null>(null);
   const scrollPending = useRef({ x: 0, y: 0 });
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollBusy = useRef(false);
@@ -455,19 +464,80 @@ export function BrowserPane({
     act({ kind: "viewport", browserId, viewport: effectiveViewport });
   }, [tab, effectiveViewport, act, browserId]);
 
-  const onPagePress = useCallback(
-    (event: GestureResponderEvent) => {
+  useEffect(
+    () => () => {
+      cancelHostedTap(pendingTap);
+    },
+    [],
+  );
+
+  const sendTap = useCallback(
+    (point: { x: number; y: number }, button: "left" | "right", clickCount: 1 | 2 = 1) => {
       onFocusPane?.();
       claimViewport();
+      act({ kind: "tap", browserId, ...point, button, clickCount });
+    },
+    [onFocusPane, claimViewport, act, browserId],
+  );
+
+  const cancelPendingTap = useCallback(() => {
+    cancelHostedTap(pendingTap);
+  }, []);
+
+  const queueTap = useCallback(
+    (point: { x: number; y: number }) => {
+      if (!supportsGestures) {
+        onFocusPane?.();
+        claimViewport();
+        act({ kind: "tap", browserId, ...point });
+        return;
+      }
+      queueHostedTap(pendingTap, point, (tap, count) => sendTap(tap, "left", count));
+    },
+    [supportsGestures, onFocusPane, claimViewport, act, browserId, sendTap],
+  );
+
+  const onPagePress = useCallback(
+    (event: GestureResponderEvent) => {
+      if (longPressed.current) {
+        longPressed.current = false;
+        return;
+      }
       if (swiped.current) {
         swiped.current = false;
         return;
       }
       const pressed = pressPointInPane(event);
       const point = pressed && pagePointFromPane(pressed, size, displayViewport);
-      if (point) act({ kind: "tap", browserId, ...point });
+      if (point) queueTap(point);
     },
-    [onFocusPane, claimViewport, displayViewport, size, act, browserId],
+    [displayViewport, size, queueTap],
+  );
+
+  const onPageLongPress = useCallback(
+    (event: GestureResponderEvent) => {
+      if (!supportsGestures || !touch.current || swiped.current || touch.current.moved) return;
+      const pressed = pressPointInPane(event);
+      const point = pressed && pagePointFromPane(pressed, size, displayViewport);
+      if (!point) return;
+      longPressed.current = true;
+      if (Date.now() - lastTouchContextMenu.current < 700) return;
+      cancelPendingTap();
+      sendTap(point, "right");
+    },
+    [supportsGestures, size, displayViewport, cancelPendingTap, sendTap],
+  );
+
+  const onPageContextMenu = useCallback(
+    (pressed: { x: number; y: number }) => {
+      if (!supportsGestures || longPressed.current) return;
+      const point = pagePointFromPane(pressed, size, displayViewport);
+      if (!point) return;
+      if (touch.current) lastTouchContextMenu.current = Date.now();
+      cancelPendingTap();
+      sendTap(point, "right");
+    },
+    [supportsGestures, size, displayViewport, cancelPendingTap, sendTap],
   );
 
   // A drag scrolls the page and cancels the tap the press would otherwise be.
@@ -684,10 +754,13 @@ export function BrowserPane({
         <Pressable
           style={previewPending ? styles.hidden : styles.imagePress}
           onPress={onPagePress}
+          onLongPress={onPageLongPress}
           onTouchStart={(event) => {
             claimViewport();
             const point = event.nativeEvent.touches?.[0];
             swiped.current = false;
+            longPressed.current = false;
+            lastTouchContextMenu.current = 0;
             if (point) touch.current = beginTouch(point);
           }}
           onTouchMove={onTouchMove}
@@ -701,6 +774,7 @@ export function BrowserPane({
             onWheel={onWheel}
             onKeyInput={onKeyInput}
             onPasteText={typeIntoPage}
+            onContextMenu={onPageContextMenu}
           />
           {!hasFrame ? (
             <View pointerEvents="none" style={styles.framePlaceholder}>

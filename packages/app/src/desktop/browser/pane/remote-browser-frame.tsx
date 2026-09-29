@@ -15,6 +15,7 @@ interface Props {
   onKeyInput?: (value: string, kind: "text" | "key") => void;
   // A phone has no paste chord over the page; the web canvas raises this one.
   onPasteText?: (text: string) => void;
+  onContextMenu?: (point: { x: number; y: number }) => void;
 }
 
 export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(

@@ -10,6 +10,39 @@ afterEach(async () => {
 });
 
 describe("hosted browser page loading", () => {
+  it("passes right clicks and double clicks to the host page", async () => {
+    const manager = new RemoteBrowserManager();
+    managers.push(manager);
+    const browserId = "11111111-1111-4111-8111-111111111111";
+    const tab = manager["ensureTab"]("workspace", { kind: "open", browserId });
+    const click = vi.fn().mockResolvedValue(undefined);
+    tab.page = {
+      mouse: { click },
+      isClosed: () => false,
+      url: () => "https://example.com/",
+      title: async () => "Example",
+    } as unknown as Page;
+    tab.state = "ready";
+
+    await manager.execute("workspace", {
+      kind: "tap",
+      browserId,
+      x: 12,
+      y: 34,
+      button: "right",
+    });
+    await manager.execute("workspace", {
+      kind: "tap",
+      browserId,
+      x: 56,
+      y: 78,
+      clickCount: 2,
+    });
+
+    expect(click).toHaveBeenNthCalledWith(1, 12, 34, { button: "right", clickCount: 1 });
+    expect(click).toHaveBeenNthCalledWith(2, 56, 78, { button: "left", clickCount: 2 });
+  });
+
   it("tracks main-frame loading through load and stops an active navigation", async () => {
     const manager = new RemoteBrowserManager();
     managers.push(manager);

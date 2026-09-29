@@ -372,6 +372,10 @@ colour codes. A failed action keeps its message until the next action; frame pol
 longer clears it. Back and Forward reflect the page's real history. On a
 phone, Send with an empty field presses Enter, and Backspace in an empty field
 goes to the page. Other keys (Tab, Escape, arrows) have no phone control yet.
+Hosted page input forwards desktop right click, double click, and touch double
+tap. A touch long press opens the page's right-click menu. Single taps wait
+briefly so a second tap can be sent as one double click. Hosts advertise
+`remoteBrowserGestures` for these gestures; older hosts retain single taps.
 Ctrl+V, or Cmd+V, over the page sends the viewer's clipboard text into it by
 the same route the send bar uses, so it lands in whatever the page has focused,
 which is the field the viewer last clicked. The chord itself is never forwarded

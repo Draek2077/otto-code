@@ -7,6 +7,7 @@ interface Props {
   onWheel?: (deltaX: number, deltaY: number) => void;
   onKeyInput?: (value: string, kind: "text" | "key") => void;
   onPasteText?: (text: string) => void;
+  onContextMenu?: (point: { x: number; y: number }) => void;
 }
 
 /**
@@ -18,10 +19,14 @@ function isPasteChord(event: React.KeyboardEvent): boolean {
   return (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v";
 }
 
-const canvasStyle = { display: "block", width: "100%", height: "100%" } as const;
+// The canvas takes keyboard focus after a click, but the streamed page is its visual focus cue.
+const canvasStyle = { display: "block", width: "100%", height: "100%", outline: "none" } as const;
 
 export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
-  function RemoteBrowserFrame({ width, height, onWheel, onKeyInput, onPasteText }, ref) {
+  function RemoteBrowserFrame(
+    { width, height, onWheel, onKeyInput, onPasteText, onContextMenu },
+    ref,
+  ) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const imageRef = useRef<HTMLImageElement | null>(null);
 
@@ -115,6 +120,15 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
 
     const focusCanvas = useCallback(() => canvasRef.current?.focus(), []);
 
+    const handleContextMenu = useCallback(
+      (event: React.MouseEvent<HTMLCanvasElement>) => {
+        event.preventDefault();
+        const bounds = event.currentTarget.getBoundingClientRect();
+        onContextMenu?.({ x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+      },
+      [onContextMenu],
+    );
+
     return (
       <canvas
         ref={canvasRef}
@@ -124,6 +138,7 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
         onWheel={handleWheel}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
+        onContextMenu={handleContextMenu}
       />
     );
   },

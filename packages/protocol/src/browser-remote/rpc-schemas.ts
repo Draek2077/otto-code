@@ -52,6 +52,9 @@ export const RemoteBrowserCommandSchema = z.discriminatedUnion("kind", [
     browserId: BrowserAutomationBrowserIdSchema,
     x: z.number().finite(),
     y: z.number().finite(),
+    // Older hosts still accept a plain tap; gesture-aware hosts read these leaves.
+    button: z.enum(["left", "right"]).optional(),
+    clickCount: z.union([z.literal(1), z.literal(2)]).optional(),
   }),
   z.object({
     kind: z.literal("scroll"),

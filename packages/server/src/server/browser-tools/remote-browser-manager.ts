@@ -658,7 +658,11 @@ export class RemoteBrowserManager {
         break;
       case "tap":
         tab.stream.noteInput();
-        await page.mouse.click(command.x, command.y);
+        // Chromium dispatches the page's dblclick/contextmenu from these mouse options.
+        await page.mouse.click(command.x, command.y, {
+          button: command.button ?? "left",
+          clickCount: command.clickCount ?? 1,
+        });
         break;
       case "scroll":
         await page.mouse.move(command.x, command.y);

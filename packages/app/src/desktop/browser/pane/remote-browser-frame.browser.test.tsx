@@ -82,6 +82,28 @@ describe("hosted browser canvas", () => {
     expect(onKeyInput).toHaveBeenNthCalledWith(2, "Backspace", "key");
   });
 
+  it("forwards a right click at the canvas point without a local menu or focus border", () => {
+    const onContextMenu = vi.fn();
+    const screen = render(
+      <RemoteBrowserFrame width={80} height={80} onContextMenu={onContextMenu} />,
+    );
+    const canvas = screen.container.querySelector("canvas")!;
+    const bounds = canvas.getBoundingClientRect();
+    const event = new MouseEvent("contextmenu", {
+      button: 2,
+      clientX: bounds.left + 20,
+      clientY: bounds.top + 30,
+      bubbles: true,
+      cancelable: true,
+    });
+
+    canvas.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onContextMenu).toHaveBeenCalledWith({ x: 20, y: 30 });
+    expect(canvas.style.outline).toBe("none");
+  });
+
   it("puts the viewer's clipboard into the page rather than pressing the chord on the host", () => {
     const onKeyInput = vi.fn();
     const onPasteText = vi.fn();
