@@ -48,6 +48,31 @@ vi.mock("@/components/ui/button", () => ({
     </button>
   ),
 }));
+vi.mock("@/components/ui/status-badge", () => ({
+  StatusBadge: ({ label }: { label: string }) => <span>{label}</span>,
+}));
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children, testID }: { children: React.ReactNode; testID: string }) => (
+    <button type="button" data-testid={testID}>
+      {children}
+    </button>
+  ),
+  DropdownMenuItem: ({
+    children,
+    onSelect,
+    testID,
+  }: {
+    children: React.ReactNode;
+    onSelect(): void;
+    testID: string;
+  }) => (
+    <button type="button" data-testid={testID} onClick={onSelect}>
+      {children}
+    </button>
+  ),
+}));
 vi.mock("@/components/ui/tabbed-modal-sheet", () => ({
   TabbedModalSheet: ({
     children,
@@ -101,6 +126,10 @@ const card: KanbanCard = {
   rawProviderId: "item-1",
 };
 const cardWithBody: KanbanCard = { ...card, body: "Long migrated issue description" };
+const columns = [
+  { id: "todo", name: "To Do", cards: [card] },
+  { id: "doing", name: "In Progress", cards: [] },
+];
 const titleFields: KanbanField[] = [{ id: "title", name: "Title", kind: "text", editable: true }];
 const titleValues = [{ fieldId: "title", display: card.title }];
 const fields: KanbanField[] = [
@@ -116,18 +145,23 @@ describe("Kanban card detail", () => {
     render(
       <KanbanCardDetail
         card={card}
+        columns={columns}
+        currentColumnId="todo"
         fields={fields}
         values={[{ fieldId: "notes", display: "Before" }]}
         canDelete={false}
         onClose={vi.fn()}
         onUpdate={onUpdate}
+        onMove={vi.fn()}
         onDelete={vi.fn()}
       />,
     );
-    expect(screen.getByText("Fields")).toBeTruthy();
-    fireEvent.click(screen.getByText("Fields"));
+    expect(screen.getByText("More fields")).toBeTruthy();
+    fireEvent.click(screen.getByText("More fields"));
     expect(screen.getByText(/No access/)).toBeTruthy();
     expect(screen.queryByTestId("kanban-detail-delete")).toBeNull();
+    expect(screen.queryByTestId("kanban-field-input-notes")).toBeNull();
+    fireEvent.click(screen.getByTestId("kanban-field-edit-notes"));
     fireEvent.change(screen.getByTestId("kanban-field-input-notes"), {
       target: { value: "After" },
     });
@@ -135,6 +169,7 @@ describe("Kanban card detail", () => {
     await waitFor(() =>
       expect(onUpdate).toHaveBeenCalledWith("notes", { kind: "text", text: "After" }),
     );
+    await waitFor(() => expect(screen.queryByTestId("kanban-field-input-notes")).toBeNull());
   });
 
   it("keeps the sheet open and reports a failed save", async () => {
@@ -142,15 +177,19 @@ describe("Kanban card detail", () => {
     render(
       <KanbanCardDetail
         card={card}
+        columns={columns}
+        currentColumnId="todo"
         fields={fields}
         values={[]}
         canDelete={true}
         onClose={vi.fn()}
         onUpdate={onUpdate}
+        onMove={vi.fn()}
         onDelete={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByText("Fields"));
+    fireEvent.click(screen.getByText("More fields"));
+    fireEvent.click(screen.getByTestId("kanban-field-edit-notes"));
     fireEvent.change(screen.getByTestId("kanban-field-input-notes"), {
       target: { value: "Change" },
     });
@@ -165,16 +204,64 @@ describe("Kanban card detail", () => {
     render(
       <KanbanCardDetail
         card={cardWithBody}
+        columns={columns}
+        currentColumnId="todo"
         fields={titleFields}
         values={titleValues}
         canDelete={false}
         onClose={vi.fn()}
         onUpdate={vi.fn()}
+        onMove={vi.fn()}
         onDelete={vi.fn()}
       />,
     );
     expect(screen.queryByText("Long migrated issue description")).toBeNull();
     fireEvent.click(screen.getByText("Description"));
     expect(screen.getByText("Long migrated issue description")).toBeTruthy();
+  });
+
+  it("shows status in the overview and moves through the board columns", async () => {
+    const onMove = vi.fn().mockResolvedValue(undefined);
+    render(
+      <KanbanCardDetail
+        card={card}
+        columns={columns}
+        currentColumnId="todo"
+        fields={titleFields}
+        values={titleValues}
+        canDelete={false}
+        onClose={vi.fn()}
+        onUpdate={vi.fn()}
+        onMove={onMove}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("To Do")).toBeTruthy();
+    expect(screen.getByTestId("kanban-detail-change-status")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("kanban-detail-status-doing"));
+    await waitFor(() => expect(onMove).toHaveBeenCalledWith("doing"));
+  });
+
+  it("keeps the status control available when a provider rejects the move", async () => {
+    const onMove = vi.fn().mockRejectedValue(new Error("Transition unavailable"));
+    render(
+      <KanbanCardDetail
+        card={card}
+        columns={columns}
+        currentColumnId="todo"
+        fields={[]}
+        values={[]}
+        canDelete={false}
+        onClose={vi.fn()}
+        onUpdate={vi.fn()}
+        onMove={onMove}
+        onDelete={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("kanban-detail-status-doing"));
+    expect((await screen.findByTestId("kanban-detail-error")).textContent).toContain(
+      "Transition unavailable",
+    );
+    expect(screen.getByTestId("kanban-detail-change-status")).toBeTruthy();
   });
 });

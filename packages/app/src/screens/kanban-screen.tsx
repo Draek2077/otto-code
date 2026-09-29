@@ -17,6 +17,7 @@ import {
 } from "@/stores/navigation-active-workspace-store";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { COMPACT_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
@@ -33,12 +34,12 @@ import {
   ChevronRight,
   ExternalLink,
   ListChevronsUpDown,
-  MoreVertical,
   Plus,
   RefreshCw,
   type IconComponent,
 } from "@/components/icons/material-icons";
 import { useKanbanBoard, useKanbanBoards, useKanbanConnectionScope } from "@/kanban/kanban-hooks";
+import { useKanbanMove, type PendingKanbanMove } from "@/kanban/use-kanban-move";
 import { KanbanRemediationBlock } from "@/screens/kanban-remediation-block";
 import { KanbanCardDetail } from "@/screens/kanban-card-detail";
 import { KanbanCardActionSheet } from "@/screens/kanban-card-action-sheet";
@@ -48,6 +49,8 @@ import { KANBAN_NOT_CONFIGURED } from "@otto-code/protocol/kanban";
 import type {
   KanbanCard,
   KanbanColumn,
+  KanbanCardFieldValue,
+  KanbanField,
   KanbanFieldValueInput,
   KanbanRemediation,
 } from "@otto-code/protocol/kanban";
@@ -937,26 +940,40 @@ function KanbanBoardView({
     [client, providerId, boardId, projectId, projectKey, refresh],
   );
 
-  const moveCard = useCallback(
+  const moveCardRequest = useCallback(
     async (cardId: string, targetColumnId: string) => {
-      if (!client) return;
-      setActionError(null);
-      try {
-        const payload = await client.kanbanMoveCard({
-          providerId,
-          boardId,
-          ...(connectionProjectId ? { projectId: connectionProjectId } : {}),
-          cardId,
-          targetColumnId,
-        });
-        if (payload.error) throw new Error(payload.error);
-      } catch (cause) {
-        setActionError(cause instanceof Error ? cause.message : String(cause));
-      } finally {
-        refresh();
-      }
+      if (!client) throw new Error("Host disconnected");
+      const payload = await client.kanbanMoveCard({
+        providerId,
+        boardId,
+        ...(connectionProjectId ? { projectId: connectionProjectId } : {}),
+        cardId,
+        targetColumnId,
+      });
+      if (payload.error) throw new Error(payload.error);
+      refresh();
     },
     [client, providerId, boardId, connectionProjectId, refresh],
+  );
+  const handleStaleMove = useCallback(() => {
+    setActionError("The move was accepted, but the board has not shown it yet. Refresh to check.");
+  }, []);
+  const { pendingMove, performMove } = useKanbanMove(
+    board,
+    error,
+    moveCardRequest,
+    handleStaleMove,
+  );
+  const moveCard = useCallback(
+    async (cardId: string, targetColumnId: string) => {
+      setActionError(null);
+      try {
+        await performMove(cardId, targetColumnId);
+      } catch (cause) {
+        setActionError(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+    [performMove],
   );
 
   const createCard = useCallback(
@@ -985,6 +1002,9 @@ function KanbanBoardView({
   const selectedCard = board?.columns
     .flatMap((column) => column.cards)
     .find((card) => card.id === selectedCardId);
+  const selectedColumn = board?.columns.find((column) =>
+    column.cards.some((card) => card.id === selectedCardId),
+  );
   const closeDetail = useCallback(() => setSelectedCardId(null), []);
   const updateSelectedCard = useCallback(
     (fieldId: string, value: KanbanFieldValueInput) => {
@@ -997,6 +1017,14 @@ function KanbanBoardView({
     if (!selectedCardId) throw new Error("No card selected");
     return deleteCard(selectedCardId);
   }, [selectedCardId, deleteCard]);
+  const moveSelectedCard = useCallback(
+    (targetColumnId: string) => {
+      if (!selectedCardId) throw new Error("No card selected");
+      setActionError(null);
+      return performMove(selectedCardId, targetColumnId);
+    },
+    [selectedCardId, performMove],
+  );
 
   if (isLoading && !board) {
     return (
@@ -1031,11 +1059,31 @@ function KanbanBoardView({
         </Button>
       </View>
       {actionError ? (
-        <Text style={styles.messageSub} testID="kanban-action-error">
+        <Text
+          style={styles.boardActionError}
+          accessibilityLiveRegion="assertive"
+          testID="kanban-action-error"
+        >
           {actionError}
         </Text>
       ) : null}
-      <KanbanColumns board={board} onMoveCard={moveCard} onOpenCard={setSelectedCardId} />
+      {pendingMove ? (
+        <View style={styles.moveNotice} testID="kanban-move-pending">
+          <LoadingSpinner size="sm" />
+          <Text style={styles.moveNoticeText} accessibilityLiveRegion="polite">
+            {pendingMove.phase === "writing" ? "Moving card to" : "Refreshing board for"}{" "}
+            {pendingMove.targetColumnName}…
+          </Text>
+        </View>
+      ) : null}
+      <KanbanColumns
+        board={board}
+        fields={fields}
+        cardFields={cardFields}
+        pendingMove={pendingMove}
+        onMoveCard={moveCard}
+        onOpenCard={setSelectedCardId}
+      />
       {cardAction ? (
         <KanbanCardActionSheet
           key={cardAction}
@@ -1050,11 +1098,14 @@ function KanbanBoardView({
       {selectedCard ? (
         <KanbanCardDetail
           card={selectedCard}
+          columns={board.columns}
+          currentColumnId={selectedColumn?.id ?? ""}
           fields={fields}
           values={cardFields[selectedCard.id] ?? []}
           canDelete={canDeleteCards}
           onClose={closeDetail}
           onUpdate={updateSelectedCard}
+          onMove={moveSelectedCard}
           onDelete={deleteSelectedCard}
         />
       ) : null}
@@ -1087,10 +1138,16 @@ function containsPoint(rect: Rect, x: number, y: number): boolean {
 
 function KanbanColumns({
   board,
+  fields,
+  cardFields,
+  pendingMove,
   onMoveCard,
   onOpenCard,
 }: {
   board: { columns: KanbanColumn[] };
+  fields: KanbanField[];
+  cardFields: Record<string, KanbanCardFieldValue[]>;
+  pendingMove: PendingKanbanMove | null;
   onMoveCard: (cardId: string, targetColumnId: string) => Promise<void>;
   onOpenCard: (cardId: string) => void;
 }): ReactElement {
@@ -1107,7 +1164,22 @@ function KanbanColumns({
   const [scrollX, setScrollX] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [contentWidth, setContentWidth] = useState(0);
-  const [trackWidth, setTrackWidth] = useState(0);
+  const highlightFields = useMemo(() => {
+    const rank = (name: string) => {
+      if (/^priority$/i.test(name)) return 0;
+      if (/^(due date|due|target date)$/i.test(name)) return 1;
+      return 2;
+    };
+    // Sort once per board read instead of searching every field for every card.
+    return fields
+      .filter(
+        (field) =>
+          !/^(status|state)$/i.test(field.name) &&
+          (field.kind === "singleSelect" ||
+            /^(priority|due date|due|target date)$/i.test(field.name)),
+      )
+      .sort((left, right) => rank(left.name) - rank(right.name));
+  }, [fields]);
 
   useEffect(() => {
     if (!board.columns.some((column) => column.id === selectedColumnId)) {
@@ -1217,9 +1289,6 @@ function KanbanColumns({
   const handleViewportLayout = useCallback((event: LayoutChangeEvent) => {
     setViewportWidth(event.nativeEvent.layout.width);
   }, []);
-  const handleTrackLayout = useCallback((event: LayoutChangeEvent) => {
-    setTrackWidth(event.nativeEvent.layout.width);
-  }, []);
   const scrollBy = useCallback(
     (direction: -1 | 1) => {
       scrollRef.current?.scrollTo({
@@ -1268,10 +1337,6 @@ function KanbanColumns({
   const displayedColumns = isCompact
     ? board.columns.filter((column) => column.id === selectedColumnId)
     : board.columns;
-  const thumbWidth =
-    contentWidth > 0 ? Math.max(24, (trackWidth * viewportWidth) / contentWidth) : 0;
-  const thumbLeft = maxScroll > 0 ? ((trackWidth - thumbWidth) * scrollX) / maxScroll : 0;
-
   const ghostStyle = useMemo(
     () =>
       drag
@@ -1312,6 +1377,9 @@ function KanbanColumns({
             key={column.id}
             column={column}
             columns={board.columns}
+            fields={highlightFields}
+            cardFields={cardFields}
+            pendingMove={pendingMove}
             onColumnRef={setColumnRef}
             onDragStart={handleDragStart}
             onDragCancel={cancelDrag}
@@ -1343,6 +1411,9 @@ function KanbanColumns({
                 key={column.id}
                 column={column}
                 columns={board.columns}
+                fields={highlightFields}
+                cardFields={cardFields}
+                pendingMove={pendingMove}
                 onColumnRef={setColumnRef}
                 onDragStart={handleDragStart}
                 onDragCancel={cancelDrag}
@@ -1374,19 +1445,6 @@ function KanbanColumns({
                 accessibilityLabel="Scroll board left"
                 testID="kanban-scroll-left"
               />
-              <View style={styles.scrollTrack} onLayout={handleTrackLayout}>
-                {hasOverflow ? (
-                  <View
-                    style={[
-                      styles.scrollThumb,
-                      inlineUnistylesStyle({
-                        width: thumbWidth,
-                        transform: [{ translateX: thumbLeft }],
-                      }),
-                    ]}
-                  />
-                ) : null}
-              </View>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1396,6 +1454,7 @@ function KanbanColumns({
                 accessibilityLabel="Scroll board right"
                 testID="kanban-scroll-right"
               />
+              <View style={styles.boardNavigationSpacer} />
               {hasOverflow ? (
                 <Text style={styles.scrollHint}>Shift + wheel to scroll columns</Text>
               ) : null}
@@ -1435,6 +1494,9 @@ function KanbanColumnPickerItem({
 function KanbanColumnView({
   column,
   columns,
+  fields,
+  cardFields,
+  pendingMove,
   onColumnRef,
   onDragStart,
   onDragCancel,
@@ -1448,6 +1510,9 @@ function KanbanColumnView({
 }: {
   column: KanbanColumn;
   columns: KanbanColumn[];
+  fields: KanbanField[];
+  cardFields: Record<string, KanbanCardFieldValue[]>;
+  pendingMove: PendingKanbanMove | null;
   onColumnRef: (columnId: string, view: View | null) => void;
   onDragStart: (
     card: KanbanCard,
@@ -1494,6 +1559,7 @@ function KanbanColumnView({
           {column.name}
         </Text>
         <Text style={styles.columnCount}>{column.cards.length}</Text>
+        {pendingMove?.targetColumnId === column.id ? <LoadingSpinner size="sm" /> : null}
       </View>
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -1504,6 +1570,10 @@ function KanbanColumnView({
           <KanbanCardView
             key={card.id}
             card={card}
+            fields={fields}
+            values={cardFields[card.id] ?? []}
+            pendingMove={pendingMove?.cardId === card.id ? pendingMove : null}
+            moveDisabled={pendingMove !== null}
             sourceColumnId={column.id}
             columns={columns}
             isDragging={draggingCardId === card.id}
@@ -1513,7 +1583,7 @@ function KanbanColumnView({
             onDragEnd={onCardDragEnd}
             onMoveCard={onMoveCard}
             onOpenCard={onOpenCard}
-            enableDrag={isWeb && !isCompact}
+            enableDrag={isWeb && !isCompact && pendingMove === null}
           />
         ))}
       </ScrollView>
@@ -1523,6 +1593,10 @@ function KanbanColumnView({
 
 function KanbanCardView({
   card,
+  fields,
+  values,
+  pendingMove,
+  moveDisabled,
   sourceColumnId,
   columns,
   isDragging,
@@ -1535,6 +1609,10 @@ function KanbanCardView({
   enableDrag,
 }: {
   card: KanbanCard;
+  fields: KanbanField[];
+  values: KanbanCardFieldValue[];
+  pendingMove: { targetColumnName: string } | null;
+  moveDisabled: boolean;
   sourceColumnId: string;
   columns: KanbanColumn[];
   isDragging: boolean;
@@ -1615,6 +1693,17 @@ function KanbanCardView({
     () => [styles.card, isDragging ? styles.cardDragging : null],
     [isDragging],
   );
+  const highlights = useMemo(() => {
+    const valueMap = new Map(values.map((value) => [value.fieldId, value.display]));
+    const result: { id: string; name: string; display: string }[] = [];
+    for (const field of fields) {
+      const display = valueMap.get(field.id)?.trim();
+      if (!display) continue;
+      result.push({ id: field.id, name: field.name, display });
+      if (result.length === 2) break;
+    }
+    return result;
+  }, [fields, values]);
 
   const openLink = useCallback(() => {
     if (card.url) {
@@ -1639,33 +1728,47 @@ function KanbanCardView({
           {card.body}
         </Text>
       ) : null}
-      <View style={styles.cardFooter}>
-        {enableDrag ? (
-          <KanbanIcon icon={ListChevronsUpDown} size="sm" color={styles.cardAssignees.color} />
-        ) : null}
-        {card.assignees.length > 0 ? (
-          <Text style={styles.cardAssignees} numberOfLines={1}>
-            {card.assignees.join(", ")}
-          </Text>
-        ) : null}
-        <View style={styles.cardFooterSpacer} />
-        {card.url ? (
-          <Pressable
-            onPress={openLink}
-            style={styles.cardLink}
-            testID={`kanban-card-link-${card.id}`}
-            accessibilityRole="link"
-          >
-            <KanbanIcon icon={ExternalLink} size="sm" color={styles.cardAssignees.color} />
-          </Pressable>
-        ) : null}
+      {pendingMove ? (
+        <View style={styles.cardPending} testID={`kanban-card-moving-${card.id}`}>
+          <LoadingSpinner size="sm" />
+          <Text style={styles.cardPendingText}>Moving to {pendingMove.targetColumnName}…</Text>
+        </View>
+      ) : null}
+      <View style={styles.cardBadges}>
         <KanbanCardMoveMenu
           card={card}
           sourceColumnId={sourceColumnId}
           columns={columns}
+          disabled={moveDisabled}
           onMoveCard={onMoveCard}
         />
+        {highlights.map((entry) => (
+          <StatusBadge key={entry.id} label={`${entry.name}: ${entry.display}`} />
+        ))}
       </View>
+      {enableDrag || card.assignees.length > 0 || card.url ? (
+        <View style={styles.cardFooter}>
+          {enableDrag ? (
+            <KanbanIcon icon={ListChevronsUpDown} size="sm" color={styles.cardAssignees.color} />
+          ) : null}
+          {card.assignees.length > 0 ? (
+            <Text style={styles.cardAssignees} numberOfLines={1}>
+              {card.assignees.join(", ")}
+            </Text>
+          ) : null}
+          <View style={styles.cardFooterSpacer} />
+          {card.url ? (
+            <Pressable
+              onPress={openLink}
+              style={styles.cardLink}
+              testID={`kanban-card-link-${card.id}`}
+              accessibilityRole="link"
+            >
+              <KanbanIcon icon={ExternalLink} size="sm" color={styles.cardAssignees.color} />
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
   return cardContent;
@@ -1675,29 +1778,32 @@ function KanbanCardMoveMenu({
   card,
   sourceColumnId,
   columns,
+  disabled,
   onMoveCard,
 }: {
   card: KanbanCard;
   sourceColumnId: string;
   columns: KanbanColumn[];
+  disabled: boolean;
   onMoveCard: (cardId: string, targetColumnId: string) => Promise<void>;
-}): ReactElement | null {
-  const { t } = useTranslation();
+}): ReactElement {
   const targets = useMemo(
     () => columns.filter((column) => column.id !== sourceColumnId),
     [columns, sourceColumnId],
   );
   if (targets.length === 0) {
-    return null;
+    return <StatusBadge label={card.status || "Unassigned"} />;
   }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        style={styles.cardMenuButton}
+        style={styles.cardStatusButton}
+        disabled={disabled}
         testID={`kanban-card-menu-${card.id}`}
-        accessibilityLabel={`${t("kanban.moveTo", { column: card.title })}`}
+        accessibilityLabel={`Change status of ${card.title}; current status ${card.status || "Unassigned"}`}
       >
-        <KanbanIcon icon={MoreVertical} size="md" color={styles.cardAssignees.color} />
+        <StatusBadge label={card.status || "Unassigned"} />
+        <KanbanIcon icon={ChevronDown} size="sm" color={styles.cardAssignees.color} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {targets.map((column) => (
@@ -1807,6 +1913,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingTop: theme.spacing[3],
   },
+  boardActionError: {
+    color: theme.colors.statusDanger,
+    fontSize: theme.fontSize.sm,
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+    paddingTop: theme.spacing[2],
+  },
   boardContent: {
     gap: theme.spacing[3],
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
@@ -1820,18 +1932,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingBottom: theme.spacing[3],
   },
-  scrollTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface2,
-    overflow: "hidden",
-  },
-  scrollThumb: {
-    height: 6,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.foregroundMuted,
-  },
+  boardNavigationSpacer: { flex: 1 },
   scrollHint: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
@@ -1906,16 +2007,27 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
   columnScrollContent: {
+    gap: theme.spacing[3],
+    padding: theme.spacing[3],
+  },
+  moveNotice: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: theme.spacing[2],
-    padding: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+  },
+  moveNoticeText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
   card: {
     backgroundColor: theme.colors.surface2,
     borderRadius: theme.borderRadius.base,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    padding: theme.spacing[2],
-    gap: theme.spacing[1],
+    padding: theme.spacing[3],
+    gap: theme.spacing[2],
   },
   cardDragging: {
     opacity: 0.4,
@@ -1923,11 +2035,26 @@ const styles = StyleSheet.create((theme) => ({
   cardTitle: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
+    fontWeight: theme.fontWeight.normal,
   },
   cardDescription: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
+  },
+  cardPending: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  cardPendingText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  cardBadges: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: theme.spacing[1],
   },
   cardFooter: {
     flexDirection: "row",
@@ -1942,8 +2069,13 @@ const styles = StyleSheet.create((theme) => ({
   cardLink: {
     padding: 2,
   },
-  cardMenuButton: {
-    padding: 2,
+  cardStatusButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    minHeight: 36,
+    paddingHorizontal: theme.spacing[1],
+    borderRadius: theme.borderRadius.full,
   },
   dragGhost: {
     position: "absolute",

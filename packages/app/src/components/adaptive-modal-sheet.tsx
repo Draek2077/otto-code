@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/isolated-bottom-sheet-modal";
 import {
   getBottomSheetVisibleContentHeight,
+  getCompactSheetScrollFlex,
   getCompactSheetSafeAreaPadding,
 } from "@/components/adaptive-modal-sheet-layout";
 import {
@@ -298,10 +299,6 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minHeight: 0,
   },
-  bottomSheetVisibleScroll: {
-    flex: 1,
-    minHeight: 0,
-  },
   desktopStaticContent: {
     flexShrink: 1,
     minHeight: 0,
@@ -351,11 +348,12 @@ const SEARCH_INPUT_STYLE = [
 // passed to them silently applies nothing (see docs/unistyles.md). The scroll
 // view gets only this plain RN style; themed content layout (padding/gap)
 // lives on a core View wrapped around the children instead.
-// flexGrow: 0 overrides react-native-web's ScrollView default (flexGrow: 1) so
-// the footer sits directly under short content instead of being pinned to the
-// sheet bottom; flexShrink lets the scroll view shrink inside the fixed-height
-// sheet so the footer stays visible when content overflows.
-const BOTTOM_SHEET_SCROLL_STYLE = { flexGrow: 0, flexShrink: 1, minHeight: 0 } as const;
+// The scroller's own flex sizing comes from `getCompactSheetScrollFlex`, as a
+// plain object rather than a registered style: the scroller is a third-party
+// Animated component, and its sizing has to stay identical to the seam-fade
+// wrapper's.
+const BOTTOM_SHEET_SCROLL_HUG_STYLE = getCompactSheetScrollFlex(false);
+const BOTTOM_SHEET_SCROLL_FILL_STYLE = getCompactSheetScrollFlex(true);
 
 // Default @gorhom/bottom-sheet handle: 10px padding + 4px indicator + 10px padding.
 const SHEET_HANDLE_HEIGHT = 24;
@@ -867,6 +865,18 @@ export function AdaptiveModalSheet({
     () => [styles.compactStaticContent, compactContentStyle],
     [compactContentStyle],
   );
+  // The seam-fade wrapper sits between the body and the scroller, so it has to
+  // carry the same sizing intent the scroller does. Left hugging while the
+  // scroller fills, it sizes to a zero flex basis and takes the body down with
+  // it: the sheet still measures and snaps to its real content height, but the
+  // body renders empty with the footer pushed to the bottom of the detent.
+  const mobileScrollContainerStyle = useMemo(
+    () =>
+      sizeContentToCurrentSnapPoint
+        ? [styles.bottomSheetScrollContainer, BOTTOM_SHEET_SCROLL_FILL_STYLE]
+        : styles.bottomSheetScrollContainer,
+    [sizeContentToCurrentSnapPoint],
+  );
   const desktopScrollContentStyle = useMemo(
     () => [styles.contentGrow, effectiveContentStyle],
     [effectiveContentStyle],
@@ -979,13 +989,13 @@ export function AdaptiveModalSheet({
         {subHeader ? <View onLayout={onSubHeaderLayout}>{subHeader}</View> : null}
         <View style={[styles.compactStaticContent, bodyStyle]}>
           {scrollable ? (
-            <View style={styles.bottomSheetScrollContainer}>
+            <View style={mobileScrollContainerStyle}>
               <BottomSheetScrollView
                 ref={mobileScrollRef as unknown as Ref<never>}
                 style={
                   sizeContentToCurrentSnapPoint
-                    ? [BOTTOM_SHEET_SCROLL_STYLE, styles.bottomSheetVisibleScroll]
-                    : BOTTOM_SHEET_SCROLL_STYLE
+                    ? BOTTOM_SHEET_SCROLL_FILL_STYLE
+                    : BOTTOM_SHEET_SCROLL_HUG_STYLE
                 }
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}

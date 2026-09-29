@@ -1,13 +1,21 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import React, { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 import { EditingTextInput } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { TabbedModalSheet } from "@/components/ui/tabbed-modal-sheet";
+import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { SegmentedControlOption } from "@/components/ui/segmented-control";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   KanbanCard,
   KanbanCardFieldValue,
+  KanbanColumn,
   KanbanField,
   KanbanFieldKind,
   KanbanFieldOption,
@@ -16,38 +24,44 @@ import type {
 import { normalizeKanbanFieldKind } from "@otto-code/protocol/kanban";
 import { confirmDialog } from "@/utils/confirm-dialog";
 
-type CardDetailTab = "details" | "description" | "people" | "fields";
+type CardDetailTab = "overview" | "description" | "people" | "fields";
 
 const DETAIL_TABS: SegmentedControlOption<CardDetailTab>[] = [
-  { value: "details", label: "Details" },
+  { value: "overview", label: "Overview" },
   { value: "description", label: "Description" },
   { value: "people", label: "People" },
-  { value: "fields", label: "Fields" },
+  { value: "fields", label: "More fields" },
 ];
 
 export function KanbanCardDetail({
   card,
+  columns,
+  currentColumnId,
   fields,
   values,
   canDelete,
   onClose,
   onUpdate,
+  onMove,
   onDelete,
 }: {
   card: KanbanCard;
+  columns: KanbanColumn[];
+  currentColumnId: string;
   fields: KanbanField[];
   values: KanbanCardFieldValue[];
   canDelete: boolean;
   onClose: () => void;
   onUpdate: (fieldId: string, value: KanbanFieldValueInput) => Promise<void>;
+  onMove: (targetColumnId: string) => Promise<void>;
   onDelete: () => Promise<void>;
 }): ReactElement {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<CardDetailTab>("details");
+  const [activeTab, setActiveTab] = useState<CardDetailTab>("overview");
   const valueMap = new Map(values.map((entry) => [entry.fieldId, entry]));
-  const detailFields = fields.filter((field) =>
-    ["title", "status", "state"].includes(field.name.toLowerCase()),
+  const overviewFields = fields.filter((field) =>
+    /^(title|priority|due date|due|target date)$/i.test(field.name),
   );
   const descriptionFields = fields.filter((field) =>
     ["description", "body"].includes(field.name.toLowerCase()),
@@ -57,26 +71,29 @@ export function KanbanCardDetail({
   );
   const otherFields = fields.filter(
     (field) =>
-      !detailFields.includes(field) &&
+      !overviewFields.includes(field) &&
       !descriptionFields.includes(field) &&
-      !peopleFields.includes(field),
+      !peopleFields.includes(field) &&
+      !/^(status|state)$/i.test(field.name),
   );
   const tabs = DETAIL_TABS.filter(
     (tab) =>
-      tab.value === "details" ||
-      (tab.value === "description" && (descriptionFields.length > 0 || !!card.body)) ||
+      tab.value === "overview" ||
+      tab.value === "description" ||
       (tab.value === "people" && peopleFields.length > 0) ||
       (tab.value === "fields" && otherFields.length > 0),
   );
 
   const update = useCallback(
-    async (fieldId: string, value: KanbanFieldValueInput): Promise<void> => {
+    async (fieldId: string, value: KanbanFieldValueInput): Promise<boolean> => {
       setBusy(true);
       setError(null);
       try {
         await onUpdate(fieldId, value);
+        return true;
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
+        return false;
       } finally {
         setBusy(false);
       }
@@ -104,20 +121,32 @@ export function KanbanCardDetail({
     }
   }, [onDelete, onClose]);
 
+  const changeStatus = useCallback(
+    async (targetColumnId: string): Promise<void> => {
+      setBusy(true);
+      setError(null);
+      try {
+        await onMove(targetColumnId);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onMove],
+  );
+
   const openLink = useCallback(() => {
     if (card.url) void Linking.openURL(card.url).catch(() => undefined);
   }, [card.url]);
   const removePress = useCallback(() => void remove(), [remove]);
-  const header = useMemo(
-    () => ({ title: card.title, subtitle: card.status }),
-    [card.title, card.status],
-  );
+  const header = useMemo(() => ({ title: card.title }), [card.title]);
   const footer = useMemo(
     () => (
       <View style={styles.footer}>
         {canDelete ? (
           <Button
-            variant="destructive"
+            variant="outline"
             size="sm"
             onPress={removePress}
             disabled={busy}
@@ -134,17 +163,13 @@ export function KanbanCardDetail({
     ),
     [busy, canDelete, onClose, removePress],
   );
-  let visibleFields = detailFields;
+  let visibleFields = overviewFields;
   if (activeTab === "description") visibleFields = descriptionFields;
   if (activeTab === "people") visibleFields = peopleFields;
   if (activeTab === "fields") visibleFields = otherFields;
   let emptyMessage: string | null = null;
-  if (visibleFields.length === 0) {
-    if (activeTab !== "details" && activeTab !== "description")
-      emptyMessage = "No fields in this section";
-    else if (activeTab === "details" && fields.length === 0)
-      emptyMessage = "This board has no card fields Otto can edit.";
-  }
+  if (visibleFields.length === 0 && activeTab !== "overview" && activeTab !== "description")
+    emptyMessage = "No fields in this section";
 
   return (
     <TabbedModalSheet
@@ -159,15 +184,42 @@ export function KanbanCardDetail({
       tabsTestID="kanban-detail-tabs"
       footer={footer}
     >
-      {activeTab === "details" && card.url ? (
+      {activeTab === "overview" ? (
         <View style={styles.summary}>
-          <Button variant="ghost" size="sm" onPress={openLink}>
-            Open source
-          </Button>
+          <Text style={styles.label}>Status</Text>
+          <View style={styles.statusRow}>
+            <StatusBadge label={card.status || "Unassigned"} />
+            {columns.length > 1 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  style={styles.statusTrigger}
+                  disabled={busy}
+                  testID="kanban-detail-change-status"
+                  accessibilityLabel="Change card status"
+                >
+                  <Text style={styles.action}>Change status</Text>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {columns
+                    .filter((column) => column.id !== currentColumnId)
+                    .map((column) => (
+                      <StatusMoveItem key={column.id} column={column} onMove={changeStatus} />
+                    ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </View>
+          {card.url ? (
+            <Button variant="ghost" size="sm" onPress={openLink}>
+              Open source
+            </Button>
+          ) : null}
         </View>
       ) : null}
-      {activeTab === "description" && descriptionFields.length === 0 && card.body ? (
-        <Text style={styles.summaryBody}>{card.body}</Text>
+      {activeTab === "description" && descriptionFields.length === 0 ? (
+        <Text style={card.body ? styles.summaryBody : styles.subtle}>
+          {card.body || "No description"}
+        </Text>
       ) : null}
       {error ? (
         <Text style={styles.error} testID="kanban-detail-error">
@@ -185,6 +237,21 @@ export function KanbanCardDetail({
       ))}
       {emptyMessage ? <Text style={styles.subtle}>{emptyMessage}</Text> : null}
     </TabbedModalSheet>
+  );
+}
+
+function StatusMoveItem({
+  column,
+  onMove,
+}: {
+  column: KanbanColumn;
+  onMove: (targetColumnId: string) => Promise<void>;
+}): ReactElement {
+  const handleSelect = useCallback(() => void onMove(column.id), [column.id, onMove]);
+  return (
+    <DropdownMenuItem testID={`kanban-detail-status-${column.id}`} onSelect={handleSelect}>
+      {column.name}
+    </DropdownMenuItem>
   );
 }
 
@@ -206,12 +273,51 @@ function KanbanFieldEditor({
   field: KanbanField;
   current?: KanbanCardFieldValue;
   disabled: boolean;
-  onSave: (fieldId: string, value: KanbanFieldValueInput) => Promise<void>;
+  onSave: (fieldId: string, value: KanbanFieldValueInput) => Promise<boolean>;
 }): ReactElement {
+  const [editing, setEditing] = useState(false);
+  const editable = current?.editable ?? field.editable;
+  const kind = normalizeKanbanFieldKind(field.kind);
+  const save = useCallback(
+    async (fieldId: string, value: KanbanFieldValueInput): Promise<boolean> => {
+      const saved = await onSave(fieldId, value);
+      if (saved) setEditing(false);
+      return saved;
+    },
+    [onSave],
+  );
+  const toggleEditing = useCallback(() => setEditing((value) => !value), []);
+  let fieldContent: ReactElement;
+  if (editing) {
+    fieldContent = (
+      <KanbanFieldInput field={field} current={current} disabled={disabled} onSave={save} />
+    );
+  } else if (editable && kind && SELECT_KINDS.has(kind) && current?.display) {
+    fieldContent = (
+      <View style={styles.fieldValueBadge}>
+        <StatusBadge label={current.display} />
+      </View>
+    );
+  } else {
+    fieldContent = <ReadonlyField field={field} current={current} />;
+  }
   return (
     <View style={styles.field} testID={`kanban-field-${field.id}`}>
-      <Text style={styles.label}>{field.name}</Text>
-      <KanbanFieldInput field={field} current={current} disabled={disabled} onSave={onSave} />
+      <View style={styles.fieldHeader}>
+        <Text style={styles.label}>{field.name}</Text>
+        {editable && kind ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            onPress={toggleEditing}
+            disabled={disabled}
+            testID={`kanban-field-edit-${field.id}`}
+          >
+            {editing ? "Cancel" : "Edit"}
+          </Button>
+        ) : null}
+      </View>
+      {fieldContent}
     </View>
   );
 }
@@ -225,7 +331,7 @@ function KanbanFieldInput({
   field: KanbanField;
   current?: KanbanCardFieldValue;
   disabled: boolean;
-  onSave: (fieldId: string, value: KanbanFieldValueInput) => Promise<void>;
+  onSave: (fieldId: string, value: KanbanFieldValueInput) => Promise<boolean>;
 }): ReactElement {
   const kind = normalizeKanbanFieldKind(field.kind);
   if (!kind || !(current?.editable ?? field.editable)) {
@@ -283,14 +389,15 @@ function SaveFieldButton({
   onPress: () => void;
 }): ReactElement {
   return (
-    <Pressable
+    <Button
+      variant="outline"
+      size="sm"
       disabled={disabled}
       onPress={onPress}
-      accessibilityRole="button"
       testID={`kanban-field-save-${fieldId}`}
     >
-      <Text style={styles.action}>{disabled ? "Saving…" : "Save"}</Text>
-    </Pressable>
+      {disabled ? "Saving…" : "Save"}
+    </Button>
   );
 }
 
@@ -324,7 +431,7 @@ function TextFieldEditor({
   kind: KanbanFieldKind;
   current?: KanbanCardFieldValue;
   disabled: boolean;
-  onSave: (fieldId: string, value: KanbanFieldValueInput) => Promise<void>;
+  onSave: (fieldId: string, value: KanbanFieldValueInput) => Promise<boolean>;
 }): ReactElement {
   const [draft, setDraft] = useState(current?.display ?? "");
   useEffect(() => setDraft(current?.display ?? ""), [current?.display]);
@@ -360,7 +467,7 @@ function SelectFieldEditor({
   options: KanbanFieldOption[];
   current?: KanbanCardFieldValue;
   disabled: boolean;
-  onSave: (fieldId: string, value: KanbanFieldValueInput) => Promise<void>;
+  onSave: (fieldId: string, value: KanbanFieldValueInput) => Promise<boolean>;
 }): ReactElement {
   const initial = current?.value?.kind === "options" ? current.value.optionIds : EMPTY_IDS;
   const [selected, setSelected] = useState<string[]>(initial);
@@ -436,9 +543,36 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
+  statusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  statusTrigger: {
+    minHeight: 32,
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.borderAccent,
+  },
   summaryBody: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
-  field: { gap: 8 },
-  label: { color: theme.colors.foreground, fontWeight: theme.fontWeight.semibold },
+  field: {
+    gap: theme.spacing[2],
+    paddingBottom: theme.spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  fieldHeader: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
+  fieldValueBadge: { alignItems: "flex-start" },
+  label: { color: theme.colors.foreground, fontWeight: theme.fontWeight.medium },
   subtle: { color: theme.colors.foregroundMuted },
   action: { color: theme.colors.accent, fontWeight: theme.fontWeight.semibold },
   error: { color: theme.colors.destructive },
