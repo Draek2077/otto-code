@@ -11,7 +11,7 @@ afterEach(async () => {
 
 describe("hosted browser page loading", () => {
   it("passes right clicks and double clicks to the host page", async () => {
-    const manager = new RemoteBrowserManager();
+    const manager = new RemoteBrowserManager("test-browser-profile");
     managers.push(manager);
     const browserId = "11111111-1111-4111-8111-111111111111";
     const tab = manager["ensureTab"]("workspace", { kind: "open", browserId });
@@ -19,6 +19,7 @@ describe("hosted browser page loading", () => {
     tab.page = {
       mouse: { click },
       isClosed: () => false,
+      close: vi.fn().mockResolvedValue(undefined),
       url: () => "https://example.com/",
       title: async () => "Example",
     } as unknown as Page;
@@ -44,7 +45,7 @@ describe("hosted browser page loading", () => {
   });
 
   it("tracks main-frame loading through load and stops an active navigation", async () => {
-    const manager = new RemoteBrowserManager();
+    const manager = new RemoteBrowserManager("test-browser-profile");
     managers.push(manager);
     const browserId = "11111111-1111-4111-8111-111111111111";
     const workspaceId = "workspace";
@@ -59,6 +60,7 @@ describe("hosted browser page loading", () => {
     const events = Object.assign(new EventEmitter(), {
       mainFrame: () => frame,
       isClosed: () => false,
+      close: vi.fn().mockResolvedValue(undefined),
       context: () => ({ newCDPSession: async () => ({ send, detach }) }),
     });
     const page = events as unknown as Page;

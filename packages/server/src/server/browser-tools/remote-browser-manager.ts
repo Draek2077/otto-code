@@ -3,7 +3,6 @@ import { realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
   chromium,
-  type Browser,
   type BrowserContext,
   type ElementHandle,
   type Page,
@@ -41,7 +40,6 @@ interface Tab extends TabOrigin {
   url: string;
   title: string;
   viewport: Viewport;
-  context: BrowserContext | null;
   page: Page | null;
   state: RemoteBrowserTab["state"];
   isLoading: boolean;
@@ -185,9 +183,9 @@ function appendBounded<T>(items: T[], item: T, limit = 200): void {
 
 /** Daemon-owned pages survive a mobile socket loss, then shed their processes on idle. */
 export class RemoteBrowserManager {
-  private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
   private readonly snapshotEngine = new BrowserSnapshotEngine();
-  private launching: Promise<Browser> | null = null;
+  private launching: Promise<BrowserContext> | null = null;
   private runtimeMissingUntil = 0;
   private startQueue: Promise<void> = Promise.resolve();
   private readonly tabs = new Map<string, Tab>();
@@ -225,7 +223,7 @@ export class RemoteBrowserManager {
     "set_color_scheme",
   ];
 
-  constructor() {
+  constructor(private readonly profileDirectory: string) {
     this.reapTimer = setInterval(() => void this.reap(), 30_000);
     this.reapTimer.unref?.();
   }
@@ -238,7 +236,7 @@ export class RemoteBrowserManager {
   async hasRuntime(): Promise<boolean> {
     if (Date.now() < this.runtimeMissingUntil) return false;
     try {
-      await this.getBrowser();
+      await this.getContext();
       return true;
     } catch {
       this.runtimeMissingUntil = Date.now() + RUNTIME_RETRY_MS;
@@ -246,35 +244,47 @@ export class RemoteBrowserManager {
     }
   }
 
-  private async getBrowser(): Promise<Browser> {
-    if (this.browser?.isConnected()) return this.browser;
+  private async getContext(): Promise<BrowserContext> {
+    if (this.context?.browser()?.isConnected()) return this.context;
     if (!this.launching) {
       this.launching = (async () => {
+        // One disk-backed profile per daemon shares website sessions across
+        // hosted tabs. Each tab still owns its page and viewport.
         // Prefer the installed system browser. Packaged daemons need not download
         // Playwright's separate browser bundle, but a developer bundle also works.
-        let browser: Browser;
+        let context: BrowserContext;
+        const options = {
+          headless: true,
+          viewport: { width: DEFAULT_VIEWPORT.width, height: DEFAULT_VIEWPORT.height },
+          deviceScaleFactor: 1,
+        } as const;
         try {
-          browser = await chromium.launch({ channel: "msedge", headless: true });
+          context = await chromium.launchPersistentContext(this.profileDirectory, {
+            ...options,
+            channel: "msedge",
+          });
         } catch {
           try {
-            browser = await chromium.launch({ channel: "chrome", headless: true });
+            context = await chromium.launchPersistentContext(this.profileDirectory, {
+              ...options,
+              channel: "chrome",
+            });
           } catch {
             try {
-              browser = await chromium.launch({ headless: true });
+              context = await chromium.launchPersistentContext(this.profileDirectory, options);
             } catch (cause) {
               throw new Error(
-                "No host browser runtime is available. Install Chrome or Edge on the host, or run `npx playwright install chromium` there.",
+                "The host browser could not start or open its profile. Install Chrome or Edge on the host (or Playwright Chromium), and make sure another process is not using the profile.",
                 { cause },
               );
             }
           }
         }
-        browser.on("disconnected", () => {
-          if (this.browser === browser) this.browser = null;
+        context.on("close", () => {
+          if (this.context === context) this.context = null;
           for (const tab of this.tabs.values()) {
             if (tab.page) {
               tab.page = null;
-              tab.context = null;
               tab.state = "crashed";
               setPageLoading(tab, false);
               tab.error = "The host browser stopped. Reload this tab to recover.";
@@ -282,8 +292,11 @@ export class RemoteBrowserManager {
             }
           }
         });
-        this.browser = browser;
-        return browser;
+        // A persistent context starts with a blank page. Otto owns only pages
+        // created for registered tabs, so discard Chromium's initial page.
+        await Promise.all(context.pages().map((page) => page.close()));
+        this.context = context;
+        return context;
       })().finally(() => {
         this.launching = null;
       });
@@ -319,13 +332,9 @@ export class RemoteBrowserManager {
     setPageLoading(tab, true);
     tab.error = null;
     try {
-      const browser = await this.getBrowser();
-      const context = await browser.newContext({
-        viewport: { width: tab.viewport.width, height: tab.viewport.height },
-        deviceScaleFactor: 1,
-      });
+      const context = await this.getContext();
       const page = await context.newPage();
-      tab.context = context;
+      await page.setViewportSize({ width: tab.viewport.width, height: tab.viewport.height });
       tab.page = page;
       tab.stream.attach(page);
       this.observePage(tab, page);
@@ -367,9 +376,8 @@ export class RemoteBrowserManager {
   }
 
   private async suspend(tab: Tab, state: Tab["state"] = "suspended"): Promise<void> {
-    const context = tab.context;
+    const page = tab.page;
     tab.page = null;
-    tab.context = null;
     tab.state = state;
     tab.loadingRequest = null;
     setPageLoading(tab, false);
@@ -380,7 +388,9 @@ export class RemoteBrowserManager {
     tab.requestIds = new WeakMap();
     tab.requestStartedAt = new WeakMap();
     this.snapshotEngine.clearBrowser(tab.browserId);
-    if (context) await context.close().catch(() => undefined);
+    // Suspend only this page. The shared context owns cookies and site data
+    // and is reaped separately when all hosted pages are idle.
+    if (page) await page.close().catch(() => undefined);
   }
 
   private ensureTab(
@@ -401,7 +411,6 @@ export class RemoteBrowserManager {
       url: normalUrl(command.url),
       title: "",
       viewport: command.viewport ?? DEFAULT_VIEWPORT,
-      context: null,
       page: null,
       state: "suspended",
       isLoading: false,
@@ -1206,10 +1215,10 @@ export class RemoteBrowserManager {
       if (!tab.page && now - Math.max(tab.lastUsed, tab.lastClaimed) > METADATA_REAP_MS)
         this.tabs.delete(tab.browserId);
     }
-    if (this.browser && ![...this.tabs.values()].some((tab) => tab.page)) {
-      const browser = this.browser;
-      this.browser = null;
-      await browser.close().catch(() => undefined);
+    if (this.context && ![...this.tabs.values()].some((tab) => tab.page)) {
+      const context = this.context;
+      this.context = null;
+      await context.close().catch(() => undefined);
     }
   }
 
@@ -1219,7 +1228,7 @@ export class RemoteBrowserManager {
     await Promise.all([...this.tabs.values()].map((tab) => this.suspend(tab)));
     this.tabs.clear();
     this.closedTabs.clear();
-    await this.browser?.close().catch(() => undefined);
-    this.browser = null;
+    await this.context?.close().catch(() => undefined);
+    this.context = null;
   }
 }

@@ -739,7 +739,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly providerUsageService: ProviderUsageService;
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
-  private readonly remoteBrowserManager = new RemoteBrowserManager();
+  private readonly remoteBrowserManager: RemoteBrowserManager;
   private unregisterRemoteBrowserHost: (() => void) | null = null;
   private readonly hubRelationships: HubRelationshipManagement | null;
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
@@ -821,6 +821,7 @@ export class VoiceAssistantWebSocketServer {
     private readonly googleConnectors?: GoogleConnectorService,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
+    this.remoteBrowserManager = new RemoteBrowserManager(join(ottoHome, "browser-profile"));
     this.workspaceSetupRuntime = workspaceSetupRuntime;
     this.advertiseDaemonStatusRpc = wsConfig.daemonStatusRpc !== false;
     this.advertiseRelayConfig = wsConfig.relayConfig !== false;

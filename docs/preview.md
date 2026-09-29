@@ -393,6 +393,18 @@ older hosts retain their existing browser controls.
 
 Page-created popup windows are closed rather than left as untracked daemon pages.
 
+### Hosted browser profile
+
+Hosted tabs on one daemon share a persistent Chromium profile at
+`$OTTO_HOME/browser-profile`. Cookies, local storage, IndexedDB, service workers,
+and browser caches survive tab suspension, tab closure, and daemon restart. This
+lets a site retain a login after the user returns. Workspaces still own their
+tab IDs and automation access, while website session data is shared across the
+host's workspaces. The profile stays on the daemon host; it is separate from the
+Electron desktop browser profile and from profiles on other hosts. Dev and
+installed daemons use separate `OTTO_HOME` directories, so they do not share
+site data. Closing a tab does not erase the host profile.
+
 ### Hosted frame stream
 
 A hosted tab is watched as a stream of JPEG frames. Four rules keep it cheap,

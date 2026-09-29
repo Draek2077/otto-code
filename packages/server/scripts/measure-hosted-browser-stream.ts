@@ -13,9 +13,12 @@
 // request until the page repaints. `binary` is `push` with the picture sent as
 // bytes, which is what the app uses now.
 import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { resolve as resolvePath, sep } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import {
   FRAME_LONG_POLL_MS,
@@ -299,7 +302,13 @@ async function main(): Promise<void> {
     response.end(PAGES[scenario] ?? "");
   });
   const origin = await listen(server);
-  const manager = new RemoteBrowserManager();
+  const scratchRoot = fileURLToPath(new URL("../../../.tmp/", import.meta.url));
+  await mkdir(scratchRoot, { recursive: true });
+  const profileDirectory = await mkdtemp(resolvePath(scratchRoot, "otto-browser-benchmark-"));
+  const profileTarget = resolvePath(profileDirectory);
+  if (!profileTarget.startsWith(resolvePath(scratchRoot) + sep))
+    throw new Error("Invalid profile path");
+  const manager = new RemoteBrowserManager(profileDirectory);
   const results: Measurement[] = [];
   try {
     let index = 0;
@@ -312,6 +321,7 @@ async function main(): Promise<void> {
   } finally {
     await manager.close();
     server.close();
+    await rm(profileTarget, { recursive: true, force: true });
   }
   console.table(
     results.map((result) => ({
