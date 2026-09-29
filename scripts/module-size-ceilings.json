@@ -24,7 +24,7 @@
     "Re-baselined 2026-09-04 for the files the Paseo v0.6.1 merge grew at each file's then-current size. The Paseo v0.6.1 merge (2026-08-31) grew them past the 2026-08-23 numbers before the check was ever green again, so the lint job was red on every run since. Same reasoning as 2026-08-23: a gate nobody can get green gates nothing; the standing refactor backlog (Otto Knowledge finding: oversized-module inventory) is the way down."
   ],
   "ceilings": {
-    "packages/protocol/src/messages.ts": 10441,
+    "packages/protocol/src/messages.ts": 10439,
     "packages/server/src/server/session.ts": 12921,
     "packages/client/src/daemon-client.ts": 10943,
     "packages/app/src/screens/workspace/workspace-screen.tsx": 5953,

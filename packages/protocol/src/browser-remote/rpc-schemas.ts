@@ -1,6 +1,16 @@
 import { z } from "zod";
 import { BrowserAutomationBrowserIdSchema } from "../browser-automation/rpc-schemas.js";
 
+/** Capability leaves for hosted browser operations live with their wire schemas. */
+export const RemoteBrowserServerFeaturesShape = {
+  // COMPAT(remoteBrowser): added in v0.9.25, remove gate after 2027-03-26.
+  remoteBrowser: z.boolean().optional(),
+  // COMPAT(remoteBrowserLoadStatus): added in v0.9.26, remove gate after 2027-03-27.
+  remoteBrowserLoadStatus: z.boolean().optional(),
+  // COMPAT(remoteBrowserGestures): added in v0.9.28, remove gate after 2027-03-29.
+  remoteBrowserGestures: z.boolean().optional(),
+};
+
 const ViewportSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("responsive"),
