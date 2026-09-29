@@ -7,10 +7,15 @@
 - Keep hosted browser sessions open when switching tabs or restarting Otto
 - Paste text from your device into a hosted browser page
 - Double-click and right-click on hosted browser pages
+- See card status and key fields directly on Kanban cards
+- Change a card's status from the card or its detail sheet
+- Follow card moves until the board confirms them
+- Edit card fields only when you choose Edit
 
 ### Fixed
 
 - Agent-run .NET builds release their MSBuild workers when the build finishes
+- Compact sheets show their content at the resting height
 
 ## 0.9.27 - 2026-09-28
 
