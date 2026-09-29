@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.28 - 2026-09-29
+
+### Improved
+
+- Keep hosted browser sessions open when switching tabs or restarting Otto
+- Paste text from your device into a hosted browser page
+- Double-click and right-click on hosted browser pages
+
+### Fixed
+
+- Agent-run .NET builds release their MSBuild workers when the build finishes
+
 ## 0.9.27 - 2026-09-28
 
 ### Improved
