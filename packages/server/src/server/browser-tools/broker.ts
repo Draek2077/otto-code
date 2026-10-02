@@ -25,6 +25,8 @@ export interface BrowserHostClient {
 export interface BrowserToolsExecuteInput {
   command: BrowserAutomationCommand;
   agentId?: string;
+  /** Location for a new tab, or a host filter for list_tabs. Existing IDs retain affinity. */
+  tabHost?: "app" | "host";
   cwd?: string;
   workspaceId?: string;
   requestId?: string;
@@ -63,6 +65,10 @@ export class BrowserToolsBroker {
   private readonly browserHostByBrowserId = new Map<string, string>();
   private readonly strandedBrowserHostByBrowserId = new Map<string, string>();
   private registrationSequence = 0;
+  private readonly preferredTabHostByAgent = new Map<
+    string,
+    { host: "app" | "host"; clientId?: string }
+  >();
 
   public constructor(options: BrowserToolsBrokerOptions) {
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_BROWSER_TOOLS_TIMEOUT_MS;
@@ -120,6 +126,15 @@ export class BrowserToolsBroker {
     return this.clients.size;
   }
 
+  /** The latest human prompt determines the default for that agent's next tabs. */
+  public setAgentTabHost(agentId: string, host: "app" | "host", clientId?: string): void {
+    this.preferredTabHostByAgent.delete(agentId);
+    this.preferredTabHostByAgent.set(agentId, { host, clientId });
+    if (this.preferredTabHostByAgent.size > 1_000) {
+      this.preferredTabHostByAgent.delete(this.preferredTabHostByAgent.keys().next().value!);
+    }
+  }
+
   public async execute(input: BrowserToolsExecuteInput): Promise<BrowserToolsResponsePayload> {
     const requestId = input.requestId ?? this.createRequestId();
 
@@ -141,15 +156,25 @@ export class BrowserToolsBroker {
     }
 
     if (request.data.command.command === "list_tabs") {
-      return this.executeListTabs({ request: request.data, timeoutMs: input.timeoutMs });
+      return this.executeListTabs({
+        request: request.data,
+        timeoutMs: input.timeoutMs,
+        tabHost: input.tabHost,
+      });
     }
 
+    // Location is a creation-time choice. All later commands use the browserId
+    // affinity recorded from new_tab or list_tabs, even after another prompt
+    // changes this agent's default.
     const selection =
       request.data.command.command === "new_tab"
-        ? this.selectHostForNewTab(requestId)
+        ? this.selectHostForNewTab(
+            requestId,
+            input.tabHost ?? this.preferredTabHostByAgent.get(input.agentId ?? "")?.host,
+            input.agentId,
+          )
         : this.selectHostForCommand(request.data.command, requestId);
-    // Only a host that must check for a browser makes the choice wait.
-    const host = selection instanceof Promise ? await selection : selection;
+    const host = selection;
     if (!host.ok) {
       return host.payload;
     }
@@ -212,8 +237,13 @@ export class BrowserToolsBroker {
   private async executeListTabs(params: {
     request: BrowserAutomationExecuteRequest;
     timeoutMs: number | undefined;
+    tabHost?: "app" | "host";
   }): Promise<BrowserToolsResponsePayload> {
-    const hosts = Array.from(this.clients.values());
+    const hosts = Array.from(this.clients.values()).filter(
+      (entry) =>
+        !params.tabHost ||
+        (entry.client.hostKind === "daemon-hosted") === (params.tabHost === "host"),
+    );
     if (hosts.length === 0) {
       return this.noBrowserHostFailure(params.request.requestId);
     }
@@ -273,31 +303,45 @@ export class BrowserToolsBroker {
     };
   }
 
-  /**
-   * Agent tabs, preview tabs included, live on the daemon so every connected
-   * client can attach to the same page. Two cases keep them in the desktop app
-   * instead, where they opened before hosted tabs existed.
-   */
+  /** Select the requesting client's browser unless the request asks for the host. */
   private selectHostForNewTab(
     requestId: string,
-  ): BrowserHostSelection | Promise<BrowserHostSelection> {
+    requestedHost?: "app" | "host",
+    agentId?: string,
+  ): BrowserHostSelection {
     const hosts = [...this.clients.values()].toReversed();
     const daemon = hosts.find((entry) => entry.client.hostKind === "daemon-hosted");
     const apps = hosts.filter((entry) => entry.client.hostKind !== "daemon-hosted");
-    const choose = (preferred: RegisteredBrowserHost | undefined): BrowserHostSelection => {
-      // With nothing better, the daemon host still answers, so its error can
-      // say how to install a browser.
-      const host = preferred ?? daemon ?? this.selectMostRecentlyRegisteredHost();
-      return host
-        ? { ok: true, value: host }
-        : { ok: false, payload: this.noBrowserHostFailure(requestId) };
-    };
-    // COMPAT(hostedTabsCapability): added in v0.9.26, remove after 2027-03-28.
-    // An app that cannot show hosted tabs would leave its user looking at nothing.
-    const blindApp = apps.find((entry) => entry.client.showsHostedTabs !== true);
-    if (blindApp || !daemon?.client.isAvailable) return choose(blindApp ?? daemon);
-    // A host with no browser installed cannot serve the tab; an app's webview can.
-    return daemon.client.isAvailable().then((canServe) => choose(canServe ? daemon : apps[0]));
+    const preferredClientId = agentId
+      ? this.preferredTabHostByAgent.get(agentId)?.clientId
+      : undefined;
+    // Keep a desktop prompt on the exact connected app that sent it when
+    // multiple app browser hosts share this daemon.
+    const app = apps.find((entry) => entry.client.id === preferredClientId) ?? apps[0];
+    if (requestedHost !== "host" && app) return { ok: true, value: app };
+    if (requestedHost === "app")
+      return {
+        ok: false,
+        payload: browserToolsFailure({
+          requestId,
+          code: "browser_no_host",
+          message:
+            "No desktop app browser is connected. Use host: 'host' or connect the desktop app.",
+          retryable: true,
+        }),
+      };
+    // Let the daemon explain a missing browser installation to the agent.
+    return daemon
+      ? { ok: true, value: daemon }
+      : {
+          ok: false,
+          payload: browserToolsFailure({
+            requestId,
+            code: "browser_no_host",
+            message: "The host browser is unavailable. Use host: 'app' or enable the host browser.",
+            retryable: true,
+          }),
+        };
   }
 
   private selectHostForCommand(

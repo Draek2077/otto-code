@@ -1812,6 +1812,8 @@ export class VoiceAssistantWebSocketServer {
   private createSocketSession(options: SocketSessionOptions): Session {
     return new Session({
       clientId: options.clientId,
+      onAgentBrowserOrigin: (agentId, host, clientId) =>
+        this.browserToolsBroker?.setAgentTabHost(agentId, host, clientId),
       appVersion: options.appVersion,
       clientCapabilities: options.clientCapabilities,
       permissions: options.permissions,

@@ -317,18 +317,21 @@ active client sends its measured size for responsive mode or the chosen fixed
 device dimensions when it takes control. Passive viewers keep the host's
 viewport. AI screenshots and controls target that same daemon page and
 viewport. The shared snapshot engine supplies stable element references.
-AI-created tabs, including the tab `preview_start` opens, use this host and
-appear in each connected client's ordinary workspace tab strip. A preview tab
-carries its server identity, so each client adopts it as that server's preview
-tab, and opens it beside the focused pane where panes can split. The daemon
-host is preferred even while a desktop app is connected, so a phone sees the
-same tabs the agent drives. Two cases keep a new agent tab in the desktop app's
-own webview instead. A host with no browser installed cannot serve the tab, so
-it goes to a connected app; the check is remembered for five minutes, and with
-no app connected the host still answers so its error can say how to install a
-browser. An app that cannot show hosted tabs, meaning one older than 0.9.25 or
-one that declares `hostedTabs: false` in its `browser_host` capability, keeps
-the tab too, because its user would otherwise see nothing. Closing a hosted tab closes the daemon page and
+AI-created tabs, including the tab `preview_start` opens, use the browser of
+the client that sent the latest prompt: the desktop app's own webview or the
+daemon host for mobile. `browser_new_tab` and `preview_start` accept optional
+`host: "app" | "host"` to override that choice in plain-English requests.
+`browser_list_tabs` accepts the same field to list tabs from one browser.
+The choice applies when a tab is created; a `browserId` keeps its browser host
+for later commands, and `preview_start` reuses an existing bound tab even if a
+different host is requested. If no prompt origin is known, a connected desktop
+browser is preferred, otherwise the daemon host is used. An explicit choice
+fails if that browser is unavailable. A hosted preview tab carries its server
+identity, so each client adopts it as that server's preview tab, and opens it
+beside the focused pane where panes can split. If a desktop app is connected,
+an unsourced request uses its webview even when the daemon host has no browser.
+A mobile request still selects the daemon host; if it cannot launch a browser,
+its error explains how to install one. Closing a hosted tab closes the daemon page and
 withdraws it from other clients; a stale client cannot reopen that closed ID.
 `browser_focus_tab` raises a hosted tab in each connected workspace client on
 its next tab poll. AI viewport, full-page, and element screenshots render from

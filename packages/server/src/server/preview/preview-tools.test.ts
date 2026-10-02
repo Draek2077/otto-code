@@ -152,6 +152,19 @@ function structuredResult(result: OttoToolResult): Record<string, unknown> {
 }
 
 describe("preview_start tab binding", () => {
+  test("forwards the requested browser host when opening a preview tab", async () => {
+    const harness = createHarness({
+      respond: (input) =>
+        input.command.command === "new_tab" ? newTabPayload(TAB_A) : listTabsPayload([]),
+    });
+
+    await harness.callTool("preview_start", { name: "sample", host: "host" });
+
+    expect(harness.brokerCalls.find((call) => call.command.command === "new_tab")).toMatchObject({
+      tabHost: "host",
+    });
+  });
+
   test("opens the configured URL including its path, query, and fragment", async () => {
     const url = "https://preview.example.test/app?mode=preview#home";
     const harness = createHarness({

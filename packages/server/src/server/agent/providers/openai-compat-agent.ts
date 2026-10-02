@@ -2462,6 +2462,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     if (hasPreview && hasBrowser) {
       lines.push(
         "- preview_start returns browser.browserId: the server's designated preview tab, the same tab the user watches. Verify your changes against that browserId with browser_snapshot, browser_inspect, browser_logs, browser_click, and browser_screenshot.",
+        "- Browser tabs default to the client that sent the latest prompt: desktop app browser on desktop, host browser on mobile. When the user asks for host or app browser tabs, pass host: 'host' or host: 'app' to preview_start or browser_new_tab.",
         "- Never open a dev server URL with browser_new_tab or in another tab - the daemon rejects it. browser_new_tab is only for external sites and general browsing.",
       );
     }

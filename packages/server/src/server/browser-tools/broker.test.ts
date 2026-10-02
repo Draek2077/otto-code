@@ -309,26 +309,32 @@ describe("BrowserToolsBroker", () => {
     });
   });
 
-  test("plain and preview new tabs both use the daemon host", async () => {
+  test("desktop prompts open app tabs by default and can request host tabs", async () => {
     const broker = createBroker();
     const daemon = new FakeBrowserHostClient("daemon", { hostKind: "daemon-hosted" });
     const desktop = new FakeBrowserHostClient("desktop", { showsHostedTabs: true });
     broker.registerClient(daemon);
     broker.registerClient(desktop);
 
-    for (const args of [
-      { url: "https://example.com" },
-      {
-        url: "https://example.com",
-        preview: { serverId: "preview-1", serverName: "app", cwd: "/project" },
-      },
-    ]) {
+    broker.setAgentTabHost("agent-1", "app", "desktop");
+    for (const [args, host] of [
+      [{ url: "https://example.com" }, desktop],
+      [
+        {
+          url: "https://example.com",
+          preview: { serverId: "preview-1", serverName: "app", cwd: "/project" },
+        },
+        daemon,
+      ],
+    ] as const) {
       const pending = broker.execute({
         command: { command: "new_tab", args },
         workspaceId: "workspace-1",
+        agentId: "agent-1",
+        ...(host === daemon ? { tabHost: "host" as const } : {}),
       });
-      await vi.waitFor(() => expect(daemon.receivedRequests.length).toBeGreaterThan(0));
-      daemon.resolveLatestWith(broker, {
+      await vi.waitFor(() => expect(host.receivedRequests.length).toBeGreaterThan(0));
+      host.resolveLatestWith(broker, {
         requestId: "req-1",
         ok: true,
         result: {
@@ -340,11 +346,30 @@ describe("BrowserToolsBroker", () => {
       });
       await pending;
       daemon.receivedRequests.length = 0;
+      desktop.receivedRequests.length = 0;
     }
+    broker.setAgentTabHost("agent-1", "host", "desktop");
+    const mobileTab = broker.execute({
+      command: { command: "new_tab", args: {} },
+      workspaceId: "workspace-1",
+      agentId: "agent-1",
+    });
+    await vi.waitFor(() => expect(daemon.receivedRequests).toHaveLength(1));
     expect(desktop.receivedRequests).toHaveLength(0);
+    daemon.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: {
+        command: "new_tab",
+        browserId: BROWSER_ID,
+        workspaceId: "workspace-1",
+        url: "https://example.com",
+      },
+    });
+    await mobileTab;
   });
 
-  test("a host with no browser hands new tabs to the desktop app", async () => {
+  test("desktop default does not depend on host browser availability", async () => {
     const broker = createBroker();
     const daemon = new FakeBrowserHostClient("daemon", {
       hostKind: "daemon-hosted",
@@ -377,7 +402,7 @@ describe("BrowserToolsBroker", () => {
     await vi.waitFor(() => expect(daemon.receivedRequests).toHaveLength(1));
   });
 
-  test("an app that cannot show hosted tabs keeps new tabs in its own webview", async () => {
+  test("an older desktop app also receives local tabs", async () => {
     const broker = createBroker();
     const daemon = new FakeBrowserHostClient("daemon", { hostKind: "daemon-hosted" });
     const oldDesktop = new FakeBrowserHostClient("old-desktop");
@@ -566,6 +591,28 @@ describe("BrowserToolsBroker", () => {
       ok: true,
       result: { command: "snapshot", browserId: SECOND_BROWSER_ID },
     });
+  });
+
+  test("list tabs can select only the daemon host", async () => {
+    const broker = createBroker();
+    const daemon = new FakeBrowserHostClient("daemon", { hostKind: "daemon-hosted" });
+    const desktop = new FakeBrowserHostClient("desktop");
+    broker.registerClient(daemon);
+    broker.registerClient(desktop);
+
+    const pending = broker.execute({
+      command: { command: "list_tabs", args: {} },
+      workspaceId: "workspace-1",
+      tabHost: "host",
+    });
+    expect(daemon.receivedRequests).toHaveLength(1);
+    expect(desktop.receivedRequests).toHaveLength(0);
+    daemon.resolveLatestWith(broker, {
+      requestId: "req-1",
+      ok: true,
+      result: { command: "list_tabs", tabs: [] },
+    });
+    await expect(pending).resolves.toMatchObject({ ok: true });
   });
 
   test.each([

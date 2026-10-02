@@ -99,6 +99,7 @@ interface PreviewBrokerContext {
   agentId?: string;
   cwd?: string;
   workspaceId?: string;
+  tabHost?: "app" | "host";
 }
 
 function sameOrigin(a: string, b: string): boolean {
@@ -251,6 +252,7 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
       title: "Start preview dev server",
       description:
         "Start a dev server by name from .claude/launch.json, and open (or re-find) its designated preview tab in the Otto browser - the same tab the user sees. " +
+        "By default a desktop request opens the preview in that app's browser; a mobile request uses the daemon host. Set host to 'app' or 'host' to choose explicitly. An existing preview tab keeps its original location. " +
         "Reuses the server if already running - including one Otto didn't start, which comes back adopted under an ext:<port> id with no captured logs. ALWAYS use this instead of shell commands to run dev servers. " +
         "The result's browser.browserId is the tab to verify against: pass it to browser_snapshot, browser_click, browser_screenshot, etc. Don't open extra tabs for verification. " +
         "If .claude/launch.json doesn't exist, create it first with this format:\n" +
@@ -260,10 +262,11 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
         "Only include servers you actually need to preview.",
       inputSchema: {
         name: z.string().min(1).describe("Server name from .claude/launch.json"),
+        host: z.enum(["app", "host"]).optional().describe("Optional preview tab location"),
       },
       outputSchema: PreviewToolOutputSchema,
     },
-    async (input: { name: string }) => {
+    async (input: { name: string; host?: "app" | "host" }) => {
       const caller = options.resolveCallerAgent();
       if (!caller?.cwd) {
         return failure(CWD_REQUIRED_MESSAGE);
@@ -278,6 +281,7 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
             agentId: caller.id,
             cwd: caller.cwd,
             ...(caller.workspaceId ? { workspaceId: caller.workspaceId } : {}),
+            ...(input.host ? { tabHost: input.host } : {}),
           },
         });
         return success({

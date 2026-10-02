@@ -70,6 +70,7 @@ const BrowserRefInputSchema = z.string().regex(/^@e\d+$/);
 const BrowserClickButtonInputSchema = z.enum(["left", "right", "middle"]);
 const BrowserResizePresetInputSchema = z.enum(["mobile", "tablet", "desktop"]);
 const BrowserColorSchemeInputSchema = z.enum(["light", "dark", "auto"]);
+const BrowserTabHostInputSchema = z.enum(["app", "host"]);
 type BrowserResizePreset = z.infer<typeof BrowserResizePresetInputSchema>;
 
 /** Mirrors the wire schema's maxChars default - the broker input type is the parsed shape. */
@@ -236,11 +237,13 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "List browser tabs",
       description:
-        "List open Otto browser tabs for this agent's workspace across connected browser automation hosts. Use returned browserId values with tab-scoped tools. " +
+        "List open Otto browser tabs for this agent's workspace across connected browser automation hosts. Set host to 'app' or 'host' to list only that browser. Use returned browserId values with tab-scoped tools. " +
         "Every tab that exists is listed: status 'starting' or 'detached' means the tab is on screen but not drivable yet, so wait and reuse that browserId instead of opening another tab.",
-      inputSchema: {},
+      inputSchema: {
+        host: BrowserTabHostInputSchema.optional().describe("Optional browser location filter"),
+      },
     },
-    async () => {
+    async ({ host }) => {
       const context = resolveBrowserToolContext(options);
       const missingWorkspace = requireWorkspaceContext(context);
       if (missingWorkspace) {
@@ -248,6 +251,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       }
       const payload = await options.broker.execute({
         agentId: context.agentId,
+        ...(host ? { tabHost: host } : {}),
         cwd: context.cwd,
         ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
         command: {
@@ -264,13 +268,16 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Create browser tab",
       description:
-        "Create a new Otto browser tab in this agent's workspace on the most recently connected browser automation host, opened in the background without switching the user's view. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools. " +
+        "Create a new Otto browser tab in this agent's workspace, opened in the background without switching the user's view. By default a desktop request uses that app's browser and a mobile request uses the daemon host. Set host to 'app' for a desktop browser tab or 'host' for a tab visible from mobile. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools. " +
         "Do NOT use this to open or view a dev server - preview_start opens the server's designated preview tab and returns its browserId. Use this tool only for external sites and general browsing.",
       inputSchema: {
         url: BrowserHttpUrlInputSchema.optional(),
+        host: BrowserTabHostInputSchema.optional().describe(
+          "Optional browser location: app or host",
+        ),
       },
     },
-    async ({ url }) => {
+    async ({ url, host }) => {
       const context = resolveBrowserToolContext(options);
       const missingWorkspace = requireWorkspaceContext(context);
       if (missingWorkspace) {
@@ -292,6 +299,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       }
       const payload = await options.broker.execute({
         agentId: context.agentId,
+        ...(host ? { tabHost: host } : {}),
         cwd: context.cwd,
         ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
         command: {

@@ -25,6 +25,7 @@ import { lstat, mkdir, mkdtemp, readdir, readFile, rename, rm, stat } from "node
 import { basename, join, normalize, resolve, sep } from "path";
 import { homedir } from "node:os";
 import { CLIENT_CAPS, type ClientCapability } from "@otto-code/protocol/client-capabilities";
+import { BrowserAutomationHostCapabilitySchema } from "@otto-code/protocol/browser-automation/capabilities";
 import { formatPluginSourceReference } from "@otto-code/protocol/plugin-source-reference";
 import {
   serializeAgentStreamEvent,
@@ -552,6 +553,7 @@ function resolveSolutionService(
 
 export interface SessionOptions {
   clientId: string;
+  onAgentBrowserOrigin?: (agentId: string, host: "app" | "host", clientId: string) => void;
   // Otto RPC ceilings and semantic permissions apply together.
   scopes?: readonly string[];
   permissions?: readonly DaemonPermission[];
@@ -768,6 +770,15 @@ function parseClientCapabilities(
   return new Set(result);
 }
 
+function hasBrowserHostCapability(
+  capabilities: Record<string, unknown> | null | undefined,
+): boolean {
+  // browser_host is a structured capability, so parseClientCapabilities' boolean
+  // set cannot identify the desktop app that actually owns a native webview.
+  return BrowserAutomationHostCapabilitySchema.safeParse(capabilities?.[CLIENT_CAPS.browserHost])
+    .success;
+}
+
 function sessionRequestId(message: SessionInboundMessage): string | null {
   if ("requestId" in message && typeof message.requestId === "string") {
     return message.requestId;
@@ -860,6 +871,8 @@ function workspaceLabelErrorCode(error: unknown): string {
 
 export class Session {
   private readonly clientId: string;
+  private readonly onAgentBrowserOrigin: SessionOptions["onAgentBrowserOrigin"];
+  private hasAppBrowserHost = false;
   private readonly authorization: SessionAuthorization;
   private scopes: readonly string[];
   private appVersion: string | null;
@@ -1121,6 +1134,7 @@ export class Session {
       getWebSocketRuntimeMetrics,
     } = options;
     this.clientId = clientId;
+    this.onAgentBrowserOrigin = options.onAgentBrowserOrigin;
     this.getSpeechSettingsOptions = defaults.getSpeechSettingsOptions;
     this.previewTts = previewTts;
     this.getPersonalityStats = defaults.getPersonalityStats;
@@ -1143,6 +1157,7 @@ export class Session {
     this.appVersion = defaults.appVersion;
     this.authorization = new SessionAuthorization(permissions);
     this.clientCapabilities = parseClientCapabilities(clientCapabilities);
+    this.hasAppBrowserHost = hasBrowserHostCapability(clientCapabilities);
     this.sessionId = uuidv4();
     this.onMessage = onMessage;
     this.onBroadcastMessage = broadcastToAllSessions;
@@ -1821,6 +1836,7 @@ export class Session {
 
   updateClientCapabilities(capabilities: Record<string, unknown> | null, source?: object): void {
     this.clientCapabilities = parseClientCapabilities(capabilities);
+    this.hasAppBrowserHost = hasBrowserHostCapability(capabilities);
     if (source) {
       this.eventSubscriptions.delete(source);
       this.clientCapabilitiesBySource.set(source, this.clientCapabilities);
@@ -7308,6 +7324,7 @@ export class Session {
     runOptions?: AgentRunOptions,
     options?: { spokenInput?: boolean },
   ): Promise<{ ok: true } | { ok: false; error: string }> {
+    this.onAgentBrowserOrigin?.(agentId, this.hasAppBrowserHost ? "app" : "host", this.clientId);
     this.sessionLogger.info(
       {
         agentId,
@@ -12441,6 +12458,9 @@ export class Session {
 
     try {
       const agentId = resolved.agentId;
+      // Capture the submitting client's browser before the provider runs tools.
+      // A phone can share this agent with a still-connected desktop app.
+      this.onAgentBrowserOrigin?.(agentId, this.hasAppBrowserHost ? "app" : "host", this.clientId);
 
       const prompt = buildAgentPrompt(msg.text, msg.images, msg.attachments);
       this.sessionLogger.trace(

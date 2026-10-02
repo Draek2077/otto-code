@@ -215,6 +215,8 @@ vi.mock("./worktree-bootstrap.js", async (importOriginal) => {
 
 interface SessionForTestOptions {
   clientId?: string;
+  agentRequests?: SessionOptions["agentRequests"];
+  onAgentBrowserOrigin?: SessionOptions["onAgentBrowserOrigin"];
   permissions?: readonly DaemonPermission[];
   agentManager?: { [K in keyof SessionOptions["agentManager"]]?: unknown };
   agentStorage?: { [K in keyof SessionOptions["agentStorage"]]?: unknown };
@@ -283,8 +285,9 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
   const messages = options.messages ?? [];
 
   return new Session({
-    agentRequests: createAgentRequestsStub(),
+    agentRequests: options.agentRequests ?? createAgentRequestsStub(),
     clientId: options.clientId ?? "test-client",
+    onAgentBrowserOrigin: options.onAgentBrowserOrigin,
     // Otto gates every RPC on the session's scopes, and a session constructed
     // without them throws before the first message. "*" is what the trusted
     // local transport grants, so it is the right stand-in for a harness that
@@ -533,6 +536,39 @@ test("restores suggested tasks on timeline reload and clears them on reconnect",
     source,
     message: { type: "suggested_tasks_changed", payload: { parentAgentId: "parent", tasks: [] } },
   });
+  await session.cleanup();
+});
+
+test("browser tab default follows the client that submitted the prompt", async () => {
+  const origins: Array<{ agentId: string; host: "app" | "host"; clientId: string }> = [];
+  const session = createSessionForTest({
+    clientId: "desktop-client",
+    clientCapabilities: {
+      [CLIENT_CAPS.browserHost]: { supportedCommands: ["new_tab"], hostKind: "desktop app" },
+    },
+    onAgentBrowserOrigin: (agentId, host, clientId) => origins.push({ agentId, host, clientId }),
+    agentRequests: {
+      ...createAgentRequestsStub(),
+      send: async () => ({ disposition: "queued" }),
+    },
+  });
+  const prompt = (requestId: string) =>
+    ({
+      type: "send_agent_message_request",
+      requestId,
+      messageId: requestId,
+      agentId: "agent-1",
+      text: "Open the browser",
+    }) as const;
+
+  await session.handleMessage(prompt("desktop-prompt"));
+  session.updateClientCapabilities(null);
+  await session.handleMessage(prompt("mobile-prompt"));
+
+  expect(origins).toEqual([
+    { agentId: "agent-1", host: "app", clientId: "desktop-client" },
+    { agentId: "agent-1", host: "host", clientId: "desktop-client" },
+  ]);
   await session.cleanup();
 });
 

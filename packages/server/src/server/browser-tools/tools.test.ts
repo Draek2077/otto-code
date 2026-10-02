@@ -684,6 +684,17 @@ describe("registerBrowserTools", () => {
     ]);
   });
 
+  test("list tabs forwards a browser location filter", async () => {
+    const harness = new BrowserToolHarness();
+
+    await harness.execute("browser_list_tabs", { host: "app" });
+
+    expect(harness.broker.calls[0]).toMatchObject({
+      tabHost: "app",
+      command: { command: "list_tabs" },
+    });
+  });
+
   test("list tabs reports viewport and pane geometry when the host presents it", async () => {
     const harness = new BrowserToolHarness();
     harness.broker.setResponse(listTabsPayload({ viewportWidth: 1280, viewportHeight: 800 }));
@@ -725,6 +736,18 @@ describe("registerBrowserTools", () => {
         text: `Created browser tab browserId=${BROWSER_ID} url=https://example.com. Use this browserId for tab-scoped browser tools.`,
       },
     ]);
+  });
+
+  test("new tab forwards an explicit browser host choice", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(newTabPayload());
+
+    await harness.execute("browser_new_tab", { url: "https://example.com", host: "host" });
+
+    expect(harness.broker.calls[0]).toMatchObject({
+      tabHost: "host",
+      command: { command: "new_tab", args: { url: "https://example.com" } },
+    });
   });
 
   test.each([
