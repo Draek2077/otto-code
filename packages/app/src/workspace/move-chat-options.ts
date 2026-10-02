@@ -31,9 +31,12 @@ export function buildMoveChatWorkspaceOptions(input: {
   /** The chat's current owner, excluded from the list. */
   currentWorkspaceId: string | null | undefined;
 }): MoveChatWorkspaceOption[] {
-  const currentProjectId = findCurrentProjectId(input.workspaces, input.currentWorkspaceId);
+  // The caller passes Map.values(), which is consumed after one iteration.
+  // Keep a reusable snapshot for both the owner lookup and candidate list.
+  const workspaces = Array.from(input.workspaces ?? []);
+  const currentProjectId = findCurrentProjectId(workspaces, input.currentWorkspaceId);
   const options: MoveChatWorkspaceOption[] = [];
-  for (const workspace of input.workspaces ?? []) {
+  for (const workspace of workspaces) {
     if (workspace.id === input.currentWorkspaceId) {
       continue;
     }
@@ -61,13 +64,13 @@ export function buildMoveChatWorkspaceOptions(input: {
 }
 
 function findCurrentProjectId(
-  workspaces: Iterable<WorkspaceDescriptor> | undefined,
+  workspaces: readonly WorkspaceDescriptor[],
   currentWorkspaceId: string | null | undefined,
 ): string | null {
   if (!currentWorkspaceId) {
     return null;
   }
-  for (const workspace of workspaces ?? []) {
+  for (const workspace of workspaces) {
     if (workspace.id === currentWorkspaceId) {
       return workspace.projectId;
     }

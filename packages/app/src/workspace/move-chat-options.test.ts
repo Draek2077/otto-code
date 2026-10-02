@@ -24,6 +24,28 @@ function workspace(overrides: Partial<WorkspaceDescriptor>): WorkspaceDescriptor
 }
 
 describe("buildMoveChatWorkspaceOptions", () => {
+  test("offers every sibling when the session passes a Map values iterator", () => {
+    const workspaces = new Map(
+      [
+        workspace({ id: "wks_first", name: "first" }),
+        workspace({ id: "wks_second", name: "second" }),
+        workspace({ id: "wks_here", name: "current" }),
+        workspace({ id: "wks_fourth", name: "fourth" }),
+      ].map((entry) => [entry.id, entry]),
+    );
+
+    const options = buildMoveChatWorkspaceOptions({
+      workspaces: workspaces.values(),
+      currentWorkspaceId: "wks_here",
+    });
+
+    expect(options.map((option) => option.workspaceId)).toEqual([
+      "wks_first",
+      "wks_fourth",
+      "wks_second",
+    ]);
+  });
+
   test("excludes the workspace the chat already lives in", () => {
     const options = buildMoveChatWorkspaceOptions({
       workspaces: [workspace({ id: "wks_here" }), workspace({ id: "wks_there", name: "feature" })],
