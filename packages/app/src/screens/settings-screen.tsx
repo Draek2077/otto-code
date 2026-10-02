@@ -112,6 +112,7 @@ import {
   type Settings as EffectiveSettings,
 } from "@/hooks/use-settings";
 import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
+import { useDefaultSendBehavior } from "@/hooks/use-default-send-behavior";
 import { useSessionStore } from "@/stores/session-store";
 import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, usePanelStore } from "@/stores/panel-store";
 import { orderHostsLocalFirst, type HostProfile } from "@/types/host-connection";
@@ -428,11 +429,15 @@ const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 // label on compact widths (see `settingsStyles.rowResponsive`).
 const ROW_RESPONSIVE_WITH_BORDER_STYLE = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
 
-function getSendBehaviorOptions(t: TFunction) {
+function getSendBehaviorOptions(t: TFunction, disabled = false) {
   return [
-    { value: "interrupt" as const, label: t("settings.general.defaultSend.options.interrupt") },
-    { value: "steer" as const, label: t("settings.general.defaultSend.options.steer") },
-    { value: "queue" as const, label: t("settings.general.defaultSend.options.queue") },
+    {
+      value: "interrupt" as const,
+      label: t("settings.general.defaultSend.options.interrupt"),
+      disabled,
+    },
+    { value: "steer" as const, label: t("settings.general.defaultSend.options.steer"), disabled },
+    { value: "queue" as const, label: t("settings.general.defaultSend.options.queue"), disabled },
   ];
 }
 
@@ -1016,6 +1021,9 @@ function GeneralSection({
 
 interface ChatSectionProps {
   settings: AppSettings;
+  sendBehavior: SendBehavior;
+  sendBehaviorError: string | null;
+  isSavingSendBehavior: boolean;
   handleSuggestedTasksEnabledChange: (enabled: boolean) => void;
   handleSuggestedTasksDefaultModeChange: (mode: SuggestedTasksDefaultMode) => void;
   handlePromptSuggestionsEnabledChange: (enabled: boolean) => void;
@@ -1033,6 +1041,9 @@ interface ChatSectionProps {
 
 function ChatSection({
   settings,
+  sendBehavior,
+  sendBehaviorError,
+  isSavingSendBehavior,
   handleSuggestedTasksEnabledChange,
   handleSuggestedTasksDefaultModeChange,
   handlePromptSuggestionsEnabledChange,
@@ -1048,10 +1059,13 @@ function ChatSection({
   handleSendBehaviorChange,
 }: ChatSectionProps) {
   const { t } = useTranslation();
-  const sendBehaviorOptions = useMemo(() => getSendBehaviorOptions(t), [t]);
+  const sendBehaviorOptions = useMemo(
+    () => getSendBehaviorOptions(t, isSavingSendBehavior),
+    [isSavingSendBehavior, t],
+  );
   const suggestedTasksDefaultModeDescription =
     SUGGESTED_TASKS_DEFAULT_MODE_DESCRIPTIONS[settings.suggestedTasksDefaultMode];
-  const sendBehaviorDescriptionKey = `settings.general.defaultSend.descriptions.${settings.sendBehavior}`;
+  const sendBehaviorDescriptionKey = `settings.general.defaultSend.descriptions.${sendBehavior}`;
 
   return (
     <Fragment>
@@ -1104,11 +1118,16 @@ function ChatSection({
               >
                 {t("settings.general.defaultSend.label")}
               </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>{t(sendBehaviorDescriptionKey)}</Text>
+              <Text style={settingsStyles.rowHint}>
+                {isSavingSendBehavior ? t("renameModal.saving") : t(sendBehaviorDescriptionKey)}
+              </Text>
+              {sendBehaviorError ? (
+                <Text style={settingsStyles.rowError}>{sendBehaviorError}</Text>
+              ) : null}
             </View>
             <SegmentedControl
               size="sm"
-              value={settings.sendBehavior}
+              value={sendBehavior}
               onValueChange={handleSendBehaviorChange}
               options={sendBehaviorOptions}
             />
@@ -2357,6 +2376,9 @@ export default function SettingsScreen({
   const [isPasteLinkVisible, setIsPasteLinkVisible] = useState(false);
   const [isPlaybackTestRunning, setIsPlaybackTestRunning] = useState(false);
   const [playbackTestResult, setPlaybackTestResult] = useState<string | null>(null);
+  const [sendBehaviorError, setSendBehaviorError] = useState<string | null>(null);
+  const [isSavingSendBehavior, setIsSavingSendBehavior] = useState(false);
+  const sendBehaviorSavingRef = useRef(false);
   const lastOpenedAddHostIntentRef = useRef<string | null>(null);
   const isDesktopApp = isElectronRuntime();
   const appVersion = resolveAppVersion();
@@ -2457,6 +2479,8 @@ export default function SettingsScreen({
       knownSelectedSettingsHostServerId ?? knownLocalServerId ?? sortedHosts[0]?.serverId ?? null
     );
   }, [view, knownSelectedSettingsHostServerId, knownLocalServerId, sortedHosts]);
+  const { behavior: defaultSendBehavior, setBehavior: setDefaultSendBehavior } =
+    useDefaultSendBehavior(activeHostServerId);
 
   const handleInterfaceModeChange = useCallback(
     (mode: InterfaceMode) => {
@@ -2558,9 +2582,20 @@ export default function SettingsScreen({
 
   const handleSendBehaviorChange = useCallback(
     (behavior: SendBehavior) => {
-      void updateSettings({ sendBehavior: behavior });
+      if (sendBehaviorSavingRef.current) return;
+      sendBehaviorSavingRef.current = true;
+      setIsSavingSendBehavior(true);
+      setSendBehaviorError(null);
+      void setDefaultSendBehavior(behavior)
+        .catch((error: unknown) => {
+          setSendBehaviorError(error instanceof Error ? error.message : String(error));
+        })
+        .finally(() => {
+          sendBehaviorSavingRef.current = false;
+          setIsSavingSendBehavior(false);
+        });
     },
-    [updateSettings],
+    [setDefaultSendBehavior],
   );
 
   const handleServiceUrlBehaviorChange = useCallback(
@@ -2966,6 +3001,9 @@ export default function SettingsScreen({
           return (
             <ChatSection
               settings={settings}
+              sendBehavior={defaultSendBehavior}
+              sendBehaviorError={sendBehaviorError}
+              isSavingSendBehavior={isSavingSendBehavior}
               handleSuggestedTasksEnabledChange={handleSuggestedTasksEnabledChange}
               handleSuggestedTasksDefaultModeChange={handleSuggestedTasksDefaultModeChange}
               handlePromptSuggestionsEnabledChange={handlePromptSuggestionsEnabledChange}

@@ -5809,6 +5809,8 @@ export const ServerInfoStatusPayloadSchema = z
         // agentProgressSummaries, notifyOnFinishDefault). The reads are wired by
         // Claude-tier providers (WP-E); the client gates the toggle cards on this.
         agentBehaviorToggles: z.boolean().optional(),
+        // The host resolves send_chat_prompt's omitted delivery from Default send.
+        agentToAgentDefaultSend: z.boolean().optional(),
         // COMPAT(todoReminders): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
         // Set when the daemon acts on `agentBehaviors.{todoNudge,todoReconcileOnIdle}` -
         // the provider-agnostic stale-todo nudge (next turn) and idle reconcile pass.

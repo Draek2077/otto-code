@@ -28,11 +28,10 @@ export function registerChatMessagingTools({
     prompt: z.string(),
     sessionMode: z.string().optional().describe("Optional mode to set before running the prompt."),
     delivery: z
-      .enum(["interrupt", "queue"])
+      .enum(["interrupt", "steer", "queue"])
       .optional()
-      .default("interrupt")
       .describe(
-        "How to reach the agent if it is BUSY. 'interrupt' (default) cancels whatever it is doing and runs your prompt now - use it for corrections that must land immediately. 'queue' lets the current turn finish and runs your prompt as the next one - use it for a follow-up that should not throw away work in progress. If the agent is idle both run it immediately.",
+        "How to reach a BUSY chat. Omit to use the host's Default send setting. 'steer' adds this prompt to the active turn (or interrupts if the provider cannot steer); 'interrupt' cancels the active turn and runs now; 'queue' runs after the active turn completes. An idle chat runs the prompt immediately with any choice.",
       ),
   };
 
@@ -83,7 +82,7 @@ export function registerChatMessagingTools({
     {
       title: "Send chat prompt",
       description:
-        "Send a prompt to an active, existing Otto chat by its agentId. Use list_chats first when you need to identify a collaborator. Chat-scoped callers continue in the background by default; top-level callers wait by default. Use delivery queue to preserve a busy chat's current turn, or interrupt only when the new prompt must take precedence.",
+        "Send a prompt to an active, existing Otto chat by its agentId. Use list_chats first when you need to identify a collaborator. Chat-scoped callers continue in the background by default; top-level callers wait by default. Omit delivery to follow the host's Default send setting; set it explicitly only when this prompt needs different timing.",
       inputSchema: sendAgentPromptInputSchema,
       outputSchema: {
         success: z.boolean(),
@@ -99,14 +98,14 @@ export function registerChatMessagingTools({
       sessionMode,
       background = Boolean(callerAgentId),
       notifyOnFinish,
-      delivery = "interrupt",
+      delivery,
     }: {
       agentId: string;
       prompt: string;
       sessionMode?: string;
       background?: boolean;
       notifyOnFinish?: boolean;
-      delivery?: "interrupt" | "queue";
+      delivery?: "interrupt" | "steer" | "queue";
     }) => {
       // Omitted → fall back to the daemon notify-on-finish default (default
       // true, preserving prior behavior); an explicit arg still overrides. The
@@ -114,15 +113,19 @@ export function registerChatMessagingTools({
       const resolvedNotifyOnFinish =
         notifyOnFinish ?? agentManager.getAgentBehaviors().notifyOnFinishDefault;
       const shouldNotifyOnFinish = Boolean(callerAgentId && resolvedNotifyOnFinish && background);
+      const effectiveDelivery = delivery ?? agentManager.getAgentBehaviors().defaultSendBehavior;
       onActivity?.("backgroundTasksInvoked", Number(background));
 
+      // The shared prompt path has two wire deliveries. Steer is its separate
+      // active-turn behavior, so it uses immediate delivery without queueing.
       const dispatch = await sendPromptToAgent({
         agentManager,
         agentStorage,
         agentId,
         prompt,
         sessionMode,
-        delivery,
+        delivery: effectiveDelivery === "queue" ? "queue" : "interrupt",
+        ...(effectiveDelivery === "steer" ? { activeTurnBehavior: "steer" as const } : {}),
         // Agent-to-agent sends carry their own framing; never merge one into a
         // neighbouring message when the queue drains.
         source: "system",

@@ -504,6 +504,7 @@ export interface AgentManagerOptions {
     promptSuggestions?: boolean;
     agentProgressSummaries?: boolean;
     notifyOnFinishDefault?: boolean;
+    defaultSendBehavior?: "interrupt" | "steer" | "queue";
     todoNudge?: boolean;
     todoReconcileOnIdle?: boolean;
     stallGuardThreshold?: number;
@@ -1730,6 +1731,7 @@ export class AgentManager {
           promptSuggestions?: boolean;
           agentProgressSummaries?: boolean;
           notifyOnFinishDefault?: boolean;
+          defaultSendBehavior?: "interrupt" | "steer" | "queue";
           todoNudge?: boolean;
           todoReconcileOnIdle?: boolean;
           stallGuardThreshold?: number;

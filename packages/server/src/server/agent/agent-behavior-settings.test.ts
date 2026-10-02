@@ -12,6 +12,7 @@ describe("agent behavior settings", () => {
       promptSuggestions: true,
       agentProgressSummaries: true,
       notifyOnFinishDefault: true,
+      defaultSendBehavior: "steer",
       todoNudge: false,
       todoReconcileOnIdle: true,
       stallGuardThreshold: STALL_GUARD_DEFAULT_THRESHOLD,

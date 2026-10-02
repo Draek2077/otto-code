@@ -133,6 +133,7 @@ import { confirmInterruptWithLiveSubagents } from "@/components/interrupt-subage
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
+import { useDefaultSendBehavior } from "@/hooks/use-default-send-behavior";
 import { isWeb, isNative } from "@/constants/platform";
 import type { ForgeSearchItem } from "@otto-code/protocol/messages";
 import type {
@@ -1305,6 +1306,7 @@ export function Composer({
   });
 
   const { settings: appSettings } = useAppSettings();
+  const { behavior: defaultSendBehavior } = useDefaultSendBehavior(serverId);
 
   const agentState = useSessionStore(useShallow(buildAgentStateSelector(serverId, agentId)));
 
@@ -1613,10 +1615,10 @@ export function Composer({
         agentIdRef.current,
         text,
         submitAttachments,
-        appSettings.sendBehavior === "steer" ? "steer" : "interrupt",
+        defaultSendBehavior === "steer" ? "steer" : "interrupt",
       );
     },
-    [appSettings.sendBehavior, cwd, onMessageSent, t],
+    [defaultSendBehavior, cwd, onMessageSent, t],
   );
 
   const registerWidgetPromptSender = useWidgetPromptStore((state) => state.registerSender);
@@ -1686,10 +1688,7 @@ export function Composer({
     }
     return false;
   });
-  const activeSendBehavior = resolveActiveSendBehavior(
-    appSettings.sendBehavior,
-    hasPendingPermission,
-  );
+  const activeSendBehavior = resolveActiveSendBehavior(defaultSendBehavior, hasPendingPermission);
   const sendAllAction = resolveImmediateSendAction({
     defaultSendBehavior: activeSendBehavior,
     isAgentRunning,
@@ -1825,7 +1824,7 @@ export function Composer({
       // composer untouched - including its grown height (the false return
       // tells the input not to collapse).
       const canForceSend = forceSend === true && !isCompacting;
-      if (canForceSend && isAgentRunning && appSettings.sendBehavior !== "steer") {
+      if (canForceSend && isAgentRunning && defaultSendBehavior !== "steer") {
         const confirmedInterrupt = await confirmInterruptWithLiveSubagents({
           serverId,
           parentAgentId: agentId,
@@ -1888,7 +1887,7 @@ export function Composer({
       agentId,
       allowEmptySubmit,
       appendSentPrompt,
-      appSettings.sendBehavior,
+      defaultSendBehavior,
       clearDraft,
       completeSubmit,
       hasExternalContent,

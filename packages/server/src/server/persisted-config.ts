@@ -405,6 +405,7 @@ export const PersistedConfigSchema = z
             promptSuggestions: z.boolean().optional(),
             agentProgressSummaries: z.boolean().optional(),
             notifyOnFinishDefault: z.boolean().optional(),
+            defaultSendBehavior: z.enum(["interrupt", "steer", "queue"]).optional(),
             todoNudge: z.boolean().optional(),
             todoReconcileOnIdle: z.boolean().optional(),
             // Tool-emission stall guard: consecutive assistant messages with no

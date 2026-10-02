@@ -2425,6 +2425,7 @@ export class VoiceAssistantWebSocketServer {
         integrationAuthorizationBrowserFlow: this.integrationBrowserAuthorization !== null,
         // COMPAT(agentBehaviorToggles): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         agentBehaviorToggles: true,
+        agentToAgentDefaultSend: true,
         // COMPAT(todoReminders): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
         todoReminders: true,
         // COMPAT(metadataGenerationEnabled): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.

@@ -18,6 +18,9 @@ export const MutableAgentBehaviorsConfigSchema = z
     // Default value of an agent's notifyOnFinish when the spawn path leaves it
     // unspecified (the current implicit default).
     notifyOnFinishDefault: z.boolean().default(true),
+    // The host executes agent-to-agent sends even when no client is connected.
+    // Keep their default delivery beside the other live agent behaviors.
+    defaultSendBehavior: z.enum(["interrupt", "steer", "queue"]).optional(),
     // Provider-agnostic task-list reminders. Otto renders every provider's
     // native todo list into one timeline UI; when an agent leaves that list with
     // unfinished items, these keep it from going stale (the user shouldn't have
@@ -51,6 +54,7 @@ export const MutableAgentBehaviorsConfigPatchSchema = z
     promptSuggestions: z.boolean(),
     agentProgressSummaries: z.boolean(),
     notifyOnFinishDefault: z.boolean(),
+    defaultSendBehavior: z.enum(["interrupt", "steer", "queue"]),
     todoNudge: z.boolean(),
     todoReconcileOnIdle: z.boolean(),
     stallGuardThreshold: z.number().int().min(0).max(STALL_GUARD_MAX_THRESHOLD),

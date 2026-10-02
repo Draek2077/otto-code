@@ -569,6 +569,7 @@ export interface OttoDaemonConfig {
     promptSuggestions?: boolean;
     agentProgressSummaries?: boolean;
     notifyOnFinishDefault?: boolean;
+    defaultSendBehavior?: "interrupt" | "steer" | "queue";
     todoNudge?: boolean;
     todoReconcileOnIdle?: boolean;
     stallGuardThreshold?: number;
@@ -881,6 +882,7 @@ function buildInitialAgentBehaviors(
     promptSuggestions: config.agentBehaviors?.promptSuggestions ?? true,
     agentProgressSummaries: config.agentBehaviors?.agentProgressSummaries ?? true,
     notifyOnFinishDefault: config.agentBehaviors?.notifyOnFinishDefault ?? true,
+    defaultSendBehavior: config.agentBehaviors?.defaultSendBehavior,
     todoNudge: config.agentBehaviors?.todoNudge ?? true,
     todoReconcileOnIdle: config.agentBehaviors?.todoReconcileOnIdle ?? true,
     stallGuardThreshold:
@@ -2925,6 +2927,7 @@ export async function createOttoDaemon(
                       promptSuggestions?: boolean;
                       agentProgressSummaries?: boolean;
                       notifyOnFinishDefault?: boolean;
+                      defaultSendBehavior?: "interrupt" | "steer" | "queue";
                       todoNudge?: boolean;
                       todoReconcileOnIdle?: boolean;
                     })

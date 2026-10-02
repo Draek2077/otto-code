@@ -76,18 +76,18 @@ that can access the host through a shell.
 
 ### Chats
 
-| Tool                | Function                                                                                                                                 |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `create_chat`       | Start a chat tied to a working directory, optionally with initial settings, a [Personality](/docs/personalities), or a new git worktree. |
-| `send_chat_prompt`  | Send a task to a running chat.                                                                                                           |
-| `get_chat_status`   | Return the latest snapshot for a chat.                                                                                                   |
-| `list_chats`        | List recent chats as compact metadata.                                                                                                   |
-| `cancel_chat`       | Stop the chat's current turn but keep the chat available for future work.                                                                |
-| `archive_chat`      | Stop and archive a chat. It leaves the active list but stays recoverable in the archive.                                                 |
-| `delete_chat`       | Permanently terminate and delete a chat session.                                                                                         |
-| `update_chat`       | Update a chat's name, labels, or runtime settings such as mode/model/effort/features.                                                    |
-| `get_chat_activity` | Return recent chat timeline entries as a curated summary.                                                                                |
-| `set_chat_mode`     | Switch a chat's session mode.                                                                                                            |
+| Tool                | Function                                                                                                                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create_chat`       | Start a chat tied to a working directory, optionally with initial settings, a [Personality](/docs/personalities), or a new git worktree.                       |
+| `send_chat_prompt`  | Send a task to an existing chat. An omitted `delivery` follows that host's Default send setting; `interrupt`, `steer`, and `queue` override it for one prompt. |
+| `get_chat_status`   | Return the latest snapshot for a chat.                                                                                                                         |
+| `list_chats`        | List recent chats as compact metadata.                                                                                                                         |
+| `cancel_chat`       | Stop the chat's current turn but keep the chat available for future work.                                                                                      |
+| `archive_chat`      | Stop and archive a chat. It leaves the active list but stays recoverable in the archive.                                                                       |
+| `delete_chat`       | Permanently terminate and delete a chat session.                                                                                                               |
+| `update_chat`       | Update a chat's name, labels, or runtime settings such as mode/model/effort/features.                                                                          |
+| `get_chat_activity` | Return recent chat timeline entries as a curated summary.                                                                                                      |
+| `set_chat_mode`     | Switch a chat's session mode.                                                                                                                                  |
 
 ### Workspaces
 

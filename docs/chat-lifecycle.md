@@ -86,7 +86,7 @@ without acting, the budget catches a single message that never stops at all.
 
 ## Delivery - how a prompt reaches a busy agent
 
-Every prompt entrypoint (composer, MCP `send_chat_prompt`, CLI, chat mentions, schedule fires, notify-on-finish) funnels through `sendPromptToAgent` → `startAgentRun`, which takes a `delivery` mode. It only matters when the target is **busy**; against an idle chat both modes run the prompt immediately.
+Every prompt entrypoint (composer, MCP `send_chat_prompt`, CLI, chat mentions, schedule fires, notify-on-finish) funnels through `sendPromptToAgent` → `startAgentRun`, which takes a `delivery` mode. It only matters when the target is **busy**; against an idle chat both wire modes run the prompt immediately.
 
 | `delivery`            | Busy target                                                              |
 | --------------------- | ------------------------------------------------------------------------ |
@@ -101,22 +101,22 @@ Settings → Chat → Default send offers **Interrupt**, **Steer**, and **Queue*
 
 `steer` is an `activeTurnBehavior`, not a second queue or a client-side imitation. `AgentManager.steerOrReplaceActiveTurn` is the one provider-neutral admission point: an adapter that accepts steering receives the message in the active turn and the manager records it on that turn; an adapter that reports `unavailable` falls back once to the existing interrupt-and-replace path. Adapter errors are surfaced without a retry or replacement, because delivery is ambiguous. Codex, Claude, and OpenCode currently accept native steering. ACP, Pi/OMP, OpenAI-compatible endpoints, and Otto Brain follow the centralized unavailable path until their own runtime exposes steering.
 
-The persisted default is **Steer**. Existing settings whose one-time `sendBehaviorMigrationVersion` marker is absent migrate `interrupt` to `steer` and write the marker immediately; `queue` remains unchanged. The old record did not distinguish the historical interrupt default from a deliberate old Interrupt selection, so both migrate to Steer. Once marked, an explicit Interrupt selection is preserved forever.
+The persisted default is **Steer**. Existing app settings whose one-time `sendBehaviorMigrationVersion` marker is absent migrate `interrupt` to `steer` and write the marker immediately; `queue` remains unchanged. The old record did not distinguish the historical interrupt default from a deliberate old Interrupt selection, so both migrate to Steer. Once marked, an explicit Interrupt selection is preserved forever. Because agent-to-agent sends run inside the daemon without a client, each capable host stores `agentBehaviors.defaultSendBehavior`. On first connection, the app copies its existing choice to a host without a stored choice. After that the host value controls its chats and the setting displayed for that host. Older hosts continue using the device preference for composer sends.
 
 The whole feature lives in the turn lifecycle **above** every provider adapter, so it behaves identically for Claude, Codex, Copilot, OpenCode, Pi, and the openai-compatible provider. There are no per-provider adapters.
 
 ### Which delivery each entrypoint picks
 
-The default is the wire default, not the right answer for every sender. A person typing into the composer has decided to interrupt by typing; Otto injecting a message on someone's behalf has decided nothing.
+The wire default is not a policy for every sender. The composer and `send_chat_prompt` use the configured Default send unless the caller chooses another action. System reports and room mentions keep their own Queue policy.
 
-| Entrypoint                                   | Delivery            | Why                                                                                                                                                                           |
-| -------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Composer, CLI `otto agent send`              | user's choice       | Settings → Default send; the alternate send action does the other one                                                                                                         |
-| MCP `send_chat_prompt`                       | caller's choice     | Explicit `delivery` arg, `interrupt` default - the calling chat knows whether its prompt is a correction or a follow-up                                                       |
-| **Chat @mention**                            | **`queue`**         | A room mention is a message, not an emergency. Interrupting discarded work on behalf of someone who only meant to say something - and `@everyone` did it to a roomful at once |
-| **Notify-on-finish**                         | **`queue`**         | "Your child finished" is a report. Interrupting killed the turn the parent ran while the child worked, and a fan-out of N children interrupted it N times in a row            |
-| Schedule fire → existing chat                | neither (**fails**) | `executeSchedule` pre-checks `hasInFlightRun` and fails the run with "already has an active run"; it has never interrupted. Open question - see below                         |
-| Schedule fire → new chat, `/loop` iterations | n/a                 | Each runs a freshly created agent, which cannot be busy                                                                                                                       |
+| Entrypoint                                   | Delivery                 | Why                                                                                                                                                                           |
+| -------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Composer, CLI `otto agent send`              | user's choice            | Settings → Default send; the alternate send action does the other one                                                                                                         |
+| MCP `send_chat_prompt`                       | host default or override | Omitted `delivery` follows the recipient host's Default send (Steer until configured); explicit `interrupt`, `steer`, or `queue` overrides it for one prompt                  |
+| **Chat @mention**                            | **`queue`**              | A room mention is a message, not an emergency. Interrupting discarded work on behalf of someone who only meant to say something - and `@everyone` did it to a roomful at once |
+| **Notify-on-finish**                         | **`queue`**              | "Your child finished" is a report. Interrupting killed the turn the parent ran while the child worked, and a fan-out of N children interrupted it N times in a row            |
+| Schedule fire → existing chat                | neither (**fails**)      | `executeSchedule` pre-checks `hasInFlightRun` and fails the run with "already has an active run"; it has never interrupted. Open question - see below                         |
+| Schedule fire → new chat, `/loop` iterations | n/a                      | Each runs a freshly created agent, which cannot be busy                                                                                                                       |
 
 Both flipped paths already carried `source: "system"`, so each injected message still arrives as **its own turn** - queueing changes when a mention or a report lands, never how many there are or what they say. (The mention path was untagged until the flip; tagging it was part of the change, because two mentions merging into one turn would have lost each one's envelope.)
 

@@ -15,6 +15,7 @@ export function resolveAgentBehaviorSettings(
         promptSuggestions?: boolean;
         agentProgressSummaries?: boolean;
         notifyOnFinishDefault?: boolean;
+        defaultSendBehavior?: "interrupt" | "steer" | "queue";
         todoNudge?: boolean;
         todoReconcileOnIdle?: boolean;
         stallGuardThreshold?: number;
@@ -25,6 +26,7 @@ export function resolveAgentBehaviorSettings(
     promptSuggestions: behaviors?.promptSuggestions !== false,
     agentProgressSummaries: behaviors?.agentProgressSummaries !== false,
     notifyOnFinishDefault: behaviors?.notifyOnFinishDefault !== false,
+    defaultSendBehavior: behaviors?.defaultSendBehavior ?? "steer",
     todoNudge: behaviors?.todoNudge !== false,
     todoReconcileOnIdle: behaviors?.todoReconcileOnIdle !== false,
     stallGuardThreshold: resolveStallGuardThreshold(behaviors?.stallGuardThreshold),

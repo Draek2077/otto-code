@@ -925,6 +925,7 @@ interface AgentBehaviorsPersistShape {
   promptSuggestions: boolean;
   agentProgressSummaries: boolean;
   notifyOnFinishDefault: boolean;
+  defaultSendBehavior?: "interrupt" | "steer" | "queue";
   todoNudge: boolean;
   todoReconcileOnIdle: boolean;
   stallGuardThreshold: number;
@@ -941,6 +942,13 @@ function readAgentBehaviors(mutable: MutableDaemonConfig): AgentBehaviorsPersist
     promptSuggestions: behaviors["promptSuggestions"] !== false,
     agentProgressSummaries: behaviors["agentProgressSummaries"] !== false,
     notifyOnFinishDefault: behaviors["notifyOnFinishDefault"] !== false,
+    // Keep absence observable so the app can seed a host once from its existing
+    // device preference. The runtime resolver still defaults an unset host to Steer.
+    ...(behaviors["defaultSendBehavior"] === "interrupt" ||
+    behaviors["defaultSendBehavior"] === "steer" ||
+    behaviors["defaultSendBehavior"] === "queue"
+      ? { defaultSendBehavior: behaviors["defaultSendBehavior"] }
+      : {}),
     todoNudge: behaviors["todoNudge"] !== false,
     todoReconcileOnIdle: behaviors["todoReconcileOnIdle"] !== false,
     // Numeric, so the boolean !== false idiom above does not apply: anything

@@ -223,6 +223,9 @@ function buildAgentManagerSpies() {
     emitLiveTimelineItem: vi.fn().mockResolvedValue(undefined),
     hasInFlightRun: vi.fn().mockReturnValue(false),
     isBusyOnlyWithOutOfBandRun: vi.fn().mockReturnValue(false),
+    enqueueSteerMessage: vi.fn().mockReturnValue({ queued: true }),
+    steerOrReplaceActiveTurn: vi.fn().mockResolvedValue({ status: "steered" }),
+    replaceAgentRun: vi.fn(async () => (async function* noop() {})()),
     tryRunOutOfBand: vi.fn().mockReturnValue(false),
     subscribe: vi.fn().mockReturnValue(() => {}),
     streamAgent: vi.fn(() => (async function* noop() {})()),
@@ -240,6 +243,7 @@ function buildAgentManagerSpies() {
       promptSuggestions: true,
       agentProgressSummaries: true,
       notifyOnFinishDefault: true,
+      defaultSendBehavior: "steer",
       todoNudge: true,
       todoReconcileOnIdle: true,
     }),
@@ -3848,6 +3852,108 @@ describe("create_chat MCP tool", () => {
 describe("send_chat_prompt MCP tool", () => {
   const logger = createTestLogger();
   const existingCwd = process.cwd();
+
+  it.each(["steer", "interrupt", "queue"] as const)(
+    "uses the host's %s Default send when delivery is omitted",
+    async (behavior) => {
+      const { agentManager, agentStorage, spies } = createTestDeps();
+      spies.agentManager.getAgentBehaviors.mockReturnValue({
+        ...spies.agentManager.getAgentBehaviors(),
+        defaultSendBehavior: behavior,
+      });
+      spies.agentManager.getAgent.mockReturnValue(
+        createManagedAgent({
+          id: "recipient",
+          cwd: existingCwd,
+          lifecycle: "running",
+          currentModeId: null,
+          availableModes: [],
+          config: { title: "Recipient" },
+        }),
+      );
+      spies.agentManager.hasInFlightRun.mockReturnValue(true);
+      const server = await createAgentMcpServer({
+        agentManager,
+        agentStorage,
+        providerSnapshotManager: createOpenCodeManager().manager,
+        callerAgentId: "sender",
+        logger,
+      });
+      const tool = registeredTool(server, "send_chat_prompt");
+      const parsed = await tool.inputSchema.safeParseAsync({
+        agentId: "recipient",
+        prompt: "Follow up",
+        notifyOnFinish: false,
+      });
+      expect(parsed.success).toBe(true);
+      if (!parsed.success) throw new Error("Expected send_chat_prompt input to parse");
+      expect(parsed.data).not.toHaveProperty("delivery");
+
+      await tool.handler(parsed.data as Record<string, unknown>);
+
+      expect(spies.agentManager.enqueueSteerMessage).toHaveBeenCalledTimes(
+        behavior === "queue" ? 1 : 0,
+      );
+      expect(spies.agentManager.steerOrReplaceActiveTurn).toHaveBeenCalledTimes(
+        behavior === "steer" ? 1 : 0,
+      );
+      expect(spies.agentManager.replaceAgentRun).toHaveBeenCalledTimes(
+        behavior === "interrupt" ? 1 : 0,
+      );
+    },
+  );
+
+  it("lets an explicit delivery override the host default", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({ id: "recipient", cwd: existingCwd, lifecycle: "running" }),
+    );
+    spies.agentManager.hasInFlightRun.mockReturnValue(true);
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      callerAgentId: "sender",
+      logger,
+    });
+    const tool = registeredTool(server, "send_chat_prompt");
+    await invokeToolWithParsedInput(tool, {
+      agentId: "recipient",
+      prompt: "Run after this turn",
+      delivery: "queue",
+      notifyOnFinish: false,
+    });
+    expect(spies.agentManager.enqueueSteerMessage).toHaveBeenCalledTimes(1);
+    expect(spies.agentManager.steerOrReplaceActiveTurn).not.toHaveBeenCalled();
+  });
+
+  it("accepts an explicit steer override when the host defaults to Queue", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.getAgentBehaviors.mockReturnValue({
+      ...spies.agentManager.getAgentBehaviors(),
+      defaultSendBehavior: "queue",
+    });
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({ id: "recipient", cwd: existingCwd, lifecycle: "running" }),
+    );
+    spies.agentManager.hasInFlightRun.mockReturnValue(true);
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      callerAgentId: "sender",
+      logger,
+    });
+    const tool = registeredTool(server, "send_chat_prompt");
+    await invokeToolWithParsedInput(tool, {
+      agentId: "recipient",
+      prompt: "Add this to your current turn",
+      delivery: "steer",
+      notifyOnFinish: false,
+    });
+    expect(spies.agentManager.enqueueSteerMessage).not.toHaveBeenCalled();
+    expect(spies.agentManager.steerOrReplaceActiveTurn).toHaveBeenCalledTimes(1);
+  });
 
   it("defaults agent-scoped prompts to background finish notifications", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();

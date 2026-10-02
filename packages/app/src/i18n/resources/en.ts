@@ -3661,10 +3661,12 @@ export const en = {
       defaultSend: {
         label: "Default send",
         descriptions: {
-          interrupt: "When the agent is running, Enter interrupts. Command/Ctrl+Enter queues.",
+          interrupt:
+            "When a chat is running, Enter and prompts from other chats interrupt. Command/Ctrl+Enter queues.",
           steer:
-            "When the agent is running, Enter steers the active turn. Command/Ctrl+Enter queues.",
-          queue: "When the agent is running, Enter queues. Command/Ctrl+Enter submits.",
+            "When a chat is running, Enter and prompts from other chats steer the active turn. Command/Ctrl+Enter queues.",
+          queue:
+            "When a chat is running, Enter and prompts from other chats queue. Command/Ctrl+Enter submits.",
         },
         options: {
           interrupt: "Interrupt",

@@ -83,6 +83,7 @@ const DEFAULT_LAUNCH_AGENT_BEHAVIORS = {
   promptSuggestions: true,
   agentProgressSummaries: true,
   notifyOnFinishDefault: true,
+  defaultSendBehavior: "steer",
   todoNudge: true,
   todoReconcileOnIdle: true,
   stallGuardThreshold: STALL_GUARD_DEFAULT_THRESHOLD,
