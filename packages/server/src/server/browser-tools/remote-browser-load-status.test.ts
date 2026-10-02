@@ -10,6 +10,39 @@ afterEach(async () => {
 });
 
 describe("hosted browser page loading", () => {
+  it("relays a pinch at the page point through Chromium", async () => {
+    const manager = new RemoteBrowserManager("test-browser-profile");
+    managers.push(manager);
+    const browserId = "11111111-1111-4111-8111-111111111111";
+    const tab = manager["ensureTab"]("workspace", { kind: "open", browserId });
+    const send = vi.fn().mockResolvedValue(undefined);
+    const detach = vi.fn().mockResolvedValue(undefined);
+    tab.page = {
+      isClosed: () => false,
+      close: vi.fn().mockResolvedValue(undefined),
+      context: () => ({ newCDPSession: async () => ({ send, detach }) }),
+      url: () => "https://example.com/",
+      title: async () => "Example",
+    } as unknown as Page;
+    tab.state = "ready";
+
+    await manager.execute("workspace", {
+      kind: "pinch",
+      browserId,
+      x: 120,
+      y: 180,
+      scaleFactor: 1.25,
+    });
+
+    expect(send).toHaveBeenCalledWith("Input.synthesizePinchGesture", {
+      x: 120,
+      y: 180,
+      scaleFactor: 1.25,
+      relativeSpeed: 800,
+    });
+    expect(detach).toHaveBeenCalledTimes(2);
+  });
+
   it("passes right clicks and double clicks to the host page", async () => {
     const manager = new RemoteBrowserManager("test-browser-profile");
     managers.push(manager);

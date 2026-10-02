@@ -9,6 +9,8 @@ export const RemoteBrowserServerFeaturesShape = {
   remoteBrowserLoadStatus: z.boolean().optional(),
   // COMPAT(remoteBrowserGestures): added in v0.9.28, remove gate after 2027-03-29.
   remoteBrowserGestures: z.boolean().optional(),
+  // COMPAT(remoteBrowserPinch): added in v0.9.29, remove gate after 2027-04-02.
+  remoteBrowserPinch: z.boolean().optional(),
 };
 
 const ViewportSchema = z.discriminatedUnion("mode", [
@@ -73,6 +75,14 @@ export const RemoteBrowserCommandSchema = z.discriminatedUnion("kind", [
     y: z.number().finite(),
     deltaX: z.number().finite(),
     deltaY: z.number().finite(),
+  }),
+  z.object({
+    kind: z.literal("pinch"),
+    browserId: BrowserAutomationBrowserIdSchema,
+    x: z.number().finite(),
+    y: z.number().finite(),
+    // A relative scale keeps successive touch or trackpad updates composable.
+    scaleFactor: z.number().finite().min(0.5).max(2),
   }),
   z.object({
     kind: z.literal("type"),

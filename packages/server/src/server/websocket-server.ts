@@ -2206,6 +2206,7 @@ export class VoiceAssistantWebSocketServer {
         remoteBrowser: true,
         remoteBrowserLoadStatus: true,
         remoteBrowserGestures: true,
+        remoteBrowserPinch: true,
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
         providerRemove: true,
         // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.

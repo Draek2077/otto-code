@@ -55,6 +55,7 @@ interface Tab extends TabOrigin {
   lastHeapCheckAt: number;
   focusRequestId: string | null;
   stream: TabStream;
+  pinchQueue: Promise<void>;
   crashCount: number;
   consoleLog: BrowserLogs["console"];
   networkLog: BrowserLogs["network"];
@@ -171,6 +172,23 @@ async function readHistory(tab: Tab, page: Page): Promise<void> {
     if (tab.page !== page) return;
     tab.canGoBack = history.currentIndex > 0;
     tab.canGoForward = history.currentIndex < history.entries.length - 1;
+  } finally {
+    await session.detach().catch(() => undefined);
+  }
+}
+
+async function synthesizePinch(
+  page: Page,
+  command: Extract<RemoteBrowserCommand, { kind: "pinch" }>,
+): Promise<void> {
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send("Input.synthesizePinchGesture", {
+      x: command.x,
+      y: command.y,
+      scaleFactor: command.scaleFactor,
+      relativeSpeed: 800,
+    });
   } finally {
     await session.detach().catch(() => undefined);
   }
@@ -424,6 +442,7 @@ export class RemoteBrowserManager {
       lastHeapCheckAt: 0,
       focusRequestId: null,
       stream: new TabStream(),
+      pinchQueue: Promise.resolve(),
       crashCount: 0,
       consoleLog: [],
       networkLog: [],
@@ -678,6 +697,15 @@ export class RemoteBrowserManager {
         await page.mouse.wheel(command.deltaX, command.deltaY);
         tab.stream.noteInput();
         break;
+      case "pinch": {
+        // CDP delivers a real page pinch at the viewer's focal point. Serialize
+        // gestures because multiple clients may view the same hosted tab.
+        const pinch = tab.pinchQueue.then(() => synthesizePinch(page, command));
+        tab.pinchQueue = pinch.catch(() => undefined);
+        await pinch;
+        tab.stream.noteInput();
+        break;
+      }
       case "type":
         tab.stream.noteInput();
         await page.keyboard.insertText(command.text);

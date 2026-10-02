@@ -8,13 +8,22 @@ export interface RemoteBrowserFrameHandle {
   present(picture: RemoteBrowserPicture): Promise<void> | void;
 }
 
+export interface RemoteBrowserWheel {
+  deltaX: number;
+  deltaY: number;
+  deltaMode: number;
+  ctrlKey: boolean;
+  point: { x: number; y: number };
+}
+
 interface Props {
   width: number;
   height: number;
-  onWheel?: (deltaX: number, deltaY: number) => void;
+  onWheel?: (event: RemoteBrowserWheel) => void;
   onKeyInput?: (value: string, kind: "text" | "key") => void;
   // A phone has no paste chord over the page; the web canvas raises this one.
   onPasteText?: (text: string) => void;
+  readClipboardText?: () => Promise<string>;
   onContextMenu?: (point: { x: number; y: number }) => void;
 }
 

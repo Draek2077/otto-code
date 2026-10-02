@@ -75,13 +75,48 @@ describe("hosted browser canvas", () => {
       <RemoteBrowserFrame width={8} height={8} onWheel={onWheel} onKeyInput={onKeyInput} />,
     );
     const canvas = screen.container.querySelector("canvas")!;
+    const bounds = canvas.getBoundingClientRect();
 
-    fireEvent.wheel(canvas, { deltaX: 3, deltaY: 42 });
+    fireEvent.wheel(canvas, {
+      deltaX: 3,
+      deltaY: 42,
+      clientX: bounds.left + 10,
+      clientY: bounds.top + 10,
+    });
     fireEvent.keyDown(canvas, { key: "a" });
     fireEvent.keyDown(canvas, { key: "Backspace" });
-    expect(onWheel).toHaveBeenCalledWith(3, 42);
+    expect(onWheel).toHaveBeenCalledWith({
+      deltaX: 3,
+      deltaY: 42,
+      deltaMode: 0,
+      ctrlKey: false,
+      point: { x: 10, y: 10 },
+    });
     expect(onKeyInput).toHaveBeenNthCalledWith(1, "a", "text");
     expect(onKeyInput).toHaveBeenNthCalledWith(2, "Backspace", "key");
+  });
+
+  it("marks Ctrl+wheel as a pinch at the pointer rather than a plain scroll", () => {
+    const onWheel = vi.fn();
+    const screen = render(<RemoteBrowserFrame width={80} height={80} onWheel={onWheel} />);
+    const canvas = screen.container.querySelector("canvas")!;
+    const bounds = canvas.getBoundingClientRect();
+
+    fireEvent.wheel(canvas, {
+      deltaY: -100,
+      ctrlKey: true,
+      clientX: bounds.left + 20,
+      clientY: bounds.top + 30,
+    });
+
+    expect(onWheel).toHaveBeenCalledWith({
+      deltaX: 0,
+      deltaY: -100,
+      deltaMode: 0,
+      ctrlKey: true,
+      point: { x: 20, y: 30 },
+    });
+    expect(canvas.style.touchAction).toBe("none");
   });
 
   it("forwards a right click at the canvas point without a local menu or focus border", () => {
@@ -151,6 +186,45 @@ describe("hosted browser canvas", () => {
     await userEvent.paste();
 
     expect(onPasteText).toHaveBeenCalledWith("real clipboard text");
+  });
+
+  it("reads the viewer clipboard when Ctrl+V raises no paste event", async () => {
+    const onPasteText = vi.fn();
+    const readClipboardText = vi.fn(async () => "fallback text");
+    const screen = render(
+      <RemoteBrowserFrame
+        width={80}
+        height={80}
+        onPasteText={onPasteText}
+        readClipboardText={readClipboardText}
+      />,
+    );
+    const canvas = screen.container.querySelector("canvas")!;
+
+    fireEvent.keyDown(canvas, { key: "v", ctrlKey: true });
+    await vi.waitFor(() => expect(onPasteText).toHaveBeenCalledWith("fallback text"));
+    expect(readClipboardText).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not send clipboard text twice when Ctrl+V also raises paste", async () => {
+    const onPasteText = vi.fn();
+    const readClipboardText = vi.fn(async () => "same text");
+    const screen = render(
+      <RemoteBrowserFrame
+        width={80}
+        height={80}
+        onPasteText={onPasteText}
+        readClipboardText={readClipboardText}
+      />,
+    );
+    const canvas = screen.container.querySelector("canvas")!;
+
+    fireEvent.keyDown(canvas, { key: "v", ctrlKey: true });
+    firePaste(canvas, "same text");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(onPasteText).toHaveBeenCalledTimes(1);
+    expect(onPasteText).toHaveBeenCalledWith("same text");
   });
 
   it("ignores a paste that carries no text", () => {

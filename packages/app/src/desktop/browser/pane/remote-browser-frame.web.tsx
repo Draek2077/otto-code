@@ -1,12 +1,13 @@
 import { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef } from "react";
-import type { RemoteBrowserFrameHandle } from "./remote-browser-frame";
+import type { RemoteBrowserFrameHandle, RemoteBrowserWheel } from "./remote-browser-frame";
 
 interface Props {
   width: number;
   height: number;
-  onWheel?: (deltaX: number, deltaY: number) => void;
+  onWheel?: (event: RemoteBrowserWheel) => void;
   onKeyInput?: (value: string, kind: "text" | "key") => void;
   onPasteText?: (text: string) => void;
+  readClipboardText?: () => Promise<string>;
   onContextMenu?: (point: { x: number; y: number }) => void;
 }
 
@@ -20,15 +21,33 @@ function isPasteChord(event: React.KeyboardEvent): boolean {
 }
 
 // The canvas takes keyboard focus after a click, but the streamed page is its visual focus cue.
-const canvasStyle = { display: "block", width: "100%", height: "100%", outline: "none" } as const;
+const canvasStyle = {
+  display: "block",
+  width: "100%",
+  height: "100%",
+  outline: "none",
+  touchAction: "none",
+} as const;
 
 export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
   function RemoteBrowserFrame(
-    { width, height, onWheel, onKeyInput, onPasteText, onContextMenu },
+    { width, height, onWheel, onKeyInput, onPasteText, readClipboardText, onContextMenu },
     ref,
   ) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const imageRef = useRef<HTMLImageElement | null>(null);
+    const pasteAttempt = useRef<{ delivered: boolean } | null>(null);
+
+    const scheduleClipboardFallback = useCallback(
+      (attempt: { delivered: boolean }, text: string) => {
+        setTimeout(() => {
+          if (pasteAttempt.current !== attempt || attempt.delivered || !text) return;
+          attempt.delivered = true;
+          onPasteText?.(text);
+        }, 0);
+      },
+      [onPasteText],
+    );
 
     const draw = useCallback(() => {
       const canvas = canvasRef.current;
@@ -80,7 +99,14 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
     const handleWheel = useCallback(
       (event: React.WheelEvent<HTMLCanvasElement>) => {
         event.preventDefault();
-        onWheel?.(event.deltaX, event.deltaY);
+        const bounds = event.currentTarget.getBoundingClientRect();
+        onWheel?.({
+          deltaX: event.deltaX,
+          deltaY: event.deltaY,
+          deltaMode: event.deltaMode,
+          ctrlKey: event.ctrlKey,
+          point: { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+        });
       },
       [onWheel],
     );
@@ -88,9 +114,21 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
     const handleKeyDown = useCallback(
       (event: React.KeyboardEvent<HTMLCanvasElement>) => {
         if (["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
-        // Left alone on purpose: preventing the default here would also cancel
-        // the paste event the chord is about to raise on this canvas.
-        if (isPasteChord(event)) return;
+        // The regular paste event is preferred. Clipboard reads cover clients
+        // that do not dispatch paste to a focused, non-editable canvas.
+        if (isPasteChord(event)) {
+          const attempt = { delivered: false };
+          pasteAttempt.current = attempt;
+          if (readClipboardText) {
+            void readClipboardText()
+              .then((text) => {
+                scheduleClipboardFallback(attempt, text);
+                return undefined;
+              })
+              .catch(() => undefined);
+          }
+          return;
+        }
         event.preventDefault();
         if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
           onKeyInput?.(event.key, "text");
@@ -104,7 +142,7 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
         ].filter(Boolean);
         onKeyInput?.([...modifiers, event.key].join("+"), "key");
       },
-      [onKeyInput],
+      [onKeyInput, readClipboardText, scheduleClipboardFallback],
     );
 
     // The clipboard's text goes into whatever the page has focused, which is
@@ -113,6 +151,7 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
       (event: React.ClipboardEvent<HTMLCanvasElement>) => {
         event.preventDefault();
         const text = event.clipboardData?.getData("text/plain") ?? "";
+        if (text && pasteAttempt.current) pasteAttempt.current.delivered = true;
         if (text) onPasteText?.(text);
       },
       [onPasteText],

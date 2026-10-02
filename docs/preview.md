@@ -385,12 +385,19 @@ Hosted page input forwards desktop right click, double click, and touch double
 tap. A touch long press opens the page's right-click menu. Single taps wait
 briefly so a second tap can be sent as one double click. Hosts advertise
 `remoteBrowserGestures` for these gestures; older hosts retain single taps.
+Two-finger touch and trackpad pinch zoom the hosted page around the gesture's
+centre, and Ctrl+wheel also zooms it. The client coalesces gesture updates and
+the host serializes them for viewers sharing one tab. Hosts advertise
+`remoteBrowserPinch`; older hosts do not offer pinch zoom.
 Ctrl+V, or Cmd+V, over the page sends the viewer's clipboard text into it by
 the same route the send bar uses, so it lands in whatever the page has focused,
 which is the field the viewer last clicked. The chord itself is never forwarded
 as a key: the page would otherwise paste whatever the daemon's own Chromium
 holds. Copy and cut over the page are still the host's clipboard, not the
 viewer's.
+When a focused canvas receives the paste shortcut without a `paste` event,
+the client reads the viewer's clipboard and sends its text through the same
+route as the bottom text bar. A normal paste event wins when both paths fire.
 
 Hosted tabs report main-frame navigation from the host page rather than from
 the command response. The tab spinner and Reload/Stop control stay active until

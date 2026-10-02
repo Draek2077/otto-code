@@ -8,6 +8,7 @@ import {
   type TextInputKeyPressEventData,
 } from "react-native";
 import { useTranslation } from "react-i18next";
+import * as Clipboard from "expo-clipboard";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { EditingTextInput, type EditingTextInputHandle } from "@/components/ui/text-input";
 import {
@@ -28,6 +29,7 @@ import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-
 import { useSessionStore } from "@/stores/session-store";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
+import { isWeb } from "@/constants/platform";
 import {
   createFixedBrowserViewport,
   normalizeWorkspaceBrowserUrl,
@@ -39,8 +41,18 @@ import {
   type RemoteBrowserCommand,
   type RemoteBrowserTab,
 } from "@otto-code/protocol/browser-remote/rpc-schemas";
-import { RemoteBrowserFrame, type RemoteBrowserFrameHandle } from "./remote-browser-frame";
+import {
+  RemoteBrowserFrame,
+  type RemoteBrowserFrameHandle,
+  type RemoteBrowserWheel,
+} from "./remote-browser-frame";
 import { pagePointFromPane, pressPointInPane } from "./hosted-page-point";
+import {
+  advancePinch,
+  pinchFrameFromTouches,
+  wheelPinchFactor,
+  type PinchGesture,
+} from "./hosted-pinch-gesture";
 import { cancelHostedTap, queueHostedTap, type PendingTap } from "./hosted-tap-sequence";
 import {
   advanceTouch,
@@ -175,6 +187,10 @@ export function BrowserPane({
   const supportsGestures = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.remoteBrowserGestures === true,
   );
+  // COMPAT(remoteBrowserPinch): added in v0.9.29, remove gate after 2027-04-02.
+  const supportsPinch = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.remoteBrowserPinch === true,
+  );
   // A tab nobody can see asks for nothing: not behind another tab, and not
   // while the app itself is in the background.
   const appVisible = useAppVisible();
@@ -202,6 +218,7 @@ export function BrowserPane({
   const navigationAction = useRef(0);
   const pendingLoadAction = useRef<{ id: number; loading: boolean } | null>(null);
   const touch = useRef<TouchGesture | null>(null);
+  const pinch = useRef<PinchGesture | null>(null);
   const swiped = useRef(false);
   const longPressed = useRef(false);
   // Mobile web may raise both contextmenu and onLongPress for one held finger.
@@ -211,6 +228,9 @@ export function BrowserPane({
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollBusy = useRef(false);
   const scrollMounted = useRef(true);
+  const pinchPending = useRef<{ x: number; y: number; scaleFactor: number } | null>(null);
+  const pinchBusy = useRef(false);
+  const pinchMounted = useRef(true);
   const viewport = browser?.viewport;
   const effectiveViewport = useMemo(
     () =>
@@ -427,15 +447,68 @@ export function BrowserPane({
     [size, displayViewport, flushScroll],
   );
 
+  const flushPinch = useCallback(() => {
+    if (!pinchMounted.current || pinchBusy.current || !client || !connected) return;
+    const pending = pinchPending.current;
+    if (!pending) return;
+    const scaleFactor = Math.max(0.5, Math.min(2, pending.scaleFactor));
+    const remaining = pending.scaleFactor / scaleFactor;
+    pinchPending.current =
+      Math.abs(Math.log(remaining)) >= 0.005 ? { ...pending, scaleFactor: remaining } : null;
+    pinchBusy.current = true;
+    void client
+      .remoteBrowserExecute(workspaceId, {
+        kind: "pinch",
+        browserId,
+        x: pending.x,
+        y: pending.y,
+        scaleFactor,
+      })
+      .catch((cause: unknown) => {
+        pinchPending.current = null;
+        setError(errorText(cause));
+      })
+      .finally(() => {
+        pinchBusy.current = false;
+        if (pinchMounted.current && pinchPending.current) flushPinch();
+      });
+  }, [client, connected, workspaceId, browserId]);
+
+  const queuePinch = useCallback(
+    (point: { x: number; y: number }, scaleFactor: number) => {
+      if (
+        !supportsPinch ||
+        !Number.isFinite(scaleFactor) ||
+        scaleFactor <= 0 ||
+        Math.abs(Math.log(scaleFactor)) < 0.005
+      )
+        return;
+      const pending = pinchPending.current;
+      pinchPending.current = {
+        ...point,
+        scaleFactor: Math.max(0.1, Math.min(10, (pending?.scaleFactor ?? 1) * scaleFactor)),
+      };
+      flushPinch();
+    },
+    [supportsPinch, flushPinch],
+  );
+
   useEffect(() => {
     scrollMounted.current = true;
+    pinchMounted.current = true;
     return () => {
       if (scrollTimer.current) clearTimeout(scrollTimer.current);
       scrollMounted.current = false;
       scrollTimer.current = null;
       scrollPending.current = { x: 0, y: 0 };
+      pinchMounted.current = false;
+      pinchPending.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!connected) pinchPending.current = null;
+  }, [connected]);
 
   const act = useCallback(
     (command: RemoteBrowserCommand) => {
@@ -543,9 +616,54 @@ export function BrowserPane({
     [supportsGestures, size, displayViewport, cancelPendingTap, sendTap],
   );
 
+  const touchPinchFrame = useCallback((event: GestureResponderEvent) => {
+    const bounds = isWeb
+      ? (event.currentTarget as unknown as HTMLElement).getBoundingClientRect()
+      : undefined;
+    return pinchFrameFromTouches(Array.from(event.nativeEvent.touches ?? []), bounds);
+  }, []);
+
+  const onTouchStart = useCallback(
+    (event: GestureResponderEvent) => {
+      claimViewport();
+      const touches = event.nativeEvent.touches ?? [];
+      if (touches.length >= 2) {
+        const frame = touchPinchFrame(event);
+        pinch.current = { distance: frame?.distance ?? 0 };
+        touch.current = null;
+        swiped.current = true;
+        cancelPendingTap();
+        return;
+      }
+      if (pinch.current) return;
+      const point = touches[0];
+      swiped.current = false;
+      longPressed.current = false;
+      lastTouchContextMenu.current = 0;
+      if (point) touch.current = beginTouch(point);
+    },
+    [claimViewport, touchPinchFrame, cancelPendingTap],
+  );
+
   // A drag scrolls the page and cancels the tap the press would otherwise be.
   const onTouchMove = useCallback(
     (event: GestureResponderEvent) => {
+      if ((event.nativeEvent.touches?.length ?? 0) >= 2) {
+        swiped.current = true;
+        touch.current = null;
+        const frame = touchPinchFrame(event);
+        if (!frame) return;
+        const gesture = pinch.current;
+        if (!gesture || gesture.distance <= 0) {
+          pinch.current = { distance: frame.distance };
+          return;
+        }
+        const factor = advancePinch(gesture, frame.distance);
+        const point = pagePointFromPane(frame.center, size, displayViewport);
+        if (factor && point) queuePinch(point, factor);
+        return;
+      }
+      if (pinch.current) return;
       const gesture = touch.current;
       const point = event.nativeEvent.touches?.[0];
       if (!gesture || !point) return;
@@ -554,11 +672,17 @@ export function BrowserPane({
       swiped.current = true;
       queueScroll(delta);
     },
-    [queueScroll],
+    [touchPinchFrame, size, displayViewport, queuePinch, queueScroll],
   );
 
   const onTouchEnd = useCallback(
     (event: GestureResponderEvent) => {
+      if (pinch.current) {
+        if ((event.nativeEvent.touches?.length ?? 0) < 2) pinch.current = null;
+        touch.current = null;
+        swiped.current = true;
+        return;
+      }
       const gesture = touch.current;
       touch.current = null;
       const point = event.nativeEvent.changedTouches?.[0];
@@ -573,14 +697,20 @@ export function BrowserPane({
 
   const onTouchCancel = useCallback(() => {
     touch.current = null;
+    pinch.current = null;
   }, []);
 
   const onWheel = useCallback(
-    (deltaX: number, deltaY: number) => {
+    (event: RemoteBrowserWheel) => {
       claimViewport();
-      queueScroll({ dx: -deltaX, dy: -deltaY });
+      if (event.ctrlKey) {
+        const point = pagePointFromPane(event.point, size, displayViewport);
+        if (point) queuePinch(point, wheelPinchFactor(event.deltaY, event.deltaMode));
+        return;
+      }
+      queueScroll({ dx: -event.deltaX, dy: -event.deltaY });
     },
-    [claimViewport, queueScroll],
+    [claimViewport, size, displayViewport, queuePinch, queueScroll],
   );
 
   const onKeyInput = useCallback(
@@ -765,14 +895,7 @@ export function BrowserPane({
           style={previewPending ? styles.hidden : styles.imagePress}
           onPress={onPagePress}
           onLongPress={onPageLongPress}
-          onTouchStart={(event) => {
-            claimViewport();
-            const point = event.nativeEvent.touches?.[0];
-            swiped.current = false;
-            longPressed.current = false;
-            lastTouchContextMenu.current = 0;
-            if (point) touch.current = beginTouch(point);
-          }}
+          onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
           onTouchCancel={onTouchCancel}
@@ -784,6 +907,7 @@ export function BrowserPane({
             onWheel={onWheel}
             onKeyInput={onKeyInput}
             onPasteText={typeIntoPage}
+            readClipboardText={Clipboard.getStringAsync}
             onContextMenu={onPageContextMenu}
           />
           {!hasFrame ? (
