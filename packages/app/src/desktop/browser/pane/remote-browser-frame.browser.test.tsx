@@ -1,5 +1,7 @@
 import React, { createRef } from "react";
 import { act, fireEvent, render } from "@testing-library/react";
+import { Pressable } from "react-native";
+import { userEvent } from "vitest/browser";
 import { describe, expect, it, vi } from "vitest";
 import type { RemoteBrowserFrameHandle } from "./remote-browser-frame";
 import { RemoteBrowserFrame } from "./remote-browser-frame.web";
@@ -126,6 +128,29 @@ describe("hosted browser canvas", () => {
     // The default must survive keydown, or the browser raises no paste at all.
     expect(chord.defaultPrevented).toBe(false);
     expect(onPasteText).toHaveBeenCalledWith("pasted text");
+  });
+
+  it("pastes through a real shortcut after clicking the hosted page", async () => {
+    const onPasteText = vi.fn();
+    const onPress = vi.fn();
+    const screen = render(
+      <>
+        <textarea defaultValue="real clipboard text" />
+        <Pressable onPress={onPress}>
+          <RemoteBrowserFrame width={80} height={80} onPasteText={onPasteText} />
+        </Pressable>
+      </>,
+    );
+    const canvas = screen.container.querySelector("canvas")!;
+
+    await userEvent.click(screen.container.querySelector("textarea")!);
+    await userEvent.keyboard("{Control>}a{/Control}");
+    await userEvent.copy();
+    await userEvent.click(canvas);
+    expect(document.activeElement).toBe(canvas);
+    await userEvent.paste();
+
+    expect(onPasteText).toHaveBeenCalledWith("real clipboard text");
   });
 
   it("ignores a paste that carries no text", () => {
