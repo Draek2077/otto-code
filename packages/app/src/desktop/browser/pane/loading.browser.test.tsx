@@ -50,19 +50,33 @@ vi.mock("@/hooks/use-settings", () => ({ useAppSettings: () => ({ settings: {} }
 vi.mock("@/components/retained-panel", () => ({ useRetainedPanelActive: () => true }));
 vi.mock("@/contexts/toast-context", () => ({ useToast: () => ({ toast: () => {} }) }));
 vi.mock("@/stores/session-store", () => ({
-  useSessionStore: {
-    getState: () => ({
-      sessions: {
-        host: {
-          serverInfo: { features: { browserHistory: true } },
-          client: {
-            searchBrowserHistory: browserTest.search,
-            recordBrowserHistory: browserTest.record,
+  useSessionStore: Object.assign(
+    (selector: (state: unknown) => unknown) =>
+      selector({
+        sessions: {
+          host: {
+            serverInfo: { features: { browserHistory: true, remoteBrowser: true } },
+            client: {
+              searchBrowserHistory: browserTest.search,
+              recordBrowserHistory: browserTest.record,
+            },
           },
         },
-      },
-    }),
-  },
+      }),
+    {
+      getState: () => ({
+        sessions: {
+          host: {
+            serverInfo: { features: { browserHistory: true, remoteBrowser: true } },
+            client: {
+              searchBrowserHistory: browserTest.search,
+              recordBrowserHistory: browserTest.record,
+            },
+          },
+        },
+      }),
+    },
+  ),
 }));
 vi.mock("@/stores/session-store-hooks", () => ({ useWorkspaceDirectory: () => null }));
 vi.mock("@/attachments/workspace-attachments-store", () => {
@@ -487,6 +501,10 @@ describe("browser usability", () => {
     const input = container.querySelector<HTMLInputElement>(
       'input[aria-label="workspace.browser.controls.browserUrl"]',
     )!;
+    // The test root has no layout width; the floating history list needs an anchor rect.
+    vi.spyOn(input, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({ x: 0, y: 0, width: 320, height: 32 }),
+    );
     act(() => input.focus());
     await vi.waitFor(() => expect(document.querySelector('[role="option"]')).not.toBeNull());
     expect(input.getAttribute("aria-activedescendant")).toBeNull();
@@ -509,6 +527,9 @@ it("keeps typed navigation optional, dismisses suggestions, and leaves no empty 
   const input = container.querySelector<HTMLInputElement>(
     'input[aria-label="workspace.browser.controls.browserUrl"]',
   )!;
+  vi.spyOn(input, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 0, y: 0, width: 320, height: 32 }),
+  );
   act(() => input.focus());
   await vi.waitFor(() => expect(document.querySelector('[role="option"]')).not.toBeNull());
   act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));

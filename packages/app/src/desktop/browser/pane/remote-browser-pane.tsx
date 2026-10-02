@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   ArrowLeft,
-  ArrowRight,
   ChevronDown,
   Devices,
   RotateCw,
@@ -53,6 +52,7 @@ import {
 } from "./hosted-touch-gesture";
 import { useHostedPreviewGate } from "./hosted-preview-gate";
 import { useHostedStreamMeter } from "./use-hosted-stream-meter";
+import { BrowserHostToggle } from "./browser-host-toggle";
 import {
   FRAME_LONG_POLL_MS,
   nextFramePollDelayMs,
@@ -65,6 +65,8 @@ interface Props {
   cwd: string | null;
   isInteractive?: boolean;
   onFocusPane?: () => void;
+  onToggleHostMode?: () => void;
+  hostModeToggleDisabled?: boolean;
 }
 
 const SIZES = [
@@ -78,7 +80,6 @@ const ThemedDevices = withUnistyles(Devices);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedSend = withUnistyles(Send);
 const ThemedArrowLeft = withUnistyles(ArrowLeft);
-const ThemedArrowRight = withUnistyles(ArrowRight);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedSquare = withUnistyles(Square);
 const ThemedTextInput = withUnistyles(EditingTextInput, (theme) => ({
@@ -153,6 +154,8 @@ export function BrowserPane({
   workspaceId,
   isInteractive,
   onFocusPane,
+  onToggleHostMode,
+  hostModeToggleDisabled,
 }: Props) {
   const { t } = useTranslation();
   const hydrated = useBrowserStoreHydrated();
@@ -654,7 +657,7 @@ export function BrowserPane({
           onPress={() => act({ kind: "forward", browserId })}
           style={[styles.button, !canGoForward && styles.buttonDisabled]}
         >
-          <ThemedArrowRight size={18} uniProps={mutedIcon} />
+          <ThemedArrowLeft size={18} style={styles.forwardArrow} uniProps={mutedIcon} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -695,6 +698,13 @@ export function BrowserPane({
           selectTextOnFocus
           style={styles.address}
         />
+        {onToggleHostMode ? (
+          <BrowserHostToggle
+            hosted
+            disabled={hostModeToggleDisabled === true}
+            onPress={onToggleHostMode}
+          />
+        ) : null}
         <DropdownMenu>
           <DropdownMenuTrigger
             accessibilityLabel={t("workspace.browser.devices.label")}
@@ -829,6 +839,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 6,
   },
   buttonDisabled: { opacity: 0.45 },
+  forwardArrow: { transform: [{ rotate: "180deg" }] },
   address: {
     flex: 1,
     minHeight: 34,

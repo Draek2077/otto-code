@@ -15,7 +15,6 @@ import { PaneOverlay } from "@/components/ui/pane-overlay";
 import {
   AlertTriangle,
   ArrowLeft,
-  ArrowRight,
   Camera,
   ChevronDown,
   Devices,
@@ -81,6 +80,8 @@ import { useAppSettings } from "@/hooks/use-settings";
 import { useSessionStore } from "@/stores/session-store";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { BrowserPane as RemoteBrowserPane } from "./remote-browser-pane";
+import { convertBrowserRenderMode } from "./convert-browser-render-mode.electron";
+import { BrowserHostToggle } from "./browser-host-toggle";
 
 type ElectronWebview = HTMLElement & {
   canGoBack?: () => boolean;
@@ -566,7 +567,6 @@ function ToolbarButton({
 // Lucide icons themed via withUnistyles so their color stays theme-reactive
 // without a banned useUnistyles() call.
 const ThemedArrowLeft = withUnistyles(ArrowLeft);
-const ThemedArrowRight = withUnistyles(ArrowRight);
 const ThemedSquare = withUnistyles(Square);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedMoreHorizontal = withUnistyles(MoreHorizontal);
@@ -697,8 +697,43 @@ interface BrowserPaneProps {
 
 export function BrowserPane(props: BrowserPaneProps) {
   const hasHydratedBrowserStore = useBrowserStoreHydrated();
-  const hasBrowserRecord = useBrowserStore((state) => !!state.browsersById[props.browserId]);
-  const renderMode = useBrowserStore((state) => state.browsersById[props.browserId]?.renderMode);
+  const browser = useBrowserStore((state) => state.browsersById[props.browserId] ?? null);
+  const hasBrowserRecord = Boolean(browser);
+  const renderMode = browser?.renderMode;
+  const supportsRemoteBrowser = useSessionStore(
+    (state) => state.sessions[props.serverId]?.serverInfo?.features?.remoteBrowser === true,
+  );
+  const [switching, setSwitching] = useState(false);
+  const toast = useToast();
+  const { t } = useTranslation();
+
+  const handleToggleHost = useCallback(() => {
+    if (switching || !browser || browser.isPreview) return;
+    if (browser.renderMode === "native" && !supportsRemoteBrowser) {
+      toast.error(t("workspace.browser.updateHost"));
+      return;
+    }
+    setSwitching(true);
+    void convertBrowserRenderMode({
+      browserId: props.browserId,
+      serverId: props.serverId,
+      workspaceId: props.workspaceId,
+      client: useSessionStore.getState().sessions[props.serverId]?.client ?? null,
+    })
+      .catch((error: unknown) => {
+        toast.error(`${t("workspace.browser.controls.switchFailed")} ${String(error)}`);
+      })
+      .finally(() => setSwitching(false));
+  }, [
+    browser,
+    props.browserId,
+    props.serverId,
+    props.workspaceId,
+    supportsRemoteBrowser,
+    switching,
+    t,
+    toast,
+  ]);
 
   useEffect(() => {
     if (hasHydratedBrowserStore && !hasBrowserRecord) {
@@ -714,9 +749,22 @@ export function BrowserPane(props: BrowserPaneProps) {
     );
   }
 
-  if (renderMode === "hosted") return <RemoteBrowserPane {...props} />;
+  if (renderMode === "hosted")
+    return (
+      <RemoteBrowserPane
+        {...props}
+        onToggleHostMode={browser?.isPreview ? undefined : handleToggleHost}
+        hostModeToggleDisabled={switching}
+      />
+    );
 
-  return <BrowserPaneContents {...props} />;
+  return (
+    <BrowserPaneContents
+      {...props}
+      onToggleHostMode={browser?.isPreview ? undefined : handleToggleHost}
+      hostModeToggleDisabled={switching}
+    />
+  );
 }
 
 // eslint-disable-next-line complexity
@@ -727,7 +775,9 @@ function BrowserPaneContents({
   cwd,
   isInteractive,
   onFocusPane,
-}: BrowserPaneProps) {
+  onToggleHostMode,
+  hostModeToggleDisabled,
+}: BrowserPaneProps & { onToggleHostMode?: () => void; hostModeToggleDisabled: boolean }) {
   const { t } = useTranslation();
   const browser = useBrowserStore((state) => state.browsersById[browserId] ?? null);
   const updateBrowser = useBrowserStore((state) => state.updateBrowser);
@@ -1939,7 +1989,11 @@ function BrowserPaneContents({
             onPress={handleForward}
             style={forwardIconButtonStyle}
           >
-            <ThemedArrowRight size={16} uniProps={deviceMutedIconMapping} />
+            <ThemedArrowLeft
+              size={16}
+              style={styles.forwardArrow}
+              uniProps={deviceMutedIconMapping}
+            />
           </ToolbarButton>
           <ToolbarButton
             label={
@@ -1973,6 +2027,13 @@ function BrowserPaneContents({
           />
         </View>
         <View style={styles.chromeRight}>
+          {onToggleHostMode ? (
+            <BrowserHostToggle
+              hosted={false}
+              disabled={hostModeToggleDisabled}
+              onPress={onToggleHostMode}
+            />
+          ) : null}
           <DeviceSizeMenu
             selectedId={selectedDeviceSizeId}
             onSelect={handleSelectDeviceSize}
@@ -2259,6 +2320,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     flexShrink: 0,
   },
+  forwardArrow: { transform: [{ rotate: "180deg" }] },
   iconButton: {
     width: 28,
     height: 28,

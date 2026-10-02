@@ -1009,6 +1009,12 @@ export const ru: TranslationResources = {
         stopLoading: "Остановить загрузку",
         refresh: "Обновить",
         browserUrl: "URL браузера",
+        host: "Хост",
+        hostMode: "Браузер на хосте",
+        switchToHost: "Открыть эту вкладку на хосте. Страница загрузится заново.",
+        switchToApp:
+          "Открыть эту вкладку в приложении. Страница загрузится заново и исчезнет на телефоне.",
+        switchFailed: "Не удалось переключить браузер:",
         enterUrl: "Введите URL",
         openDevTools: "Открыть инструменты разработки браузера",
         cancelSelector: "Отменить выбор элемента",

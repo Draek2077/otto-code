@@ -341,6 +341,12 @@ re-render at up to 3x for legible text.
 Desktop users can create a hosted page with **New browser on host**; the
 ordinary desktop browser button still opens a native page. Existing native
 pages do not transfer their live form or scroll state to the hosted browser.
+An ordinary browser tab's **Host** toolbar switch changes between those two
+backings in the same workspace tab. Otto opens a fresh browser at the saved URL;
+forms, scroll position, and page history do not transfer. Switching to the app
+closes the host page, which withdraws that tab from mobile clients. A new browser
+ID is used for each switch because the host does not reopen a closed ID. Preview
+tabs keep their server binding and do not offer the switch.
 
 The daemon permits four live hosted pages. A page unused for five minutes is
 suspended. A suspended tab is forgotten after an hour in which no client

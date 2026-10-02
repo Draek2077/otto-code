@@ -1013,6 +1013,12 @@ export const fr: TranslationResources = {
         stopLoading: "Arrêter le chargement",
         refresh: "Rafraîchir",
         browserUrl: "URL du navigateur",
+        host: "Hôte",
+        hostMode: "Navigateur sur l’hôte",
+        switchToHost: "Ouvrir cet onglet sur l’hôte. La page sera rechargée.",
+        switchToApp:
+          "Ouvrir cet onglet dans l’application. La page sera rechargée et disparaîtra du mobile.",
+        switchFailed: "Impossible de changer de navigateur :",
         enterUrl: "Saisir une URL",
         openDevTools: "Outils de développement du navigateur ouvert",
         cancelSelector: "Annuler le sélecteur d'élément",

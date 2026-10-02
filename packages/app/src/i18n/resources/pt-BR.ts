@@ -1012,6 +1012,12 @@ export const ptBR: TranslationResources = {
         stopLoading: "Parar carregamento",
         refresh: "Atualizar",
         browserUrl: "URL do navegador",
+        host: "Host",
+        hostMode: "Navegador no host",
+        switchToHost: "Abrir esta aba no host. A página será recarregada.",
+        switchToApp:
+          "Abrir esta aba no aplicativo. A página será recarregada e desaparecerá do celular.",
+        switchFailed: "Não foi possível trocar de navegador:",
         enterUrl: "Digite uma URL",
         openDevTools: "Abrir ferramentas de desenvolvedor do navegador",
         cancelSelector: "Cancelar seletor de elemento",

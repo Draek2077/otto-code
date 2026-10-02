@@ -1010,6 +1010,12 @@ export const es: TranslationResources = {
         stopLoading: "dejar de cargar",
         refresh: "Refrescar",
         browserUrl: "URL del navegador",
+        host: "Host",
+        hostMode: "Navegador en el host",
+        switchToHost: "Abrir esta pestaña en el host. La página se volverá a cargar.",
+        switchToApp:
+          "Abrir esta pestaña en la app. La página se volverá a cargar y desaparecerá del móvil.",
+        switchFailed: "No se pudo cambiar el navegador:",
         enterUrl: "Escribe una URL",
         openDevTools: "Abrir herramientas de desarrollo del navegador",
         cancelSelector: "Cancelar selector de elementos",

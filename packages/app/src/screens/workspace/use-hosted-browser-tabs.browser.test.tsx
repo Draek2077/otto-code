@@ -8,7 +8,7 @@ import {
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
-import { useHostedBrowserTabs } from "./use-hosted-browser-tabs";
+import { ignoreHostedBrowserTab, useHostedBrowserTabs } from "./use-hosted-browser-tabs";
 
 const browserId = "11111111-1111-4111-8111-111111111111";
 const workspaceKey = buildWorkspaceTabPersistenceKey({
@@ -86,6 +86,55 @@ describe("hosted browser tab projection", () => {
     expect(
       collectAllTabs(afterClose.root).filter((tab) => tab.target.kind === "browser"),
     ).toHaveLength(0);
+    hook.unmount();
+  });
+
+  it("releases a converted tab's ignore marker once the host reports it absent", async () => {
+    const tab = (title: string) => ({
+      browserId,
+      workspaceId: "workspace",
+      url: "https://example.com/",
+      title,
+      viewport: { mode: "responsive" as const, width: 390, height: 844 },
+      state: "ready",
+      error: null,
+    });
+    const remoteBrowserExecute = vi
+      .fn()
+      .mockResolvedValueOnce({ tabs: [tab("Original")] })
+      .mockResolvedValueOnce({ tabs: [tab("Stale response")] })
+      .mockResolvedValueOnce({ tabs: [] })
+      .mockResolvedValueOnce({ tabs: [tab("Later response")] });
+    const client = { remoteBrowserExecute } as unknown as DaemonClient;
+    const hook = renderHook(() =>
+      useHostedBrowserTabs({
+        client,
+        serverId: "host",
+        workspaceId: "workspace",
+        workspaceKey,
+        canSplitPanes: false,
+        enabled: true,
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    ignoreHostedBrowserTab(browserId);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(useBrowserStore.getState().browsersById[browserId]?.title).toBe("Original");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(useBrowserStore.getState().browsersById[browserId]?.title).toBe("Original");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(useBrowserStore.getState().browsersById[browserId]?.title).toBe("Later response");
     hook.unmount();
   });
 

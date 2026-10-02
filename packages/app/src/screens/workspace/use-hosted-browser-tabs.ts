@@ -16,7 +16,22 @@ interface Input {
   enabled: boolean;
 }
 
+// A desktop tab switching to its own webview is still present on the host
+// until close settles. Ignore any in-flight list response for that old ID.
+const convertingToNative = new Set<string>();
+
+export function ignoreHostedBrowserTab(browserId: string): void {
+  convertingToNative.add(browserId);
+}
+
+export function allowHostedBrowserTab(browserId: string): void {
+  convertingToNative.delete(browserId);
+}
+
 function removeClosedHostedTab(workspaceKey: string, browserId: string): void {
+  // A host list without the old ID confirms the conversion's close settled.
+  // Keep the replacement tab and release the marker for future polls.
+  if (convertingToNative.delete(browserId)) return;
   if (useBrowserStore.getState().browsersById[browserId]?.renderMode !== "hosted") return;
   const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
   if (layout) {
@@ -114,6 +129,7 @@ export function useHostedBrowserTabs({
         const nextIds = new Set<string>();
         for (const tab of response.tabs ?? []) {
           nextIds.add(tab.browserId);
+          if (convertingToNative.has(tab.browserId)) continue;
           adoptHostedTab(tab, { serverId, workspaceKey, canSplitPanes });
           const layoutStore = useWorkspaceLayoutStore.getState();
 
