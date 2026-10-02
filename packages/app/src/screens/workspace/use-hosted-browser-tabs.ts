@@ -3,7 +3,11 @@ import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import type { RemoteBrowserTab } from "@otto-code/protocol/browser-remote/rpc-schemas";
 import { createFixedBrowserViewport, useBrowserStore } from "@/desktop/browser/store";
 import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
-import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import {
+  collectAllTabs,
+  findExistingSidePaneId,
+  useWorkspaceLayoutStore,
+} from "@/stores/workspace-layout-store";
 import { findSplitRightTarget } from "@/workspace-tabs/split-right-target";
 
 interface Input {
@@ -85,18 +89,26 @@ function adoptHostedTab(
   if (!alreadyOpen) {
     const splitTarget =
       canSplitPanes && tab.layout === "split-right" ? findSplitRightTarget(workspaceKey) : null;
-    const tabId = layoutStore.openTabInBackground(workspaceKey, {
-      kind: "browser",
-      browserId: tab.browserId,
+    const existingSidePaneId = layout
+      ? findExistingSidePaneId({
+          layout,
+          explorerPaneId: layoutStore.explorerSidebarPaneIdByWorkspace[workspaceKey],
+          rememberedPaneId: layoutStore.sidePaneIdByWorkspace[workspaceKey],
+          sourcePaneId: layout.focusedPaneId,
+        })
+      : null;
+    const sidePaneId =
+      existingSidePaneId ?? (splitTarget ? layoutStore.ensureSidePane(workspaceKey) : null);
+    const originalFocusedPaneId = layout?.focusedPaneId;
+    layoutStore.openTab({
+      workspaceKey,
+      target: { kind: "browser", browserId: tab.browserId },
+      intent: "background",
+      placement: sidePaneId ? { mode: "pane", paneId: sidePaneId } : undefined,
     });
-    if (tabId && splitTarget) {
-      layoutStore.splitPane(workspaceKey, {
-        tabId,
-        targetPaneId: splitTarget,
-        position: "right",
-      });
-      // Reveal the preview without moving keyboard ownership to it.
-      layoutStore.focusPane(workspaceKey, splitTarget);
+    if (sidePaneId && originalFocusedPaneId) {
+      // Keep keyboard ownership in the pane the user was working in.
+      layoutStore.focusPane(workspaceKey, originalFocusedPaneId);
     }
     if (tab.preview)
       usePreviewRunningServersStore

@@ -2,8 +2,11 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { useBrowserStore } from "@/desktop/browser/store";
+import { EXPLORER_SIDEBAR_PANE_ID } from "@/stores/workspace-layout-actions";
 import {
+  collectAllPanes,
   collectAllTabs,
+  findPaneById,
   getFocusedBrowserId,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
@@ -278,4 +281,59 @@ describe("hosted browser tab projection", () => {
     });
     hook.unmount();
   });
+
+  it.each(["split-right", undefined] as const)(
+    "adopts a hosted tab with layout %s into an existing second pane",
+    async (tabLayout) => {
+      const store = useWorkspaceLayoutStore.getState();
+      const mainTabId = store.openTabFocused(workspaceKey, { kind: "draft", draftId: "human" })!;
+      const sideTabId = store.openTabFocused(workspaceKey, {
+        kind: "file",
+        path: "/project/README.md",
+      })!;
+      const sidePaneId = store.splitPane(workspaceKey, {
+        tabId: sideTabId,
+        targetPaneId: "main",
+        position: "right",
+      })!;
+      store.focusTab(workspaceKey, mainTabId);
+      const remoteBrowserExecute = vi.fn().mockResolvedValue({
+        tabs: [
+          {
+            browserId,
+            workspaceId: "workspace",
+            url: "http://localhost:5173/",
+            title: "App",
+            viewport: { mode: "responsive", width: 390, height: 844 },
+            state: "ready",
+            error: null,
+            ...(tabLayout ? { layout: tabLayout } : {}),
+          },
+        ],
+      });
+      const hook = renderHook(() =>
+        useHostedBrowserTabs({
+          client: { remoteBrowserExecute } as unknown as DaemonClient,
+          serverId: "host",
+          workspaceId: "workspace",
+          workspaceKey,
+          canSplitPanes: true,
+          enabled: true,
+        }),
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+      const browserTab = collectAllTabs(layout.root).find(
+        (tab) => tab.target.kind === "browser" && tab.target.browserId === browserId,
+      );
+      expect(findPaneById(layout.root, sidePaneId)?.tabIds).toContain(browserTab?.tabId);
+      expect(
+        collectAllPanes(layout.root).filter((pane) => pane.id !== EXPLORER_SIDEBAR_PANE_ID),
+      ).toHaveLength(2);
+      expect(findPaneById(layout.root, layout.focusedPaneId)?.focusedTabId).toBe(mainTabId);
+      hook.unmount();
+    },
+  );
 });

@@ -93,6 +93,30 @@ export type {
   WorkspaceTabSnapshot,
 };
 
+/** Reuse a manually opened second pane before creating an app-owned side pane. */
+export function findExistingSidePaneId(input: {
+  layout: WorkspaceLayout;
+  explorerPaneId: string | null | undefined;
+  rememberedPaneId: string | null | undefined;
+  sourcePaneId?: string | null;
+}): string | null {
+  const panes = collectAllPanes(input.layout.root).filter(
+    (pane) => pane.id !== input.explorerPaneId,
+  );
+  const remembered = panes.find((pane) => pane.id === input.rememberedPaneId);
+  if (remembered) return remembered.id;
+  // With exactly two visible work panes, the other pane is the user's existing
+  // destination regardless of whether it was created through a tab split.
+  if (panes.length === 2) {
+    return (
+      panes.find((pane) => pane.id !== DEFAULT_PANE_ID)?.id ??
+      panes.find((pane) => pane.id !== input.sourcePaneId)?.id ??
+      null
+    );
+  }
+  return null;
+}
+
 export type WorkspaceTabOpenIntent = "new" | "reveal" | "background";
 export interface OpenWorkspaceTabInput {
   workspaceKey: string;
@@ -1136,9 +1160,24 @@ export function createWorkspaceLayoutStore(
           const rememberedPaneId = trimNonEmpty(
             currentState.sidePaneIdByWorkspace[normalizedWorkspaceKey],
           );
-          const rememberedPane = findPaneById(layout.root, rememberedPaneId);
-          if (rememberedPane && rememberedPane.id !== explorerPaneId) {
-            return rememberedPane.id;
+          const existingPaneId = findExistingSidePaneId({
+            layout,
+            explorerPaneId,
+            rememberedPaneId,
+            sourcePaneId: layout.focusedPaneId,
+          });
+          if (existingPaneId) {
+            // Manual splits do not set sidePaneIdByWorkspace. Remember the
+            // adopted pane so later supporting tabs keep using the same one.
+            if (existingPaneId !== rememberedPaneId) {
+              set((state) => ({
+                sidePaneIdByWorkspace: {
+                  ...state.sidePaneIdByWorkspace,
+                  [normalizedWorkspaceKey]: existingPaneId,
+                },
+              }));
+            }
+            return existingPaneId;
           }
 
           const result = splitWorkspaceRootRightInLayout({

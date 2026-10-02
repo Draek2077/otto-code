@@ -157,7 +157,7 @@ export function useWorkspacePreviewController({
   const runningServersRef = useRef<Map<string, PreviewRunningServer>>(new Map());
   const hasRunningPreviewServer = useHasRunningPreviewServer(normalizedServerId);
 
-  // Opens a preview tab in a split pane beside this button's own pane and
+  // Opens a preview tab in the workspace's side pane and
   // returns its browserId. Shared by the start path (which opens the tab before
   // the spawn resolves, so the UI never blocks on a cold dev server) and the
   // attach path below.
@@ -188,17 +188,14 @@ export function useWorkspacePreviewController({
       }
       if (workspaceKey && paneId) {
         const layoutStore = useWorkspaceLayoutStore.getState();
-        const newTabId = layoutStore.openTabInBackground(workspaceKey, {
-          kind: "browser",
-          browserId,
+        const sidePaneId = layoutStore.ensureSidePane(workspaceKey);
+        layoutStore.openTab({
+          workspaceKey,
+          target: { kind: "browser", browserId },
+          intent: "background",
+          placement: sidePaneId ? { mode: "pane", paneId: sidePaneId } : undefined,
         });
-        if (newTabId) {
-          layoutStore.splitPane(workspaceKey, {
-            tabId: newTabId,
-            targetPaneId: paneId,
-            position: "right",
-          });
-        }
+        layoutStore.focusPane(workspaceKey, paneId);
       }
       return browserId;
     },

@@ -282,8 +282,10 @@ guest focus notifications from activating the browser pane. A control the user
 focuses becomes the new restoration target. Connections share the guard; unmounting
 one connection cannot remove another connection's protection.
 
-This keeps the browser device-size menu usable during automation too. Opening a
-split preview preserves the original pane's focus. `browser_focus_tab` returns an
+This keeps the browser device-size menu usable during automation too. AI-opened
+browser and preview tabs reuse an existing second workspace pane; a preview
+creates a side pane only when one is needed. Opening a preview preserves the
+original pane's focus. `browser_focus_tab` returns an
 error while an app editor is focused; agents can continue operating the background
 tab by `browserId`. Otherwise it brings the tab forward. Page-created workspace
 tabs also stay in the background while an app editor owns focus, and register

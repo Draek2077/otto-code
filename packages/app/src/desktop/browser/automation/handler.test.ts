@@ -412,6 +412,54 @@ describe("mountBrowserAutomationHandler", () => {
     );
   });
 
+  test("AI browser and preview tabs reuse an existing manually split second pane", async () => {
+    const browser = new BrowserAutomationHandlerHarness();
+    const workspaceKey = buildWorkspaceTabPersistenceKey({
+      serverId: "server-1",
+      workspaceId: "wks_workspace_a",
+    })!;
+    const store = useWorkspaceLayoutStore.getState();
+    const mainTabId = store.openTabFocused(workspaceKey, {
+      kind: "draft",
+      draftId: "human-draft",
+    })!;
+    const splitTabId = store.openTabFocused(workspaceKey, {
+      kind: "file",
+      path: "/repo/README.md",
+    })!;
+    const secondPaneId = store.splitPane(workspaceKey, {
+      tabId: splitTabId,
+      targetPaneId: "main",
+      position: "right",
+    })!;
+    store.focusTab(workspaceKey, mainTabId);
+    browser.mount({ serverId: "server-1" });
+
+    browser.receive(browserNewTabRequest());
+    await flushAsyncWork();
+    const ordinary = newTabResultFrom(browser.client.payloadAt(0));
+    const afterOrdinary = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+    expect(findPaneById(afterOrdinary.root, afterOrdinary.focusedPaneId)?.focusedTabId).toBe(
+      mainTabId,
+    );
+    browser.receive({ ...previewNewTabRequest(), requestId: "req-preview" });
+    await flushAsyncWork();
+    const preview = newTabResultFrom(browser.client.payloadAt(1), "req-preview");
+
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+    const secondPane = findPaneById(layout.root, secondPaneId)!;
+    expect(secondPane.tabIds).toContain(
+      workspaceBrowserTabs(workspaceKey, ordinary.browserId)[0]?.tabId,
+    );
+    expect(secondPane.tabIds).toContain(
+      workspaceBrowserTabs(workspaceKey, preview.browserId)[0]?.tabId,
+    );
+    expect(
+      collectAllPanes(layout.root).filter((pane) => pane.id !== EXPLORER_SIDEBAR_PANE_ID),
+    ).toHaveLength(2);
+    expect(findPaneById(layout.root, layout.focusedPaneId)?.focusedTabId).toBe(mainTabId);
+  });
+
   test("preview new_tab with split-right layout skips the split when the focused pane was empty", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     const workspaceKey = buildWorkspaceTabPersistenceKey({

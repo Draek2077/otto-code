@@ -15,7 +15,7 @@ import {
 import {
   collectAllPanes,
   collectAllTabs,
-  findPaneById,
+  findExistingSidePaneId,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
@@ -493,12 +493,9 @@ function openBrowserWorkspaceTab(input: {
   const { workspaceKey, browserId, wantsSplitRight } = input;
   const splitTarget = wantsSplitRight ? findSplitRightTarget(workspaceKey) : null;
   const layoutStore = useWorkspaceLayoutStore.getState();
+  const originalFocusedPaneId = layoutStore.layoutByWorkspace[workspaceKey]?.focusedPaneId;
   const rememberedSidePaneId = layoutStore.sidePaneIdByWorkspace[workspaceKey];
   const currentLayout = layoutStore.layoutByWorkspace[workspaceKey];
-  const rememberedSidePane =
-    currentLayout && rememberedSidePaneId
-      ? findPaneById(currentLayout.root, rememberedSidePaneId)
-      : null;
   const browserRecords = useBrowserStore.getState().browsersById;
   const tabsById = new Map(
     (currentLayout ? collectAllTabs(currentLayout.root) : []).map((tab) => [tab.tabId, tab]),
@@ -516,12 +513,17 @@ function openBrowserWorkspaceTab(input: {
           }),
       )
     : null;
+  const existingSidePaneId = currentLayout
+    ? findExistingSidePaneId({
+        layout: currentLayout,
+        explorerPaneId: layoutStore.explorerSidebarPaneIdByWorkspace[workspaceKey],
+        rememberedPaneId: rememberedSidePaneId ?? existingPreviewPane?.id,
+        sourcePaneId: splitTarget,
+      })
+    : null;
   const sidePaneId =
-    wantsSplitRight && (splitTarget || rememberedSidePane || existingPreviewPane)
-      ? (rememberedSidePane?.id ??
-        existingPreviewPane?.id ??
-        layoutStore.ensureSidePane(workspaceKey))
-      : null;
+    existingSidePaneId ??
+    (wantsSplitRight && splitTarget ? layoutStore.ensureSidePane(workspaceKey) : null);
   const newTabId = sidePaneId
     ? layoutStore.openTab({
         workspaceKey,
@@ -534,8 +536,8 @@ function openBrowserWorkspaceTab(input: {
         browserId,
       });
 
-  if (newTabId && splitTarget) {
-    if (!sidePaneId) {
+  if (newTabId) {
+    if (splitTarget && !sidePaneId) {
       // Preserve the old split-right behavior if the workspace cannot create
       // or recover its remembered side pane.
       layoutStore.splitPane(workspaceKey, {
@@ -544,9 +546,11 @@ function openBrowserWorkspaceTab(input: {
         position: "right",
       });
     }
-    // A background tab placed in an existing pane can still move pane focus.
+    // A background tab placed in another pane can still move pane focus.
     // Return keyboard ownership to the pane the user was working in.
-    layoutStore.focusPane(workspaceKey, splitTarget);
+    if (originalFocusedPaneId && (sidePaneId || splitTarget)) {
+      layoutStore.focusPane(workspaceKey, originalFocusedPaneId);
+    }
   }
   return newTabId;
 }
