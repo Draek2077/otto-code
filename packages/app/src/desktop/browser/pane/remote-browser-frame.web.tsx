@@ -20,7 +20,7 @@ function isPasteChord(event: React.KeyboardEvent): boolean {
   return (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "v";
 }
 
-// The canvas takes keyboard focus after a click, but the streamed page is its visual focus cue.
+// The streamed page supplies the visual focus cue for both keyboard targets.
 const canvasStyle = {
   display: "block",
   width: "100%",
@@ -29,12 +29,27 @@ const canvasStyle = {
   touchAction: "none",
 } as const;
 
+const keyboardInputStyle = {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  width: 1,
+  height: 1,
+  padding: 0,
+  border: 0,
+  opacity: 0,
+  outline: "none",
+  pointerEvents: "none",
+} as const;
+
 export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
   function RemoteBrowserFrame(
     { width, height, onWheel, onKeyInput, onPasteText, readClipboardText, onContextMenu },
     ref,
   ) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const keyboardInputRef = useRef<HTMLTextAreaElement>(null);
+    const pointerType = useRef("mouse");
     const imageRef = useRef<HTMLImageElement | null>(null);
     const pasteAttempt = useRef<{ delivered: boolean } | null>(null);
 
@@ -112,10 +127,10 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
     );
 
     const handleKeyDown = useCallback(
-      (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+      (event: React.KeyboardEvent<HTMLElement>) => {
         if (["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
         // The regular paste event is preferred. Clipboard reads cover clients
-        // that do not dispatch paste to a focused, non-editable canvas.
+        // that do not dispatch paste to the focused browser view.
         if (isPasteChord(event)) {
           const attempt = { delivered: false };
           pasteAttempt.current = attempt;
@@ -148,7 +163,7 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
     // The clipboard's text goes into whatever the page has focused, which is
     // the field the viewer last clicked, exactly as the send bar below does.
     const handlePaste = useCallback(
-      (event: React.ClipboardEvent<HTMLCanvasElement>) => {
+      (event: React.ClipboardEvent<HTMLElement>) => {
         event.preventDefault();
         const text = event.clipboardData?.getData("text/plain") ?? "";
         if (text && pasteAttempt.current) pasteAttempt.current.delivered = true;
@@ -157,7 +172,17 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
       [onPasteText],
     );
 
-    const focusCanvas = useCallback(() => canvasRef.current?.focus(), []);
+    const focusPageInput = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+      // Native paste is reliable on an editable target. Touch keeps the canvas
+      // focused so a page tap does not summon the device keyboard.
+      pointerType.current = event.pointerType;
+      if (event.pointerType === "touch") canvasRef.current?.focus({ preventScroll: true });
+    }, []);
+
+    const focusAfterClick = useCallback(() => {
+      // The browser's mousedown default refocuses the canvas after pointerdown.
+      if (pointerType.current !== "touch") keyboardInputRef.current?.focus({ preventScroll: true });
+    }, []);
 
     const handleContextMenu = useCallback(
       (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -169,16 +194,30 @@ export const RemoteBrowserFrame = forwardRef<RemoteBrowserFrameHandle, Props>(
     );
 
     return (
-      <canvas
-        ref={canvasRef}
-        style={canvasStyle}
-        tabIndex={0}
-        onPointerDown={focusCanvas}
-        onWheel={handleWheel}
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-        onContextMenu={handleContextMenu}
-      />
+      <>
+        <canvas
+          ref={canvasRef}
+          style={canvasStyle}
+          tabIndex={0}
+          onPointerDown={focusPageInput}
+          onClick={focusAfterClick}
+          onWheel={handleWheel}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          onContextMenu={handleContextMenu}
+        />
+        <textarea
+          ref={keyboardInputRef}
+          aria-label="Hosted browser page input"
+          tabIndex={-1}
+          style={keyboardInputStyle}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+      </>
     );
   },
 );

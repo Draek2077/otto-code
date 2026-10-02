@@ -5,6 +5,7 @@ import { userEvent } from "vitest/browser";
 import { describe, expect, it, vi } from "vitest";
 import type { RemoteBrowserFrameHandle } from "./remote-browser-frame";
 import { RemoteBrowserFrame } from "./remote-browser-frame.web";
+import { queueHostedTap, type PendingTap } from "./hosted-tap-sequence";
 
 function jpeg(color: string): string {
   const canvas = document.createElement("canvas");
@@ -119,6 +120,24 @@ describe("hosted browser canvas", () => {
     expect(canvas.style.touchAction).toBe("none");
   });
 
+  it("turns two rendered page presses into one host double click", async () => {
+    const pending: { current: PendingTap | null } = { current: null };
+    const send = vi.fn();
+    const onPress = vi.fn();
+    onPress.mockImplementation(() => queueHostedTap(pending, { x: 20, y: 30 }, send));
+    const screen = render(
+      <Pressable onPress={onPress}>
+        <RemoteBrowserFrame width={80} height={80} />
+      </Pressable>,
+    );
+
+    await userEvent.dblClick(screen.container.querySelector("canvas")!);
+    await new Promise((resolve) => setTimeout(resolve, 310));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith({ x: 20, y: 30 }, 2);
+  });
+
   it("forwards a right click at the canvas point without a local menu or focus border", () => {
     const onContextMenu = vi.fn();
     const screen = render(
@@ -182,10 +201,28 @@ describe("hosted browser canvas", () => {
     await userEvent.keyboard("{Control>}a{/Control}");
     await userEvent.copy();
     await userEvent.click(canvas);
-    expect(document.activeElement).toBe(canvas);
+    expect(document.activeElement).toBe(
+      screen.container.querySelector('textarea[aria-label="Hosted browser page input"]'),
+    );
     await userEvent.paste();
 
     expect(onPasteText).toHaveBeenCalledWith("real clipboard text");
+  });
+
+  it("forwards typing from the paste target without editing it locally", async () => {
+    const onKeyInput = vi.fn();
+    const screen = render(<RemoteBrowserFrame width={80} height={80} onKeyInput={onKeyInput} />);
+
+    await userEvent.click(screen.container.querySelector("canvas")!);
+    const input = screen.container.querySelector(
+      'textarea[aria-label="Hosted browser page input"]',
+    )!;
+    await userEvent.keyboard("a{Backspace}");
+
+    expect(document.activeElement).toBe(input);
+    expect(onKeyInput).toHaveBeenNthCalledWith(1, "a", "text");
+    expect(onKeyInput).toHaveBeenNthCalledWith(2, "Backspace", "key");
+    expect((input as HTMLTextAreaElement).value).toBe("");
   });
 
   it("reads the viewer clipboard when Ctrl+V raises no paste event", async () => {
