@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.29 - 2026-10-02
+
+### Improved
+
+- Open agent browser and Preview tabs on the device that sent your request
+- Switch a desktop browser tab between the app and host
+- Pinch to zoom hosted browser pages
+- Open agent browser tabs in an existing workspace pane
+
+### Fixed
+
+- Paste into hosted pages that use a canvas
+- Move Chat lists the other workspaces in your project
+
 ## 0.9.28 - 2026-09-29
 
 ### Improved
