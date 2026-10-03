@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.30 - 2026-10-03
+
+### Improved
+
+- Reuse each chat's browser tab across tasks, with additional tabs opened only when needed
+- Limit each AI chat to 12 browser and Preview tabs combined
+
+### Fixed
+
+- Open AI browser and Preview tabs in the existing pane beside the chat, including nested split layouts
+- Keep your working pane focused when an AI opens a browser tab
+- Preserve browser tabs through loading errors so agents can recover without opening duplicates
+- Honor the host's Default send setting for messages sent between AI chats
+
 ## 0.9.29 - 2026-10-02
 
 ### Improved
