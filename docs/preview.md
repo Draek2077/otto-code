@@ -52,15 +52,43 @@ sharing the workspace's browser tabs.
 This is good and bad, and the trade is on purpose:
 
 - **Good** - one dev server serves every chat in the workspace. Nobody pays to
-  boot a server per chat, and there is no tab-per-agent bookkeeping.
-- **Bad** - those chats will **trample each other**. Each one believes it is the
-  only driver, so two agents verifying at once will navigate, click, and resize
-  the same tab out from under one another. Nothing detects this; the tools have
-  no notion of a second caller.
+  boot a server per chat.
+- **Bad** - two agents verifying against the same preview tab can **trample each
+  other**: navigate, click, and resize it out from under one another. Tabs are
+  not locked against another caller. General-browsing reuse tracks which chat
+  opened a tab, but does not change the workspace-wide automation scope.
 
-The mitigation is a tab per chat, one server for all of them. Servers are the
-expensive, shared thing; tabs are cheap. An agent that needs an unshared surface
-should open its own tab and drive that - not start a second dev server.
+General browsing keeps a tab association per chat in the daemon's shared browser
+broker. `browser_new_tab` reuses that chat's most recent general-browsing
+tab by default, navigating it to the requested URL. Changing tasks or encountering
+a page error does not need another tab. `additionalTabReason` explicitly requests
+a separate tab for a comparison or a user request. The association survives tool
+catalog rebuilds. Desktop records persist `openedByAgentId`; `browser_list_tabs`
+recovers these general-browsing associations after a daemon restart. Hosted tabs
+retain attribution for their daemon lifetime. Unknown existing tabs are never
+automatically claimed from the user or another chat.
+`browser_list_tabs` identifies the calling chat's associated general-browsing
+tabs and prints readiness status so a recovering agent can find the same ID.
+
+The preview manager separately owns each server's designated tab. Agents must
+keep using the returned preview `browserId`, including after an error. Servers
+remain shared; general-browsing tab reuse does not start or stop dev servers.
+
+### Combined limit for AI tabs
+
+Each AI chat can open at most **12 browser and preview tabs combined** in its
+workspace, across the app and host browsers. The shared daemon broker enforces
+this before creation for both `browser_new_tab` and `preview_start`. Starting and
+detached tabs still count. Parallel creates are serialized per chat, so requests
+cannot race past the limit. A user request or `additionalTabReason` cannot bypass
+it. Other chats and user-created tabs have their own ownership and do not count
+against this chat.
+
+At the limit, navigate, reload, inspect, or reuse an existing preview tab as
+usual. Opening another tab is denied with existing IDs and an instruction to
+reuse or close one. Closing a tab frees a slot once a successful workspace-wide
+listing confirms its absence. A failed listing does not authorize creation;
+the broker does not close tabs or stop preview servers automatically.
 
 ### Prefer the running server
 
@@ -224,10 +252,28 @@ What this buys you, concretely:
   successful listing that genuinely lacks the id may reopen. A broker error or
   a detached browser host means _unknown_, and unknown returns the bound tab
   with a note rather than creating anything.
+- **Creation success retains the tab identity even if attachment is slow.**
+  Desktop `new_tab` returns its created `browserId` when the registration wait
+  times out or its bridge check fails. The tab already exists in the workspace;
+  tab-scoped tools report readiness errors while it attaches. This lets
+  `preview_start` keep its binding and general browsing keep its chat association,
+  instead of losing the identity and opening a duplicate on the next attempt.
+- **Workspace existence and guest readiness are separate.** The desktop renderer
+  includes native workspace tabs missing from the guest registry as `starting`.
+  A guest lookup returning `browser_tab_not_found` for one of these existing tabs
+  becomes a retryable readiness error naming the same ID. Only a tab actually
+  absent from its workspace may be treated as closed.
 - **Restored preview tabs don't silently reconnect to a stale server.** On
   app/workspace restore, a preview tab's status resets to `idle`; whether it
   auto-restarts the dev server or waits for the user to click "Start" is the
   `previewAutoStartOnRestore` setting below.
+
+AI-created browser and preview tabs reuse a workspace's existing destination pane,
+including a pane to the right of a vertically split chat column. Native automation
+resolves placement from the requesting chat when its workspace tab is present,
+while preserving the user's current pane focus. A hidden Explorer companion is
+not a destination for browser tabs. A new side pane is created only when the
+requested split has no existing destination.
 
 ## Browser chrome and project history
 

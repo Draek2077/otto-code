@@ -6,7 +6,7 @@ status: "confirmed"
 tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "charter"
 created_at: "2026-08-08T06:17:30.324Z"
-updated_at: "2026-09-13T05:34:17.369Z"
+updated_at: "2026-10-03T18:56:49.027Z"
 ---
 # Browser Tab Registry
 
@@ -156,3 +156,7 @@ Not a design decision yet; these are the constraints the design has to satisfy.
   kind: "evidence"
   summary: "2026-09-12: Follow-up after the user's first launch of 0.9.10 from 0.9.6. Both release tags contain the same browser-store restore code, with no store changes between them. A new restore/navigation/save/second-restore regression reproduced strict persistence rejection: rehydrateBrowserRecord spread a constructor-only `now` field into BrowserRecord, causing `unrecognized_keys: [now]` and rejecting the whole index, including newly created tabs. Source repair keeps createdAt in the record and maps it to now only at construction. A rendered regression separately reproduced navigation failing to save when the workspace retained a browser ID but the browser record was missing. The Electron pane now waits for hydration and recreates that missing record under the existing ID before mounting its guest. Verification: 3 storage tests, 20 state tests, and 21 Chromium-rendered pane tests pass; app typecheck, targeted lint, formatting, and diff checks pass. The rendered tests substitute Electron guest methods and simulate rehydration; no packaged application restart or original-profile recovery was performed. This repairs source behavior, not the running installed 0.9.10 build, and cannot reconstruct addresses that were never saved."
   source: "docs/preview.md; packages/app/src/desktop/browser/store/storage.test.ts; packages/app/src/desktop/browser/pane/loading.browser.test.tsx"
+- time: "2026-10-03T18:56:49.027Z"
+  kind: "evidence"
+  summary: "2026-10-03: Confirmed a remaining pre-attachment discovery gap: resident guest registration happens after did-attach-webview, so main-process list_tabs can return no entry while the renderer already has the workspace browser tab. Desktop new_tab also returned failure after creation on registration timeout (explicitly directing browser_new_tab again), causing the daemon to lose the created ID. Renderer automation now retains creation success/identity, projects missing native workspace tabs into successful lists with status=starting, and converts guest-not-found for a still-present native workspace tab into a retryable readiness error preserving the ID. A focused test exercises creation with empty guest registration, subsequent discovery, tab-scoped failure, and exclusion from another workspace. All 20 handler tests pass; app typecheck and targeted lint pass. This does not complete the authoritative-registry charter or prove packaged/installed Electron behavior."
+  source: "packages/app/src/desktop/browser/automation/handler.ts; packages/app/src/desktop/browser/automation/handler.test.ts"

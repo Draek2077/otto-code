@@ -11,6 +11,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 import { DEFAULT_APP_SETTINGS } from "@/hooks/use-settings";
 import {
   collectAllTabs,
+  collectAllPanes,
   findPaneById,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
@@ -60,6 +61,35 @@ describe("usesChatPanelOpenPreference", () => {
 });
 
 describe("chat panel placement", () => {
+  it("reuses the right pane for supporting views when the chat column is vertically split", () => {
+    const store = useWorkspaceLayoutStore.getState();
+    const chatTab = store.openTabFocused(WORKSPACE_KEY, { kind: "agent", agentId: "agent-1" })!;
+    const editor = store.openTabFocused(WORKSPACE_KEY, { kind: "file", path: "/repo/editor.ts" })!;
+    const rightPane = store.splitPane(WORKSPACE_KEY, {
+      tabId: editor,
+      targetPaneId: "main",
+      position: "right",
+    })!;
+    const terminal = store.openTabFocused(WORKSPACE_KEY, {
+      kind: "terminal",
+      terminalId: "terminal-1",
+    })!;
+    store.splitPane(WORKSPACE_KEY, { tabId: terminal, targetPaneId: "main", position: "bottom" });
+    store.focusTab(WORKSPACE_KEY, chatTab);
+    const before = collectAllPanes(
+      useWorkspaceLayoutStore.getState().layoutByWorkspace[WORKSPACE_KEY]!.root,
+    ).length;
+    openPreferredWorkspaceTarget({
+      isCompact: false,
+      workspaceKey: WORKSPACE_KEY,
+      target: { kind: "working_diff" },
+      source: "chatFiles",
+      preferences: { ...DEFAULT_APP_SETTINGS.openInSidePane, chatFiles: true },
+    });
+    const state = useWorkspaceLayoutStore.getState();
+    expect(state.sidePaneIdByWorkspace[WORKSPACE_KEY]).toBe(rightPane);
+    expect(collectAllPanes(state.layoutByWorkspace[WORKSPACE_KEY]!.root)).toHaveLength(before);
+  });
   it("keeps supporting tabs in the main pane by default", () => {
     openPreferredWorkspaceTarget({
       isCompact: false,

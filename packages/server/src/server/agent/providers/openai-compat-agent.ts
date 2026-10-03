@@ -2463,11 +2463,12 @@ export class OpenAICompatAgentSession implements AgentSession {
       lines.push(
         "- preview_start returns browser.browserId: the server's designated preview tab, the same tab the user watches. Verify your changes against that browserId with browser_snapshot, browser_inspect, browser_logs, browser_click, and browser_screenshot.",
         "- Browser tabs default to the client that sent the latest prompt: desktop app browser on desktop, host browser on mobile. When the user asks for host or app browser tabs, pass host: 'host' or host: 'app' to preview_start or browser_new_tab.",
-        "- Never open a dev server URL with browser_new_tab or in another tab - the daemon rejects it. browser_new_tab is only for external sites and general browsing.",
+        "- Never open a dev server URL with browser_new_tab or in another tab - the daemon rejects it. Keep using the designated preview tab after errors and across tasks.",
       );
     }
     if (hasBrowser) {
       lines.push(
+        "- Reuse this chat's general-browsing tab across tasks with browser_navigate or browser_reload. browser_new_tab also reuses your tab by default; additionalTabReason is only for a necessary separate tab (such as comparison or an explicit user request). Page errors, loading, and tool timeouts are reasons to recover the same tab, not open another. Do not take over another chat's or the user's tab.",
         "- After changing code that a running dev server renders, verify it: reload or snapshot the page, check browser_logs for errors, then share proof (a snapshot or screenshot) instead of asking the user to check manually.",
         "- Read pages with browser_page_text (cheap reader-mode text); use browser_snapshot only when you need element refs to click or fill.",
         "- Tabs you open stay in the background. Call browser_focus_tab when you have something worth showing the user.",

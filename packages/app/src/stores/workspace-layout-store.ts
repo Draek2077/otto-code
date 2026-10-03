@@ -93,18 +93,38 @@ export type {
   WorkspaceTabSnapshot,
 };
 
-/** Reuse a manually opened second pane before creating an app-owned side pane. */
+/** Reuse the pane beside the source, including when either side has nested splits. */
 export function findExistingSidePaneId(input: {
   layout: WorkspaceLayout;
   explorerPaneId: string | null | undefined;
   rememberedPaneId: string | null | undefined;
   sourcePaneId?: string | null;
 }): string | null {
-  const panes = collectAllPanes(input.layout.root).filter(
-    (pane) => pane.id !== input.explorerPaneId,
-  );
+  const explorerPaneId = resolveExplorerSidebarPaneId(input.layout, input.explorerPaneId);
+  const panes = collectAllPanes(input.layout.root).filter((pane) => pane.id !== explorerPaneId);
   const remembered = panes.find((pane) => pane.id === input.rememberedPaneId);
   if (remembered) return remembered.id;
+  const sourcePaneId = input.sourcePaneId ?? input.layout.focusedPaneId;
+  const findRightNeighbor = (node: SplitNode): string | null => {
+    if (node.kind === "pane") return null;
+    const sourceIndex = node.group.children.findIndex((child) =>
+      collectAllPanes(child).some((pane) => pane.id === sourcePaneId),
+    );
+    if (sourceIndex < 0) return null;
+    // The nearest horizontal split wins. A vertical split of the chat column
+    // must not hide an already existing destination in the column to its right.
+    const nested = findRightNeighbor(node.group.children[sourceIndex]!);
+    if (nested) return nested;
+    if (node.group.direction === "horizontal") {
+      for (const child of node.group.children.slice(sourceIndex + 1)) {
+        const destination = collectAllPanes(child).find((pane) => pane.id !== explorerPaneId);
+        if (destination) return destination.id;
+      }
+    }
+    return null;
+  };
+  const neighbor = findRightNeighbor(input.layout.root);
+  if (neighbor) return neighbor;
   // With exactly two visible work panes, the other pane is the user's existing
   // destination regardless of whether it was created through a tab split.
   if (panes.length === 2) {

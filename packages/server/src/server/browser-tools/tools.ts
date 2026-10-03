@@ -5,6 +5,7 @@ import {
 } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import type { BrowserToolsBroker } from "./broker.js";
 import type { BrowserToolsResponsePayload } from "./errors.js";
+import { chatBrowserTabIds, rememberChatBrowserTabs, withChatBrowserTab } from "./chat-tabs.js";
 import type { DevServerManager, PreviewServerSummary } from "../preview/dev-server-manager.js";
 import { screenBrowserUrl, type LookupAllFunction } from "../agent/url-screen.js";
 import type {
@@ -238,6 +239,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       title: "List browser tabs",
       description:
         "List open Otto browser tabs for this agent's workspace across connected browser automation hosts. Set host to 'app' or 'host' to list only that browser. Use returned browserId values with tab-scoped tools. " +
+        "Reuse the tab you have been using for this chat across tasks: navigate or reload it, including after page errors. Do not take over another chat's or the user's tab. " +
         "Every tab that exists is listed: status 'starting' or 'detached' means the tab is on screen but not drivable yet, so wait and reuse that browserId instead of opening another tab.",
       inputSchema: {
         host: BrowserTabHostInputSchema.optional().describe("Optional browser location filter"),
@@ -259,25 +261,61 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
           args: {},
         },
       });
-      return browserToolResult({ payload, context });
+      const result = browserToolResult({ payload, context });
+      if (payload.ok && payload.result.command === "list_tabs") {
+        const key = JSON.stringify([context.workspaceId, context.agentId]);
+        // Desktop creator metadata survives restart. Discovery recovers only
+        // this chat's general tabs; preview bindings stay with preview_start.
+        rememberChatBrowserTabs(
+          options.broker,
+          key,
+          payload.result.tabs
+            .filter(
+              (tab) =>
+                Boolean(context.agentId) &&
+                tab.openedByAgentId === context.agentId &&
+                !tab.isPreview,
+            )
+            .map((tab) => tab.browserId),
+        );
+        const owned = new Set(chatBrowserTabIds(options.broker, key));
+        const ownTabs = payload.result.tabs.filter((tab) => owned.has(tab.browserId));
+        if (ownTabs.length) {
+          return appendBrowserToolResultNote(
+            result,
+            `This chat's general-browsing tabs: ${ownTabs.map((tab) => tab.browserId).join(", ")}. Reuse these across tasks with browser_navigate or browser_reload.`,
+          );
+        }
+      }
+      return result;
     },
   );
 
   options.registerTool(
     "browser_new_tab",
     {
-      title: "Create browser tab",
+      title: "Open browser tab",
       description:
-        "Create a new Otto browser tab in this agent's workspace, opened in the background without switching the user's view. By default a desktop request uses that app's browser and a mobile request uses the daemon host. Set host to 'app' for a desktop browser tab or 'host' for a tab visible from mobile. Pass an http(s) URL or a scheme-less host URL, which is treated as http; the returned browserId is used by tab-scoped tools. " +
+        "Open a browser URL using this chat's existing general-browsing tab, or create its first tab in the background. Reuses the same tab across tasks, even after page errors. Prefer browser_navigate or browser_reload with your known browserId. Pass additionalTabReason only when a separate tab is necessary, such as comparing pages side by side or an explicit user request; an error or a new task is not a reason. " +
+        "By default a desktop request uses that app's browser and a mobile request uses the daemon host. Set host to 'app' or 'host' to choose explicitly. Pass an http(s) URL or a scheme-less host URL, which is treated as http; keep the returned browserId. " +
+        "Each chat may control at most 12 browser and preview tabs combined. Close an owned tab or reuse one at the limit; an additionalTabReason does not bypass it. " +
         "Do NOT use this to open or view a dev server - preview_start opens the server's designated preview tab and returns its browserId. Use this tool only for external sites and general browsing.",
       inputSchema: {
         url: BrowserHttpUrlInputSchema.optional(),
         host: BrowserTabHostInputSchema.optional().describe(
           "Optional browser location: app or host",
         ),
+        additionalTabReason: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe(
+            "Why an additional tab is necessary instead of navigating this chat's existing tab",
+          ),
       },
     },
-    async ({ url, host }) => {
+    async ({ url, host, additionalTabReason }) => {
       const context = resolveBrowserToolContext(options);
       const missingWorkspace = requireWorkspaceContext(context);
       if (missingWorkspace) {
@@ -297,17 +335,66 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
           return blockedUrlResult({ message: blockedMessage, context });
         }
       }
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        ...(host ? { tabHost: host } : {}),
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-        command: {
-          command: "new_tab",
-          args: url ? { url } : {},
+      return withChatBrowserTab(
+        options.broker,
+        JSON.stringify([context.workspaceId, context.agentId]),
+        async (tab) => {
+          // Reuse only IDs created for this chat. Choosing an arbitrary workspace
+          // tab would overwrite the user's page or another agent's work.
+          if (tab.browserIds.length && !additionalTabReason) {
+            const listed = await options.broker.execute({
+              ...context,
+              ...(host ? { tabHost: host } : {}),
+              command: { command: "list_tabs", args: {} },
+            });
+            if (!listed.ok || listed.result.command !== "list_tabs") {
+              return appendBrowserToolResultNote(
+                browserToolResult({ payload: listed, context }),
+                `Keep browserId=${tab.browserIds.at(-1)}. The lookup failed; do not open a replacement tab.`,
+              );
+            }
+            const listedById = new Map(listed.result.tabs.map((entry) => [entry.browserId, entry]));
+            if (!host) tab.browserIds = tab.browserIds.filter((id) => listedById.has(id));
+            const existing = tab.browserIds
+              .toReversed()
+              .map((id) => listedById.get(id))
+              .find(Boolean);
+            if (existing) {
+              const browserId = existing.browserId;
+              if (url && (!existing.status || existing.status === "ready")) {
+                const navigated = await options.broker.execute({
+                  ...context,
+                  command: { command: "navigate", args: { browserId, url } },
+                });
+                return appendBrowserToolResultNote(
+                  browserToolResult({ payload: navigated, context: { ...context, browserId } }),
+                  `Reused this chat's browserId=${browserId}. Keep using it across tasks; reload or retry it after errors.`,
+                );
+              }
+              return appendBrowserToolResultNote(
+                browserToolResult({ payload: listed, context: { ...context, browserId } }),
+                `Reuse this chat's browserId=${browserId}${existing.status ? ` (status=${existing.status})` : ""}. Navigate it when ready; do not open a replacement.`,
+              );
+            }
+            // Only a successful listing proving absence at this location permits
+            // a replacement. A host-filtered list must retain IDs on other hosts.
+          }
+          const payload = await options.broker.execute({
+            agentId: context.agentId,
+            ...(host ? { tabHost: host } : {}),
+            cwd: context.cwd,
+            ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
+            command: {
+              command: "new_tab",
+              args: url ? { url } : {},
+            },
+          });
+          if (payload.ok && payload.result.command === "new_tab") {
+            tab.browserIds.push(payload.result.browserId);
+          }
+          return browserToolResult({ payload, context });
         },
-      });
-      return browserToolResult({ payload, context });
+      );
     },
   );
 
@@ -1419,7 +1506,8 @@ function summarizeBrowserSuccess(
     }
     const tabLines = payload.result.tabs.map((tab) => {
       const active = tab.isActive ? " active" : "";
-      return `- browserId=${tab.browserId}${active} title=${JSON.stringify(tab.title || "Untitled")} url=${tab.url}${formatTabGeometry(tab)}`;
+      const status = tab.status ? ` status=${tab.status}` : "";
+      return `- browserId=${tab.browserId}${active}${status} title=${JSON.stringify(tab.title || "Untitled")} url=${tab.url}${formatTabGeometry(tab)}`;
     });
     return withDialogs(
       [

@@ -44,6 +44,15 @@ describe("normalizeBrowserUrl", () => {
 });
 
 describe("createBrowserRecord", () => {
+  it("retains AI creator identity through persistence and restore", () => {
+    const record = {
+      ...createBrowserRecord({ browserId: "b1", initialUrl: "https://example.com", now: 1000 }),
+      openedByAgentId: "agent-1",
+    };
+    const saved = sanitizeBrowsersForPersist(withRecords([record]));
+    const restored = normalizeBrowserIndexState(saved).browsersById.b1;
+    expect(rehydrateBrowserRecord("b1", restored).openedByAgentId).toBe("agent-1");
+  });
   it("normalizes the initial URL and starts with idle state", () => {
     const record = createBrowserRecord({
       browserId: "b1",

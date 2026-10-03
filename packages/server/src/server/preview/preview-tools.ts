@@ -255,6 +255,7 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
         "By default a desktop request opens the preview in that app's browser; a mobile request uses the daemon host. Set host to 'app' or 'host' to choose explicitly. An existing preview tab keeps its original location. " +
         "Reuses the server if already running - including one Otto didn't start, which comes back adopted under an ext:<port> id with no captured logs. ALWAYS use this instead of shell commands to run dev servers. " +
         "The result's browser.browserId is the tab to verify against: pass it to browser_snapshot, browser_click, browser_screenshot, etc. Don't open extra tabs for verification. " +
+        "Each chat is limited to 12 browser and preview tabs combined; reuse or close an owned tab if creating a preview tab is denied at the limit. " +
         "If .claude/launch.json doesn't exist, create it first with this format:\n" +
         LAUNCH_JSON_FORMAT +
         '\nSet "runtimeExecutable" to the command (e.g. "npm"), "runtimeArgs" to the arguments (e.g. ["run", "dev"]), and "port" to the server port. ' +

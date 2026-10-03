@@ -283,7 +283,7 @@ describe("hosted browser tab projection", () => {
   });
 
   it.each(["split-right", undefined] as const)(
-    "adopts a hosted tab with layout %s into an existing second pane",
+    "adopts a hosted tab with layout %s into the right pane beside a nested chat column",
     async (tabLayout) => {
       const store = useWorkspaceLayoutStore.getState();
       const mainTabId = store.openTabFocused(workspaceKey, { kind: "draft", draftId: "human" })!;
@@ -296,6 +296,15 @@ describe("hosted browser tab projection", () => {
         targetPaneId: "main",
         position: "right",
       })!;
+      const terminalTabId = store.openTabFocused(workspaceKey, {
+        kind: "terminal",
+        terminalId: "terminal-1",
+      })!;
+      store.splitPane(workspaceKey, {
+        tabId: terminalTabId,
+        targetPaneId: "main",
+        position: "bottom",
+      });
       store.focusTab(workspaceKey, mainTabId);
       const remoteBrowserExecute = vi.fn().mockResolvedValue({
         tabs: [
@@ -331,7 +340,7 @@ describe("hosted browser tab projection", () => {
       expect(findPaneById(layout.root, sidePaneId)?.tabIds).toContain(browserTab?.tabId);
       expect(
         collectAllPanes(layout.root).filter((pane) => pane.id !== EXPLORER_SIDEBAR_PANE_ID),
-      ).toHaveLength(2);
+      ).toHaveLength(3);
       expect(findPaneById(layout.root, layout.focusedPaneId)?.focusedTabId).toBe(mainTabId);
       hook.unmount();
     },

@@ -197,12 +197,22 @@ async function handleBrowserAutomationRequest(params: {
         : await executeAutomationCommand(request);
     client.sendBrowserAutomationExecuteResponse({
       type: "browser.automation.execute.response",
-      payload: withPresentedTabGeometry(normalizeBridgePayload(request.requestId, payload)),
+      payload: withPresentedTabGeometry(
+        reconcileWorkspaceBrowserAvailability({
+          request,
+          serverId,
+          payload: normalizeBridgePayload(request.requestId, payload),
+        }),
+      ),
     });
   } catch (error) {
     client.sendBrowserAutomationExecuteResponse({
       type: "browser.automation.execute.response",
-      payload: normalizeThrownBridgeError(request.requestId, error),
+      payload: reconcileWorkspaceBrowserAvailability({
+        request,
+        serverId,
+        payload: normalizeThrownBridgeError(request.requestId, error),
+      }),
     });
   }
 }
@@ -430,6 +440,9 @@ async function openBrowserTabForRequest(params: {
         }
       : {}),
   });
+  if (request.agentId) {
+    useBrowserStore.getState().updateBrowser(browserId, { openedByAgentId: request.agentId });
+  }
   if (preview) {
     // Agent-driven preview_start reaches the toolbar through this renderer
     // bridge. Mark it immediately rather than making the user wait for the
@@ -448,6 +461,7 @@ async function openBrowserTabForRequest(params: {
   openBrowserWorkspaceTab({
     workspaceKey,
     browserId,
+    agentId: request.agentId,
     wantsSplitRight: command.args.layout === "split-right",
   });
 
@@ -457,23 +471,23 @@ async function openBrowserTabForRequest(params: {
 
   if (browserHost?.executeAutomationCommand) {
     ensureResidentBrowserWebview({ browserId, workspaceId, serverId, url: normalizedUrl });
-    const registered = await waitForBrowserRegistration({
-      request,
-      browserId,
-      workspaceId,
-      executeAutomationCommand: browserHost.executeAutomationCommand,
-      ...(registrationWaitTimeoutMs !== undefined ? { timeoutMs: registrationWaitTimeoutMs } : {}),
-      ...(registrationPollIntervalMs !== undefined
-        ? { pollIntervalMs: registrationPollIntervalMs }
-        : {}),
-    });
-    if (!registered) {
-      return browserAutomationFailure({
-        requestId: request.requestId,
-        code: "browser_timeout",
-        message: `Timed out waiting for browser tab ${browserId} to register with the browser automation host. Try browser_new_tab again.`,
-        retryable: true,
+    // Creation already succeeded. A registration failure must keep that identity:
+    // returning an error here makes preview_start lose its binding and reopen it.
+    try {
+      await waitForBrowserRegistration({
+        request,
+        browserId,
+        workspaceId,
+        executeAutomationCommand: browserHost.executeAutomationCommand,
+        ...(registrationWaitTimeoutMs !== undefined
+          ? { timeoutMs: registrationWaitTimeoutMs }
+          : {}),
+        ...(registrationPollIntervalMs !== undefined
+          ? { pollIntervalMs: registrationPollIntervalMs }
+          : {}),
       });
+    } catch {
+      // Later tab-scoped commands report host/readiness failures with this ID.
     }
   }
 
@@ -488,10 +502,14 @@ async function openBrowserTabForRequest(params: {
 function openBrowserWorkspaceTab(input: {
   workspaceKey: string;
   browserId: string;
+  agentId?: string;
   wantsSplitRight: boolean;
 }): string | null {
   const { workspaceKey, browserId, wantsSplitRight } = input;
-  const splitTarget = wantsSplitRight ? findSplitRightTarget(workspaceKey) : null;
+  // The user may be editing the right pane while the agent runs in the left.
+  // Placement follows the caller; keyboard focus is restored independently.
+  const sourcePaneId = findSplitRightTarget(workspaceKey, input.agentId);
+  const splitTarget = wantsSplitRight ? sourcePaneId : null;
   const layoutStore = useWorkspaceLayoutStore.getState();
   const originalFocusedPaneId = layoutStore.layoutByWorkspace[workspaceKey]?.focusedPaneId;
   const rememberedSidePaneId = layoutStore.sidePaneIdByWorkspace[workspaceKey];
@@ -503,7 +521,7 @@ function openBrowserWorkspaceTab(input: {
   const existingPreviewPane = currentLayout
     ? collectAllPanes(currentLayout.root).find(
         (pane) =>
-          pane.id !== splitTarget &&
+          pane.id !== sourcePaneId &&
           pane.tabIds.some((tabId) => {
             const tab = tabsById.get(tabId);
             return (
@@ -518,7 +536,7 @@ function openBrowserWorkspaceTab(input: {
         layout: currentLayout,
         explorerPaneId: layoutStore.explorerSidebarPaneIdByWorkspace[workspaceKey],
         rememberedPaneId: rememberedSidePaneId ?? existingPreviewPane?.id,
-        sourcePaneId: splitTarget,
+        sourcePaneId,
       })
     : null;
   const sidePaneId =
@@ -602,7 +620,7 @@ function normalizeBridgePayload(
 }
 
 /**
- * The main process owns the tab list but not the layout, so a listed tab says
+ * The main process reports guests but not their layout, so a listed tab says
  * nothing about the size of the pane it is presented in. Only this renderer
  * knows that, and the two numbers only mean something together: a fixed
  * viewport wider than its pane is cropped, so the page an agent screenshots is
@@ -633,6 +651,78 @@ function withPresentedTabGeometry(
       }),
     },
   };
+}
+
+/**
+ * The renderer owns tab existence; the main process owns guest readiness.
+ * Before did-attach-webview, the main registry has no entry at all. Report a
+ * pending workspace tab instead of letting that gap masquerade as a closed tab.
+ */
+function reconcileWorkspaceBrowserAvailability(input: {
+  request: BrowserAutomationExecuteRequest;
+  serverId?: string;
+  payload: BrowserAutomationResponsePayload;
+}): BrowserAutomationResponsePayload {
+  const { request, serverId, payload } = input;
+  const workspaceId = request.workspaceId;
+  const workspaceKey =
+    serverId && workspaceId ? buildWorkspaceTabPersistenceKey({ serverId, workspaceId }) : null;
+  const layout = workspaceKey
+    ? useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]
+    : null;
+  if (!layout) return payload;
+  const nativeTabs = collectAllTabs(layout.root).flatMap((tab) => {
+    if (tab.target.kind !== "browser") return [];
+    const record = getBrowserRecord(tab.target.browserId);
+    return record?.renderMode === "native" ? [record] : [];
+  });
+  if (payload.ok && payload.result.command === "list_tabs") {
+    const known = new Set(payload.result.tabs.map((tab) => tab.browserId));
+    const recordsById = new Map(nativeTabs.map((tab) => [tab.browserId, tab]));
+    return {
+      ...payload,
+      result: {
+        ...payload.result,
+        tabs: [
+          ...payload.result.tabs.map((tab) => {
+            const record = recordsById.get(tab.browserId);
+            return record
+              ? { ...tab, openedByAgentId: record.openedByAgentId, isPreview: record.isPreview }
+              : tab;
+          }),
+          ...nativeTabs
+            .filter((tab) => !known.has(tab.browserId))
+            .map((tab) => ({
+              browserId: tab.browserId,
+              openedByAgentId: tab.openedByAgentId,
+              isPreview: tab.isPreview,
+              workspaceId,
+              url: tab.url,
+              title: tab.title,
+              status: "starting" as const,
+              isActive: false,
+              isLoading: tab.isLoading,
+            })),
+        ],
+      },
+    };
+  }
+  const requestedBrowserId =
+    "browserId" in request.command.args ? request.command.args.browserId : null;
+  if (
+    !payload.ok &&
+    payload.error.code === "browser_tab_not_found" &&
+    requestedBrowserId &&
+    nativeTabs.some((tab) => tab.browserId === requestedBrowserId)
+  ) {
+    return browserAutomationFailure({
+      requestId: request.requestId,
+      code: "browser_timeout",
+      retryable: true,
+      message: `Browser tab ${requestedBrowserId} still exists in this workspace but its guest is not attached. Reuse this browserId and retry; do not open a replacement tab.`,
+    });
+  }
+  return payload;
 }
 
 function normalizeThrownBridgeError(

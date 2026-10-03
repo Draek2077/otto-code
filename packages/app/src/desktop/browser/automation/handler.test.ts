@@ -310,7 +310,11 @@ describe("mountBrowserAutomationHandler", () => {
   beforeEach(() => {
     browserAutomationStorage.clear();
     useBrowserStore.setState({ browsersById: {} });
-    useWorkspaceLayoutStore.setState({ layoutByWorkspace: {} });
+    useWorkspaceLayoutStore.setState({
+      layoutByWorkspace: {},
+      sidePaneIdByWorkspace: {},
+      explorerSidebarPaneIdByWorkspace: {},
+    });
     usePreviewRunningServersStore.setState({ runningServerIdsBySessionAndCwd: {} });
   });
 
@@ -412,53 +416,69 @@ describe("mountBrowserAutomationHandler", () => {
     );
   });
 
-  test("AI browser and preview tabs reuse an existing manually split second pane", async () => {
-    const browser = new BrowserAutomationHandlerHarness();
-    const workspaceKey = buildWorkspaceTabPersistenceKey({
-      serverId: "server-1",
-      workspaceId: "wks_workspace_a",
-    })!;
-    const store = useWorkspaceLayoutStore.getState();
-    const mainTabId = store.openTabFocused(workspaceKey, {
-      kind: "draft",
-      draftId: "human-draft",
-    })!;
-    const splitTabId = store.openTabFocused(workspaceKey, {
-      kind: "file",
-      path: "/repo/README.md",
-    })!;
-    const secondPaneId = store.splitPane(workspaceKey, {
-      tabId: splitTabId,
-      targetPaneId: "main",
-      position: "right",
-    })!;
-    store.focusTab(workspaceKey, mainTabId);
-    browser.mount({ serverId: "server-1" });
+  test.each([false, true])(
+    "AI browser and preview tabs reuse an existing right pane with nested chat column=%s",
+    async (nested) => {
+      const browser = new BrowserAutomationHandlerHarness();
+      const workspaceKey = buildWorkspaceTabPersistenceKey({
+        serverId: "server-1",
+        workspaceId: "wks_workspace_a",
+      })!;
+      const store = useWorkspaceLayoutStore.getState();
+      const mainTabId = store.openTabFocused(workspaceKey, {
+        kind: "agent",
+        agentId: "agent-1",
+      })!;
+      const splitTabId = store.openTabFocused(workspaceKey, {
+        kind: "file",
+        path: "/repo/README.md",
+      })!;
+      const secondPaneId = store.splitPane(workspaceKey, {
+        tabId: splitTabId,
+        targetPaneId: "main",
+        position: "right",
+      })!;
+      if (nested) {
+        const terminalTabId = store.openTabFocused(workspaceKey, {
+          kind: "terminal",
+          terminalId: "terminal-1",
+        })!;
+        store.splitPane(workspaceKey, {
+          tabId: terminalTabId,
+          targetPaneId: "main",
+          position: "bottom",
+        });
+      }
+      store.focusTab(workspaceKey, mainTabId);
+      // Automation placement follows the caller even while the user works right.
+      store.focusPane(workspaceKey, secondPaneId);
+      browser.mount({ serverId: "server-1" });
 
-    browser.receive(browserNewTabRequest());
-    await flushAsyncWork();
-    const ordinary = newTabResultFrom(browser.client.payloadAt(0));
-    const afterOrdinary = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
-    expect(findPaneById(afterOrdinary.root, afterOrdinary.focusedPaneId)?.focusedTabId).toBe(
-      mainTabId,
-    );
-    browser.receive({ ...previewNewTabRequest(), requestId: "req-preview" });
-    await flushAsyncWork();
-    const preview = newTabResultFrom(browser.client.payloadAt(1), "req-preview");
+      browser.receive(browserNewTabRequest());
+      await flushAsyncWork();
+      const ordinary = newTabResultFrom(browser.client.payloadAt(0));
+      const afterOrdinary = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+      expect(findPaneById(afterOrdinary.root, afterOrdinary.focusedPaneId)?.focusedTabId).toBe(
+        splitTabId,
+      );
+      browser.receive({ ...previewNewTabRequest(), requestId: "req-preview" });
+      await flushAsyncWork();
+      const preview = newTabResultFrom(browser.client.payloadAt(1), "req-preview");
 
-    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
-    const secondPane = findPaneById(layout.root, secondPaneId)!;
-    expect(secondPane.tabIds).toContain(
-      workspaceBrowserTabs(workspaceKey, ordinary.browserId)[0]?.tabId,
-    );
-    expect(secondPane.tabIds).toContain(
-      workspaceBrowserTabs(workspaceKey, preview.browserId)[0]?.tabId,
-    );
-    expect(
-      collectAllPanes(layout.root).filter((pane) => pane.id !== EXPLORER_SIDEBAR_PANE_ID),
-    ).toHaveLength(2);
-    expect(findPaneById(layout.root, layout.focusedPaneId)?.focusedTabId).toBe(mainTabId);
-  });
+      const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
+      const secondPane = findPaneById(layout.root, secondPaneId)!;
+      expect(secondPane.tabIds).toContain(
+        workspaceBrowserTabs(workspaceKey, ordinary.browserId)[0]?.tabId,
+      );
+      expect(secondPane.tabIds).toContain(
+        workspaceBrowserTabs(workspaceKey, preview.browserId)[0]?.tabId,
+      );
+      expect(
+        collectAllPanes(layout.root).filter((pane) => pane.id !== EXPLORER_SIDEBAR_PANE_ID),
+      ).toHaveLength(nested ? 3 : 2);
+      expect(findPaneById(layout.root, layout.focusedPaneId)?.focusedTabId).toBe(splitTabId);
+    },
+  );
 
   test("preview new_tab with split-right layout skips the split when the focused pane was empty", async () => {
     const browser = new BrowserAutomationHandlerHarness();
@@ -529,7 +549,7 @@ describe("mountBrowserAutomationHandler", () => {
     });
   });
 
-  test("browser_new_tab returns a retryable timeout when the resident webview does not register", async () => {
+  test("browser_new_tab retains the created identity when the resident webview does not register", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     browser.browser.response = emptyListTabsPayload();
     browser.mount({
@@ -541,20 +561,48 @@ describe("mountBrowserAutomationHandler", () => {
     browser.receive(browserNewTabRequest());
     await waitForRegistrationTimeout();
 
-    expect(browser.client.sentResponses).toEqual([
-      {
-        type: "browser.automation.execute.response",
-        payload: {
-          requestId: "req-new",
-          ok: false,
-          error: {
-            code: "browser_timeout",
-            message: expect.stringContaining("Timed out waiting for browser tab"),
-            retryable: true,
-          },
-        },
+    const result = newTabResultFrom(browser.client.payloadAt(0));
+    browser.receive({ ...browserAutomationRequest(), workspaceId: "wks_workspace_a" });
+    await flushAsyncWork();
+    expect(browser.client.payloadAt(1)).toMatchObject({
+      ok: true,
+      result: {
+        command: "list_tabs",
+        tabs: [{ browserId: result.browserId, status: "starting", url: "https://example.com" }],
       },
-    ]);
+    });
+    browser.browser.response = {
+      requestId: "snapshot",
+      ok: false,
+      error: { code: "browser_tab_not_found", message: "Guest not registered", retryable: false },
+    };
+    browser.receive({
+      ...browserAutomationRequest(),
+      workspaceId: "wks_workspace_a",
+      command: { command: "snapshot", args: { browserId: result.browserId } },
+    });
+    await flushAsyncWork();
+    expect(browser.client.payloadAt(2)).toMatchObject({
+      ok: false,
+      error: {
+        code: "browser_timeout",
+        retryable: true,
+        message: expect.stringContaining("do not open a replacement"),
+      },
+    });
+    browser.browser.response = emptyListTabsPayload();
+    browser.receive({ ...browserAutomationRequest(), workspaceId: "wks_other" });
+    await flushAsyncWork();
+    expect(browser.client.payloadAt(3)).toMatchObject({
+      ok: true,
+      result: { command: "list_tabs", tabs: [] },
+    });
+    expect(
+      workspaceBrowserTabs(
+        buildWorkspaceTabPersistenceKey({ serverId: "server-1", workspaceId: "wks_workspace_a" })!,
+        result.browserId,
+      ),
+    ).toHaveLength(1);
     expect(browser.resident.ensuredWebviews).toEqual([
       expect.objectContaining({
         workspaceId: "wks_workspace_a",
@@ -563,7 +611,7 @@ describe("mountBrowserAutomationHandler", () => {
     ]);
   });
 
-  test("browser_new_tab wraps registration bridge errors in a response", async () => {
+  test("browser_new_tab retains the created identity after a registration bridge error", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     browser.browser.thrownError = new Error("IPC registration check failed");
     browser.mount({ serverId: "server-1" });
@@ -571,20 +619,10 @@ describe("mountBrowserAutomationHandler", () => {
     browser.receive(browserNewTabRequest());
     await flushAsyncWork();
 
-    expect(browser.client.sentResponses).toEqual([
-      {
-        type: "browser.automation.execute.response",
-        payload: {
-          requestId: "req-new",
-          ok: false,
-          error: {
-            code: "browser_unknown_error",
-            message: "IPC registration check failed",
-            retryable: false,
-          },
-        },
-      },
-    ]);
+    const result = newTabResultFrom(browser.client.payloadAt(0));
+    expect(useBrowserStore.getState().browsersById[result.browserId]?.url).toBe(
+      "https://example.com",
+    );
   });
 
   test("browser_resize updates resident webview dimensions", async () => {

@@ -342,6 +342,10 @@ export const BrowserAutomationCommandSchema = z.discriminatedUnion("command", [
 export const BrowserAutomationTabInfoSchema = z.object({
   browserId: BrowserAutomationBrowserIdSchema,
   workspaceId: z.string().min(1).optional(),
+  // Optional attribution lets the daemon recover per-chat reuse and limits
+  // from restored desktop tabs without counting the user's own tabs.
+  openedByAgentId: z.string().min(1).optional(),
+  isPreview: z.boolean().optional(),
   url: z.string(),
   title: z.string(),
   isActive: z.boolean().default(false),

@@ -8,6 +8,7 @@ import {
   type BrowserAutomationExecuteResponse,
 } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import { browserToolsFailure, type BrowserToolsResponsePayload } from "./errors.js";
+import { ChatBrowserTabLimit } from "./tab-limit.js";
 
 export interface BrowserHostClient {
   id: string;
@@ -58,6 +59,7 @@ export interface BrowserToolsBrokerOptions {
 const DEFAULT_BROWSER_TOOLS_TIMEOUT_MS = 15_000;
 
 export class BrowserToolsBroker {
+  private readonly chatTabLimit = new ChatBrowserTabLimit();
   private readonly defaultTimeoutMs: number;
   private readonly createRequestId: () => string;
   private readonly clients = new Map<string, RegisteredBrowserHost>();
@@ -188,6 +190,33 @@ export class BrowserToolsBroker {
       return unsupported;
     }
 
+    if (
+      request.data.command.command === "new_tab" &&
+      request.data.agentId &&
+      request.data.workspaceId
+    ) {
+      return this.chatTabLimit.create({
+        agentId: request.data.agentId,
+        workspaceId: request.data.workspaceId,
+        requestId,
+        isPreview: Boolean(request.data.command.args.preview),
+        list: () =>
+          this.executeListTabs({
+            request: {
+              ...request.data,
+              requestId: `${requestId}:tab-limit`,
+              command: { command: "list_tabs", args: {} },
+            },
+            timeoutMs: input.timeoutMs,
+          }),
+        open: () =>
+          this.sendRequest({
+            host: host.value,
+            request: request.data,
+            timeoutMs: this.timeoutFor(host.value, input.timeoutMs),
+          }),
+      });
+    }
     return this.sendRequest({
       host: host.value,
       request: request.data,
@@ -235,6 +264,20 @@ export class BrowserToolsBroker {
   }
 
   private async executeListTabs(params: {
+    request: BrowserAutomationExecuteRequest;
+    timeoutMs: number | undefined;
+    tabHost?: "app" | "host";
+  }): Promise<BrowserToolsResponsePayload> {
+    const payload = await this.executeListTabsFromHosts(params);
+    return payload.ok && payload.result.command === "list_tabs"
+      ? {
+          ...payload,
+          result: { ...payload.result, tabs: this.chatTabLimit.annotate(payload.result.tabs) },
+        }
+      : payload;
+  }
+
+  private async executeListTabsFromHosts(params: {
     request: BrowserAutomationExecuteRequest;
     timeoutMs: number | undefined;
     tabHost?: "app" | "host";

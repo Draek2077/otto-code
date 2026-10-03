@@ -45,7 +45,7 @@ class FakeBrowserBroker {
 }
 
 class BrowserToolHarness {
-  public readonly broker = new FakeBrowserBroker();
+  public readonly broker: FakeBrowserBroker;
   private readonly tools = new Map<string, RegisteredTool>();
 
   public constructor(
@@ -56,7 +56,9 @@ class BrowserToolHarness {
     },
     private readonly callerAgentId: string | null = "agent-1",
     previewServers: PreviewServerSummary[] | null = null,
+    broker = new FakeBrowserBroker(),
   ) {
+    this.broker = broker;
     registerBrowserTools({
       registerTool: (name, config, handler) => {
         this.tools.set(name, { config, handler });
@@ -748,6 +750,156 @@ describe("registerBrowserTools", () => {
       tabHost: "host",
       command: { command: "new_tab", args: { url: "https://example.com" } },
     });
+  });
+
+  test("reuses the chat's tab across catalog rebuilds and implicit/explicit host choices", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(newTabPayload());
+    await harness.execute("browser_new_tab", { url: "https://example.com" });
+    const resumed = new BrowserToolHarness(undefined, undefined, null, harness.broker);
+    harness.broker.queueResponses(listTabsPayload(), {
+      requestId: "navigate",
+      ok: true,
+      result: { command: "navigate", browserId: BROWSER_ID, url: "https://example.com/next" },
+    });
+    const response = await resumed.execute("browser_new_tab", {
+      url: "https://example.com/next",
+      host: "app",
+    });
+    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
+      "new_tab",
+      "list_tabs",
+      "navigate",
+    ]);
+    expect(response.content[0]?.text).toContain(`Reused this chat's browserId=${BROWSER_ID}`);
+  });
+
+  test.each(["starting", "detached"] as const)(
+    "keeps the chat tab with status %s",
+    async (status) => {
+      const harness = new BrowserToolHarness();
+      harness.broker.setResponse(newTabPayload());
+      await harness.execute("browser_new_tab", {});
+      const listed = listTabsPayload();
+      if (listed.result.command !== "list_tabs") throw new Error("Expected list_tabs response");
+      listed.result.tabs[0]!.status = status;
+      harness.broker.setResponse(listed);
+      const response = await harness.execute("browser_new_tab", {
+        url: "https://example.com/next",
+      });
+      expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
+        "new_tab",
+        "list_tabs",
+      ]);
+      expect(response.content[0]?.text).toContain(`status=${status}`);
+      expect(response.content[0]?.text).toContain("do not open a replacement");
+    },
+  );
+
+  test("lookup and navigation errors never create replacement tabs", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(newTabPayload());
+    await harness.execute("browser_new_tab", {});
+    const failure: BrowserToolsResponsePayload = {
+      requestId: "timeout",
+      ok: false,
+      error: { code: "browser_timeout", message: "Host timed out", retryable: true },
+    };
+    harness.broker.setResponse(failure);
+    await harness.execute("browser_new_tab", { url: "https://example.com/next" });
+    harness.broker.queueResponses(listTabsPayload(), failure);
+    const response = await harness.execute("browser_new_tab", { url: "https://example.com/next" });
+    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
+      "new_tab",
+      "list_tabs",
+      "list_tabs",
+      "navigate",
+    ]);
+    expect(response.structuredContent).toMatchObject({
+      ok: false,
+      error: { code: "browser_timeout" },
+    });
+    expect(response.content[0]?.text).toContain(BROWSER_ID);
+  });
+
+  test("opens an additional tab only with a reason or confirmed absence", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(newTabPayload());
+    await harness.execute("browser_new_tab", {});
+    await harness.execute("browser_new_tab", {
+      additionalTabReason: "User requested side-by-side comparison",
+    });
+    harness.broker.queueResponses(
+      { requestId: "list", ok: true, result: { command: "list_tabs", tabs: [] } },
+      newTabPayload(),
+    );
+    await harness.execute("browser_new_tab", {});
+    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
+      "new_tab",
+      "new_tab",
+      "list_tabs",
+      "new_tab",
+    ]);
+  });
+
+  test("does not take over another chat's or the user's tab", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(newTabPayload());
+    await harness.execute("browser_new_tab", {});
+    const other = new BrowserToolHarness(
+      { id: "agent-2", cwd: "/repo", workspaceId: "wks_workspace_a" },
+      "agent-2",
+      null,
+      harness.broker,
+    );
+    await other.execute("browser_new_tab", {});
+    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
+      "new_tab",
+      "new_tab",
+    ]);
+  });
+
+  test("tab discovery identifies this chat's general-browsing tab", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.setResponse(newTabPayload());
+    await harness.execute("browser_new_tab", {});
+    harness.broker.setResponse(listTabsPayload());
+    const response = await harness.execute("browser_list_tabs", {});
+    expect(response.content[0]?.text).toContain(`This chat's general-browsing tabs: ${BROWSER_ID}`);
+  });
+
+  test("discovery restores general tab reuse after a daemon restart", async () => {
+    const harness = new BrowserToolHarness();
+    const listed = listTabsPayload();
+    if (listed.result.command !== "list_tabs") throw new Error("Expected list_tabs response");
+    listed.result.tabs[0]!.openedByAgentId = "agent-1";
+    listed.result.tabs[0]!.isPreview = false;
+    harness.broker.setResponse(listed);
+    await harness.execute("browser_list_tabs", {});
+    harness.broker.queueResponses(listed, {
+      requestId: "navigate",
+      ok: true,
+      result: { command: "navigate", browserId: BROWSER_ID, url: "https://example.com/next" },
+    });
+    await harness.execute("browser_new_tab", { url: "https://example.com/next" });
+    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
+      "list_tabs",
+      "list_tabs",
+      "navigate",
+    ]);
+  });
+
+  test("parallel opens from one chat create only one tab", async () => {
+    const harness = new BrowserToolHarness();
+    harness.broker.queueResponses(newTabPayload(), listTabsPayload());
+    await Promise.all([
+      harness.execute("browser_new_tab", {}),
+      harness.execute("browser_new_tab", {}),
+    ]);
+    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
+      "new_tab",
+      "list_tabs",
+    ]);
   });
 
   test.each([

@@ -82,6 +82,248 @@ function snapshotCommand(): BrowserAutomationCommand {
   return { command: "snapshot", args: { browserId: BROWSER_ID } };
 }
 
+function limitedBrowserHarness() {
+  const broker = new BrowserToolsBroker({ defaultTimeoutMs: 1000 });
+  const live = new Map<
+    string,
+    {
+      browserId: string;
+      workspaceId: string;
+      openedByAgentId?: string;
+      isPreview?: boolean;
+      url: string;
+      title: string;
+      isActive: boolean;
+      isLoading: boolean;
+      status: "starting" | "ready";
+    }
+  >();
+  const requests: BrowserAutomationExecuteRequest[] = [];
+  let sequence = 0;
+  broker.registerClient({
+    id: "limited",
+    hostKind: "desktop app",
+    supportedCommands: [...BROWSER_AUTOMATION_COMMAND_NAMES],
+    sendBrowserAutomationRequest(request) {
+      requests.push(request);
+      const { command, workspaceId, requestId } = request;
+      if (command.command === "list_tabs") {
+        broker.receiveResponse({
+          type: "browser.automation.execute.response",
+          payload: {
+            requestId,
+            ok: true,
+            result: {
+              command: "list_tabs",
+              tabs: [...live.values()].filter((tab) => tab.workspaceId === workspaceId),
+            },
+          },
+        });
+      } else if (command.command === "new_tab") {
+        const browserId = `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`;
+        const url = command.args.url ?? "https://example.com";
+        // Omit creator fields to exercise attribution for daemon-hosted guests
+        // whose browser process knows no agent identity.
+        live.set(browserId, {
+          browserId,
+          workspaceId: workspaceId!,
+          url,
+          title: "",
+          status: "starting",
+          isActive: false,
+          isLoading: true,
+        });
+        broker.receiveResponse({
+          type: "browser.automation.execute.response",
+          payload: {
+            requestId,
+            ok: true,
+            result: { command: "new_tab", browserId, workspaceId: workspaceId!, url },
+          },
+        });
+      } else if (command.command === "close_tab") {
+        live.delete(command.args.browserId);
+        broker.receiveResponse({
+          type: "browser.automation.execute.response",
+          payload: {
+            requestId,
+            ok: true,
+            result: { command: "close_tab", browserId: command.args.browserId },
+          },
+        });
+      } else if (command.command === "reload") {
+        broker.receiveResponse({
+          type: "browser.automation.execute.response",
+          payload: {
+            requestId,
+            ok: true,
+            result: { command: "reload", browserId: command.args.browserId },
+          },
+        });
+      }
+    },
+  });
+  return { broker, live, requests };
+}
+
+describe("AI chat browser/preview limit", () => {
+  const open = (broker: BrowserToolsBroker, index: number, agentId = "agent-1") =>
+    broker.execute({
+      agentId,
+      workspaceId: "workspace-1",
+      command: {
+        command: "new_tab",
+        args:
+          index % 2
+            ? { preview: { serverId: `preview-${index}`, serverName: "web", cwd: "/repo" } }
+            : {},
+      },
+    });
+
+  test("caps concurrent browser and preview creation at 12, including starting tabs", async () => {
+    const { broker, live, requests } = limitedBrowserHarness();
+    const results = await Promise.all(
+      Array.from({ length: 13 }, (_, index) => open(broker, index)),
+    );
+    expect(results.filter((result) => result.ok)).toHaveLength(12);
+    expect(results[12]).toMatchObject({
+      ok: false,
+      error: { code: "browser_denied", message: expect.stringContaining("limit 12 combined") },
+    });
+    expect(requests.filter((request) => request.command.command === "new_tab")).toHaveLength(12);
+    expect(live.size).toBe(12);
+    const listed = await broker.execute({
+      workspaceId: "workspace-1",
+      command: { command: "list_tabs", args: {} },
+    });
+    expect(listed).toMatchObject({
+      ok: true,
+      result: {
+        tabs: expect.arrayContaining([
+          expect.objectContaining({ openedByAgentId: "agent-1", isPreview: true }),
+          expect.objectContaining({ openedByAgentId: "agent-1", isPreview: false }),
+        ]),
+      },
+    });
+  });
+
+  test("closing one frees a slot while reuse and other chats remain allowed", async () => {
+    const { broker, live } = limitedBrowserHarness();
+    await Promise.all(Array.from({ length: 12 }, (_, index) => open(broker, index)));
+    const browserId = [...live.keys()][0]!;
+    await expect(
+      broker.execute({
+        agentId: "agent-1",
+        workspaceId: "workspace-1",
+        command: { command: "reload", args: { browserId } },
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(open(broker, 14, "agent-2")).resolves.toMatchObject({ ok: true });
+    await broker.execute({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      command: { command: "close_tab", args: { browserId } },
+    });
+    await expect(open(broker, 14)).resolves.toMatchObject({ ok: true });
+    await expect(open(broker, 15)).resolves.toMatchObject({ ok: false });
+  });
+
+  test("restored ownership preserves the cap and does not count user tabs", async () => {
+    const { broker, live } = limitedBrowserHarness();
+    for (let index = 1; index <= 13; index++) {
+      const browserId = `11111111-1111-4111-8111-${String(index).padStart(12, "0")}`;
+      live.set(browserId, {
+        browserId,
+        workspaceId: "workspace-1",
+        ...(index <= 12 ? { openedByAgentId: "agent-1", isPreview: index % 2 === 1 } : {}),
+        url: "https://example.com",
+        title: "",
+        status: "ready",
+        isActive: false,
+        isLoading: false,
+      });
+    }
+    await expect(open(broker, 1)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "browser_denied" },
+    });
+    await expect(open(broker, 1, "agent-2")).resolves.toMatchObject({ ok: true });
+  });
+
+  test("a failed tab listing cannot authorize creation", async () => {
+    const broker = new BrowserToolsBroker({ defaultTimeoutMs: 1000 });
+    const requests: BrowserAutomationExecuteRequest[] = [];
+    broker.registerClient({
+      id: "failed",
+      hostKind: "desktop app",
+      supportedCommands: [...BROWSER_AUTOMATION_COMMAND_NAMES],
+      sendBrowserAutomationRequest(request) {
+        requests.push(request);
+        broker.receiveResponse({
+          type: "browser.automation.execute.response",
+          payload: {
+            requestId: request.requestId,
+            ok: false,
+            error: { code: "browser_no_host", message: "Host disconnected", retryable: true },
+          },
+        });
+      },
+    });
+    await expect(open(broker, 1)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "browser_no_host" },
+    });
+    expect(requests.map((request) => request.command.command)).toEqual(["list_tabs"]);
+  });
+
+  test("the limit combines app and host tabs even when opening explicitly on one host", async () => {
+    const broker = new BrowserToolsBroker({ defaultTimeoutMs: 1000 });
+    const commands: string[] = [];
+    for (const [id, hostKind, offset] of [
+      ["app", "desktop app", 0],
+      ["host", "daemon-hosted", 6],
+    ] as const) {
+      broker.registerClient({
+        id,
+        hostKind,
+        supportedCommands: [...BROWSER_AUTOMATION_COMMAND_NAMES],
+        sendBrowserAutomationRequest(request) {
+          commands.push(request.command.command);
+          broker.receiveResponse({
+            type: "browser.automation.execute.response",
+            payload: {
+              requestId: request.requestId,
+              ok: true,
+              result: {
+                command: "list_tabs",
+                tabs: Array.from({ length: 6 }, (_, index) => ({
+                  browserId: `22222222-2222-4222-8222-${String(offset + index + 1).padStart(12, "0")}`,
+                  workspaceId: "workspace-1",
+                  openedByAgentId: "agent-1",
+                  isPreview: offset === 6,
+                  url: "https://example.com",
+                  title: "",
+                  isActive: false,
+                  isLoading: false,
+                })),
+              },
+            },
+          });
+        },
+      });
+    }
+    await expect(
+      broker.execute({
+        agentId: "agent-1",
+        workspaceId: "workspace-1",
+        tabHost: "host",
+        command: { command: "new_tab", args: {} },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "browser_denied" } });
+    expect(commands).toEqual(["list_tabs", "list_tabs"]);
+  });
+});
+
 describe("BrowserToolsBroker", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -333,6 +575,21 @@ describe("BrowserToolsBroker", () => {
         agentId: "agent-1",
         ...(host === daemon ? { tabHost: "host" as const } : {}),
       });
+      await vi.waitFor(() =>
+        expect(daemon.receivedRequests.at(-1)?.command.command).toBe("list_tabs"),
+      );
+      daemon.resolveLatestWith(broker, {
+        requestId: "limit",
+        ok: true,
+        result: { command: "list_tabs", tabs: [] },
+      });
+      desktop.resolveLatestWith(broker, {
+        requestId: "limit",
+        ok: true,
+        result: { command: "list_tabs", tabs: [] },
+      });
+      daemon.receivedRequests.length = 0;
+      desktop.receivedRequests.length = 0;
       await vi.waitFor(() => expect(host.receivedRequests.length).toBeGreaterThan(0));
       host.resolveLatestWith(broker, {
         requestId: "req-1",
@@ -354,6 +611,21 @@ describe("BrowserToolsBroker", () => {
       workspaceId: "workspace-1",
       agentId: "agent-1",
     });
+    await vi.waitFor(() =>
+      expect(daemon.receivedRequests.at(-1)?.command.command).toBe("list_tabs"),
+    );
+    daemon.resolveLatestWith(broker, {
+      requestId: "limit",
+      ok: true,
+      result: { command: "list_tabs", tabs: [] },
+    });
+    desktop.resolveLatestWith(broker, {
+      requestId: "limit",
+      ok: true,
+      result: { command: "list_tabs", tabs: [] },
+    });
+    daemon.receivedRequests.length = 0;
+    desktop.receivedRequests.length = 0;
     await vi.waitFor(() => expect(daemon.receivedRequests).toHaveLength(1));
     expect(desktop.receivedRequests).toHaveLength(0);
     daemon.resolveLatestWith(broker, {

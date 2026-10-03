@@ -10,6 +10,8 @@ export type BrowserViewport =
 export const RESPONSIVE_BROWSER_VIEWPORT: BrowserViewport = { mode: "responsive" };
 export interface BrowserRecord {
   browserId: string;
+  /** Persisted creator identity for chat reuse and the combined browser/preview limit. */
+  openedByAgentId?: string;
   renderMode: "native" | "hosted";
   url: string;
   title: string;
@@ -49,6 +51,7 @@ const BrowserViewportSchema = z.discriminatedUnion("mode", [
 
 const BrowserRecordSchema = z.strictObject({
   browserId: z.string(),
+  openedByAgentId: z.string().min(1).optional(),
   renderMode: z.enum(["native", "hosted"]).optional().default("native"),
   url: z.string(),
   title: z.string(),
