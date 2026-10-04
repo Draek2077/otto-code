@@ -52,7 +52,6 @@ import {
 } from "@/attachments/workspace-attachments-store";
 import type { AttachmentMetadata, BrowserElementAttachment } from "@/attachments/types";
 import { persistAttachmentFromDataUrl } from "@/attachments/service";
-import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import {
   getDesktopHost,
   isElectronRuntime,
@@ -82,6 +81,7 @@ import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { BrowserPane as RemoteBrowserPane } from "./remote-browser-pane";
 import { convertBrowserRenderMode } from "./convert-browser-render-mode.electron";
 import { BrowserHostToggle } from "./browser-host-toggle";
+import { browserToolbarStyles } from "./toolbar-styles";
 
 type ElectronWebview = HTMLElement & {
   canGoBack?: () => boolean;
@@ -645,7 +645,7 @@ function DeviceSizeMenu({
       <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger accessibilityLabel={label} style={triggerStyle}>
-            <View style={styles.deviceTrigger}>
+            <View style={browserToolbarStyles.deviceTrigger}>
               <SelectedIcon size={16} uniProps={deviceMutedIconMapping} />
               <ThemedChevronDown size={12} uniProps={deviceMutedIconMapping} />
             </View>
@@ -1876,32 +1876,32 @@ function BrowserPaneContents({
 
   const baseIconButtonStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      styles.iconButton,
-      (hovered || pressed) && styles.iconButtonHovered,
+      browserToolbarStyles.iconButton,
+      (hovered || pressed) && browserToolbarStyles.iconButtonHovered,
     ],
     [],
   );
   const deviceSizeButtonStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      styles.iconButton,
-      styles.deviceSizeButton,
-      (hovered || pressed) && styles.iconButtonHovered,
+      browserToolbarStyles.iconButton,
+      browserToolbarStyles.deviceSizeButton,
+      (hovered || pressed) && browserToolbarStyles.iconButtonHovered,
     ],
     [],
   );
   const backIconButtonStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      styles.iconButton,
-      (hovered || pressed) && styles.iconButtonHovered,
-      !browser?.canGoBack && styles.iconButtonDisabled,
+      browserToolbarStyles.iconButton,
+      (hovered || pressed) && browserToolbarStyles.iconButtonHovered,
+      !browser?.canGoBack && browserToolbarStyles.iconButtonDisabled,
     ],
     [browser?.canGoBack],
   );
   const forwardIconButtonStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      styles.iconButton,
-      (hovered || pressed) && styles.iconButtonHovered,
-      !browser?.canGoForward && styles.iconButtonDisabled,
+      browserToolbarStyles.iconButton,
+      (hovered || pressed) && browserToolbarStyles.iconButtonHovered,
+      !browser?.canGoForward && browserToolbarStyles.iconButtonDisabled,
     ],
     [browser?.canGoForward],
   );
@@ -1973,8 +1973,8 @@ function BrowserPaneContents({
 
   return (
     <View style={styles.container}>
-      <View style={styles.chromeRow}>
-        <View style={styles.chromeLeft}>
+      <View style={browserToolbarStyles.chromeRow}>
+        <View style={browserToolbarStyles.chromeLeft}>
           <ToolbarButton
             label={t("workspace.browser.controls.back")}
             disabled={!browser?.canGoBack}
@@ -1991,7 +1991,7 @@ function BrowserPaneContents({
           >
             <ThemedArrowLeft
               size={16}
-              style={styles.forwardArrow}
+              style={browserToolbarStyles.forwardArrow}
               uniProps={deviceMutedIconMapping}
             />
           </ToolbarButton>
@@ -2011,7 +2011,7 @@ function BrowserPaneContents({
             )}
           </ToolbarButton>
         </View>
-        <View style={styles.urlBarWrap}>
+        <View style={browserToolbarStyles.urlBarWrap}>
           <ThemedAnnotationInput
             accessibilityLabel={t("workspace.browser.controls.browserUrl")}
             autoCapitalize="none"
@@ -2022,11 +2022,11 @@ function BrowserPaneContents({
             placeholder={t("workspace.browser.controls.enterUrl")}
             uniProps={annotationInputMapping}
             ref={urlInputRef}
-            style={styles.urlInput}
+            style={browserToolbarStyles.urlInput}
             value={draftUrl}
           />
         </View>
-        <View style={styles.chromeRight}>
+        <View style={browserToolbarStyles.chromeRight}>
           {onToggleHostMode ? (
             <BrowserHostToggle
               hosted={false}
@@ -2298,68 +2298,8 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     backgroundColor: theme.colors.surface0,
   },
-  chromeRow: {
-    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    backgroundColor: theme.colors.surface0,
-  },
-  chromeLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    flexShrink: 0,
-  },
-  chromeRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    flexShrink: 0,
-  },
-  forwardArrow: { transform: [{ rotate: "180deg" }] },
-  iconButton: {
-    width: 28,
-    height: 28,
-    borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deviceSizeButton: {
-    width: 40,
-  },
   selectorActiveButton: {
     backgroundColor: `${String(theme.colors.accent)}20`,
-  },
-  iconButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
-  },
-  iconButtonDisabled: {
-    opacity: 0.45,
-  },
-  urlBarWrap: {
-    flex: 1,
-    minWidth: 0,
-    height: 28,
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: theme.spacing[2],
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: theme.colors.surface1,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  urlInput: {
-    outlineWidth: 0,
-    color: theme.colors.foreground,
-    flex: 1,
-    minWidth: 0,
-    fontSize: theme.fontSize.sm,
-    paddingVertical: 0,
-    paddingHorizontal: 0,
   },
   webviewWrap: {
     flex: 1,
@@ -2376,11 +2316,6 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     backgroundColor: theme.colors.surface1,
     padding: theme.spacing[3],
-  },
-  deviceTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
   },
   toolbarTooltipText: {
     fontSize: theme.fontSize.xs,

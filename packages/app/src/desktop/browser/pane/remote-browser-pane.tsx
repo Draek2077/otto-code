@@ -65,6 +65,7 @@ import {
 import { useHostedPreviewGate } from "./hosted-preview-gate";
 import { useHostedStreamMeter } from "./use-hosted-stream-meter";
 import { BrowserHostToggle } from "./browser-host-toggle";
+import { browserToolbarStyles } from "./toolbar-styles";
 import {
   FRAME_LONG_POLL_MS,
   nextFramePollDelayMs,
@@ -757,6 +758,35 @@ export function BrowserPane({
     [typed, claimViewport, act, browserId],
   );
 
+  const baseButtonStyle = useCallback(
+    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
+      browserToolbarStyles.iconButton,
+      (hovered || pressed) && browserToolbarStyles.iconButtonHovered,
+    ],
+    [],
+  );
+  const backButtonStyle = useCallback(
+    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
+      ...baseButtonStyle({ hovered, pressed }),
+      !tab?.canGoBack && browserToolbarStyles.iconButtonDisabled,
+    ],
+    [baseButtonStyle, tab?.canGoBack],
+  );
+  const forwardButtonStyle = useCallback(
+    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
+      ...baseButtonStyle({ hovered, pressed }),
+      !tab?.canGoForward && browserToolbarStyles.iconButtonDisabled,
+    ],
+    [baseButtonStyle, tab?.canGoForward],
+  );
+  const deviceButtonStyle = useCallback(
+    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
+      ...baseButtonStyle({ hovered, pressed }),
+      browserToolbarStyles.deviceSizeButton,
+    ],
+    [baseButtonStyle],
+  );
+
   if (connected && !supported)
     return (
       <View style={styles.center}>
@@ -770,112 +800,122 @@ export function BrowserPane({
 
   return (
     <View style={styles.root}>
-      <View style={styles.toolbar}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("workspace.browser.controls.back")}
-          disabled={!canGoBack}
-          onPress={() => act({ kind: "back", browserId })}
-          style={[styles.button, !canGoBack && styles.buttonDisabled]}
-        >
-          <ThemedArrowLeft size={18} uniProps={mutedIcon} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("workspace.browser.controls.forward")}
-          disabled={!canGoForward}
-          onPress={() => act({ kind: "forward", browserId })}
-          style={[styles.button, !canGoForward && styles.buttonDisabled]}
-        >
-          <ThemedArrowLeft size={18} style={styles.forwardArrow} uniProps={mutedIcon} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            isPageLoading
-              ? t("workspace.browser.controls.stopLoading")
-              : t("workspace.browser.controls.refresh")
-          }
-          onPress={() => act({ kind: isPageLoading ? "stop" : "reload", browserId })}
-          style={styles.button}
-        >
-          {isPageLoading ? (
-            <ThemedSquare size={18} uniProps={mutedIcon} />
-          ) : (
-            <ThemedRotateCw size={18} uniProps={mutedIcon} />
-          )}
-        </Pressable>
-        <ThemedTextInput
-          ref={addressInput}
-          accessibilityLabel={t("workspace.browser.hosted.address")}
-          initialValue={address}
-          onChangeText={setAddress}
-          onFocus={() => {
-            editingAddress.current = true;
-          }}
-          onBlur={() => {
-            editingAddress.current = false;
-          }}
-          onSubmitEditing={() => {
-            const url = normalizeWorkspaceBrowserUrl(address);
-            setAddress(url);
-            act({ kind: "navigate", browserId, url });
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          returnKeyType="go"
-          selectTextOnFocus
-          style={styles.address}
-        />
-        {onToggleHostMode ? (
-          <BrowserHostToggle
-            hosted
-            disabled={hostModeToggleDisabled === true}
-            onPress={onToggleHostMode}
-          />
-        ) : null}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            accessibilityLabel={t("workspace.browser.devices.label")}
-            style={styles.button}
+      <View style={browserToolbarStyles.chromeRow}>
+        <View style={browserToolbarStyles.chromeLeft}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("workspace.browser.controls.back")}
+            disabled={!canGoBack}
+            onPress={() => act({ kind: "back", browserId })}
+            style={backButtonStyle}
           >
-            <View style={styles.viewportTrigger}>
-              <ThemedDevices size={18} uniProps={mutedIcon} />
-              <ThemedChevronDown size={12} uniProps={mutedIcon} />
-            </View>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="bottom" minWidth={180}>
-            {SIZES.map((preset) => (
-              <DropdownMenuItem
-                key={preset.id}
-                selected={selectedSize === preset}
-                showSelectedCheck
-                onSelect={() => {
-                  const nextViewport = preset.width
-                    ? createFixedBrowserViewport(preset.width, preset.height)
-                    : { mode: "responsive" as const };
-                  setViewport(browserId, nextViewport);
-                  act({
-                    kind: "viewport",
-                    browserId,
-                    viewport:
-                      nextViewport.mode === "fixed"
-                        ? nextViewport
-                        : {
-                            mode: "responsive",
-                            width: Math.max(240, Math.round(size.width)),
-                            height: Math.max(240, Math.round(size.height)),
-                          },
-                  });
-                }}
-              >
-                {t(`workspace.browser.hosted.sizes.${preset.id}`)}
-                {preset.width ? ` · ${preset.width}×${preset.height}` : ""}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <ThemedArrowLeft size={16} uniProps={mutedIcon} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("workspace.browser.controls.forward")}
+            disabled={!canGoForward}
+            onPress={() => act({ kind: "forward", browserId })}
+            style={forwardButtonStyle}
+          >
+            <ThemedArrowLeft
+              size={16}
+              style={browserToolbarStyles.forwardArrow}
+              uniProps={mutedIcon}
+            />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              isPageLoading
+                ? t("workspace.browser.controls.stopLoading")
+                : t("workspace.browser.controls.refresh")
+            }
+            onPress={() => act({ kind: isPageLoading ? "stop" : "reload", browserId })}
+            style={baseButtonStyle}
+          >
+            {isPageLoading ? (
+              <ThemedSquare size={16} uniProps={mutedIcon} />
+            ) : (
+              <ThemedRotateCw size={16} uniProps={mutedIcon} />
+            )}
+          </Pressable>
+        </View>
+        <View style={browserToolbarStyles.urlBarWrap}>
+          <ThemedTextInput
+            ref={addressInput}
+            accessibilityLabel={t("workspace.browser.hosted.address")}
+            initialValue={address}
+            onChangeText={setAddress}
+            onFocus={() => {
+              editingAddress.current = true;
+            }}
+            onBlur={() => {
+              editingAddress.current = false;
+            }}
+            onSubmitEditing={() => {
+              const url = normalizeWorkspaceBrowserUrl(address);
+              setAddress(url);
+              act({ kind: "navigate", browserId, url });
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            returnKeyType="go"
+            selectTextOnFocus
+            style={browserToolbarStyles.urlInput}
+          />
+        </View>
+        <View style={browserToolbarStyles.chromeRight}>
+          {onToggleHostMode ? (
+            <BrowserHostToggle
+              hosted
+              disabled={hostModeToggleDisabled === true}
+              onPress={onToggleHostMode}
+            />
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              accessibilityLabel={t("workspace.browser.devices.label")}
+              style={deviceButtonStyle}
+            >
+              <View style={browserToolbarStyles.deviceTrigger}>
+                <ThemedDevices size={16} uniProps={mutedIcon} />
+                <ThemedChevronDown size={12} uniProps={mutedIcon} />
+              </View>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="bottom" minWidth={180}>
+              {SIZES.map((preset) => (
+                <DropdownMenuItem
+                  key={preset.id}
+                  selected={selectedSize === preset}
+                  showSelectedCheck
+                  onSelect={() => {
+                    const nextViewport = preset.width
+                      ? createFixedBrowserViewport(preset.width, preset.height)
+                      : { mode: "responsive" as const };
+                    setViewport(browserId, nextViewport);
+                    act({
+                      kind: "viewport",
+                      browserId,
+                      viewport:
+                        nextViewport.mode === "fixed"
+                          ? nextViewport
+                          : {
+                              mode: "responsive",
+                              width: Math.max(240, Math.round(size.width)),
+                              height: Math.max(240, Math.round(size.height)),
+                            },
+                    });
+                  }}
+                >
+                  {t(`workspace.browser.hosted.sizes.${preset.id}`)}
+                  {preset.width ? ` · ${preset.width}×${preset.height}` : ""}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </View>
       </View>
       <PaneNotices
         error={error ?? pollError ?? tab?.error ?? null}
@@ -947,14 +987,6 @@ export function BrowserPane({
 
 const styles = StyleSheet.create((theme) => ({
   root: { flex: 1, backgroundColor: theme.colors.surface0 },
-  toolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    padding: 5,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
   button: {
     minWidth: 34,
     minHeight: 34,
@@ -962,8 +994,6 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     paddingHorizontal: 6,
   },
-  buttonDisabled: { opacity: 0.45 },
-  forwardArrow: { transform: [{ rotate: "180deg" }] },
   address: {
     flex: 1,
     minHeight: 34,
@@ -974,7 +1004,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: 13,
   },
-  viewportTrigger: { flexDirection: "row", alignItems: "center", gap: 2 },
   page: { flex: 1, overflow: "hidden" },
   // The page is not one big button, so the desktop keeps its arrow over it.
   imagePress: { flex: 1, cursor: "auto" },
