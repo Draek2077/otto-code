@@ -3,9 +3,8 @@
 The far-end track uses per-process loopback so only Zoom's audio is recorded, the
 same guarantee the Linux backend gets from tapping Zoom's PipeWire stream. That is
 provided by the process-audio-capture package, a thin MIT-licensed wrapper around
-Microsoft's ApplicationLoopback sample. If it is unavailable the code falls back to
-whole-device loopback and says so, because a silent fall back would quietly put other
-desktop audio into transcripts.
+Microsoft's ApplicationLoopback sample. A failure is reported rather than recording
+unrelated desktop audio.
 
 The microphone track is ordinary WASAPI input capture via sounddevice.
 
@@ -45,10 +44,11 @@ class _ProcessLoopback:
 
 
 class _DeviceCapture:
-    """Microphone or whole-device loopback capture, written as a 16 kHz mono WAV."""
+    """Zoom's selected microphone, written as a 16 kHz mono WAV."""
 
-    def __init__(self, path, loopback=False):
+    def __init__(self, path, target):
         import sounddevice as sd
+        device = wasapi.input_device(target, sd)
         self._wav = wave.open(str(path), "wb")
         self._wav.setnchannels(CHANNELS)
         self._wav.setsampwidth(2)
@@ -63,13 +63,17 @@ class _DeviceCapture:
                 if self._wav:
                     self._wav.writeframes(bytes(indata))
 
-        extra = None
-        if loopback:
-            # WASAPI loopback records what the device is playing rather than an input.
-            extra = sd.WasapiSettings(loopback=True)
-        self._stream = sd.InputStream(samplerate=RATE, channels=CHANNELS, dtype="int16",
-                                      callback=callback, extra_settings=extra)
-        self._stream.start()
+        try:
+            self._stream = sd.InputStream(device=device, samplerate=RATE, channels=CHANNELS,
+                                          dtype="int16", callback=callback,
+                                          extra_settings=sd.WasapiSettings(auto_convert=True))
+            self._stream.start()
+        except Exception:
+            if hasattr(self, "_stream"):
+                self._stream.close()
+            self._wav.close()
+            self._wav = None
+            raise
 
     def alive(self):
         try:
@@ -78,11 +82,11 @@ class _DeviceCapture:
             return False
 
     def stop(self):
-        try:
-            self._stream.stop()
-            self._stream.close()
-        except Exception:
-            pass
+        for operation in (self._stream.stop, self._stream.close):
+            try:
+                operation()
+            except Exception:
+                pass
         with self._lock:
             if self._wav:
                 self._wav.close()
@@ -97,23 +101,19 @@ class Part:
         self.track, self.target, self.path, self.offset = track, target, path, offset
         self.log = log
         self.tap_ports = ()          # Windows does not use PipeWire port linking
+        self.requested_tap_ports = ()
         self._impl = None
         self.per_app = False
 
-        pid = wasapi.meeting_pid(target)
-        if pid:
-            try:
+        try:
+            pid = wasapi.meeting_pid(target)
+            if capture_sink:
+                if not pid:
+                    raise RuntimeError("Zoom playback process was not identified")
                 self._impl = _ProcessLoopback(pid, path)
                 self.per_app = True
-                return
-            except Exception as e:
-                self.log(f"{track}: per-process capture unavailable ({e}); "
-                         "falling back to whole-device loopback, "
-                         "so other audio may appear in the transcript")
-
-        try:
-            loopback = capture_sink or target == "default-render-loopback"
-            self._impl = _DeviceCapture(path, loopback=loopback)
+            else:
+                self._impl = _DeviceCapture(path, target)
         except Exception as e:
             self.log(f"{track}: capture failed to start: {e}")
             self._impl = None

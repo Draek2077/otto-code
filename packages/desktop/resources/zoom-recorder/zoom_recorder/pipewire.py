@@ -6,9 +6,34 @@ import subprocess
 
 from .targets import Endpoints
 
-ZOOM_APP = "ZOOM VoiceEngine"
 PLAY_STREAM = "playStream"
 REC_STREAM = "recStream"
+ZOOM_NAMES = {"zoom", "zoom voiceengine", "zoom workplace"}
+ZOOM_IDS = {"us.zoom.zoom"}
+
+
+def _id(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_zoom(props):
+    # Identity comes from the owning application, never a stream's display name.
+    binary = pathlib.PurePosixPath(str(props.get("application.process.binary") or "")).name
+    return (binary.casefold() == "zoom"
+            or str(props.get("application.id") or "").casefold() in ZOOM_IDS
+            or str(props.get("application.name") or "").casefold() in ZOOM_NAMES)
+
+
+def _direction(props):
+    media_class = props.get("media.class")
+    if media_class:
+        return {"Stream/Output/Audio": "play", "Stream/Input/Audio": "record"}.get(media_class)
+    # Older PulseAudio bridges may omit media.class. Only use the known labels
+    # in that case; an explicitly non-audio stream must never qualify.
+    return {PLAY_STREAM: "play", REC_STREAM: "record"}.get(props.get("media.name"))
 
 
 def app_running():
@@ -21,7 +46,7 @@ def app_running():
         if not entry.name.isdigit():
             continue
         try:
-            if (entry / "comm").read_text().strip() == "zoom":
+            if (entry / "comm").read_text().strip().casefold() == "zoom":
                 return True
         except OSError:
             continue
@@ -29,7 +54,7 @@ def app_running():
 
 
 def dump():
-    out = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=15).stdout
+    out = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=15, check=True).stdout
     return json.loads(out)
 
 
@@ -43,7 +68,7 @@ def zoom_endpoints():
     Read from Zoom's own links, not the system defaults: Zoom is frequently on a
     different device (a headset mic while the default source is the internal mic).
     """
-    nodes, ports, links = {}, {}, []
+    nodes, ports, clients, links = {}, {}, {}, []
     for o in dump():
         t = o.get("type", "")
         if t.endswith("Node"):
@@ -52,51 +77,64 @@ def zoom_endpoints():
             ports[o["id"]] = o
         elif t.endswith("Link"):
             links.append(o)
+        elif t.endswith("Client"):
+            clients[o["id"]] = o
 
     def port_node(pid):
-        return _props(ports.get(pid)).get("node.id")
+        return _id(_props(ports.get(_id(pid))).get("node.id"))
 
     def name_of(nid):
         p = _props(nodes.get(nid))
-        return p.get("node.name") or p.get("node.description")
+        return p.get("node.name")
 
-    zoom = [n for n in nodes.values() if _props(n).get("application.name") == ZOOM_APP]
+    def identity(n):
+        props = _props(n)
+        return {**_props(clients.get(_id(props.get("client.id")))), **props}
 
-    def running(media_name):
+    zoom = [n for n in nodes.values() if _is_zoom(identity(n))]
+
+    def running(direction):
         return [n for n in zoom
-                if _props(n).get("media.name") == media_name
+                if _direction(_props(n)) == direction
                 and (n.get("info") or {}).get("state") == "running"]
 
+    def ends(link):
+        li = link.get("info") or {}
+        return (_id(li.get("output-node-id")) or port_node(li.get("output-port-id")),
+                _id(li.get("input-node-id")) or port_node(li.get("input-port-id")))
+
     sink = source = None
-    for n in running(PLAY_STREAM):
+    play = running("play")
+    record = running("record")
+    for n in play:
         for l in links:
-            li = l.get("info") or {}
-            if port_node(li.get("output-port-id")) == n["id"]:
-                sink = name_of(port_node(li.get("input-port-id")))
+            output, input_ = ends(l)
+            if output == n["id"]:
+                sink = name_of(input_)
                 break
         if sink:
             break
 
-    for n in running(REC_STREAM):
+    for n in record:
         for l in links:
-            li = l.get("info") or {}
-            if port_node(li.get("input-port-id")) == n["id"]:
-                source = name_of(port_node(li.get("output-port-id")))
+            output, input_ = ends(l)
+            if input_ == n["id"]:
+                source = name_of(output)
                 break
         if source:
             break
 
-    streams = {_props(n).get("media.name"): (n.get("info") or {}).get("state") for n in zoom}
+    streams = {f"{_direction(_props(n)) or 'other'}:{n['id']}:{_props(n).get('media.name') or '-'}":
+               (n.get("info") or {}).get("state") for n in zoom}
 
-    play = running(PLAY_STREAM)
     play_node = play[0]["id"] if play else None
     play_ports = _output_ports(ports, play_node) if play_node else ()
 
     # Only the mic capture stream marks a real call. Observed on Zoom 7.1: playStream
     # runs while Zoom sits idle outside any meeting, so it produces false positives.
-    in_call = bool(running(REC_STREAM))
+    in_call = bool(record)
     far = f"zoom-node-{play_node}" if play_ports else sink
-    return Endpoints(in_call=in_call, app_present=app_running(), far_target=far,
+    return Endpoints(in_call=in_call, app_present=bool(zoom) or app_running(), far_target=far,
                      mic_target=source, tap_ports=play_ports, fallback_target=sink,
                      streams=streams)
 
@@ -106,8 +144,8 @@ def _output_ports(ports, node_id):
     found = []
     for o in ports.values():
         p = _props(o)
-        if p.get("node.id") == node_id and p.get("port.direction") == "out":
-            found.append((p.get("port.id", 0), o["id"]))
+        if _id(p.get("node.id")) == node_id and p.get("port.direction") == "out":
+            found.append((_id(p.get("port.id")) or 0, o["id"]))
     return tuple(pid for _, pid in sorted(found))
 
 
@@ -121,8 +159,8 @@ def input_ports(node_name):
         if not o.get("type", "").endswith("Port"):
             continue
         p = _props(o)
-        if p.get("port.direction") == "in" and p.get("node.id") in wanted:
-            found.append((p.get("port.id", 0), o["id"]))
+        if p.get("port.direction") == "in" and _id(p.get("node.id")) in wanted:
+            found.append((_id(p.get("port.id")) or 0, o["id"]))
     return tuple(pid for _, pid in sorted(found))
 
 
@@ -137,7 +175,7 @@ def links_into(in_port):
     n = 0
     for o in dump():
         if o.get("type", "").endswith("Link"):
-            if ((o.get("info") or {}).get("input-port-id")) == in_port:
+            if _id((o.get("info") or {}).get("input-port-id")) == _id(in_port):
                 n += 1
     return n
 

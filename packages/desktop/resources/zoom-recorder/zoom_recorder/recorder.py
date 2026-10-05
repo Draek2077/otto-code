@@ -37,7 +37,7 @@ class Session:
 
     def ensure(self, track, target, capture_sink, tap_ports=None, fallback=None):
         cur = self.active.get(track)
-        if cur and cur.alive() and cur.target == target:
+        if cur and cur.alive() and cur.target == target and cur.requested_tap_ports == tuple(tap_ports or ()):
             if cur.tap_healthy():
                 return
             self.log(f"{track}: stream tap dropped, reattaching")
@@ -46,6 +46,8 @@ class Session:
                 why = "recorder exited"
             elif cur.target != target:
                 why = "device changed"
+            elif cur.requested_tap_ports != tuple(tap_ports or ()):
+                why = "stream ports changed"
             else:
                 why = "tap lost"
             self.log(f"{track}: {why}, rolling to a new part")

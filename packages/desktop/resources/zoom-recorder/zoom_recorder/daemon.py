@@ -35,7 +35,7 @@ class Daemon:
 
     def state(self):
         if self._session:
-            return status.RECORDING
+            return status.RECORDING if any(p.alive() for p in self._session.active.values()) else status.ERROR
         if any(t.is_alive() for t in self._jobs):
             return status.TRANSCRIBING
         if self.unread:
@@ -58,20 +58,28 @@ class Daemon:
 
     # -- call lifecycle --------------------------------------------------------
 
+    def _capture_detail(self):
+        live = {track for track, part in self._session.active.items() if part.alive()}
+        if not live:
+            return "Zoom detected, but audio capture could not start"
+        missing = {"me": "microphone", "them": "Zoom playback"}
+        unavailable = [label for track, label in missing.items() if track not in live]
+        if unavailable:
+            return f"Recording; {' and '.join(unavailable)} capture unavailable"
+        return "Recording Zoom playback and microphone"
+
     def _start_call(self, endpoints):
-        if not endpoints.far_target or not endpoints.mic_target:
-            dfar, dmic = backend.default_targets()
-            endpoints.far_target = endpoints.far_target or dfar
-            endpoints.mic_target = endpoints.mic_target or dmic
-            endpoints.fallback_target = endpoints.fallback_target or dfar
+        # Automatic capture must follow Zoom's endpoints. Missing routing metadata
+        # is not permission to record the system's unrelated default microphone.
         if not endpoints.far_target and not endpoints.mic_target:
             self.log("no usable audio endpoints, not starting")
+            self.publish("Zoom audio endpoints are not available yet")
             return
 
         self._session = recorder.Session(log=self.log)
         self.log(f"recording -> {self._session.dir}")
         self._session.follow(endpoints)
-        self.publish("call started")
+        self.publish(self._capture_detail())
 
     def _end_call(self, why):
         self.log(f"call ended ({why})")
@@ -148,6 +156,7 @@ class Daemon:
                     self._end_call(f"no call audio for {self.stop_grace:.0f}s")
                 else:
                     active.follow(ep)
+                    self.publish(self._capture_detail())
 
             self._jobs = [t for t in self._jobs if t.is_alive()]
             self._sleep()

@@ -19,7 +19,7 @@ HELPER_ROOT = DESKTOP_ROOT / "resources" / "zoom-recorder"
 ENTRY_POINT = HELPER_ROOT / "otto_zoom_recorder.py"
 OUTPUT_ROOT = HELPER_ROOT / "bin" / "x64"
 
-COMMON_MODULES = ("numpy", "onnx_asr", "onnxruntime", "PyInstaller")
+COMMON_MODULES = ("numpy", "onnx_asr", "onnxruntime", "soundfile", "PyInstaller")
 WINDOWS_MODULES = ("comtypes", "process_audio_capture", "psutil", "pycaw", "sounddevice")
 
 
@@ -67,6 +67,8 @@ def build(output: Path) -> None:
         "onnx_asr",
         "--collect-all",
         "onnxruntime",
+        "--collect-all",
+        "soundfile",
         "--hidden-import",
         "numpy",
     ]

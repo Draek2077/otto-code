@@ -20,6 +20,7 @@ class Part:
         self.track, self.target, self.path, self.offset = track, target, path, offset
         self.log = log
         self.tap_ports = tuple(tap_ports or ())
+        self.requested_tap_ports = self.tap_ports
         self.node_name = f"zr-{track}-{os.getpid()}-{int(offset * 1000)}"
         self.in_ports = ()
 

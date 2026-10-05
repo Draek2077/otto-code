@@ -3,7 +3,7 @@
 import json
 import os
 import time
-import wave
+
 
 from . import config, engine, postprocess, recorder
 
@@ -14,11 +14,23 @@ def hhmmss(t):
 
 
 def wav_seconds(path):
+    import soundfile as sf
     try:
-        with wave.open(str(path)) as w:
-            return w.getnframes() / w.getframerate()
+        return sf.info(path).duration
     except Exception:
         return 0.0
+
+
+def load_audio(path):
+    """Decode both PipeWire PCM and WASAPI float WAVs to mono float32 samples."""
+    # ApplicationLoopback writes float WAV_EXTENSIBLE, which Python's wave reader
+    # (and onnx-asr's file reader) rejects. Preserve its native rate for ASR's
+    # resampler, and average channels so speech on either side is retained.
+    import soundfile as sf
+    samples, rate = sf.read(path, dtype="float32")
+    if samples.ndim == 2:
+        samples = samples.mean(axis=1)
+    return samples, rate
 
 
 def group_turns(segments, gap):
@@ -64,12 +76,14 @@ def transcribe_session(directory, log=print, progress=None):
         if progress:
             progress(i, len(parts))
         n = 0
-        for seg in asr.recognize(str(directory / p["file"])):
+        samples, sample_rate = load_audio(directory / p["file"])
+        for seg in asr.recognize(samples, sample_rate=sample_rate):
             text = postprocess.clean((seg.text or "").strip(), cfg)
             if not text:
                 continue
             segments.append((p["offset"] + seg.start, p["offset"] + seg.end, p["track"], text))
             n += 1
+        del samples
         log(f"{p['file']}: {n} segment(s)")
 
     elapsed = time.time() - t0

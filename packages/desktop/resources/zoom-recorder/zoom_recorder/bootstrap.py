@@ -11,7 +11,7 @@ import sys
 
 from . import paths
 
-REQUIREMENTS = ["onnx-asr[hub]", "onnxruntime", "numpy"]
+REQUIREMENTS = ["onnx-asr[hub]", "onnxruntime", "numpy", "soundfile==0.13.1"]
 
 # Windows needs its own audio stack: session enumeration for call detection, and
 # per-process loopback plus device capture for recording.
@@ -55,7 +55,7 @@ def venv_ready():
 def deps_ready():
     if not venv_ready():
         return False
-    check = "import onnx_asr, onnxruntime"
+    check = "import onnx_asr, onnxruntime, soundfile"
     if sys.platform.startswith("win"):
         check += "; import pycaw, sounddevice"
     probe = subprocess.run([str(paths.VENV_PYTHON), "-c", check], capture_output=True)

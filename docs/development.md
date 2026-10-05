@@ -877,6 +877,59 @@ npx expo-doctor
 
 Diagnoses version mismatches and native module issues.
 
+## Zoom Recorder diagnostics
+
+The packaged `otto-zoom-recorder` helper (`otto-zoom-recorder.exe` on Windows)
+supports `probe --seconds 10`. This reads audio-session metadata without recording
+audio, starting a watcher, or changing the recorder status file. The dev helper lives
+in `packages/desktop/resources/zoom-recorder/bin/x64/`; packaged builds put it in
+`resources/zoom-recorder/` beside the app.
+
+Windows call detection scans sessions on every active render and capture device.
+Zoom can use a different device from the Windows default, and switching devices
+can leave inactive sessions for the same Zoom PID. An active capture session wins
+over those inactive duplicates. Playback alone does not establish a call. A device
+that cannot be inspected appears as an error in the probe while the remaining
+devices are still scanned.
+
+The Windows microphone target carries the exact WASAPI endpoint ID from Zoom's
+active capture session. When opening a recording part, the helper refreshes its own
+PortAudio device list and resolves that ID through `PaWasapi_GetIMMDevice`. It
+does not match display names, which can be duplicated, or substitute the default
+microphone. This bridge uses the DLL loaded by the pinned sounddevice wheel.
+Device-list refresh occurs after the previous microphone part closes. Far-end
+recording uses the detected meeting PID for per-process loopback; capture failure
+is reported rather than switching to unrelated desktop audio.
+
+Linux identifies Zoom through its application/process identity on the node or
+owning PipeWire client. `media.class` selects audio playback and microphone streams,
+so stream display names may change without breaking detection. The original
+`playStream`/`recStream` labels apply only when `media.class` is absent. Playback
+alone still does not start a call. Device targets come from Zoom's PipeWire links,
+and playback is tapped directly from Zoom's output ports. Object ID properties
+are normalized because PipeWire can represent them as strings. Recreated output
+ports roll the recording part even when the node ID stays the same. The existing
+Linux fallback after a failed stream tap uses Zoom's linked speaker monitor and
+logs that choice; that monitor can also contain other audio playing on that device.
+
+Automatic recording never fills a missing Zoom route with a system default.
+Capture status reports unavailable tracks, and reports an error if neither track
+can start. The WAV decoder uses packaged libsndfile via soundfile for both Linux
+PCM and Windows float WAV_EXTENSIBLE. It passes mono float32 samples and the native
+sample rate to the recognizer's resampler, averaging stereo channels so speech on
+either channel is retained. A Windows capture check does not prove live Linux
+capture; the Linux graph cases are covered by hardware-independent tests.
+
+The Python routing and capture tests run without Zoom or audio hardware. Install
+the pinned build requirements for the real WAV decoder fixtures:
+
+```bash
+python -m unittest discover -s packages/desktop/resources/zoom-recorder/tests
+```
+
+The recorder is frozen into its own executable. Changing its Python source requires
+rebuilding the helper before the desktop app can use the change.
+
 ## Typecheck
 
 Always run typecheck after changes:
