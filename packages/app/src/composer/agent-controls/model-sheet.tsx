@@ -123,10 +123,20 @@ export function CompactModelSheet({
 
   const handleSelect = useCallback(
     (provider: string, modelId: string) => {
-      onSelect(provider, modelId);
+      // A raw model pick replaces the profile identity, just as on desktop.
+      // Live agents own a confirmed clear-profile + set-model RPC flow; drafts
+      // clear locally so the team's default cannot override the chosen model.
+      if (personality?.selectedProfileId && personality.onSelectModelOverProfile) {
+        personality.onSelectModelOverProfile(provider, modelId);
+      } else {
+        onSelect(provider, modelId);
+        if (personality?.selectedProfileId) {
+          personality.onClearProfile?.();
+        }
+      }
       close();
     },
-    [close, onSelect],
+    [close, onSelect, personality],
   );
 
   const handleSelectPersonality = useCallback(
