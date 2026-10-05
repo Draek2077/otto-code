@@ -442,5 +442,33 @@ delivery, and the evidence, method and dated numbers live in its finding pages.
   The Visualizer is unaffected by eviction: its backfill-and-replay re-fetches from the daemon
   (`fetchAgentTimeline`), not from these buffers.
 
+- **Under software compositing, any continuous animation redraws the whole window every frame.**
+  When Chromium composites on the CPU (Otto's GPU fallback, which on Linux relaunches with
+  `--use-gl=disabled`, or Chromium's own GPU blocklist), a frame with any damage is a full-window
+  software draw. One 18px running ring then costs a draw per vsync, and the cost scales with window
+  area, not with how many rings are on screen. Measured in Chromium with `--disable-gpu` at
+  2400x1350: no animation 1 draw/s, one spinner 120 draws/s (~300 ms/s of compositor CPU). It shows
+  up in a capture as uniform ~60 ms frames whose long-frame entries name **no script** and almost no
+  style/layout, appearing only while an agent is running. The fix is frequency, not count: while
+  `softwareCompositing` is reported (desktop runtime info, also recorded in a capture's
+  `environment.rendering`), continuous indicators step instead of animating per vsync, and are
+  pinned to the document timeline origin (`components/continuous-motion.ts`) so every instance
+  shares one frame per step. Pinning is what makes stepping work: five independently started
+  stepped rings still drew 57 frames/s, aligned they draw ~12. The step is **measured, not fixed**
+  (`components/use-software-motion-step.web.ts`): a short probe compares the rAF interval with one
+  2px element animating against an idle one, and the rate is whatever fits
+  `SOFTWARE_MOTION_CPU_BUDGET` (a quarter of a core), between 5 and 60 steps/s and never above the
+  refresh. A cheap draw (frames stay at the refresh) gets ~30 steps/s on a 120Hz display; the
+  Linux case (~60 ms per draw) gets ~5. It re-measures after a resize, since draw cost scales with
+  window area. Every step size is a whole fraction of 350 ms so all instances stay on one grid.
+  GPU compositing is untouched: full refresh rate. Reanimated loops (one JS frame per vsync on web)
+  hold still under software compositing. **A new infinite animation must go through the same
+  helpers.**
+- **A selector that returns the agents map re-renders on every `agent_update` for any agent on the
+  host.** The map is replaced on each update (several per second while agents work).
+  `useOpenAgentTabLabels` did this from `WorkspaceScreenContent`, so every update anywhere
+  re-rendered every mounted workspace screen and its tab strip: ~130 ms per update in a dev build,
+  100-200 ms frames in a production capture. Selecting the derived answer (a joined id string)
+  dropped it to ~6 ms. Select what the component renders, never the map.
 - **The timer counters are the fastest "not this" in the toolkit.** `runtime.liveIntervals` staying
   flat retires the timer-leak hypothesis at a glance, and it has stayed flat in every run so far.
