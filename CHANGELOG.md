@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.31 - 2026-10-05
+
+### Improved
+
+- Retry failed Workflow phases with the reviewer's feedback instead of repeating the same attempt
+- Mark a Workflow phase as iterative to keep refining the same chat until it passes review
+- Keep Workflow phases from stalling on tool permission prompts
+- Match the host browser toolbar to the app browser toolbar
+
+### Fixed
+
+- Keep the app responsive while agents work on machines without GPU acceleration
+- Stop updates from agents in other workspaces from slowing down the open workspace
+- Detect Zoom calls that use a microphone or speaker other than the system default
+- Record the microphone and Zoom audio actually used by the call instead of system defaults
+- Transcribe Windows Zoom recordings that previously failed to decode
+- Keep the model you choose on mobile instead of reverting to the profile default
+
 ## 0.9.30 - 2026-10-03
 
 ### Improved
