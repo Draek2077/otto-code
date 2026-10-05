@@ -100,13 +100,26 @@ describe("desktop-updates helpers", () => {
       parseDesktopRuntimeInfo({
         appVersion: " 0.1.64 ",
         runningUnderARM64Translation: true,
-        softwareRendering: true,
+        softwareRendering: false,
+        softwareCompositing: true,
+        gpuCompositing: "disabled_software",
       }),
     ).toEqual({
       appVersion: "0.1.64",
       runningUnderARM64Translation: true,
-      softwareRendering: true,
+      softwareRendering: false,
+      softwareCompositing: true,
+      gpuCompositing: "disabled_software",
     });
+    // A shell that predates softwareCompositing still composites in software
+    // whenever its own fallback is active.
+    expect(
+      parseDesktopRuntimeInfo({
+        appVersion: "0.1.64",
+        runningUnderARM64Translation: false,
+        softwareRendering: true,
+      }),
+    ).toMatchObject({ softwareRendering: true, softwareCompositing: true, gpuCompositing: null });
     // A shell that predates softwareRendering reports false, not undefined.
     expect(
       parseDesktopRuntimeInfo({
@@ -117,11 +130,15 @@ describe("desktop-updates helpers", () => {
       appVersion: "0.1.64",
       runningUnderARM64Translation: false,
       softwareRendering: false,
+      softwareCompositing: false,
+      gpuCompositing: null,
     });
     expect(parseDesktopRuntimeInfo(null)).toEqual({
       appVersion: null,
       runningUnderARM64Translation: false,
       softwareRendering: false,
+      softwareCompositing: false,
+      gpuCompositing: null,
     });
   });
 

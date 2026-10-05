@@ -42,7 +42,9 @@ import type { DesktopSettings } from "../settings/desktop-settings.js";
 import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
 import {
   forceReenableHardwareAcceleration,
+  isSoftwareCompositingActive,
   isSoftwareRenderingActive,
+  readGpuCompositingStatus,
   stripSoftwareRenderingArgs,
 } from "../gpu-fallback.js";
 import { isRunningUnderARM64Translation } from "../system/arm64-translation.js";
@@ -649,6 +651,8 @@ export function createDaemonCommandHandlers(options?: {
       appVersion: resolveDesktopAppVersion(),
       runningUnderARM64Translation: isRunningUnderARM64Translation(),
       softwareRendering: isSoftwareRenderingActive(),
+      softwareCompositing: isSoftwareCompositingActive(),
+      gpuCompositing: readGpuCompositingStatus(),
     }),
     // Clear the software-rendering fallback and relaunch into hardware
     // acceleration. Surfaced as the "Re-enable GPU acceleration" action for a

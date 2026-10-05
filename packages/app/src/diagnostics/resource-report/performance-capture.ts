@@ -27,6 +27,7 @@ import { getSlowTimerCallbacks, type SlowTimerCallback } from "./runtime-counter
 import { analyzeResourceTrend, type ResourceSample } from "./resource-trend";
 import { captureOperations } from "./capture-operations";
 import { getGlobalSingleton } from "./global-singleton";
+import { loadDesktopRendering, type DesktopRenderingInfo } from "@/desktop/use-software-rendering";
 import {
   CaptureFrameEvidenceRecorder,
   type CapturedInboundDispatch,
@@ -59,7 +60,15 @@ interface PersistedPerformanceCapture {
   startedAt: string;
   stoppedAt: string;
   /** Runtime identity and clock used to interpret packaged script locations. */
-  environment: { userAgent: string | null; timeOrigin: number; pageScheme: string | null };
+  environment: {
+    userAgent: string | null;
+    timeOrigin: number;
+    pageScheme: string | null;
+    /** How the desktop shell composites frames; null off desktop or when the
+     * shell could not report it. Software compositing turns every animated
+     * frame into a full-window CPU redraw that no LoAF script names. */
+    rendering: DesktopRenderingInfo | null;
+  };
   frameEvidence: ReturnType<CaptureFrameEvidenceRecorder["report"]>;
   operations: ReturnType<typeof captureOperations.report>;
   attribution: { status: "unsupported" | "no-long-frames" | "missing-scripts" | "available" };
@@ -200,6 +209,7 @@ export async function stopPerformanceCapture(): Promise<void> {
         userAgent: typeof navigator === "undefined" ? null : navigator.userAgent,
         timeOrigin: performance.timeOrigin,
         pageScheme: typeof location === "undefined" ? null : location.protocol,
+        rendering: null,
       },
       frameEvidence: evidence,
       operations: captureOperations.stop(stoppedAt),
@@ -227,6 +237,7 @@ export async function stopPerformanceCapture(): Promise<void> {
       },
       daemonDiagnostics: [],
     };
+    capture.environment.rendering = await loadDesktopRendering();
     capture.daemonDiagnostics = await collectDaemonDiagnostics();
     const result = await invokeDesktopCommand<{ path?: unknown }>("write_performance_capture", {
       contents: `${JSON.stringify(capture, null, 2)}\n`,

@@ -18,6 +18,7 @@ import {
   useState,
   useEffect,
   useRef,
+  useLayoutEffect,
   memo,
   useMemo,
   useCallback,
@@ -149,6 +150,12 @@ const ASSISTANT_BUBBLE_HORIZONTAL_INSET = SPACING[3] * 2;
 import { ChatImageContextMenuTarget } from "@/chat/image-context-menu";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { isWeb, isNative } from "@/constants/platform";
+import { useSoftwareMotionStepMs } from "@/components/use-software-motion-step";
+import {
+  alignAnimationsToTimelineOrigin,
+  quantizeToStepGrid,
+  steppedTimingFunction,
+} from "@/components/continuous-motion";
 import type { AgentCapabilityFlags } from "@otto-code/protocol/agent-types";
 import { RewindMenu, type RewindMode } from "@/components/rewind/rewind-menu";
 import { useRewindAgentMutation } from "@/components/rewind/use-rewind-agent-mutation";
@@ -3068,8 +3075,17 @@ function ExpandableBadgeWebShimmerOverlay({
   numberOfLines,
   wrap,
 }: ExpandableBadgeWebShimmerOverlayProps) {
+  const stepped = useSoftwareMotionStepMs() !== null;
+  const overlayRef = useRef<View>(null);
+  useLayoutEffect(() => {
+    if (!stepped) {
+      return undefined;
+    }
+    return alignAnimationsToTimelineOrigin(overlayRef.current);
+  }, [stepped]);
   return (
     <View
+      ref={overlayRef}
       style={[
         expandableBadgeStylesheet.shimmerOverlay,
         wrap && expandableBadgeStylesheet.shimmerOverlayWrapped,
@@ -3462,12 +3478,23 @@ function buildShimmerTextStyle(input: {
   webShimmerTrackEnd: number;
   offsetX: number;
   effect: SweepTextEffectSpec | null;
+  // Software compositing: step the sweep (see continuous-motion.ts).
+  // Non-null under software compositing: the step to sweep at.
+  stepMs: number | null;
 }): object | null {
   if (!input.isWebShimmer || !input.effect) return null;
   // The shared @keyframes animate background-position between the per-element
   // CSS vars, so every effect theme rides the same registered keyframes - the
   // theme only varies the gradient, timing function, and direction here.
-  const timingFunction = input.effect.easing === "ease-in-out" ? "ease-in-out" : "linear";
+  // Stepped sweeps run a whole number of shared-grid steps, and the overlay
+  // pins them to the timeline origin so they draw on the rings' frames.
+  const durationMs =
+    input.stepMs !== null
+      ? quantizeToStepGrid(input.shimmerDuration * 1000, input.stepMs)
+      : input.shimmerDuration * 1000;
+  const easedTiming = input.effect.easing === "ease-in-out" ? "ease-in-out" : "linear";
+  const timingFunction =
+    input.stepMs !== null ? steppedTimingFunction(durationMs, 1, input.stepMs) : easedTiming;
   const direction = input.effect.bounce ? "alternate" : "normal";
   return {
     opacity: 1,
@@ -3478,7 +3505,7 @@ function buildShimmerTextStyle(input: {
     backgroundClip: "text",
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
-    animation: `${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} ${input.shimmerDuration}s ${timingFunction} infinite ${direction}`,
+    animation: `${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} ${durationMs}ms ${timingFunction} infinite ${direction}`,
     "--otto-shimmer-start": `${input.webShimmerTrackStart - input.offsetX}px`,
     "--otto-shimmer-end": `${input.webShimmerTrackEnd - input.offsetX}px`,
   };
@@ -3656,6 +3683,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
     }
     ensureWebToolCallShimmerKeyframes();
   }, [isWebShimmer]);
+  const shimmerStepMs = useSoftwareMotionStepMs();
 
   useDetailWheelPropagationBlocker({
     detailWrapperRef,
@@ -3672,6 +3700,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
         webShimmerTrackEnd,
         offsetX: labelOffsetX,
         effect: sweepEffect,
+        stepMs: shimmerStepMs,
       }),
     [
       isWebShimmer,
@@ -3681,6 +3710,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
       webShimmerTrackEnd,
       labelOffsetX,
       sweepEffect,
+      shimmerStepMs,
     ],
   );
 
@@ -3694,6 +3724,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
         webShimmerTrackEnd,
         offsetX: secondaryOffsetX,
         effect: sweepEffect,
+        stepMs: shimmerStepMs,
       }),
     [
       isWebShimmer,
@@ -3703,6 +3734,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
       webShimmerTrackEnd,
       secondaryOffsetX,
       sweepEffect,
+      shimmerStepMs,
     ],
   );
 

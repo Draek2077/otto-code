@@ -4,15 +4,24 @@
 // glow layer, and a ring inside a display:none deck workspace stops animating
 // entirely.
 //
+// Under software compositing each ring steps at ~11/s instead of animating per
+// vsync (see continuous-motion.ts): any running animation there costs a
+// full-window CPU redraw per frame.
+//
 // The native renderer (blob-loader.tsx) drives the same geometry from a shared
 // Reanimated clock. On web that clock is a JS requestAnimationFrame loop with
 // three style writes per instance per frame, and it kept ticking for every
 // running tab, sidebar row and composer track, hidden workspaces included.
 
-import { useEffect, useId, useMemo } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
 import { View } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
 import { withIconSizeToken } from "@/components/icons/icon-size";
+import {
+  alignAnimationsToTimelineOrigin,
+  steppedTimingFunction,
+} from "@/components/continuous-motion";
+import { useSoftwareMotionStepMs } from "@/components/use-software-motion-step";
 import {
   BLOB_LOADER_DURATION_MS,
   blurPadUnits,
@@ -32,6 +41,8 @@ const SPIN_A = "otto-blob-spin-a";
 const SPIN_B = "otto-blob-spin-b";
 const WOBBLE = "otto-blob-wobble";
 const WOBBLE_DURATION_MS = BLOB_LOADER_DURATION_MS / WOBBLE_CYCLES;
+// The wobble keyframes below define four segments.
+const WOBBLE_SEGMENTS = 4;
 
 const high = (1 + WOBBLE_AMPLITUDE).toFixed(3);
 const low = (1 - WOBBLE_AMPLITUDE).toFixed(3);
@@ -83,6 +94,10 @@ function BlobLoaderBase({
   useEffect(() => {
     ensureKeyframes();
   }, []);
+  // Non-null while compositing in software: the measured step to animate at.
+  const stepMs = useSoftwareMotionStepMs();
+  const stepped = stepMs !== null;
+  const containerRef = useRef<View>(null);
 
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const glowAId = `blob-glow-a-${uid}`;
@@ -103,9 +118,18 @@ function BlobLoaderBase({
 
   const overscan = (size * blurPadUnits(blur)) / 100;
 
-  // Computed once per mount: the delay only aligns the starting phase.
+  // Computed once per mount: the delay only aligns the starting phase. Stepped
+  // rings carry no delay; the layout effect below pins them to the timeline
+  // origin instead, which keeps them in phase exactly.
   const { blobStyle, glowALayerStyle, glowBLayerStyle } = useMemo(() => {
-    const spinDelay = phaseDelayMs(BLOB_LOADER_DURATION_MS);
+    const spinDelay = stepped ? 0 : phaseDelayMs(BLOB_LOADER_DURATION_MS);
+    const wobbleDelay = stepped ? 0 : phaseDelayMs(WOBBLE_DURATION_MS);
+    const spinTiming =
+      stepMs !== null ? steppedTimingFunction(BLOB_LOADER_DURATION_MS, 1, stepMs) : "linear";
+    const wobbleTiming =
+      stepMs !== null
+        ? steppedTimingFunction(WOBBLE_DURATION_MS, WOBBLE_SEGMENTS, stepMs)
+        : "ease-in-out";
     const overscanStyle = {
       position: "absolute",
       top: -overscan,
@@ -120,23 +144,30 @@ function BlobLoaderBase({
         height: size,
         ...(wobble
           ? {
-              animation: `${WOBBLE} ${WOBBLE_DURATION_MS}ms ease-in-out ${phaseDelayMs(WOBBLE_DURATION_MS)}ms infinite`,
+              animation: `${WOBBLE} ${WOBBLE_DURATION_MS}ms ${wobbleTiming} ${wobbleDelay}ms infinite`,
             }
           : null),
       } as object,
       glowALayerStyle: {
         ...overscanStyle,
-        animation: `${SPIN_A} ${BLOB_LOADER_DURATION_MS}ms linear ${spinDelay}ms infinite`,
+        animation: `${SPIN_A} ${BLOB_LOADER_DURATION_MS}ms ${spinTiming} ${spinDelay}ms infinite`,
       } as object,
       glowBLayerStyle: {
         ...overscanStyle,
-        animation: `${SPIN_B} ${BLOB_LOADER_DURATION_MS}ms linear ${spinDelay}ms infinite`,
+        animation: `${SPIN_B} ${BLOB_LOADER_DURATION_MS}ms ${spinTiming} ${spinDelay}ms infinite`,
       } as object,
     };
-  }, [overscan, size, wobble]);
+  }, [overscan, size, stepMs, stepped, wobble]);
+
+  useLayoutEffect(() => {
+    if (!stepped) {
+      return undefined;
+    }
+    return alignAnimationsToTimelineOrigin(containerRef.current);
+  }, [stepped]);
 
   return (
-    <View style={containerStyle}>
+    <View ref={containerRef} style={containerStyle}>
       <View style={blobStyle}>
         <View style={glowALayerStyle}>
           <GlowLayer color={glowA} gradientId={glowAId} filterId={blurAId} blur={blur} />

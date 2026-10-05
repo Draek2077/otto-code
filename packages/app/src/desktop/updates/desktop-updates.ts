@@ -30,6 +30,12 @@ export interface DesktopRuntimeInfo {
    * gpu-fallback marker/flags, or explicit software-GL argv). False when the
    * shell predates the field. */
   softwareRendering: boolean;
+  /** Chromium composites frames on the CPU (Otto's fallback, or Chromium's
+   * own GPU blocklist). Continuous animations then cost a full-window software
+   * draw per frame. False when the shell predates the field. */
+  softwareCompositing: boolean;
+  /** Chromium's raw `gpu_compositing` feature status, for diagnostics. */
+  gpuCompositing: string | null;
 }
 
 export type DesktopReleaseChannel = "stable" | "beta";
@@ -95,6 +101,8 @@ export function parseDesktopRuntimeInfo(raw: unknown): DesktopRuntimeInfo {
       appVersion: null,
       runningUnderARM64Translation: false,
       softwareRendering: false,
+      softwareCompositing: false,
+      gpuCompositing: null,
     };
   }
 
@@ -102,6 +110,8 @@ export function parseDesktopRuntimeInfo(raw: unknown): DesktopRuntimeInfo {
     appVersion: toStringOrNull(raw.appVersion),
     runningUnderARM64Translation: raw.runningUnderARM64Translation === true,
     softwareRendering: raw.softwareRendering === true,
+    softwareCompositing: raw.softwareCompositing === true || raw.softwareRendering === true,
+    gpuCompositing: toStringOrNull(raw.gpuCompositing),
   };
 }
 

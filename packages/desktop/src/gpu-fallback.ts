@@ -340,6 +340,32 @@ export function isSoftwareRenderingActive(): boolean {
   }
 }
 
+// Chromium's own verdict on how frames are composited, e.g. "enabled" or
+// "disabled_software". Broader than isSoftwareRenderingActive(): Chromium also
+// lands on software compositing by itself (GPU blocklist, a driver it rejects)
+// with no Otto marker or argv involved. Null when Chromium has not reported it.
+export function readGpuCompositingStatus(): string | null {
+  try {
+    const status = app.getGPUFeatureStatus().gpu_compositing;
+    return typeof status === "string" && status.length > 0 ? status : null;
+  } catch {
+    return null;
+  }
+}
+
+// Software compositing redraws the whole window on the CPU for every frame
+// that has any damage, so a single continuously animating 18px spinner costs a
+// full-window software draw per vsync (measured: one spinner = 120 full draws/s,
+// and the cost scales with window area, not spinner count). The renderer uses
+// this to step its continuous indicators instead of animating per vsync.
+export function isSoftwareCompositingActive(): boolean {
+  if (isSoftwareRenderingActive()) {
+    return true;
+  }
+  const status = readGpuCompositingStatus();
+  return status !== null && !status.startsWith("enabled");
+}
+
 // Must run before app.whenReady(): disableHardwareAcceleration() is a no-op once
 // the app is ready.
 export function applyPersistedHardwareAccelerationFallback(): void {

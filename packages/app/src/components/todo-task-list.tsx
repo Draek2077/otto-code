@@ -11,6 +11,7 @@ import Animated, {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Check } from "@/components/icons/material-icons";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { useIsSoftwareCompositing } from "@/desktop/use-software-rendering";
 import type { Theme } from "@/styles/theme";
 import {
   resolveTodoEntryStatus,
@@ -94,7 +95,11 @@ export function TodoSummaryMarker({
 }: TodoSummaryMarkerProps) {
   // Transcript cards in hidden deck workspaces hold still.
   const panelActive = useRetainedPanelActive();
-  const animationsEnabled = animationsSetting && panelActive;
+  // The pulse is a per-frame Reanimated loop; under software compositing each
+  // of its frames is a full-window CPU redraw (continuous-motion.ts), so the
+  // in-progress dot holds still there.
+  const softwareCompositing = useIsSoftwareCompositing();
+  const animationsEnabled = animationsSetting && panelActive && !softwareCompositing;
   const pulse = useSharedValue(phase === "partial" ? 1 : 0);
 
   useEffect(() => {
@@ -154,7 +159,11 @@ function TodoStatusMarker({ status, animationsEnabled: animationsSetting }: Todo
   // Old transcript cards whose item never left in_progress would otherwise
   // pulse forever in hidden deck workspaces.
   const panelActive = useRetainedPanelActive();
-  const animationsEnabled = animationsSetting && panelActive;
+  // The pulse is a per-frame Reanimated loop; under software compositing each
+  // of its frames is a full-window CPU redraw (continuous-motion.ts), so the
+  // in-progress dot holds still there.
+  const softwareCompositing = useIsSoftwareCompositing();
+  const animationsEnabled = animationsSetting && panelActive && !softwareCompositing;
   const pulse = useSharedValue(status === "in_progress" ? 1 : 0);
   const check = useSharedValue(status === "completed" ? 1 : 0);
   const prevStatus = useRef(status);
