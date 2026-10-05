@@ -49,6 +49,38 @@ unavailable profile or model, unsupported workspace authority, and unsupported
 daemon capabilities fail the run visibly rather than silently selecting another
 provider or permission level.
 
+Every child an AI Workflow spawns runs **unattended**: the engine is what waits on
+it, so there is no one to answer a tool prompt, and a gate phase is the run's
+only human checkpoint. A profile's attended mode is coerced to its provider's
+safe unattended mode at spawn, and any escalation the provider still raises is
+denied by the daemon's deny-responder rather than left hanging. The rules are in
+[safe-unattended.md](safe-unattended.md). Choose team profiles for Workflow
+roles with that in mind: a Claude coder lands in `dontAsk` (or `auto` where the
+model supports it), so anything it must do has to be pre-approved or safe.
+
+### Phase modes: bounded and iterative
+
+A judged AI-declared phase has a `mode` that decides what happens to a candidate
+the judge did not pass.
+
+- **Bounded** (the default) is for work with a finish line one session can
+  reach: fix this, add that, make these tests pass. A failed candidate is
+  replaced by a fresh agent that receives the task plus the previous round's
+  feedback (the failed attempt's report, the judge's summary, and the unmet
+  criteria with their evidence).
+- **Iterative** is for open-ended work one session cannot finish: inventory a
+  platform, plan a whole project. A failed candidate's own chat is continued
+  with the judge's unmet criteria and carries on from where it stopped, keeping
+  the context it already built. The judge grades again after each continuation.
+  An iterative phase requires a `judge`; verify and gate phases cannot iterate.
+
+Both modes stop when enough candidates pass or the daemon's loop cap trips. The
+cap counts judged rounds, the first one included, so the default of three means
+one attempt plus two continuations or replacements. The judge always grades
+against the declared task, never against a round's feedback. A host that cannot
+continue chats fails an iterative phase and says so, rather than quietly running
+it as bounded.
+
 ### Start confirmation and agent limits
 
 Workflow start posture reports factual, daemon-known work rather than inventing

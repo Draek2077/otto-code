@@ -5,6 +5,7 @@ import {
   GRAPH_DOCUMENT_FORMAT,
   GRAPH_DOCUMENT_FORMAT_VERSION,
   OrchestrationGraphSchema,
+  RunPhaseSchema,
   RunPlanSchema,
   RunSchema,
   RunsGateRespondRequestSchema,
@@ -117,6 +118,38 @@ describe("RunPlanSchema", () => {
         phases: [{ id: "a", type: "research", title: "t", task: "do it", fanOut: 99 }],
       }),
     ).toThrow();
+  });
+
+  test("accepts a declared phase mode and rejects one outside the vocabulary", () => {
+    const plan = RunPlanSchema.parse({
+      title: "Inventory",
+      phases: [
+        {
+          id: "inventory",
+          type: "plan",
+          title: "Inventory",
+          task: "inventory every operation",
+          mode: "iterative",
+          judge: {},
+        },
+      ],
+    });
+    expect(plan.phases[0]?.mode).toBe("iterative");
+    expect(() =>
+      RunPlanSchema.parse({
+        title: "Inventory",
+        phases: [{ id: "a", type: "plan", title: "t", task: "do it", mode: "forever" }],
+      }),
+    ).toThrow();
+    // Absent on the wire projection reads as bounded, the only mode older daemons ran.
+    const phase = RunPhaseSchema.parse({
+      id: "a",
+      type: "plan",
+      title: "t",
+      task: "x",
+      status: "pending",
+    });
+    expect(phase.mode).toBeUndefined();
   });
 
   test("describes the known agent and fan-out shape without inventing a cost", () => {

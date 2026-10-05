@@ -42,6 +42,8 @@ export interface RunSpawnPort {
   awaitAgent(input: { agentId: string; signal: AbortSignal }): Promise<RunEngineAwaitResult>;
   /** The cancel cascade: really stop one child when the run is canceled. */
   cancelAgent?(input: { agentId: string }): Promise<void>;
+  /** The iterative loop: send a settled child its next instruction in place. */
+  continueAgent?(input: { agentId: string; task: string }): Promise<void>;
 }
 
 export type WorkflowServiceLogger = OrchestrationLogger;
@@ -458,6 +460,9 @@ export class WorkflowService {
         awaitAgent: input.spawnPort.awaitAgent,
         ...(input.spawnPort.cancelAgent
           ? { cancelAgent: input.spawnPort.cancelAgent.bind(input.spawnPort) }
+          : {}),
+        ...(input.spawnPort.continueAgent
+          ? { continueAgent: input.spawnPort.continueAgent.bind(input.spawnPort) }
           : {}),
         awaitGate: (gate) => this.awaitGate(gate),
         emit: (updated) => this.persistAndEmit(updated),

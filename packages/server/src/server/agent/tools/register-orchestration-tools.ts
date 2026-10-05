@@ -197,6 +197,14 @@ export function registerOrchestrationTools({
           ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
           thinking: brain.thinkingOptionId,
           mode: brain.modeId,
+          // A Workflow child has no one to answer its prompts: the engine awaits
+          // it, not a user, and a gate is the run's only human checkpoint. The
+          // unattended signal coerces an attended profile mode (Claude
+          // "default", Codex "auto") to the provider's safe unattended mode and
+          // lets the daemon deny-responder answer escalations, instead of the
+          // child stalling at its first Write until the run archives it. See
+          // docs/safe-unattended.md.
+          unattended: true,
           background: true,
           notifyOnFinish: false,
           detached: false,
@@ -212,7 +220,7 @@ export function registerOrchestrationTools({
       {
         title: "Start Workflow",
         description:
-          "Use when active work needs a declared multi-chat Workflow with daemon-managed fan-out, gathering, judging, loops, or approval gates. The daemon executes typed phases (research/plan/implement/design/verify/gate/deliver), fans out candidates, judges them, loops until enough pass, and pauses at gates for approval. Each phase dispatches to the active team's agent profile for its role and fails clearly if the team lacks one. Waits until the Workflow completes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Do not use for a discrete task that can be completed directly or by one dedicated chat.",
+          "Use when active work needs a declared multi-chat Workflow with daemon-managed fan-out, gathering, judging, loops, or approval gates. The daemon executes typed phases (research/plan/implement/design/verify/gate/deliver), fans out candidates, judges them, loops until enough pass, and pauses at gates for approval. Size each phase to what one session can finish; for open-ended work (inventory a platform, plan a whole project) declare `mode: iterative` with a `judge` so a failed candidate's chat is continued with the judge's unmet criteria instead of being replaced by a fresh agent. Each phase dispatches to the active team's agent profile for its role and fails clearly if the team lacks one. Waits until the Workflow completes (returning `result`, the final deliverable, which you should relay to the user) or pauses at a gate (returning a `note` to relay). Do not use for a discrete task that can be completed directly or by one dedicated chat.",
         inputSchema: RunPlanSchema,
         outputSchema: {
           runId: z.string(),
@@ -258,6 +266,18 @@ export function registerOrchestrationTools({
               // idle - a worker that spawns its own helpers gets re-invoked when
               // they finish and writes its real answer in a later turn.
               const result = await agentManager.waitForAgentFullySettled(agentId, { signal });
+              // A child parked on a permission prompt has not finished; reading
+              // its last message as the result would judge a half-turn ("I'll
+              // write the file directly.") and move on while the prompt hangs.
+              // Children are spawned unattended so this should not occur; when
+              // it does, name it rather than report "no output".
+              if (result.permission) {
+                return {
+                  finalMessage: null,
+                  failed: true,
+                  error: `The assigned agent stopped at a permission prompt for '${result.permission.name}' that a Workflow cannot answer. Give its profile an unattended mode.`,
+                };
+              }
               const finalMessage =
                 result.lastMessage ?? (await agentManager.getLastAssistantMessage(agentId));
               const failure =
@@ -280,6 +300,19 @@ export function registerOrchestrationTools({
             } catch (error) {
               childLogger.warn({ err: error, agentId }, "Could not cancel a run child on cancel");
             }
+          },
+          continueAgent: async ({ agentId, task }) => {
+            // The iterative loop: the child's own chat gets the judge's verdict
+            // as its next turn, keeping everything it already built. The engine
+            // awaits it again through awaitAgent once the turn has started.
+            await sendPromptToAgent({
+              agentManager,
+              agentStorage,
+              agentId,
+              prompt: task,
+              unarchive: true,
+              logger: childLogger,
+            });
           },
         };
 

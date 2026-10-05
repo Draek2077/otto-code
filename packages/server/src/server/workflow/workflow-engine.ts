@@ -107,6 +107,14 @@ export interface RunEnginePort {
    */
   cancelAgent?(input: { agentId: string }): Promise<void>;
   /**
+   * Send a follow-up instruction to a settled child so it carries on in its own
+   * session - the iterative loop. The engine awaits the child again afterwards
+   * through awaitAgent. Optional so in-memory ports keep working; an iterative
+   * phase on a port without it fails the run and names the gap rather than
+   * silently degrading to replacement, which is the mode the plan rejected.
+   */
+  continueAgent?(input: { agentId: string; task: string }): Promise<void>;
+  /**
    * Await a human decision at an attended `gate` phase. Never called under
    * autopilot. Should reject/throw if the run is canceled while waiting.
    */
@@ -164,6 +172,23 @@ export function buildRunFromPlan(input: {
       }
     }
     seen.add(decl.id);
+    if (decl.mode === "iterative") {
+      // The judge is what decides when a continued chat is finished; without
+      // one the loop has no exit. A verify phase's candidate IS the judge and a
+      // gate spawns nobody, so neither can iterate.
+      if (!decl.judge) {
+        throw new RunEngineError(
+          `Phase "${decl.id}" is iterative but declares no judge; an iterative phase needs a judge to decide when its chat is done`,
+          decl.id,
+        );
+      }
+      if (decl.type === "verify" || decl.type === "gate") {
+        throw new RunEngineError(
+          `Phase "${decl.id}" is iterative, but a ${decl.type} phase cannot iterate`,
+          decl.id,
+        );
+      }
+    }
     const typeDefaultRole = isRunPhaseType(decl.type) ? defaultRoleForPhaseType(decl.type) : null;
     const role = decl.role ?? typeDefaultRole ?? undefined;
     const phase: RunPhase = {
@@ -176,6 +201,7 @@ export function buildRunFromPlan(input: {
       ...(decl.dependsOn ? { dependsOn: decl.dependsOn } : {}),
       ...(decl.fanOut ? { fanOut: decl.fanOut } : {}),
       ...(decl.keepBest ? { keepBest: decl.keepBest } : {}),
+      ...(decl.mode ? { mode: decl.mode } : {}),
     };
     return phase;
   });
@@ -497,18 +523,30 @@ function shouldStopLoop(
 async function finalizePhase(
   ctx: ExecuteRunContext,
   phase: RunPhase,
-  input: { judged: boolean; candidates: RunPhaseCandidate[]; passers: number },
+  input: {
+    judged: boolean;
+    candidates: RunPhaseCandidate[];
+    passers: number;
+    /** Judged rounds an iterative phase ran; absent for the bounded loop. */
+    iterations?: number;
+  },
 ): Promise<void> {
   const { run, port } = ctx;
   // A spawned candidate is not a passing candidate. In particular, an
   // unjudged phase must not report success when every provider turn failed.
   const succeeded = input.passers > 0;
   const candidateError = input.candidates.find((candidate) => candidate.error)?.error;
+  // Name the actual cause. A judged phase that produced no passer failed on the
+  // work, not on the provider; telling the user to fix a configuration issue
+  // sends them to the wrong place.
   const recovery =
-    "Review the failed phase, correct the underlying provider or configuration issue, then start a new Workflow.";
+    input.judged && !candidateError
+      ? "Review the judge verdicts on the failed phase, then start a new Workflow with a narrower phase or an iterative one."
+      : "Review the failed phase, correct the underlying provider or configuration issue, then start a new Workflow.";
   let notes: string | undefined;
   if (input.judged) {
-    notes = `${input.passers}/${input.candidates.length} candidate(s) passed.`;
+    const after = input.iterations !== undefined ? ` after ${input.iterations} iteration(s)` : "";
+    notes = `${input.passers}/${input.candidates.length} candidate(s) passed${after}.`;
   } else if (candidateError) {
     notes = `${candidateError} ${recovery}`;
   }
@@ -554,12 +592,18 @@ const WORKER_TASK_FRAMING =
   "output before you finish.";
 
 // Compose the task an assignee actually receives: the declared task, prefixed
-// with the outputs of the phases it depends on and suffixed with the worker
-// framing. Threading upstream results into the downstream prompt is what makes
-// `dependsOn` mean "build on this", not just "run after this" - the child agent
-// starts a fresh session with no memory of sibling phases, so their output must
-// travel in the prompt. Dep blocks are kept terse: a labeled block per dependency.
-function composePhaseTask(ctx: ExecuteRunContext, phase: RunPhase): string {
+// with the outputs of the phases it depends on, followed by any loop feedback,
+// and suffixed with the worker framing. Threading upstream results into the
+// downstream prompt is what makes `dependsOn` mean "build on this", not just
+// "run after this" - the child agent starts a fresh session with no memory of
+// sibling phases, so their output must travel in the prompt. Dep blocks are kept
+// terse: a labeled block per dependency. The framing stays last so it is the
+// freshest instruction when the agent starts, even behind a long feedback block.
+function composePhaseTask(
+  ctx: ExecuteRunContext,
+  phase: RunPhase,
+  loopFeedback: string | null = null,
+): string {
   const blocks: string[] = [];
   for (const depId of phase.dependsOn ?? []) {
     const dep = ctx.run.phases.find((p) => p.id === depId);
@@ -569,7 +613,98 @@ function composePhaseTask(ctx: ExecuteRunContext, phase: RunPhase): string {
     }
   }
   const base = blocks.length === 0 ? phase.task : `${blocks.join("\n\n")}\n\n${phase.task}`;
-  return `${base}\n\n${WORKER_TASK_FRAMING}`;
+  const withFeedback = loopFeedback ? `${base}\n\n${loopFeedback}` : base;
+  return `${withFeedback}\n\n${WORKER_TASK_FRAMING}`;
+}
+
+// Bound on each failed attempt's own report when it is fed back to a
+// replacement candidate. The feedback has to sit beside the task, not crowd it
+// out (docs/token-economy.md); the judge's unmet criteria carry the signal,
+// the report is context.
+const LOOP_FEEDBACK_REPORT_MAX_CHARS = 3_000;
+
+const LOOP_FEEDBACK_HEADER =
+  "A previous round of this phase did not pass. Build on what it did and address the judge's " +
+  "feedback; do not repeat the same result.";
+
+/**
+ * What a replacement candidate learns from the round it replaces. Re-sending the
+ * identical task makes every loop round rediscover the same ceiling (observed on
+ * a real run: three candidates, three near-identical "incomplete" reports). The
+ * judge's unmet criteria and the failed attempt's own report turn the loop into
+ * iteration instead of repetition - the graph engine's judgeFeedback, for plans.
+ * Only the failed candidates of the most recent round are carried: that round
+ * already built on the feedback before it, and the block must stay bounded.
+ * Null when nothing in the round failed (there is then no replacement to brief).
+ */
+export function buildLoopFeedback(previousRound: readonly RunPhaseCandidate[]): string | null {
+  const failed = previousRound.filter((candidate) => !candidatePassed(candidate));
+  if (failed.length === 0) {
+    return null;
+  }
+  const blocks = failed.map((candidate, index) => {
+    const label = failed.length === 1 ? "The previous attempt" : `Previous attempt ${index + 1}`;
+    const lines: string[] = [];
+    if (candidate.error) {
+      lines.push(`${label} failed before producing a result: ${candidate.error}`);
+    } else if (candidate.summary?.trim()) {
+      lines.push(
+        `${label} reported:\n${truncate(candidate.summary.trim(), LOOP_FEEDBACK_REPORT_MAX_CHARS)}`,
+      );
+    } else {
+      lines.push(`${label} produced no output.`);
+    }
+    const verdict = candidate.verdict;
+    if (verdict) {
+      const summary = verdict.summary?.trim();
+      lines.push(summary ? `The judge failed it: ${summary}` : "The judge failed it.");
+      const unmet = renderUnmetCriteria(verdict);
+      if (unmet) {
+        lines.push(unmet);
+      }
+    }
+    return lines.join("\n");
+  });
+  return `${LOOP_FEEDBACK_HEADER}\n\n${blocks.join("\n\n")}`;
+}
+
+// Only the criteria the judge marked unmet, each with its evidence: the part a
+// worker can act on. Null when the verdict carried none.
+function renderUnmetCriteria(verdict: NonNullable<RunPhaseCandidate["verdict"]>): string | null {
+  const unmet = (verdict.criteria ?? []).filter((criterion) => !criterion.met);
+  if (unmet.length === 0) {
+    return null;
+  }
+  const items = unmet.map((criterion) => {
+    const evidence = criterion.evidence?.trim();
+    return evidence ? `- ${criterion.name}: ${evidence}` : `- ${criterion.name}`;
+  });
+  return `Unmet criteria:\n${items.join("\n")}`;
+}
+
+const CONTINUATION_HEADER =
+  "The judge reviewed your last result and did not pass it. Continue in this same session from " +
+  "where you stopped - do not start over, and do not repeat work that is already done.";
+
+/**
+ * The follow-up an iterative phase sends to a failed candidate's own chat. Unlike
+ * buildLoopFeedback there is no "previous attempt reported" block: the chat
+ * already holds its own output, so only the judge's verdict is news to it.
+ */
+export function buildContinuationPrompt(candidate: RunPhaseCandidate): string {
+  const verdict = candidate.verdict;
+  const lines: string[] = [];
+  if (verdict) {
+    const summary = verdict.summary?.trim();
+    lines.push(summary ? `The judge said: ${summary}` : "The judge gave no summary.");
+    const unmet = renderUnmetCriteria(verdict);
+    if (unmet) {
+      lines.push(unmet);
+    }
+  } else {
+    lines.push("The judge gave no detail.");
+  }
+  return `${CONTINUATION_HEADER}\n\n${lines.join("\n")}\n\n${WORKER_TASK_FRAMING}`;
 }
 
 /**
@@ -649,8 +784,18 @@ async function runWorkerPhase(ctx: ExecuteRunContext, phase: RunPhase): Promise<
     return;
   }
 
+  if (phase.mode === "iterative") {
+    await runIterativePhase(ctx, phase, {
+      role,
+      judgeSpec: judgeSpec ? { role: judgeRole, criteria: judgeSpec.criteria } : null,
+    });
+    return;
+  }
+
   // Fold upstream dependency outputs into the task once; deps are terminal by
-  // the time this phase runs, so this is stable across loop rounds.
+  // the time this phase runs, so this is stable across loop rounds. The judge
+  // always grades against this declared task - never against a round's
+  // feedback block, which is briefing for the maker, not acceptance criteria.
   const effectiveTask = composePhaseTask(ctx, phase);
   const isVerifyPhase = phase.type === "verify";
   const keepBest = phase.keepBest;
@@ -658,6 +803,8 @@ async function runWorkerPhase(ctx: ExecuteRunContext, phase: RunPhase): Promise<
   const candidates: RunPhaseCandidate[] = [];
   let passers = 0;
   let attempt = 0;
+  // What the next loop round's replacements learn from the round before it.
+  let loopFeedback: string | null = null;
 
   for (;;) {
     const need = computeRoundNeed(attempt, fanOut, keepBest, passers);
@@ -675,7 +822,8 @@ async function runWorkerPhase(ctx: ExecuteRunContext, phase: RunPhase): Promise<
 
     const round = await runCandidateRound(ctx, phase, {
       role,
-      task: effectiveTask,
+      task: loopFeedback ? composePhaseTask(ctx, phase, loopFeedback) : effectiveTask,
+      judgeTask: effectiveTask,
       count: need,
       attempt,
       isVerifyPhase,
@@ -694,6 +842,7 @@ async function runWorkerPhase(ctx: ExecuteRunContext, phase: RunPhase): Promise<
     if (shouldStopLoop(ctx, keepBest, passers, attempt)) {
       break;
     }
+    loopFeedback = buildLoopFeedback(round);
   }
 
   // Cancellation is a distinct terminal outcome. The canceled child's failed
@@ -710,14 +859,203 @@ async function runWorkerPhase(ctx: ExecuteRunContext, phase: RunPhase): Promise<
   });
 }
 
+/**
+ * The iterative loop: spawn the candidates once, then CONTINUE each failed
+ * candidate's own chat with the judge's unmet criteria instead of replacing it.
+ * Open-ended work (inventory a platform, plan a project) is where a replacement
+ * round is most wasteful: the context a fresh agent would have to rebuild is
+ * exactly what the failed attempt already holds. Round accounting, caps and
+ * finalization match the bounded loop so both read the same in the Runs display;
+ * `maxLoopAttempts` bounds the judged rounds, the first one included.
+ */
+async function runIterativePhase(
+  ctx: ExecuteRunContext,
+  phase: RunPhase,
+  input: { role: string | null; judgeSpec: { role: string; criteria?: readonly string[] } | null },
+): Promise<void> {
+  const { run, port } = ctx;
+  const continueAgent = port.continueAgent;
+  if (!continueAgent) {
+    setPhase(ctx, phase, {
+      status: "failed",
+      completedAt: port.now(),
+      notes:
+        "This host cannot continue a child chat between rounds. Update the host to use iterative phases, or declare the phase as bounded.",
+    });
+    run.status = "failed";
+    run.error = `Phase "${phase.id}" is iterative, but this host cannot continue child chats.`;
+    await port.emit(run);
+    return;
+  }
+  if (!input.judgeSpec) {
+    // buildRunFromPlan rejects this shape; a persisted run cannot reach here.
+    setPhase(ctx, phase, {
+      status: "failed",
+      completedAt: port.now(),
+      notes: "An iterative phase needs a judge to decide when its chat is done.",
+    });
+    run.status = "failed";
+    run.error = `Phase "${phase.id}" is iterative but has no judge.`;
+    await port.emit(run);
+    return;
+  }
+  const judgeSpec = input.judgeSpec;
+
+  const effectiveTask = composePhaseTask(ctx, phase);
+  const fanOut = phase.fanOut ?? 1;
+  const target = phase.keepBest ?? 1;
+
+  if (ctx.agentsSpawned + fanOut > ctx.caps.maxAgents) {
+    appendNote(ctx, phase, `Agent cap (${ctx.caps.maxAgents}) reached; no candidate was spawned.`);
+    await finalizePhase(ctx, phase, { judged: true, candidates: [], passers: 0, iterations: 0 });
+    return;
+  }
+
+  const candidates = await runCandidateRound(ctx, phase, {
+    role: input.role,
+    task: effectiveTask,
+    judgeTask: effectiveTask,
+    count: fanOut,
+    attempt: 0,
+    isVerifyPhase: false,
+    judgeSpec,
+  });
+  for (const candidate of candidates) {
+    candidate.attempts = 1;
+  }
+  phase.candidates = candidates;
+  await port.emit(run);
+
+  let iterations = 1;
+  let passers = candidates.filter(candidatePassed).length;
+  while (!shouldStopLoop(ctx, target, passers, iterations)) {
+    // A provider failure is not something a follow-up prompt can talk through;
+    // only candidates the judge failed are continued.
+    const continuing = candidates.filter(
+      (candidate) => !candidatePassed(candidate) && !candidate.error,
+    );
+    if (continuing.length === 0) {
+      break;
+    }
+    // Each continuation spawns one judge.
+    if (ctx.agentsSpawned + continuing.length > ctx.caps.maxAgents) {
+      appendNote(
+        ctx,
+        phase,
+        `Agent cap (${ctx.caps.maxAgents}) reached; stopped after ${iterations} iteration(s).`,
+      );
+      break;
+    }
+    await mapWithConcurrency(continuing, ctx.caps.maxConcurrency, (candidate, index) =>
+      continueCandidate(ctx, phase, {
+        candidate,
+        continueAgent,
+        judgeTask: effectiveTask,
+        judgeSpec,
+        attempt: iterations,
+        index,
+      }),
+    );
+    iterations++;
+    passers = candidates.filter(candidatePassed).length;
+    await port.emit(run);
+  }
+
+  if (ctx.signal.aborted) {
+    return;
+  }
+  await finalizePhase(ctx, phase, { judged: true, candidates, passers, iterations });
+}
+
+// One continuation round for one candidate: brief its chat with the verdict,
+// wait for it to settle again, then re-judge. Mutates the candidate in place so
+// the Runs display keeps one card per chat, with `attempts` counting rounds.
+async function continueCandidate(
+  ctx: ExecuteRunContext,
+  phase: RunPhase,
+  input: {
+    candidate: RunPhaseCandidate;
+    continueAgent: NonNullable<RunEnginePort["continueAgent"]>;
+    judgeTask: string;
+    judgeSpec: { role: string; criteria?: readonly string[] };
+    attempt: number;
+    index: number;
+  },
+): Promise<void> {
+  const { candidate } = input;
+  await input.continueAgent({
+    agentId: candidate.agentId,
+    task: buildContinuationPrompt(candidate),
+  });
+  const result = await awaitWithCancelCascade(ctx, candidate.agentId);
+  candidate.attempts = (candidate.attempts ?? 1) + 1;
+  if (result.finalMessage) {
+    candidate.summary = result.finalMessage;
+  }
+  if (result.failed) {
+    candidate.error = result.error ?? "The assigned agent failed before producing output.";
+    candidate.verdict = { verdict: "fail", summary: "Candidate produced no output to judge." };
+    return;
+  }
+  if (!result.finalMessage) {
+    candidate.verdict = { verdict: "fail", summary: "Candidate produced no output to judge." };
+    return;
+  }
+  candidate.verdict = await judgeCandidate(ctx, phase, {
+    judgeTask: input.judgeTask,
+    candidateOutput: result.finalMessage,
+    judgeSpec: input.judgeSpec,
+    attempt: input.attempt,
+    index: input.index,
+  });
+}
+
+// Grade one maker's output with a separate judger. Counts the judge against
+// the run's caps like any other child.
+async function judgeCandidate(
+  ctx: ExecuteRunContext,
+  phase: RunPhase,
+  input: {
+    judgeTask: string;
+    candidateOutput: string;
+    judgeSpec: { role: string; criteria?: readonly string[] };
+    attempt: number;
+    index: number;
+  },
+): Promise<RunPhaseCandidate["verdict"]> {
+  ctx.agentsSpawned += 1;
+  ctx.run.agentCount = ctx.agentsSpawned;
+  const judgeSpawn = await ctx.port.spawn({
+    phaseId: phase.id,
+    phaseType: "verify",
+    role: input.judgeSpec.role,
+    task: buildJudgeTask({
+      originalTask: input.judgeTask,
+      candidateOutput: input.candidateOutput,
+      criteria: input.judgeSpec.criteria,
+    }),
+    attempt: input.attempt,
+    index: input.index,
+  });
+  const judgeResult = await awaitWithCancelCascade(ctx, judgeSpawn.agentId);
+  return judgeResult.failed
+    ? { verdict: "fail", summary: "Judger agent errored." }
+    : parseVerdict(judgeResult.finalMessage);
+}
+
 // Spawn `count` candidates for a phase, await them, and (when judged) grade each.
 async function runCandidateRound(
   ctx: ExecuteRunContext,
   phase: RunPhase,
   opts: {
     role: string | null;
-    /** The effective task (declared task + upstream dependency outputs). */
+    /**
+     * What the maker receives: the effective task (declared task + upstream
+     * dependency outputs), plus the previous round's feedback on loop rounds.
+     */
     task: string;
+    /** What the judge grades against: the effective task without loop feedback. */
+    judgeTask: string;
     count: number;
     attempt: number;
     isVerifyPhase: boolean;
@@ -758,24 +1096,13 @@ async function runCandidateRound(
       if (result.failed || !result.finalMessage) {
         candidate.verdict = { verdict: "fail", summary: "Candidate produced no output to judge." };
       } else {
-        ctx.agentsSpawned += 1;
-        ctx.run.agentCount = ctx.agentsSpawned;
-        const judgeSpawn = await port.spawn({
-          phaseId: phase.id,
-          phaseType: "verify",
-          role: opts.judgeSpec.role,
-          task: buildJudgeTask({
-            originalTask: opts.task,
-            candidateOutput: result.finalMessage,
-            criteria: opts.judgeSpec.criteria,
-          }),
+        candidate.verdict = await judgeCandidate(ctx, phase, {
+          judgeTask: opts.judgeTask,
+          candidateOutput: result.finalMessage,
+          judgeSpec: opts.judgeSpec,
           attempt: opts.attempt,
           index,
         });
-        const judgeResult = await awaitWithCancelCascade(ctx, judgeSpawn.agentId);
-        candidate.verdict = judgeResult.failed
-          ? { verdict: "fail", summary: "Judger agent errored." }
-          : parseVerdict(judgeResult.finalMessage);
       }
     }
     return candidate;

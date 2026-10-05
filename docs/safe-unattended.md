@@ -10,7 +10,7 @@ The researched Claude Code / Agent-SDK facts that grounded this (auto-mode suppo
 
 Two orthogonal creation-time flags on a managed agent drive everything:
 
-- **`unattended: true`** - no client is watching to answer approval prompts. Set by the schedule runner, the artifact generator, loops, and unattended-parent spawns. Drives permission-mode coercion (below) and the daemon deny-responder.
+- **`unattended: true`** - no client is watching to answer approval prompts. Set by the schedule runner, the artifact generator, loops, unattended-parent spawns, and every Workflow phase child that `start_workflow` spawns (the engine awaits the child, not a user, and a gate is the run's only human checkpoint). Drives permission-mode coercion (below) and the daemon deny-responder. Before Workflow children carried the flag, a Claude coder profile in its attended `default` mode stalled at its first `Write` prompt, the engine read the half-turn as "no output", and the run burned every loop round the same way.
 - **`internal: true`** - the agent is hidden from listings, never persisted, and emits no attention broadcasts. Schedule-run and artifact-generator agents are both internal (plus `observable: true`, so a client that already knows the id can still watch a revealed run).
 
 The two are independent: `unattended` governs _how permissions are answered_, `internal` governs _whether the agent is seen_.

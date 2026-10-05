@@ -113,6 +113,26 @@ export const RunPhaseJudgeSpecSchema = z
   })
   .passthrough();
 
+// How a judged phase treats a candidate the judge did not pass.
+//
+// `bounded` (the default): the work has a finish line one session can reach -
+// fix this, add that, make these tests pass. A failed candidate is replaced by a
+// fresh agent that receives the task plus the previous round's feedback.
+//
+// `iterative`: the work is open-ended for one session - inventory a platform,
+// plan a project. A failed candidate is CONTINUED: the same chat receives the
+// judge's unmet criteria and carries on from where it stopped, keeping the
+// context it already built instead of a replacement rediscovering it. The judge
+// re-grades after each continuation until it passes or the loop cap trips.
+export const RUN_PHASE_MODES = ["bounded", "iterative"] as const;
+export type RunPhaseMode = (typeof RUN_PHASE_MODES)[number];
+
+const RUN_PHASE_MODE_SET: ReadonlySet<string> = new Set(RUN_PHASE_MODES);
+
+export function isRunPhaseMode(value: string): value is RunPhaseMode {
+  return RUN_PHASE_MODE_SET.has(value);
+}
+
 export const RunPhaseDeclarationSchema = z
   .object({
     // Caller-assigned id, referenced by other phases' `dependsOn`.
@@ -133,6 +153,18 @@ export const RunPhaseDeclarationSchema = z
     keepBest: z.number().int().min(1).max(16).optional(),
     // Attach a structured-judge sub-step to a non-verify phase.
     judge: RunPhaseJudgeSpecSchema.optional(),
+    // See RUN_PHASE_MODES. Requires `judge`. Declared as an enum here (a tool
+    // input, not a wire message) so the conductor sees the allowed values.
+    mode: z
+      .enum(RUN_PHASE_MODES)
+      .optional()
+      .describe(
+        "bounded (default): a failed candidate is replaced by a fresh agent given the previous " +
+          "round's feedback. iterative: a failed candidate's own chat is continued with the judge's " +
+          "unmet criteria until it passes or the loop cap trips - use for open-ended work one " +
+          "session cannot finish, such as inventorying a platform or planning a whole project. " +
+          "Requires judge.",
+      ),
   })
   .passthrough();
 
@@ -199,6 +231,9 @@ export const RunPhaseCandidateSchema = z
     // Validated output fields, when the node declared them (GraphNode.output).
     // Values only - anything large belongs in a file the next node reads.
     outputFields: z.record(z.string(), z.unknown()).optional(),
+    // How many judged rounds this one chat has run (iterative phases continue
+    // the same candidate). Absent means one: older daemons never continued.
+    attempts: z.number().int().min(1).optional(),
   })
   .passthrough();
 
@@ -217,6 +252,9 @@ export const RunPhaseSchema = z
     dependsOn: z.array(z.string().min(1)).optional(),
     fanOut: z.number().int().min(1).optional(),
     keepBest: z.number().int().min(1).optional(),
+    // Loop treatment of a failed candidate (RUN_PHASE_MODES). Plain string on
+    // the wire; absent means bounded, the only mode older daemons ran.
+    mode: z.string().min(1).optional(),
     candidates: z.array(RunPhaseCandidateSchema).optional(),
     // Free-text runtime notes (why it blocked, which cap tripped, gap named).
     notes: z.string().optional(),
