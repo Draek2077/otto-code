@@ -62,6 +62,7 @@ import type { AgentProviderDefinition } from "@otto-code/protocol/provider-manif
 import {
   getFeatureHighlightColor,
   getFeatureTooltip,
+  isFeatureToggleActive,
   getAgentControlHintKey,
   resolveAgentModelSelection,
 } from "@/composer/agent-controls/utils";
@@ -1241,7 +1242,7 @@ function DesktopFeatureItem({
             icon={FeatureIcon}
             iconColor={getFeatureIconColor(
               feature.id,
-              feature.value,
+              isFeatureToggleActive(feature),
               theme.colors.palette,
               theme.colors.foregroundMuted,
             )}
@@ -1358,7 +1359,7 @@ function SheetFeatureItem({
         icon={FeatureIcon}
         iconColor={getFeatureIconColor(
           feature.id,
-          feature.value,
+          isFeatureToggleActive(feature),
           theme.colors.palette,
           theme.colors.foregroundMuted,
         )}

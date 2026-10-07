@@ -57,7 +57,12 @@ import {
   ClaudeTaskProtocolSource,
   type ClaudeHookObservationInput,
 } from "./subagents/live-source.js";
-import { buildClaudeFeatures, claudeModelSupportsFastMode } from "./feature-definitions.js";
+import {
+  buildClaudeFeatures,
+  claudeModelSupportsFastMode,
+  readClaudeFastModeRuntimeStatus,
+  type ClaudeFastModeRuntimeStatus,
+} from "./feature-definitions.js";
 import {
   buildBinaryDiagnosticRows,
   buildCommandResolutionDiagnosticRows,
@@ -2648,6 +2653,8 @@ class ClaudeAgentSession implements AgentSession {
   private nextTurnOrdinal = 1;
   private cancelCurrentTurn: (() => void) | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
+  /** Last fast mode status the CLI reported; surfaces on the Fast toggle. */
+  private fastModeRuntimeStatus: ClaudeFastModeRuntimeStatus | null = null;
   private lastOptionsModel: string | null = null;
   private lastRuntimeModel: string | null = null;
   private compacting = false;
@@ -2732,7 +2739,26 @@ class ClaudeAgentSession implements AgentSession {
     return buildClaudeFeatures({
       modelId: this.config.model,
       fastModeEnabled: this.config.featureValues?.fast_mode === true,
+      fastModeStatus: this.fastModeRuntimeStatus,
     });
+  }
+
+  private recordFastModeRuntimeStatus(message: SDKMessage): void {
+    const status = readClaudeFastModeRuntimeStatus(toObjectRecord(message) ?? {});
+    if (!status) {
+      return;
+    }
+    const previous = this.fastModeRuntimeStatus;
+    if (previous?.state === status.state && previous?.disabledReason === status.disabledReason) {
+      return;
+    }
+    this.fastModeRuntimeStatus = status;
+    if (this.config.featureValues?.fast_mode === true && status.state !== "on") {
+      this.logger.info(
+        { state: status.state, disabledReason: status.disabledReason, model: this.config.model },
+        "Claude fast mode is enabled but the CLI reports it is not active",
+      );
+    }
   }
 
   async getRuntimeInfo(): Promise<AgentRuntimeInfo> {
@@ -6334,6 +6360,7 @@ class ClaudeAgentSession implements AgentSession {
     message: Extract<SDKMessage, { type: "result" }>,
     events: AgentStreamEvent[],
   ): void {
+    this.recordFastModeRuntimeStatus(message);
     this.appendTurnEndObservedSubagentSweep(events);
     this.verifySubagentPricing(message.modelUsage);
     const usage = this.convertUsage(message, message.modelUsage);
@@ -6490,6 +6517,7 @@ class ClaudeAgentSession implements AgentSession {
     // Every init is a fresh CLI process, whose cumulative total_cost_usd
     // restarts at 0 - reset the per-turn cost watermark with it.
     this.contextUsage.beginProcess();
+    this.recordFastModeRuntimeStatus(message);
 
     const msgRecord = toObjectRecord(message) ?? {};
     const newSessionId = extractSessionIdRaw({

@@ -33,8 +33,18 @@ export function normalizeModelId(modelId: string | null | undefined): string | n
   return normalized;
 }
 
-export function getFeatureTooltip(feature: Pick<AgentFeature, "label" | "tooltip">): string {
-  return feature.tooltip ?? feature.label;
+type FeatureTooltipSource = Pick<AgentFeature, "label" | "tooltip"> & {
+  unavailableReason?: string;
+};
+
+/** A provider-reported unavailability reason outranks the static tooltip copy. */
+export function getFeatureTooltip(feature: FeatureTooltipSource): string {
+  return feature.unavailableReason ?? feature.tooltip ?? feature.label;
+}
+
+/** A toggle is only active when it is on and the provider reports nothing blocking it. */
+export function isFeatureToggleActive(feature: { value: boolean; unavailableReason?: string }) {
+  return feature.value && !feature.unavailableReason;
 }
 
 /** Theme colors for the named mode color tiers (see AgentModeColorTier). */

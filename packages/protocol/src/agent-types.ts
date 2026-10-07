@@ -155,6 +155,12 @@ export interface AgentFeatureToggle {
   tooltip?: string;
   icon?: string;
   value: boolean;
+  /**
+   * Set when the provider reports the feature is not taking effect (or cannot
+   * be turned on) for a reason the user can act on, e.g. Claude fast mode on an
+   * account without usage credits. Absent means nothing is known to block it.
+   */
+  unavailableReason?: string;
 }
 
 export interface AgentFeatureSelect {

@@ -5,6 +5,7 @@ import {
   getAgentControlHintKey,
   getModeTierColor,
   hexColorWithAlpha,
+  isFeatureToggleActive,
   normalizeModelId,
   resolveAgentModelSelection,
   resolveRuntimeModelFact,
@@ -35,6 +36,22 @@ describe("feature metadata helpers", () => {
         label: "Custom",
       }),
     ).toBe("Custom");
+  });
+
+  it("shows the provider's unavailability reason instead of the tooltip", () => {
+    expect(
+      getFeatureTooltip({
+        label: "Fast",
+        tooltip: "Toggle fast mode",
+        unavailableReason: "Fast mode is not active: usage credits are off.",
+      }),
+    ).toBe("Fast mode is not active: usage credits are off.");
+  });
+
+  it("treats an enabled toggle with an unavailability reason as inactive", () => {
+    expect(isFeatureToggleActive({ value: true })).toBe(true);
+    expect(isFeatureToggleActive({ value: true, unavailableReason: "blocked" })).toBe(false);
+    expect(isFeatureToggleActive({ value: false })).toBe(false);
   });
 
   it("maps feature highlight colors by feature id", () => {

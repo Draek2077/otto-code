@@ -213,6 +213,8 @@ export interface AgentFeatureToggle {
   tooltip?: string;
   icon?: string;
   value: boolean;
+  /** Provider-reported reason the feature is not taking effect; see the protocol type. */
+  unavailableReason?: string;
 }
 
 export interface AgentFeatureSelect {
