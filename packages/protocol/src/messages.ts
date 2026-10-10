@@ -25,6 +25,7 @@ export {
   WSRecordingStateMessageSchema,
 } from "./websocket-control.js";
 import { z } from "zod";
+import { AgentFeatureSchema, AgentSelectOptionSchema } from "./agent-features.js";
 import {
   ForgeConnectionsManageRequestSchema,
   ForgeConnectionsManageResponseSchema,
@@ -1102,47 +1103,17 @@ const ProviderStatusSchema: z.ZodType<ProviderStatus> = z.enum([
   "unavailable",
 ]);
 
-const AgentSelectOptionSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  description: z.string().optional(),
-  family: z.string().optional(),
-  isDefault: z.boolean().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
-
 const AgentProviderNoticeSchema: z.ZodType<AgentProviderNotice> = z.discriminatedUnion("type", [
   z.object({ type: z.literal("info"), message: z.string() }),
   z.object({ type: z.literal("warning"), message: z.string() }),
   z.object({ type: z.literal("error"), message: z.string() }),
 ]);
 
-export const AgentFeatureToggleSchema = z.object({
-  type: z.literal("toggle"),
-  id: z.string(),
-  label: z.string(),
-  description: z.string().optional(),
-  tooltip: z.string().optional(),
-  icon: z.string().optional(),
-  value: z.boolean(),
-  unavailableReason: z.string().optional(),
-});
-
-export const AgentFeatureSelectSchema = z.object({
-  type: z.literal("select"),
-  id: z.string(),
-  label: z.string(),
-  description: z.string().optional(),
-  tooltip: z.string().optional(),
-  icon: z.string().optional(),
-  value: z.string().nullable(),
-  options: z.array(AgentSelectOptionSchema),
-});
-
-export const AgentFeatureSchema = z.discriminatedUnion("type", [
-  AgentFeatureToggleSchema,
+export {
+  AgentFeatureSchema,
   AgentFeatureSelectSchema,
-]);
+  AgentFeatureToggleSchema,
+} from "./agent-features.js";
 
 const AgentModelDefinitionSchema = z.object({
   provider: AgentProviderSchema,

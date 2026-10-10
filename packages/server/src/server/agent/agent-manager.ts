@@ -6,7 +6,8 @@ import type { PluginLifecycle } from "../plugins/lifecycle/index.js";
 import { describeHookAgent, publishAgentStream } from "../plugins/lifecycle/index.js";
 import type { PluginSessionOpenRequest } from "@otto-code/plugin/server";
 import { randomUUID } from "node:crypto";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
+import { matchesImportableSessionQuery } from "./importable-session-query.js";
 import { stat } from "node:fs/promises";
 import {
   AGENT_LIFECYCLE_STATUSES,
@@ -8968,16 +8969,4 @@ export class AgentManager {
     });
     return result;
   }
-}
-
-function matchesImportableSessionQuery(
-  session: ImportableProviderSession,
-  rawQuery: string | undefined,
-): boolean {
-  const query = rawQuery?.trim().toLowerCase();
-  if (!query) return true;
-  const cwdBasename = basename(session.cwd.replaceAll("\\", "/"));
-  return [session.title, session.firstPromptPreview, session.lastPromptPreview, cwdBasename].some(
-    (value) => value?.toLowerCase().includes(query),
-  );
 }

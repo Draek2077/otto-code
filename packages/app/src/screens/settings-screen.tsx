@@ -107,12 +107,11 @@ import {
   type FollowPromptSuggestionsLimit,
   type LinkOpenBehavior,
   type PreviewServerCloseBehavior,
-  type SendBehavior,
   type ServiceUrlBehavior,
   type Settings as EffectiveSettings,
 } from "@/hooks/use-settings";
 import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
-import { useDefaultSendBehavior } from "@/hooks/use-default-send-behavior";
+import { useDefaultSendSetting, type DefaultSendSetting } from "@/hooks/use-default-send-setting";
 import { useSessionStore } from "@/stores/session-store";
 import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, usePanelStore } from "@/stores/panel-store";
 import { orderHostsLocalFirst, type HostProfile } from "@/types/host-connection";
@@ -428,18 +427,6 @@ const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 // Responsive bordered row: stacks + centers a wide trailing control below the
 // label on compact widths (see `settingsStyles.rowResponsive`).
 const ROW_RESPONSIVE_WITH_BORDER_STYLE = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
-
-function getSendBehaviorOptions(t: TFunction, disabled = false) {
-  return [
-    {
-      value: "interrupt" as const,
-      label: t("settings.general.defaultSend.options.interrupt"),
-      disabled,
-    },
-    { value: "steer" as const, label: t("settings.general.defaultSend.options.steer"), disabled },
-    { value: "queue" as const, label: t("settings.general.defaultSend.options.queue"), disabled },
-  ];
-}
 
 function getInterfaceModeOptions(t: TFunction) {
   return [
@@ -1021,9 +1008,7 @@ function GeneralSection({
 
 interface ChatSectionProps {
   settings: AppSettings;
-  sendBehavior: SendBehavior;
-  sendBehaviorError: string | null;
-  isSavingSendBehavior: boolean;
+  defaultSend: DefaultSendSetting;
   handleSuggestedTasksEnabledChange: (enabled: boolean) => void;
   handleSuggestedTasksDefaultModeChange: (mode: SuggestedTasksDefaultMode) => void;
   handlePromptSuggestionsEnabledChange: (enabled: boolean) => void;
@@ -1036,14 +1021,11 @@ interface ChatSectionProps {
   handleAutoClearFailedBackgroundTasksChange: (enabled: boolean) => void;
   handlePinnedTaskListEnabledChange: (enabled: boolean) => void;
   handlePinnedTaskListAutoDismissChange: (enabled: boolean) => void;
-  handleSendBehaviorChange: (behavior: SendBehavior) => void;
 }
 
 function ChatSection({
   settings,
-  sendBehavior,
-  sendBehaviorError,
-  isSavingSendBehavior,
+  defaultSend,
   handleSuggestedTasksEnabledChange,
   handleSuggestedTasksDefaultModeChange,
   handlePromptSuggestionsEnabledChange,
@@ -1056,16 +1038,11 @@ function ChatSection({
   handleAutoClearFailedBackgroundTasksChange,
   handlePinnedTaskListEnabledChange,
   handlePinnedTaskListAutoDismissChange,
-  handleSendBehaviorChange,
 }: ChatSectionProps) {
   const { t } = useTranslation();
-  const sendBehaviorOptions = useMemo(
-    () => getSendBehaviorOptions(t, isSavingSendBehavior),
-    [isSavingSendBehavior, t],
-  );
   const suggestedTasksDefaultModeDescription =
     SUGGESTED_TASKS_DEFAULT_MODE_DESCRIPTIONS[settings.suggestedTasksDefaultMode];
-  const sendBehaviorDescriptionKey = `settings.general.defaultSend.descriptions.${sendBehavior}`;
+  const sendBehaviorDescriptionKey = `settings.general.defaultSend.descriptions.${defaultSend.behavior}`;
 
   return (
     <Fragment>
@@ -1119,17 +1096,17 @@ function ChatSection({
                 {t("settings.general.defaultSend.label")}
               </SettingsTargetText>
               <Text style={settingsStyles.rowHint}>
-                {isSavingSendBehavior ? t("renameModal.saving") : t(sendBehaviorDescriptionKey)}
+                {defaultSend.isSaving ? t("renameModal.saving") : t(sendBehaviorDescriptionKey)}
               </Text>
-              {sendBehaviorError ? (
-                <Text style={settingsStyles.rowError}>{sendBehaviorError}</Text>
+              {defaultSend.error ? (
+                <Text style={settingsStyles.rowError}>{defaultSend.error}</Text>
               ) : null}
             </View>
             <SegmentedControl
               size="sm"
-              value={sendBehavior}
-              onValueChange={handleSendBehaviorChange}
-              options={sendBehaviorOptions}
+              value={defaultSend.behavior}
+              onValueChange={defaultSend.onChange}
+              options={defaultSend.options}
             />
           </View>
           <View style={ROW_WITH_BORDER_STYLE}>
@@ -2376,9 +2353,6 @@ export default function SettingsScreen({
   const [isPasteLinkVisible, setIsPasteLinkVisible] = useState(false);
   const [isPlaybackTestRunning, setIsPlaybackTestRunning] = useState(false);
   const [playbackTestResult, setPlaybackTestResult] = useState<string | null>(null);
-  const [sendBehaviorError, setSendBehaviorError] = useState<string | null>(null);
-  const [isSavingSendBehavior, setIsSavingSendBehavior] = useState(false);
-  const sendBehaviorSavingRef = useRef(false);
   const lastOpenedAddHostIntentRef = useRef<string | null>(null);
   const isDesktopApp = isElectronRuntime();
   const appVersion = resolveAppVersion();
@@ -2479,8 +2453,7 @@ export default function SettingsScreen({
       knownSelectedSettingsHostServerId ?? knownLocalServerId ?? sortedHosts[0]?.serverId ?? null
     );
   }, [view, knownSelectedSettingsHostServerId, knownLocalServerId, sortedHosts]);
-  const { behavior: defaultSendBehavior, setBehavior: setDefaultSendBehavior } =
-    useDefaultSendBehavior(activeHostServerId);
+  const defaultSend = useDefaultSendSetting(activeHostServerId);
 
   const handleInterfaceModeChange = useCallback(
     (mode: InterfaceMode) => {
@@ -2578,24 +2551,6 @@ export default function SettingsScreen({
       void updateSettings({ rateLimitWarningsEnabled });
     },
     [updateSettings],
-  );
-
-  const handleSendBehaviorChange = useCallback(
-    (behavior: SendBehavior) => {
-      if (sendBehaviorSavingRef.current) return;
-      sendBehaviorSavingRef.current = true;
-      setIsSavingSendBehavior(true);
-      setSendBehaviorError(null);
-      void setDefaultSendBehavior(behavior)
-        .catch((error: unknown) => {
-          setSendBehaviorError(error instanceof Error ? error.message : String(error));
-        })
-        .finally(() => {
-          sendBehaviorSavingRef.current = false;
-          setIsSavingSendBehavior(false);
-        });
-    },
-    [setDefaultSendBehavior],
   );
 
   const handleServiceUrlBehaviorChange = useCallback(
@@ -3001,9 +2956,7 @@ export default function SettingsScreen({
           return (
             <ChatSection
               settings={settings}
-              sendBehavior={defaultSendBehavior}
-              sendBehaviorError={sendBehaviorError}
-              isSavingSendBehavior={isSavingSendBehavior}
+              defaultSend={defaultSend}
               handleSuggestedTasksEnabledChange={handleSuggestedTasksEnabledChange}
               handleSuggestedTasksDefaultModeChange={handleSuggestedTasksDefaultModeChange}
               handlePromptSuggestionsEnabledChange={handlePromptSuggestionsEnabledChange}
@@ -3020,7 +2973,6 @@ export default function SettingsScreen({
               }
               handlePinnedTaskListEnabledChange={handlePinnedTaskListEnabledChange}
               handlePinnedTaskListAutoDismissChange={handlePinnedTaskListAutoDismissChange}
-              handleSendBehaviorChange={handleSendBehaviorChange}
             />
           );
         case "appearance":
