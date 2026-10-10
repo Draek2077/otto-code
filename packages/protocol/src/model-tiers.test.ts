@@ -33,6 +33,8 @@ describe("model-tiers", () => {
 
   it("tiers every Sonnet standard, 1M or not", () => {
     expect(catalogTier("claude-sonnet-5")).toBe("standard");
+    expect(catalogTier("claude-sonnet-5-5")).toBe("standard");
+    expect(catalogTier("claude-haiku-5-5")).toBe("fast");
     expect(catalogTier("claude-sonnet-4-6")).toBe("standard");
     expect(catalogTier("claude-sonnet-4-6[1m]")).toBe("standard");
     expect(catalogTier("claude-sonnet-4-5")).toBe("standard");

@@ -6,10 +6,10 @@ type ClaudeEffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
  * Which auth paths support the Auto permission mode (model-classifier
  * approvals) for a model, per the Claude Code support matrix:
  * - "all" - supported on the Anthropic API, Bedrock/Vertex, and claude.ai
- *   sign-in (Sonnet 5, Opus 4.7+).
+ *   sign-in (Sonnet 5+, Opus 4.7+, Haiku 5.5).
  * - "anthropic-api" - Anthropic API only (Opus 4.6 / Sonnet 4.6); not
  *   available via Bedrock/Vertex or claude.ai subscription sign-in.
- * - "none" - the classifier cannot run on this model anywhere (Haiku,
+ * - "none" - the classifier cannot run on this model anywhere (Haiku 4.5,
  *   Sonnet <=4.5, Opus <=4.5, claude-3). The CLI errors if Auto is set.
  */
 export type ClaudeAutoModeSupport = "all" | "anthropic-api" | "none";
@@ -57,7 +57,8 @@ export const CLAUDE_DEFAULT_THINKING_OPTION_ID = "high";
  * `max_output_tokens`) rather than guessed from the model name:
  *
  * - A `[1m]` entry exists ONLY for models the CLI reports as `window:200000`
- *   AND `supports_1m_beta`. Opus 4.7 / 4.8 / 5 / 5.5, Sonnet 5, and Fable 5 / 5.1 are
+ *   AND `supports_1m_beta`. Opus 4.7 / 4.8 / 5 / 5.5, Sonnet 5 / 5.5, Haiku 5.5,
+ *   and Fable 5 / 5.1 are
  *   `native_1m` - the plain id already resolves to a 1M window, so a second
  *   "1M" row would be a duplicate of the same model. Opus 4.5 is 200K with no
  *   `supports_1m_beta`, so it gets no 1M row either. Ignore `supports_1m_suffix`
@@ -102,6 +103,32 @@ export const CLAUDE_MODEL_MANIFEST = [
     autoModeSupport: "all",
   },
   {
+    id: "claude-sonnet-5-5",
+    label: "Sonnet 5.5",
+    description: "Sonnet 5.5 · Most efficient for simpler tasks",
+    minimumClaudeCodeVersion: "2.1.251",
+    contextWindowMaxTokens: 1_000_000,
+    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    defaultEffortLevel: "medium",
+    // The CLI catalog flags Sonnet 5.5 `rejects_disabled_thinking`.
+    supportsThinkingOff: false,
+    autoModeSupport: "all",
+  },
+  {
+    id: "claude-haiku-5-5",
+    label: "Haiku 5.5",
+    description: "Haiku 5.5 · Fastest for quick answers",
+    // Added in Claude Code 2.1.293 per its changelog; the catalog row carries no minimum.
+    minimumClaudeCodeVersion: "2.1.293",
+    contextWindowMaxTokens: 1_000_000,
+    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    defaultEffortLevel: "medium",
+    // The CLI catalog flags Haiku 5.5 `rejects_disabled_thinking`.
+    supportsThinkingOff: false,
+    // Unlike every earlier Haiku, the CLI's auto-mode gate exempts Haiku 5.5.
+    autoModeSupport: "all",
+  },
+  {
     id: "claude-fable-5",
     // COMPAT(claudeFable5OneMillionId): added in v0.3.0, remove after 2027-02-06 once pre-v0.3.0 app preferences are outside support.
     aliases: ["claude-fable-5[1m]"],
@@ -139,7 +166,7 @@ export const CLAUDE_MODEL_MANIFEST = [
   {
     id: "claude-sonnet-5",
     label: "Sonnet 5",
-    description: "Sonnet 5 · Best for everyday tasks",
+    description: "Sonnet 5 · Previous release",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
     autoModeSupport: "all",
@@ -208,7 +235,7 @@ export const CLAUDE_MODEL_MANIFEST = [
   {
     id: "claude-haiku-4-5",
     label: "Haiku 4.5",
-    description: "Haiku 4.5 · Fastest for quick answers",
+    description: "Haiku 4.5 · Previous release",
     contextWindowMaxTokens: 200_000,
     autoModeSupport: "none",
   },

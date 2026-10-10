@@ -21,6 +21,8 @@ describe("claude model manifest", () => {
     ).toEqual({
       "claude-opus-5-5": "deep",
       "claude-fable-5-1": "deep",
+      "claude-sonnet-5-5": "standard",
+      "claude-haiku-5-5": "fast",
       "claude-fable-5": "deep",
       "claude-opus-5": "deep",
       "claude-opus-4-8": "deep",

@@ -42,6 +42,16 @@ describe("claudeModelRates", () => {
       cacheReadPerMTok: 0.2,
       cacheWritePerMTok: 5,
     });
+    expect(claudeModelRates("claude-sonnet-5-5")).toEqual({
+      inputPerMTok: 2,
+      outputPerMTok: 10,
+      cacheReadPerMTok: 0.1,
+      cacheWritePerMTok: 2.5,
+    });
+    expect(claudeModelRates("claude-haiku-5-5")?.inputPerMTok).toBe(0.1);
+    expect(claudeModelRates("claude-haiku-5-5")?.outputPerMTok).toBe(0.5);
+    expect(claudeModelRates("claude-haiku-5-5")?.cacheReadPerMTok).toBeCloseTo(0.01);
+    expect(claudeModelRates("claude-haiku-5-5")?.cacheWritePerMTok).toBeCloseTo(0.125);
     expect(claudeModelRates("claude-opus-5")?.inputPerMTok).toBe(5);
     expect(claudeModelRates("claude-opus-4-8")?.inputPerMTok).toBe(5);
     expect(claudeModelRates("claude-sonnet-5")).toEqual({

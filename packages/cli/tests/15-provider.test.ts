@@ -63,6 +63,16 @@ const EXPECTED_CLAUDE_MODELS = [
     descriptionFragment: "Most powerful",
   },
   {
+    id: "claude-sonnet-5-5",
+    model: "Sonnet 5.5",
+    descriptionFragment: "Most efficient",
+  },
+  {
+    id: "claude-haiku-5-5",
+    model: "Haiku 5.5",
+    descriptionFragment: "Fastest",
+  },
+  {
     id: "claude-fable-5",
     model: "Fable 5",
     descriptionFragment: "Previous release",
@@ -80,7 +90,7 @@ const EXPECTED_CLAUDE_MODELS = [
   {
     id: "claude-sonnet-5",
     model: "Sonnet 5",
-    descriptionFragment: "Best for everyday tasks",
+    descriptionFragment: "Previous release",
   },
   {
     id: "claude-opus-4-7",
@@ -125,7 +135,7 @@ const EXPECTED_CLAUDE_MODELS = [
   {
     id: "claude-haiku-4-5",
     model: "Haiku 4.5",
-    descriptionFragment: "Fastest",
+    descriptionFragment: "Previous release",
   },
 ] as const;
 

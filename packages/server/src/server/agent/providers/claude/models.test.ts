@@ -65,6 +65,18 @@ describe("getClaudeModels", () => {
     },
   );
 
+  it.each([
+    ["2.1.250", false, false],
+    ["2.1.251", true, false],
+    ["2.1.292", true, false],
+    ["2.1.293", true, true],
+    [undefined, true, true],
+  ] as const)("gates Sonnet 5.5 and Haiku 5.5 on CLI %s", (version, sonnet55, haiku55) => {
+    const models = getClaudeModels(version);
+    expect(models.some(({ id }) => id === "claude-sonnet-5-5")).toBe(sonnet55);
+    expect(models.some(({ id }) => id === "claude-haiku-5-5")).toBe(haiku55);
+  });
+
   it("parses the Claude version ahead of an unrelated wrapper banner", () => {
     expect(parseClaudeCodeVersion("wrapper 1.0.0\n2.1.219 (Claude Code)")).toEqual([2, 1, 219]);
     expect(parseClaudeCodeVersion("not a version")).toBeNull();
@@ -75,6 +87,8 @@ describe("getClaudeModels", () => {
     expect(models.map((m) => m.id)).toEqual([
       "claude-opus-5-5",
       "claude-fable-5-1",
+      "claude-sonnet-5-5",
+      "claude-haiku-5-5",
       "claude-fable-5",
       "claude-opus-5",
       "claude-opus-4-8",
@@ -107,6 +121,8 @@ describe("getClaudeModels", () => {
       new Map([
         ["claude-opus-5-5", 1_000_000],
         ["claude-fable-5-1", 1_000_000],
+        ["claude-sonnet-5-5", 1_000_000],
+        ["claude-haiku-5-5", 1_000_000],
         ["claude-fable-5", 1_000_000],
         ["claude-opus-5", 1_000_000],
         ["claude-opus-4-8", 1_000_000],
@@ -226,7 +242,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
     });
 
     expect(models).toEqual([
-      ...getClaudeModels(),
+      ...getClaudeModels("2.1.280"),
       {
         provider: "claude",
         id: "us.anthropic.claude-opus-4-7[1m]",
@@ -431,6 +447,8 @@ describe("claudeManifestModelAutoModeSupport", () => {
     expect(claudeManifestModelAutoModeSupport("claude-opus-5-5")).toBe("all");
     expect(claudeManifestModelAutoModeSupport("claude-opus-4-8")).toBe("all");
     expect(claudeManifestModelAutoModeSupport("claude-sonnet-5")).toBe("all");
+    expect(claudeManifestModelAutoModeSupport("claude-sonnet-5-5")).toBe("all");
+    expect(claudeManifestModelAutoModeSupport("claude-haiku-5-5")).toBe("all");
     expect(claudeManifestModelAutoModeSupport("claude-opus-4-6")).toBe("anthropic-api");
     expect(claudeManifestModelAutoModeSupport("claude-sonnet-4-6[1m]")).toBe("anthropic-api");
     expect(claudeManifestModelAutoModeSupport("claude-haiku-4-5")).toBe("none");
@@ -605,6 +623,8 @@ describe("Claude Off capability for canonical and persisted model IDs", () => {
     ["claude-sonnet-5-20260101", true],
     ["claude-fable-5", false],
     ["claude-fable-5-1", false],
+    ["claude-sonnet-5-5", false],
+    ["claude-haiku-5-5", false],
     ["claude-haiku-4-5", false],
     ["openrouter/anthropic/claude-opus-4-8", false],
     [null, false],

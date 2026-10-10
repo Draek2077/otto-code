@@ -62,11 +62,17 @@ const CLAUDE_MODEL_RATES: Readonly<Record<string, ClaudeModelRates>> = {
   "claude-opus-4-7": rates(5, 25),
   "claude-opus-4-6": rates(5, 25),
   "claude-opus-4-5": rates(5, 25),
+  // Sonnet 5.5 - $2 in / $10 out, with $0.10 cache reads.
+  "claude-sonnet-5-5": rates(2, 10, 0.05),
   // Sonnet 5 - $2 in / $10 out. Anthropic made its introductory rate permanent.
   "claude-sonnet-5": rates(2, 10),
   // Sonnet 4.6/4.5 - $3 in / $15 out (standard, ≤200K context).
   "claude-sonnet-4-6": rates(3, 15),
   "claude-sonnet-4-5": rates(3, 15),
+  // Haiku 5.5 - $0.10 in / $0.50 out (standard, <=100K prompt). Prompts over
+  // 100K bill at $0.50 / $2.50; that tier is not modeled here, so the tree
+  // verifier logs the drift and it lands on the parent residual.
+  "claude-haiku-5-5": rates(0.1, 0.5),
   // Haiku 4.5 - $1 in / $5 out. Both the plain and the dated API id.
   "claude-haiku-4-5": rates(1, 5),
   "claude-haiku-4-5-20251001": rates(1, 5),
