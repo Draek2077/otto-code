@@ -6,6 +6,7 @@ import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { EditorController } from "./editor-contract";
+import { isMissingFileError } from "./missing-file-error";
 import { buildEditorBufferKey, useEditorBufferStore } from "./editor-buffer-store";
 import { normalizeToLf, type EditorBufferState } from "./editor-buffer-state";
 
@@ -63,6 +64,8 @@ export interface UseEditorBufferResult {
   dismissConflict: () => void;
   reloadFromDisk: () => Promise<void>;
   refresh: () => Promise<void>;
+  /** Re-runs the initial read after a failed load (e.g. once a missing file is created). */
+  reload: () => void;
   diskCheckFailed: boolean;
   diskCheckPending: boolean;
   retryDiskCheck: () => Promise<void>;
@@ -90,6 +93,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
   const editRevisionRef = useRef(0);
   const [diskCheckFailed, setDiskCheckFailed] = useState(false);
   const [diskCheckPending, setDiskCheckPending] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     setDiskCheckFailed(false);
@@ -134,7 +138,11 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
       }
     };
     void load();
-  }, [client, key, path, workspaceRoot]);
+  }, [client, key, path, workspaceRoot, loadAttempt]);
+
+  const reload = useCallback(() => {
+    setLoadAttempt((attempt) => attempt + 1);
+  }, []);
 
   // `editRevisionRef` must count only the user's edits. The editor also reports
   // after installing a document itself: a forced dirty report when a baseline is
@@ -294,7 +302,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
         // The watcher reports absence during atomic replacements too. Confirm
         // it with a read; other failures (including a directory at this path)
         // keep the buffer and expose Retry instead of claiming deletion.
-        if (verifyDeletion && /\bENOENT\b/.test(getErrorMessage(error))) {
+        if (verifyDeletion && isMissingFileError(getErrorMessage(error))) {
           useEditorBufferStore.getState().registerDiskDeleted(key);
           setDiskCheckFailed(false);
         } else {
@@ -388,6 +396,12 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
   const handleWatchEvent = useCallback(
     (event: FileWatchEventPayload) => {
       const state = useEditorBufferStore.getState().buffers[key];
+      // A tab that could not read its file (most often: nothing there yet)
+      // follows the disk until something readable appears.
+      if (state?.status === "error" && event.change !== "deleted") {
+        reload();
+        return;
+      }
       if (!state || state.status !== "ready" || !state.baseline) {
         return;
       }
@@ -434,7 +448,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
         });
       }
     },
-    [key, readDisk, retryDiskCheck],
+    [key, readDisk, reload, retryDiskCheck],
   );
 
   const handleWatchEventRef = useRef(handleWatchEvent);
@@ -485,6 +499,7 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
     dismissConflict,
     reloadFromDisk,
     refresh,
+    reload,
     diskCheckFailed,
     diskCheckPending,
     retryDiskCheck,

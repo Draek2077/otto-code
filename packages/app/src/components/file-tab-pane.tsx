@@ -1,4 +1,5 @@
 import { RevealFileButton } from "@/components/reveal-file-button";
+import { MissingFilePrompt } from "@/components/missing-file-prompt";
 import {
   useCallback,
   useEffect,
@@ -73,6 +74,8 @@ import { resolveFindSeed } from "@/editor/find-seed";
 import type { EditorBufferState } from "@/editor/editor-buffer-state";
 import { buildEditorBufferKey, useEditorBufferStore } from "@/editor/editor-buffer-store";
 import { useEditorBuffer } from "@/editor/use-editor-buffer";
+import { isMissingFileError } from "@/editor/missing-file-error";
+import { useCreateMissingFile, type CreateMissingFile } from "@/editor/use-create-missing-file";
 import { useEditorClipboardActions } from "@/editor/use-editor-clipboard-actions";
 import { DefinitionPickerDialog } from "@/editor/definition-picker-dialog";
 import { EditorOutlineSheet } from "@/editor/editor-outline-sheet";
@@ -558,6 +561,8 @@ function PreviewOnlyView({
   onRefine,
   onAddToChat,
   onMarkdownLinkPress,
+  onCreateMissingFile,
+  creatingMissingFile,
 }: {
   serverId: string;
   workspaceId: string;
@@ -581,6 +586,9 @@ function PreviewOnlyView({
   /** Attaches this file to the composer as a pill; null without a registered workspace. */
   onAddToChat: (() => void) | null;
   onMarkdownLinkPress: (href: string) => boolean;
+  /** Creates the file when nothing is at the path; null when it cannot be created here. */
+  onCreateMissingFile: (() => void) | null;
+  creatingMissingFile: boolean;
 }) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
@@ -723,6 +731,16 @@ function PreviewOnlyView({
   // manual nudge for when the user does not want to wait on it.
   const [refreshSignal, setRefreshSignal] = useState(0);
   const handleRefreshPress = useCallback(() => setRefreshSignal((value) => value + 1), []);
+  const missingFilePrompt = useMemo(
+    () => (
+      <MissingFilePrompt
+        path={location.path}
+        onCreate={onCreateMissingFile}
+        creating={creatingMissingFile}
+      />
+    ),
+    [creatingMissingFile, location.path, onCreateMissingFile],
+  );
   const reloadAction: CompactFileToolbarAction = {
     id: "reload-from-disk",
     label: t("editor.diskChange.reload"),
@@ -938,6 +956,7 @@ function PreviewOnlyView({
         syncRef={previewSyncRef}
         onLinkPress={onMarkdownLinkPress}
         refreshSignal={refreshSignal}
+        missingFilePrompt={missingFilePrompt}
       />
       {/* Null until the preview has read the file - the bar appears with real
           values rather than flashing zeroes. No caret: there is no editor. */}
@@ -1562,6 +1581,8 @@ function EditorModeView({
   onMarkdownLinkPress,
   onOpenExternalEditor,
   externalEditorLabel,
+  createMissingFile,
+  focusOnReadyRef,
 }: {
   serverId: string;
   workspaceId: string;
@@ -1589,6 +1610,9 @@ function EditorModeView({
   /** Starts the host-owned editor after the clean-buffer guard passes. */
   onOpenExternalEditor: (() => void) | null;
   externalEditorLabel: string | null;
+  createMissingFile: CreateMissingFile;
+  /** Set when the file was just created here: the next editor to mount takes focus. */
+  focusOnReadyRef: RefObject<boolean>;
 }) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
@@ -1606,12 +1630,26 @@ function EditorModeView({
     dismissConflict,
     reloadFromDisk,
     refresh,
+    reload,
     diskCheckFailed,
     diskCheckPending,
     retryDiskCheck,
     keepMyChanges,
     dismissDiskChange,
   } = useEditorBuffer({ serverId, workspaceId, workspaceRoot, path, controllerRef });
+  const createFile = createMissingFile.create;
+  const handleCreateMissingFile = useMemo(() => {
+    if (!createFile) return null;
+    return () => {
+      void createFile().then((created) => {
+        if (created) {
+          focusOnReadyRef.current = true;
+          reload();
+        }
+        return undefined;
+      });
+    };
+  }, [createFile, focusOnReadyRef, reload]);
   const diskCheckAlertState = useMemo(
     () => ({ kind: "checkFailed" as const, retrying: diskCheckPending, onRetry: retryDiskCheck }),
     [diskCheckPending, retryDiskCheck],
@@ -1803,8 +1841,12 @@ function EditorModeView({
     (controller: EditorController) => {
       controllerRef.current = controller;
       revealTarget(controller);
+      if (focusOnReadyRef.current) {
+        focusOnReadyRef.current = false;
+        controller.focus();
+      }
     },
-    [controllerRef, revealTarget],
+    [controllerRef, focusOnReadyRef, revealTarget],
   );
 
   // Re-opening the *same* file at a new target (e.g. "Edit" on a diff line, or
@@ -2256,10 +2298,18 @@ function EditorModeView({
           <View style={styles.toolbarSpacer} />
           {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
         </View>
-        <View style={styles.centerState}>
-          <Text style={styles.errorText}>{buffer.error ?? t("editor.loadFailed")}</Text>
-          <RevealFileButton serverId={serverId} workspaceRoot={workspaceRoot} path={path} />
-        </View>
+        {isMissingFileError(buffer.error) ? (
+          <MissingFilePrompt
+            path={path}
+            onCreate={handleCreateMissingFile}
+            creating={createMissingFile.creating}
+          />
+        ) : (
+          <View style={styles.centerState}>
+            <Text style={styles.errorText}>{buffer.error ?? t("editor.loadFailed")}</Text>
+            <RevealFileButton serverId={serverId} workspaceRoot={workspaceRoot} path={path} />
+          </View>
+        )}
       </View>
     );
   }
@@ -2833,6 +2883,14 @@ export function FileTabPane({
   const [externalEditorFailure, setExternalEditorFailure] = useState<string | null>(null);
   const [fileInfo, setFileInfo] = useState<FilePreviewFileInfo | null>(null);
   const controllerRef = useRef<EditorController | null>(null);
+  // A path with nothing at it yet: both views offer to create it, and the
+  // editor that loads the new file takes focus so the user can start typing.
+  const createMissingFile = useCreateMissingFile({
+    serverId,
+    workspaceRoot,
+    path: location.path,
+  });
+  const focusOnReadyRef = useRef(false);
   const handleMarkdownLinkPress = useCallback(
     (href: string) => {
       const target = resolveWorkspaceMarkdownLink({
@@ -2960,6 +3018,22 @@ export function FileTabPane({
     },
     [location.path, serverId, setMode, workspaceId],
   );
+
+  // From Preview, creating the file moves to the editor: an empty document has
+  // nothing to render, and the point of creating it is to type into it.
+  const createFromPreview = createMissingFile.create;
+  const handleCreateMissingFileFromPreview = useMemo(() => {
+    if (!createFromPreview) return null;
+    return () => {
+      void createFromPreview().then((created) => {
+        if (created) {
+          focusOnReadyRef.current = true;
+          setMode("editor");
+        }
+        return undefined;
+      });
+    };
+  }, [createFromPreview, setMode]);
 
   // Formatted (markdown live preview) is an axis of the mode bar, not a mode.
   // It applies to the EDITOR PANE, so it is live in both Editor and Split (a
@@ -3280,6 +3354,8 @@ export function FileTabPane({
         onRefine={onRefine}
         onAddToChat={onAddToChat}
         onMarkdownLinkPress={handleMarkdownLinkPress}
+        onCreateMissingFile={handleCreateMissingFileFromPreview}
+        creatingMissingFile={createMissingFile.creating}
       />
     ) : (
       <EditorModeView
@@ -3304,6 +3380,8 @@ export function FileTabPane({
         onMarkdownLinkPress={handleMarkdownLinkPress}
         onOpenExternalEditor={externalEditorAvailable ? openExternalEditor : null}
         externalEditorLabel={externalEditorLabel}
+        createMissingFile={createMissingFile}
+        focusOnReadyRef={focusOnReadyRef}
       />
     );
 

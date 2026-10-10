@@ -5,6 +5,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { FileReadResult } from "@otto-code/client/internal/daemon-client";
@@ -31,6 +32,7 @@ import { FileEditorWarningBanner } from "@/components/file-editor-warning-banner
 import { FileHtmlPreview } from "@/file-pane/html-preview";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { RevealFileButton } from "@/components/reveal-file-button";
+import { isMissingFileError } from "@/editor/missing-file-error";
 import type { MarkdownTaskToggle } from "@/components/markdown/task-context";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import {
@@ -1033,6 +1035,12 @@ export interface FilePreviewProps {
   onLinkPress?: (href: string) => boolean;
   /** Bumped by an explicit Reload from disk; each new value re-reads the file. */
   refreshSignal?: number;
+  /**
+   * Shown in place of the read error when nothing is at the path yet. Unset
+   * keeps the raw error, which is right for viewer-only callers that cannot
+   * offer to create the file.
+   */
+  missingFilePrompt?: ReactNode;
 }
 
 // eslint-disable-next-line complexity -- query, watch, and preview rendering remain one lifecycle owner.
@@ -1054,6 +1062,7 @@ export function FilePreview({
   onToggleTask = null,
   onLinkPress,
   refreshSignal = 0,
+  missingFilePrompt,
 }: FilePreviewProps) {
   const { t } = useTranslation();
   // Ungated on compact: the app's overlay bar is wanted on mobile web too,
@@ -1223,6 +1232,16 @@ export function FilePreview({
     path: location.path,
     onFileInfo,
   });
+
+  // The watcher above keeps re-reading, so the prompt gives way to the file
+  // as soon as something (the Create button, an agent, a terminal) writes it.
+  if (missingFilePrompt != null && isMissingFileError(query.data?.error)) {
+    return (
+      <View style={styles.container} testID="workspace-file-pane">
+        {missingFilePrompt}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container} testID="workspace-file-pane">

@@ -3063,6 +3063,11 @@ export const es: TranslationResources = {
   editor: {
     loading: "Cargando archivo...",
     loadFailed: "No se pudo cargar el archivo",
+    missingFile: {
+      title: "{{name}} aún no existe",
+      body: "Créalo como un archivo vacío y empieza a editar.",
+      create: "Crear archivo",
+    },
     viewMode: {
       editor: "Editor",
       split: "Editor y vista previa",

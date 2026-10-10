@@ -3048,6 +3048,11 @@ export const ptBR: TranslationResources = {
   editor: {
     loading: "Carregando arquivo...",
     loadFailed: "Falha ao carregar o arquivo",
+    missingFile: {
+      title: "{{name}} ainda não existe",
+      body: "Crie-o como um arquivo vazio e comece a editar.",
+      create: "Criar arquivo",
+    },
     viewMode: {
       editor: "Editor",
       split: "Editor e pré-visualização",

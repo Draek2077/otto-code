@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canCreateAsTextFile,
   defaultFileViewMode,
   exceedsHighlightBudget,
   HIGHLIGHT_MAX_CHARS,
@@ -130,5 +131,32 @@ describe("defaultFileViewMode", () => {
   it("only reads the extension from the file name, not the directory", () => {
     expect(defaultFileViewMode("v1.2/CHANGELOG")).toBe("editor");
     expect(defaultFileViewMode("archive.zip/nested")).toBe("editor");
+  });
+});
+
+describe("canCreateAsTextFile", () => {
+  it("allows plain text and code", () => {
+    expect(canCreateAsTextFile("src/new-module.ts")).toBe(true);
+    expect(canCreateAsTextFile("config/settings.json")).toBe(true);
+    expect(canCreateAsTextFile("Makefile")).toBe(true);
+    expect(canCreateAsTextFile(".env.local")).toBe(true);
+  });
+
+  it("allows rendered documents, which are text", () => {
+    expect(canCreateAsTextFile("docs/plan.md")).toBe(true);
+    expect(canCreateAsTextFile("diagrams/flow.mmd")).toBe(true);
+    expect(canCreateAsTextFile("site/index.html")).toBe(true);
+  });
+
+  it("refuses preview-first images, media and binaries", () => {
+    expect(canCreateAsTextFile("assets/logo.png")).toBe(false);
+    expect(canCreateAsTextFile("clips/demo.mp4")).toBe(false);
+    expect(canCreateAsTextFile("dist/bundle.zip")).toBe(false);
+  });
+
+  it("refuses paths with no file name", () => {
+    expect(canCreateAsTextFile("")).toBe(false);
+    expect(canCreateAsTextFile("docs/")).toBe(false);
+    expect(canCreateAsTextFile("docs/..")).toBe(false);
   });
 });

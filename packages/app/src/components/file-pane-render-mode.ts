@@ -147,3 +147,20 @@ export function defaultFileViewMode(filePath: string): FileViewMode {
   }
   return PREVIEW_FIRST_EXTENSIONS.has(fileExtension(filePath)) ? "preview" : "editor";
 }
+
+/**
+ * Whether a file that does not exist yet may be created empty and opened in the
+ * text editor: anything the editor would open as text. Rendered documents
+ * (markdown, mermaid, AsciiDoc, HTML) are text; the preview-first formats are
+ * images, media and binaries that an empty file could never be.
+ */
+export function canCreateAsTextFile(filePath: string): boolean {
+  const name = filePath.trim().split(/[\\/]/).pop() ?? "";
+  if (!name || name === "." || name === "..") {
+    return false;
+  }
+  return (
+    renderedDocumentKind(filePath) !== null ||
+    !PREVIEW_FIRST_EXTENSIONS.has(fileExtension(filePath))
+  );
+}

@@ -3077,6 +3077,11 @@ export const fr: TranslationResources = {
   editor: {
     loading: "Chargement du fichier...",
     loadFailed: "Échec du chargement du fichier",
+    missingFile: {
+      title: "{{name}} n'existe pas encore",
+      body: "Créez-le comme fichier vide et commencez à le modifier.",
+      create: "Créer le fichier",
+    },
     viewMode: {
       editor: "Éditeur",
       split: "Éditeur et aperçu",

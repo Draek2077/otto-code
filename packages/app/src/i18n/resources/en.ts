@@ -3031,6 +3031,11 @@ export const en = {
   editor: {
     loading: "Loading file...",
     loadFailed: "Failed to load file",
+    missingFile: {
+      title: "{{name}} doesn't exist yet",
+      body: "Create it as an empty file and start editing.",
+      create: "Create file",
+    },
     viewMode: {
       editor: "Editor",
       split: "Editor and preview",

@@ -3038,6 +3038,11 @@ export const ja: TranslationResources = {
   editor: {
     loading: "ファイルを読み込み中...",
     loadFailed: "ファイルを読み込めませんでした",
+    missingFile: {
+      title: "{{name}} はまだ存在しません",
+      body: "空のファイルとして作成して編集を始めます。",
+      create: "ファイルを作成",
+    },
     viewMode: {
       editor: "エディター",
       split: "エディターとプレビュー",

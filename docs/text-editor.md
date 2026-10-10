@@ -277,6 +277,16 @@ Riding in the same bar, behind a divider, is one control that is deliberately **
 
 The view mode is remembered per file in `file-view-store.ts`, with a path-derived default (`defaultFileViewMode`): rendered formats (markdown, images, binaries) open in preview; plain text/code opens straight in the editor. The editor buffer survives mode switches (preview renders the live draft); the discard guard runs only on tab close. Persisted legacy `editor` tab targets coerce to `file` targets - see **`COMPAT(unifiedFileTab)`** in the workspace-tabs store (`packages/app/src/stores/workspace-tabs-store/state.ts`).
 
+### A file that does not exist yet
+
+Opening a path with nothing at it (a link to a doc an agent has yet to write, a config you are about to add) is normal, so the tab does not show the raw `ENOENT` read error. Both Editor and Preview show **`MissingFilePrompt`** (`packages/app/src/components/missing-file-prompt.tsx`): "`name` doesn't exist yet" and, when the file can be created here, a **Create file** button.
+
+- **What qualifies:** `isMissingFileError` (`packages/app/src/editor/missing-file-error.ts`) matches `ENOENT` in the read error and nothing else. A directory at the path or a permission error is a real failure and keeps the error text.
+- **When Create is offered:** the host must serve both the Explorer's file mutations (`fileMutations`) and the text editor, and `canCreateAsTextFile` (`file-pane-render-mode.ts`) must say the editor would open the path as text. Rendered documents (Markdown, Mermaid, AsciiDoc, HTML) qualify; the preview-first image, media and binary formats get the message without the button.
+- **How it creates:** `useCreateMissingFile` calls the Explorer's own `fs.entry.create` RPC, an exclusive create whose parent the daemon re-validates against the workspace. It never overwrites, and a path whose parent folder does not exist fails with a toast rather than creating folders. A "name taken" result counts as success: someone else created the file first, and the tab simply loads it.
+- **After creating:** Editor re-runs its initial read (`reload()` on `useEditorBuffer`) and the editor takes focus. Preview switches the tab to Editor, since an empty document has nothing to render and the point of creating it is to type into it.
+- **Created elsewhere:** a buffer in the error state follows the file watcher, and the preview re-reads on every watch event, so a file an agent or a terminal writes replaces the prompt without a click.
+
 ### The toolbar in a narrow pane
 
 Both file toolbars (editor and preview) hold more buttons than a split pane, a phone, or a

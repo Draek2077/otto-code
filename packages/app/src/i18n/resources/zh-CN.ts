@@ -2959,6 +2959,11 @@ export const zhCN: TranslationResources = {
   editor: {
     loading: "正在加载文件...",
     loadFailed: "文件加载失败",
+    missingFile: {
+      title: "{{name}} 尚不存在",
+      body: "将其创建为空文件并开始编辑。",
+      create: "创建文件",
+    },
     viewMode: {
       editor: "编辑器",
       split: "编辑器与预览",

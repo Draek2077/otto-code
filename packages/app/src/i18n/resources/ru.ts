@@ -3045,6 +3045,11 @@ export const ru: TranslationResources = {
   editor: {
     loading: "Загрузка файла...",
     loadFailed: "Не удалось загрузить файл",
+    missingFile: {
+      title: "{{name}} ещё не существует",
+      body: "Создайте пустой файл и начните редактирование.",
+      create: "Создать файл",
+    },
     viewMode: {
       editor: "Редактор",
       split: "Редактор и предпросмотр",

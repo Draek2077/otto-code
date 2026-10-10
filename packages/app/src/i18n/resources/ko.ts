@@ -3022,6 +3022,11 @@ export const ko: TranslationResources = {
   editor: {
     loading: "Loading file...",
     loadFailed: "Failed to load file",
+    missingFile: {
+      title: "{{name}}이(가) 아직 없습니다",
+      body: "빈 파일로 만들고 편집을 시작하세요.",
+      create: "파일 만들기",
+    },
     viewMode: {
       editor: "Editor",
       split: "Editor and preview",

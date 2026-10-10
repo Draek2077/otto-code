@@ -2992,6 +2992,11 @@ export const ar: TranslationResources = {
   editor: {
     loading: "جارٍ تحميل الملف...",
     loadFailed: "تعذّر تحميل الملف",
+    missingFile: {
+      title: "{{name}} غير موجود بعد",
+      body: "أنشئه كملف فارغ وابدأ التحرير.",
+      create: "إنشاء ملف",
+    },
     viewMode: {
       editor: "المحرّر",
       split: "المحرّر والمعاينة",
