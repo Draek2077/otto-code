@@ -5,7 +5,7 @@ import { LOCAL_AI_PROVIDER, getLocalAiModel } from "../../e2e/support/helpers/lo
  * an explicit, costly choice, not something to bury in a scenario file.
  * Provider and model are chosen via env vars, both overridable per capture.
  *
- * Default is Claude on Sonnet 5 (user decision, 2026-07-18): cheap relative
+ * Default is Claude on Sonnet 5.5 (user decision, 2026-07-18; Sonnet 5.5 since 2026-10-10): cheap relative
  * to Opus, and the only provider with the full feature set demo captures
  * need (e.g. the local-AI/openai-compatible tool catalog has no
  * TodoWrite-equivalent, so scenario beats built around planning/todos can't

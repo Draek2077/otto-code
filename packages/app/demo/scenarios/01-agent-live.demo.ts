@@ -52,7 +52,7 @@ import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
 const REAL = process.env.DEMO_REAL === "1" || Boolean(process.env.E2E_FORK_OTTO_HOME_FROM);
 test.skip(
   !REAL,
-  "Real-run scenario: run via `npm run demo:real` (Claude/Sonnet 5, the default) or " +
+  "Real-run scenario: run via `npm run demo:real` (Claude/Sonnet 5.5, the default) or " +
     "`DEMO_PROVIDER=local-ai npm run demo:real:local-ai` to capture against local-AI instead.",
 );
 
@@ -132,9 +132,9 @@ test("agent working live walkthrough", async ({ page }, testInfo) => {
   // single pinned model under its provider group, so there's nothing to
   // disambiguate by name there.
   const claudeModelLabels: Record<string, string> = {
-    sonnet: "Sonnet 5",
-    opus: "Opus 4.8",
-    haiku: "Haiku 4.5",
+    sonnet: "Sonnet 5.5",
+    opus: "Opus 5.5",
+    haiku: "Haiku 5.5",
   };
 
   await openModelPersonalityPicker(page);

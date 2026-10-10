@@ -263,7 +263,7 @@ async function chooseTheme() {
 
 async function chooseProvider() {
   return select("Which provider/model?", [
-    { label: "Claude - Sonnet 5 (cheap, full feature set)", value: { DEMO_PROVIDER: "claude" } },
+    { label: "Claude - Sonnet 5.5 (cheap, full feature set)", value: { DEMO_PROVIDER: "claude" } },
     {
       label: "Claude - Opus (pricier, sometimes plans more thoroughly)",
       value: { DEMO_PROVIDER: "claude", DEMO_MODEL: "opus" },

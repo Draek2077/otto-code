@@ -38,7 +38,7 @@ npm run demo:twilight -- 04-personalities 05-agent-teams 06-model-picker
 npm run demo:twilight -- 04-personalities
 npm run demo:daylight -- 04-personalities
 
-# Real-run scenarios (spends Claude tokens on Sonnet 5 by default - see
+# Real-run scenarios (spends Claude tokens on Sonnet 5.5 by default - see
 # "Choosing a provider" below to run against local-AI instead)
 npm run demo:real -- 07-subagent-track
 npm run demo:real:twilight -- 07-subagent-track   # one theme, cheaper to iterate
@@ -49,7 +49,7 @@ npm run demo:spread:real     # adds the agent-chat surface (one real Claude turn
 
 # Real Electron app capture (native window, <webview> preview pane, OS chrome)
 npm run demo:electron -- electron-smoke                        # no provider (mock agent)
-cross-env DEMO_REAL=1 npm run demo:electron -- 02-preview-verify # real turn, Claude/Sonnet 5
+cross-env DEMO_REAL=1 npm run demo:electron -- 02-preview-verify # real turn, Claude/Sonnet 5.5
 
 # Turn a scenario's .out/ into site-ready assets (PNG + MP4/WebM + manifest.json)
 npm run demo:assets -- 04-personalities-twilight 04-personalities-daylight
@@ -153,7 +153,7 @@ scenario file - it's chosen via env vars. Scenarios that call
   it - cheap and full-featured is the point) and `"local-ai"` uses
   `E2E_LOCAL_AI_MODEL` from `.env.test`.
 
-**Default is Claude on Sonnet 5** (user decision, 2026-07-18): cheap relative
+**Default is Claude on Sonnet 5.5** (user decision, 2026-07-18; Sonnet 5.5 since 2026-10-10): cheap relative
 to Opus, and the only provider with the full feature set demo captures need
 
 - the local-AI/openai-compatible tool catalog has no TodoWrite-equivalent,

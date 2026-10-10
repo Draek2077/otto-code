@@ -52,7 +52,7 @@ const REAL = process.env.DEMO_REAL === "1" || Boolean(process.env.E2E_FORK_OTTO_
 test.skip(
   !REAL,
   "Real-run scenario: run via `cross-env DEMO_REAL=1 npm run demo:electron -- " +
-    "02-preview-verify` (Claude/Sonnet 5, the default provider) or " +
+    "02-preview-verify` (Claude/Sonnet 5.5, the default provider) or " +
     "`npm run demo:electron:real:local-ai -- 02-preview-verify` to opt into the local-AI " +
     "tier explicitly (see demo/helpers/provider.ts).",
 );
@@ -241,7 +241,7 @@ test("preview verification: fix the contrast, prove it in the preview", async ()
     // Create the agent WITHOUT a prompt yet - the human Preview-button flow
     // (shots 1-2) runs first, uncontested (see file header for why).
     // Provider/model are never hardcoded - see demo/helpers/provider.ts.
-    // Default is Claude on Sonnet 5 (user decision, 2026-07-18: cheap
+    // Default is Claude on Sonnet 5.5 (user decision, 2026-07-18: cheap
     // relative to Opus, full feature set). DEMO_PROVIDER=local-ai opts into
     // the local-AI tier explicitly (the "openai-compatible" provider
     // e2e/global-setup.ts injects when E2E_LOCAL_AI=1). The daemon's MCP

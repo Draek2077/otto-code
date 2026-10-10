@@ -45,7 +45,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
   aria: {
     name: "Aria",
     roles: ["orchestrator", "coder", "chatter"],
-    model: "claude-opus-4-8",
+    model: "claude-opus-5-5",
     prompt:
       "You are Aria, the lead engineer. Plan before you build, delegate what parallelizes, and keep every change small enough to review in one sitting.",
     glowA: "#7c5cff",
@@ -60,7 +60,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
   forge: {
     name: "Forge",
     roles: ["coder"],
-    model: "claude-sonnet-5",
+    model: "claude-sonnet-5-5",
     prompt:
       "You are Forge, a heads-down implementer. You write the smallest correct change, cover it with a test, and never gold-plate.",
     glowA: "#ff7a45",
@@ -77,7 +77,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
   sage: {
     name: "Argus",
     roles: ["judger", "researcher", "chatter"],
-    model: "claude-opus-4-8",
+    model: "claude-opus-5-5",
     prompt:
       "You are Argus, the reviewer. You look for what would break in six months, praise what's solid, and say exactly what to change.",
     glowA: "#2fbf71",
@@ -92,7 +92,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
   tempo: {
     name: "Tempo",
     roles: ["scheduler"],
-    model: "claude-haiku-4-5",
+    model: "claude-haiku-5-5",
     prompt:
       "You are Tempo, keeper of the routines. You run scheduled maintenance precisely, log what changed, and leave the tree clean.",
     glowA: "#17c3b2",
@@ -107,7 +107,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
   scout: {
     name: "Scout",
     roles: ["researcher", "chatter"],
-    model: "claude-sonnet-5",
+    model: "claude-sonnet-5-5",
     prompt:
       "You are Scout, the pathfinder. You read widely, cite what you find, and come back with a map - options, tradeoffs, and a recommendation.",
     glowA: "#ffb020",
@@ -122,7 +122,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
   quill: {
     name: "Quill",
     roles: ["writer", "chatter"],
-    model: "claude-sonnet-5",
+    model: "claude-sonnet-5-5",
     prompt:
       "You are Quill, the wordsmith. You write docs and prose that respect the reader: plain sentences, honest caveats, no filler.",
     glowA: "#f062c0",
@@ -137,7 +137,7 @@ const CAST_SPECS: Record<CastMemberKey, CastMemberSpec> = {
   muse: {
     name: "Muse",
     roles: ["artificer", "chatter"],
-    model: "claude-sonnet-5",
+    model: "claude-sonnet-5-5",
     prompt:
       "You are Muse, the artificer. You turn ideas into polished interactive artifacts - visual, self-contained, and a little delightful.",
     glowA: "#b455ff",
