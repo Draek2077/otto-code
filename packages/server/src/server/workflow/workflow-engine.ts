@@ -4,6 +4,7 @@ import {
   type RunPhaseCandidate,
   type RunPlan,
   defaultRoleForPhaseType,
+  describeUnsafeEditingPhase,
   isRunPhaseType,
 } from "@otto-code/protocol/workflow";
 import { JudgeVerdictSchema, judgeVerdictPassed } from "@otto-code/protocol/judge-verdict";
@@ -172,6 +173,10 @@ export function buildRunFromPlan(input: {
       }
     }
     seen.add(decl.id);
+    const unsafeEdit = describeUnsafeEditingPhase(decl);
+    if (unsafeEdit) {
+      throw new RunEngineError(unsafeEdit, decl.id);
+    }
     if (decl.mode === "iterative") {
       // The judge is what decides when a continued chat is finished; without
       // one the loop has no exit. A verify phase's candidate IS the judge and a
@@ -335,6 +340,8 @@ interface ExecuteRunContext {
   port: RunEnginePort;
   /** Running total of spawned child agents (cap accounting). */
   agentsSpawned: number;
+  /** Tail of the mid-phase emits; see emitProgress. */
+  progressChain: Promise<void>;
 }
 
 /**
@@ -351,7 +358,7 @@ export async function executeRun(input: {
   signal: AbortSignal;
   port: RunEnginePort;
 }): Promise<Run> {
-  const ctx: ExecuteRunContext = { ...input, agentsSpawned: 0 };
+  const ctx: ExecuteRunContext = { ...input, agentsSpawned: 0, progressChain: Promise.resolve() };
   const { run, port } = ctx;
   run.status = "running";
   run.updatedAt = port.now();
@@ -420,6 +427,32 @@ function finalizeCanceled(ctx: ExecuteRunContext): Run {
 function setPhase(ctx: ExecuteRunContext, phase: RunPhase, patch: Partial<RunPhase>): void {
   Object.assign(phase, patch);
   ctx.run.updatedAt = ctx.port.now();
+}
+
+/**
+ * Publish a milestone inside a running phase: a candidate spawned, went to its
+ * judge, got a verdict, or was continued. Without these a phase reads as frozen
+ * at its start time for as long as its chats work. The candidates of one round
+ * progress concurrently, so the emits are chained to reach the store in order.
+ */
+function emitProgress(ctx: ExecuteRunContext): Promise<void> {
+  ctx.run.updatedAt = ctx.port.now();
+  const emitted = ctx.progressChain.then(() => ctx.port.emit(ctx.run));
+  // A failed emit still fails its caller; it must not wedge the emits behind it.
+  ctx.progressChain = emitted.catch(() => undefined);
+  return emitted;
+}
+
+/** Close a candidate's round with its verdict, dated so a reader can age it. */
+function recordVerdict(
+  ctx: ExecuteRunContext,
+  candidate: RunPhaseCandidate,
+  verdict: RunPhaseCandidate["verdict"],
+): Promise<void> {
+  candidate.verdict = verdict;
+  candidate.verdictAt = ctx.port.now();
+  candidate.stage = "settled";
+  return emitProgress(ctx);
 }
 
 // Returns true when the run should stop here (gate rejected).
@@ -774,7 +807,6 @@ export function buildRunSummaryPrompt(run: Run): string {
 }
 
 async function runWorkerPhase(ctx: ExecuteRunContext, phase: RunPhase): Promise<void> {
-  const { run, port } = ctx;
   const role = phase.assigneeRole ?? null;
   const declaration = ctx.plan.phases.find((p) => p.id === phase.id);
   const judgeSpec = declaration?.judge;
@@ -820,6 +852,7 @@ async function runWorkerPhase(ctx: ExecuteRunContext, phase: RunPhase): Promise<
       break;
     }
 
+    phase.round = attempt + 1;
     const round = await runCandidateRound(ctx, phase, {
       role,
       task: loopFeedback ? composePhaseTask(ctx, phase, loopFeedback) : effectiveTask,
@@ -836,7 +869,7 @@ async function runWorkerPhase(ctx: ExecuteRunContext, phase: RunPhase): Promise<
       }
     }
     phase.candidates = candidates;
-    await port.emit(run);
+    await emitProgress(ctx);
 
     attempt++;
     if (shouldStopLoop(ctx, keepBest, passers, attempt)) {
@@ -911,20 +944,19 @@ async function runIterativePhase(
     return;
   }
 
+  phase.round = 1;
   const candidates = await runCandidateRound(ctx, phase, {
     role: input.role,
     task: effectiveTask,
     judgeTask: effectiveTask,
     count: fanOut,
     attempt: 0,
+    attempts: 1,
     isVerifyPhase: false,
     judgeSpec,
   });
-  for (const candidate of candidates) {
-    candidate.attempts = 1;
-  }
   phase.candidates = candidates;
-  await port.emit(run);
+  await emitProgress(ctx);
 
   let iterations = 1;
   let passers = candidates.filter(candidatePassed).length;
@@ -946,6 +978,7 @@ async function runIterativePhase(
       );
       break;
     }
+    phase.round = iterations + 1;
     await mapWithConcurrency(continuing, ctx.caps.maxConcurrency, (candidate, index) =>
       continueCandidate(ctx, phase, {
         candidate,
@@ -958,7 +991,7 @@ async function runIterativePhase(
     );
     iterations++;
     passers = candidates.filter(candidatePassed).length;
-    await port.emit(run);
+    await emitProgress(ctx);
   }
 
   if (ctx.signal.aborted) {
@@ -987,21 +1020,31 @@ async function continueCandidate(
     agentId: candidate.agentId,
     task: buildContinuationPrompt(candidate),
   });
-  const result = await awaitWithCancelCascade(ctx, candidate.agentId);
+  // The round counts from the moment it starts, so a live reader sees round N
+  // working with round N-1's verdict still dated beside it.
   candidate.attempts = (candidate.attempts ?? 1) + 1;
+  candidate.stage = "working";
+  await emitProgress(ctx);
+  const result = await awaitWithCancelCascade(ctx, candidate.agentId);
   if (result.finalMessage) {
     candidate.summary = result.finalMessage;
   }
   if (result.failed) {
     candidate.error = result.error ?? "The assigned agent failed before producing output.";
-    candidate.verdict = { verdict: "fail", summary: "Candidate produced no output to judge." };
+    await recordVerdict(ctx, candidate, {
+      verdict: "fail",
+      summary: "Candidate produced no output to judge.",
+    });
     return;
   }
   if (!result.finalMessage) {
-    candidate.verdict = { verdict: "fail", summary: "Candidate produced no output to judge." };
+    await recordVerdict(ctx, candidate, {
+      verdict: "fail",
+      summary: "Candidate produced no output to judge.",
+    });
     return;
   }
-  candidate.verdict = await judgeCandidate(ctx, phase, {
+  await judgeCandidate(ctx, phase, candidate, {
     judgeTask: input.judgeTask,
     candidateOutput: result.finalMessage,
     judgeSpec: input.judgeSpec,
@@ -1010,11 +1053,14 @@ async function continueCandidate(
   });
 }
 
-// Grade one maker's output with a separate judger. Counts the judge against
-// the run's caps like any other child.
+// Grade one maker's output with a separate judger and record the verdict on the
+// candidate. Counts the judge against the run's caps like any other child, and
+// records the judge on the candidate so its chat can be opened and its spend
+// counted.
 async function judgeCandidate(
   ctx: ExecuteRunContext,
   phase: RunPhase,
+  candidate: RunPhaseCandidate,
   input: {
     judgeTask: string;
     candidateOutput: string;
@@ -1022,7 +1068,7 @@ async function judgeCandidate(
     attempt: number;
     index: number;
   },
-): Promise<RunPhaseCandidate["verdict"]> {
+): Promise<void> {
   ctx.agentsSpawned += 1;
   ctx.run.agentCount = ctx.agentsSpawned;
   const judgeSpawn = await ctx.port.spawn({
@@ -1037,10 +1083,17 @@ async function judgeCandidate(
     attempt: input.attempt,
     index: input.index,
   });
+  candidate.judgeAgentIds = [...(candidate.judgeAgentIds ?? []), judgeSpawn.agentId];
+  candidate.stage = "judging";
+  await emitProgress(ctx);
   const judgeResult = await awaitWithCancelCascade(ctx, judgeSpawn.agentId);
-  return judgeResult.failed
-    ? { verdict: "fail", summary: "Judger agent errored." }
-    : parseVerdict(judgeResult.finalMessage);
+  await recordVerdict(
+    ctx,
+    candidate,
+    judgeResult.failed
+      ? { verdict: "fail", summary: "Judger agent errored." }
+      : parseVerdict(judgeResult.finalMessage),
+  );
 }
 
 // Spawn `count` candidates for a phase, await them, and (when judged) grade each.
@@ -1058,6 +1111,8 @@ async function runCandidateRound(
     judgeTask: string;
     count: number;
     attempt: number;
+    /** Seeds `attempts` on each candidate; only iterative phases count rounds per chat. */
+    attempts?: number;
     isVerifyPhase: boolean;
     judgeSpec: { role: string; criteria?: readonly string[] } | null;
   },
@@ -1076,27 +1131,44 @@ async function runCandidateRound(
       attempt: opts.attempt,
       index,
     });
-    const result = await awaitWithCancelCascade(ctx, spawn.agentId);
     const candidate: RunPhaseCandidate = {
       agentId: spawn.agentId,
       ...(spawn.personalityId ? { personalityId: spawn.personalityId } : {}),
-      ...(result.finalMessage ? { summary: result.finalMessage } : {}),
-      ...(result.failed
-        ? { error: result.error ?? "The assigned agent failed before producing output." }
-        : {}),
+      ...(opts.attempts ? { attempts: opts.attempts } : {}),
+      stage: "working",
     };
+    // Listed from the moment it spawns, then updated in place. A new array, not
+    // a push: the caller reassigns phase.candidates in declared order when the
+    // round ends, and may hold the previous array as its own accumulator.
+    phase.candidates = [...(phase.candidates ?? []), candidate];
+    await emitProgress(ctx);
+
+    const result = await awaitWithCancelCascade(ctx, spawn.agentId);
+    if (result.finalMessage) {
+      candidate.summary = result.finalMessage;
+    }
+    if (result.failed) {
+      candidate.error = result.error ?? "The assigned agent failed before producing output.";
+    }
 
     if (opts.isVerifyPhase) {
       // The candidate IS the judger; its message is the verdict.
-      candidate.verdict = result.failed
-        ? { verdict: "fail", summary: "Judger agent errored." }
-        : parseVerdict(result.finalMessage);
+      await recordVerdict(
+        ctx,
+        candidate,
+        result.failed
+          ? { verdict: "fail", summary: "Judger agent errored." }
+          : parseVerdict(result.finalMessage),
+      );
     } else if (opts.judgeSpec) {
       // Grade the maker's output with a separate judger.
       if (result.failed || !result.finalMessage) {
-        candidate.verdict = { verdict: "fail", summary: "Candidate produced no output to judge." };
+        await recordVerdict(ctx, candidate, {
+          verdict: "fail",
+          summary: "Candidate produced no output to judge.",
+        });
       } else {
-        candidate.verdict = await judgeCandidate(ctx, phase, {
+        await judgeCandidate(ctx, phase, candidate, {
           judgeTask: opts.judgeTask,
           candidateOutput: result.finalMessage,
           judgeSpec: opts.judgeSpec,
@@ -1104,6 +1176,9 @@ async function runCandidateRound(
           index,
         });
       }
+    } else {
+      candidate.stage = "settled";
+      await emitProgress(ctx);
     }
     return candidate;
   });

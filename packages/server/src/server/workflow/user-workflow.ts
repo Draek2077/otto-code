@@ -7,6 +7,7 @@ import {
   ORCHESTRATION_POLICY_LABEL,
   ORCHESTRATION_QUERY_TOOLS_LABEL,
   ORCHESTRATION_RUN_ID_LABEL,
+  WORKFLOW_WORKER_RUN_ID_LABEL,
   ORCHESTRATION_TOOL_GROUPS_LABEL,
 } from "@otto-code/protocol/agent-labels";
 import {
@@ -574,7 +575,10 @@ function buildGraphSpawnPort(
     const labels: Record<string, string> = {
       [ORCHESTRATION_POLICY_LABEL]: spawnInput.policy,
       ...(context.runIdRef.current
-        ? { [ORCHESTRATION_RUN_ID_LABEL]: context.runIdRef.current }
+        ? {
+            [ORCHESTRATION_RUN_ID_LABEL]: context.runIdRef.current,
+            [WORKFLOW_WORKER_RUN_ID_LABEL]: context.runIdRef.current,
+          }
         : {}),
       // The node's contract travels with the agent, so its tool catalog can
       // mint submit_output for it and no provider needs special handling.

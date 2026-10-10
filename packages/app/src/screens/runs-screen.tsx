@@ -44,7 +44,7 @@ import {
   buildScheduleProjectTargets,
   describeScheduleCwd,
 } from "@/schedules/schedule-project-targets";
-import { formatTokenCount } from "@/components/context-window-meter.utils";
+import type { ChatTotals } from "@/subagents/chat-totals";
 import { formatDuration } from "@/utils/time";
 import { useProjects } from "@/hooks/use-projects";
 import {
@@ -52,10 +52,11 @@ import {
   usePreferredWorkspaceProjectScope,
 } from "@/hooks/use-preferred-workspace-project-scope";
 import { useHosts } from "@/runtime/host-runtime";
-import { useSessionStore, type Agent, type WorkspaceDescriptor } from "@/stores/session-store";
+import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import { useShallow } from "zustand/shallow";
+import { useStoreWithEqualityFn } from "zustand/traditional";
+import equal from "fast-deep-equal";
 import {
-  collectRunAgentIds,
   useCancelRun,
   useDeleteRun,
   useRespondToRunGate,
@@ -63,6 +64,7 @@ import {
   type RunWithHost,
 } from "@/hooks/use-runs";
 import { openVisualizerTab } from "@/visualizer/open-visualizer-tab";
+import { openWorkflowRunTab, resolveWorkflowWorkspaceId } from "@/workflows/open-workflow-run";
 import { useFeatureEnabled } from "@/features/use-feature-enabled";
 import { useRespondToWorkflowStartConfirmation } from "@/hooks/use-workflow-graphs";
 import {
@@ -72,9 +74,11 @@ import {
 import {
   applyRunFilters,
   describeRunTerminalPresentation,
+  formatRunSpend,
   phaseStatusVariant,
   runStatusLabel,
   runStatusVariant,
+  selectRunTotals,
   type RunStatusFilter,
 } from "./runs-screen-presentation";
 
@@ -223,33 +227,6 @@ export function formatRunElapsed(run: Run): string | null {
     return null;
   }
   return formatDuration(Math.max(0, updated - created));
-}
-
-/**
- * Sum of `cumulativeTokens` across the run's conductor + every spawned
- * candidate agent, resolved against the client's live agent directory (the
- * same honest per-agent counter the subagents track uses - see
- * AgentSnapshotPayload.cumulativeTokens). Null when none of those agents are
- * currently known, so the card never claims a cost it can't back up.
- */
-export function sumRunTokens(
-  run: Run,
-  agentsById: ReadonlyMap<string, Agent> | undefined,
-): number | null {
-  if (!agentsById) {
-    return null;
-  }
-  const agentIds = collectRunAgentIds(run);
-  let total = 0;
-  let found = false;
-  for (const id of agentIds) {
-    const tokens = agentsById.get(id)?.cumulativeTokens;
-    if (typeof tokens === "number" && Number.isFinite(tokens)) {
-      total += tokens;
-      found = true;
-    }
-  }
-  return found ? total : null;
 }
 
 // ── Filtering ────────────────────────────────────────────────────────────────
@@ -612,10 +589,10 @@ function RunSummary({ run }: { run: Run }): ReactElement | null {
  * Artifacts/Schedules/Orchestrations reads the same way at a glance. */
 function RunFooterMeta({
   run,
-  totalTokens,
+  totals,
 }: {
   run: RunWithHost;
-  totalTokens: number | null;
+  totals: ChatTotals | null;
 }): ReactElement {
   const date = formatRunDate(run.createdAt);
   const frozenElapsed = formatRunElapsed(run);
@@ -644,12 +621,12 @@ function RunFooterMeta({
           <Text style={styles.metaText}>{frozenElapsed}</Text>
         </>
       ) : null}
-      {totalTokens !== null ? (
+      {totals !== null ? (
         <>
           {date || frozenElapsed || (run.createdAt && isActive) ? (
             <Text style={styles.metaDot}>·</Text>
           ) : null}
-          <Text style={styles.metaText}>{formatTokenCount(totalTokens)} tok</Text>
+          <Text style={styles.metaText}>{formatRunSpend(totals)}</Text>
         </>
       ) : null}
     </View>
@@ -736,8 +713,10 @@ function RunCard({
       };
     }),
   );
-  const totalTokens = useSessionStore((state) =>
-    sumRunTokens(run, state.sessions[serverId]?.agents),
+  const totals = useStoreWithEqualityFn(
+    useSessionStore,
+    (state) => selectRunTotals(run, state.sessions[serverId]?.agents),
+    equal,
   );
   const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
   // COMPAT(runsDelete): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
@@ -750,6 +729,7 @@ function RunCard({
   );
   const gatePhase = findBlockedGatePhase(run);
   const isActive = !isTerminalRunStatus(run.status);
+  const isDraft = run.status === "draft";
   const gatePhaseId = gatePhase?.id;
   const startConfirmation = run.startConfirmation;
 
@@ -813,6 +793,13 @@ function RunCard({
   const { canEdit, editDraft } = useDraftEditAction({ run, enabled: hostCanEditDraft, onEdit });
   const visualizerEnabled = useFeatureEnabled("visualizer");
   const canVisualize = Boolean(workspaceId) && visualizerEnabled;
+  const openWorkspaceId = resolveWorkflowWorkspaceId(run, workspaces);
+  const canOpen = openWorkspaceId !== null;
+  const handleOpen = useCallback(() => {
+    if (openWorkspaceId) {
+      openWorkflowRunTab({ serverId, workspaceId: openWorkspaceId, runId, navigate: true });
+    }
+  }, [serverId, openWorkspaceId, runId]);
   const handleVisualize = useCallback(() => {
     if (workspaceId) {
       // Workflows is an app-wide screen, so the run's workspace is not the one
@@ -840,9 +827,9 @@ function RunCard({
       styles.card,
       terminalCardStyle,
       isHovered && !isCompact && styles.cardHovered,
-      pressed && canVisualize && styles.cardPressed,
+      pressed && canOpen && styles.cardPressed,
     ],
-    [terminalCardStyle, isHovered, isCompact, canVisualize],
+    [terminalCardStyle, isHovered, isCompact, canOpen],
   );
 
   return (
@@ -853,11 +840,9 @@ function RunCard({
     >
       <Pressable
         style={cardStyle}
-        onPress={canVisualize ? handleVisualize : undefined}
-        accessibilityRole={canVisualize ? "button" : undefined}
-        accessibilityLabel={
-          canVisualize ? `Visualize ${run.title}, ${runStatusLabel(run)}` : undefined
-        }
+        onPress={canOpen ? handleOpen : undefined}
+        accessibilityRole={canOpen ? "button" : undefined}
+        accessibilityLabel={canOpen ? `Open ${run.title}, ${runStatusLabel(run)}` : undefined}
         testID={`run-card-${run.id}`}
       >
         <View style={styles.headerRow}>
@@ -870,11 +855,13 @@ function RunCard({
             canEdit={canEdit}
             onEdit={editDraft}
             canVisualize={canVisualize}
-            canCancel={isActive}
+            // A draft has nothing executing, so there is nothing to cancel; the
+            // daemon deletes it directly.
+            canCancel={isActive && !isDraft}
             cancelPending={cancelMutation.isPending}
             // The daemon refuses to delete a live run, so the item only shows
             // once the run is finished - cancel first, then delete.
-            canDelete={hostCanDelete && !isActive}
+            canDelete={hostCanDelete && (!isActive || isDraft)}
             deletePending={deleteMutation.isPending}
             onVisualize={handleVisualize}
             onCancel={cancelRun}
@@ -992,7 +979,7 @@ function RunCard({
             <StatusBadge label={describeRunShape(run)} />
             <StatusBadge label={describeWorkflowStorageSource(run.workflowStorage)} />
           </View>
-          <RunFooterMeta run={run} totalTokens={totalTokens} />
+          <RunFooterMeta run={run} totals={totals} />
         </View>
       </Pressable>
     </View>

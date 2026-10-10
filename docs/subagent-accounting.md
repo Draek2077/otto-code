@@ -48,12 +48,12 @@ Everything above accounts for one sub-agent. This section is the number a **user
 
 Two quantities, no shared units, and conflating them is the single biggest reason the old numbers felt wrong:
 
-|             | **Total tokens** (spend)                                                      | **Context** (occupancy)                                                        |
-| ----------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Answers     | "what did this chat cost"                                                     | "how full is the window"                                                       |
-| Direction   | only grows                                                                    | falls when compaction runs                                                     |
-| Source      | `cumulativeTokens` / `cumulativeUsage` on the agent snapshot                  | `contextWindowUsedTokens`, `agent.context.get_usage`                           |
-| Rendered by | the chat metrics toolbar, the Visualizer top bar, the sub-agents track header | the composer context indicator, `context-window-meter.tsx`, Context Management |
+|             | **Total tokens** (spend)                                                                      | **Context** (occupancy)                                                        |
+| ----------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Answers     | "what did this chat cost"                                                                     | "how full is the window"                                                       |
+| Direction   | only grows                                                                                    | falls when compaction runs                                                     |
+| Source      | `cumulativeTokens` / `cumulativeUsage` on the agent snapshot                                  | `contextWindowUsedTokens`, `agent.context.get_usage`                           |
+| Rendered by | the chat metrics toolbar, the Visualizer top bar, the sub-agents track header, Workflow cards | the composer context indicator, `context-window-meter.tsx`, Context Management |
 
 They must never appear in one readout. See [glossary.md](glossary.md).
 
@@ -72,6 +72,12 @@ They must never appear in one readout. See [glossary.md](glossary.md).
 ### The roll-up, defined once
 
 `selectChatTotals` (`packages/app/src/subagents/chat-totals.ts`) is the only definition: the parent plus the same descendant set the sub-agents track shows (observed fan-out at any depth; an attended child breaks the chain because it is its own chat with its own total), plus the cleared-rows tally so tidying up never makes a chat look cheaper. Every surface reads it - the chat metrics toolbar (`chat-metrics-bar.tsx`, `settings.chatMetricsBar`) and, through `costUsd` on `context_update`, the Visualizer.
+
+### Workflow totals: only the Workflow's own chats count
+
+A Workflow card (`selectRunTotals`, `packages/app/src/screens/runs-screen-presentation.ts`) folds through the same tally, but only over the run's own chats: every phase candidate and every judge that graded one (`collectWorkflowWorkerAgentIds`), each counted by its lifetime total because it exists only for the run. The conductor, the chat that declared the run with `start_workflow`, **never** counts. It is the user's conversation, not part of the Workflow: planning, the start confirmation, and the turn that awaits the result are all its own spend. So a Workflow that has not spawned a worker has spent nothing, and its card shows no figure. Read the conductor's cost on the conductor's own chat.
+
+The card leads with cost and shows the cache-read share next to the token total (`$0.47 · 269k tok (81% cached)`). On Claude, re-reading the cached prompt prefix on every model call is most of a run's tokens, and those reads bill at about a tenth of fresh input. A bare token total therefore looks far more expensive than the run was.
 
 ### Honest blanks beat confident wrong numbers
 

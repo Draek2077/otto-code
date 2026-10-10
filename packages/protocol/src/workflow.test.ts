@@ -41,6 +41,37 @@ describe("Check output ports", () => {
   });
 });
 
+describe("Graph node retry", () => {
+  const graphWith = (node: Record<string, unknown>) =>
+    OrchestrationGraphSchema.parse({
+      id: "retry_access",
+      name: "Retry access",
+      nodes: [
+        { id: "root", kind: "orchestrator", title: "Orchestrator" },
+        { id: "work", kind: "agent", title: "Work", prompt: "Do it", ...node },
+      ],
+    });
+  const retry = { maxAttempts: 3, backoffMs: 0 };
+
+  test("refuses a retry on a node that can edit the workspace, including by default", () => {
+    for (const access of [undefined, "write"]) {
+      expect(
+        validateOrchestrationGraph(graphWith({ retry, ...(access ? { access } : {}) })),
+      ).toContain(
+        `Node "Work" can edit the workspace, so it can't retry: nothing reverts a failed attempt's edits. Set its workspace access to Read or None, or remove the retry.`,
+      );
+    }
+  });
+
+  test("allows a retry on a node that cannot edit, and a single attempt anywhere", () => {
+    expect(validateOrchestrationGraph(graphWith({ retry, access: "read" }))).toEqual([]);
+    expect(validateOrchestrationGraph(graphWith({ retry, access: "none" }))).toEqual([]);
+    expect(
+      validateOrchestrationGraph(graphWith({ retry: { maxAttempts: 1, backoffMs: 0 } })),
+    ).toEqual([]);
+  });
+});
+
 describe("phase type → role mapping", () => {
   test("each type maps to its filling role, gate to nobody", () => {
     expect(defaultRoleForPhaseType("research")).toBe("researcher");

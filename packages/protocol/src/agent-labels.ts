@@ -82,6 +82,21 @@ export function getOrchestrationRunIdFromLabels(
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+// A chat a Workflow spawned to do its work (a maker or a judge), as opposed to
+// the conductor that owns the run. Distinct from ORCHESTRATION_RUN_ID_LABEL,
+// which the conductor also carries and which `start_workflow` reads to activate
+// a pending run: a worker carrying that label could claim its parent's record.
+// Clients read this to present the chat read-only, since the run drives it.
+export const WORKFLOW_WORKER_RUN_ID_LABEL = "otto.workflow-worker-run-id";
+
+/** The Workflow a chat works for, or null when it is not a Workflow worker. */
+export function getWorkflowWorkerRunIdFromLabels(
+  labels: Record<string, unknown> | null | undefined,
+): string | null {
+  const value = labels?.[WORKFLOW_WORKER_RUN_ID_LABEL];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
 // First-class provenance for an internal agent spawned by a Schedule run.
 // Both values are required: an artifact must never claim a Schedule source
 // when a malformed label would leave it unable to identify the exact run.

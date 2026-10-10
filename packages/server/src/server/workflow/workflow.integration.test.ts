@@ -326,7 +326,8 @@ function retryingBriefToDecisionGraph() {
     throw new Error("Brief to Decision starter has no research node");
   }
   const nodes = [...graph.nodes];
-  nodes[briefIndex] = { ...brief, retry: { maxAttempts: 2, backoffMs: 0 } };
+  // Only a node that cannot edit the workspace may retry.
+  nodes[briefIndex] = { ...brief, access: "read", retry: { maxAttempts: 2, backoffMs: 0 } };
   return {
     ...graph,
     id: "test-brief-to-decision-retry",

@@ -63,15 +63,16 @@ model supports it), so anything it must do has to be pre-approved or safe.
 A judged AI-declared phase has a `mode` that decides what happens to a candidate
 the judge did not pass.
 
-- **Bounded** (the default) is for work with a finish line one session can
-  reach: fix this, add that, make these tests pass. A failed candidate is
-  replaced by a fresh agent that receives the task plus the previous round's
-  feedback (the failed attempt's report, the judge's summary, and the unmet
-  criteria with their evidence).
-- **Iterative** is for open-ended work one session cannot finish: inventory a
-  platform, plan a whole project. A failed candidate's own chat is continued
-  with the judge's unmet criteria and carries on from where it stopped, keeping
-  the context it already built. The judge grades again after each continuation.
+- **Bounded** (the default) judges each candidate once. With `keepBest`, a
+  failed candidate is replaced by a fresh agent that receives the task plus the
+  previous round's feedback (the failed attempt's report, the judge's summary,
+  and the unmet criteria with their evidence). Replacement is for read-only
+  work only; see below.
+- **Iterative** continues a failed candidate's own chat with the judge's unmet
+  criteria, so it carries on from where it stopped and keeps the context it
+  already built. The judge grades again after each continuation. This is the
+  shape for open-ended work one session cannot finish (inventory a platform,
+  plan a whole project) and the only way to send work that edits files back.
   An iterative phase requires a `judge`; verify and gate phases cannot iterate.
 
 Both modes stop when enough candidates pass or the daemon's loop cap trips. The
@@ -80,6 +81,35 @@ one attempt plus two continuations or replacements. The judge always grades
 against the declared task, never against a round's feedback. A host that cannot
 continue chats fails an iterative phase and says so, rather than quietly running
 it as bounded.
+
+### Work that edits files is never redone
+
+Every chat a Workflow spawns works in the same checkout, and nothing reverts a
+failed attempt. A replacement or a retry would start over on files the failed
+attempt already changed, and parallel candidates would edit the same files at
+once, so "keep the best" could not discard the others. Work that edits files
+may therefore only be **fixed forward**: one candidate, sent back to its own
+chat with the judge's feedback.
+
+- **AI-declared plans.** A phase edits the workspace when its type is
+  `implement`, `refactor` or `deliver`, or a coder fills it (plan phases declare
+  no access level, so this is classed by intent). Such a phase may not declare
+  `fanOut` above 1, or `keepBest` outside iterative mode, or `keepBest` above 1
+  at all. `buildRunFromPlan` refuses the plan before anything spawns, and
+  `start_workflow` returns the reason to the orchestrator. Research, plan,
+  design and verify phases fan out and replace freely.
+- **Graph Workflows.** A node whose workspace access is `write` (the default)
+  may not declare a retry above one attempt (`validateGraphNodeRetry` in
+  `packages/protocol/src/workflow.ts`). A loop stays allowed: each iteration is
+  told what the previous one produced and fixes it forward. Saving never
+  blocks; Run, daemon execution, `otto workflow graph validate`, and Graph
+  import refuse.
+
+The rule lives in the protocol (`describeUnsafeEditingPhase`,
+`runPhaseEditsWorkspace`), so the designer and the daemon apply the same
+contract. Allowing fan-out and replacement again for editing work needs each
+attempt in its own worktree, tracked as the Workflow attempt isolation project
+in Otto Knowledge.
 
 ### Start confirmation and agent limits
 
@@ -109,7 +139,65 @@ the declared Workflow after it starts.
 
 A Workflow run is persisted and remains available from the Workflows library.
 The library shows planning, active work, approval waits, completion, failure, or
-cancellation. It can open the run-scoped Visualizer for either Workflow kind.
+cancellation. Its menu can open the run-scoped Visualizer for either Workflow
+kind.
+
+### How the result reaches the conductor
+
+`start_workflow` blocks until the run ends or pauses (at most 5 minutes), and a
+terminal run's result comes back in that tool result. Worker chats never report
+to the conductor individually. When the call returns before the run ends (a start
+confirmation, a gate, or the wait limit), the daemon queues one system message
+to the conductor when the run settles, with the result. It skips that message
+only when the original call delivers the result: it returned a terminal run, or
+it is still waiting inside a live turn. The conductor merely being busy is not
+enough. A run that finishes while the conductor works on something else is still
+handed back, and queued delivery waits for that turn to end
+(`startCallDeliversResult`, `workflow-start-lifecycle.ts`).
+
+### Inspecting a run
+
+Clicking a run opens it as a **Workflow tab** (`workflowRun`, one per run per
+workspace) and takes the user to that workspace. The tab shows the run's status,
+spend, conductor, summary, requirements, and each phase with the chats that ran
+it. Each chat row shows the profile and model, attempts, the judge's verdict with
+per-criterion evidence, the chat's final message, and its spend including its
+judges. **Open chat** opens that chat beside the Workflow tab. The first one
+splits to the right, and later ones join that pane.
+
+- **Which workspace.** The run's own workspace while it is still open, because
+  its chats live there. Otherwise the project's root folder workspace (not a
+  worktree), matched by the run's storage project id or its project root. With
+  neither open, the run has nothing to open into and the card is not pressable.
+  `resolveWorkflowWorkspaceId` (`packages/app/src/workflows/open-workflow-run.ts`)
+  is the single rule.
+- **Workers are read-only.** Every chat a Workflow spawns carries the
+  `otto.workflow-worker-run-id` label, and its composer is replaced by a note
+  naming the run with **Open workflow**. That replaces the archived chat's
+  Unarchive as well: a message sent to a worker lands in a turn the run is not
+  waiting for and leaves the run record describing a conversation that did not
+  happen. The label is separate from `otto.orchestration-run-id`, which the
+  conductor carries and `start_workflow` reads to activate a pending run. The
+  block is in the client only; the daemon does not refuse a prompt to a worker.
+- **Judges are recorded.** A judged candidate lists the judge chat for each
+  judged round in `judgeAgentIds`, so judges can be opened and their spend
+  counted. Runs from daemons that predate the field show no judge links.
+- **A running phase is live.** A candidate is on the phase from the moment its
+  chat spawns, and the engine updates it in place at every milestone (spawned,
+  sent to its judge, verdict recorded, continued), stamping the run's
+  `updatedAt` each time. The phase carries the `round` it is on. Each candidate
+  carries its `stage` (`working`, `judging`, `settled`) and the `verdictAt` of
+  its last verdict. A continued candidate back at `working` still holds the
+  previous round's verdict, and `verdictAt` dates it. This is what
+  `get_workflow_status` returns, so a conductor can tell a long round from a
+  stuck one without reading the worker's activity. Before this, candidates
+  appeared only when their whole round ended, and `updatedAt` stayed at the
+  phase's start. The emits are chained (`emitProgress`, `workflow-engine.ts`)
+  because a round's candidates progress concurrently. AI-declared plans only:
+  Graph runs do not publish these fields yet.
+- **From the conductor.** The `start_workflow` tool call in the conductor's
+  transcript has **Open workflow** in its details, so a chat that ran several
+  Workflows links to each one where it started it.
 
 - **Graph gates** are human approval boundaries. They pause without spawning an
   agent. Approving continues the declared Graph; rejecting cancels it.

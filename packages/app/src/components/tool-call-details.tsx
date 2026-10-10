@@ -1,4 +1,5 @@
 import React, { useMemo, type ReactNode } from "react";
+import { readStartedWorkflowRunId, WorkflowToolLink } from "@/components/workflow-tool-link";
 import {
   View,
   Text,
@@ -887,6 +888,11 @@ export function ToolCallDetailsContent({
   const diffLines = useDiffLines(detail);
 
   const sections: ReactNode[] = buildDetailSections(toolName, detail, diffLines, ds, t);
+  const workflowRunId =
+    detail?.type === "unknown" ? readStartedWorkflowRunId(toolName, detail.output) : null;
+  if (workflowRunId) {
+    sections.unshift(<WorkflowToolLink key="workflow-link" runId={workflowRunId} />);
+  }
 
   if (errorText) {
     sections.push(<ErrorSection key="error" errorText={errorText} ds={ds} />);

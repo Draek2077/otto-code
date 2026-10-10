@@ -58,6 +58,55 @@ export function defaultRoleForPhaseType(type: RunPhaseType): string | null {
   return PHASE_TYPE_DEFAULT_ROLE[type];
 }
 
+// ── Work that edits the workspace may not be redone ─────────────────────────
+// Every chat a Workflow spawns works in the same checkout, and nothing reverts
+// a failed attempt. So work that edits files can be fixed forward (the same
+// chat continued with the judge's feedback) but never redone: a replacement
+// or a retry starts over on a tree the failed attempt already changed, and
+// parallel candidates edit the same files at once, so "keep the best" cannot
+// discard the others. Allowing those again needs each attempt in its own
+// worktree; until then these validators refuse them before anything spawns.
+//
+// A plan phase is classed by intent, since plan phases declare no access
+// level: these types, or any phase filled by a coder.
+const PHASE_TYPES_THAT_EDIT = new Set<string>(["implement", "refactor", "deliver"]);
+
+/** Whether a declared plan phase edits the workspace (see above). */
+export function runPhaseEditsWorkspace(phase: { type: string; role?: string }): boolean {
+  if (PHASE_TYPES_THAT_EDIT.has(phase.type)) {
+    return true;
+  }
+  const role =
+    phase.role ?? (isRunPhaseType(phase.type) ? defaultRoleForPhaseType(phase.type) : null);
+  return role === "coder";
+}
+
+/**
+ * Why a declared plan phase would redo work that edits the workspace, or null
+ * when it is safe. `fanOut > 1` runs parallel writers in one checkout;
+ * `keepBest` outside iterative mode replaces failed candidates with fresh ones.
+ */
+export function describeUnsafeEditingPhase(phase: RunPhaseDeclaration): string | null {
+  if (!runPhaseEditsWorkspace(phase)) {
+    return null;
+  }
+  const reasons: string[] = [];
+  if ((phase.fanOut ?? 1) > 1) {
+    reasons.push(`fanOut ${phase.fanOut} would run parallel candidates in the same checkout`);
+  }
+  if (phase.keepBest !== undefined && (phase.keepBest > 1 || phase.mode !== "iterative")) {
+    reasons.push("keepBest would replace a failed candidate with a fresh one on the changed files");
+  }
+  if (reasons.length === 0) {
+    return null;
+  }
+  return (
+    `Phase "${phase.id}" edits the workspace, and ${reasons.join("; ")}. ` +
+    "Nothing reverts a failed attempt, so work that edits files may only be fixed forward: " +
+    'declare it with one candidate, and give it a judge with mode "iterative" to send it back.'
+  );
+}
+
 // ── Phase + run status (open vocabularies, plain-string on the wire) ─────────
 export const RUN_PHASE_STATUSES = [
   "pending",
@@ -147,10 +196,28 @@ export const RunPhaseDeclarationSchema = z
     // Absent/empty ⇒ runs after the previous declared phase (linear default).
     dependsOn: z.array(z.string().min(1)).optional(),
     // Spawn N parallel candidates from the same task (different angles). 1 ⇒ solo.
-    fanOut: z.number().int().min(1).max(16).optional(),
+    fanOut: z
+      .number()
+      .int()
+      .min(1)
+      .max(16)
+      .optional()
+      .describe(
+        "Parallel candidates for the same task. Read-only phases only: a phase that edits files " +
+          "(implement, refactor, deliver, or a coder) must run one candidate.",
+      ),
     // With a judge: keep the best N passers; if fewer pass, the runtime
     // re-dispatches replacements until the target is met or a cap trips.
-    keepBest: z.number().int().min(1).max(16).optional(),
+    keepBest: z
+      .number()
+      .int()
+      .min(1)
+      .max(16)
+      .optional()
+      .describe(
+        "With a judge, keep the best N passers and replace failers with fresh agents. " +
+          "Read-only phases only: nothing reverts a failed attempt's edits.",
+      ),
     // Attach a structured-judge sub-step to a non-verify phase.
     judge: RunPhaseJudgeSpecSchema.optional(),
     // See RUN_PHASE_MODES. Requires `judge`. Declared as an enum here (a tool
@@ -214,8 +281,17 @@ export function describeRunPlanStart(plan: RunPlan): WorkflowStartShape {
 }
 
 // ── Projection schema (the Run the daemon persists + pushes to clients) ─────
+// Where one candidate is inside its current round, so a running phase reads as
+// progress rather than a frozen record. `working`: its chat is producing (a new
+// round or a continuation). `judging`: its output is with the judge. `settled`:
+// the round is over; `verdict` and `verdictAt` hold its outcome. Plain string on
+// the wire; absent on candidates from daemons that only wrote finished rounds.
+export const RUN_CANDIDATE_STAGES = ["working", "judging", "settled"] as const;
+export type RunCandidateStage = (typeof RUN_CANDIDATE_STAGES)[number];
+
 // One spawned candidate for a phase: the observable child agent plus, when the
-// phase judged it, that candidate's verdict.
+// phase judged it, that candidate's verdict. A running phase lists each
+// candidate from the moment it spawns and updates it in place.
 export const RunPhaseCandidateSchema = z
   .object({
     agentId: z.string().min(1),
@@ -234,6 +310,15 @@ export const RunPhaseCandidateSchema = z
     // How many judged rounds this one chat has run (iterative phases continue
     // the same candidate). Absent means one: older daemons never continued.
     attempts: z.number().int().min(1).optional(),
+    // The judge chat spawned for each judged round, oldest first, so a client
+    // can open them and count their spend. Absent on unjudged candidates and on
+    // runs from daemons that predate it.
+    judgeAgentIds: z.array(z.string().min(1)).optional(),
+    // See RUN_CANDIDATE_STAGES.
+    stage: z.string().min(1).optional(),
+    // When `verdict` was last recorded. On a continued candidate that is back
+    // at `working`, `verdict` is the previous round's and this dates it.
+    verdictAt: z.string().optional(),
   })
   .passthrough();
 
@@ -256,6 +341,10 @@ export const RunPhaseSchema = z
     // the wire; absent means bounded, the only mode older daemons ran.
     mode: z.string().min(1).optional(),
     candidates: z.array(RunPhaseCandidateSchema).optional(),
+    // The round a running phase is on, 1-based: a bounded phase's replacement
+    // round, or an iterative phase's continuation count. Kept at the last round
+    // once the phase ends. Absent on gates and on daemons that predate it.
+    round: z.number().int().min(1).optional(),
     // Free-text runtime notes (why it blocked, which cap tripped, gap named).
     notes: z.string().optional(),
     // Machine-readable reason a phase is "skipped" - the human sentence stays in
@@ -1042,7 +1131,22 @@ function validateGraphNode(node: GraphNode, declaredInputs: ReadonlySet<string>)
   }
   problems.push(...validateGraphNodeLoop(node));
   problems.push(...validateGraphNodeOutput(node));
+  problems.push(...validateGraphNodeRetry(node));
   return problems;
+}
+
+// A retry re-runs the node's whole prompt with a fresh agent after an attempt
+// that errored or timed out, often mid-edit, and nothing reverts what it wrote
+// (see "Work that edits the workspace may not be redone"). So only a node that
+// cannot edit the workspace may retry. A loop is allowed: each iteration is
+// told what the previous one produced and fixes it forward.
+function validateGraphNodeRetry(node: GraphNode): string[] {
+  if ((node.retry?.maxAttempts ?? 1) <= 1 || node.access === "read" || node.access === "none") {
+    return [];
+  }
+  return [
+    `Node "${node.title}" can edit the workspace, so it can't retry: nothing reverts a failed attempt's edits. Set its workspace access to Read or None, or remove the retry.`,
+  ];
 }
 
 function validateGraphNodeCheck(node: GraphNode, isCheck: boolean): string[] {

@@ -107,6 +107,10 @@ export function normalizeWorkspaceTabTarget(
       ? { kind: "communicationsRoom", providerId, conversationId, ...(title ? { title } : {}) }
       : null;
   }
+  if (value.kind === "workflowRun") {
+    const runId = trimNonEmpty(value.runId);
+    return runId ? { kind: "workflowRun", runId } : null;
+  }
   if (value.kind === "gitLog") {
     const operation = trimNonEmpty(value.operation);
     return operation ? { kind: "gitLog", operation } : null;
@@ -412,6 +416,7 @@ const SIMPLE_ID_FIELD_BY_KIND: Partial<Record<WorkspaceTabTarget["kind"], string
   artifact: "artifactId",
   architecturalView: "viewId",
   gitLog: "operation",
+  workflowRun: "runId",
 };
 
 export function workspaceTabTargetsEqual(
@@ -622,6 +627,7 @@ const SIMPLE_TAB_ID_BUILDERS: {
   communicationsRoom: (target) =>
     `communications-room_${target.providerId}_${target.conversationId}`,
   gitLog: (target) => `gitlog_${target.operation}`,
+  workflowRun: (target) => `workflow-run_${target.runId}`,
   contextManagement: () => "context-management",
   projectKnowledge: () => "project-knowledge",
   project_search: () => "project_search",

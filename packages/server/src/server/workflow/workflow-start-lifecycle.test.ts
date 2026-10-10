@@ -4,6 +4,7 @@ import type { Run } from "@otto-code/protocol/workflow";
 import {
   attachStartRunLifecycle,
   formatStartRunCompletionNotification,
+  type StartCallState,
 } from "./workflow-start-lifecycle.js";
 
 function makeRun(overrides: Partial<Run> = {}): Run {
@@ -38,6 +39,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<voi
 }
 
 function makePort(overrides?: {
+  startCallState?: StartCallState;
   conductorHasInFlightTurn?: boolean;
   archiveWorker?: (agentId: string) => Promise<void>;
 }) {
@@ -49,6 +51,7 @@ function makePort(overrides?: {
     notifications,
     logger,
     port: {
+      startCallState: () => overrides?.startCallState ?? "awaiting",
       conductorHasInFlightTurn: () => overrides?.conductorHasInFlightTurn ?? false,
       notifyConductor: async (text: string) => {
         notifications.push(text);
@@ -75,6 +78,43 @@ test("returns through the original tool turn without queuing a duplicate notific
   await waitFor(() => archived.length === 2);
   expect(archived).toEqual(["worker_1", "judger_1"]);
   expect(notifications).toEqual([]);
+});
+
+test("does not repeat a result the start call already returned", async () => {
+  const { port, archived, notifications } = makePort({
+    startCallState: "delivered",
+    conductorHasInFlightTurn: true,
+  });
+  attachStartRunLifecycle({
+    runId: "run_1",
+    settled: Promise.resolve(makeRun()),
+    conductorAgentId: "conductor_1",
+    workerAgentIds: new Set(["worker_1"]),
+    port,
+  });
+
+  await waitFor(() => archived.length === 1);
+  expect(notifications).toEqual([]);
+});
+
+// The dropped result: the call returned at the start confirmation, the user
+// approved later, and the run finished while the conductor was busy with an
+// unrelated turn. Being busy used to read as "the original turn returns it".
+test("hands back a run that finishes while the conductor is busy after an early return", async () => {
+  const { port, notifications } = makePort({
+    startCallState: "returned-early",
+    conductorHasInFlightTurn: true,
+  });
+  attachStartRunLifecycle({
+    runId: "run_1",
+    settled: Promise.resolve(makeRun()),
+    conductorAgentId: "conductor_1",
+    workerAgentIds: new Set(["worker_1"]),
+    port,
+  });
+
+  await waitFor(() => notifications.length === 1);
+  expect(notifications[0]).toContain("The feature is complete.");
 });
 
 test("queues one aggregate completion hand-back when the original conductor turn is gone", async () => {
@@ -128,5 +168,5 @@ test("bounds a large aggregate result in the completion hand-back", () => {
       ],
     }),
   );
-  expect(notification).toContain("truncated; use get_run_status for the full result");
+  expect(notification).toContain("truncated; use get_workflow_status for the full result");
 });

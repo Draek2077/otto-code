@@ -42,6 +42,8 @@ import { FileEditorWarningBanner } from "@/components/file-editor-warning-banner
 import { architecturalViewAuthoringBrowserId } from "@/architectural-views/browser-id";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ObservedSubagentCallout } from "@/components/observed-subagent-callout";
+import { WorkflowWorkerCallout } from "@/components/workflow-worker-callout";
+import { getWorkflowWorkerRunIdFromLabels } from "@otto-code/protocol/agent-labels";
 import { BlackChatScope } from "@/components/black-chat-scope";
 import { KeyboardDock } from "@/components/keyboard-dock";
 import { useAppVisible } from "@/hooks/use-app-visible";
@@ -2511,8 +2513,22 @@ const AgentComposerSection = memo(function AgentComposerSection({
     const agent = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId);
     return agent?.attend === "observed";
   });
+  const workflowRunId = useSessionStore((state) => {
+    if (!agentId) {
+      return null;
+    }
+    const session = state.sessions[serverId];
+    const agent = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId);
+    return getWorkflowWorkerRunIdFromLabels(agent?.labels);
+  });
   if (!agentId) {
     return null;
+  }
+  // Ahead of the archived callout: a Workflow archives its workers when it
+  // settles, and offering Unarchive there would invite resuming a chat whose
+  // run is over. A worker stays read-only for its whole life.
+  if (workflowRunId) {
+    return <WorkflowWorkerCallout serverId={serverId} runId={workflowRunId} />;
   }
   if (archivedAt) {
     return <ArchivedAgentCallout serverId={serverId} agentId={agentId} />;

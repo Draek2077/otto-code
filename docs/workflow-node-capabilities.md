@@ -219,8 +219,15 @@ branch-specific recovery are future control-flow work.
 iteration: a loop re-runs work that succeeded but wasn't good enough; a retry re-runs work
 that never completed. Retry wraps the whole node including its loop.
 
-Two invariants:
+Three invariants:
 
+- **Only a node that cannot edit may retry.** A failed attempt often dies mid-edit (an
+  error, or a time limit that cancels it), and nothing reverts what it wrote. A retry
+  re-runs the whole prompt with a fresh agent on those changed files. So a node whose
+  workspace access is `write`, the default, is refused a retry above one attempt; set
+  its access to `read` or `none`, or remove the retry. Loops stay allowed on any node,
+  because each iteration is told what the previous one produced. See
+  [workflows.md](workflows.md#work-that-edits-files-is-never-redone).
 - **One loop, one counter.** Retry is never re-entered from the failure path. Prior art
   this design studied re-enters its executor from its own failure handler with a fresh
   allowance at every level, so a persistently failing step retries forever.

@@ -170,6 +170,12 @@ const manifests = {
     supportedHosts: ["main"],
     resourceKey: (target) => target.graphId,
   },
+  workflowRun: {
+    kind: "workflowRun",
+    // One tab per run.
+    supportedHosts: ["main"],
+    resourceKey: (target) => target.runId,
+  },
 } satisfies PanelManifestByKind;
 
 export function getPanelManifest<K extends WorkspaceTabTarget["kind"]>(kind: K): PanelManifest<K> {

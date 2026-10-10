@@ -217,6 +217,62 @@ describe("buildRunFromPlan", () => {
       }),
     ).toThrow(/not an earlier phase/);
   });
+
+  // Nothing reverts a failed attempt, so work that edits the workspace may only
+  // be fixed forward: never replaced, never run in parallel in one checkout.
+  const buildPhase = (phase: RunPlan["phases"][number]) =>
+    buildRunFromPlan({ plan: { title: "t", phases: [phase] }, id: "run_edit", now: "NOW" });
+
+  test.each([
+    ["parallel implementers", { id: "a", type: "implement", title: "A", task: "x", fanOut: 3 }],
+    [
+      "replaced refactors",
+      { id: "a", type: "refactor", title: "A", task: "x", keepBest: 1, judge: {} },
+    ],
+    [
+      "a deliver phase keeping the best of several",
+      {
+        id: "a",
+        type: "deliver",
+        title: "A",
+        task: "x",
+        keepBest: 2,
+        mode: "iterative" as const,
+        judge: {},
+      },
+    ],
+    [
+      "a read-type phase a coder fills",
+      { id: "a", type: "research", role: "coder", title: "A", task: "x", fanOut: 2 },
+    ],
+  ])("refuses %s before anything spawns", (_label, phase) => {
+    expect(() => buildPhase(phase)).toThrow(/edits the workspace.*fixed forward/s);
+  });
+
+  test("allows an editing phase fixed forward, and read-only phases to fan out and replace", () => {
+    expect(() =>
+      buildPhase({
+        id: "a",
+        type: "implement",
+        title: "A",
+        task: "x",
+        keepBest: 1,
+        mode: "iterative",
+        judge: {},
+      }),
+    ).not.toThrow();
+    expect(() =>
+      buildPhase({
+        id: "a",
+        type: "research",
+        title: "A",
+        task: "x",
+        fanOut: 3,
+        keepBest: 2,
+        judge: {},
+      }),
+    ).not.toThrow();
+  });
 });
 
 describe("executeRun - linear + roles", () => {
@@ -397,7 +453,7 @@ describe("executeRun - fan-out + judged loop-until-N", () => {
         phases: [
           {
             id: "impl",
-            type: "implement",
+            type: "design",
             title: "Attempts",
             task: "implement",
             fanOut: 2,
@@ -440,7 +496,7 @@ describe("executeRun - fan-out + judged loop-until-N", () => {
         phases: [
           {
             id: "impl",
-            type: "implement",
+            type: "design",
             title: "Attempts",
             task: "join the bindings",
             keepBest: 1,
@@ -475,6 +531,19 @@ describe("executeRun - fan-out + judged loop-until-N", () => {
     expect(judges).toHaveLength(2);
     expect(judges[1]?.task).toContain("join the bindings");
     expect(judges[1]?.task).not.toContain("previous attempt");
+
+    // Each judged candidate names the judge chat that graded it, so the run's
+    // detail view can open that chat. The fake mints ids in spawn order.
+    const judgeIds = fake.spawns.flatMap((spawn, index) =>
+      spawn.phaseType === "verify" ? [`agent_${index}`] : [],
+    );
+    const recorded = (result.phases[0]?.candidates ?? []).flatMap(
+      (candidate) => candidate.judgeAgentIds ?? [],
+    );
+    expect(recorded.length).toBeGreaterThan(0);
+    for (const id of recorded) {
+      expect(judgeIds).toContain(id);
+    }
   });
 
   test("a judged phase that fails names the verdicts, not the provider, as the place to look", async () => {
@@ -507,7 +576,7 @@ describe("executeRun - fan-out + judged loop-until-N", () => {
       {
         title: "Error then recover",
         phases: [
-          { id: "impl", type: "implement", title: "Build", task: "build", keepBest: 1, judge: {} },
+          { id: "impl", type: "design", title: "Build", task: "build", keepBest: 1, judge: {} },
         ],
       },
       fake,
@@ -550,7 +619,7 @@ describe("executeRun - fan-out + judged loop-until-N", () => {
       {
         title: "All fail",
         phases: [
-          { id: "impl", type: "implement", title: "Build", task: "build", fanOut: 2, judge: {} },
+          { id: "impl", type: "design", title: "Build", task: "build", fanOut: 2, judge: {} },
         ],
       },
       fake,
@@ -621,7 +690,7 @@ describe("executeRun - dependency output threading", () => {
       {
         title: "Judged then ship",
         phases: [
-          { id: "make", type: "implement", title: "Make", task: "make", fanOut: 2, judge: {} },
+          { id: "make", type: "design", title: "Make", task: "make", fanOut: 2, judge: {} },
           { id: "ship", type: "deliver", title: "Ship", task: "ship it", dependsOn: ["make"] },
         ],
       },
@@ -701,9 +770,7 @@ describe("buildRunSummaryPrompt", () => {
     const result = await run(
       {
         title: "Doomed",
-        phases: [
-          { id: "impl", type: "implement", title: "Try", task: "try", fanOut: 2, judge: {} },
-        ],
+        phases: [{ id: "impl", type: "design", title: "Try", task: "try", fanOut: 2, judge: {} }],
       },
       fake,
     );
@@ -801,6 +868,93 @@ describe("executeRun - iterative phases continue the same chat", () => {
     expect(result.agentCount).toBe(3);
     // Downstream phases receive the continued chat's final report.
     expect(summarizeRunOutput(result)).toBe("ALL JOINED: CRM handlers mapped");
+  });
+
+  test("a running iterative phase publishes each round's progress as it happens", async () => {
+    const fake = makeFake({
+      respond: (input) => {
+        if (input.phaseType !== "verify") {
+          return "settings pages indexed";
+        }
+        return input.task.includes("ALL JOINED") ? verdict("pass") : failVerdict;
+      },
+      respondContinued: () => "ALL JOINED: CRM handlers mapped",
+    });
+    await run(iterativePlan(), fake);
+    const live = fake.emits.filter((snapshot) => snapshot.phases[0]?.status === "running");
+    const progress = live.map((snapshot) => {
+      const phase = snapshot.phases[0];
+      const candidate = phase?.candidates?.[0];
+      return {
+        round: phase?.round,
+        stage: candidate?.stage,
+        attempts: candidate?.attempts,
+        judges: candidate?.judgeAgentIds?.length ?? 0,
+        verdict: candidate?.verdict?.verdict,
+        verdictAt: candidate?.verdictAt,
+      };
+    });
+    // The maker is listed before it finishes, then each judge and verdict lands
+    // as it happens, and round two works with round one's verdict dated beside it.
+    expect(progress).toContainEqual(
+      expect.objectContaining({ round: 1, stage: "working", judges: 0 }),
+    );
+    expect(progress).toContainEqual(
+      expect.objectContaining({ round: 1, stage: "judging", judges: 1 }),
+    );
+    const firstVerdict = progress.find((p) => p.round === 1 && p.stage === "settled");
+    expect(firstVerdict).toMatchObject({ verdict: "fail", attempts: 1 });
+    expect(firstVerdict?.verdictAt).toBeDefined();
+    expect(progress).toContainEqual(
+      expect.objectContaining({
+        round: 2,
+        stage: "working",
+        attempts: 2,
+        verdict: "fail",
+        verdictAt: firstVerdict?.verdictAt,
+      }),
+    );
+    expect(progress).toContainEqual(
+      expect.objectContaining({ round: 2, stage: "judging", judges: 2 }),
+    );
+    // A reader can tell a live phase from a stuck one: the run's stamp moves.
+    const stamps = live.map((snapshot) => snapshot.updatedAt ?? "");
+    expect(new Set(stamps).size).toBe(stamps.length);
+  });
+
+  test("a running bounded phase lists each candidate before its round ends", async () => {
+    const fake = makeFake({
+      respond: (input) => (input.phaseType === "verify" ? verdict("pass") : "drafted"),
+    });
+    const plan: RunPlan = {
+      title: "Draft",
+      phases: [
+        {
+          id: "draft",
+          type: "design",
+          title: "Draft",
+          task: "draft it",
+          fanOut: 2,
+          judge: {},
+        },
+      ],
+    };
+    const result = await run(plan, fake);
+    expect(result.status).toBe("done");
+    const firstListing = fake.emits.find(
+      (snapshot) => (snapshot.phases[0]?.candidates?.length ?? 0) > 0,
+    );
+    expect(firstListing?.phases[0]?.status).toBe("running");
+    expect(firstListing?.phases[0]?.round).toBe(1);
+    expect(firstListing?.phases[0]?.candidates?.[0]).toMatchObject({ stage: "working" });
+    expect(firstListing?.phases[0]?.candidates?.[0]?.summary).toBeUndefined();
+    // Bounded candidates are one chat per round; they do not count rounds.
+    const final = result.phases[0]?.candidates ?? [];
+    expect(final).toHaveLength(2);
+    for (const candidate of final) {
+      expect(candidate).toMatchObject({ stage: "settled", verdict: { verdict: "pass" } });
+      expect(candidate.attempts).toBeUndefined();
+    }
   });
 
   test("the loop cap bounds judged rounds, the first one included", async () => {

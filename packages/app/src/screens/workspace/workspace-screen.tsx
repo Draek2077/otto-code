@@ -218,6 +218,7 @@ import { useWorkspaceArtifactDiscovery } from "@/artifacts/use-workspace-artifac
 import { useGeneratingArtifactAgentIds } from "@/artifacts/use-artifacts";
 import { useDesktopBrowserNewTabRequests } from "@/desktop/browser/new-tab-requests";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
+import { workflowTabFallbackDescription } from "@/screens/workspace/workflow-tab-fallback";
 import {
   resolveWorkspaceHeaderRenderState,
   type WorkspaceHeaderCheckoutState,
@@ -505,7 +506,7 @@ function getFallbackTabOptionLabel(
   if (tab.target.kind === "contextManagement") {
     return labels.contextManagement;
   }
-  return labels.agent;
+  return tab.target.kind === "workflowRun" ? "Workflow" : labels.agent;
 }
 
 // Fallback-only (the registry descriptor carries the localized title); matches
@@ -554,9 +555,6 @@ function getFallbackTabOptionDescription(
   if (tab.target.kind === "contextManagement") {
     return labels.contextManagement;
   }
-  if (tab.target.kind === "orchestrationGraph") {
-    return "Graph";
-  }
   // A refine job is named for the document it is about. Its paths are absolute
   // (a working set can span the project and `~/.claude`), so this takes the file
   // name rather than printing a drive letter and an account name into the tab
@@ -564,7 +562,9 @@ function getFallbackTabOptionDescription(
   if (tab.target.kind === "refine") {
     return fileNameOf(tab.target.paths[0] ?? "");
   }
-  return tab.target.kind === "file" ? tab.target.path : "";
+  return tab.target.kind === "file"
+    ? tab.target.path
+    : (workflowTabFallbackDescription(tab.target) ?? "");
 }
 
 function fileNameOf(absolutePath: string): string {

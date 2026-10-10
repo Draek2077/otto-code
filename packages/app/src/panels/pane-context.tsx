@@ -97,6 +97,12 @@ export function PaneFocusProvider({
   return <PaneFocusContext.Provider value={value}>{children}</PaneFocusContext.Provider>;
 }
 
+/** The pane context when rendered inside a pane, else null - for components
+ * that also render in standalone surfaces (sheets, dialogs). */
+export function useOptionalPaneContext(): PaneContextValue | null {
+  return useContext(PaneContext);
+}
+
 export function usePaneContext(): PaneContextValue {
   const value = useContext(PaneContext);
   invariant(value, "PaneContext is required");

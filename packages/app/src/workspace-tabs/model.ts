@@ -161,7 +161,12 @@ export type WorkspaceTabTarget =
   // reusable graph template in a node-editor canvas. One tab per graph per
   // workspace. `runId` carries the Draft orchestration the dialog minted so
   // the designer's Run action can execute it in place.
-  | { kind: "orchestrationGraph"; graphId: string; runId?: string };
+  | { kind: "orchestrationGraph"; graphId: string; runId?: string }
+  // One Workflow run's detail: its phases, the chats that ran them, and their
+  // verdicts, with each chat openable as a read-only tab beside it. A tab
+  // rather than a dialog because those chats are read alongside it. One per run
+  // per workspace.
+  | { kind: "workflowRun"; runId: string };
 
 export interface WorkspaceTab {
   tabId: string;

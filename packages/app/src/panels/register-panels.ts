@@ -17,6 +17,7 @@ import { codeRenamePanelRegistration } from "@/panels/code-rename-panel";
 import { fileHistoryPanelRegistration } from "@/panels/file-history-panel";
 import { gitLogPanelRegistration } from "@/panels/git-log-panel";
 import { orchestrationGraphPanelRegistration } from "@/panels/workflow-graph-panel-registration";
+import { workflowRunPanelRegistration } from "@/panels/workflow-run-panel";
 import { filesPanelRegistration } from "@/panels/files-panel";
 import { projectSearchPanelRegistration } from "@/panels/project-search-panel";
 import { registerPanel } from "@/panels/panel-registry";
@@ -56,6 +57,7 @@ export function ensurePanelsRegistered(): void {
   registerPanel(contextManagementPanelRegistration);
   registerPanel(projectKnowledgePanelRegistration);
   registerPanel(orchestrationGraphPanelRegistration);
+  registerPanel(workflowRunPanelRegistration);
   registerPanel(communicationsRoomPanelRegistration);
   // `working_diff` and `commit_diff` are registered below and render through
   // Otto's own Changes view, so `normalizeWorkspaceTabTarget`

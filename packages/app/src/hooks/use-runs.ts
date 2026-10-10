@@ -65,8 +65,7 @@ export function useRespondToRunGate(serverId: string | null) {
 
 /**
  * Every agent id involved in a run: the conductor plus every phase's spawned
- * candidates. Shared by the token-cost rollup (runs-screen.tsx sumRunTokens)
- * and the Visualizer "Visualize this run" scoping (visualizer-panel.tsx).
+ * candidates. Used by the Visualizer "Visualize this run" scoping (visualizer-panel.tsx).
  */
 export function collectRunAgentIds(run: Run): Set<string> {
   const agentIds = new Set<string>();

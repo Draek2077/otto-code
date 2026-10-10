@@ -351,6 +351,7 @@ const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
     title: z.string().optional(),
   }),
   z.strictObject({ kind: z.literal("gitLog"), operation: z.string() }),
+  z.strictObject({ kind: z.literal("workflowRun"), runId: z.string() }),
   z.strictObject({ kind: z.literal("visualizer"), runId: z.string().optional() }),
   z.strictObject({
     kind: z.literal("fileHistory"),

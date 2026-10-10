@@ -236,8 +236,19 @@ function getDiffCloseButtonTestId(tab: WorkspaceTabDescriptor): string | null {
   return null;
 }
 
+/** The Workflow kinds: a Graph being designed and a run being inspected. */
+function getWorkflowCloseButtonTestId(tab: WorkspaceTabDescriptor): string | null {
+  if (tab.target.kind === "orchestrationGraph") {
+    return `workspace-orchestration-graph-close-${tab.target.graphId}`;
+  }
+  if (tab.target.kind === "workflowRun") {
+    return `workspace-workflow-run-close-${tab.target.runId}`;
+  }
+  return null;
+}
+
 function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
-  const diff = getDiffCloseButtonTestId(tab);
+  const diff = getDiffCloseButtonTestId(tab) ?? getWorkflowCloseButtonTestId(tab);
   if (diff !== null) {
     return diff;
   }
@@ -265,9 +276,6 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   }
   if (tab.target.kind === "gitLog") {
     return `workspace-gitlog-close-${tab.target.operation}`;
-  }
-  if (tab.target.kind === "orchestrationGraph") {
-    return `workspace-orchestration-graph-close-${tab.target.graphId}`;
   }
   if (tab.target.kind === "refine") {
     return `workspace-refine-close-${encodeFilePathForPathSegment(tab.target.paths[0] ?? "")}`;

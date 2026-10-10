@@ -2,11 +2,17 @@ import { z } from "zod";
 import { ensureValidJson } from "../../json-utils.js";
 import { getActiveAgentTeam } from "@otto-code/protocol/agent-teams";
 import type { AgentProfile } from "@otto-code/protocol/messages";
-import { getOrchestrationRunIdFromLabels } from "@otto-code/protocol/agent-labels";
+import {
+  getOrchestrationRunIdFromLabels,
+  WORKFLOW_WORKER_RUN_ID_LABEL,
+} from "@otto-code/protocol/agent-labels";
 import { createAgentCommand } from "../create-agent/create.js";
-import { RunPlanSchema } from "@otto-code/protocol/workflow";
+import { isTerminalRunStatus, RunPlanSchema } from "@otto-code/protocol/workflow";
 import { summarizeRunOutput } from "../../workflow/workflow-engine.js";
-import { attachStartRunLifecycle } from "../../workflow/workflow-start-lifecycle.js";
+import {
+  attachStartRunLifecycle,
+  type StartCallState,
+} from "../../workflow/workflow-start-lifecycle.js";
 import type { RunSpawnPort } from "../../workflow/workflow-service.js";
 import { resolveTeamRoleMember } from "../../workflow/resolve-team-role.js";
 import { AgentStatusEnum } from "../mcp-shared.js";
@@ -164,6 +170,8 @@ export function registerOrchestrationTools({
       title: string;
       cwd: string;
       workspaceId?: string;
+      /** The run this chat works for, so clients present it read-only. */
+      runId: string;
     }): Promise<string> => {
       const brain = await resolvePersonalityBrain(input.personality, {
         providerOverride: undefined,
@@ -195,6 +203,7 @@ export function registerOrchestrationTools({
           initialPrompt: input.task,
           cwd: input.cwd,
           ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+          labels: { [WORKFLOW_WORKER_RUN_ID_LABEL]: input.runId },
           thinking: brain.thinkingOptionId,
           mode: brain.modeId,
           // A Workflow child has no one to answer its prompts: the engine awaits
@@ -239,6 +248,9 @@ export function registerOrchestrationTools({
         const cwd = resolveScopedCwd(undefined);
         const workspaceId = conductor?.workspaceId;
         const runWorkerAgentIds = new Set<string>();
+        // Assigned once the run exists. Nothing spawns before then: every child
+        // starts after the start confirmation, well after startWorkflow returns.
+        const runIdRef = { current: "" };
 
         const spawnPort: RunSpawnPort = {
           resolveRole: async (role) => {
@@ -256,6 +268,7 @@ export function registerOrchestrationTools({
               title: `${spawnInput.role ?? spawnInput.phaseType}: ${spawnInput.phaseId}`,
               cwd,
               ...(workspaceId ? { workspaceId } : {}),
+              runId: runIdRef.current,
             });
             runWorkerAgentIds.add(agentId);
             return { agentId, personalityId: member.id };
@@ -331,17 +344,20 @@ export function registerOrchestrationTools({
           // child. This is separate from declared attended gates.
           requireStartConfirmation: true,
         });
+        runIdRef.current = run.id;
         // An orchestration plan gathers its chats inside the daemon, rather than
         // letting every worker notify the conductor. Restore one aggregate
         // hand-back only if the original tool turn has gone away; the normal
         // path receives the result below without an extra turn. This lifecycle
         // applies only to AI-declared plans, not graph orchestration.
+        const startCall: { state: StartCallState } = { state: "awaiting" };
         attachStartRunLifecycle({
           runId: run.id,
           settled,
           ...(callerAgentId ? { conductorAgentId: callerAgentId } : {}),
           workerAgentIds: runWorkerAgentIds,
           port: {
+            startCallState: () => startCall.state,
             conductorHasInFlightTurn: () =>
               Boolean(callerAgentId && agentManager.hasInFlightRun(callerAgentId)),
             notifyConductor: async (text) => {
@@ -372,7 +388,16 @@ export function registerOrchestrationTools({
         });
         // Block until the run settles or parks at a gate, so the conductor comes
         // back with the actual deliverable to relay - not just a fire-and-forget id.
-        const outcome = await activeRunService.settleOrPause({ runId: run.id, settled });
+        let outcome: Awaited<ReturnType<typeof activeRunService.settleOrPause>>;
+        try {
+          outcome = await activeRunService.settleOrPause({ runId: run.id, settled });
+        } catch (error) {
+          startCall.state = "returned-early";
+          throw error;
+        }
+        // Only a terminal run carries its result back in this tool result; a
+        // pause or the wait limit leaves the result to the queued hand-back.
+        startCall.state = isTerminalRunStatus(outcome.status) ? "delivered" : "returned-early";
         const result = summarizeRunOutput(outcome);
         return {
           content: [],
@@ -400,7 +425,10 @@ export function registerOrchestrationTools({
       {
         title: "Get Workflow status",
         description:
-          "Return the current projection of a Workflow - its phases, statuses, and structured judge verdicts.",
+          "Return the current projection of a Workflow - its phases, statuses, and structured judge verdicts. " +
+          "A running phase is live: its `round`, and each candidate's `stage` (working, judging, settled), " +
+          "`attempts`, `judgeAgentIds`, `verdict` and `verdictAt` update as they happen, and the run's " +
+          "`updatedAt` moves with them. Read these before pulling a worker's chat activity.",
         inputSchema: {
           runId: z.string(),
         },
