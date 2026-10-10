@@ -1,5 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import readline from "node:readline";
+import { StringDecoder } from "node:string_decoder";
 import type { Logger } from "pino";
 import { z } from "zod";
 
@@ -9,6 +9,8 @@ const DEFAULT_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000;
 const APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS = 2_000;
 const APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS = 1_000;
 const STDERR_BUFFER_LIMIT = 8192;
+// Unparseable stdout lines can be whole thread payloads; log a bounded preview.
+const LOGGED_LINE_PREVIEW_LIMIT = 500;
 
 interface JsonRpcRequest {
   id: number;
@@ -167,8 +169,14 @@ function readProviderTurnId(params: unknown): string | undefined {
   return isRecord(turn) && typeof turn.id === "string" ? turn.id : undefined;
 }
 
+function describeLine(line: string): { lineLength: number; linePreview: string } {
+  return { lineLength: line.length, linePreview: line.slice(0, LOGGED_LINE_PREVIEW_LIMIT) };
+}
+
 export class CodexAppServerClient {
-  private readonly rl: readline.Interface;
+  private readonly stdoutDecoder = new StringDecoder("utf8");
+  private stdoutPartial = "";
+  private stdoutClosed = false;
   private readonly pending = new Map<number, PendingRequest>();
   private readonly requestHandlers = new Map<string, RequestHandler>();
   private notificationHandler: NotificationHandler | null = null;
@@ -182,11 +190,18 @@ export class CodexAppServerClient {
     private readonly logger: Logger,
     private readonly getTraceContext: () => CodexAppServerTraceContext = () => ({}),
   ) {
-    this.rl = readline.createInterface({ input: child.stdout });
-    this.rl.on("line", (line) => {
-      void this.handleLine(line).catch((error) => {
-        this.logger.warn({ error, line }, "Failed to handle Codex app-server stdout line");
-      });
+    // JSON-RPC frames are newline-delimited. node:readline also breaks lines on
+    // U+2028/U+2029, which JSON carries unescaped inside strings, so it split
+    // (and dropped) any response quoting web text that contains them.
+    child.stdout.on("data", (chunk: Buffer) => {
+      this.acceptStdout(this.stdoutDecoder.write(chunk));
+    });
+    child.stdout.on("end", () => {
+      this.acceptStdout(this.stdoutDecoder.end());
+      if (this.stdoutPartial) {
+        this.emitStdoutLine(this.stdoutPartial);
+        this.stdoutPartial = "";
+      }
     });
 
     child.stderr.on("data", (chunk) => {
@@ -264,7 +279,7 @@ export class CodexAppServerClient {
     }
     this.pending.clear();
     this.unexpectedTerminationHandler = null;
-    this.rl.close();
+    this.stopReadingStdout();
     this.rejectPending(new Error("Codex app-server client is closed"));
     try {
       this.child.stdin.end();
@@ -291,7 +306,7 @@ export class CodexAppServerClient {
       return;
     }
     this.disposed = true;
-    this.rl.close();
+    this.stopReadingStdout();
     this.rejectPending(error);
     const handler = this.unexpectedTerminationHandler;
     this.unexpectedTerminationHandler = null;
@@ -324,18 +339,52 @@ export class CodexAppServerClient {
     }
   }
 
+  private acceptStdout(text: string): void {
+    if (this.stdoutClosed || !text) return;
+    let start = 0;
+    let newline = text.indexOf("\n");
+    while (newline !== -1) {
+      const line = this.stdoutPartial + text.slice(start, newline);
+      this.stdoutPartial = "";
+      this.emitStdoutLine(line);
+      if (this.stdoutClosed) return;
+      start = newline + 1;
+      newline = text.indexOf("\n", start);
+    }
+    this.stdoutPartial += text.slice(start);
+  }
+
+  private emitStdoutLine(rawLine: string): void {
+    if (this.stdoutClosed) return;
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    void this.handleLine(line).catch((error) => {
+      this.logger.warn(
+        { error, ...describeLine(line) },
+        "Failed to handle Codex app-server stdout line",
+      );
+    });
+  }
+
+  private stopReadingStdout(): void {
+    this.stdoutClosed = true;
+    this.stdoutPartial = "";
+  }
+
   private async handleLine(line: string): Promise<void> {
     if (!line.trim()) return;
     let raw: unknown;
     try {
       raw = JSON.parse(line);
     } catch (error) {
-      this.logger.warn({ error, line }, "Ignoring non-JSON Codex app-server stdout line");
+      this.logger.warn(
+        { error, ...describeLine(line) },
+        "Ignoring non-JSON Codex app-server stdout line",
+      );
       return;
     }
 
     if (!isRecord(raw)) {
-      this.logger.warn({ line }, "Parsed JSON is not an object");
+      this.logger.warn(describeLine(line), "Parsed JSON is not an object");
       return;
     }
 

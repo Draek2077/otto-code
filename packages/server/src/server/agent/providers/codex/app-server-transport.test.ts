@@ -31,6 +31,37 @@ describe("Codex app-server transport", () => {
     child.stdin.end();
   });
 
+  test("keeps responses whole when string values contain U+2028 or U+2029", async () => {
+    const child = createCodexAppServerChildProcess();
+    const client = new CodexAppServerClient(child, createTestLogger());
+
+    // JSON carries these separators unescaped; scraped web text often has them.
+    const text = "Make money work for you with Printify";
+    const request = client.request("thread/read", {});
+    child.stdout.write(`{"id":1,"result":{"text":"${text}"}}\n`);
+
+    await expect(request).resolves.toEqual({ text });
+    child.stdout.end();
+    child.stderr.end();
+    child.stdin.end();
+  });
+
+  test("reassembles a response split across stdout chunks mid-character", async () => {
+    const child = createCodexAppServerChildProcess();
+    const client = new CodexAppServerClient(child, createTestLogger());
+
+    const request = client.request("thread/read", {});
+    const frame = Buffer.from('{"id":1,"result":{"text":"café"}}\r\n', "utf8");
+    const splitInsideMultibyte = frame.indexOf(0xc3) + 1;
+    child.stdout.write(frame.subarray(0, splitInsideMultibyte));
+    child.stdout.write(frame.subarray(splitInsideMultibyte));
+
+    await expect(request).resolves.toEqual({ text: "café" });
+    child.stdout.end();
+    child.stderr.end();
+    child.stdin.end();
+  });
+
   test("dispose rejects pending requests instead of leaving them hanging", async () => {
     const child = createCodexAppServerChildProcess();
     const client = new CodexAppServerClient(child, createTestLogger());
