@@ -87,9 +87,9 @@ describe("getClaudeModels", () => {
     expect(models.map((m) => m.id)).toEqual([
       "claude-opus-5-5",
       "claude-fable-5-1",
+      "claude-fable-5",
       "claude-sonnet-5-5",
       "claude-haiku-5-5",
-      "claude-fable-5",
       "claude-opus-5",
       "claude-opus-4-8",
       "claude-sonnet-5",
@@ -121,9 +121,9 @@ describe("getClaudeModels", () => {
       new Map([
         ["claude-opus-5-5", 1_000_000],
         ["claude-fable-5-1", 1_000_000],
+        ["claude-fable-5", 1_000_000],
         ["claude-sonnet-5-5", 1_000_000],
         ["claude-haiku-5-5", 1_000_000],
-        ["claude-fable-5", 1_000_000],
         ["claude-opus-5", 1_000_000],
         ["claude-opus-4-8", 1_000_000],
         ["claude-sonnet-5", 1_000_000],

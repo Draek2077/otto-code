@@ -103,6 +103,20 @@ export const CLAUDE_MODEL_MANIFEST = [
     autoModeSupport: "all",
   },
   {
+    id: "claude-fable-5",
+    // COMPAT(claudeFable5OneMillionId): added in v0.3.0, remove after 2027-02-06 once pre-v0.3.0 app preferences are outside support.
+    aliases: ["claude-fable-5[1m]"],
+    label: "Fable 5",
+    description: "Fable 5 · Previous release",
+    minimumClaudeCodeVersion: "2.1.169",
+    contextWindowMaxTokens: 1_000_000,
+    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    // Thinking is always on for Fable 5: an explicit `{type: "disabled"}` is a
+    // 400 at any effort, so Off is withheld rather than offered and rejected.
+    supportsThinkingOff: false,
+    autoModeSupport: "all",
+  },
+  {
     id: "claude-sonnet-5-5",
     label: "Sonnet 5.5",
     description: "Sonnet 5.5 · Most efficient for simpler tasks",
@@ -126,20 +140,6 @@ export const CLAUDE_MODEL_MANIFEST = [
     // The CLI catalog flags Haiku 5.5 `rejects_disabled_thinking`.
     supportsThinkingOff: false,
     // Unlike every earlier Haiku, the CLI's auto-mode gate exempts Haiku 5.5.
-    autoModeSupport: "all",
-  },
-  {
-    id: "claude-fable-5",
-    // COMPAT(claudeFable5OneMillionId): added in v0.3.0, remove after 2027-02-06 once pre-v0.3.0 app preferences are outside support.
-    aliases: ["claude-fable-5[1m]"],
-    label: "Fable 5",
-    description: "Fable 5 · Previous release",
-    minimumClaudeCodeVersion: "2.1.169",
-    contextWindowMaxTokens: 1_000_000,
-    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
-    // Thinking is always on for Fable 5: an explicit `{type: "disabled"}` is a
-    // 400 at any effort, so Off is withheld rather than offered and rejected.
-    supportsThinkingOff: false,
     autoModeSupport: "all",
   },
   {
