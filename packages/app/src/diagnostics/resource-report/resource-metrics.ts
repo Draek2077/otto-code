@@ -21,6 +21,22 @@ export interface DomReading {
   styleSheets: number;
 }
 
+/**
+ * What is on screen. Steady-state frame cost under software compositing scales
+ * with painted pixels and with what is visibly animating, none of which the
+ * app-state readings capture.
+ */
+export interface ViewReading {
+  cssWidth: number;
+  cssHeight: number;
+  devicePixelRatio: number;
+  focused: boolean;
+  visible: boolean;
+  /** Webviews with a presented (larger than 1x1) surface, not parked ones. */
+  shownWebviews: number;
+  shownCanvases: number;
+}
+
 export interface HeapReading {
   usedBytes: number;
   totalBytes: number;
@@ -55,6 +71,7 @@ export interface ResourceMetricsInput {
   stores: Readonly<Record<string, number>>;
   query: QueryCacheReading | null;
   dom: DomReading | null;
+  view: ViewReading | null;
   heap: HeapReading | null;
   runtime: RuntimeCounters;
   traffic: TrafficReading | null;
@@ -87,6 +104,20 @@ export function buildResourceMetrics(
     metrics["dom.webviews"] = input.dom.webviews;
     metrics["dom.canvases"] = input.dom.canvases;
     metrics["dom.styleSheets"] = input.dom.styleSheets;
+  }
+
+  if (input.view) {
+    const { cssWidth, cssHeight, devicePixelRatio } = input.view;
+    metrics["view.cssWidth"] = cssWidth;
+    metrics["view.cssHeight"] = cssHeight;
+    metrics["view.devicePixelRatio"] = round(devicePixelRatio, 2);
+    metrics["view.devicePixels"] = Math.round(
+      cssWidth * cssHeight * devicePixelRatio * devicePixelRatio,
+    );
+    metrics["view.focused"] = input.view.focused ? 1 : 0;
+    metrics["view.visible"] = input.view.visible ? 1 : 0;
+    metrics["view.shownWebviews"] = input.view.shownWebviews;
+    metrics["view.shownCanvases"] = input.view.shownCanvases;
   }
 
   if (input.heap) {

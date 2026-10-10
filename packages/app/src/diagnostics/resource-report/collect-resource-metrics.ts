@@ -132,6 +132,7 @@ export function collectResourceMetrics(
     stores,
     query: readQueryCache(),
     dom: readDom(),
+    view: readView(),
     heap: readHeap(),
     runtime: readRuntimeCounters(),
     traffic: readTraffic(),
@@ -362,6 +363,47 @@ function readDom(): ResourceMetricsInput["dom"] {
       webviews: document.getElementsByTagName("webview").length,
       canvases: document.getElementsByTagName("canvas").length,
       styleSheets: document.styleSheets.length,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isShown(element: Element | null): boolean {
+  if (!element) {
+    return false;
+  }
+  const rect = element.getBoundingClientRect();
+  return rect.width > 1 && rect.height > 1;
+}
+
+function readView(): ResourceMetricsInput["view"] {
+  if (!isWeb || typeof document === "undefined" || typeof window === "undefined") {
+    return null;
+  }
+  try {
+    let shownWebviews = 0;
+    for (const webview of document.getElementsByTagName("webview")) {
+      // Parked browser surfaces clip a full-size webview to 1x1, so measure the
+      // surface that holds it rather than the webview itself.
+      if (isShown(webview) && isShown(webview.parentElement)) {
+        shownWebviews += 1;
+      }
+    }
+    let shownCanvases = 0;
+    for (const canvas of document.getElementsByTagName("canvas")) {
+      if (isShown(canvas)) {
+        shownCanvases += 1;
+      }
+    }
+    return {
+      cssWidth: window.innerWidth,
+      cssHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      focused: document.hasFocus(),
+      visible: document.visibilityState === "visible",
+      shownWebviews,
+      shownCanvases,
     };
   } catch {
     return null;
