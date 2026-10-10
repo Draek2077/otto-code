@@ -5,6 +5,7 @@ import {
   readResidentBrowserPresentation,
   removeResidentBrowserWebview,
   resizeResidentBrowserWebview,
+  withResidentBrowserAwake,
 } from "@/desktop/browser/resident-webviews";
 import {
   createFixedBrowserViewport,
@@ -189,12 +190,18 @@ async function handleBrowserAutomationRequest(params: {
   }
 
   try {
-    const payload =
+    const targetBrowserId =
       "browserId" in request.command.args && typeof request.command.args.browserId === "string"
-        ? await withBrowserAutomationFocus(request.command.args.browserId, () =>
-            executeAutomationCommand(request),
-          )
-        : await executeAutomationCommand(request);
+        ? request.command.args.browserId
+        : null;
+    // A parked tab is backgrounded after an idle grace. Wake it before main
+    // touches the guest so captures, input, and rAF-driven pages see a
+    // painting page, and keep it awake until this command settles.
+    const payload = targetBrowserId
+      ? await withResidentBrowserAwake(targetBrowserId, () =>
+          withBrowserAutomationFocus(targetBrowserId, () => executeAutomationCommand(request)),
+        )
+      : await executeAutomationCommand(request);
     client.sendBrowserAutomationExecuteResponse({
       type: "browser.automation.execute.response",
       payload: withPresentedTabGeometry(

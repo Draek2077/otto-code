@@ -7,6 +7,7 @@ import {
 import { useBrowserStore, type BrowserViewport } from "@/desktop/browser/store";
 import { WEB_SURFACE_PLANE } from "@/lib/overlay-root";
 import { publishSidebarEdgePointer } from "@/components/sidebar-edge-peek/sidebar-edge-pointer";
+import { createResidentBrowserActivity } from "./resident-activity";
 
 const RESIDENT_BROWSER_HOST_ID = "otto-browser-resident-webviews";
 const BROWSER_ID_ATTRIBUTE = "data-otto-browser-id";
@@ -28,6 +29,17 @@ const documentsWithBrowserInputRecovery = new WeakSet<Document>();
 // browser pane eats the drag and its drop zones can never create a split.
 let residentBrowserSurfaceInputEnabled = true;
 const residentBrowserInputSuspensions = new Set<symbol>();
+// A parked surface keeps the proven paintable 1x1 geometry, which Chromium
+// treats as a rendered frame: the guest would run rAF, CSS animations, and
+// timers at full rate and keep submitting compositor frames forever. After an
+// idle grace the surface turns `visibility: hidden`, which Chromium treats as a
+// frame that is not rendered: no animation frames, timers clamped to about
+// 1 Hz, near-zero CPU. The geometry, the guest, its size, and its CDP session
+// stay put, so waking is a single style write. Measured in real Electron 44,
+// see docs/browser-capture-harness.md.
+const residentBrowserActivity = createResidentBrowserActivity({
+  setBackgrounded: applyResidentBrowserBackgrounded,
+});
 
 function isResidentBrowserInputEnabled(browserId?: string): boolean {
   return (
@@ -157,7 +169,16 @@ function applyResidentHostParkingStyle(host: HTMLElement): void {
   host.style.transform = "";
 }
 
-function applyParkedBrowserSurfaceStyle(surface: HTMLElement): void {
+function applyResidentBrowserBackgrounded(browserId: string, backgrounded: boolean): void {
+  const surface = residentSurfacesByBrowserId.get(browserId);
+  // A presented surface always paints; presentation wakes the tab first anyway.
+  if (!surface || surface.getAttribute("aria-hidden") === "false") {
+    return;
+  }
+  surface.style.visibility = backgrounded ? "hidden" : "visible";
+}
+
+function applyParkedBrowserSurfaceStyle(surface: HTMLElement, browserId: string): void {
   surface.setAttribute("aria-hidden", "true");
   surface.style.position = "fixed";
   surface.style.left = "0";
@@ -172,8 +193,33 @@ function applyParkedBrowserSurfaceStyle(surface: HTMLElement): void {
   // opaque app canvas so the browser-white backing cannot leak at (0, 0).
   surface.style.zIndex = "-1";
   surface.style.clipPath = "";
-  surface.style.visibility = "visible";
+  surface.style.visibility = residentBrowserActivity.isBackgrounded(browserId)
+    ? "hidden"
+    : "visible";
   surface.style.transform = "";
+}
+
+/**
+ * Runs a browser automation operation with its tab awake. A backgrounded
+ * parked guest is made paintable again before the operation starts, stays
+ * awake while operations keep arriving, and backgrounds again after
+ * RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS without one. Tabs without a
+ * resident guest run the operation unchanged.
+ */
+export function withResidentBrowserAwake<T>(
+  browserId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const normalizedBrowserId = trimNonEmpty(browserId);
+  if (!normalizedBrowserId) {
+    return operation();
+  }
+  return residentBrowserActivity.runAwake(normalizedBrowserId, operation);
+}
+
+export function isResidentBrowserBackgrounded(browserId: string): boolean {
+  const normalizedBrowserId = trimNonEmpty(browserId);
+  return normalizedBrowserId ? residentBrowserActivity.isBackgrounded(normalizedBrowserId) : false;
 }
 
 /**
@@ -264,7 +310,7 @@ function getBrowserSurface(browserId: string, ownerDocument: Document): HTMLElem
   }
   const surface = ownerDocument.createElement("div");
   surface.setAttribute(BROWSER_SURFACE_ATTRIBUTE, browserId);
-  applyParkedBrowserSurfaceStyle(surface);
+  applyParkedBrowserSurfaceStyle(surface, browserId);
   getResidentBrowserHost(ownerDocument).appendChild(surface);
   ensureResidentBrowserInputRecovery(ownerDocument);
   residentSurfacesByBrowserId.set(browserId, surface);
@@ -433,6 +479,7 @@ export function presentBrowserWebview(
   if (webview.parentElement !== surface) {
     surface.appendChild(webview);
   }
+  residentBrowserActivity.present(normalizedBrowserId);
   const anchorBounds = anchor.getBoundingClientRect();
   const clipBounds = clip.getBoundingClientRect();
   const left = Math.max(anchorBounds.left, clipBounds.left);
@@ -618,8 +665,9 @@ export function releaseResidentBrowserWebview(browserId: string, webview: HTMLEl
   residentPresentationsByBrowserId.delete(normalizedBrowserId);
   residentBrowserEdgeInputYields.delete(normalizedBrowserId);
   applyResidentWebviewStyle(webview, normalizedBrowserId);
+  residentBrowserActivity.park(normalizedBrowserId);
   const surface = getBrowserSurface(normalizedBrowserId, ownerDocument);
-  applyParkedBrowserSurfaceStyle(surface);
+  applyParkedBrowserSurfaceStyle(surface, normalizedBrowserId);
   if (webview.parentElement !== surface) {
     surface.appendChild(webview);
   }
@@ -661,6 +709,7 @@ export function removeResidentBrowserWebview(browserId: string): void {
   residentWebviewSizesByBrowserId.delete(normalizedBrowserId);
   residentPresentationsByBrowserId.delete(normalizedBrowserId);
   residentBrowserEdgeInputYields.delete(normalizedBrowserId);
+  residentBrowserActivity.forget(normalizedBrowserId);
   if (resident) {
     readyResidentWebviews.delete(resident);
   }
@@ -680,6 +729,7 @@ export function clearResidentBrowserWebviewsForTests(): void {
   residentBrowserEdgeInputYields.clear();
   residentBrowserSurfaceInputEnabled = true;
   residentBrowserInputSuspensions.clear();
+  residentBrowserActivity.reset();
   readDocument()?.getElementById(RESIDENT_BROWSER_HOST_ID)?.remove();
 }
 

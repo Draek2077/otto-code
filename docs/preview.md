@@ -562,6 +562,14 @@ with the guest when its pane unmounts. A background tab created by automation mu
 update the same browser store as a visible tab. Pane-scoped listeners cannot own
 this state: they miss events before the first mount and while the guest is parked.
 
+A parked desktop tab is backgrounded after 30 seconds without being presented or driven by
+an AI command: its surface turns `visibility: hidden`, which stops animation frames and clamps
+timers to about 1 Hz without moving, resizing, or re-attaching the guest. Every tab-scoped
+automation command wakes the tab before main touches the guest and keeps it awake until the
+command settles; presenting the tab wakes it too. Loads, titles, console, and network capture
+continue while backgrounded, at the page's throttled pace. Mechanism and measurements:
+[browser-capture-harness.md](browser-capture-harness.md#backgrounded-parked-guests).
+
 Page titles follow the same guest lifetime. The resident webview records
 `page-title-updated` even before a pane mounts or while it is absent, and reads
 `getTitle()` on DOM readiness, load completion, and pane reattachment. The tab label

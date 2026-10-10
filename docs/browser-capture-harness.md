@@ -76,3 +76,43 @@ once when the webview attaches, then screenshot capture uses the shared serializ
 invalidates before each attempt, and retries known first-frame failures within the
 5-second capture budget. Viewport screenshots use `capturePage({ stayHidden:false })`;
 full-page screenshots use the existing CDP path with layout metrics and screenshot clip.
+
+## Backgrounded parked guests
+
+The paintable parking geometry has a cost: Chromium treats the 1x1 surface as a rendered
+frame, so every parked guest runs `requestAnimationFrame`, CSS animations, and timers at full
+rate and keeps submitting compositor frames. Under software compositing that made app frames
+100 to 230 ms with no app script running.
+
+A parked tab is therefore backgrounded after
+`RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS` (30 seconds, in
+`packages/app/src/desktop/browser/resident-activity.ts`) with no presentation and no AI
+operation. Backgrounding changes one style: the parked surface becomes `visibility: hidden`.
+Geometry, guest size, parent, and the CDP session do not change, so there is no re-attach and
+no guest resize. Waking is the reverse style write, done synchronously before an AI command
+reaches main (`withResidentBrowserAwake` in `resident-webviews.ts`, called from the automation
+handler) and whenever a pane presents the tab. The tab stays awake while commands keep
+arriving and backgrounds again after the same grace.
+
+Main still disables guest background throttling at attach. Do not toggle it per park:
+`webContents.setBackgroundThrottling` re-shows a hidden widget, so calling it after the
+surface is hidden silently undoes the backgrounding, and the DOM change alone already
+throttles the guest.
+
+Measured on 2026-10-09 with Electron 44.2.0 on Windows, using a scratch probe built like this
+harness (inactive corner window, production P1 parking around a 1280x800 webview):
+
+| State                                   | rAF/s | 10 ms interval/s | Guest CPU | Notes                                   |
+| --------------------------------------- | ----: | ---------------: | --------: | --------------------------------------- |
+| Parked, visible (before this change)    |   120 |              100 |     0.6 % | GPU process 1.2 %                       |
+| Parked, backgrounded                    |     0 |                1 |     0.0 % | GPU process 0 %                         |
+| Heavy canvas page, software, visible    |    70 |               62 |     4.3 % | `app.disableHardwareAcceleration()`     |
+| Heavy canvas page, software, background |     0 |              1.7 |     0.1 % |                                         |
+| Woken                                   |   120 |              100 |     0.6 % | capture succeeded first try in 30-53 ms |
+
+CPU is Electron `getAppMetrics()` `percentCPUUsage`. While backgrounded, CDP
+`Runtime.evaluate` still answered (2 to 27 ms), and `console-message` and CDP Network events
+kept arriving at the page's throttled rate, so log and network capture continue.
+`document.visibilityState` stays `visible`. Presenting a backgrounded guest showed the page,
+not white, within 50 ms. With the window minimized, a woken guest captured on the first
+attempt and ran at the same rates as a never-backgrounded guest in a minimized window.

@@ -1,11 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useBrowserStore } from "./store";
+import { RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS } from "./resident-activity";
 import {
   applyInactiveBrowserWebviewViewport,
   type BrowserWebviewProfileHost,
   clearResidentBrowserWebviewsForTests,
   ensureResidentBrowserWebview,
   getResidentBrowserWebview,
+  isResidentBrowserBackgrounded,
   isResidentBrowserWebviewReady,
   markResidentBrowserWebviewReady,
   prepareBrowserWebview,
@@ -17,6 +19,7 @@ import {
   resizeResidentBrowserWebview,
   setResidentBrowserSurfaceInputEnabled,
   takeResidentBrowserWebview,
+  withResidentBrowserAwake,
 } from "./resident-webviews";
 import {
   setCommandCenterFocusRestoreElement,
@@ -122,7 +125,10 @@ function expectPermanentHostParking(host: HTMLElement): void {
   expect(host.style.zIndex).toBe("");
 }
 
-function expectParkedSurface(surface: HTMLElement): void {
+function expectParkedSurface(
+  surface: HTMLElement,
+  visibility: "visible" | "hidden" = "visible",
+): void {
   expect(surface.getAttribute("aria-hidden")).toBe("true");
   expect(surface.style.position).toBe("fixed");
   expect(surface.style.left).toBe("0px");
@@ -135,7 +141,7 @@ function expectParkedSurface(surface: HTMLElement): void {
   expect(surface.style.display).toBe("block");
   expect(surface.style.zIndex).toBe("-1");
   expect(surface.style.clipPath).toBe("");
-  expect(surface.style.visibility).toBe("visible");
+  expect(surface.style.visibility).toBe(visibility);
   expect(surface.style.transform).toBe("");
 }
 
@@ -718,5 +724,120 @@ describe("resident browser webviews", () => {
 
     expect(webview?.isConnected).toBe(false);
     expect(takeResidentBrowserWebview("browser-closed")).toBeNull();
+  });
+});
+
+describe("resident browser backgrounding", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    clearResidentBrowserWebviewsForTests();
+    vi.useRealTimers();
+  });
+
+  function parkedTestBrowser(browserId: string): { webview: HTMLElement; surface: HTMLElement } {
+    const webview = ensureTestBrowser({
+      browserId,
+      workspaceId: "workspace",
+      url: "https://a.test",
+    })!;
+    return { webview, surface: webview.parentElement! };
+  }
+
+  function presentTestBrowser(browserId: string, webview: HTMLElement): void {
+    const pane = document.createElement("div");
+    Object.defineProperty(pane, "getBoundingClientRect", {
+      value: () => ({ left: 10, top: 20, width: 300, height: 200 }),
+    });
+    presentBrowserWebview(browserId, webview, pane, pane, { mode: "responsive" });
+  }
+
+  it("backgrounds an idle parked guest without moving, resizing, or detaching it", () => {
+    const { webview, surface } = parkedTestBrowser("browser-idle");
+    expectParkedSurface(surface, "visible");
+
+    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS - 1);
+    expectParkedSurface(surface, "visible");
+    vi.advanceTimersByTime(1);
+
+    expect(isResidentBrowserBackgrounded("browser-idle")).toBe(true);
+    expectParkedSurface(surface, "hidden");
+    expect(webview.parentElement).toBe(surface);
+    expectResidentWebviewParking(webview);
+    // Visibility is inherited: the guest frame itself stops rendering.
+    expect(getComputedStyle(webview).visibility).toBe("hidden");
+  });
+
+  it("paints a backgrounded tab again when a pane presents it", () => {
+    const { webview, surface } = parkedTestBrowser("browser-presented");
+    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS);
+    expect(surface.style.visibility).toBe("hidden");
+
+    presentTestBrowser("browser-presented", webview);
+    expect(isResidentBrowserBackgrounded("browser-presented")).toBe(false);
+    expect(surface.style.visibility).toBe("visible");
+    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS * 3);
+    expect(surface.style.visibility).toBe("visible");
+
+    // Leaving the pane restores the paintable parking geometry first.
+    releaseResidentBrowserWebview("browser-presented", webview);
+    expectParkedSurface(surface, "visible");
+    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS);
+    expectParkedSurface(surface, "hidden");
+  });
+
+  it("keeps a backgrounded tab backgrounded when it is parked again", () => {
+    const { webview, surface } = parkedTestBrowser("browser-reparked");
+    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS);
+    releaseResidentBrowserWebview("browser-reparked", webview);
+    expectParkedSurface(surface, "hidden");
+    expect(
+      ensureTestBrowser({ browserId: "browser-reparked", workspaceId: "w", url: "https://a.test" }),
+    ).toBe(webview);
+    expectParkedSurface(surface, "hidden");
+  });
+
+  it("wakes a backgrounded tab before an AI operation and re-backgrounds it after the grace", async () => {
+    const { surface } = parkedTestBrowser("browser-ai");
+    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS);
+    expect(surface.style.visibility).toBe("hidden");
+
+    let visibilityDuringOperation = "";
+    let finishOperation!: () => void;
+    const operation = withResidentBrowserAwake("browser-ai", () => {
+      visibilityDuringOperation = surface.style.visibility;
+      return new Promise<void>((resolve) => {
+        finishOperation = resolve;
+      });
+    });
+    expect(visibilityDuringOperation).toBe("visible");
+    expectParkedSurface(surface, "visible");
+
+    // A long operation (for example browser_wait) keeps the tab awake.
+    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS * 2);
+    expect(surface.style.visibility).toBe("visible");
+    finishOperation();
+    await operation;
+
+    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS - 1);
+    expect(surface.style.visibility).toBe("visible");
+    vi.advanceTimersByTime(1);
+    expect(surface.style.visibility).toBe("hidden");
+  });
+
+  it("runs operations for tabs without a resident guest unchanged", async () => {
+    await expect(withResidentBrowserAwake("hosted-browser", async () => "ok")).resolves.toBe("ok");
+    expect(isResidentBrowserBackgrounded("hosted-browser")).toBe(false);
+    expect(document.getElementById(RESIDENT_HOST_ID)).toBeNull();
+  });
+
+  it("stops tracking a closed tab", () => {
+    const { surface } = parkedTestBrowser("browser-closed");
+    removeResidentBrowserWebview("browser-closed");
+    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS);
+    expect(isResidentBrowserBackgrounded("browser-closed")).toBe(false);
+    expect(surface.isConnected).toBe(false);
   });
 });
