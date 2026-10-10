@@ -255,6 +255,16 @@ export interface DesktopBrowserBridge {
   ) => Promise<string | null>;
   /** Copy element text and/or an image to the system clipboard from main. */
   copyElement?: (payload: { text?: string; imageDataUrl?: string }) => Promise<boolean>;
+  /**
+   * Fetch a tab's favicon in main with the tab's own session and return it as
+   * a bounded data: URL, or null when there is no usable icon. The renderer's
+   * CSP blocks remote images, so this is the only way a favicon reaches it.
+   */
+  resolveFavicon?: (input: {
+    browserId: string;
+    faviconUrl: string | null;
+    pageUrl: string | null;
+  }) => Promise<string | null>;
 }
 
 export interface DesktopPdfBridge {

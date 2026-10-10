@@ -178,5 +178,10 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
     ) => ipcRenderer.invoke("otto:browser:capture-element", browserId, rect),
     copyElement: (payload: { text?: string; imageDataUrl?: string }) =>
       ipcRenderer.invoke("otto:browser:copy-element", payload),
+    resolveFavicon: (input: {
+      browserId: string;
+      faviconUrl: string | null;
+      pageUrl: string | null;
+    }) => ipcRenderer.invoke("otto:browser:resolve-favicon", input),
   },
 });

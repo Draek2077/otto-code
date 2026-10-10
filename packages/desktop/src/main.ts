@@ -68,6 +68,11 @@ import {
 } from "./features/notifications.js";
 import { createExternalUrlOpener } from "./features/opener.js";
 import { createBrowserCaptureService } from "./features/browser-capture.js";
+import {
+  buildBrowserFaviconCandidates,
+  createBrowserFaviconResolver,
+  readBrowserFaviconRequest,
+} from "./features/browser-favicon.js";
 import { registerEditorTargetHandlers } from "./features/editor-targets/ipc.js";
 import { resolveDesktopWindowChromeMode, windowChromeModeArgument } from "./window/chrome.js";
 import { resolveAppIconPath } from "./features/stamped-icon.js";
@@ -823,6 +828,35 @@ ipcMain.handle("otto:browser:capture-element", (event, browserId: unknown, rect:
 ipcMain.handle("otto:browser:copy-element", (event, payload: unknown) => {
   requireTrustedMainRenderer(event);
   return browserCapture.copy(payload);
+});
+
+// Browser-tab favicons are fetched here, never by the app renderer: its CSP
+// keeps img-src to 'self' data: blob:, so main fetches with the tab's own
+// session and hands back a bounded data: URL. See features/browser-favicon.ts.
+const browserFavicons = createBrowserFaviconResolver({
+  warn: (event, details) => log.debug(`[browser-favicon] ${event}`, details),
+});
+
+ipcMain.handle("otto:browser:resolve-favicon", (event, rawInput: unknown) => {
+  requireTrustedMainRenderer(event);
+  const input = readBrowserFaviconRequest(rawInput);
+  if (!input) {
+    return null;
+  }
+  const candidates = buildBrowserFaviconCandidates(input);
+  if (candidates.length === 0) {
+    return null;
+  }
+  // The live guest's session when the tab is attached (cookies and profile
+  // match what the page itself sees); otherwise the shared browser profile,
+  // which is the partition every ordinary browser tab runs on.
+  const guest = getOttoBrowserWebContentsForHostWindow(input.browserId, event.sender.id);
+  const fetchSession = guest?.session ?? session.fromPartition(OTTO_BROWSER_PROFILE_PARTITION);
+  return browserFavicons.resolve({
+    candidates,
+    fetch: (url, init) =>
+      fetchSession.fetch(url, { signal: init.signal, credentials: "include", redirect: "follow" }),
+  });
 });
 
 protocol.registerSchemesAsPrivileged([
