@@ -50,7 +50,7 @@ To configure more than one preferred model or control the exact order, set `agen
   "agents": {
     "metadataGeneration": {
       "providers": [
-        { "provider": "claude", "model": "claude-haiku-4-5-20251001", "thinkingOptionId": "low" },
+        { "provider": "claude", "model": "claude-haiku-5-5", "thinkingOptionId": "low" },
         { "provider": "opencode" }
       ]
     }

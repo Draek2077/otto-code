@@ -59,7 +59,7 @@ Create through the workspace handle:
 ```ts
 const agent = await workspace.agents.create({
   config: {
-    provider: "claude/claude-sonnet-5",
+    provider: "claude/claude-sonnet-5-5",
   },
   prompt: "Map the checkout flow before changing anything.",
 });
@@ -72,7 +72,7 @@ For a one-off agent, you can skip the workspace call:
 ```ts
 const agent = await client.agents.create({
   config: {
-    provider: "claude/claude-sonnet-5",
+    provider: "claude/claude-sonnet-5-5",
   },
   cwd: "/Users/me/dev/storefront",
   prompt: "Map the checkout flow before changing anything.",

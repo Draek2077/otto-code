@@ -70,7 +70,7 @@ await client.connect();
 
 const agent = await client.agents.create({
   config: {
-    provider: "claude/claude-sonnet-5",
+    provider: "claude/claude-sonnet-5-5",
     options: {
       disallowedTools: ["WebFetch"],
       sandbox: {

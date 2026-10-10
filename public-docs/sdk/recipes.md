@@ -61,7 +61,7 @@ const reviewers = await Promise.all(
   prompts.map((prompt, index) =>
     client.agents.create({
       config: {
-        provider: index === 1 ? "claude/claude-sonnet-5" : "codex/gpt-5.5",
+        provider: index === 1 ? "claude/claude-sonnet-5-5" : "codex/gpt-5.5",
       },
       cwd: process.cwd(),
       title: `Review ${index + 1}`,
@@ -92,7 +92,7 @@ async function getPlanner() {
 
   return client.agents.create({
     config: {
-      provider: "claude/claude-sonnet-5",
+      provider: "claude/claude-sonnet-5-5",
     },
     cwd: process.cwd(),
     title: "Planner",

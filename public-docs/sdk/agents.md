@@ -15,7 +15,7 @@ An agent handle keeps a stable agent ID and exposes the turn lifecycle without e
 ```ts
 const agent = await client.agents.create({
   config: {
-    provider: "claude/claude-sonnet-5",
+    provider: "claude/claude-sonnet-5-5",
   },
   cwd: "/Users/me/dev/storefront",
   prompt: "Review the checkout flow and propose one focused fix.",
