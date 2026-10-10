@@ -29,6 +29,34 @@ export function isGpuProcessFailure(details: { type: string; reason: string }): 
   return details.type === "GPU" && GPU_FAILURE_REASONS.has(details.reason);
 }
 
+// A GPU that cannot render (no-3D VM, broken driver) fails before the first
+// paint, and that still latches software rendering. A GPU process that dies
+// after a healthy paint is usually a transient driver reset or lost context
+// (exitCode 34 on Windows); Chromium restarts its own GPU process, so latching
+// would trade a blip for software compositing across the next several launches.
+// Only a crash loop after a healthy paint latches.
+const RUNTIME_GPU_FAILURE_LATCH_COUNT = 3;
+const RUNTIME_GPU_FAILURE_WINDOW_MS = 10 * 60_000;
+
+export interface GpuFailureLatchInput {
+  startupHealthy: boolean;
+  // Earlier post-paint failures this launch, excluding the current one.
+  recentFailureTimes: readonly number[];
+  now: number;
+}
+
+export function shouldLatchAfterGpuFailure(input: GpuFailureLatchInput): boolean {
+  if (!input.startupHealthy) {
+    return true;
+  }
+  const windowStart = input.now - RUNTIME_GPU_FAILURE_WINDOW_MS;
+  const recent = input.recentFailureTimes.filter((time) => time >= windowStart).length;
+  return recent + 1 >= RUNTIME_GPU_FAILURE_LATCH_COUNT;
+}
+
+let gpuStartupHealthy = false;
+const runtimeGpuFailureTimes: number[] = [];
+
 // Set once we commit to relaunching into software rendering, so the crash dialog
 // stays quiet during the controlled restart instead of talking over our own
 // recovery. A GPU death often takes the renderer with it (render-process-gone),
@@ -498,6 +526,7 @@ export function armGpuStartupSentinel(): void {
 // healthy paint clears any lone never-painted strike, and a paint during a
 // hardware re-probe means the GPU recovered - clear the marker for good.
 export function markGpuStartupHealthy(): void {
+  gpuStartupHealthy = true;
   if (startupPaintTimer) {
     clearTimeout(startupPaintTimer);
     startupPaintTimer = null;
@@ -524,8 +553,25 @@ export function markGpuStartupHealthy(): void {
 // Registers the GPU-failure recovery listener. Safe to call at module load
 // (before app.whenReady()) so GPU launch failures during cold start are caught.
 export function registerGpuFallbackRecovery(): void {
+  // Registration happens once per launch, before any paint.
+  gpuStartupHealthy = false;
+  runtimeGpuFailureTimes.length = 0;
   app.on("child-process-gone", (_event, details) => {
     if (!isGpuProcessFailure(details)) {
+      return;
+    }
+    const now = Date.now();
+    const latch = shouldLatchAfterGpuFailure({
+      startupHealthy: gpuStartupHealthy,
+      recentFailureTimes: runtimeGpuFailureTimes,
+      now,
+    });
+    if (!latch) {
+      runtimeGpuFailureTimes.push(now);
+      log.warn(
+        "[gpu-fallback] GPU process failed after a healthy start; letting Chromium restart it",
+        details,
+      );
       return;
     }
     const userDataDir = app.getPath("userData");

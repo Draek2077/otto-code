@@ -34,6 +34,7 @@ import {
   clearStartupSentinel,
   hasSoftwareRenderingArgv,
   isGpuProcessFailure,
+  shouldLatchAfterGpuFailure,
   isSoftwareRenderingActive,
   isSoftwareRenderingMarked,
   isStartupSentinelPresent,
@@ -71,6 +72,42 @@ describe("isGpuProcessFailure", () => {
     expect(isGpuProcessFailure({ type: "GPU", reason: "clean-exit" })).toBe(false);
     expect(isGpuProcessFailure({ type: "GPU", reason: "killed" })).toBe(false);
     expect(isGpuProcessFailure({ type: "Utility", reason: "crashed" })).toBe(false);
+  });
+});
+
+describe("shouldLatchAfterGpuFailure", () => {
+  const now = 1_000_000_000;
+
+  it("latches when the GPU fails before this launch ever painted", () => {
+    expect(shouldLatchAfterGpuFailure({ startupHealthy: false, recentFailureTimes: [], now })).toBe(
+      true,
+    );
+  });
+
+  it("does not latch on a lone failure after a healthy paint", () => {
+    expect(shouldLatchAfterGpuFailure({ startupHealthy: true, recentFailureTimes: [], now })).toBe(
+      false,
+    );
+  });
+
+  it("latches when failures after a healthy paint repeat within the window", () => {
+    expect(
+      shouldLatchAfterGpuFailure({
+        startupHealthy: true,
+        recentFailureTimes: [now - 60_000, now - 30_000],
+        now,
+      }),
+    ).toBe(true);
+  });
+
+  it("forgets failures older than the window", () => {
+    expect(
+      shouldLatchAfterGpuFailure({
+        startupHealthy: true,
+        recentFailureTimes: [now - 60 * 60_000, now - 50 * 60_000],
+        now,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -278,6 +315,26 @@ describe("registerGpuFallbackRecovery", () => {
     expect(isSoftwareRenderingMarked(tempDir)).toBe(true);
     expect(mocks.app.relaunch).toHaveBeenCalledTimes(1);
     expect(mocks.app.exit).toHaveBeenCalledWith(0);
+  });
+
+  it("keeps hardware rendering when the GPU fails once after a healthy paint", () => {
+    registerGpuFallbackRecovery();
+    markGpuStartupHealthy();
+    emitChildProcessGone({ type: "GPU", reason: "crashed" });
+    expect(isSoftwareRenderingMarked(tempDir)).toBe(false);
+    expect(mocks.app.relaunch).not.toHaveBeenCalled();
+    expect(mocks.app.exit).not.toHaveBeenCalled();
+  });
+
+  it("latches software rendering when the GPU crash-loops after a healthy paint", () => {
+    registerGpuFallbackRecovery();
+    markGpuStartupHealthy();
+    emitChildProcessGone({ type: "GPU", reason: "crashed" });
+    emitChildProcessGone({ type: "GPU", reason: "crashed" });
+    expect(mocks.app.relaunch).not.toHaveBeenCalled();
+    emitChildProcessGone({ type: "GPU", reason: "crashed" });
+    expect(isSoftwareRenderingMarked(tempDir)).toBe(true);
+    expect(mocks.app.relaunch).toHaveBeenCalledTimes(1);
   });
 
   it("does not relaunch again when already in software rendering", () => {
