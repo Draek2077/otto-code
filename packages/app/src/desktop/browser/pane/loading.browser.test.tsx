@@ -94,7 +94,8 @@ vi.mock("./remote-browser-pane", () => ({ BrowserPane: () => null }));
 vi.mock("expo-clipboard", () => ({ setStringAsync: async () => {} }));
 vi.mock("react-i18next", () => {
   const t = (key: string) => key;
-  return { useTranslation: () => ({ t }) };
+  // The pane's import graph reaches the i18n bootstrap, which registers this plugin.
+  return { useTranslation: () => ({ t }), initReactI18next: { type: "3rdParty", init: () => {} } };
 });
 
 type Guest = HTMLElement & {

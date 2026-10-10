@@ -20,6 +20,9 @@ const mock = vi.hoisted(() => ({
 }));
 vi.mock("@/desktop/electron/invoke", () => ({ invokeDesktopCommand: mock.invoke }));
 vi.mock("@/desktop/host", () => ({ isElectronRuntime: () => true }));
+// The rendering probe is its own desktop invoke; keep it out of mock.invoke so
+// calls[0] is the capture write these tests inspect.
+vi.mock("@/desktop/use-software-rendering", () => ({ loadDesktopRendering: async () => null }));
 vi.mock("@/runtime/host-runtime", () => ({
   getHostRuntimeStore: () => ({
     getSnapshots: () => [
