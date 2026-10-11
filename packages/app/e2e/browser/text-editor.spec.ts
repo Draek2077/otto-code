@@ -7,6 +7,7 @@ import {
   openFileExplorer,
   openFileFromExplorer,
 } from "../support/helpers/file-explorer";
+import { tabModifiedDot } from "../support/helpers/file-tab";
 import { gotoWorkspace } from "../support/helpers/launcher";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 
@@ -65,27 +66,27 @@ test.describe("Text editor", () => {
     // Type → the tab title gains the dirty marker.
     await editorContent.click();
     await page.keyboard.type("delta ");
-    await expect(fileTab).toContainText("●", { timeout: 10_000 });
+    await expect(tabModifiedDot(fileTab)).toBeVisible({ timeout: 10_000 });
 
     // Save → dirty clears and the daemon wrote the file to disk.
     await page.getByTestId("editor-save").click();
-    await expect(fileTab).not.toContainText("●", { timeout: 30_000 });
+    await expect(tabModifiedDot(fileTab)).toBeHidden({ timeout: 30_000 });
     await expect.poll(readSeededFile, { timeout: 15_000 }).toContain("delta");
 
     // Edit again, then revert back to the saved baseline via the confirm dialog.
     await editorContent.click();
     await page.keyboard.type("zeta ");
-    await expect(fileTab).toContainText("●", { timeout: 10_000 });
+    await expect(tabModifiedDot(fileTab)).toBeVisible({ timeout: 10_000 });
     await page.getByTestId("editor-revert").click();
     await expect(page.getByTestId("confirm-dialog")).toBeVisible({ timeout: 10_000 });
     await page.getByTestId("confirm-dialog-confirm").click();
-    await expect(fileTab).not.toContainText("●", { timeout: 10_000 });
+    await expect(tabModifiedDot(fileTab)).toBeHidden({ timeout: 10_000 });
     await expect(editorContent).not.toContainText("zeta");
 
     // Dirty close prompts; cancel keeps the tab, confirm closes it.
     await editorContent.click();
     await page.keyboard.type("omega ");
-    await expect(fileTab).toContainText("●", { timeout: 10_000 });
+    await expect(tabModifiedDot(fileTab)).toBeVisible({ timeout: 10_000 });
     await fileTab.hover();
     const closeButton = page.getByTestId(editorTabCloseTestId(FILE_PATH)).first();
     await closeButton.click();
@@ -130,14 +131,14 @@ test.describe("Text editor", () => {
     await editorContent.click();
     await page.keyboard.type("sigma ");
     const fileTab = page.getByTestId(`workspace-tab-file_${FILE_PATH}`).first();
-    await expect(fileTab).toContainText("●", { timeout: 10_000 });
+    await expect(tabModifiedDot(fileTab)).toBeVisible({ timeout: 10_000 });
 
     // Switching to preview keeps the unsaved buffer (no discard prompt) and
     // renders the draft, not the disk contents.
     await page.getByTestId("file-view-mode-preview").click();
     await expect(page.getByTestId("workspace-file-pane")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("confirm-dialog")).toBeHidden();
-    await expect(fileTab).toContainText("●");
+    await expect(tabModifiedDot(fileTab)).toBeVisible();
     await expect(page.getByTestId("workspace-file-pane")).toContainText("sigma", {
       timeout: 30_000,
     });
@@ -173,12 +174,12 @@ test.describe("Text editor", () => {
     // Clean buffer: an external write flows into the editor silently.
     writeFileSync(watchFilePath, "external-one\nw-two\n");
     await expect(editorContent).toContainText("external-one", { timeout: 30_000 });
-    await expect(fileTab).not.toContainText("●");
+    await expect(tabModifiedDot(fileTab)).toBeHidden();
 
     // Dirty buffer: an external write raises the banner and never clobbers.
     await editorContent.click();
     await page.keyboard.type("mine ");
-    await expect(fileTab).toContainText("●", { timeout: 10_000 });
+    await expect(tabModifiedDot(fileTab)).toBeVisible({ timeout: 10_000 });
     writeFileSync(watchFilePath, "external-two\nw-two\n");
     await expect(page.getByTestId("editor-disk-banner")).toBeVisible({ timeout: 30_000 });
     await expect(editorContent).toContainText("mine");
@@ -187,7 +188,7 @@ test.describe("Text editor", () => {
     await page.getByTestId("editor-disk-keep").click();
     await expect(page.getByTestId("editor-disk-banner")).toBeHidden({ timeout: 10_000 });
     await page.getByTestId("editor-save").click();
-    await expect(fileTab).not.toContainText("●", { timeout: 30_000 });
+    await expect(tabModifiedDot(fileTab)).toBeHidden({ timeout: 30_000 });
     await expect(page.getByTestId("editor-conflict-banner")).toBeHidden();
     await expect
       .poll(() => readFileSync(watchFilePath, "utf-8"), { timeout: 15_000 })

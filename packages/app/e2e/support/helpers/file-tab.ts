@@ -32,3 +32,12 @@ export function fileTabEditorContent(page: Page): Locator {
 export function filePreviewSurface(page: Page): Locator {
   return page.locator('[data-testid="workspace-file-pane"]:visible');
 }
+
+/**
+ * The unsaved-changes dot inside a workspace tab chip (TabHandleContent in
+ * screens/workspace/workspace-desktop-tabs-row.tsx). It is a sized View with no
+ * text, so assert its visibility rather than a glyph in the tab label.
+ */
+export function tabModifiedDot(tab: Locator): Locator {
+  return tab.getByTestId(/^workspace-tab-modified-/);
+}

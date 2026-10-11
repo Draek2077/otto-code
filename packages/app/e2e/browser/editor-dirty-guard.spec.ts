@@ -10,12 +10,13 @@ import {
   editorTabCloseTestId,
   fileTabEditorContent,
   fileTabPane,
+  tabModifiedDot,
 } from "../support/helpers/file-tab";
 import { gotoWorkspace } from "../support/helpers/launcher";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 
 // The CM6 editor's unsaved-changes contract (components/file-tab-pane.tsx +
-// panels/file-panel.tsx confirmClose): typing marks the tab dirty (●), the
+// panels/file-panel.tsx confirmClose): typing marks the tab dirty (the modified dot), the
 // buffer survives switching tabs without any prompt, and closing a dirty tab
 // requires an explicit discard through the in-app confirm dialog. There is no
 // autosave - nothing reaches the disk unless the user saves.
@@ -64,7 +65,7 @@ test.describe("Editor dirty guard", () => {
     // Typing marks the tab dirty.
     await fileTabEditorContent(page).click();
     await page.keyboard.type("guarded ");
-    await expect(draftTab).toContainText("●", { timeout: 10_000 });
+    await expect(tabModifiedDot(draftTab)).toBeVisible({ timeout: 10_000 });
 
     // No autosave: the draft never reached the disk on its own.
     expect(readDraftFromDisk()).not.toContain("guarded");
@@ -78,7 +79,7 @@ test.describe("Editor dirty guard", () => {
     await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
     await draftTab.click();
     await expect(fileTabEditorContent(page)).toContainText("guarded", { timeout: 30_000 });
-    await expect(draftTab).toContainText("●");
+    await expect(tabModifiedDot(draftTab)).toBeVisible();
 
     // Closing the dirty tab prompts; cancel keeps the tab and the edits.
     await draftTab.hover();
@@ -88,7 +89,7 @@ test.describe("Editor dirty guard", () => {
     await page.getByTestId("confirm-dialog-cancel").click();
     await expect(page.getByTestId("confirm-dialog")).toBeHidden({ timeout: 10_000 });
     await expect(fileTabEditorContent(page)).toContainText("guarded");
-    await expect(draftTab).toContainText("●");
+    await expect(tabModifiedDot(draftTab)).toBeVisible();
 
     // Confirming the discard closes the tab; the edits never reach the disk.
     await draftTab.hover();
