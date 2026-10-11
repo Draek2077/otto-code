@@ -49,12 +49,12 @@ async function assertHeldFileTransition(
     ).__fileTransitionOriginalChip = originalChip;
   });
   await page.evaluate(
-    ({ tabTestId, loadingTestId }) => {
+    ({ tabTestId, loadingTestId: loadingId }) => {
       const timeline: Array<{ chip: boolean; loading: boolean; unavailable: boolean }> = [];
       const sample = () => {
         const next = {
           chip: Boolean(document.querySelector(`[data-testid="${tabTestId}"]`)),
-          loading: Boolean(document.querySelector(`[data-testid="${loadingTestId}"]`)),
+          loading: Boolean(document.querySelector(`[data-testid="${loadingId}"]`)),
           unavailable: Boolean(document.querySelector('[data-testid="file-preview-unsupported"]')),
         };
         if (JSON.stringify(timeline.at(-1)) !== JSON.stringify(next)) timeline.push(next);
