@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.9.32 - 2026-10-11
+
+### Added
+
+- Choose Claude Sonnet 5.5 and Haiku 5.5 in the model picker
+- Create a missing file straight from its tab with the new Create file button
+- Open a Workflow run in its own tab to follow each phase with its chats, verdicts, and spend
+
+### Improved
+
+- Start new hosts and Restore starter team with Opus 5.5, Sonnet 5.5, and Haiku 5.5 personalities
+- Show why Claude Fast mode is not taking effect, such as an account without usage credits
+- Report each running Workflow phase's round and candidate progress to the chat that started it
+- Link Workflow worker chats to their run instead of showing a message box
+- Count only a Workflow's own chats in its spend, not the chat that started it
+- Hand a finished Workflow's result back to its starting chat even while that chat is busy
+- Refuse Workflow plans that would let several attempts edit the same files at once
+- Pause idle background browser tabs so the app stays smooth with many tabs open
+- Record window size, focus, and on-screen browser views in performance captures
+
+### Fixed
+
+- Keep hardware acceleration after a one-off GPU crash instead of switching to slow software rendering
+- Show website icons on browser tabs instead of a generic globe
+- Stop Codex requests from hanging when a response quotes web text with unusual line breaks
+- Stop those dropped Codex responses from inflating the daemon's log and idle CPU use
+
 ## 0.9.31 - 2026-10-05
 
 ### Improved
