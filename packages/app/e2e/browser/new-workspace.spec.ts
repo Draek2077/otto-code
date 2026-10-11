@@ -230,7 +230,13 @@ test.describe("New workspace flow", () => {
     client = await connectNewWorkspaceDaemonClient();
   });
 
-  test.afterEach(async () => {
+  /**
+   * Release every tracked daemon record. Tests call this before deleting their
+   * temp repo: once a project's base folder is gone the daemon marks it Offline
+   * and refuses to archive its workspaces or remove it, so cleanup that runs
+   * after the directory is deleted leaks the project record.
+   */
+  async function releaseTrackedDaemonRecords(): Promise<void> {
     if (client) {
       for (const workspaceDirectory of createdWorktreeDirectories) {
         await archiveWorkspaceFromDaemon(client, workspaceDirectory).catch(() => undefined);
@@ -245,6 +251,10 @@ test.describe("New workspace flow", () => {
     createdWorktreeDirectories.clear();
     localWorkspaceIds.clear();
     localProjectIds.clear();
+  }
+
+  test.afterEach(async () => {
+    await releaseTrackedDaemonRecords();
     await client?.close().catch(() => undefined);
   });
 
@@ -310,6 +320,7 @@ test.describe("New workspace flow", () => {
         subtitle: firstWorkspace.projectDisplayName,
       });
     } finally {
+      await releaseTrackedDaemonRecords();
       await secondRepo.cleanup();
       await firstRepo.cleanup();
     }
@@ -389,6 +400,7 @@ test.describe("New workspace flow", () => {
         selected: false,
       });
     } finally {
+      await releaseTrackedDaemonRecords();
       await repo.cleanup();
     }
   });
@@ -469,6 +481,7 @@ test.describe("New workspace flow", () => {
       const composer = page.getByRole("textbox", { name: "Message agent..." });
       await expect(composer).toBeVisible({ timeout: 30_000 });
     } finally {
+      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
@@ -551,6 +564,7 @@ test.describe("New workspace flow", () => {
         activeWorkspaceDeckEntry.locator('[data-testid^="workspace-tab-agent_"]'),
       ).toHaveCount(1, { timeout: 30_000 });
     } finally {
+      await releaseTrackedDaemonRecords();
       agentCreatedDelay.release();
       await tempRepo.cleanup();
     }
@@ -609,6 +623,7 @@ test.describe("New workspace flow", () => {
         excludes: "done",
       });
     } finally {
+      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
@@ -672,6 +687,7 @@ test.describe("New workspace flow", () => {
         excludesIndicator: "workspace-status-indicator-running",
       });
     } finally {
+      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
@@ -735,6 +751,7 @@ test.describe("New workspace flow", () => {
       );
       expect(path.basename(createdWorkspace.workspaceDirectory)).not.toBe("dev");
     } finally {
+      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
@@ -796,6 +813,7 @@ test.describe("New workspace flow", () => {
         expect(created.branchInfo.hasAncestor(originHead)).toBe(true);
         expect(created.branchInfo.hasAncestor(localHead)).toBe(false);
       } finally {
+        await releaseTrackedDaemonRecords();
         await tempRepo.cleanup();
       }
     });
@@ -828,6 +846,7 @@ test.describe("New workspace flow", () => {
         const created = await createWorktreeAndRead(page, openedProject);
         expect(created.branchInfo.hasAncestor(localHead)).toBe(true);
       } finally {
+        await releaseTrackedDaemonRecords();
         await tempRepo.cleanup();
       }
     });
@@ -870,6 +889,7 @@ test.describe("New workspace flow", () => {
           baseRef: "refs/remotes/upstream/main",
         });
       } finally {
+        await releaseTrackedDaemonRecords();
         await tempRepo.cleanup();
       }
     });
@@ -898,6 +918,7 @@ test.describe("New workspace flow", () => {
       await expectPickerSelected(page, "dev");
       await expectPickerClosed(page);
     } finally {
+      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
@@ -922,6 +943,7 @@ test.describe("New workspace flow", () => {
       await closeBranchPicker(page);
       await expectPickerClosed(page);
     } finally {
+      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
@@ -959,6 +981,7 @@ test.describe("New workspace flow", () => {
         title: pr.title,
       });
     } finally {
+      await releaseTrackedDaemonRecords();
       await ghRepo.cleanup();
     }
   });
@@ -1107,6 +1130,7 @@ test.describe("New workspace flow", () => {
       expect(branchInfo.currentBranch).toBe(pr.branch);
       expect(existsSync(path.join(worktree.workspaceDirectory, "pr-1.txt"))).toBe(true);
     } finally {
+      await releaseTrackedDaemonRecords();
       await mainCheckout.cleanup();
       await ghRepo.cleanup();
     }
