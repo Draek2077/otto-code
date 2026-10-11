@@ -1,0 +1,10 @@
+Added
+- Choose Claude Sonnet 5.5 and Haiku 5.5 in the model picker
+- Create a missing file straight from its tab with the new Create file button
+- Open a Workflow run in its own tab to follow each phase with its chats, verdicts, and spend
+
+Improved
+- Start new hosts and Restore starter team with Opus 5.5, Sonnet 5.5, and Haiku 5.5 personalities
+- Show why Claude Fast mode is not taking effect, such as an account without usage credits
+
+Full notes: https://paseo.sh/changelog
