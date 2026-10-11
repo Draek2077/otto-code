@@ -255,7 +255,7 @@ test.describe("Tab creation", () => {
     await expect(menu.getByText("Terminal profiles", { exact: true })).toBeVisible();
 
     const editProfiles = menu.getByTestId("workspace-new-tab-menu-edit-profiles");
-    await expect(editProfiles).toHaveAccessibleName("Edit profiles");
+    await expect(editProfiles).toHaveAccessibleName("Edit profiles…");
 
     await editProfiles.click();
     await expect(page).toHaveURL(/\/settings\/hosts\/[^/]+\/terminals$/);

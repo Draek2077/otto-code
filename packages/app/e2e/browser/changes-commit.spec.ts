@@ -4,11 +4,13 @@ import path from "node:path";
 import { type Page } from "@playwright/test";
 import { buildHostWorkspaceRoute } from "../../src/utils/host-routes";
 import { test, expect } from "../support/fixtures";
+import { fileRowContaining } from "../support/helpers/git-changes";
 import { getServerId } from "../support/helpers/server-id";
 import { connectSeedClient } from "../support/helpers/seed-client";
 import { createTempGitRepo } from "../support/helpers/workspace";
 import {
   openChangesTreePanel,
+  showChangesFileTree,
   waitForWorkspaceTabsVisible,
 } from "../support/helpers/workspace-tabs";
 
@@ -56,6 +58,9 @@ test("Manual commits apply the selected type and include only checked files alon
   const workspace = await createWorkspaceWithTwoChanges();
   await writeFile(path.join(workspace.repoPath, "src/beta.ts"), "export const beta = 1;\n");
   await openWorkspaceChanges(page, workspace);
+  // Per-file selection checkboxes live on the file-only tree rows; the inline
+  // diff's canvas headers do not render them.
+  await showChangesFileTree(page);
   const form = page.getByTestId("changes-commit-section").filter({ visible: true });
   await expect(form).toBeVisible();
   await expect(page.getByTestId("commits-section-header").filter({ visible: true })).toBeVisible();
@@ -137,5 +142,5 @@ async function openWorkspaceChanges(page: Page, workspace: CommitWorkspace): Pro
   await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.id));
   await waitForWorkspaceTabsVisible(page);
   await openChangesTreePanel(page);
-  await expect(page.getByText("alpha.ts")).toBeVisible({ timeout: 30_000 });
+  await expect(fileRowContaining(page, "alpha.ts").first()).toBeVisible({ timeout: 30_000 });
 }

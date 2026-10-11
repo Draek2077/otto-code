@@ -1,10 +1,8 @@
-import { test } from "../support/fixtures";
+import { expect, test } from "../support/fixtures";
 import { openAgentRoute } from "../support/helpers/mock-agent";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import {
-  archiveFinishedSubagents,
-  expectArchiveFinishedInProgress,
-  expectArchiveFinishedRetry,
+  archiveSubagentFromTrack,
   expectManagedSubagentArchived,
   expectManagedSubagentUnarchived,
   expectSubagentRowGone,
@@ -41,11 +39,11 @@ test.describe("Archive finished subagents", () => {
     await openSubagentsTrack(page);
     await expectSubagentRowVisible(page, agents.child.id);
 
-    await archiveFinishedSubagents(page);
+    await archiveSubagentFromTrack(page, agents.child.id);
     await archiveGate.waitForRequest();
 
+    // The row leaves the track optimistically while the daemon has not archived yet.
     await expectSubagentRowGone(page, agents.child.id);
-    await expectArchiveFinishedInProgress(page, 0, 1);
     await expectManagedSubagentUnarchived(workspace, agents.child.id);
     archiveGate.release();
     await expectManagedSubagentArchived(workspace, agents.child.id);
@@ -66,12 +64,14 @@ test.describe("Archive finished subagents", () => {
     await openSubagentsTrack(page);
     await expectSubagentRowVisible(page, agents.child.id);
 
-    await archiveFinishedSubagents(page);
+    await archiveSubagentFromTrack(page, agents.child.id);
     await rejection.waitForRejection();
 
+    // The rejected archive rolls the optimistic removal back and reports the error.
     await expectSubagentRowVisible(page, agents.child.id);
-    await expectArchiveFinishedRetry(page, 1, 1);
-    await archiveFinishedSubagents(page);
+    await expect(page.getByText("Archive rejected for test")).toBeVisible({ timeout: 10_000 });
+    await expectManagedSubagentUnarchived(workspace, agents.child.id);
+    await archiveSubagentFromTrack(page, agents.child.id);
 
     await expectSubagentRowGone(page, agents.child.id);
     await expectManagedSubagentArchived(workspace, agents.child.id);

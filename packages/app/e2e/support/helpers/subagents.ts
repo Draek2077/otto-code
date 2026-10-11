@@ -190,26 +190,25 @@ export async function expectManagedSubagentArchived(
     .toMatchObject({ agent: { id: childId, archivedAt: expect.any(String) } });
 }
 
-export async function archiveFinishedSubagents(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Archive finished subagents" }).click();
-}
+// Otto replaced Paseo's bulk "Archive finished subagents" control with a per-row
+// Archive action (attended idle children stay in the active list) and a
+// "Clear all" for the Completed group. The per-row action is the one that
+// archives a finished managed child, behind the in-app ConfirmDialogHost.
+export async function archiveSubagentFromTrack(page: Page, childId: string): Promise<void> {
+  const pillRow = page.getByTestId(`subagents-pill-row-${childId}`);
+  const isPill = (await pillRow.count()) > 0;
+  const row = isPill ? pillRow : page.getByTestId(`subagents-track-row-${childId}`);
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await row.hover();
 
-export async function expectArchiveFinishedInProgress(
-  page: Page,
-  completed: number,
-  total: number,
-): Promise<void> {
-  await expect(page.getByRole("button", { name: "Archive finished subagents" })).toBeDisabled();
-  await expect(page.getByText(`${completed}/${total}`, { exact: true })).toBeVisible();
-}
+  const archiveButton = page.getByTestId(
+    isPill ? `subagents-pill-archive-${childId}` : `subagents-track-archive-${childId}`,
+  );
+  await expect(archiveButton).toBeVisible({ timeout: 30_000 });
+  await archiveButton.click();
 
-export async function expectArchiveFinishedRetry(
-  page: Page,
-  failed: number,
-  total: number,
-): Promise<void> {
-  await expect(page.getByText(`Retry (${failed}/${total})`, { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Archive finished subagents" })).toBeEnabled();
+  await expect(page.getByText("Archive subagent?")).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId("confirm-dialog-confirm").click();
 }
 
 export async function holdManagedSubagentArchiveRequest(

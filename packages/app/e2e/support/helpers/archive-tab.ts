@@ -231,7 +231,7 @@ export async function closeWorkspaceAgentTab(page: Page, agentId: string): Promi
 export async function expectArchivedAgentFocused(page: Page, agentId: string): Promise<void> {
   await expectWorkspaceTabVisible(page, agentId);
   await expect(
-    page.getByText("This agent is archived").filter({ visible: true }).first(),
+    page.getByText("This chat is archived").filter({ visible: true }).first(),
   ).toBeVisible({
     timeout: 30_000,
   });

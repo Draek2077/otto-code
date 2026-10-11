@@ -34,7 +34,9 @@ async function scrollToLastRow(page: Page) {
   await page.getByRole("button", { name: "Row 100", exact: true }).click();
 }
 
-async function expectSingleInset(page: Page, left = "24px", bottom = "24px") {
+// Otto's unified sheet chrome insets every sheet body by spacing[3]
+// (SHEET_HORIZONTAL_PADDING_SCALE in components/ui/sheet-chrome.tsx).
+async function expectSingleInset(page: Page, left = "12px", bottom = "12px") {
   const form = await page.getByTestId("modal-example-form").boundingBox();
   const input = await page.getByRole("textbox", { name: "Paste here" }).boundingBox();
   expect(form).not.toBeNull();

@@ -3,6 +3,7 @@ import path from "node:path";
 import { test, expect, type Page } from "../support/fixtures";
 import { fileRowContaining, gitOutput, openWorkspaceChanges } from "../support/helpers/git-changes";
 import { seedWorkspace } from "../support/helpers/seed-client";
+import { showChangesFileTree } from "../support/helpers/workspace-tabs";
 
 // Right-clicking a changed file in the Changes list offers "Discard changes"
 // (checkout.git.rollback): a destructive git discard gated behind a confirm
@@ -128,6 +129,9 @@ test("Changes checkboxes choose the files included in the bulk rollback", async 
     workspaceId: workspace.workspaceId,
     expectFileName: "alpha.ts",
   });
+  // Per-file selection checkboxes live on the file-only tree rows; the inline
+  // diff's canvas headers do not render them.
+  await showChangesFileTree(page);
   await expect(fileRowContaining(page, "beta.ts")).toBeVisible();
 
   const alphaCheckbox = page.getByTestId("changes-selection-src/alpha.ts");

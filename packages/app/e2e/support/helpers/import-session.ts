@@ -6,7 +6,12 @@ import { getServerId } from "./server-id";
 import { expectMobileAgentSidebarVisible, openMobileAgentSidebar } from "./sidebar";
 
 const rowTestId = (id: string) => `import-session-session-claude-${id}`;
-const rowFolderTestId = (id: string) => `import-session-row-folder-claude-${id}`;
+
+// The sheet is a batch importer (components/import-session-sheet.tsx): rows are
+// checkboxes, "Import selected" runs the import, and "Show chats from all
+// projects" widens a workspace-scoped listing. The scope hint, a row's folder
+// label and the per-provider errors carry no test ids, so they are read as text
+// inside the sheet or the row.
 
 export class ImportSessionFlow {
   constructor(private readonly page: Page) {}
@@ -35,14 +40,11 @@ export class ImportSessionFlow {
     await this.page.getByRole("button", { name: "Workspace actions" }).click();
     await this.page.getByTestId("workspace-header-import-agent").click();
     await this.expectScope("This workspace");
-    await expect(this.page.getByTestId("import-session-show-all")).toBeVisible();
+    await expect(this.page.getByTestId("import-session-all-projects")).toBeVisible();
     await expect(this.page.getByText("Workspace actions", { exact: true })).not.toBeVisible();
   }
   async expectScope(text: string, exact = true) {
-    const scope = this.page.getByTestId("import-session-scope");
-    if (exact) await expect(scope).toHaveText(text);
-    else await expect(scope).toContainText(text);
-    await expect(scope).toBeVisible();
+    await expect(this.scopeHint(text, exact)).toBeVisible();
   }
   async expectRows(input: {
     first?: string[];
@@ -58,16 +60,18 @@ export class ImportSessionFlow {
       );
     }
     for (const [id, folder] of input.folders ?? []) {
-      await expect(this.page.getByTestId(rowFolderTestId(id))).toHaveText(folder);
+      await expect(
+        this.page.getByTestId(rowTestId(id)).getByText(folder, { exact: true }),
+      ).toBeVisible();
     }
   }
   async expectProviderError(label: string) {
-    await expect(this.page.getByTestId("import-session-provider-errors")).toContainText(
-      `Could not load ${label} sessions`,
-    );
+    await expect(
+      this.page.getByText(`Could not load ${label} sessions`, { exact: true }),
+    ).toBeVisible();
   }
   async expectProviderFilterFits(width: number) {
-    await expect(this.page.getByTestId("import-session-scope")).toBeInViewport();
+    await expect(this.scopeHint("Sessions on", false)).toBeInViewport();
     const filter = this.page.getByRole("button", { name: "Filter: All" });
     await expect(filter).toBeInViewport();
     const bounds = await filter.boundingBox();
@@ -100,7 +104,10 @@ export class ImportSessionFlow {
     await expect(this.page.getByRole("progressbar")).toHaveCount(0);
   }
   async importSession(id: string) {
-    await this.page.getByTestId(rowTestId(id)).click();
+    const row = this.page.getByTestId(rowTestId(id));
+    await row.click();
+    await expect(row).toBeChecked();
+    await this.page.getByTestId("import-session-import-selected").click();
     await expect(this.page.getByTestId("import-session-sheet")).toHaveCount(0, {
       timeout: 30_000,
     });
@@ -110,8 +117,8 @@ export class ImportSessionFlow {
     await expect(this.page.getByTestId("assistant-message")).toContainText(assistantText);
   }
   async showAll() {
-    await this.page.getByTestId("import-session-show-all").click();
-    await expect(this.page.getByTestId("import-session-scope")).toContainText("Sessions on");
+    await this.page.getByTestId("import-session-all-projects").click();
+    await this.expectScope("Sessions on", false);
   }
   async expectImportedIntoWorkspace(workspaceId: string, userText: string) {
     await expect(this.page).toHaveURL(buildHostWorkspaceRoute(getServerId(), workspaceId), {
@@ -130,12 +137,21 @@ export class ImportSessionFlow {
     await expect(panel.getByText("Import session", { exact: true })).toBeVisible();
     await expect(panel.getByText("Home", { exact: true })).toHaveCount(0);
   }
+  private scopeHint(text: string, exact: boolean) {
+    return this.page.getByTestId("import-session-sheet").getByText(text, { exact }).first();
+  }
   private async expectSheetReady() {
     const sheet = this.page.getByTestId("import-session-sheet");
     await expect(sheet).toBeVisible({ timeout: 30_000 });
-    await expect(sheet.getByText("Loading sessions...", { exact: true })).toHaveCount(0, {
-      timeout: 30_000,
-    });
+    // On compact layouts the sheet test id marks only the header, so the body's
+    // loading status is matched page-wide.
+    await expect(this.page.getByText("Loading recent sessions...", { exact: true })).toHaveCount(
+      0,
+      { timeout: 30_000 },
+    );
+    await expect(this.page.locator('[data-testid^="import-session-session-"]').first()).toBeVisible(
+      { timeout: 30_000 },
+    );
   }
   private async rowIds() {
     return await this.page

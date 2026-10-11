@@ -110,7 +110,8 @@ export async function openVisualizerSettingsSection(page: Page): Promise<void> {
   const sidebar = page.getByTestId("settings-sidebar");
   await expect(sidebar).toBeVisible({ timeout: 15_000 });
   await sidebar.getByRole("button", { name: "Visualizer", exact: true }).click();
-  await expect(page).toHaveURL(/\/settings\/visualizer$/, { timeout: 15_000 });
+  // Settings sections keep the active host as a `?host=` query, so match the path only.
+  await expect(page).toHaveURL(/\/settings\/visualizer(?:\?|$)/, { timeout: 15_000 });
   await expect(page.getByTestId("settings-visualizer-enable-switch")).toBeVisible({
     timeout: 15_000,
   });

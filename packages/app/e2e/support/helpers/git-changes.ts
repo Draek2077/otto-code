@@ -20,8 +20,13 @@ export async function commitFixtureFiles(
   return result.commitSha!;
 }
 
+/**
+ * A changed file's header inside the Changes panel. Headers are painted on the
+ * diff canvas, so they carry no DOM text: the file is identified by the
+ * header's accessible name (`src/alpha.ts, +1, -1`).
+ */
 export function changedTreeFile(page: Page, fileName: string): Locator {
-  return page.getByTestId("changes-tree-panel").getByText(fileName, { exact: true });
+  return fileRowContaining(page, fileName, page.getByTestId("changes-tree-panel"));
 }
 
 /** Runs git against the fixture repo and returns trimmed stdout. */
@@ -31,9 +36,21 @@ export function gitOutput(repoPath: string, args: string[]): string {
     .trim();
 }
 
-/** A changed-file row in the Changes list (testID `diff-file-N`) containing `fileName`. */
-export function fileRowContaining(page: Page, fileName: string): Locator {
-  return page.getByTestId(/^diff-file-\d+$/).filter({ hasText: fileName });
+/**
+ * A changed file in the Changes panel whose path contains `fileName`: either a
+ * header of the inline diff (testID `diff-file-N`) or a row of the file-only
+ * tree (`diff-tree-file-N`). Inline-diff headers are painted on the canvas and
+ * expose the path only through their accessible name, never as text, so they
+ * are matched by label; tree rows render the name as text.
+ */
+export function fileRowContaining(
+  page: Page,
+  fileName: string,
+  scope: Page | Locator = page,
+): Locator {
+  const inlineHeader = scope.getByTestId(/^diff-file-\d+$/).and(page.getByLabel(fileName));
+  const treeRow = scope.getByTestId(/^diff-tree-file-\d+$/).filter({ hasText: fileName });
+  return inlineHeader.or(treeRow);
 }
 
 /** Boots the app at the workspace route on a desktop viewport and waits for the tab row. */
@@ -53,7 +70,9 @@ export async function openWorkspaceChanges(
 ): Promise<void> {
   await openWorkspaceScreen(page, input.workspaceId);
   await openChangesTreePanel(page);
-  await expect(page.getByText(input.expectFileName)).toBeVisible({ timeout: 30_000 });
+  await expect(fileRowContaining(page, input.expectFileName).first()).toBeVisible({
+    timeout: 30_000,
+  });
 }
 
 /**

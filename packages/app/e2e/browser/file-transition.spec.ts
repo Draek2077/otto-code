@@ -38,6 +38,9 @@ async function assertHeldFileTransition(
   targetPath: string,
   finalText: string,
   gate: Awaited<ReturnType<typeof delayFileReadResponse>>,
+  // Markdown opens in preview (FilePreview's loading state); source opens in the
+  // editor (the file tab pane's buffer loading state).
+  loadingTestId: "file-preview-loading" | "file-editor-loading",
 ) {
   await page.evaluate(() => {
     const originalChip = document.querySelector('[data-testid="workspace-tab-file_src/a.ts"]');
@@ -45,33 +48,36 @@ async function assertHeldFileTransition(
       window as typeof window & { __fileTransitionOriginalChip?: Element | null }
     ).__fileTransitionOriginalChip = originalChip;
   });
-  await page.evaluate((tabTestId) => {
-    const timeline: Array<{ chip: boolean; loading: boolean; unavailable: boolean }> = [];
-    const sample = () => {
-      const next = {
-        chip: Boolean(document.querySelector(`[data-testid="${tabTestId}"]`)),
-        loading: Boolean(document.querySelector('[data-testid="file-editor-loading"]')),
-        unavailable: Boolean(document.querySelector('[data-testid="file-preview-unsupported"]')),
+  await page.evaluate(
+    ({ tabTestId, loadingTestId }) => {
+      const timeline: Array<{ chip: boolean; loading: boolean; unavailable: boolean }> = [];
+      const sample = () => {
+        const next = {
+          chip: Boolean(document.querySelector(`[data-testid="${tabTestId}"]`)),
+          loading: Boolean(document.querySelector(`[data-testid="${loadingTestId}"]`)),
+          unavailable: Boolean(document.querySelector('[data-testid="file-preview-unsupported"]')),
+        };
+        if (JSON.stringify(timeline.at(-1)) !== JSON.stringify(next)) timeline.push(next);
       };
-      if (JSON.stringify(timeline.at(-1)) !== JSON.stringify(next)) timeline.push(next);
-    };
-    sample();
-    const observer = new MutationObserver(sample);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    (
-      window as typeof window & { __fileTransitionTimeline?: typeof timeline }
-    ).__fileTransitionTimeline = timeline;
-    (
-      window as typeof window & { __fileTransitionObserver?: MutationObserver }
-    ).__fileTransitionObserver = observer;
-  }, `workspace-tab-file_${targetPath}`);
+      sample();
+      const observer = new MutationObserver(sample);
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      (
+        window as typeof window & { __fileTransitionTimeline?: typeof timeline }
+      ).__fileTransitionTimeline = timeline;
+      (
+        window as typeof window & { __fileTransitionObserver?: MutationObserver }
+      ).__fileTransitionObserver = observer;
+    },
+    { tabTestId: `workspace-tab-file_${targetPath}`, loadingTestId },
+  );
   await openFileFromExplorer(page, targetPath.split("/").pop() as string);
   await gate.waitUntilHeld();
 
   const targetChip = page.getByTestId(`workspace-tab-file_${targetPath}`).first();
   await expect(targetChip).toBeVisible();
   await expect(targetChip).toContainText(targetPath.split("/").pop() as string);
-  await expect(page.getByTestId("file-editor-loading")).toBeVisible();
+  await expect(page.getByTestId(loadingTestId)).toBeVisible();
   await expect(page.getByTestId("file-preview-unsupported")).toHaveCount(0);
   await expect(page.getByText("export const sourceA = true;")).toHaveCount(0);
 
@@ -109,7 +115,7 @@ async function assertHeldFileTransition(
 
   gate.release();
   await expect(page.getByText(finalText)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("file-editor-loading")).toHaveCount(0);
+  await expect(page.getByTestId(loadingTestId)).toHaveCount(0);
   const timeline = await page.evaluate(() => {
     const windowWithTimeline = window as typeof window & {
       __fileTransitionTimeline?: Array<{ chip: boolean; loading: boolean; unavailable: boolean }>;
@@ -132,7 +138,7 @@ test.describe("File target transitions", () => {
     await gotoWorkspace(page, workspace.workspaceId);
     await openSourceA(page);
     await expandFolder(page, "docs");
-    await assertHeldFileTransition(page, "docs/b.md", "Markdown B", gate);
+    await assertHeldFileTransition(page, "docs/b.md", "Markdown B", gate, "file-preview-loading");
   });
 
   test("keeps the source descriptor and loading state stable through a real delayed read", async ({
@@ -142,6 +148,12 @@ test.describe("File target transitions", () => {
     await page.reload();
     await gotoWorkspace(page, workspace.workspaceId);
     await openSourceA(page);
-    await assertHeldFileTransition(page, "src/b.ts", "export const sourceB = true;", gate);
+    await assertHeldFileTransition(
+      page,
+      "src/b.ts",
+      "export const sourceB = true;",
+      gate,
+      "file-editor-loading",
+    );
   });
 });
