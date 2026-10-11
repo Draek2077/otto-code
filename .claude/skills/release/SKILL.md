@@ -27,7 +27,7 @@ Run from a clean tree on `main`, on the exact commit to be released. **Every ste
 
 ```bash
 git pull --rebase                                      # other sessions push to main while you prepare; release what is really there
-npm run format && npm run lint && npm run typecheck   # all green; commit any format churn on its own
+npm run format && npm run lint                         # commit any format churn on its own; typecheck is CI's job (see release:check)
 npm run acp:version-drift:check                        # npm/PyPI pins + installed-command labels + ACP registry coverage
 npm run settings:catalog                               # regenerates settings search; commit it if it changed
 npm run size:ceilings:check                            # CI gate: a failure means main is red; report it, never raise a ceiling
@@ -39,6 +39,8 @@ npm run release:prepare                                # run once alone to absor
 - **Agent SDK lag** is reported, not fixed: an SDK bump changes agent behavior, so it needs the user's approval and its own tested commit.
 - **Uncommitted work in the tree that is not yours:** ask whether it ships. Never leave it out silently, and never commit it unasked.
 - F-Droid changelogs need no step: the npm `version` lifecycle generates them.
+
+**Push the pre-flight commits as soon as they exist** (`git push`, with the Draek2077 credentials in step 4). CI's `typecheck`, `lint` and `format` jobs then run while the changelog is drafted and reviewed, and `release:check` finds them already green instead of waiting.
 
 Why `release:prepare` first: it runs `npm install --workspaces`, which can churn `package-lock.json`. `version:all:*` aborts on a dirty tree, and the pre-commit hook rejects a lockfile-only commit. Absorbing the churn now avoids a mid-release mess.
 
@@ -73,6 +75,8 @@ git commit -m "docs(changelog): add X.Y.Z release notes"
 # Cut it. No npm login, no 2FA, no Google registration needed on this machine.
 npm run release:patch         # release:check → version:all:patch (bump+commit+tag) → release:push
 ```
+
+**`release:check` builds nothing locally.** It finds the newest commit in HEAD that changes anything besides docs (the changelog commit is skipped), and waits until CI's `typecheck`, `lint` and `format` jobs pass on it. CI's `typecheck` job is the clean install, full build, typecheck and dry-run pack of all eight packages that the old local check repeated. It stops early, with the fix in its message, if the code commit is not pushed, a gate job failed, or every run on it was cancelled. Playwright and the test jobs do not gate it. `npm run release:check:local` is the old full local build, for when CI cannot vouch for the commit; use it only when the user agrees to skip the wait.
 
 `release:patch` bumps every workspace, commits, tags, and pushes HEAD + tag. **The agent runs it end to end.** Publishing is not part of it: the tag push runs the `npm Publish` workflow, which publishes the eight `@otto-code/*` packages (highlight, relay, protocol, client, plugin, server, brain, cli) through npm trusted publishing and reads the Google sign-in registration from the `OTTO_GOOGLE_OAUTH_CLIENT_JSON` repository secret. See `docs/release.md` → "npm publishing from CI".
 

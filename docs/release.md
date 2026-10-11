@@ -224,7 +224,7 @@ as described in **Fixing a failed release build**.
 Before running any stable patch release command:
 
 - Make sure the resolved release source passed CI, the approved release inputs are committed locally on the intended branch, and the working tree is clean.
-- **Run `npm run format`, `npm run lint`, and `npm run typecheck` and commit any resulting changes BEFORE you start any `release:*` command.** `release:check` runs `npm install --workspaces --include-workspace-root` as part of `release:prepare`, which can mutate `package-lock.json` (e.g. churning `"dev": true` markers on optional deps). The next step, `version:all:*`, runs `npm version` which aborts when the working tree is dirty. If this happens mid-flight you have to commit the lockfile churn before retrying, and the pre-commit format hook will reject a lockfile-only commit because oxfmt internally skips `package-lock.json` while lefthook's glob still matches it. Avoid the whole mess by running format/lint/typecheck first, then `release:prepare` once on its own to absorb any lockfile churn into a normal commit, then start the release.
+- **Run `npm run format` and `npm run lint` and commit any resulting changes BEFORE you start any `release:*` command, then push them so CI checks them (see "The release gate" below).** The `npm version` lifecycle runs `npm install --workspaces --include-workspace-root` as part of `release:prepare`, which can mutate `package-lock.json` (e.g. churning `"dev": true` markers on optional deps). The next step, `version:all:*`, runs `npm version` which aborts when the working tree is dirty. If this happens mid-flight you have to commit the lockfile churn before retrying, and the pre-commit format hook will reject a lockfile-only commit because oxfmt internally skips `package-lock.json` while lefthook's glob still matches it. Avoid the whole mess by running format/lint first, then `release:prepare` once on its own to absorb any lockfile churn into a normal commit, then start the release.
 - Do not use `npm run release:patch` as a substitute for checking whether the current commit is actually ready.
 
 > **npm publishes from CI.** The release chain no longer publishes from the release machine,
@@ -253,11 +253,24 @@ The production relay is the Elixir service in [Draek2077/otto-code-relay](https:
 
 **Stable means stable.** If the user says "stable" or "ship stable", do not ask whether they want a beta first. They picked stable; treat it as a direct stable release. Only run the beta flow when the user explicitly says "beta".
 
+## The release gate
+
+`npm run release:check` (`scripts/release-check.mjs`) builds nothing locally. CI's `typecheck` job already does a clean install, builds every published package, typechecks every workspace, and dry-run packs all eight `@otto-code/*` packages, and `npm Publish` rebuilds from the tag, so a local rebuild before tagging only repeated CI and took 10+ minutes.
+
+Instead it finds the newest commit in HEAD that changes anything other than docs (`*.md`, `docs/`, `public-docs/`, `.otto/knowledge/`), so the changelog commit is skipped, and waits for CI's `typecheck`, `lint` and `format` jobs to pass on that commit or on one of its docs-only descendants (GitHub replaces a queued run when a newer push arrives, and those descendants build the same code). It fails fast when:
+
+- that code commit is not on `origin/main` (push it, then rerun),
+- a gate job failed (fix `main` first), or
+- every run on it was cancelled (rerun CI for it).
+
+It waits up to 25 minutes for jobs still running. Playwright and the test jobs do not gate it, matching the old local check, which only typechecked, built and packed.
+
+`npm run release:check:local` keeps the old local chain (install, clean builds, per-package typecheck, dry-run pack) for when CI cannot vouch for the commit.
+
 ## Manual step-by-step
 
 ```bash
-npm run typecheck            # Verify the exact commit you intend to release
-npm run release:check        # Typecheck, build, dry-run pack
+npm run release:check        # Wait for CI typecheck/lint/format on the release code
 npm run version:all:patch    # Bump version, create commit + tag
 npm run release:push         # Push HEAD + tag (triggers CI workflows, including npm Publish)
 ```
