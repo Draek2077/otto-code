@@ -8,6 +8,21 @@ const PRE_ROLL_MS = 800;
 const POST_DETECTION_MS = 350;
 const PRE_ROLL_BYTES = (16_000 * 2 * PRE_ROLL_MS) / 1000;
 
+// Desktop has one native detector per renderer, even though focused composers
+// create separate handles. React effect cleanup cannot await the old handle's
+// teardown: its late IPC stop would otherwise delete the replacement session.
+// Keep capture startup and teardown in the same renderer-wide sequence, including
+// pending getUserMedia/worklet setup so teardown cannot close a graph mid-start.
+let detectorOperation: Promise<void> = Promise.resolve();
+let activeDetectorStop: (() => Promise<void>) | null = null;
+
+function sequenceDetectorOperation(operation: () => Promise<void>): Promise<void> {
+  const next = detectorOperation.then(operation);
+  // Report this failure to its caller without poisoning subsequent recovery.
+  detectorOperation = next.catch(() => undefined);
+  return next;
+}
+
 function encodePcm(pcm: Uint8Array): string {
   let binary = "";
   for (let index = 0; index < pcm.length; index += 1) {
@@ -45,57 +60,70 @@ export function createElectronWakeWordDetector(): WakeWordDetector {
     return output;
   };
 
-  return {
-    async start(settings) {
-      preRollChunks = [];
-      preRollBytes = 0;
-      const nextEngine = createAudioEngine({
-        onCaptureData: (pcm) => {
-          rememberPcm(pcm);
-          const audio = getDesktopHost()?.wakeWord?.audio;
-          if (typeof audio !== "function") {
-            console.error("[WakeWord][Electron] local audio bridge is unavailable");
-            return;
-          }
-          void audio(encodePcm(pcm)).catch((error) => {
-            console.error("[WakeWord][Electron] local audio handoff failed", error);
-          });
-        },
-        onVolumeLevel: () => undefined,
-        onError: (error) => {
-          console.warn("[WakeWord][Electron] local capture failed", error);
-        },
-      });
-      engine = nextEngine;
-      const wakeWord = getDesktopHost()?.wakeWord;
-      if (typeof wakeWord?.start !== "function") {
-        throw new Error("Desktop wake-word bridge is unavailable.");
-      }
-      await wakeWord.start({ phrase: settings.phrase, sensitivity: settings.sensitivity });
-      try {
-        await nextEngine.startCapture();
-      } catch (error) {
-        await wakeWord.stop?.().catch(() => undefined);
-        engine = null;
-        throw error;
-      }
-    },
-
-    async stop() {
-      if (detectionTimer) {
-        clearTimeout(detectionTimer);
-        detectionTimer = null;
-      }
-      removeEventListener?.();
-      removeEventListener = null;
-      await engine?.stopCapture().catch(() => undefined);
-      await engine?.destroy().catch(() => undefined);
-      engine = null;
-      preRollChunks = [];
-      preRollBytes = 0;
+  const stopSession = async () => {
+    if (detectionTimer) {
+      clearTimeout(detectionTimer);
+      detectionTimer = null;
+    }
+    removeEventListener?.();
+    removeEventListener = null;
+    await engine?.stopCapture().catch(() => undefined);
+    await engine?.destroy().catch(() => undefined);
+    engine = null;
+    preRollChunks = [];
+    preRollBytes = 0;
+    // A delayed cleanup from an unfocused composer only owns its own capture
+    // graph. It must never stop the native session claimed by the new composer.
+    if (activeDetectorStop === stopSession) {
+      activeDetectorStop = null;
       await getDesktopHost()
         ?.wakeWord?.stop?.()
         .catch(() => undefined);
+    }
+  };
+
+  return {
+    start(settings) {
+      return sequenceDetectorOperation(async () => {
+        if (activeDetectorStop) await activeDetectorStop();
+        preRollChunks = [];
+        preRollBytes = 0;
+        const nextEngine = createAudioEngine({
+          onCaptureData: (pcm) => {
+            if (activeDetectorStop !== stopSession) return;
+            rememberPcm(pcm);
+            const audio = getDesktopHost()?.wakeWord?.audio;
+            if (typeof audio !== "function") {
+              console.error("[WakeWord][Electron] local audio bridge is unavailable");
+              return;
+            }
+            void audio(encodePcm(pcm)).catch((error) => {
+              console.error("[WakeWord][Electron] local audio handoff failed", error);
+            });
+          },
+          onVolumeLevel: () => undefined,
+          onError: (error) => {
+            console.warn("[WakeWord][Electron] local capture failed", error);
+          },
+        });
+        engine = nextEngine;
+        const wakeWord = getDesktopHost()?.wakeWord;
+        if (typeof wakeWord?.start !== "function") {
+          throw new Error("Desktop wake-word bridge is unavailable.");
+        }
+        try {
+          await wakeWord.start({ phrase: settings.phrase, sensitivity: settings.sensitivity });
+          activeDetectorStop = stopSession;
+          await nextEngine.startCapture();
+        } catch (error) {
+          await stopSession();
+          throw error;
+        }
+      });
+    },
+
+    stop() {
+      return sequenceDetectorOperation(stopSession);
     },
 
     onDetected(listener) {
@@ -104,7 +132,7 @@ export function createElectronWakeWordDetector(): WakeWordDetector {
       let active = true;
       void Promise.resolve(
         events.on("wake-word-detected", () => {
-          if (!active || detectionTimer) return;
+          if (!active || activeDetectorStop !== stopSession || detectionTimer) return;
           // Discard the wake phrase and detector context. The handoff buffer
           // should contain only speech that begins after the wake event.
           preRollChunks = [];

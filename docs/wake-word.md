@@ -63,6 +63,12 @@ daemon audio path. Electron capability is an installation capability: the
 desktop runtime and model files must be present, otherwise enabling reports a
 recoverable error and the microphone is stopped.
 
+Electron serializes detector startup and teardown across composer instances in
+each renderer. A replacement listener releases the previous microphone graph
+before starting, and cleanup from an old listener cannot stop the replacement's
+native session. This also keeps pending microphone and worklet setup from
+resuming after its audio context has been closed.
+
 The five runtime model files are checked into
 `packages/expo-two-way-audio/models/wake-word`. Development loads that shared
 directory automatically. Electron Builder copies it to the application's
