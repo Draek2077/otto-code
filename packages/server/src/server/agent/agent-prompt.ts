@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 
 import type {
+  AgentBehaviorSettings,
   AgentPermissionRequest,
   AgentPromptInput,
   AgentRunOptions,
@@ -42,6 +43,29 @@ export type AgentRunController = Pick<
  * identically for every provider.
  */
 export type AgentPromptDelivery = "interrupt" | "queue";
+
+/**
+ * The host's Default send (Settings → Chat), translated into the pair the
+ * prompt path actually takes: Steer is an active-turn behavior on top of
+ * immediate delivery, not a third wire value. Every daemon-originated sender
+ * that has no composer - MCP `send_chat_prompt`, a child's finish report, an
+ * orchestration hand-back, a workflow notification - resolves the setting
+ * here, so an agent-to-agent prompt reaches a busy chat exactly the way the
+ * user's own send would. Hardcoding a delivery at a call site is how a
+ * "results only ever queue" bug survived three fixes to the tool path.
+ */
+export function resolveDefaultSendDispatch(
+  behavior: AgentBehaviorSettings["defaultSendBehavior"],
+): { delivery: AgentPromptDelivery; activeTurnBehavior?: ActiveTurnBehavior } {
+  switch (behavior) {
+    case "queue":
+      return { delivery: "queue" };
+    case "steer":
+      return { delivery: "interrupt", activeTurnBehavior: "steer" };
+    case "interrupt":
+      return { delivery: "interrupt" };
+  }
+}
 
 export interface StartAgentRunOptions {
   replaceRunning?: boolean;
@@ -576,14 +600,15 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
       agentStorage,
       agentId: callerAgentId,
       prompt: formatSystemNotificationPrompt(body),
-      activeTurnBehavior: "steer",
       unarchive: false,
-      // "Your child finished" is a report, not a correction. Interrupting the
-      // parent destroyed the turn it was running while the child worked, and a
-      // fan-out of N children interrupted it N times in a row - it could never
-      // finish a turn. Queued, each report still lands as its own turn (system
-      // entries never merge), in completion order. See docs/chat-lifecycle.md.
-      delivery: "queue",
+      // "Your child finished" is a report, and a report reaches a busy parent
+      // the way the host's Default send says every agent-to-agent prompt does:
+      // steered into the active turn unless the user chose Queue or Interrupt.
+      // Pinning Queue here (the earlier fan-out fix) left every child result
+      // parked in the Queue track while the orchestrator kept working past it.
+      // Each report still lands as its own message - system entries never
+      // merge. See docs/chat-lifecycle.md.
+      ...resolveDefaultSendDispatch(agentManager.getAgentBehaviors().defaultSendBehavior),
       source: "system",
       logger,
     });

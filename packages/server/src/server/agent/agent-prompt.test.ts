@@ -30,6 +30,8 @@ interface FinishNotificationScenarioOptions {
   childLastAssistantMessage?: string | null;
   /** Whether the parent is mid-turn when the child settles. */
   parentBusy?: boolean;
+  /** The host's Default send; the daemon default is Steer. */
+  hostDefaultSend?: "interrupt" | "steer" | "queue";
 }
 
 interface FinishNotificationScenario {
@@ -38,6 +40,8 @@ interface FinishNotificationScenario {
   finishChild(): void;
   isWatchingChild(): boolean;
   queuedPrompts: string[];
+  steeredPrompts: string[];
+  replacedPrompts: string[];
   parentPrompts(): string[];
   steerAttemptCount(): number;
   wasParentPrompted(): boolean;
@@ -49,6 +53,8 @@ function createFinishNotificationScenario(
   let subscriber: ((event: AgentManagerEvent) => void) | null = null;
   let resolveParentPrompt: ((prompt: string) => void) | null = null;
   const queuedPrompts: string[] = [];
+  const steeredPrompts: string[] = [];
+  const replacedPrompts: string[] = [];
   let parentPrompted = false;
   let steerAttemptCount = 0;
   const parentPrompts: string[] = [];
@@ -65,6 +71,9 @@ function createFinishNotificationScenario(
   Reflect.set(callerAgent, "config", { title: "Caller Agent" });
 
   const agentManager = new AgentManager({ clients: {}, logger: createTestLogger() });
+  if (options?.hostDefaultSend) {
+    agentManager.setAgentBehaviors({ defaultSendBehavior: options.hostDefaultSend });
+  }
   Reflect.set(agentManager, "getAgent", (agentId: string) => {
     if (agentId === "child-agent") {
       return childAgent;
@@ -86,9 +95,9 @@ function createFinishNotificationScenario(
   Reflect.set(agentManager, "tryRunOutOfBand", () => false);
   Reflect.set(agentManager, "hasInFlightRun", () => Boolean(options?.parentBusy));
   Reflect.set(agentManager, "isBusyOnlyWithOutOfBandRun", () => false);
-  // Notify-on-finish sends `delivery: "queue"`, so the enqueue attempt is part
-  // of the path now. An idle parent reports "not queued" and falls through to a
-  // normal dispatch; a busy one takes the prompt.
+  // A host whose Default send is Queue sends `delivery: "queue"`, so the
+  // enqueue attempt is part of the path. An idle parent reports "not queued"
+  // and falls through to a normal dispatch; a busy one takes the prompt.
   Reflect.set(agentManager, "enqueueSteerMessage", (_agentId: string, prompt: string) => {
     if (!options?.parentBusy) {
       return { queued: false };
@@ -104,10 +113,25 @@ function createFinishNotificationScenario(
     return { queued: true, entry };
   });
   // An idle parent has no active turn to steer, so the dispatcher falls through
-  // to a fresh stream; the attempt itself is what the tests count.
-  Reflect.set(agentManager, "steerOrReplaceActiveTurn", async () => {
-    steerAttemptCount += 1;
-    return { status: "inactive" };
+  // to a fresh stream; the attempt itself is what the tests count. A busy one
+  // accepts the steer, standing in for a provider with native steering.
+  Reflect.set(
+    agentManager,
+    "steerOrReplaceActiveTurn",
+    async (_agentId: string, prompt: string) => {
+      steerAttemptCount += 1;
+      if (!options?.parentBusy) {
+        return { status: "inactive" };
+      }
+      steeredPrompts.push(prompt);
+      resolveParentPrompt?.(prompt);
+      return { status: "steered" };
+    },
+  );
+  Reflect.set(agentManager, "replaceAgentRun", async (_agentId: string, prompt: string) => {
+    replacedPrompts.push(prompt);
+    resolveParentPrompt?.(prompt);
+    return (async function* noop() {})();
   });
   Reflect.set(agentManager, "streamAgent", (_agentId: string, prompt: string) => {
     parentPrompted = true;
@@ -159,6 +183,8 @@ function createFinishNotificationScenario(
       return subscriber !== null;
     },
     queuedPrompts,
+    steeredPrompts,
+    replacedPrompts,
     parentPrompts() {
       return parentPrompts;
     },
@@ -376,7 +402,11 @@ test("finish notifications unsubscribe after the prompted turn settles", async (
   expect(scenario.parentPrompts()).toHaveLength(1);
 });
 
-test("a busy parent gets the finish notification queued, not interrupted", async () => {
+const BUSY_PARENT_REPORT = formatSystemNotificationPrompt(
+  "Agent child-agent (Child Agent) finished.\n\n<agent-response>\nDone.\n</agent-response>",
+);
+
+test("a busy parent is steered with the finish notification under the daemon's default send", async () => {
   const scenario = createFinishNotificationScenario({
     childLastAssistantMessage: "Done.",
     parentBusy: true,
@@ -385,14 +415,44 @@ test("a busy parent gets the finish notification queued, not interrupted", async
   scenario.startWatchingChild();
   await scenario.finishChildAndReadParentPrompt();
 
-  // The whole point: the parent's in-flight turn survives its child reporting
-  // back. With a fan-out this is the difference between the orchestrator
-  // finishing a turn and being interrupted once per child.
-  expect(scenario.queuedPrompts).toEqual([
-    formatSystemNotificationPrompt(
-      "Agent child-agent (Child Agent) finished.\n\n<agent-response>\nDone.\n</agent-response>",
-    ),
-  ]);
+  // The host default is Steer, so a child's result joins the orchestrator's
+  // active turn instead of sitting in the Queue track until that turn ends.
+  expect(scenario.steeredPrompts).toEqual([BUSY_PARENT_REPORT]);
+  expect(scenario.queuedPrompts).toEqual([]);
+  expect(scenario.replacedPrompts).toEqual([]);
+});
+
+test("a busy parent gets the finish notification queued when the host's Default send is Queue", async () => {
+  const scenario = createFinishNotificationScenario({
+    childLastAssistantMessage: "Done.",
+    parentBusy: true,
+    hostDefaultSend: "queue",
+  });
+
+  scenario.startWatchingChild();
+  await scenario.finishChildAndReadParentPrompt();
+
+  // The parent's in-flight turn survives its child reporting back; with a
+  // fan-out this keeps the orchestrator finishing a turn rather than being
+  // nudged once per child.
+  expect(scenario.queuedPrompts).toEqual([BUSY_PARENT_REPORT]);
+  expect(scenario.steeredPrompts).toEqual([]);
+  expect(scenario.steerAttemptCount()).toBe(0);
+});
+
+test("a busy parent is interrupted by the finish notification when the host's Default send is Interrupt", async () => {
+  const scenario = createFinishNotificationScenario({
+    childLastAssistantMessage: "Done.",
+    parentBusy: true,
+    hostDefaultSend: "interrupt",
+  });
+
+  scenario.startWatchingChild();
+  await scenario.finishChildAndReadParentPrompt();
+
+  expect(scenario.replacedPrompts).toEqual([BUSY_PARENT_REPORT]);
+  expect(scenario.queuedPrompts).toEqual([]);
+  expect(scenario.steerAttemptCount()).toBe(0);
 });
 
 it("does not notify archived callers", async () => {

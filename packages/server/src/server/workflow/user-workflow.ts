@@ -20,7 +20,7 @@ import {
 import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentProvider, ProviderSnapshotEntry } from "../agent/agent-sdk-types.js";
 import { resolveProfile, type ResolvedProfileSnapshot } from "../agent/agent-profiles.js";
-import { sendPromptToAgent } from "../agent/agent-prompt.js";
+import { resolveDefaultSendDispatch, sendPromptToAgent } from "../agent/agent-prompt.js";
 import {
   composeTeamAndPersonalityPrompt,
   resolveTeamSnapshotForPersonality,
@@ -696,6 +696,10 @@ function buildGraphSpawnPort(
         agentStorage: deps.createAgentDeps.agentStorage,
         agentId: context.orchestratorAgentId,
         prompt: text,
+        // A run notification reaches a busy orchestrator the way the host's
+        // Default send says, rather than always cutting its turn short.
+        ...resolveDefaultSendDispatch(deps.agentManager.getAgentBehaviors().defaultSendBehavior),
+        source: "system",
         logger: deps.logger,
       });
     },

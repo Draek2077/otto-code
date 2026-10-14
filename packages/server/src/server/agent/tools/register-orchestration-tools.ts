@@ -16,7 +16,11 @@ import {
 import type { RunSpawnPort } from "../../workflow/workflow-service.js";
 import { resolveTeamRoleMember } from "../../workflow/resolve-team-role.js";
 import { AgentStatusEnum } from "../mcp-shared.js";
-import { formatSystemNotificationPrompt, sendPromptToAgent } from "../agent-prompt.js";
+import {
+  formatSystemNotificationPrompt,
+  resolveDefaultSendDispatch,
+  sendPromptToAgent,
+} from "../agent-prompt.js";
 import { truncateHeadTail } from "../../../utils/truncate-head-tail.js";
 import { buildPersonalityAgentConfig } from "./otto-tool-shared.js";
 import type { OttoToolContext } from "./otto-tool-context.js";
@@ -370,7 +374,9 @@ export function registerOrchestrationTools({
                 agentId: callerAgentId,
                 prompt: formatSystemNotificationPrompt(text),
                 unarchive: false,
-                delivery: "queue",
+                // The hand-back follows the host's Default send like any other
+                // agent-to-agent prompt; it is not a reason to queue on its own.
+                ...resolveDefaultSendDispatch(agentManager.getAgentBehaviors().defaultSendBehavior),
                 source: "system",
                 logger: childLogger,
               });

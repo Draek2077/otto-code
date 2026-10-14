@@ -6,7 +6,11 @@ import {
   sanitizePermissionRequest,
   waitForAgentWithTimeout,
 } from "../mcp-shared.js";
-import { sendPromptToAgent, setupFinishNotification } from "../agent-prompt.js";
+import {
+  resolveDefaultSendDispatch,
+  sendPromptToAgent,
+  setupFinishNotification,
+} from "../agent-prompt.js";
 import type { OttoToolContext } from "./otto-tool-context.js";
 import type { RegisterOttoTool } from "./types.js";
 
@@ -116,16 +120,13 @@ export function registerChatMessagingTools({
       const effectiveDelivery = delivery ?? agentManager.getAgentBehaviors().defaultSendBehavior;
       onActivity?.("backgroundTasksInvoked", Number(background));
 
-      // The shared prompt path has two wire deliveries. Steer is its separate
-      // active-turn behavior, so it uses immediate delivery without queueing.
       const dispatch = await sendPromptToAgent({
         agentManager,
         agentStorage,
         agentId,
         prompt,
         sessionMode,
-        delivery: effectiveDelivery === "queue" ? "queue" : "interrupt",
-        ...(effectiveDelivery === "steer" ? { activeTurnBehavior: "steer" as const } : {}),
+        ...resolveDefaultSendDispatch(effectiveDelivery),
         // Agent-to-agent sends carry their own framing; never merge one into a
         // neighbouring message when the queue drains.
         source: "system",
