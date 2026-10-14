@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.33 - 2026-10-14
+
+### Fixed
+
+- Deliver a child chat's results to its orchestrator using the Default send setting instead of always queueing them
+- Steer a busy orchestrator with Workflow run notifications and orchestration hand-backs under the default Steer setting
+- Keep Hey Otto listening when the composer changes while voice mode is active
+- Stop a stale voice listener from shutting down the microphone session that replaced it
+
+### Internal
+
+- Gate releases on CI's typecheck, lint, and format jobs instead of rebuilding every package locally
+- Refresh ACP provider catalog version pins
+
 ## 0.9.32 - 2026-10-11
 
 ### Added
