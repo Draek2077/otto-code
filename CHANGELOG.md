@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.34 - 2026-10-16
+
+### Improved
+
+- Stream a new chat's ID immediately from the CLI while waiting for its response
+- List chats by project or workspace ID in the CLI
+- Include project and workspace ownership IDs in machine-readable CLI listings
+
+### Internal
+
+- Refresh ACP provider catalog version pins
+
 ## 0.9.33 - 2026-10-14
 
 ### Fixed
