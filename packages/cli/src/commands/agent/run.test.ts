@@ -52,6 +52,18 @@ describe("existing run workspace resolution", () => {
 // validateRunOptions runs before the CLI ever connects to a daemon, so these
 // invalid combinations reject without one running.
 describe("runRunCommand option validation", () => {
+  it.each([
+    { streamJson: true, background: true },
+    { streamJson: true, detach: true },
+    { streamJson: true, outputSchema: "{}" },
+    { streamJson: true, json: true },
+    { streamJson: true, quiet: true },
+    { streamJson: true, format: "yaml" },
+  ])("rejects conflicting streaming options before connecting: %j", async (options) => {
+    await expect(runRunCommand("task", options, {} as never)).rejects.toMatchObject({
+      code: "INVALID_OPTIONS",
+    });
+  });
   const originalWorkspaceId = process.env.OTTO_WORKSPACE_ID;
 
   beforeEach(() => {

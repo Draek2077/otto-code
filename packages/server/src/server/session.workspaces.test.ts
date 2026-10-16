@@ -2814,6 +2814,81 @@ test("active-scoped fetch_agents pages within active scope instead of global his
   expect(secondPage.pageInfo.hasMore).toBe(false);
 });
 
+test.each([
+  { filter: {}, expected: ["agent-ws-1", "agent-ws-2", "agent-ws-3"] },
+  { filter: { projectKeys: ["proj-1"] }, expected: ["agent-ws-1", "agent-ws-2"] },
+  { filter: { workspaceId: "ws-2" }, expected: ["agent-ws-2"] },
+  { filter: { projectKeys: ["proj-1"], workspaceId: "ws-2" }, expected: ["agent-ws-2"] },
+  { filter: { projectKeys: ["proj-2"], workspaceId: "ws-2" }, expected: [] },
+  { filter: { projectKeys: ["unknown-project"] }, expected: [] },
+  { filter: { workspaceId: "unknown-workspace" }, expected: [] },
+  { filter: { workspaceId: "ws" }, expected: [] },
+])(
+  "fetch_agents exact ownership filters before paging, independent of cwd: $filter",
+  async ({ filter, expected }) => {
+    const session = createSessionForWorkspaceTests();
+    const cwd = path.resolve("/tmp/shared-listing-directory");
+    const timestamp = "2026-10-16T12:00:00.000Z";
+    const projects = ["proj-1", "proj-2"].map((projectId) =>
+      createPersistedProjectRecord({
+        projectId,
+        rootPath: cwd,
+        kind: "non_git",
+        displayName: "Same name",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+    const workspaces = ["ws-1", "ws-2", "ws-3"].map((workspaceId, index) =>
+      createPersistedWorkspaceRecord({
+        workspaceId,
+        projectId: index === 2 ? "proj-2" : "proj-1",
+        cwd,
+        kind: "directory",
+        displayName: "Same name",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+    session.projectRegistry.list = async () => projects;
+    session.projectRegistry.get = async (id: string) =>
+      projects.find((project) => project.projectId === id) ?? null;
+    session.workspaceRegistry.list = async () => workspaces;
+    session.workspaceRegistry.get = async (id: string) =>
+      workspaces.find((workspace) => workspace.workspaceId === id) ?? null;
+    session.listAgentPayloads = async () =>
+      workspaces.map((workspace) =>
+        makeAgent({
+          id: `agent-${workspace.workspaceId}`,
+          workspaceId: workspace.workspaceId,
+          cwd,
+          status: "idle",
+          updatedAt: timestamp,
+        }),
+      );
+    const result = await session.listFetchAgentsEntries({
+      type: "fetch_agents_request",
+      requestId: "ownership",
+      scope: "active",
+      filter,
+      page: { limit: 1 },
+    });
+    expect(agentIdsFromEntries(result.entries)).toEqual(expected.slice(0, 1));
+    expect(result.pageInfo.hasMore).toBe(expected.length > 1);
+    expect(
+      result.entries.map((entry) => ({
+        workspaceId: entry.agent.workspaceId,
+        projectId: entry.project.projectKey,
+      })),
+    ).toEqual(
+      expected.slice(0, 1).map((id) => ({
+        workspaceId: id.slice("agent-".length),
+        projectId: id === "agent-ws-3" ? "proj-2" : "proj-1",
+      })),
+    );
+  },
+);
+
 test("legacy unscoped fetch_agents keeps global workspace behavior", async () => {
   const session = createSessionForWorkspaceTests();
   const legacyRoot = path.resolve("/tmp/legacy");

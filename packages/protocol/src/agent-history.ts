@@ -7,6 +7,8 @@ export const AgentStatusSchema = z.enum(AGENT_LIFECYCLE_STATUSES);
 export const AgentDirectoryFilterSchema = z.object({
   labels: z.record(z.string(), z.string()).optional(),
   projectKeys: z.array(z.string()).optional(),
+  // Exact persisted workspace ownership, independent of the agent's cwd.
+  workspaceId: z.string().optional(),
   statuses: z.array(AgentStatusSchema).optional(),
   includeArchived: z.boolean().optional(),
   requiresAttention: z.boolean().optional(),

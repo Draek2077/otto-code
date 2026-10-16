@@ -8,6 +8,8 @@ import type {
 } from "../../output/index.js";
 import { fetchAgentTimelineItems, formatAgentActivityTranscript } from "./logs.js";
 import { parseDuration } from "../../utils/duration.js";
+import { streamWaitSchema, validateStreamOptions } from "../../output/agent-stream.js";
+import { toCommandError } from "../../output/render.js";
 
 /** Result type for agent wait command */
 export interface AgentWaitResult {
@@ -27,6 +29,7 @@ export const agentWaitSchema: OutputSchema<AgentWaitResult> = {
 };
 
 export interface AgentWaitOptions extends CommandOptions {
+  streamJson?: boolean;
   timeout?: string;
   host?: string;
 }
@@ -134,7 +137,43 @@ export function addWaitOptions(cmd: Command): Command {
   return cmd
     .description("Wait for an agent to become idle")
     .argument("<id>", "Agent ID (or prefix)")
+    .option(
+      "--stream-json",
+      "Emit a terminal NDJSON record for this existing chat; never creates one",
+    )
     .option("--timeout <seconds>", "Maximum wait time (default: no limit)");
+}
+
+async function streamExistingWait(
+  client: Awaited<ReturnType<typeof connectToDaemon>>,
+  requestedId: string,
+  timeoutMs: number,
+): Promise<SingleResult<AgentWaitResult>> {
+  let agentId: string | undefined;
+  try {
+    const existing = await client.fetchAgent(requestedId);
+    if (!existing)
+      throw {
+        code: "AGENT_NOT_FOUND",
+        message: `Agent not found: ${requestedId}`,
+      } satisfies CommandError;
+    agentId = existing.agent.id;
+    const state = await client.waitForFinish(agentId, timeoutMs);
+    return {
+      type: "single",
+      data: buildWaitResult({
+        state,
+        resolvedAgentId: agentId,
+        recentActivity: null,
+        timeoutLabel: null,
+      }),
+      schema: streamWaitSchema(agentWaitSchema, agentId, state),
+    };
+  } catch (error) {
+    throw { ...toCommandError(error), ...(agentId ? { agentId } : {}) } satisfies CommandError;
+  } finally {
+    await client.close().catch(() => {});
+  }
 }
 
 export async function runWaitCommand(
@@ -153,6 +192,7 @@ export async function runWaitCommand(
   }
 
   const { timeoutMs, timeoutLabel } = parseWaitTimeout(options.timeout);
+  validateStreamOptions(options);
 
   let client;
   try {
@@ -168,6 +208,7 @@ export async function runWaitCommand(
   }
 
   try {
+    if (options.streamJson) return await streamExistingWait(client, agentIdArg, timeoutMs);
     try {
       const state = await client.waitForFinish(agentIdArg, timeoutMs);
       const resolvedAgentId = state.final?.id ?? agentIdArg;

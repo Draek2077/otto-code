@@ -19,6 +19,13 @@ import {
   type ResolvedProviderModel,
 } from "../../utils/provider-model.js";
 import { buildWorkspaceSource } from "../workspace/create.js";
+import {
+  streamWaitSchema,
+  toCreatedRecord,
+  validateStreamOptions,
+  writeJsonRecord,
+} from "../../output/agent-stream.js";
+import { toCommandError } from "../../output/render.js";
 
 export { resolveProviderAndModel } from "../../utils/provider-model.js";
 
@@ -28,6 +35,10 @@ export function addRunOptions(cmd: Command): Command {
       .description("Create and start an agent with a task")
       .argument("<prompt>", "The task/prompt for the agent")
       .option("-d, --background", "Run in background")
+      .option(
+        "--stream-json",
+        "Stream a creation receipt before waiting, then a terminal NDJSON record",
+      )
       // COMPAT(detachRunFlag): --detach used to mean background execution, not
       // ownership transfer. Added in v0.2.0; remove after 2027-01-17.
       .addOption(new Option("--detach", "Legacy alias for --background").hideHelp())
@@ -98,7 +109,7 @@ export function addRunOptions(cmd: Command): Command {
 /** Result type for agent run command */
 export interface AgentRunResult {
   agentId: string;
-  status: "created" | "running" | "completed" | "timeout" | "permission" | "error";
+  status: "created" | "running" | "completed" | "idle" | "timeout" | "permission" | "error";
   provider: string;
   cwd: string;
   title: string | null;
@@ -117,6 +128,7 @@ export const agentRunSchema: OutputSchema<AgentRunResult> = {
 };
 
 export interface AgentRunOptions extends CommandOptions {
+  streamJson?: boolean;
   background?: boolean;
   detach?: boolean;
   title?: string;
@@ -469,6 +481,13 @@ export function validateRunOptions(
   }
 
   validateRunWorkspaceOptions(options);
+  validateStreamOptions(options);
+  if (options.streamJson && (runsInBackground(options) || options.outputSchema !== undefined)) {
+    throw {
+      code: "INVALID_OPTIONS",
+      message: "--stream-json requires foreground run without --output-schema",
+    } satisfies CommandError;
+  }
 
   if (outputSchema && runsInBackground(options)) {
     throw {
@@ -668,6 +687,34 @@ async function resolveRunWorkspace(
   return { id: result.workspace.id, cwd: result.workspace.workspaceDirectory ?? cwd };
 }
 
+async function finishRun(
+  client: ConnectedDaemonClient,
+  agent: AgentSnapshotPayload,
+  options: AgentRunOptions,
+  waitTimeoutMs: number,
+): Promise<SingleResult<AgentRunResult>> {
+  if (options.streamJson) await writeJsonRecord(toCreatedRecord(agent));
+  if (runsInBackground(options)) {
+    await client.close();
+    return { type: "single", data: toRunResult(agent), schema: agentRunSchema };
+  }
+  const state = await client.waitForFinish(agent.id, waitTimeoutMs);
+  await client.close();
+  const finalAgent = state.final ?? agent;
+  if (options.streamJson) {
+    return {
+      type: "single",
+      data: toRunResult(finalAgent, state.status),
+      schema: streamWaitSchema(agentRunSchema, agent.id, state),
+    };
+  }
+  return {
+    type: "single",
+    data: toRunResult(finalAgent, state.status === "idle" ? "completed" : state.status),
+    schema: agentRunSchema,
+  };
+}
+
 export async function runRunCommand(
   prompt: string,
   options: AgentRunOptions,
@@ -682,6 +729,7 @@ export async function runRunCommand(
   const resolvedTitle = options.title ?? options.name;
 
   const client = await connectToDaemonOrThrow(options.host, host);
+  let createdAgentId: string | undefined;
 
   try {
     // --personality reads the host roster, so the brain can only be resolved
@@ -808,31 +856,14 @@ export async function runRunCommand(
       env: requestEnv,
       labels: Object.keys(labels).length > 0 ? labels : undefined,
     });
-
-    // Default run behavior is foreground: wait for completion unless background execution is set.
-    if (!runsInBackground(options)) {
-      const state = await client.waitForFinish(agent.id, waitTimeoutMs);
-      await client.close();
-
-      const finalAgent = state.final ?? agent;
-      const status: AgentRunResult["status"] = state.status === "idle" ? "completed" : state.status;
-
-      return {
-        type: "single",
-        data: toRunResult(finalAgent, status),
-        schema: agentRunSchema,
-      };
-    }
-
-    await client.close();
-
-    return {
-      type: "single",
-      data: toRunResult(agent),
-      schema: agentRunSchema,
-    };
+    createdAgentId = agent.id;
+    return await finishRun(client, agent, options, waitTimeoutMs);
   } catch (err) {
     await client.close().catch(() => {});
+    if (options.streamJson && createdAgentId) {
+      const error = toCommandError(err);
+      throw { ...error, code: "AGENT_WAIT_FAILED", agentId: createdAgentId } satisfies CommandError;
+    }
 
     if (err && typeof err === "object" && "code" in err) {
       throw err;

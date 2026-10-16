@@ -8,6 +8,7 @@ import type { Command } from "commander";
 import type { AnyCommandResult, CommandError, OutputOptions } from "./types.js";
 import { render, renderError, toCommandError, defaultOutputOptions } from "./render.js";
 import { withGlobalOptions } from "../utils/command-options.js";
+import { writeJsonRecord, type AgentStreamErrorRecord } from "./agent-stream.js";
 
 /** Options that include output settings from global options */
 export interface CommandOptions extends Partial<OutputOptions> {
@@ -80,10 +81,16 @@ export function withOutput<T, Args extends unknown[]>(
 ): (...args: [...Args, CommandOptions, Command]) => Promise<void> {
   return withGlobalOptions(async (...args) => {
     const options = args[args.length - 2] as CommandOptions;
-    const outputOptions = extractOutputOptions(options);
+    const outputOptions = options.streamJson ? defaultOutputOptions : extractOutputOptions(options);
 
     try {
       const result = await handler(...args);
+      if (options.streamJson && result.type === "single") {
+        await writeJsonRecord(
+          result.schema.serialize ? result.schema.serialize(result.data) : result.data,
+        );
+        return;
+      }
       const output = render(result, outputOptions);
 
       if (output) {
@@ -91,6 +98,17 @@ export function withOutput<T, Args extends unknown[]>(
       }
     } catch (error) {
       const commandError = toCommandError(error);
+      if (options.streamJson) {
+        const { agentId, ...details } = commandError;
+        const record: AgentStreamErrorRecord = {
+          type: "error",
+          agentId: agentId ?? null,
+          error: details,
+        };
+        await writeJsonRecord(record);
+        process.exitCode = 1;
+        return;
+      }
       const errorOutput = renderError(commandError, outputOptions);
       process.stderr.write(errorOutput + "\n");
       process.exit(1);

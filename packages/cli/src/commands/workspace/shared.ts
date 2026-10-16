@@ -4,6 +4,7 @@ import type { OutputSchema } from "../../output/index.js";
 export interface WorkspaceRow {
   workspaceId: string;
   project: string;
+  projectId: string;
   name: string;
   isolation: "local" | "worktree";
   cwd: string;
@@ -24,6 +25,7 @@ export function toWorkspaceRow(workspace: WorkspaceDescriptorPayload): Workspace
   return {
     workspaceId: workspace.id,
     project: workspace.projectDisplayName,
+    projectId: workspace.projectId,
     name: workspace.name,
     isolation: workspace.workspaceKind === "worktree" ? "worktree" : "local",
     cwd: workspace.workspaceDirectory,

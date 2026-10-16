@@ -796,6 +796,93 @@ npm run cli -- logs <id>             # View agent timeline
 npm run cli -- daemon status         # Check daemon status
 ```
 
+### Foreground creation receipts
+
+`otto run --stream-json` (also `otto agent run`) opts into NDJSON: one compact JSON
+object per line on stdout. After the daemon acknowledges creation, the CLI writes
+and flushes `agent.created` before it issues the foreground wait. This exposes the
+authoritative ID while a command transport still reports a running process session.
+The default table, `--json`, YAML, background, and `--output-schema` behavior is unchanged.
+Streaming cannot be combined with background execution, structured output schemas,
+`--json`, `--quiet`, or a non-table `--format`.
+
+```bash
+npm run cli -- run --workspace <workspace-id> --provider <provider/model> --stream-json --wait-timeout 5m "Task"
+npm run cli -- wait <agent-id-from-receipt> --stream-json --timeout 5m
+```
+
+The CLI exports these discriminated record types from `output/agent-stream.ts`:
+
+| `type`          | Fields                                                                                                                                           | Meaning                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `agent.created` | `agentId`, `workspaceId: string \| null`, `provider`, `cwd`, `title: string \| null`                                                             | Creation acknowledged by the daemon; not proof that a turn or task completed |
+| `agent.wait`    | `agentId`, `status: idle \| timeout \| permission \| error`, `lastMessage: string \| null`, `error: string \| null`, `permissions: {id, kind}[]` | Terminal record for this CLI wait, using the daemon's literal outcome        |
+| `error`         | `agentId: string \| null`, `error: {code, message, details?}`                                                                                    | CLI validation, connection, creation, or wait failure                        |
+
+A successful foreground streaming invocation emits one creation receipt followed by
+one wait record. A failure after creation emits the receipt followed by an error
+record carrying the same ID. Before acknowledged creation, errors have no known ID.
+If the creation response is lost, the CLI cannot prove whether creation happened;
+it does not automatically retry creation. Commander argument-parsing errors still
+use stderr. Human diagnostics also remain on stderr; stdout contains only records.
+
+`idle` can mean an ordinary question, a request for clarification, or a completed
+turn. It does **not** prove the requested task is complete. Inspect `lastMessage`
+and verify the task's acceptance criteria before treating it as completed. A
+`permission` outcome carries request IDs/kinds for inspection through the existing
+permission commands; streaming never grants a permission or answers a question.
+
+Exit 0 means a valid wait outcome was returned, including `timeout`, `permission`,
+or a daemon-reported `error`; it is not a task-success signal. A CLI failure emits
+`error` and exits 1. Automation must inspect the record discriminator and status.
+An abruptly terminated process or closed pipe may have no terminal record.
+
+A timeout ends only the CLI wait; it does not cancel, restart, or recreate the chat.
+Save the receipt's full `agentId` and host target. Resume the same command process
+through the transport's session ID while it is alive, or invoke `otto wait <agentId>
+--stream-json` against that same host after it exits. `wait` resolves the existing
+identity and emits only a wait/error record; it never calls creation. Do not rerun
+`run` to resume: that explicitly requests another chat.
+
+### Listing ownership
+
+`otto ls` and `otto agent ls` have identical listing semantics. JSON and YAML rows keep
+the existing fields and add `projectId` and `workspaceId`. `projectId` comes from the
+daemon's project placement (`projectKey`, resolved from the owning workspace registry
+record); `workspaceId` comes from the chat's persisted ownership. An older daemon's
+snapshot without a workspace ID produces `workspaceId: null`. The CLI never resolves
+ownership from a name or `cwd`, even when multiple workspace records share a directory.
+Table columns and quiet output are unchanged.
+
+Use full IDs from the selected host's listings to traverse projects, workspaces, and chats:
+
+```bash
+npm run cli -- project ls --json
+npm run cli -- workspace ls --project <project-id> --json
+npm run cli -- ls --project <project-id> --workspace <workspace-id> --json
+```
+
+- `workspace ls` adds `projectId` alongside the existing `project` display name.
+  Its optional `--project <project-id>` uses the existing daemon project filter on
+  every page. With no filter it still lists all active workspaces, paging to completion.
+- Chat `--project <project-id>` uses the existing daemon `projectKeys` filter.
+  `--workspace <workspace-id>` uses the daemon's exact persisted-workspace filter.
+  Workspace filtering requires `server_info.features.agentWorkspaceFilter` (added in
+  0.9.34); an older host returns `DAEMON_UPDATE_REQUIRED` before the CLI requests chats.
+  Project-only filtering and ordinary listing continue to work on older hosts.
+- ID arguments are opaque, exact, case-sensitive matches, with surrounding whitespace
+  trimmed. Empty or whitespace-only values fail with `INVALID_OPTIONS`; a missing value
+  is a CLI usage error. Names and ID prefixes are not resolved. Unknown IDs, or a
+  project/workspace pair that does not match, return an empty list. Both flags together
+  mean intersection; they do not move a chat or select another workspace.
+- Ownership filters intersect the existing scope, label, and thinking filters. Without
+  `-g`, the daemon's `active` scope still restricts results to unarchived chats in active
+  workspaces and projects. `-g` removes that scope restriction; `-a` includes archived
+  chats but does not widen `active` scope. Use `-a -g` for archived/global results.
+  These flags never infer a scope from the shell's current directory. Chat listing keeps
+  its existing single daemon page (up to 200 matches), followed by the existing local
+  sorting and optional status, cwd, and label checks.
+
 Use the global `--host` option to point the CLI at a different daemon:
 
 ```bash

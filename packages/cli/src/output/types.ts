@@ -85,6 +85,8 @@ export interface CommandDiagnostic {
 }
 
 export interface CommandError {
+  /** Known chat identity when a streaming operation fails after creation/resolution. */
+  agentId?: string;
   /** Machine-readable error code */
   code: string;
   /** Human-readable message */

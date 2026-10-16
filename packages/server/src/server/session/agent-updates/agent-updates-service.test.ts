@@ -91,6 +91,27 @@ function makeProject(overrides?: Partial<ProjectPlacementPayload>): ProjectPlace
   };
 }
 
+describe("exact ownership filter", () => {
+  test("distinguishes same-directory workspaces and intersects project ownership", () => {
+    const agents = [
+      makeAgentPayload({ id: "a", workspaceId: "ws-1" }),
+      makeAgentPayload({ id: "b", workspaceId: "ws-2" }),
+      makeAgentPayload({ id: "unowned" }),
+    ];
+    const project = makeProject();
+    const matchingIds = (filter: Parameters<typeof matchesAgentUpdatesFilter>[0]["filter"]) =>
+      agents
+        .filter((agent) => matchesAgentUpdatesFilter({ agent, project, filter }))
+        .map((agent) => agent.id);
+    expect(new Set(agents.map((agent) => agent.cwd)).size).toBe(1);
+    expect(matchingIds({ workspaceId: "ws-2" })).toEqual(["b"]);
+    expect(matchingIds({ workspaceId: "ws-2", projectKeys: ["proj-1"] })).toEqual(["b"]);
+    expect(matchingIds({ workspaceId: "ws-2", projectKeys: ["proj-other"] })).toEqual([]);
+    expect(matchingIds({ workspaceId: "ws" })).toEqual([]);
+    expect(matchingIds({})).toEqual(["a", "b", "unowned"]);
+  });
+});
+
 function buildHarness() {
   const emitted: SessionOutboundMessage[] = [];
   const workspaceUpdates: string[] = [];

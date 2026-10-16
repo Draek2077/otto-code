@@ -123,6 +123,10 @@ function matchesAgentStructuralFilter(
   project: ProjectPlacementPayload,
   filter: AgentUpdatesFilter,
 ): boolean {
+  if (filter.workspaceId !== undefined && agent.workspaceId !== filter.workspaceId) {
+    return false;
+  }
+
   if (filter.statuses && filter.statuses.length > 0) {
     const statuses = new Set(filter.statuses);
     if (!statuses.has(agent.status)) {

@@ -11,6 +11,18 @@ function commandHelp(
 }
 
 describe("canonical CLI surface", () => {
+  it("offers identical project and workspace listing filters on both chat listing forms", () => {
+    const cli = createCli();
+    const agent = cli.commands.find((command) => command.name() === "agent");
+    for (const command of [
+      cli.commands.find((candidate) => candidate.name() === "ls"),
+      agent?.commands.find((candidate) => candidate.name() === "ls"),
+    ]) {
+      expect(command?.helpInformation()).toContain("--project <project-id>");
+      expect(command?.helpInformation()).toContain("--workspace <workspace-id>");
+    }
+  });
+
   it("offers daemon host selection as a global option", () => {
     expect(createCli().helpInformation()).toContain("--host <host>");
   });
