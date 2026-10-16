@@ -15,6 +15,7 @@ const REGISTRY_EXCLUSIONS = {
   "github-copilot-cli": "built-in Otto provider",
   opencode: "built-in Otto provider",
   "pi-acp": "built-in Otto provider",
+  bob: "deferred pending a separate Otto provider integration review",
   "antigravity-acp":
     "ships only as a downloaded archive whose launcher is not a PATH command, so a catalog entry could not start it",
 };
