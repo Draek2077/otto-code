@@ -1,4 +1,4 @@
-import { type Command } from "commander";
+import { Option, type Command } from "commander";
 import { collectMultiple } from "../../utils/command-options.js";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type {
@@ -33,11 +33,12 @@ export interface AgentSendOptions extends CommandOptions {
   prompt?: string;
   promptFile?: string;
   queue?: boolean;
+  steer?: boolean;
 }
 
 export function addSendOptions(cmd: Command): Command {
   return cmd
-    .description("Send a message/task to an existing agent")
+    .description("Send a message/task to an existing agent (default: interrupt a busy agent)")
     .argument("<id>", "Agent ID (or prefix)")
     .argument("[prompt]", "The message to send")
     .option("--prompt <text>", "Provide the message inline as a flag")
@@ -47,6 +48,12 @@ export function addSendOptions(cmd: Command): Command {
     .option(
       "--queue",
       "If the agent is busy, run this after its current turn instead of interrupting it",
+    )
+    .addOption(
+      new Option(
+        "--steer",
+        "Steer a busy agent; interrupt if unsupported (compaction may queue the message)",
+      ).conflicts("queue"),
     );
 }
 
@@ -171,6 +178,13 @@ export async function runSendCommand(
   options: AgentSendOptions,
   _command: Command,
 ): Promise<SingleResult<AgentSendResult>> {
+  if (options.steer && options.queue) {
+    throw {
+      code: "CONFLICTING_DELIVERY_OPTIONS",
+      message: "Cannot combine --steer and --queue",
+    } satisfies CommandError;
+  }
+
   const host = getDaemonHost({ host: options.host });
 
   // Validate arguments
@@ -211,6 +225,10 @@ export async function runSendCommand(
     const dispatch = await client.sendAgentMessage(agentIdArg, promptInput, {
       images,
       ...(options.queue ? { delivery: "queue" as const } : {}),
+      // Steer is an active-turn behavior layered on immediate wire delivery.
+      ...(options.steer
+        ? { delivery: "interrupt" as const, activeTurnBehavior: "steer" as const }
+        : {}),
     });
 
     // A queued message has no run to wait for yet - it starts when the current
