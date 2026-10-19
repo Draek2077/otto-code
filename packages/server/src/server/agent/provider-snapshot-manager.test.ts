@@ -966,6 +966,67 @@ describe("ProviderSnapshotManager public surface", () => {
     }
   });
 
+  test("discovery diagnostic selects the configured derived client without catalog/legacy probes", async () => {
+    const diagnoseDiscovery = vi.fn(async () => {
+      throw new Error("fixture diagnostic reached");
+    });
+    const fetchCatalog = vi.fn();
+    const getDiagnostic = vi.fn();
+    const client = createExtraClient("my-codex", {
+      diagnoseDiscovery,
+      fetchCatalog,
+      getDiagnostic,
+    });
+    const manager = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      providerOverrides: { "my-codex": { extends: "codex", label: "My Codex", enabled: true } },
+      extraClients: { "my-codex": client },
+    });
+    const options = { threadId: "01a14152-e1ac-72f4-9565-0978e4520014" };
+    const imports = { knownImportedSessionCount: 16, isImported: () => false };
+    try {
+      await expect(
+        manager.getProviderDiscoveryDiagnostic("my-codex", options, imports),
+      ).rejects.toThrow("fixture diagnostic reached");
+      expect(diagnoseDiscovery).toHaveBeenCalledWith(options, imports);
+      expect(fetchCatalog).not.toHaveBeenCalled();
+      expect(getDiagnostic).not.toHaveBeenCalled();
+      await expect(
+        manager.getProviderDiscoveryDiagnostic("unknown", options, imports),
+      ).rejects.toThrow("enabled provider");
+    } finally {
+      manager.destroy();
+    }
+  });
+
+  test("discovery diagnostic rejects disabled and unsupported providers without invoking diagnostics", async () => {
+    const diagnoseDiscovery = vi.fn();
+    const imports = { knownImportedSessionCount: 0, isImported: () => false };
+    const options = { threadId: "01a14152-e1ac-72f4-9565-0978e4520014" };
+    const disabled = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      providerOverrides: { codex: { enabled: false } },
+      extraClients: { codex: createExtraClient("codex", { diagnoseDiscovery }) },
+    });
+    const unsupported = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      providerOverrides: { codex: { enabled: true } },
+      extraClients: { codex: createExtraClient("codex") },
+    });
+    try {
+      await expect(
+        disabled.getProviderDiscoveryDiagnostic("codex", options, imports),
+      ).rejects.toThrow("enabled provider");
+      await expect(
+        unsupported.getProviderDiscoveryDiagnostic("codex", options, imports),
+      ).rejects.toThrow("does not support");
+      expect(diagnoseDiscovery).not.toHaveBeenCalled();
+    } finally {
+      disabled.destroy();
+      unsupported.destroy();
+    }
+  });
+
   test("getProviderDiagnostic returns the diagnostic from the injected client and appends snapshot models/status", async () => {
     const getDiagnostic = vi.fn(async () => ({ diagnostic: "codex is ready" }));
     const client = createExtraClient("codex", { getDiagnostic });

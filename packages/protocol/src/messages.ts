@@ -1,3 +1,11 @@
+import {
+  ProviderDiagnosticRequestMessageSchema,
+  ProviderDiagnosticResponseMessageSchema,
+} from "./provider-discovery.js";
+export {
+  ProviderDiagnosticRequestMessageSchema,
+  ProviderDiagnosticResponseMessageSchema,
+} from "./provider-discovery.js";
 import { ServerFeaturesSchema } from "./server-features.js";
 import {
   AgentStatusSchema,
@@ -2789,12 +2797,6 @@ export const RefreshProvidersSnapshotRequestMessageSchema = z.object({
   type: z.literal("refresh_providers_snapshot_request"),
   cwd: z.string().optional(),
   providers: z.array(AgentProviderSchema).optional(),
-  requestId: z.string(),
-});
-
-export const ProviderDiagnosticRequestMessageSchema = z.object({
-  type: z.literal("provider_diagnostic_request"),
-  provider: AgentProviderSchema,
   requestId: z.string(),
 });
 
@@ -8053,16 +8055,6 @@ export const RefreshProvidersSnapshotResponseMessageSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     acknowledged: z.boolean(),
-  }),
-});
-
-// COMPAT(providersSnapshot): added in v0.1.48, remove gating when all clients use snapshot
-export const ProviderDiagnosticResponseMessageSchema = z.object({
-  type: z.literal("provider_diagnostic_response"),
-  payload: z.object({
-    provider: AgentProviderSchema,
-    diagnostic: z.string(),
-    requestId: z.string(),
   }),
 });
 

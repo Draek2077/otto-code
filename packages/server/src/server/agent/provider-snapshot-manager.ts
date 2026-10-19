@@ -680,6 +680,19 @@ export class ProviderSnapshotManager {
     return { ...resolved, unattended: effectiveUnattended };
   }
 
+  async getProviderDiscoveryDiagnostic(
+    provider: AgentProvider,
+    options: import("@otto-code/protocol/provider-discovery").ProviderDiscoveryOptions,
+    imports: import("./import-session-metadata.js").DiscoveryImportContext,
+  ): Promise<import("@otto-code/protocol/provider-discovery").ProviderDiscoveryDiagnostic> {
+    const definition = this.generation.definitions[provider];
+    if (!definition?.enabled) throw new Error("Discovery diagnostic requires an enabled provider");
+    const client = this.ensureClient(provider, definition);
+    if (!client.diagnoseDiscovery)
+      throw new Error("Provider does not support discovery diagnostics");
+    return client.diagnoseDiscovery(options, imports);
+  }
+
   async getProviderDiagnostic(provider: AgentProvider): Promise<ProviderDiagnosticResult> {
     const definition = this.generation.definitions[provider];
     if (!definition) {

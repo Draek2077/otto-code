@@ -232,6 +232,7 @@ import {
   ImportSessionsRequestError,
   importProviderSession,
   listImportableProviderSessions,
+  collectImportedProviderSessions,
   normalizeImportAgentRequest,
 } from "./agent/import-sessions.js";
 import {
@@ -1336,6 +1337,17 @@ export class Session {
           this.supports(CLIENT_CAPS.providerSnapshotReferences),
         listProviderAvailability: () => this.agentManager.listProviderAvailability(),
         listDraftFeatures: (config) => this.agentManager.listDraftFeatures(config),
+        readDiscoveryImports: async (provider) => {
+          const imported = await collectImportedProviderSessions(
+            agentManager,
+            agentStorage,
+            new Set([provider]),
+          );
+          return {
+            knownImportedSessionCount: imported.count,
+            isImported: (id) => imported.handles.has(`${provider}\0${id}`),
+          };
+        },
       },
       providerSnapshotManager,
       providerUsageService,
@@ -4858,23 +4870,9 @@ export class Session {
     if (projectKnowledgeMessage) return projectKnowledgeMessage;
     const personalityMemoryMessage = this.dispatchPersonalityMemoryMessage(msg);
     if (personalityMemoryMessage) return personalityMemoryMessage;
+    const catalogMessage = this.providerCatalogSession.dispatch(msg);
+    if (catalogMessage) return catalogMessage;
     switch (msg.type) {
-      case "list_provider_models_request":
-        return this.providerCatalogSession.handleListProviderModelsRequest(msg);
-      case "list_provider_modes_request":
-        return this.providerCatalogSession.handleListProviderModesRequest(msg);
-      case "list_provider_features_request":
-        return this.providerCatalogSession.handleListProviderFeaturesRequest(msg);
-      case "list_available_providers_request":
-        return this.providerCatalogSession.handleListAvailableProvidersRequest(msg);
-      case "get_providers_snapshot_request":
-        return this.providerCatalogSession.handleGetProvidersSnapshotRequest(msg);
-      case "refresh_providers_snapshot_request":
-        return this.providerCatalogSession.handleRefreshProvidersSnapshotRequest(msg);
-      case "provider_diagnostic_request":
-        return this.providerCatalogSession.handleProviderDiagnosticRequest(msg);
-      case "provider.usage.list.request":
-        return this.providerCatalogSession.handleProviderUsageListRequest(msg);
       case "stats.activity.get.request":
         return this.handleStatsActivityGetRequest(msg);
       case "stats.activity.reset.request":

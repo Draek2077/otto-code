@@ -95,6 +95,26 @@ verification must distinguish adapter configuration from actual runtime executio
 
 ## Two Integration Patterns
 
+### Codex subagent events and ownership
+
+Codex emits both camelCase thread items and PascalCase/snake_case event items. The adapter
+normalizes their subagent fields through `codex/subagent-items.ts` before classification and
+ownership checks. `collabAgentToolCall` with `tool: "spawnAgent"` and `subAgentActivity` with
+`kind: "started"` declare owned descendants. Their canonical `sub_agent` detail retains nested
+transcript routing and status settlement.
+
+Other collaboration calls are coordination: `sendInput` is **Message agent**, `wait` is
+**Wait for agents**, `closeAgent` is **Interrupt agent**, and `resumeAgent` is **Resume agent**.
+`interacted` and `interrupted` activity items are message and interruption rows. They use existing
+`plain_text` detail with a target label and the source payload for inspection, so no wire type is
+added. `/root` is displayed as **Parent (/root)** rather than discarded. Unknown collaboration
+operations remain inspectable coordination rather than claiming a child.
+
+Coordination call status describes the operation, independently of the target's running or failed
+state. Spawn status still follows child liveness. An interruption also settles an already owned
+child, but messages and waits cannot register or reparent their targets. Provider-history replay
+uses the same ownership rule, retains coordination timestamps, and hydrates actual descendants only.
+
 ### ACP (Agent Client Protocol) -- recommended
 
 Extend `ACPAgentClient` from `packages/server/src/server/agent/providers/acp-agent.ts`. The base class handles process spawning, stdio transport, session lifecycle, streaming, permissions, and model discovery. You provide configuration (command, modes, capabilities) and optionally override `isAvailable()` for auth checks.
@@ -671,3 +691,89 @@ Tests use `isProviderAvailable(provider)` to skip when the binary or credentials
 - Gate the operations **the daemon issues** (prompt, slash command, summarize) on both the terminal and cancel settlement. Permission and question responses are not runner operations and must stay outside the gate, or an auto-approve deadlocks the stop. Runs the _provider_ starts on its own (plugin or autonomous wakes) are observed, not gated: the daemon does not choose when they begin, and holding their events back does not protect them from a cancel already in flight, it only hides a run that may already be dead.
 - Fail closed: if the cancel never succeeded you never proved the run stopped, so refuse new runs until the next Stop issues a fresh cancel. `AgentManager` already turns a rejected `interrupt()` into a refused cancel.
 - Suppress the canceled run's residue only until its authoritative terminal. Anything the provider publishes after that terminal is a new run by construction and must take the normal live path. Buffering it and replaying it later is how autonomous and plugin wakes get lost.
+
+## Bounded Codex discovery diagnostic
+
+`otto provider diagnostic <provider-id> --thread <native-thread-uuid> --json` opts into
+metadata-only discovery through that configured Codex provider. It uses the normal command,
+arguments and provider environment, including derived-provider overrides. Disabled, unknown
+and unsupported providers fail without selecting a different provider. Ordinary diagnostics,
+the Import UI, normal listing defaults and existing JSON fields are unchanged.
+
+The existing `provider_diagnostic_request` / `provider_diagnostic_response` RPC gains optional
+`discovery` fields. The client gates this once on
+`server_info.features.providerDiscoveryDiagnostic`; older hosts report "Update the host".
+Authorization remains `daemon.read`. This is unreleased development after 0.9.34;
+installed 0.9.34 hosts do not support it.
+
+### Requests and bounds
+
+The exact supplied UUID is passed to `thread/read` with **`includeTurns: false`**. An app
+deeplink ID is a candidate native ID until the provider returns that same ID. No title search
+or ID translation occurs. Reading neither resumes the thread nor subscribes to its events;
+see the [Codex app-server contract](https://learn.chatgpt.com/docs/app-server#read-a-stored-thread-without-resuming).
+
+One helper receives only `initialize`, the `initialized` notification, `config/read` with
+`includeLayers: false`, `thread/read`, and one `thread/list`. An explicit source comparison
+adds at most one more list request. There are no start, resume, turn, import, archive,
+unarchive, config-write or filesystem RPCs. The diagnostic never scans session directories,
+changes settings, restarts the daemon or selects an alternate executable after launch failure.
+Only its helper is disposed. A 10-second total request budget prevents subsequent RPCs after
+expiry; normal process cleanup can add up to three seconds. The client waits up to 20 seconds.
+There are no automatic retries or pagination.
+
+These options require `--thread`:
+
+| Option                      | Exact meaning                                                                                                                                                     |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--limit <count>`           | Native page size, integer 1-100, default 20. No Import UI overfetch or result truncation.                                                                         |
+| `--cursor <cursor>`         | One page using this opaque native cursor. Use the same provider/filter combination as the originating page. Empty cursors are rejected.                           |
+| `--cwd <path>`              | Native cwd listing filter plus the normal local path-equivalence check. Does not scope the exact-ID read, identify a workspace or infer ownership.                |
+| `--compare-source <source>` | `appServer` or `exec`: one additional **first page**, changing only `sourceKinds`. Does not reuse the input cursor or broaden the model-provider/archive filters. |
+
+Both lists explicitly send `archived: false`. Other native filters, including model provider,
+project and section, remain omitted. Their defaults belong to the configured Codex version;
+Otto does not guess them. Source comparison is never automatic. First-page omission alone
+does not prove a source, model-provider, pagination or store mismatch.
+
+### Safe output and interpretation
+
+The existing `{provider, diagnostic}` fields remain present. Opt-in mode leaves `diagnostic`
+empty and adds `discovery`:
+
+- `target`: requested ID, `readAttempted`, and `status` (`found`, `not_found`, `error`). A found
+  result includes only that thread's native ID, native `name` as title (no preview fallback),
+  cwd, source kind, model-provider ID, project ID and section ID. Structured sources are
+  reduced to their kind. Missing/unrecognized fields are null; project/section are native
+  metadata, not Otto ownership.
+- `runtime`: resolved launch executable (a wrapper remains a wrapper), version extracted from
+  the initialization user agent, runtime-reported `codexHome` when available, and effective
+  child `CODEX_HOME` as `launchHome` when present. `homeVerification` distinguishes runtime
+  reporting, launch-environment-only evidence and unverified. No default home is guessed.
+  `configuredModelProvider` selects only `config.model_provider`. `storageBackend` remains
+  null because neither a config value nor directory equality proves the storage backend.
+- `listing` and optional `sourceComparison`: raw row count before Otto exclusions, actual
+  `nextCursor` presence and exact string/null value, and whether this page contains the target.
+  No unrelated IDs/titles/previews are returned. Mutually exclusive `excluded` counts apply
+  invalid metadata, cwd, metadata-generation and already-imported checks in that order;
+  `eligibleCount` is the remainder. The metadata prefix and imported registry are shared with
+  normal Import. `knownImportedSessionCount` is the deduplicated unarchived Otto session total
+  for this provider, with native-handle aliases recognized. It differs from this page's
+  imported exclusion count. No title query or date filter is applied.
+
+Explicit native absence messages yield `not_found`. Target/list access denial, invalid params,
+unsupported methods, malformed responses and timeouts are errors, not absence. Errors expose
+fixed categories only. `target.errorStage` distinguishes startup/initialization from the
+thread-read phase; `readAttempted` says whether that RPC was actually sent. Optional config
+metadata stays unknown if `config/read` is unavailable.
+
+Raw provider errors, stderr, arguments, full user agent, config, environment, previews and
+turns are never returned or logged by this diagnostic. Transport logs are disabled only for
+this helper. Access-denied startup says nothing about whether a thread read would find the ID.
+A successful exact read proves visibility through this runtime. Finding the ID on an explicit
+source page supplies source-filter evidence, but does not identify another app's store.
+
+Fixture/transport tests do not invoke a real Codex binary or read private session files.
+Live diagnosis requires a host with this capability and an authorized, working configured
+runtime. Do not bypass an executable access restriction, and do not treat fixtures as a
+diagnosis of a user's missing thread.

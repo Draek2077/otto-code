@@ -2938,6 +2938,7 @@ export const zhCN: TranslationResources = {
     archiveFinishedRetry: "重试 ({{failed}}/{{total}})",
   },
   observedSubagents: {
+    parentOwnership: "由父聊天控制：{{parent}}",
     readOnlyTitle: "受观察的子智能体 · 只读",
     readOnlySubtitle: "你可以观察此子智能体，但不能向它发消息或更改其设置。",
     stopAction: "停止子智能体",

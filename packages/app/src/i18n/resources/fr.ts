@@ -3055,6 +3055,7 @@ export const fr: TranslationResources = {
     archiveFinishedRetry: "Réessayer ({{failed}}/{{total}})",
   },
   observedSubagents: {
+    parentOwnership: "Contrôlé par la conversation parente : {{parent}}",
     readOnlyTitle: "Sous-agent observé · lecture seule",
     readOnlySubtitle:
       "Vous pouvez observer ce sous-agent, mais ni lui envoyer de message ni modifier ses paramètres.",

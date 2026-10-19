@@ -3012,6 +3012,7 @@ export const en = {
   observedSubagents: {
     readOnlyTitle: "Observed subagent · read-only",
     readOnlySubtitle: "You can watch this subagent, but not message it or change its settings.",
+    parentOwnership: "Controlled by parent chat: {{parent}}",
     stopAction: "Stop subagent",
     stopError: "Couldn't stop the subagent.",
   },

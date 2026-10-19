@@ -242,34 +242,33 @@ describe("codex tool-call mapper", () => {
     });
   });
 
-  it.each([
-    ["started", "running"],
-    ["interacted", "running"],
-    ["interrupted", "canceled"],
-  ] as const)("maps subAgentActivity %s into canonical sub-agent detail", (kind, status) => {
-    const item = mapCodexToolCallFromThreadItem({
-      type: "subAgentActivity",
-      id: `activity-${kind}`,
-      kind,
-      agentThreadId: "child-thread-1",
-      agentPath: "/root/research/investigator",
-    });
+  it.each([["started", "running"]] as const)(
+    "maps subAgentActivity %s into canonical sub-agent detail",
+    (kind, status) => {
+      const item = mapCodexToolCallFromThreadItem({
+        type: "subAgentActivity",
+        id: `activity-${kind}`,
+        kind,
+        agentThreadId: "child-thread-1",
+        agentPath: "/root/research/investigator",
+      });
 
-    expect(item).toEqual({
-      type: "tool_call",
-      callId: `activity-${kind}`,
-      name: "Sub-agent",
-      status,
-      error: null,
-      detail: {
-        type: "sub_agent",
-        subAgentType: "Research / Investigator",
-        description: "research/investigator",
-        log: "",
-        actions: [],
-      },
-    });
-  });
+      expect(item).toEqual({
+        type: "tool_call",
+        callId: `activity-${kind}`,
+        name: "Sub-agent",
+        status,
+        error: null,
+        detail: {
+          type: "sub_agent",
+          subAgentType: "Research / Investigator",
+          description: "research/investigator",
+          log: "",
+          actions: [],
+        },
+      });
+    },
+  );
 
   it("preserves an empty subAgentActivity path as an empty description", () => {
     const item = mapCodexToolCallFromThreadItem({
@@ -398,8 +397,8 @@ describe("codex tool-call mapper", () => {
   });
 
   it.each([
-    ["shutdown", "canceled"],
-    ["notFound", "failed"],
+    ["shutdown", "completed"],
+    ["notFound", "completed"],
   ] as const)("maps terminal child state %s to %s", (childStatus, expectedStatus) => {
     const item = mapCodexToolCallFromThreadItem({
       type: "collabAgentToolCall",
@@ -416,6 +415,112 @@ describe("codex tool-call mapper", () => {
       type: "tool_call",
       callId: `call-sub-agent-${childStatus}`,
       status: expectedStatus,
+    });
+  });
+
+  it.each([
+    ["interacted", "/root", "Message agent: Parent (/root)"],
+    ["interacted", "/root/sibling", "Message agent: /root/sibling"],
+    ["interrupted", "/root/sibling", "Interrupt agent: /root/sibling"],
+  ])(
+    "labels %s targeting %s as coordination, retaining inspection data",
+    (kind, agentPath, label) => {
+      const raw = {
+        type: "subAgentActivity",
+        id: "activity",
+        kind,
+        agentThreadId: "target-thread",
+        agentPath,
+      };
+      const mapped = mapCodexToolCallFromThreadItem(raw);
+      expect(mapped).toMatchObject({
+        status: "completed",
+        detail: {
+          type: "plain_text",
+          label,
+          text: JSON.stringify(raw, null, 2),
+        },
+      });
+    },
+  );
+
+  it.each([
+    ["wait", "Wait for agents"],
+    ["sendInput", "Message agent"],
+    ["closeAgent", "Interrupt agent"],
+  ])("maps %s using its operation status, not the target's liveness", (tool, label) => {
+    const raw = {
+      type: "collabAgentToolCall",
+      id: "coordination",
+      status: "completed",
+      prompt: "Progress?",
+      tool,
+      receiverThreadIds: ["parent", "sibling"],
+      agentsStates: { parent: { status: "running" }, sibling: { status: "failed" } },
+    };
+    expect(mapCodexToolCallFromThreadItem(raw)).toEqual({
+      type: "tool_call",
+      callId: "coordination",
+      name: label,
+      status: "completed",
+      error: null,
+      detail: {
+        type: "plain_text",
+        label: `${label}: parent, sibling`,
+        text: JSON.stringify(raw, null, 2),
+      },
+    });
+    expect(mapCodexToolCallFromThreadItem({ ...raw, status: "inProgress" })).toMatchObject({
+      status: "running",
+    });
+    expect(
+      mapCodexToolCallFromThreadItem({ ...raw, error: { message: "Rejected" } }),
+    ).toMatchObject({
+      status: "failed",
+      error: { message: "Rejected" },
+    });
+  });
+
+  it("preserves PascalCase/snake_case coordination and spawn events", () => {
+    expect(
+      mapCodexToolCallFromThreadItem({
+        type: "SubAgentActivity",
+        id: "message-root",
+        kind: "interacted",
+        agent_thread_id: "parent",
+        agent_path: "/root",
+      }),
+    ).toMatchObject({
+      name: "Message agent",
+      status: "completed",
+      detail: { type: "plain_text", label: "Message agent: Parent (/root)" },
+    });
+    expect(
+      mapCodexToolCallFromThreadItem({
+        type: "CollabAgentToolCall",
+        id: "spawn-child",
+        tool: "spawnAgent",
+        status: "completed",
+        receiver_thread_ids: ["child"],
+        agents_states: { child: { status: "running" } },
+      }),
+    ).toMatchObject({
+      status: "running",
+      detail: { type: "sub_agent" },
+    });
+    expect(
+      mapCodexToolCallFromThreadItem({
+        type: "CollabAgentToolCall",
+        id: "wait-child",
+        tool: "wait",
+        status: "completed",
+        receiver_thread_ids: ["child"],
+        agents_states: { child: { status: "running" } },
+      }),
+    ).toMatchObject({
+      name: "Wait for agents",
+      status: "completed",
+      detail: { type: "plain_text", label: "Wait for agents: child" },
     });
   });
 

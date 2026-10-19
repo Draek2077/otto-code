@@ -3001,6 +3001,7 @@ export const ko: TranslationResources = {
     archiveFinishedRetry: "다시 시도 ({{failed}}/{{total}})",
   },
   observedSubagents: {
+    parentOwnership: "상위 채팅에서 제어: {{parent}}",
     readOnlyTitle: "Observed subagent · read-only",
     readOnlySubtitle: "You can watch this subagent, but not message it or change its settings.",
     stopAction: "Stop subagent",

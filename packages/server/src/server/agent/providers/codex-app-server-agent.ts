@@ -62,6 +62,10 @@ import {
   splitCodexMcpToolResultImages,
 } from "./codex/tool-call-mapper.js";
 import {
+  normalizeCodexSubagentItem,
+  readCodexOwnedSubagentThreadIds,
+} from "./codex/subagent-items.js";
+import {
   checkProviderLaunchAvailable,
   createProviderEnv,
   createProviderEnvSpec,
@@ -79,6 +83,9 @@ import { extractCodexTerminalSessionId, nonEmptyString } from "./tool-call-mappe
 import { buildCodexFeatures, codexModelSupportsFastMode } from "./codex-feature-definitions.js";
 import { priceCodexUsageUsd } from "./codex-pricing.js";
 import { runCodexBareCompletion } from "./codex/bare-completion.js";
+import { diagnoseCodexDiscovery } from "./codex/discovery-diagnostic.js";
+import type { DiscoveryImportContext } from "../import-session-metadata.js";
+import type { ProviderDiscoveryOptions } from "@otto-code/protocol/provider-discovery";
 import {
   CodexAppServerClient,
   CodexAppServerRpcError,
@@ -591,6 +598,7 @@ export async function findDefaultCodexBinary(): Promise<string | null> {
 async function resolveCodexLaunchPrefix(runtimeSettings?: ProviderRuntimeSettings): Promise<{
   command: string;
   args: string[];
+  resolvedExecutable: string | null;
 }> {
   const launch = await resolveCodexLaunch(runtimeSettings);
   const availability = await checkCodexLaunchAvailable(launch);
@@ -603,6 +611,7 @@ async function resolveCodexLaunchPrefix(runtimeSettings?: ProviderRuntimeSetting
     command:
       launch.source === "override" ? launch.command : (availability.resolvedPath ?? launch.command),
     args: launch.args,
+    resolvedExecutable: availability.resolvedPath,
   };
 }
 
@@ -1875,7 +1884,7 @@ function isTerminalSubAgentStatus(
 }
 
 function readCodexSubAgentActivity(item: unknown): CodexSubAgentActivity | null {
-  const record = toObjectRecord(item);
+  const record = normalizeCodexSubagentItem(item);
   if (!record) {
     return null;
   }
@@ -1940,24 +1949,7 @@ function updateHistoricalSubAgentActivity(
 }
 
 function readCodexHistoricalSubAgentThreadIds(item: unknown): string[] {
-  const activity = readCodexSubAgentActivity(item);
-  if (activity) {
-    return activity.kind === "started" ? [activity.agentThreadId] : [];
-  }
-  const record = toObjectRecord(item);
-  const normalizedType = normalizeCodexThreadItemType(
-    typeof record?.type === "string" ? record.type : undefined,
-  );
-  if (
-    normalizedType !== "collabAgentToolCall" ||
-    record?.tool !== "spawnAgent" ||
-    !Array.isArray(record.receiverThreadIds)
-  ) {
-    return [];
-  }
-  return record.receiverThreadIds.filter(
-    (threadId): threadId is string => typeof threadId === "string" && threadId.length > 0,
-  );
+  return readCodexOwnedSubagentThreadIds(item);
 }
 
 function codexImageOutputFromResult(result: unknown): ProviderImageOutput | null {
@@ -2137,7 +2129,7 @@ async function loadCodexThreadHistoryTimeline(params: {
         const existingIndex = subAgentTimelineIndexByThreadId.get(
           historicalSubAgentActivity.agentThreadId,
         );
-        if (existingIndex !== undefined) {
+        if (existingIndex !== undefined && historicalSubAgentActivity.kind !== "interacted") {
           const activityTimelineItem = threadItemToTimeline(item, { cwd: params.cwd });
           updateHistoricalSubAgentActivity(
             timeline,
@@ -2148,14 +2140,16 @@ async function loadCodexThreadHistoryTimeline(params: {
               ? activityTimelineItem.detail.subAgentType
               : undefined,
           );
-          continue;
         }
+        if (existingIndex !== undefined && historicalSubAgentActivity.kind === "started") continue;
       }
       for (const timelineItem of threadItemToTimelineEntries(item, { cwd: params.cwd })) {
         const timestamp =
           readCodexHistoryTimestamp(item) ?? readCodexTurnHistoryTimestamp(turn, timelineItem);
         const settledTimelineItem =
-          historicalSubAgentActivity && timelineItem.type === "tool_call"
+          historicalSubAgentActivity &&
+          timelineItem.type === "tool_call" &&
+          timelineItem.detail.type === "sub_agent"
             ? settleHistoricalSubAgentActivity(timelineItem, historicalSubAgentActivity.kind)
             : timelineItem;
         timeline.push({
@@ -4026,7 +4020,12 @@ export class CodexAppServerAgentSession implements AgentSession {
       visitedThreadIds.add(next.route.childThreadId);
       this.registerSubAgentToolCall({
         timelineItem: next.route.toolCall,
-        rawItem: { agentThreadId: next.route.childThreadId },
+        // The history projection admits only spawn declarations into routes.
+        rawItem: {
+          type: "subAgentActivity",
+          kind: "started",
+          agentThreadId: next.route.childThreadId,
+        },
         parentCallId: next.parentCallId,
         parentSubagentId: next.parentSubagentId,
       });
@@ -5787,16 +5786,9 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
     this.subAgentCallsByCallId.set(timelineItem.callId, state);
 
-    const receiverThreadIds = Array.isArray(rawItem.receiverThreadIds)
-      ? rawItem.receiverThreadIds.filter((value): value is string => typeof value === "string")
-      : [];
-    const agentThreadId =
-      typeof rawItem.agentThreadId === "string" && rawItem.agentThreadId.length > 0
-        ? rawItem.agentThreadId
-        : null;
-    const childThreadIds = Array.from(
-      new Set(agentThreadId ? [...receiverThreadIds, agentThreadId] : receiverThreadIds),
-    ).filter((threadId) => threadId !== this.currentThreadId);
+    const childThreadIds = Array.from(new Set(readCodexOwnedSubagentThreadIds(rawItem))).filter(
+      (threadId) => threadId !== this.currentThreadId,
+    );
     for (const receiverThreadId of childThreadIds) {
       const owningCallId = this.subAgentCallIdByChildThreadId.get(receiverThreadId);
       if (owningCallId && owningCallId !== timelineItem.callId) {
@@ -5811,7 +5803,7 @@ export class CodexAppServerAgentSession implements AgentSession {
 
   private handleRegisteredSubAgentActivity(rawItem: { [key: string]: unknown }): boolean {
     const activity = readCodexSubAgentActivity(rawItem);
-    if (!activity) {
+    if (!activity || activity.kind === "interacted") {
       return false;
     }
     const callId = this.subAgentCallIdByChildThreadId.get(activity.agentThreadId);
@@ -5850,7 +5842,9 @@ export class CodexAppServerAgentSession implements AgentSession {
       nextStatus = undefined;
     }
     this.emitSubAgentActivityUpdate(callId, nextStatus);
-    return true;
+    // Interruptions settle the owned child but remain visible as coordination
+    // in the sender's transcript, rather than disappearing into the spawn row.
+    return activity.kind === "started";
   }
 
   private handleCompletedContextCompactionItem(item: {
@@ -7475,22 +7469,29 @@ export class CodexAppServerAgentClient implements AgentClient {
 
   private async spawnAppServer(
     launchEnv?: Record<string, string>,
-    options?: { goalsEnabled?: boolean; agentId?: string },
+    options?: {
+      goalsEnabled?: boolean;
+      agentId?: string;
+      diagnostic?: boolean;
+      launchPrefix?: { command: string; args: string[] };
+    },
   ): Promise<ChildProcessWithoutNullStreams> {
-    const launchPrefix = await resolveCodexLaunchPrefix(this.runtimeSettings);
+    const launchPrefix =
+      options?.launchPrefix ?? (await resolveCodexLaunchPrefix(this.runtimeSettings));
     const args = [...launchPrefix.args, "app-server"];
     if (options?.goalsEnabled) {
       args.push("--enable", "goals");
     }
-    this.logger.trace(
-      {
-        agentId: options?.agentId,
-        provider: CODEX_PROVIDER,
-        launchPrefix,
-        goalsEnabled: options?.goalsEnabled === true,
-      },
-      "provider.codex.spawn",
-    );
+    if (!options?.diagnostic)
+      this.logger.trace(
+        {
+          agentId: options?.agentId,
+          provider: CODEX_PROVIDER,
+          launchPrefix,
+          goalsEnabled: options?.goalsEnabled === true,
+        },
+        "provider.codex.spawn",
+      );
     const child = spawnProcess(launchPrefix.command, args, {
       detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
@@ -7833,6 +7834,30 @@ export class CodexAppServerAgentClient implements AgentClient {
     const launch = await resolveCodexLaunch(this.runtimeSettings);
     const availability = await checkCodexLaunchAvailable(launch);
     return availability.available;
+  }
+
+  async diagnoseDiscovery(options: ProviderDiscoveryOptions, imports: DiscoveryImportContext) {
+    return diagnoseCodexDiscovery(options, {
+      imports,
+      initializeParams: buildCodexAppServerInitializeParams(),
+      open: async () => {
+        const launchPrefix = await resolveCodexLaunchPrefix(this.runtimeSettings);
+        const env = createProviderEnv({ runtimeSettings: this.runtimeSettings });
+        const child = await this.spawnAppServer(undefined, { diagnostic: true, launchPrefix });
+        // Diagnostic transport never logs stdout previews, stderr, raw RPC errors or arguments.
+        const logger = this.logger.child({}, { level: "silent" });
+        const client =
+          this.deps._createCodexClient?.(child, logger, () => ({})) ??
+          new CodexAppServerClient(child, logger);
+        return {
+          client,
+          runtime: {
+            resolvedExecutable: launchPrefix.resolvedExecutable,
+            launchHome: env.CODEX_HOME ?? null,
+          },
+        };
+      },
+    });
   }
 
   async getDiagnostic(): Promise<{ diagnostic: string }> {

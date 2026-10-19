@@ -1,3 +1,4 @@
+import { isMetadataGenerationSession } from "./import-session-metadata.js";
 import type { z } from "zod";
 import type { Logger } from "pino";
 import type { ProviderSnapshotManager } from "./provider-snapshot-manager.js";
@@ -26,8 +27,6 @@ import { createRealpathAwarePathMatcher } from "../../utils/path.js";
 
 type ImportAgentRequestMessage = z.infer<typeof ImportAgentRequestMessageSchema>;
 
-const METADATA_GENERATION_PROMPT_PREFIX =
-  "Generate metadata for a coding agent based on the user prompt.";
 const IMPORT_SESSION_SEARCH_SCAN_LIMIT = 500;
 export type ImportSessionAgentManager = AgentLoaderManager &
   Pick<
@@ -343,7 +342,7 @@ function parseRecentProviderSessionsSince(since: string | undefined): number | n
   return timestamp;
 }
 
-async function collectImportedProviderSessions(
+export async function collectImportedProviderSessions(
   agentManager: Pick<AgentManager, "listAgents">,
   agentStorage: Pick<AgentStorage, "list">,
   providerFilter: Set<string> | undefined,
@@ -381,12 +380,6 @@ async function collectImportedProviderSessions(
 
 function toProviderSessionHandleKey(provider: string, providerHandleId: string): string {
   return `${provider}\0${providerHandleId}`;
-}
-
-function isMetadataGenerationSession(input: { firstPromptPreview: string | null }): boolean {
-  return (
-    input.firstPromptPreview?.trimStart().startsWith(METADATA_GENERATION_PROMPT_PREFIX) ?? false
-  );
 }
 
 function collectProviderSessionHandleKeys(

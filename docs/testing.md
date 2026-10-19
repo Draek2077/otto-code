@@ -200,6 +200,14 @@ for inspection.
 
 ## Test organization
 
+`src/components/observed-subagent-callout.browser.test.tsx` covers the shared provider-child
+read-only callout in Chromium at compact and desktop widths. It checks parent ownership, the
+absence of composer inputs, capability/disconnect/terminal Stop gating, provider control identity,
+parent-session confirmation/cancellation, duplicate submission prevention, and visible failure with
+retry. Its transport and mobile keyboard are test boundaries; it does not establish behavior in a
+real provider chat. Codex mapper and session tests separately cover parent/sibling coordination,
+wait completion, descendant ownership, nested routing, interruption settlement and history replay.
+
 ### Focused CI diagnosis
 
 Start with `npm run ci:preflight`: module-size ceilings, E2E coverage registration,

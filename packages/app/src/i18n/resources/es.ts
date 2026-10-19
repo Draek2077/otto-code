@@ -3041,6 +3041,7 @@ export const es: TranslationResources = {
     archiveFinishedRetry: "Reintentar ({{failed}}/{{total}})",
   },
   observedSubagents: {
+    parentOwnership: "Controlado por el chat principal: {{parent}}",
     readOnlyTitle: "Subagente observado · solo lectura",
     readOnlySubtitle:
       "Puedes observar este subagente, pero no enviarle mensajes ni cambiar sus ajustes.",

@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { useShallow } from "zustand/react/shallow";
 import { AgentStreamView } from "@/agent-stream/view";
+import { ProviderSubagentCallout } from "@/components/observed-subagent-callout";
 import { getProviderIcon } from "@/components/provider-icons";
 import {
   resolveComposerTrackControlClearance,
@@ -270,6 +271,11 @@ function ProviderSubagentPanel() {
         serverId={serverId}
         rows={childRows}
         onOpenProviderSubagent={openProviderChild}
+      />
+      <ProviderSubagentCallout
+        serverId={serverId}
+        parentAgentId={target.parentAgentId}
+        subagentId={target.subagentId}
       />
     </View>
   );

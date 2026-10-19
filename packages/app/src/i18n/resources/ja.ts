@@ -3016,6 +3016,7 @@ export const ja: TranslationResources = {
     archiveFinishedRetry: "再試行 ({{failed}}/{{total}})",
   },
   observedSubagents: {
+    parentOwnership: "親チャットが制御: {{parent}}",
     readOnlyTitle: "監視中のサブエージェント · 読み取り専用",
     readOnlySubtitle:
       "このサブエージェントは閲覧できますが、メッセージの送信や設定の変更はできません。",

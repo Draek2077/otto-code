@@ -2971,6 +2971,7 @@ export const ar: TranslationResources = {
     archiveFinishedRetry: "إعادة المحاولة ({{failed}}/{{total}})",
   },
   observedSubagents: {
+    parentOwnership: "تتحكم به المحادثة الرئيسية: {{parent}}",
     readOnlyTitle: "وكيل فرعي مُراقَب · للقراءة فقط",
     readOnlySubtitle: "يمكنك مراقبة هذا الوكيل الفرعي، لكن لا يمكنك مراسلته أو تغيير إعداداته.",
     stopAction: "إيقاف الوكيل الفرعي",

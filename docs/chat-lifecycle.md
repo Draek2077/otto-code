@@ -343,6 +343,19 @@ To keep the chat alive but remove it from the parent's track, use **detach**. Th
 
 Provider-descriptor child sessions expose **Stop** while running and **Archive** once terminal in both subagent presentations. Read-only means the user cannot prompt the child; it does not remove lifecycle authority. Stop targets the provider child where the adapter supports it (Codex, Claude, OpenCode). Otherwise Otto requires explicit confirmation before closing the owning agent session, which stops the parent session and its other work. Archive records a tombstone on the parent chat in host storage and broadcasts it to connected clients; replay cannot restore an archived row. A failed stop is reported and does not proceed to archive. The client requires the `providerSubagentControl` host capability for these operations.
 
+Opening a provider child replaces the composer with the same **Observed subagent · read-only**
+callout used by observed-agent panes. It names the owning parent chat and remains visible after the
+child finishes. The provider pane uses `controlProviderSubagent(parentAgentId, subagentId, ...)`,
+including the existing parent-session confirmation; a provider descriptor id is never an observed
+`parent::sub::key` id for `stopObservedSubagent`. Stop is shown only for a running child on a host
+with `providerSubagentControl`, and is disabled while disconnected or awaiting confirmation/control.
+
+Coordination is distinct from ownership. Codex messages, waits and interruptions have their own
+operation rows with inspectable payloads. A message to `/root` identifies **Parent (/root)**; a
+sibling target keeps its path. Neither becomes a child in the sender's track. Only spawn
+declarations create child routes, including during provider-history replay. Interrupting an owned
+child settles its spawn card while retaining the interruption row in the sender's transcript.
+
 Row actions are **status-aware** - the primary action matches the row's state. A running or initializing subagent shows **Stop** (transitions it to a terminal state without removing the row); a terminal subagent (`idle` after completion, `error`, or `closed`) shows **Archive** (drops it from the track). Archive is never offered while its agent is running. Stop and the pane's stop control are the _only_ callers of the stop path - tab lifecycle can never reach it, so closing a tab is always layout-only (see [Tabs vs archive](#tabs-vs-archive)). Detach stays a native-subagent-only affordance.
 
 **Observed subagent ids are not agents, and every lifecycle verb has to say so.** An observed row's id is a `parent::sub::key` triple: an ephemeral projection of the observed-subagent registry, with no backing `ManagedAgent` and nothing under `$OTTO_HOME/agents/**`. Every per-agent verb must special-case it explicitly, and there are **three**, not two: fetch, stop, **and archive**. Archive was the one originally missed, which made `archive_agent_request` throw "Agent not found" on an observed id and broke both the terminal row's Archive and "Clear all completed" for observed rows. `AgentManager.archiveObservedSubagent` is the path: best-effort stop, then retire the registry entry **in place**, stamped `archivedAt`, routed via `Session.archiveAgentForClose`. It is retired rather than deleted deliberately, because deleting it lets a late `task_notification` resurrect the row. **When adding any new per-agent RPC or row action, handle the observed-id path first.**

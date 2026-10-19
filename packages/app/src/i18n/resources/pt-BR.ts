@@ -3026,6 +3026,7 @@ export const ptBR: TranslationResources = {
     archiveFinishedRetry: "Tentar novamente ({{failed}}/{{total}})",
   },
   observedSubagents: {
+    parentOwnership: "Controlado pela conversa principal: {{parent}}",
     readOnlyTitle: "Subagente observado · somente leitura",
     readOnlySubtitle:
       "Você pode acompanhar este subagente, mas não enviar mensagens nem alterar as configurações dele.",

@@ -1279,6 +1279,10 @@ export interface AgentClient {
    */
   isAvailable(signal?: AbortSignal, options?: FetchCatalogOptions): Promise<boolean>;
   getDiagnostic?(): Promise<{ diagnostic: string }>;
+  diagnoseDiscovery?(
+    options: import("@otto-code/protocol/provider-discovery").ProviderDiscoveryOptions,
+    imports: import("./import-session-metadata.js").DiscoveryImportContext,
+  ): Promise<import("@otto-code/protocol/provider-discovery").ProviderDiscoveryDiagnostic>;
   /**
    * Archive a persisted session in the native provider (best-effort).
    * Called when Otto archives an agent so the provider's own UI reflects the same state.

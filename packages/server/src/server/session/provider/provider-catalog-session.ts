@@ -21,6 +21,7 @@ import {
 import type { ProviderAvailability } from "../../agent/agent-manager.js";
 import type { ProviderUsageService } from "../../../services/quota-fetcher/service.js";
 import { expandTilde } from "../../../utils/path.js";
+import type { DiscoveryImportContext } from "../../agent/import-session-metadata.js";
 
 // COMPAT(customModeIcons): the only mode icons known to clients before v0.1.84. Any
 // other icon name is downgraded to "ShieldCheck" for those clients.
@@ -51,6 +52,7 @@ export interface ProviderCatalogSessionHost {
   wantsSnapshotChanges(): boolean;
   listProviderAvailability(): Promise<ProviderAvailability[]>;
   listDraftFeatures(config: AgentSessionConfig): Promise<AgentFeature[]>;
+  readDiscoveryImports?(provider: string): Promise<DiscoveryImportContext>;
 }
 
 export interface ProviderCatalogSessionOptions {
@@ -102,6 +104,29 @@ export class ProviderCatalogSession {
     if (this.unsubscribeSnapshotEvents) {
       this.unsubscribeSnapshotEvents();
       this.unsubscribeSnapshotEvents = null;
+    }
+  }
+
+  dispatch(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "list_provider_models_request":
+        return this.handleListProviderModelsRequest(msg);
+      case "list_provider_modes_request":
+        return this.handleListProviderModesRequest(msg);
+      case "list_provider_features_request":
+        return this.handleListProviderFeaturesRequest(msg);
+      case "list_available_providers_request":
+        return this.handleListAvailableProvidersRequest(msg);
+      case "get_providers_snapshot_request":
+        return this.handleGetProvidersSnapshotRequest(msg);
+      case "refresh_providers_snapshot_request":
+        return this.handleRefreshProvidersSnapshotRequest(msg);
+      case "provider_diagnostic_request":
+        return this.handleProviderDiagnosticRequest(msg);
+      case "provider.usage.list.request":
+        return this.handleProviderUsageListRequest(msg);
+      default:
+        return undefined;
     }
   }
 
@@ -456,6 +481,39 @@ export class ProviderCatalogSession {
   async handleProviderDiagnosticRequest(
     msg: Extract<SessionInboundMessage, { type: "provider_diagnostic_request" }>,
   ): Promise<void> {
+    if (msg.discovery) {
+      try {
+        if (!this.host.readDiscoveryImports) throw new Error("Missing discovery import reader");
+        const imports = await this.host.readDiscoveryImports(msg.provider);
+        const discovery = await this.providerSnapshotManager.getProviderDiscoveryDiagnostic(
+          msg.provider,
+          msg.discovery,
+          imports,
+        );
+        this.host.emit({
+          type: "provider_diagnostic_response",
+          payload: {
+            provider: msg.provider,
+            requestId: msg.requestId,
+            diagnostic: "",
+            discovery,
+          },
+        });
+      } catch {
+        // Never copy provider stdout/stderr/config or RPC error payloads into logs or responses.
+        this.host.emit({
+          type: "rpc_error",
+          payload: {
+            requestId: msg.requestId,
+            requestType: msg.type,
+            code: "provider_discovery_failed",
+            error:
+              "Discovery diagnostic unavailable; requires an enabled Codex provider with diagnostic support.",
+          },
+        });
+      }
+      return;
+    }
     try {
       const { diagnostic } = await this.providerSnapshotManager.getProviderDiagnostic(msg.provider);
       this.host.emit({

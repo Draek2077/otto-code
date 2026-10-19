@@ -3023,6 +3023,7 @@ export const ru: TranslationResources = {
     archiveFinishedRetry: "Повторить ({{failed}}/{{total}})",
   },
   observedSubagents: {
+    parentOwnership: "Управляется родительским чатом: {{parent}}",
     readOnlyTitle: "Наблюдаемый субагент · только чтение",
     readOnlySubtitle:
       "Этот субагент доступен для наблюдения, но не для сообщений и изменения настроек.",

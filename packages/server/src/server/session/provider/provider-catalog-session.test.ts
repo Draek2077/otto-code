@@ -84,6 +84,59 @@ function makeSubsystem(options: MakeOptions = {}) {
 }
 
 describe("ProviderCatalogSession", () => {
+  it("dispatches legacy diagnostics with their existing text-only payload", async () => {
+    const getProviderDiagnostic = vi.fn(async () => ({
+      provider: "codex",
+      diagnostic: "existing",
+    }));
+    const { subsystem, emitted } = makeSubsystem({ snapshot: { getProviderDiagnostic } });
+    await subsystem.dispatch({
+      type: "provider_diagnostic_request",
+      provider: "codex",
+      requestId: "r",
+    });
+    expect(emitted).toEqual([
+      {
+        type: "provider_diagnostic_response",
+        payload: { provider: "codex", requestId: "r", diagnostic: "existing" },
+      },
+    ]);
+  });
+  it("routes opt-in discovery to the configured diagnostic and hides raw failures", async () => {
+    const getProviderDiagnostic = vi.fn();
+    const getProviderDiscoveryDiagnostic = vi.fn(async () => {
+      throw new Error("PRIVATE_PROVIDER_RESPONSE");
+    });
+    const imports = { knownImportedSessionCount: 16, isImported: () => false };
+    const readDiscoveryImports = vi.fn(async () => imports);
+    const { subsystem, emitted } = makeSubsystem({
+      host: { readDiscoveryImports },
+      snapshot: { getProviderDiagnostic, getProviderDiscoveryDiagnostic },
+    });
+    const discovery = { threadId: "01a14152-e1ac-72f4-9565-0978e4520014" };
+    await subsystem.dispatch({
+      type: "provider_diagnostic_request",
+      provider: "my-codex",
+      requestId: "r",
+      discovery,
+    });
+    expect(readDiscoveryImports).toHaveBeenCalledWith("my-codex");
+    expect(getProviderDiscoveryDiagnostic).toHaveBeenCalledWith("my-codex", discovery, imports);
+    expect(getProviderDiagnostic).not.toHaveBeenCalled();
+    expect(emitted).toEqual([
+      {
+        type: "rpc_error",
+        payload: {
+          requestId: "r",
+          requestType: "provider_diagnostic_request",
+          code: "provider_discovery_failed",
+          error:
+            "Discovery diagnostic unavailable; requires an enabled Codex provider with diagnostic support.",
+        },
+      },
+    ]);
+    expect(JSON.stringify(emitted)).not.toContain("PRIVATE_PROVIDER_RESPONSE");
+  });
   it("PUSH gates invisible providers and downgrades unknown mode icons for legacy clients", () => {
     const { subsystem, emitted, pushSnapshotChange } = makeSubsystem({
       visibleProviders: new Set(["codex"]),

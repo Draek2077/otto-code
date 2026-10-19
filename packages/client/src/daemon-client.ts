@@ -1,3 +1,8 @@
+import {
+  requestProviderDiagnostic,
+  type ProviderDiagnosticOptions,
+  type ProviderDiagnosticPayload,
+} from "./provider-diagnostic.js";
 import { normalizeFetchAgentOptions, type FetchAgentOptions } from "./fetch-agent-options.js";
 import type { ChatSearchQuery } from "@otto-code/protocol/chat-search";
 import type { RemoteBrowserCommand } from "@otto-code/protocol/browser-remote/rpc-schemas";
@@ -193,7 +198,6 @@ import type {
   ListAvailableProvidersResponse,
   GetProvidersSnapshotResponseMessage,
   RefreshProvidersSnapshotResponseMessage,
-  ProviderDiagnosticResponseMessage,
   ProviderUsageListResponseMessage,
   StatsActivityGetResponseMessage,
   StatsActivityResetResponseMessage,
@@ -857,7 +861,6 @@ type ListProviderModesPayload = ListProviderModesResponseMessage["payload"];
 type ListAvailableProvidersPayload = ListAvailableProvidersResponse["payload"];
 type GetProvidersSnapshotPayload = GetProvidersSnapshotResponseMessage["payload"];
 type RefreshProvidersSnapshotPayload = RefreshProvidersSnapshotResponseMessage["payload"];
-type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
 type ProviderUsageListPayload = ProviderUsageListResponseMessage["payload"];
 type AgentContextGetUsagePayload = AgentContextGetUsageResponseMessage["payload"];
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
@@ -8639,17 +8642,14 @@ export class DaemonClient {
 
   async getProviderDiagnostic(
     provider: AgentProvider,
-    options?: { requestId?: string },
+    options?: ProviderDiagnosticOptions,
   ): Promise<ProviderDiagnosticPayload> {
-    return this.sendCorrelatedSessionRequest({
-      requestId: options?.requestId,
-      message: {
-        type: "provider_diagnostic_request",
-        provider,
-      },
-      responseType: "provider_diagnostic_response",
-      timeout: 180000,
-    });
+    return requestProviderDiagnostic(
+      this.getLastServerInfoMessage()?.features?.providerDiscoveryDiagnostic === true,
+      provider,
+      options,
+      (params) => this.sendCorrelatedSessionRequest(params),
+    );
   }
 
   async listProviderUsage(options?: { requestId?: string }): Promise<ProviderUsageListPayload> {

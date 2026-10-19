@@ -10,36 +10,36 @@ export function useProviderSubagentControl(serverId: string) {
   const { t } = useTranslation();
   const toast = useToast();
   return useCallback(
-    (parentAgentId: string, subagentId: string, action: "stop" | "archive") => {
-      void (async () => {
-        try {
-          const child = useProviderSubagentStore
-            .getState()
-            .descriptors.get(providerSubagentKey(serverId, parentAgentId, subagentId));
-          const stopParent = child?.status === "running" && child.stopScope === "parent";
-          if (stopParent || action === "archive") {
-            const confirmed = await confirmDialog({
-              title: stopParent
-                ? t("subagents.stopParentTitle")
-                : t("subagents.dialogs.archive.title"),
-              message: stopParent
-                ? t("subagents.stopParentMessage")
-                : t("subagents.dialogs.archive.message", {
-                    subject: child?.title ?? t("subagents.dialogs.subjectFallback"),
-                  }),
-              confirmLabel: stopParent
-                ? t("subagents.stopParentConfirm")
-                : t("subagents.dialogs.archive.confirm"),
-              cancelLabel: t("common.actions.cancel"),
-              destructive: true,
-            });
-            if (!confirmed) return;
-          }
-          await controlProviderSubagent(serverId, parentAgentId, subagentId, action, stopParent);
-        } catch (error) {
-          toast.error(toErrorMessage(error));
+    // Return the whole confirmation/control lifetime so pane actions stay
+    // disabled until it settles; track callers can still fire and forget.
+    async (parentAgentId: string, subagentId: string, action: "stop" | "archive") => {
+      try {
+        const child = useProviderSubagentStore
+          .getState()
+          .descriptors.get(providerSubagentKey(serverId, parentAgentId, subagentId));
+        const stopParent = child?.status === "running" && child.stopScope === "parent";
+        if (stopParent || action === "archive") {
+          const confirmed = await confirmDialog({
+            title: stopParent
+              ? t("subagents.stopParentTitle")
+              : t("subagents.dialogs.archive.title"),
+            message: stopParent
+              ? t("subagents.stopParentMessage")
+              : t("subagents.dialogs.archive.message", {
+                  subject: child?.title ?? t("subagents.dialogs.subjectFallback"),
+                }),
+            confirmLabel: stopParent
+              ? t("subagents.stopParentConfirm")
+              : t("subagents.dialogs.archive.confirm"),
+            cancelLabel: t("common.actions.cancel"),
+            destructive: true,
+          });
+          if (!confirmed) return;
         }
-      })();
+        await controlProviderSubagent(serverId, parentAgentId, subagentId, action, stopParent);
+      } catch (error) {
+        toast.error(toErrorMessage(error));
+      }
     },
     [serverId, t, toast],
   );

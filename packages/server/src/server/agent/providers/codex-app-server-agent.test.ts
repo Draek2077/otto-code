@@ -3393,9 +3393,9 @@ describe("Codex app-server provider", () => {
       const result = await resultPromise;
       const toolCalls = result.timeline.filter((item) => item.type === "tool_call");
       expect(new Set(toolCalls.map((item) => item.callId))).toEqual(
-        new Set(["spawn-child-stable"]),
+        new Set(["spawn-child-stable", "message-child-stable", "interrupt-child-stable"]),
       );
-      expect(toolCalls.at(-1)).toMatchObject({
+      expect(toolCalls.findLast((item) => item.detail.type === "sub_agent")).toMatchObject({
         callId: "spawn-child-stable",
         status: "canceled",
         detail: {
@@ -3403,6 +3403,18 @@ describe("Codex app-server provider", () => {
           log: "[Assistant] Still on the same card.",
         },
       });
+      expect(toolCalls.filter((item) => item.detail.type === "plain_text")).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            callId: "message-child-stable",
+            detail: expect.objectContaining({ label: "Message agent: /root/stable-child" }),
+          }),
+          expect.objectContaining({
+            callId: "interrupt-child-stable",
+            detail: expect.objectContaining({ label: "Interrupt agent: /root/stable-child" }),
+          }),
+        ]),
+      );
       appServer.assertNoErrors();
     } finally {
       await session.close();
@@ -3766,6 +3778,281 @@ describe("Codex app-server provider", () => {
         detail: { type: "sub_agent", log: expect.stringContaining("Still nested.") },
       },
     });
+  });
+
+  test("keeps child-to-parent and child-to-sibling messages and waits out of child ownership", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    for (const id of ["child", "sibling"]) {
+      asInternals(session).handleNotification("item/completed", {
+        threadId: "test-thread",
+        item: {
+          type: "subAgentActivity",
+          id: `spawn-${id}`,
+          kind: "started",
+          agentThreadId: id,
+          agentPath: `/root/${id}`,
+        },
+      });
+    }
+    const coordination = [
+      {
+        type: "subAgentActivity",
+        id: "message-parent",
+        kind: "interacted",
+        agentThreadId: "test-thread",
+        agentPath: "/root",
+      },
+      {
+        type: "subAgentActivity",
+        id: "message-sibling",
+        kind: "interacted",
+        agentThreadId: "sibling",
+        agentPath: "/root/sibling",
+      },
+      {
+        type: "collabAgentToolCall",
+        id: "wait-sibling",
+        tool: "wait",
+        status: "completed",
+        receiverThreadIds: ["test-thread", "sibling"],
+        agentsStates: { sibling: { status: "running" } },
+      },
+    ];
+    const coordinationStart = events.length;
+    for (const item of coordination) {
+      // MultiAgentV2's mirrored PascalCase/snake_case notifications must use
+      // the same routing as canonical item lifecycle events.
+      asInternals(session).handleNotification("codex/event/item_completed", {
+        threadId: "child",
+        msg: {
+          type: "item_completed",
+          item:
+            item.type === "subAgentActivity"
+              ? {
+                  type: "SubAgentActivity",
+                  id: item.id,
+                  kind: item.kind,
+                  agent_thread_id: item.agentThreadId,
+                  agent_path: item.agentPath,
+                }
+              : item,
+        },
+      });
+    }
+    const childCoordination = events
+      .slice(coordinationStart)
+      .flatMap((event) =>
+        event.type === "provider_subagent" &&
+        event.event.type === "timeline" &&
+        event.event.id === "child"
+          ? [event.event.item]
+          : [],
+      );
+    expect(childCoordination).toMatchObject([
+      {
+        callId: "message-parent",
+        status: "completed",
+        detail: { type: "plain_text", label: "Message agent: Parent (/root)" },
+      },
+      {
+        callId: "message-sibling",
+        status: "completed",
+        detail: { type: "plain_text", label: "Message agent: /root/sibling" },
+      },
+      {
+        callId: "wait-sibling",
+        status: "completed",
+        detail: { type: "plain_text", label: "Wait for agents: test-thread, sibling" },
+      },
+    ]);
+    expect(
+      events.slice(coordinationStart).flatMap((event) =>
+        event.type === "provider_subagent" && event.event.type === "upsert"
+          ? [
+              {
+                id: event.event.id,
+                owner: event.event.parentSubagentId,
+                callId: event.event.toolCallId,
+              },
+            ]
+          : [],
+      ),
+    ).toEqual(
+      Array.from({ length: 3 }, () => ({ id: "child", owner: null, callId: "spawn-child" })),
+    );
+    asInternals(session).handleNotification("item/agentMessage/delta", {
+      threadId: "sibling",
+      itemId: "sibling-output",
+      delta: "Sibling still belongs to root.",
+    });
+    expect(events.at(-1)).toMatchObject({ type: "timeline", item: { callId: "spawn-sibling" } });
+    asInternals(session).handleNotification("turn/completed", {
+      threadId: "child",
+      turn: { status: "completed" },
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider_subagent",
+        event: expect.objectContaining({ type: "upsert", id: "child", status: "completed" }),
+      }),
+    );
+  });
+
+  test("does not adopt parent or sibling targets when viewing a child as the session root", () => {
+    const session = createSession();
+    session.currentThreadId = "operator-child";
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    for (const target of ["parent-thread", "sibling-thread"]) {
+      asInternals(session).handleNotification("item/completed", {
+        threadId: "operator-child",
+        item: {
+          type: "subAgentActivity",
+          id: `message-${target}`,
+          kind: "interacted",
+          agentThreadId: target,
+          agentPath: target === "parent-thread" ? "/root" : "/root/sibling",
+        },
+      });
+      asInternals(session).handleNotification("item/completed", {
+        threadId: "operator-child",
+        item: {
+          type: "collabAgentToolCall",
+          id: `wait-${target}`,
+          tool: "wait",
+          status: "completed",
+          receiverThreadIds: [target],
+          agentsStates: { [target]: { status: "running" } },
+        },
+      });
+    }
+    expect(events.filter((event) => event.type === "provider_subagent")).toEqual([]);
+    expect(
+      events.flatMap((event) => (event.type === "timeline" ? [event.item] : [])),
+    ).toMatchObject([
+      {
+        callId: "message-parent-thread",
+        status: "completed",
+        detail: { type: "plain_text", label: "Message agent: Parent (/root)" },
+      },
+      { callId: "wait-parent-thread", status: "completed", detail: { type: "plain_text" } },
+      {
+        callId: "message-sibling-thread",
+        status: "completed",
+        detail: { type: "plain_text", label: "Message agent: /root/sibling" },
+      },
+      { callId: "wait-sibling-thread", status: "completed", detail: { type: "plain_text" } },
+    ]);
+    const count = events.length;
+    for (const threadId of ["parent-thread", "sibling-thread"]) {
+      asInternals(session).handleNotification("item/agentMessage/delta", {
+        threadId,
+        itemId: `foreign-${threadId}`,
+        delta: "Not a descendant.",
+      });
+    }
+    expect(events).toHaveLength(count);
+  });
+
+  test("replays coordination without hydrating parents or siblings as descendants", async () => {
+    const session = createSession();
+    const readThreads: string[] = [];
+    session.client = {
+      request: vi.fn(async (method: string, params: unknown) => {
+        if (method !== "thread/read") return {};
+        const { threadId } = params as { threadId: string };
+        readThreads.push(threadId);
+        const items =
+          threadId === "test-thread"
+            ? [
+                {
+                  type: "subAgentActivity",
+                  id: "spawn-child",
+                  kind: "started",
+                  agentThreadId: "child",
+                  agentPath: "/root/child",
+                },
+                {
+                  type: "subAgentActivity",
+                  id: "message-child",
+                  kind: "interacted",
+                  agentThreadId: "child",
+                  agentPath: "/root/child",
+                },
+              ]
+            : [
+                {
+                  type: "subAgentActivity",
+                  id: "message-parent",
+                  kind: "interacted",
+                  agentThreadId: "test-thread",
+                  agentPath: "/root",
+                },
+                {
+                  type: "subAgentActivity",
+                  id: "message-sibling",
+                  kind: "interacted",
+                  agentThreadId: "sibling",
+                  agentPath: "/root/sibling",
+                },
+                {
+                  type: "collabAgentToolCall",
+                  id: "wait-sibling",
+                  tool: "wait",
+                  status: "completed",
+                  receiverThreadIds: ["sibling"],
+                  agentsStates: { sibling: { status: "running" } },
+                },
+                {
+                  type: "subAgentActivity",
+                  id: "spawn-grandchild",
+                  kind: "started",
+                  agentThreadId: "grandchild",
+                  agentPath: "/root/child/grandchild",
+                },
+              ];
+        return { thread: { turns: [{ items: threadId === "grandchild" ? [] : items }] } };
+      }),
+    };
+    await asInternals(session).loadPersistedHistory();
+    const history: AgentStreamEvent[] = [];
+    for await (const event of session.streamHistory()) history.push(event);
+    expect(readThreads).toEqual(["test-thread", "child", "grandchild"]);
+    expect(
+      history.flatMap((event) =>
+        event.type === "provider_subagent" && event.event.type === "upsert"
+          ? [{ id: event.event.id, parent: event.event.parentSubagentId }]
+          : [],
+      ),
+    ).toEqual([
+      { id: "child", parent: null },
+      { id: "grandchild", parent: "child" },
+    ]);
+    expect(
+      history.flatMap((event) =>
+        event.type === "provider_subagent" &&
+        event.event.type === "timeline" &&
+        event.event.id === "child"
+          ? [event.event.item]
+          : [],
+      ),
+    ).toMatchObject([
+      { callId: "message-parent", status: "completed", detail: { type: "plain_text" } },
+      { callId: "message-sibling", status: "completed", detail: { type: "plain_text" } },
+      { callId: "wait-sibling", status: "completed", detail: { type: "plain_text" } },
+      { callId: "spawn-grandchild", status: "completed", detail: { type: "sub_agent" } },
+    ]);
+    expect(history).toContainEqual(
+      expect.objectContaining({
+        type: "timeline",
+        item: expect.objectContaining({
+          callId: "message-child",
+          detail: expect.objectContaining({ type: "plain_text" }),
+        }),
+      }),
+    );
   });
 
   test("never treats an unmapped foreign terminal as the root terminal", () => {
@@ -4538,7 +4825,7 @@ describe("Codex app-server provider", () => {
       event.type === "timeline" && event.item.type === "tool_call" ? [event.item] : [],
     );
     expect(new Set(liveToolCalls.map((item) => item.callId))).toEqual(
-      new Set(["v2-spawn-history"]),
+      new Set(["v2-spawn-history", "v2-interaction-after-resume"]),
     );
     expect(liveToolCalls.at(-1)).toMatchObject({
       status: "running",
@@ -4628,7 +4915,7 @@ describe("Codex app-server provider", () => {
     ]);
   });
 
-  test("coalesces persisted MultiAgentV2 activity for one child into one terminal card", async () => {
+  test("replays one settled child card and separate timestamped coordination rows", async () => {
     const session = createSession();
     session.client = {
       request: vi.fn(async (method: string, params: unknown) => {
@@ -4681,7 +4968,7 @@ describe("Codex app-server provider", () => {
     for await (const event of session.streamHistory()) {
       history.push(event);
     }
-    expect(history).toEqual([
+    expect(history.slice(0, 2)).toEqual([
       {
         type: "provider_subagent",
         provider: "codex",
@@ -4704,6 +4991,26 @@ describe("Codex app-server provider", () => {
             description: "history-child",
           }),
         }),
+      },
+    ]);
+    expect(history.slice(2)).toMatchObject([
+      {
+        type: "timeline",
+        timestamp: "2026-07-09T10:01:00.000Z",
+        item: {
+          callId: "child-interacted-history",
+          status: "completed",
+          detail: { type: "plain_text", label: "Message agent: /root/history-child" },
+        },
+      },
+      {
+        type: "timeline",
+        timestamp: "2026-07-09T10:02:00.000Z",
+        item: {
+          callId: "child-interrupted-history",
+          status: "completed",
+          detail: { type: "plain_text", label: "Interrupt agent: /root/history-child" },
+        },
       },
     ]);
   });
