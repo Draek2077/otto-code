@@ -21,6 +21,7 @@ export function BrowserHostToggle({
   onPress: () => void;
 }) {
   const { t } = useTranslation();
+  // Keep toolbar chrome icon-only; the tooltip and accessible label explain the host switch.
   const label = t("workspace.browser.controls.hostMode");
   const hint = t(
     hosted ? "workspace.browser.controls.switchToApp" : "workspace.browser.controls.switchToHost",
@@ -48,9 +49,6 @@ export function BrowserHostToggle({
           style={buttonStyle}
         >
           <ThemedCloud size={15} uniProps={hosted ? activeIcon : mutedIcon} />
-          <Text style={[styles.text, hosted && styles.textActive]}>
-            {t("workspace.browser.controls.host")}
-          </Text>
         </Pressable>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
@@ -62,17 +60,14 @@ export function BrowserHostToggle({
 
 const styles = StyleSheet.create((theme) => ({
   button: {
+    width: 28,
     height: 28,
     borderRadius: theme.borderRadius.md,
-    flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 7,
+    justifyContent: "center",
   },
   active: { backgroundColor: `${String(theme.colors.accent)}20` },
   hovered: { backgroundColor: theme.colors.surfaceHover },
   disabled: { opacity: 0.45 },
-  text: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
-  textActive: { color: theme.colors.accent },
   tooltip: { fontSize: theme.fontSize.xs, color: theme.colors.popoverForeground },
 }));
