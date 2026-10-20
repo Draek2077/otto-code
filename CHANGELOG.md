@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.35 - 2026-10-20
+
+### Added
+
+- Diagnose missing Codex chats from the CLI without opening or resuming them
+- Steer a busy chat from the CLI with `--steer`
+
+### Improved
+
+- Keep the browser host switch compact with an icon-only button
+
+### Fixed
+
+- Show read-only status and parent ownership when viewing Codex subagents
+- Label Codex messages, waits, and interruptions without creating extra subagents
+
 ## 0.9.34 - 2026-10-16
 
 ### Improved

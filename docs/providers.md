@@ -703,7 +703,7 @@ the Import UI, normal listing defaults and existing JSON fields are unchanged.
 The existing `provider_diagnostic_request` / `provider_diagnostic_response` RPC gains optional
 `discovery` fields. The client gates this once on
 `server_info.features.providerDiscoveryDiagnostic`; older hosts report "Update the host".
-Authorization remains `daemon.read`. This is unreleased development after 0.9.34;
+Authorization remains `daemon.read`. This capability was added in 0.9.35;
 installed 0.9.34 hosts do not support it.
 
 ### Requests and bounds
