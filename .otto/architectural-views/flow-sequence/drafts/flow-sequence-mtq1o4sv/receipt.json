@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "sequence",
+  "input": "C:\\Users\\phili\\Projects\\otto-code\\.otto\\architectural-views\\flow-sequence\\drafts\\flow-sequence-mtq1o4sv\\.candidate\\view.sequence.json",
+  "output": "C:\\Users\\phili\\AppData\\Local\\Temp\\otto-architectural-view-render-a9M1SE\\view.sequence.html",
+  "specification": {
+    "sha256": "09c817e99006e1b987a67aad4e475606c14171fdb7344fccc1c2d49d462cb071",
+    "bytes": 7703
+  },
+  "artifact": {
+    "sha256": "f7715aedaf76f9f4caaaacfc6c4cd134faace99b689ea2f674b17f090d14672f",
+    "bytes": 713521
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

@@ -1,0 +1,112 @@
+Otto
+Copyright (c) 2026-present The Otto authors
+
+This product is a modified fork of the Paseo project.
+
+  Paseo
+  Copyright (c) 2025-present Mohamed Boudra
+  Source: https://github.com/getpaseo
+  Historical fork base: GNU Affero General Public License, version 3 (AGPL-3.0)
+  Paseo v0.8.0 intake: Apache License, Version 2.0 (LICENSE-Paseo)
+  Otto 0.10.0 base: Paseo v0.12.0, Apache License, Version 2.0 (LICENSE-Paseo)
+
+================================================================================
+Attribution and license
+================================================================================
+
+Otto retains its GNU Affero General Public License version 3 (AGPL-3.0)
+distribution metadata and LICENSE. This fork includes historical AGPL Paseo
+code and changes from Paseo v0.8.0, whose Apache License, Version 2.0 text is
+preserved in LICENSE-Paseo. The original copyright notice is preserved
+verbatim in this file (above), and the full, unmodified text of the license is
+preserved verbatim in the LICENSE file at the root of this repository. Neither
+is removed or altered by this fork.
+
+The scope statement that originally accompanied the copyright notice is
+preserved here verbatim:
+
+  Copyright (c) 2025-present Mohamed Boudra
+
+  Portions of this software are licensed as follows:
+
+  * All third party components incorporated into the Paseo Software are
+    licensed under the original license provided by the owner of the
+    applicable component.
+  * All content outside of the above mentioned restrictions is available
+    under the "AGPLv3" license as defined below.
+
+(That notice previously sat at the top of the LICENSE file. It lives here so
+that LICENSE contains the AGPL-3.0 text and nothing else, which is what license
+scanners - GitHub/licensee, SPDX tooling, npm, F-Droid, Flathub, and
+distribution package metadata - require in order to identify the license
+correctly. Relocating it changes nothing about the terms, the copyright holder,
+or what is licensed; "as defined below" should now be read as referring to the
+LICENSE file.)
+
+As required by section 5 of the AGPL-3.0 ("Conveying Modified Source Versions"),
+this file provides prominent notice that Otto is a modified version of Paseo and
+records the nature of the modifications at a high level.
+
+If you run a modified version of this software to interact with users over a
+network, the AGPL-3.0 requires that those users be offered access to the
+corresponding source code of your modified version.
+
+================================================================================
+Summary of modifications relative to Paseo
+================================================================================
+
+Starting with Otto 0.10.0, Otto is built on an unmodified Paseo v0.12.0 source
+tree. Changes relative to Paseo include, but are not limited to:
+
+  * Product identity: the user-visible product name, icons and assets, the
+    published npm package scope ("@getpaseo/*" -> "@otto-code/*", applied when
+    packages are published), the CLI command ("paseo" -> "otto"), the default
+    data directory ("~/.paseo" -> "~/.otto"), the default daemon port
+    (6767 -> 6868), the project configuration file ("paseo.json" ->
+    "otto.json"), "OTTO_*" environment variables mapped onto Paseo's "PASEO_*"
+    names, the marketing domain (paseo.sh -> otto-code.me), and application
+    bundle identifiers ("me.ottocode*" for the mobile app, "ai.ottocode.desktop"
+    for the desktop app). Internal source identifiers keep their Paseo names.
+  * Otto features added in Otto-owned modules. Every edit Otto makes inside a
+    Paseo source file is marked with an "OTTO(<name>)" comment, which serves as
+    the prominent notice of modification for that file.
+  * Build, release, and documentation changes for Otto's distribution.
+
+Further functional changes are recorded in the project's version-control
+history and CHANGELOG.
+
+================================================================================
+Third-party components
+================================================================================
+
+All third-party components incorporated into this software remain licensed under
+the original license provided by the owner of the applicable component, as noted
+in the scope statement above and in the respective dependency manifests.
+
+  Agent Flow
+  Copyright (c) Simon Patole
+  Source: https://github.com/patoles/agent-flow
+  License: Apache License, Version 2.0
+
+Otto's "Visualizer" feature incorporates the render layer of Agent Flow, vendored
+as a git subtree under vendor/agent-flow/ and driven by Otto's own event stream
+rather than Agent Flow's own ingestion. As required by section 4 of the Apache
+License 2.0, modifications carried against the vendored tree are enumerated with
+rationale in vendor/agent-flow/OTTO-PATCHES.md, which serves as the notice of
+state changes. The Agent Flow name and logos are trademarks of their owner and
+are not used as Otto branding or as a user-facing feature label.
+
+  Sherpa-ONNX GigaSpeech keyword-spotting model
+  Source: https://github.com/k2-fsa/sherpa-onnx/releases/tag/kws-models
+  Training corpus: https://github.com/SpeechColab/GigaSpeech
+  License: Apache License, Version 2.0
+
+Otto's "Hey Otto" feature includes the quantized runtime subset of
+`sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` and a generated keyword
+file. Android builds also include the official Sherpa-ONNX 1.12.28 AAR. Exact
+source and file checksums are recorded in
+packages/expo-two-way-audio/wake-word-model.json. Packaged copies carry the
+Apache License 2.0 text and the model-specific notice beside the model files.
+
+Otto is an independent project. It is not endorsed by, sponsored by, or
+affiliated with the Paseo project or its authors.

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "records": [
+    {
+      "id": "6cdc33ea-bea9-4cf1-ab9e-86ec98505817",
+      "kind": "decision",
+      "title": "Test",
+      "statement": "Test",
+      "tags": [],
+      "status": "confirmed",
+      "createdAt": "2026-08-07T21:22:30.155Z",
+      "updatedAt": "2026-08-07T21:23:11.287Z"
+    }
+  ]
+}

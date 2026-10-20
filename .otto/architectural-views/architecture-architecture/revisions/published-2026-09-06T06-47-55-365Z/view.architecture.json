@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Otto Architecture",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "client-projections",
+        "label": "Clients are projections",
+        "focus": ["desktop", "cli", "app", "daemon"],
+        "note": "Expo, Electron, and CLI clients render one daemon rather than reimplementing it."
+      },
+      {
+        "id": "daemon-ownership",
+        "label": "What the daemon owns",
+        "focus": ["daemon", "agents", "tools", "brain", "state", "repo"],
+        "note": "Agent lifecycles, the tool catalog, the local model host, and durable state."
+      },
+      {
+        "id": "remote-transport",
+        "label": "Optional remote transport",
+        "focus": ["app", "relay", "daemon"],
+        "note": "A remote client reaches the same daemon through the encrypted relay."
+      }
+    ],
+    "viewBox": [1200, 620]
+  },
+  "components": [
+    {
+      "id": "desktop",
+      "type": "frontend",
+      "label": "Electron desktop",
+      "sublabel": "packages/desktop",
+      "pos": [100, 60],
+      "size": [180, 68]
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "CLI",
+      "sublabel": "packages/cli",
+      "pos": [330, 60],
+      "size": [180, 68]
+    },
+    {
+      "id": "app",
+      "type": "frontend",
+      "label": "Expo app",
+      "sublabel": "iOS / Android / web",
+      "pos": [560, 60],
+      "size": [180, 68]
+    },
+    {
+      "id": "relay",
+      "type": "messagebus",
+      "label": "Relay",
+      "sublabel": "packages/relay",
+      "pos": [840, 60],
+      "size": [180, 68],
+      "tag": "end-to-end encrypted"
+    },
+    {
+      "id": "daemon",
+      "type": "backend",
+      "label": "Daemon",
+      "sublabel": "packages/server, Node.js",
+      "pos": [420, 260],
+      "size": [300, 90]
+    },
+    {
+      "id": "agents",
+      "type": "external",
+      "label": "Provider adapters",
+      "sublabel": "agent CLIs and SDKs",
+      "pos": [65, 490],
+      "size": [170, 72]
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "Otto tool catalog",
+      "sublabel": "provider-neutral",
+      "pos": [275, 490],
+      "size": [170, 72]
+    },
+    {
+      "id": "brain",
+      "type": "backend",
+      "label": "Brain model host",
+      "sublabel": "packages/brain",
+      "pos": [485, 490],
+      "size": [170, 72]
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "OTTO_HOME",
+      "sublabel": "durable host state",
+      "pos": [695, 490],
+      "size": [170, 72]
+    },
+    {
+      "id": "repo",
+      "type": "database",
+      "label": "Repository state",
+      "sublabel": ".otto knowledge, code, git",
+      "pos": [905, 490],
+      "size": [170, 72]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Local host",
+      "wraps": ["daemon", "agents", "tools", "brain", "state", "repo"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "desktop-daemon",
+      "from": "desktop",
+      "to": "daemon",
+      "label": "managed subprocess + WebSocket",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelSegment": 0
+    },
+    {
+      "id": "cli-daemon",
+      "from": "cli",
+      "to": "daemon",
+      "label": "WebSocket",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "app-daemon",
+      "from": "app",
+      "to": "daemon",
+      "label": "WebSocket",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "app-relay",
+      "from": "app",
+      "to": "relay",
+      "label": "remote session",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "relay-daemon",
+      "from": "relay",
+      "to": "daemon",
+      "label": "optional encrypted transport",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "daemon-agents",
+      "from": "daemon",
+      "to": "agents",
+      "label": "spawns and streams",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "daemon-tools",
+      "from": "daemon",
+      "to": "tools",
+      "label": "one catalog per provider",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "daemon-brain",
+      "from": "daemon",
+      "to": "brain",
+      "label": "local model requests",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 120
+    },
+    {
+      "id": "daemon-state",
+      "from": "daemon",
+      "to": "state",
+      "label": "host settings and history",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "daemon-repo",
+      "from": "daemon",
+      "to": "repo",
+      "label": "atomic writes",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Clients project the daemon",
+      "items": [
+        "Expo, Electron, and CLI clients are projections over one daemon, not independent implementations.",
+        "packages/protocol carries the wire schemas; packages/client is the shared WebSocket SDK.",
+        "The desktop host starts and supervises the daemon it connects to."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "The daemon owns the system",
+      "items": [
+        "Agent lifecycles, workspaces, tools, durable host state, and the WebSocket API.",
+        "OTTO_HOME holds host state; repository state stays in .otto knowledge, code, and git.",
+        "packages/brain hosts local OpenAI-compatible models for the same daemon."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Load-bearing boundaries",
+      "items": [
+        "Wire changes stay backward-compatible in both directions.",
+        "New capabilities are provider-neutral by contract.",
+        "Dev, agent, test, demo, and installed lanes use isolated ports and homes."
+      ]
+    }
+  ]
+}
