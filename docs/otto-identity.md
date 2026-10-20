@@ -39,7 +39,8 @@ relay client or anything else that would make Otto's relay traffic differ from P
 
 Every edit inside a Paseo file carries an `OTTO(<seam>)` marker, for example
 `// OTTO(identity)`, `/* OTTO(identity) */` inside an expression, or `# OTTO(identity)` in YAML
-and shell. Use one marker per edited block. Files that cannot hold a comment (JSON, images) are
+and shell. Use one marker per edited block. A test, script, or doc changed only to follow an
+identity change takes one file-level marker instead. Files that cannot hold a comment (JSON, images) are
 listed with a reason in `scripts/otto/seams.json`.
 
 The marker doubles as the prominent notice of modification that the Apache License requires for

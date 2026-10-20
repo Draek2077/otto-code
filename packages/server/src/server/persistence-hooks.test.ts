@@ -1,3 +1,4 @@
+// OTTO(identity): assertions follow Otto identity values.
 import { describe, expect, test } from "vitest";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import {

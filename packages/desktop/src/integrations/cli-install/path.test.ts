@@ -1,3 +1,4 @@
+// OTTO(identity): assertions follow Otto identity values.
 import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 import path from "node:path";

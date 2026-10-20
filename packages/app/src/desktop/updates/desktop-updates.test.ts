@@ -1,3 +1,4 @@
+// OTTO(identity): assertions follow Otto identity values.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 async function loadModuleForPlatform(platform: "web" | "ios" | "android") {

@@ -1,3 +1,4 @@
+// OTTO(identity): assertions follow Otto identity values.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppStateStatus } from "react-native";
 import {

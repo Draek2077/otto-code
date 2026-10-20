@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# OTTO(identity): default app id is Otto's debug package.
 # iOS native regression harness for sidebar drag cancellation and recovery.
 set -euo pipefail
 

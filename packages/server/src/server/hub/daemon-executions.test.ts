@@ -1,3 +1,4 @@
+// OTTO(identity): assertions follow Otto identity values.
 import type { AgentClient } from "../agent/agent-sdk-types.js";
 import { validateProviderOptions } from "../agent/provider-options.js";
 import { CodexProviderOptionsSchema } from "../agent/providers/codex/options.js";

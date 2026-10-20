@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# OTTO(identity): default app id is Otto's debug package.
 # Records only the Android workspace-creation repro window.
 #
 # The setup Maestro flow gets the app to the open sidebar with a prepared

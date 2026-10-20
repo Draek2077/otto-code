@@ -1,3 +1,4 @@
+// OTTO(identity): assertions follow Otto identity values.
 import {
   prepareAgentMessage,
   formatAgentMessage,

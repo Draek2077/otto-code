@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# OTTO(identity): default app id is Otto's debug package.
 # Android Maestro harness for the workspace-creation redirect crash.
 #
 # Starts from a clean app state, connects the Android app to the local daemon,
