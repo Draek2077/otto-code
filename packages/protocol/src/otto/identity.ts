@@ -37,3 +37,8 @@ export const OTTO_APP_BASE_URL = "https://app.otto-code.me";
 
 // The daemon's agent-facing MCP server; agents see tools as mcp__otto__<tool>.
 export const OTTO_MCP_SERVER_NAME = "otto";
+
+// The Paseo release Otto is built on. Paseo-facing compatibility checks (plugin
+// requirements) compare against this, not Otto's own version. Keep it equal to
+// scripts/otto/paseo-base.json; `npm run otto:seams:check` enforces that.
+export const OTTO_PASEO_BASE_VERSION = "0.12.0";

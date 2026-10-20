@@ -4,10 +4,10 @@ import { QueryClient } from "@tanstack/react-query";
 import { createPaseoApi } from "@getpaseo/client";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { assertPluginCompatibility } from "@getpaseo/protocol/plugin-requirements";
-import { resolveAppVersion } from "@/utils/app-version";
 import { createPluginClientRuntime } from "./client-runtime";
 import { runPluginClientBundle } from "./evaluate";
 import type { InstalledPlugin } from "./types";
+import { OTTO_PASEO_BASE_VERSION } from "@getpaseo/protocol/otto/identity";
 
 type CatalogPlugin = Awaited<ReturnType<DaemonClient["getPluginCatalog"]>>[number];
 
@@ -181,7 +181,8 @@ export class PluginRegistry {
 }
 
 export const pluginRegistry = new PluginRegistry({
-  version: resolveAppVersion(),
+  // OTTO(paseo-version): plugins target the Paseo API, not Otto's version.
+  version: OTTO_PASEO_BASE_VERSION,
   createRuntime: createPluginClientRuntime,
 });
 

@@ -32,6 +32,14 @@ const deleted = git("diff", "--name-only", "--no-renames", "--diff-filter=D", ba
   .split("\n")
   .filter(Boolean);
 
+// The identity constant and the recorded base must name the same Paseo release.
+const identitySource = readFileSync(
+  path.join(root, "packages/protocol/src/otto/identity.ts"),
+  "utf8",
+);
+const identityBase = identitySource.match(/OTTO_PASEO_BASE_VERSION = "([^"]+)"/)?.[1];
+const baseMismatch = identityBase !== base.version;
+
 const seamCounts = new Map();
 const unmarked = [];
 let markedLines = 0;
@@ -69,6 +77,12 @@ for (const [seam, count] of [...seamCounts].sort((a, b) => b[1] - a[1])) {
 if (VERBOSE) {
   for (const file of modified) console.log(`  M ${file}`);
   for (const file of deleted) console.log(`  D ${file}`);
+}
+if (baseMismatch) {
+  console.log(
+    `\nOTTO_PASEO_BASE_VERSION is ${identityBase}, but paseo-base.json records ${base.version}.`,
+  );
+  if (CHECK) process.exit(1);
 }
 if (unmarked.length > 0) {
   console.log(`\nModified Paseo files without an OTTO(...) marker (${unmarked.length}):`);

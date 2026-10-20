@@ -2,7 +2,19 @@
   "files": {
     ".oxfmtrc.json": "Formatter skips the Otto Knowledge store (.otto/).",
     "LICENSE": "Otto distribution license (AGPL-3.0); Paseo's text is preserved in LICENSE-Paseo.",
-    "package.json": "Otto scripts (otto:seams); Otto release and dev scripts.",
-    "packages/cli/package.json": "identity: the CLI is installed as the otto command."
+    "package-lock.json": "Lockfile follows Otto's workspace versions.",
+    "package.json": "Otto name, version line, and metadata; Otto scripts (otto:seams).",
+    "packages/app/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/cli/package.json": "identity: the otto command; Otto version line and package metadata.",
+    "packages/client/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/desktop/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/expo-two-way-audio/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/highlight/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/plugin/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/protocol/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/relay/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/server/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/website/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "plugins/package.json": "identity: Otto version line and package metadata (synced from the root package.json)."
   }
 }

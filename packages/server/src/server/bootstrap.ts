@@ -1,4 +1,8 @@
-import { OTTO_APP_BASE_URL } from "@getpaseo/protocol/otto/identity";
+import {
+  OTTO_APP_BASE_URL,
+  OTTO_PASEO_BASE_VERSION,
+  OTTO_URL_SCHEME,
+} from "@getpaseo/protocol/otto/identity";
 import type { PluginRegistries } from "@getpaseo/protocol/plugin-registry";
 import { describeHookWorkspace } from "./plugins/lifecycle/index.js";
 import express from "express";
@@ -236,7 +240,6 @@ import { DaemonExecutions } from "./hub/daemon-executions.js";
 import { PluginService } from "./plugins/index.js";
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
-import { OTTO_URL_SCHEME } from "@getpaseo/protocol/otto/identity";
 
 const MCP_DEBUG_BATCH_LIMIT = 10;
 const MCP_DEBUG_SECRET = "[redacted]";
@@ -621,18 +624,25 @@ export async function createPaseoDaemon(
   });
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
   const browserToolsBroker = new BrowserToolsBroker({});
-  const pluginRuntime: PluginService = new PluginService(logger, daemonConfigStore, daemonVersion, {
-    usageAgents: {
-      hasAgent: (id) => agentManager.getAgent(id) !== null,
-      usageSession: (id) => agentManager.usageSession(id),
+  // OTTO(paseo-version): plugins target the Paseo API, so the plugin host reports
+  // the Paseo base release instead of Otto's version.
+  const pluginRuntime: PluginService = new PluginService(
+    logger,
+    daemonConfigStore,
+    OTTO_PASEO_BASE_VERSION,
+    {
+      usageAgents: {
+        hasAgent: (id) => agentManager.getAgent(id) !== null,
+        usageSession: (id) => agentManager.usageSession(id),
+      },
+      managedSources: new ManagedPluginSources(config.paseoHome, {
+        registries: config.pluginRegistries,
+        defaultUrl: config.pluginRegistryUrl,
+      }),
+      builtinPlugins: resolveBuiltinPluginLoader(dependencies),
+      settingsDirectory: path.join(config.paseoHome, "plugin-settings"),
     },
-    managedSources: new ManagedPluginSources(config.paseoHome, {
-      registries: config.pluginRegistries,
-      defaultUrl: config.pluginRegistryUrl,
-    }),
-    builtinPlugins: resolveBuiltinPluginLoader(dependencies),
-    settingsDirectory: path.join(config.paseoHome, "plugin-settings"),
-  });
+  );
 
   const serverId = getOrCreateServerId(config.paseoHome, { logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);

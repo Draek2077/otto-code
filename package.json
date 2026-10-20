@@ -1,8 +1,8 @@
 {
-  "name": "paseo",
-  "version": "0.12.0",
+  "name": "otto-code",
+  "version": "0.9.35",
   "private": true,
-  "description": "Paseo: voice-controlled development environment for local AI coding agents",
+  "description": "Otto: an autonomous AI coding IDE for driving local AI coding agents from anywhere",
   "keywords": [
     "development",
     "mcp",
@@ -10,15 +10,15 @@
     "voice",
     "voice-assistant"
   ],
-  "homepage": "https://paseo.sh",
-  "license": "Apache-2.0",
+  "homepage": "https://otto-code.me",
+  "license": "AGPL-3.0-or-later",
   "author": {
-    "name": "Mohamed Boudra",
-    "email": "hello@moboudra.com"
+    "name": "Draekz",
+    "url": "https://github.com/Draek2077"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/getpaseo/paseo.git"
+    "url": "https://github.com/Draek2077/otto-code.git"
   },
   "workspaces": [
     "plugins",
