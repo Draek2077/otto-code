@@ -12,8 +12,9 @@ import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { buildSelectableProviderSelectorProviders } from "@/provider-selection/provider-selection";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { settingsStyles } from "@/styles/settings";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
-const METADATA_GENERATION_DOCS_URL = "https://paseo.sh/docs/metadata-generation";
+const METADATA_GENERATION_DOCS_URL = `${OTTO_WEBSITE_URL}/docs/metadata-generation`; // OTTO(identity)
 type SelectionMode = "automatic" | "preferred";
 
 export function MetadataGenerationPage({ serverId }: { serverId: string }) {

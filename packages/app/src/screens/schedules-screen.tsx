@@ -39,6 +39,7 @@ import {
   buildScheduleProjectTargets,
 } from "@/schedules/schedule-project-targets";
 import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 type FormState =
   | { mode: "closed" }
@@ -321,7 +322,10 @@ function SchedulesEmptyState({
       <View style={styles.emptyTextStack}>
         <Text style={styles.emptyTitle}>No active schedules</Text>
         <Text style={styles.emptyDescription}>Schedules run agents on a cadence.</Text>
-        <ExternalLink href="https://paseo.sh/docs/schedules" label="See docs" />
+        <ExternalLink
+          href={`${OTTO_WEBSITE_URL}/docs/schedules`}
+          /* OTTO(identity) */ label="See docs"
+        />
       </View>
       <Button variant="outline" leftIcon={Plus} onPress={onCreate} testID="schedules-empty-new">
         New schedule

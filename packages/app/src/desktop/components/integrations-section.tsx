@@ -10,8 +10,9 @@ import { SettingsSection } from "@/components/settings/headings/settings-section
 import { settingsStyles } from "@/styles/settings";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
-const CLI_DOCS_URL = "https://paseo.sh/docs/cli";
+const CLI_DOCS_URL = `${OTTO_WEBSITE_URL}/docs/cli`; // OTTO(identity)
 
 export function IntegrationsSection() {
   const { t } = useTranslation();

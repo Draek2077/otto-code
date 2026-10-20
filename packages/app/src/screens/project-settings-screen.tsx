@@ -54,6 +54,7 @@ import {
   type ProjectHostEntry,
   type ProjectSummary,
 } from "@/utils/projects";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 const SCRIPT_SERVICE_TYPE = "service";
 
@@ -87,7 +88,7 @@ const METADATA_PROMPT_FIELDS: Record<MetadataPromptKey, MetadataPromptField> = {
   },
 };
 
-const WORKTREE_DOCS_URL = "https://paseo.sh/docs/worktrees";
+const WORKTREE_DOCS_URL = `${OTTO_WEBSITE_URL}/docs/worktrees`; // OTTO(identity)
 
 type ReadProjectConfigData = Awaited<ReturnType<DaemonClient["readProjectConfig"]>>;
 

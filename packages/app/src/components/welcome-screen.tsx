@@ -26,6 +26,7 @@ import { openExternalUrl } from "@/utils/open-external-url";
 import { isFdroidBuild } from "@/constants/build-profile";
 import { isWeb, isNative } from "@/constants/platform";
 import { isElectronRuntime } from "@/desktop/host";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 interface WelcomeAction {
   key: "scan-qr" | "direct-connection" | "remote-ssh" | "paste-pairing-link";
@@ -189,7 +190,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   }, [router]);
 
   const handleOpenPaseoSite = useCallback(() => {
-    void openExternalUrl("https://paseo.sh");
+    void openExternalUrl(OTTO_WEBSITE_URL /* OTTO(identity) */);
   }, []);
 
   const handleOpenSettings = useCallback(() => {
@@ -292,7 +293,8 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
             <Text style={styles.subtitle}>{t("onboarding.subtitle")}</Text>
             {isNative ? (
               <Pressable style={styles.setupLink} onPress={handleOpenPaseoSite}>
-                <Text style={styles.setupLinkText}>paseo.sh</Text>
+                <Text style={styles.setupLinkText}>otto-code.me</Text>
+                {/* OTTO(identity) */}
                 <ExternalLink size={14} color={theme.colors.accent} />
               </Pressable>
             ) : null}

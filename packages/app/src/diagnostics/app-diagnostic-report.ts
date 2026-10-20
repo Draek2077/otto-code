@@ -1,6 +1,7 @@
 import type { ServerInfoStatusPayload } from "@getpaseo/protocol/messages";
 import type { HostRuntimeSnapshot } from "@/runtime/host-runtime";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
+import { OTTO_PRODUCT_NAME } from "@getpaseo/protocol/otto/identity";
 
 interface DiagnosticEntry {
   label: string;
@@ -22,7 +23,8 @@ export function formatAppDiagnosticHeader(input: {
   isDesktopApp: boolean;
   hostCount: number;
 }): string {
-  return formatDiagnosticSection("Paseo app diagnostics", [
+  // OTTO(identity)
+  return formatDiagnosticSection(`${OTTO_PRODUCT_NAME} app diagnostics`, [
     { label: "Collected at", value: new Date().toISOString() },
     { label: "App version", value: input.appVersion ?? "unknown" },
     { label: "Platform", value: input.platform },

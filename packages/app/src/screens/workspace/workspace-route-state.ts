@@ -1,6 +1,7 @@
 import type { HostRuntimeConnectionStatus } from "@/runtime/host-runtime";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import type { WorkspaceRecoveryModel } from "@/workspace-recovery/model";
+import { OTTO_PRODUCT_NAME } from "@getpaseo/protocol/otto/identity";
 
 export type WorkspaceRouteState =
   | { kind: "ready" }
@@ -84,7 +85,7 @@ export function resolveWorkspaceRouteState(input: {
       return {
         kind: "recoveryUnavailable",
         hostName: input.hostName,
-        message: "Update Paseo to recover this workspace.",
+        message: `Update ${OTTO_PRODUCT_NAME} to recover this workspace.`, // OTTO(identity)
       };
     case "inspectionFailed":
       return {

@@ -22,6 +22,7 @@ import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { useDesktopSettings, type DesktopSettings } from "@/desktop/settings/desktop-settings";
 import { resolveAppVersion } from "@/utils/app-version";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 type DesktopDaemonSettings = DesktopSettings["daemon"];
 
@@ -504,7 +505,7 @@ export function LocalDaemonSection() {
   );
 }
 
-const ADVANCED_DAEMON_SETTINGS_URL = "https://paseo.sh/docs/configuration";
+const ADVANCED_DAEMON_SETTINGS_URL = `${OTTO_WEBSITE_URL}/docs/configuration`; // OTTO(identity)
 
 const styles = StyleSheet.create((theme) => ({
   actionGroup: {

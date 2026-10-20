@@ -10,8 +10,9 @@ import {
 } from "@/desktop/updates/desktop-updates";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
-const FALLBACK_DOWNLOAD_URL = "https://paseo.sh/download";
+const FALLBACK_DOWNLOAD_URL = `${OTTO_WEBSITE_URL}/download`; // OTTO(identity)
 
 function RosettaCalloutDescription({ t }: { t: ReturnType<typeof useTranslation>["t"] }) {
   return (

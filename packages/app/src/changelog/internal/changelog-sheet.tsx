@@ -24,8 +24,9 @@ import {
   type ChangelogRelease,
   type ChangelogSection,
 } from "./parse-changelog";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
-const WEBSITE_CHANGELOG_URL = "https://paseo.sh/changelog";
+const WEBSITE_CHANGELOG_URL = `${OTTO_WEBSITE_URL}/changelog`; // OTTO(identity)
 
 const ThemedGift = withUnistyles(Gift);
 const ThemedExternalLink = withUnistyles(ExternalLink);

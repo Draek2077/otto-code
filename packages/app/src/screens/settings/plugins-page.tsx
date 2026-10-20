@@ -31,9 +31,10 @@ import { openPluginInstallForm } from "@/screens/settings/plugin-install-form-mo
 import { pluginRegistry, useInstalledPlugins } from "@/plugins/registry";
 import { settingsStyles } from "@/styles/settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 const pluginQueryKey = (serverId: string) => ["plugins", serverId] as const;
-const PLUGIN_SOURCE_DOCS_URL = "https://paseo.sh/docs/plugins/reference#plugin-sources";
+const PLUGIN_SOURCE_DOCS_URL = `${OTTO_WEBSITE_URL}/docs/plugins/reference#plugin-sources`; // OTTO(identity)
 type PluginRowAction = "reload" | "enable" | "disable" | "remove";
 
 function errorMessage(error: unknown): string {

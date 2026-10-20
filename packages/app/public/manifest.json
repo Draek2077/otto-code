@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Paseo",
-  "short_name": "Paseo",
+  "name": "Otto",
+  "short_name": "Otto",
   "description": "Monitor and control local AI coding agents from anywhere.",
   "start_url": "/",
   "scope": "/",

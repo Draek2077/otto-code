@@ -923,7 +923,8 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>Archive merged PR workspaces</Text>
           <Text style={settingsStyles.rowHint}>
-            Automatically archive clean Paseo workspaces after their pull request is merged
+            {/* OTTO(identity) */}
+            Automatically archive clean Otto workspaces after their pull request is merged
           </Text>
         </View>
         <Switch
