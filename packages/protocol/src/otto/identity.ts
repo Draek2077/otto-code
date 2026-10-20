@@ -34,3 +34,6 @@ export const OTTO_MOBILE_DEBUG_PACKAGE_ID = `${OTTO_MOBILE_PACKAGE_ID}.debug`;
 
 // Otto hosts its own web app; pairing links and CORS defaults point here.
 export const OTTO_APP_BASE_URL = "https://app.otto-code.me";
+
+// The daemon's agent-facing MCP server; agents see tools as mcp__otto__<tool>.
+export const OTTO_MCP_SERVER_NAME = "otto";

@@ -9,7 +9,7 @@ export function getLocalBinDir(): string {
 }
 
 export function getCliTargetPath(): string {
-  const filename = process.platform === "win32" ? "paseo.cmd" : "paseo";
+  const filename = process.platform === "win32" ? "otto.cmd" : "otto"; // OTTO(identity)
   return path.join(getLocalBinDir(), filename);
 }
 

@@ -15,7 +15,15 @@ export {
   type ProjectConfigRpcError,
 } from "@getpaseo/protocol/paseo-config-schema";
 
-export const PASEO_CONFIG_FILE_NAME = OTTO_PROJECT_CONFIG_FILE; // OTTO(identity)
+export const PASEO_CONFIG_FILE_NAME = "paseo.json";
+
+// OTTO(identity): Otto's project config is otto.json. A project that only has
+// Paseo's paseo.json keeps working, and edits go to that file in place.
+export function resolvePaseoConfigFileName(repoRoot: string): string {
+  if (existsSync(join(repoRoot, OTTO_PROJECT_CONFIG_FILE))) return OTTO_PROJECT_CONFIG_FILE;
+  if (existsSync(join(repoRoot, PASEO_CONFIG_FILE_NAME))) return PASEO_CONFIG_FILE_NAME;
+  return OTTO_PROJECT_CONFIG_FILE;
+}
 
 export type ReadPaseoConfigForEditResult =
   | { ok: true; config: PaseoConfigRaw | null; revision: PaseoConfigRevision | null }
@@ -32,7 +40,7 @@ export interface WritePaseoConfigForEditInput {
 }
 
 export function resolvePaseoConfigPath(repoRoot: string): string {
-  return join(repoRoot, PASEO_CONFIG_FILE_NAME);
+  return join(repoRoot, resolvePaseoConfigFileName(repoRoot)); // OTTO(identity)
 }
 
 export function statPaseoConfigPath(repoRoot: string): PaseoConfigRevision | null {

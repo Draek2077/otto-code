@@ -65,7 +65,7 @@ test("Hub MCP configuration reaches the provider alongside Paseo MCP without ent
     payload: { success: true, agent: { provider: "codex" }, error: null },
   });
   expect(hub.latestProviderCreateConfig()?.mcpServers).toMatchObject({
-    paseo: { type: "http" },
+    otto: { type: "http" },
     hub: {
       type: "http",
       url: "https://hub.test/mcp/executions/mcp-execution",
@@ -181,7 +181,7 @@ test("new Hub executions cannot override the daemon-owned Paseo MCP server", asy
   const hub = await launchRelationship();
   hub.beginOwnedCreate("reserved-mcp-create", "reserved-mcp-execution", {
     mcpServers: {
-      paseo: { type: "http", url: "https://hub.test/replace-paseo" },
+      otto: { type: "http", url: "https://hub.test/replace-paseo" },
     },
   });
 
@@ -213,7 +213,7 @@ test("reserved Paseo MCP input does not invalidate replay of an owned execution"
 
   hub.beginOwnedCreate("replay-create", "replayed-execution", {
     mcpServers: {
-      paseo: { type: "http", url: "https://hub.test/replace-paseo" },
+      otto: { type: "http", url: "https://hub.test/replace-paseo" },
     },
   });
   const replay = await hub.ownedCreateResult("replay-create");

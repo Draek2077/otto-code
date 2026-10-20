@@ -2990,7 +2990,7 @@ test("createAgent injects paseo MCP server only into provider launch config", as
     },
   });
   expect(client.lastConfig?.mcpServers).toEqual({
-    paseo: {
+    otto: {
       type: "http",
       url: `http://127.0.0.1:6767/mcp/agents?callerAgentId=${snapshot.id}`,
     },
@@ -3291,7 +3291,7 @@ test("createAgent allows best-effort internal MCP when the provider session repo
   );
 
   expect(manager.getMcpAuthToken()).toBe("cap-token");
-  expect(client.lastConfig?.mcpServers?.paseo).toEqual({
+  expect(client.lastConfig?.mcpServers?.otto).toEqual({
     type: "http",
     url: `http://127.0.0.1:6767/mcp/agents?callerAgentId=${snapshot.id}`,
     headers: { Authorization: "Bearer cap-token" },
@@ -3365,7 +3365,7 @@ test("uses each provider's current policy for new sessions and snapshots it by a
   ]);
   expect(codex.launchContexts[0]?.paseoTools).toBe(paseoTools);
   expect(claude.launchContexts[0]?.paseoTools).toBeUndefined();
-  expect(codex.configs[0]?.mcpServers?.paseo).toBeUndefined();
+  expect(codex.configs[0]?.mcpServers?.otto).toBeUndefined();
   expect(claude.configs[0]?.mcpServers).toBeUndefined();
   expect(manager.getPaseoToolPolicy(codexAgent.id)).toEqual({
     disabledTools: ["list_agents"],
@@ -3430,7 +3430,7 @@ test("keeps the global Paseo-tools gate outside provider policy and MCP injectio
     { workspaceId: undefined },
   );
 
-  expect(enabledClient.lastConfig?.mcpServers?.paseo).toEqual({
+  expect(enabledClient.lastConfig?.mcpServers?.otto).toEqual({
     type: "http",
     url: `http://127.0.0.1:6767/mcp/agents?callerAgentId=${enabledAgent.id}`,
   });
@@ -3487,7 +3487,7 @@ test("resumeAgentFromPersistence replaces stored internal paseo MCP with current
   const snapshot = await manager.resumeAgentFromPersistence(handle, {
     cwd: workdir,
     mcpServers: {
-      paseo: {
+      otto: {
         type: "http",
         url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=stale-agent",
       },
@@ -3499,7 +3499,7 @@ test("resumeAgentFromPersistence replaces stored internal paseo MCP with current
   });
 
   expect(client.resumeOverrides[0]?.mcpServers).toEqual({
-    paseo: {
+    otto: {
       type: "http",
       url: `http://127.0.0.1:6768/mcp/agents?callerAgentId=${snapshot.id}`,
     },
@@ -3539,7 +3539,7 @@ test("resumeAgentFromPersistence drops stored internal paseo MCP when runtime in
   const snapshot = await manager.resumeAgentFromPersistence(handle, {
     cwd: workdir,
     mcpServers: {
-      paseo: {
+      otto: {
         type: "http",
         url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=stale-agent",
       },
@@ -3580,7 +3580,7 @@ test("createAgent preserves a user-provided paseo MCP config", async () => {
       provider: "codex",
       cwd: workdir,
       mcpServers: {
-        paseo: {
+        otto: {
           type: "http",
           url: "https://example.com/custom-paseo",
         },
@@ -3591,7 +3591,7 @@ test("createAgent preserves a user-provided paseo MCP config", async () => {
   );
 
   expect(snapshot.config.mcpServers).toEqual({
-    paseo: {
+    otto: {
       type: "http",
       url: "https://example.com/custom-paseo",
     },
@@ -4172,7 +4172,7 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
     cwd: workdir,
     systemPrompt: "new prompt",
     mcpServers: {
-      paseo: {
+      otto: {
         type: "stdio",
         command: "node",
         args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/paseo.sock"],
@@ -4182,7 +4182,7 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
 
   expect(resumed.config.systemPrompt).toBe("new prompt");
   expect(resumed.config.mcpServers).toEqual({
-    paseo: {
+    otto: {
       type: "stdio",
       command: "node",
       args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/paseo.sock"],
@@ -4192,7 +4192,7 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
     model: "gpt-5.4",
     systemPrompt: "new prompt",
     mcpServers: {
-      paseo: {
+      otto: {
         type: "stdio",
         command: "node",
         args: ["/tmp/mcp-bridge.mjs", "--socket", "/tmp/paseo.sock"],

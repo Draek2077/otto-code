@@ -1,0 +1,8 @@
+{
+  "files": {
+    ".oxfmtrc.json": "Formatter skips the Otto Knowledge store (.otto/).",
+    "LICENSE": "Otto distribution license (AGPL-3.0); Paseo's text is preserved in LICENSE-Paseo.",
+    "package.json": "Otto scripts (otto:seams); Otto release and dev scripts.",
+    "packages/cli/package.json": "identity: the CLI is installed as the otto command."
+  }
+}

@@ -236,6 +236,7 @@ import { DaemonExecutions } from "./hub/daemon-executions.js";
 import { PluginService } from "./plugins/index.js";
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
+import { OTTO_URL_SCHEME } from "@getpaseo/protocol/otto/identity";
 
 const MCP_DEBUG_BATCH_LIMIT = 10;
 const MCP_DEBUG_SECRET = "[redacted]";
@@ -737,8 +738,8 @@ export async function createPaseoDaemon(
 
   // CORS - allow same-origin + configured origins
   const fixedAllowedOrigins = [
-    // Packaged desktop renderers use the custom paseo:// protocol scheme.
-    "paseo://app",
+    // Packaged desktop renderers use the custom otto:// protocol scheme.
+    `${OTTO_URL_SCHEME}://app`, // OTTO(identity)
     // For TCP, add localhost variants
     ...(listenTarget.type === "tcp"
       ? [

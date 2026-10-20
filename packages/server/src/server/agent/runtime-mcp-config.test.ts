@@ -17,7 +17,7 @@ describe("withRuntimePaseoMcpServer", () => {
       mcpAuthToken: "cap-token",
     });
 
-    expect(result.mcpServers?.paseo).toEqual({
+    expect(result.mcpServers?.otto).toEqual({
       type: "http",
       url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=agent-1",
       headers: { Authorization: "Bearer cap-token" },
@@ -32,7 +32,7 @@ describe("withRuntimePaseoMcpServer", () => {
       mcpAuthToken: null,
     });
 
-    expect(result.mcpServers?.paseo).toEqual({
+    expect(result.mcpServers?.otto).toEqual({
       type: "http",
       url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=agent-1",
     });

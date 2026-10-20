@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { DiscordIcon } from "@/components/icons/discord-icon";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { OTTO_REPOSITORY_URL } from "@getpaseo/protocol/otto/identity";
 
 const renderGitHubIcon = (color: string) => <GitHubIcon color={color} size={14} />;
 const renderDiscordIcon = (color: string) => <DiscordIcon color={color} size={14} />;
 
 export function CommunityLinks() {
   const handleOpenGitHub = useCallback(() => {
-    void openExternalUrl("https://github.com/getpaseo/paseo");
+    void openExternalUrl(OTTO_REPOSITORY_URL); // OTTO(identity)
   }, []);
 
   const handleOpenSponsor = useCallback(() => {

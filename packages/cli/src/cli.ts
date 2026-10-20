@@ -40,6 +40,7 @@ import {
   withGlobalOptions,
 } from "./utils/command-options.js";
 import { resolveCliVersion } from "./version.js";
+import { OTTO_CLI_COMMAND, OTTO_PRODUCT_NAME } from "@getpaseo/protocol/otto/identity";
 
 const VERSION = resolveCliVersion();
 
@@ -47,8 +48,8 @@ export function createCli(): Command {
   const program = new Command();
 
   program
-    .name("paseo")
-    .description("Paseo CLI - control your AI coding agents from the command line")
+    .name(OTTO_CLI_COMMAND) // OTTO(identity)
+    .description(`${OTTO_PRODUCT_NAME} CLI - control your AI coding agents from the command line`)
     .version(VERSION, "-v, --version", "output the version number")
     // Global output options
     .option("-o, --format <format>", "output format: table, json, yaml", "table")

@@ -29,9 +29,10 @@ import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
 import { openChangelog } from "@/changelog";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { OTTO_ISSUES_NEW_URL } from "@getpaseo/protocol/otto/identity";
 
 const DISCORD_URL = "https://discord.gg/jz8T2uahpH";
-const GITHUB_ISSUE_URL = "https://github.com/getpaseo/paseo/issues/new";
+const GITHUB_ISSUE_URL = OTTO_ISSUES_NEW_URL; // OTTO(identity)
 const ThemedActivity = withUnistyles(Activity);
 const ThemedGift = withUnistyles(Gift);
 const ThemedKeyboard = withUnistyles(Keyboard);

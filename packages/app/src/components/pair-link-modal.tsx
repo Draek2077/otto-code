@@ -13,6 +13,7 @@ import { getConnectionAuthFailureReason } from "@/utils/test-daemon-connection";
 import { PairingTargetTracker } from "./pair-link-credentials";
 import { Button } from "@/components/ui/button";
 import type { EditingTextInputHandle } from "@/components/ui/text-input";
+import { OTTO_APP_BASE_URL } from "@getpaseo/protocol/otto/identity";
 
 const FLEX_ONE_STYLE = { flex: 1 } as const;
 
@@ -219,7 +220,7 @@ function PairLinkModalContent({
           nativeID="pair-link-input"
           accessibilityLabel={t("pairing.link.label")}
           onChangeText={handleChangeOfferUrl}
-          placeholder="https://app.paseo.sh/#offer=..."
+          placeholder={`${OTTO_APP_BASE_URL}/#offer=...`} /* OTTO(identity) */
           placeholderTextColor={theme.colors.foregroundMuted}
           style={styles.input}
           autoFocus

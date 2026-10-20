@@ -11,7 +11,7 @@ RELAY_EXPORTS="$REPO_ROOT/node_modules/@getpaseo/relay/dist/e2ee.js"
 FIXTURE_ROOT=""
 PROJECT_IDS_FILE="$OUT_DIR/project-ids.json"
 
-export PASEO_MAESTRO_APP_ID="${PASEO_MAESTRO_APP_ID:-sh.paseo.debug}"
+export PASEO_MAESTRO_APP_ID="${PASEO_MAESTRO_APP_ID:-me.ottocode.mobile.debug}"
 export PASEO_MAESTRO_DIRECT_ENDPOINT="${PASEO_MAESTRO_DIRECT_ENDPOINT:-127.0.0.1:6767}"
 export PASEO_MAESTRO_DAEMON_WS_URL="${PASEO_MAESTRO_DAEMON_WS_URL:-ws://127.0.0.1:6767/ws}"
 export PASEO_MAESTRO_DAEMON_HEALTH_URL="${PASEO_MAESTRO_DAEMON_HEALTH_URL:-http://127.0.0.1:6767/api/health}"
@@ -70,7 +70,7 @@ render_flow() {
   local source="$1"
   local target="$2"
   perl -0pe '
-    s/^appId: sh\.paseo$/appId: $ENV{PASEO_MAESTRO_APP_ID}/m;
+    s/^appId: me\.ottocode\.mobile(?: \# OTTO\(identity\))?$/appId: $ENV{PASEO_MAESTRO_APP_ID}/m;
     s/\$\{PASEO_MAESTRO_APP_ID\}/$ENV{PASEO_MAESTRO_APP_ID}/g;
     s/\$\{PASEO_MAESTRO_DIRECT_ENDPOINT\}/$ENV{PASEO_MAESTRO_DIRECT_ENDPOINT}/g;
     s/\$\{PASEO_MAESTRO_DRAG_A_NAME\}/$ENV{PASEO_MAESTRO_DRAG_A_NAME}/g;

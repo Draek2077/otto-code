@@ -82,7 +82,7 @@ describe("CLI executable selection", () => {
         executablePath: "/opt/Paseo/paseo",
         resolveWorkspaceCli,
       }),
-    ).toBe(path.join("/opt/Paseo", "resources", "bin", "paseo"));
+    ).toBe(path.join("/opt/Paseo", "resources", "bin", "otto"));
     expect(
       resolveCliShimPath({
         platform: "darwin",
@@ -90,6 +90,6 @@ describe("CLI executable selection", () => {
         executablePath: "/Applications/Paseo.app/Contents/MacOS/Paseo",
         resolveWorkspaceCli,
       }),
-    ).toBe(path.join("/Applications/Paseo.app", "Contents", "Resources", "bin", "paseo"));
+    ).toBe(path.join("/Applications/Paseo.app", "Contents", "Resources", "bin", "otto"));
   });
 });

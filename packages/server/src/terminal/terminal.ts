@@ -485,7 +485,8 @@ function resolvePaseoCliShim(binDir: string): string | null {
 }
 
 function paseoCliShimNames(): string[] {
-  return process.platform === "win32" ? ["paseo.cmd", "paseo.exe", "paseo"] : ["paseo"];
+  // OTTO(identity): the CLI is installed as otto.
+  return process.platform === "win32" ? ["otto.cmd", "otto.exe", "otto"] : ["otto"];
 }
 
 function resolveZshShellIntegrationRuntimeDir(): string {

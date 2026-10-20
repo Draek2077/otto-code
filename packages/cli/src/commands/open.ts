@@ -3,12 +3,14 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { spawnProcess } from "@getpaseo/server/process";
 import { buildAgentDeepLink, type AgentDeepLinkTarget } from "@getpaseo/protocol/agent-deep-link";
+import { OTTO_PRODUCT_NAME, OTTO_RELEASES_URL } from "@getpaseo/protocol/otto/identity";
 
 function findDesktopApp(): string | null {
   if (process.platform === "darwin") {
     const candidates = [
-      "/Applications/Paseo.app",
-      path.join(homedir(), "Applications", "Paseo.app"),
+      // OTTO(identity): the installed desktop app is named Otto.
+      "/Applications/Otto.app",
+      path.join(homedir(), "Applications", "Otto.app"),
     ];
 
     for (const candidate of candidates) {
@@ -22,9 +24,10 @@ function findDesktopApp(): string | null {
 
   if (process.platform === "linux") {
     const candidates = [
-      "/usr/bin/Paseo",
-      "/opt/Paseo/Paseo",
-      path.join(homedir(), "Applications", "Paseo.AppImage"),
+      // OTTO(identity): the installed desktop app is named Otto.
+      "/usr/bin/Otto",
+      "/opt/Otto/Otto",
+      path.join(homedir(), "Applications", "Otto.AppImage"),
     ];
 
     for (const candidate of candidates) {
@@ -76,7 +79,7 @@ function launchDesktop(args: string[]): void {
   const desktopApp = findDesktopApp();
   if (!desktopApp) {
     throw new Error(
-      "Paseo desktop app not found. Install it from https://github.com/getpaseo/paseo/releases",
+      `${OTTO_PRODUCT_NAME} desktop app not found. Install it from ${OTTO_RELEASES_URL}` /* OTTO(identity) */,
     );
   }
 

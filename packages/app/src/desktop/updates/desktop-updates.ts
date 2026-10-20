@@ -2,6 +2,10 @@ import { isElectronRuntime } from "@/desktop/host";
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 import { isWeb } from "@/constants/platform";
 import { i18n } from "@/i18n/i18next";
+import {
+  OTTO_PRODUCT_NAME,
+  OTTO_RELEASE_DOWNLOAD_BASE_URL,
+} from "@getpaseo/protocol/otto/identity";
 
 export interface DesktopAppUpdateCheckResult {
   hasUpdate: boolean;
@@ -38,7 +42,7 @@ export interface LocalDaemonVersionResult {
   error: string | null;
 }
 
-const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/getpaseo/paseo/releases/download";
+const RELEASE_DOWNLOAD_BASE_URL = OTTO_RELEASE_DOWNLOAD_BASE_URL; // OTTO(identity)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -194,7 +198,7 @@ export function buildMacAppleSiliconDownloadUrl(version: string | null | undefin
     return null;
   }
 
-  return `${RELEASE_DOWNLOAD_BASE_URL}/v${normalizedVersion}/Paseo-${normalizedVersion}-arm64.dmg`;
+  return `${RELEASE_DOWNLOAD_BASE_URL}/v${normalizedVersion}/${OTTO_PRODUCT_NAME}-${normalizedVersion}-arm64.dmg`; // OTTO(identity)
 }
 
 export function buildDaemonUpdateDiagnostics(result: LocalDaemonUpdateResult): string {

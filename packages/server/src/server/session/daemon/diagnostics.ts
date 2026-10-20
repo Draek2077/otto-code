@@ -556,7 +556,7 @@ export function redactDiagnostic(
   }
 
   return redacted
-    .replace(/paseo:\/\/\S+/gi, "paseo://[redacted]")
+    .replace(/(?:otto|paseo):\/\/\S+/gi, "otto://[redacted]") // OTTO(identity)
     .replace(
       /([?&](?:password|token|secret|key|publicKey|daemonPublicKeyB64)=)[^&\s"']+/gi,
       "$1[redacted]",

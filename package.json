@@ -72,6 +72,8 @@
     "format": "oxfmt .",
     "format:files": "oxfmt",
     "format:check": "oxfmt --check .",
+    "otto:seams": "node scripts/otto/seams.mjs",
+    "otto:seams:check": "node scripts/otto/seams.mjs --check",
     "format:check:files": "oxfmt --check",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",

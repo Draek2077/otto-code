@@ -11,15 +11,15 @@ describe("agent deep links", () => {
 
     const link = buildAgentDeepLink(target);
 
-    expect(link).toBe("paseo://h/server%2Fmain/agent/agent%20123");
+    expect(link).toBe("otto://h/server%2Fmain/agent/agent%20123");
     expect(buildAgentDeepLinkRoute(target)).toBe("/h/server%2Fmain/agent/agent%20123");
     expect(parseAgentDeepLink(link)).toEqual(target);
   });
 
   it("rejects links outside the exact agent route", () => {
     expect(parseAgentDeepLink("https://h/server/agent/agent-1")).toBeNull();
-    expect(parseAgentDeepLink("paseo://app/h/server/agent/agent-1")).toBeNull();
-    expect(parseAgentDeepLink("paseo://h/server/agent/agent-1?message=hello")).toBeNull();
-    expect(parseAgentDeepLink("paseo://h/server/agent/agent-1/extra")).toBeNull();
+    expect(parseAgentDeepLink("otto://app/h/server/agent/agent-1")).toBeNull();
+    expect(parseAgentDeepLink("otto://h/server/agent/agent-1?message=hello")).toBeNull();
+    expect(parseAgentDeepLink("otto://h/server/agent/agent-1/extra")).toBeNull();
   });
 });

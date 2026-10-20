@@ -31,6 +31,8 @@ import {
   refreshWorkspaceServicePort,
 } from "./workspace-service-port-registry.js";
 import type { PaseoServicePortAllocation } from "@getpaseo/protocol/paseo-config-schema";
+import { basename } from "node:path";
+import { resolvePaseoConfigPath } from "../utils/paseo-config-file.js";
 
 export interface WorktreeBootstrapTerminalResult {
   name: string | null;
@@ -907,7 +909,9 @@ export async function spawnWorkspaceScript(
   const scriptConfigs = getScriptConfigs(configResult.config);
   const config = scriptConfigs.get(scriptName);
   if (!config) {
-    throw new Error(`Script '${scriptName}' is not configured in paseo.json`);
+    throw new Error(
+      `Script '${scriptName}' is not configured in ${basename(resolvePaseoConfigPath(repoRoot))}`, // OTTO(identity)
+    );
   }
 
   const serviceScript = isServiceScript(config);

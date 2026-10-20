@@ -1,3 +1,4 @@
+import { OTTO_MCP_SERVER_NAME } from "./otto/identity.js";
 const TOOL_TOKEN_REGEX = /[a-z0-9]+/g;
 const STANDARD_NAMESPACE_SEPARATOR_REGEX = /[.:/]/;
 
@@ -39,6 +40,13 @@ export function isLikelyNamespacedToolName(name: string): boolean {
   return false;
 }
 
+// OTTO(identity): the agent MCP server is named otto; Paseo-named tool calls stay recognized.
+function isOttoMcpServerSegment(segment: string): boolean {
+  return [OTTO_MCP_SERVER_NAME, "paseo"].some(
+    (name) => segment === name || segment.startsWith(`${name}_`),
+  );
+}
+
 export function isPaseoToolName(name: string): boolean {
   const normalized = normalizeToolName(name);
   if (isSpeakToolName(normalized)) {
@@ -49,12 +57,12 @@ export function isPaseoToolName(name: string): boolean {
     return (
       segments.length >= 3 &&
       segments[0] === "mcp" &&
-      (segments[1] === "paseo" || segments[1].startsWith("paseo_"))
+      isOttoMcpServerSegment(segments[1]) /* OTTO(identity) */
     );
   }
   if (normalized.includes(".")) {
     const firstSegment = normalized.split(".")[0];
-    return firstSegment === "paseo" || firstSegment.startsWith("paseo_");
+    return isOttoMcpServerSegment(firstSegment) /* OTTO(identity) */;
   }
   return false;
 }
@@ -66,7 +74,7 @@ export function getPaseoToolLeafName(name: string): string | null {
     if (
       segments.length >= 3 &&
       segments[0] === "mcp" &&
-      (segments[1] === "paseo" || segments[1].startsWith("paseo_"))
+      isOttoMcpServerSegment(segments[1]) /* OTTO(identity) */
     ) {
       return segments.slice(2).join("__");
     }
@@ -74,7 +82,7 @@ export function getPaseoToolLeafName(name: string): string | null {
   }
   if (normalized.includes(".")) {
     const firstSegment = normalized.split(".")[0];
-    if (firstSegment === "paseo" || firstSegment.startsWith("paseo_")) {
+    if (isOttoMcpServerSegment(firstSegment) /* OTTO(identity) */) {
       return normalized.split(".").slice(1).join(".");
     }
     return null;

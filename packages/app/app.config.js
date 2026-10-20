@@ -68,8 +68,9 @@ function resolveSecretFile(params) {
 
 const variants = {
   production: {
-    name: "Paseo",
-    packageId: "sh.paseo",
+    // OTTO(identity): Otto store names and package ids.
+    name: "Otto",
+    packageId: "me.ottocode.mobile",
     googleServicesFile: resolveSecretFile({
       envKey: "GOOGLE_SERVICES_FILE_PROD",
       fallbackRelativePath: "./.secrets/google-services.prod.json",
@@ -80,8 +81,8 @@ const variants = {
     }),
   },
   development: {
-    name: "Paseo Debug",
-    packageId: "sh.paseo.debug",
+    name: "Otto Debug", // OTTO(identity)
+    packageId: "me.ottocode.mobile.debug",
     googleServicesFile: resolveSecretFile({
       envKey: "GOOGLE_SERVICES_FILE_DEBUG",
       fallbackRelativePath: "./.secrets/google-services.debug.json",
@@ -99,11 +100,11 @@ const nativeReleaseVersion = getNativeReleaseVersion(pkg.version);
 export default {
   expo: {
     name: variant.name,
-    slug: "voice-mobile",
+    slug: "otto-code-mobile", // OTTO(identity)
     version: nativeReleaseVersion.appVersion,
     orientation: "portrait",
     icon: "./assets/images/icon.png",
-    scheme: "paseo",
+    scheme: "otto", // OTTO(identity)
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
     ios: {
@@ -192,9 +193,9 @@ export default {
       profileBuild: isProfileBuild,
       router: {},
       eas: {
-        projectId: "0e7f65ce-0367-46c8-a238-2b65963d235a",
+        projectId: "69eddb63-f77d-413a-b2b7-ed83e8e16759", // OTTO(identity): Otto EAS project
       },
     },
-    owner: "getpaseo",
+    owner: "otto-code", // OTTO(identity)
   },
 };

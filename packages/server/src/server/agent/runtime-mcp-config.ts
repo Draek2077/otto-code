@@ -1,6 +1,7 @@
 import type { AgentSessionConfig, McpServerConfig } from "./agent-sdk-types.js";
+import { OTTO_MCP_SERVER_NAME } from "@getpaseo/protocol/otto/identity";
 
-const PASEO_MCP_SERVER_NAME = "paseo";
+const PASEO_MCP_SERVER_NAME = OTTO_MCP_SERVER_NAME; // OTTO(identity)
 const PASEO_MCP_PATHNAME = "/mcp/agents";
 
 export function stripInternalPaseoMcpServer(config: AgentSessionConfig): AgentSessionConfig {

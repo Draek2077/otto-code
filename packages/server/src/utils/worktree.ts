@@ -1,4 +1,3 @@
-import { OTTO_PROJECT_CONFIG_FILE } from "@getpaseo/protocol/otto/identity";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import {
@@ -18,7 +17,11 @@ import {
   buildStringCommandShellInvocation,
   createStringCommandShellEnv,
 } from "./string-command-shell.js";
-import { readPaseoConfigJson, resolvePaseoConfigPath } from "./paseo-config-file.js";
+import {
+  readPaseoConfigJson,
+  resolvePaseoConfigFileName,
+  resolvePaseoConfigPath,
+} from "./paseo-config-file.js";
 export {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
@@ -274,7 +277,7 @@ export function readPaseoConfig(repoRoot: string): ReadPaseoConfigResult {
 export function paseoConfigParseError(failure: { configPath: string; error: unknown }): Error {
   const detail = failure.error instanceof Error ? failure.error.message : String(failure.error);
   return new Error(
-    `Failed to parse ${OTTO_PROJECT_CONFIG_FILE} at ${failure.configPath}: ${detail}` /* OTTO(identity) */,
+    `Failed to parse ${basename(failure.configPath)} at ${failure.configPath}: ${detail}` /* OTTO(identity) */,
     {
       cause: failure.error,
     },
@@ -816,8 +819,10 @@ export async function seedPaseoConfigFile(options: {
   sourceCwd: string;
   targetCwd: string;
 }): Promise<void> {
-  const sourceConfigPath = join(options.sourceCwd, OTTO_PROJECT_CONFIG_FILE); // OTTO(identity)
-  const targetConfigPath = join(options.targetCwd, OTTO_PROJECT_CONFIG_FILE); // OTTO(identity)
+  // OTTO(identity): seed whichever project config file the source uses.
+  const configFileName = resolvePaseoConfigFileName(options.sourceCwd);
+  const sourceConfigPath = join(options.sourceCwd, configFileName);
+  const targetConfigPath = join(options.targetCwd, configFileName);
   await copyFile(sourceConfigPath, targetConfigPath, fsConstants.COPYFILE_EXCL).catch((error) => {
     const code = (error as NodeJS.ErrnoException).code;
     if (code !== "EEXIST" && code !== "ENOENT") throw error;

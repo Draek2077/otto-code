@@ -21,6 +21,7 @@ import { getDesktopDaemonLogs, type DesktopDaemonLogs } from "@/desktop/daemon/d
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { isNative, isWeb } from "@/constants/platform";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { OTTO_ISSUES_NEW_URL } from "@getpaseo/protocol/otto/identity";
 
 interface StartupSplashScreenProps {
   bootstrapState?: {
@@ -29,7 +30,7 @@ interface StartupSplashScreenProps {
   };
 }
 
-const GITHUB_ISSUE_URL = "https://github.com/getpaseo/paseo/issues/new";
+const GITHUB_ISSUE_URL = OTTO_ISSUES_NEW_URL; // OTTO(identity)
 const DOCS_URL = "https://paseo.sh/docs";
 
 const LOGO_SIZE = 96;

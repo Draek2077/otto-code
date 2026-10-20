@@ -4,6 +4,10 @@ Paseo is a mobile app for monitoring and controlling your local AI coding agents
 
 **Supported agents:** Claude Code, Codex, GitHub Copilot, OpenCode, Pi, Antigravity, and Muse Code.
 
+<!-- OTTO(agent-rules) -->
+
+**This repository is Otto, built on Paseo.** Read [docs/otto-agents.md](docs/otto-agents.md) first; its rules win where they conflict with this file.
+
 ## Repository map
 
 This is an npm workspace monorepo:

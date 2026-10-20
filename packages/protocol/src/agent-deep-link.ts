@@ -1,3 +1,4 @@
+import { OTTO_URL_SCHEME } from "./otto/identity.js";
 export interface AgentDeepLinkTarget {
   serverId: string;
   agentId: string;
@@ -24,7 +25,7 @@ export function buildAgentDeepLinkRoute(
 }
 
 export function buildAgentDeepLink(target: AgentDeepLinkTarget): string {
-  return `paseo:/${buildAgentDeepLinkRoute(target)}`;
+  return `${OTTO_URL_SCHEME}:/${buildAgentDeepLinkRoute(target)}`; // OTTO(identity)
 }
 
 export function parseAgentDeepLink(input: string): AgentDeepLinkTarget | null {
@@ -36,7 +37,7 @@ export function parseAgentDeepLink(input: string): AgentDeepLinkTarget | null {
   }
 
   if (
-    url.protocol !== "paseo:" ||
+    url.protocol !== `${OTTO_URL_SCHEME}:` /* OTTO(identity) */ ||
     url.hostname !== "h" ||
     url.username ||
     url.password ||

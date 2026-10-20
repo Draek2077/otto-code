@@ -113,12 +113,14 @@ import {
   type AgentDeepLinkTarget,
 } from "@getpaseo/protocol/agent-deep-link";
 import { AgentNavigationInbox, parseAgentDeepLinkFromArgv } from "./agent-navigation.js";
+import { OTTO_PRODUCT_NAME, OTTO_URL_SCHEME } from "@getpaseo/protocol/otto/identity";
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
-const APP_SCHEME = "paseo";
+// OTTO(identity): the scheme is also the renderer origin, so it keys stored app state.
+const APP_SCHEME = OTTO_URL_SCHEME;
 const PASEO_DEBUG = process.env.PASEO_DEBUG === "1";
 const DISABLE_SINGLE_INSTANCE_LOCK = process.env.PASEO_DISABLE_SINGLE_INSTANCE_LOCK === "1";
-const APP_NAME = process.env.PASEO_TEST_APP_NAME?.trim() || "Paseo";
+const APP_NAME = process.env.PASEO_TEST_APP_NAME?.trim() || OTTO_PRODUCT_NAME; // OTTO(identity)
 const DESKTOP_WINDOW_CHROME_MODE = resolveDesktopWindowChromeMode({
   platform: process.platform,
   override: process.env.PASEO_DESKTOP_WINDOW_CONTROLS,
@@ -327,7 +329,13 @@ if (forcedUserDataDir) {
     );
     const isWorktree = path.resolve(topLevel, ".git") !== commonDir;
     if (isWorktree) {
-      app.setPath("userData", path.join(app.getPath("appData"), `Paseo-${devWorktreeName}`));
+      app.setPath(
+        "userData",
+        path.join(
+          app.getPath("appData"),
+          `${OTTO_PRODUCT_NAME}-${devWorktreeName}`,
+        ) /* OTTO(identity) */,
+      );
       log.info("[worktree] isolated userData for worktree:", devWorktreeName);
     } else {
       devWorktreeName = null;
@@ -351,8 +359,9 @@ if (electronFlags) {
 
 if (process.platform === "linux") {
   // Keep the desktop/dock identity independent of the wrapped Electron filename.
-  app.setDesktopName("Paseo.desktop");
-  if (!app.commandLine.hasSwitch("class")) app.commandLine.appendSwitch("class", "Paseo");
+  // OTTO(identity): Linux desktop entry and window class follow the product name.
+  app.setDesktopName(`${OTTO_PRODUCT_NAME}.desktop`);
+  if (!app.commandLine.hasSwitch("class")) app.commandLine.appendSwitch("class", OTTO_PRODUCT_NAME);
   log.info("[linux-sandbox]", {
     enabled: !app.commandLine.hasSwitch("no-sandbox"),
     reason: process.env.PASEO_DESKTOP_SANDBOX_REASON ?? "Chromium default",

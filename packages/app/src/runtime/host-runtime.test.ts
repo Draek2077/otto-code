@@ -3944,7 +3944,7 @@ describe("HostRuntimeStore", () => {
 
     expect(requests).toEqual([]);
     expect(store.getHosts().map((host) => host.serverId)).toEqual([
-      "srv_localhost:6767",
+      "srv_localhost:6868",
       "srv_10.0.0.5:6767",
     ]);
     store.syncHosts([]);

@@ -18,6 +18,7 @@ import {
 import { AdaptiveModalSheet, AdaptiveTextInput, type SheetHeader } from "./adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { PairingTargetTracker } from "./pair-link-credentials";
+import { OTTO_DEFAULT_DAEMON_PORT } from "@getpaseo/protocol/otto/identity";
 
 const FLEX_ONE_STYLE = { flex: 1 } as const;
 
@@ -316,7 +317,7 @@ function AddHostModalContent({ visible, onClose, onCancel, onSaved }: AddHostMod
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [host, setHost] = useState("");
-  const [port, setPort] = useState("6767");
+  const [port, setPort] = useState(String(OTTO_DEFAULT_DAEMON_PORT)); // OTTO(identity)
   const [useTls, setUseTls] = useState(false);
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -574,7 +575,7 @@ function AddHostModalContent({ visible, onClose, onCancel, onSaved }: AddHostMod
             initialValue={port}
             resetKey={`direct-port-${inputResetKey}`}
             onChangeText={setPort}
-            placeholder="6767"
+            placeholder={String(OTTO_DEFAULT_DAEMON_PORT)} /* OTTO(identity) */
             placeholderTextColor={theme.colors.foregroundMuted}
             style={styles.input}
             autoCapitalize="none"
@@ -665,7 +666,7 @@ function AddHostModalContent({ visible, onClose, onCancel, onSaved }: AddHostMod
             initialValue={advancedUri}
             resetKey={`direct-host-uri-${inputResetKey}`}
             onChangeText={handleChangeAdvancedUri}
-            placeholder="tcp://localhost:6767?ssl=true"
+            placeholder={`tcp://localhost:${OTTO_DEFAULT_DAEMON_PORT}?ssl=true`} /* OTTO(identity) */
             placeholderTextColor={theme.colors.foregroundMuted}
             style={styles.input}
             autoCapitalize="none"

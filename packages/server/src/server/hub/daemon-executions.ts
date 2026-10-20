@@ -14,6 +14,7 @@ import type { CreatePaseoWorktreeWorkflowResult } from "../worktree-session.js";
 import { buildStoredAgentPayload } from "../agent/agent-projections.js";
 import { serializeAgentSnapshot, serializeAgentStreamEvent } from "../messages.js";
 import { daemonExecutionKey, type DaemonAgentOwner } from "../agent/agent-owner.js";
+import { OTTO_MCP_SERVER_NAME } from "@getpaseo/protocol/otto/identity";
 
 export interface HubExecutionAgentCreateInput {
   executionId: string;
@@ -348,8 +349,11 @@ export class DaemonExecutions implements HubExecutionAgents {
 }
 
 function requireHubMcpNamespace(mcpServers: Record<string, McpServerConfig> | undefined): void {
-  if (mcpServers && Object.hasOwn(mcpServers, "paseo")) {
-    throw new Error('Hub execution MCP server name "paseo" is reserved by the daemon');
+  // OTTO(identity): reserve the daemon's actual MCP server name.
+  if (mcpServers && Object.hasOwn(mcpServers, OTTO_MCP_SERVER_NAME)) {
+    throw new Error(
+      `Hub execution MCP server name "${OTTO_MCP_SERVER_NAME}" is reserved by the daemon`,
+    );
   }
 }
 
