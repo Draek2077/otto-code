@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import log from "electron-log/main";
+import { OTTO_PRODUCT_NAME } from "@getpaseo/protocol/otto/identity";
 
 export interface ShellRcInfo {
   shell: string;
@@ -87,7 +88,8 @@ export async function ensurePathInShellRc(): Promise<{ shellUpdated: boolean }> 
     }
 
     await fs.mkdir(path.dirname(info.rcFile), { recursive: true });
-    await fs.appendFile(info.rcFile, `\n# Added by Paseo\n${info.exportLine}\n`);
+    // OTTO(identity)
+    await fs.appendFile(info.rcFile, `\n# Added by ${OTTO_PRODUCT_NAME}\n${info.exportLine}\n`);
 
     return { shellUpdated: true };
   } catch (err) {

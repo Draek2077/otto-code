@@ -4,6 +4,7 @@ import log from "electron-log/main";
 import { resolveCliInstallSourcePath } from "./path.js";
 import { getBundledCliShimPath, getCliTargetPath, getLocalBinDir } from "./paths.js";
 import { ensurePathInShellRc } from "./shell-rc.js";
+import { OTTO_PRODUCT_NAME } from "@getpaseo/protocol/otto/identity";
 
 interface InstallStatus {
   installed: boolean;
@@ -43,7 +44,8 @@ export async function installCli(): Promise<InstallStatus> {
       "@echo off",
       `set "BUNDLED_CLI=${shimPath}"`,
       `if not exist "%BUNDLED_CLI%" (`,
-      `  echo Paseo CLI not found at %BUNDLED_CLI% — is Paseo installed? 1>&2`,
+      // OTTO(identity)
+      `  echo ${OTTO_PRODUCT_NAME} CLI not found at %BUNDLED_CLI%. Is ${OTTO_PRODUCT_NAME} installed? 1>&2`,
       `  exit /b 1`,
       `)`,
       `call "%BUNDLED_CLI%" %*`,
