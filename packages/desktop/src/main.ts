@@ -1,3 +1,6 @@
+// oxlint-disable-next-line import/no-unassigned-import -- OTTO(environment): map OTTO_* onto PASEO_* first.
+import "@getpaseo/protocol/otto/apply-environment";
+import { applyOttoEnvironment } from "@getpaseo/protocol/otto/environment";
 import { protectConsoleStreams } from "./diagnostics/console-streams.js";
 protectConsoleStreams();
 
@@ -1016,7 +1019,11 @@ async function bootstrap(): Promise<void> {
 void runDesktopStartup({
   hasPendingGuiLaunchRequest: Boolean(pendingOpenProjectPath || pendingAgentNavigation),
   runCliPassthroughIfRequested,
-  inheritLoginShellEnv,
+  // OTTO(environment): OTTO_* settings from the login shell arrive here too.
+  inheritLoginShellEnv: (...args: Parameters<typeof inheritLoginShellEnv>) => {
+    inheritLoginShellEnv(...args);
+    applyOttoEnvironment(process.env);
+  },
   bootstrapGui: bootstrap,
 }).catch((error) => {
   const message = error instanceof Error ? (error.stack ?? error.message) : String(error);

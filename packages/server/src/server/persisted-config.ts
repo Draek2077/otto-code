@@ -1,3 +1,4 @@
+import { OTTO_APP_BASE_URL, OTTO_DEFAULT_LISTEN } from "@getpaseo/protocol/otto/identity";
 import { PluginRegistriesSchema } from "@getpaseo/protocol/plugin-registry";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -364,9 +365,9 @@ const CONFIG_FILENAME = "config.json";
 const DEFAULT_PERSISTED_CONFIG = PersistedConfigSchema.parse({
   version: 1,
   daemon: {
-    listen: "127.0.0.1:6767",
+    listen: OTTO_DEFAULT_LISTEN, // OTTO(identity)
     cors: {
-      allowedOrigins: ["https://app.paseo.sh"],
+      allowedOrigins: [OTTO_APP_BASE_URL], // OTTO(identity)
     },
     relay: {
       enabled: false,

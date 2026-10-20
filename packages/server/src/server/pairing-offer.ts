@@ -1,3 +1,4 @@
+import { OTTO_APP_BASE_URL } from "@getpaseo/protocol/otto/identity";
 import type { Logger } from "pino";
 
 import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
@@ -35,7 +36,7 @@ export async function generateLocalPairingOffer(args: {
   const relayPublicEndpoint = args.relayPublicEndpoint ?? relayEndpoint;
   const relayUseTls = args.relayUseTls ?? relayEndpoint === "relay.paseo.sh:443";
   const relayPublicUseTls = args.relayPublicUseTls ?? relayUseTls;
-  const appBaseUrl = args.appBaseUrl ?? "https://app.paseo.sh";
+  const appBaseUrl = args.appBaseUrl ?? OTTO_APP_BASE_URL /* OTTO(identity) */;
   const serverId = getOrCreateServerId(args.paseoHome, { logger: args.logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(args.paseoHome, args.logger);
   const offer = await createConnectionOfferV2({

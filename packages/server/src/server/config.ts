@@ -1,3 +1,4 @@
+import { OTTO_APP_BASE_URL, OTTO_DEFAULT_DAEMON_PORT } from "@getpaseo/protocol/otto/identity";
 import { configurationEnvironment } from "./config-environment.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -35,9 +36,9 @@ export {
   type PersistedConfig,
 } from "./persisted-config.js";
 
-const DEFAULT_PORT = 6767;
+const DEFAULT_PORT = OTTO_DEFAULT_DAEMON_PORT; // OTTO(identity)
 const DEFAULT_RELAY_ENDPOINT = "relay.paseo.sh:443";
-const DEFAULT_APP_BASE_URL = "https://app.paseo.sh";
+const DEFAULT_APP_BASE_URL = OTTO_APP_BASE_URL; // OTTO(identity)
 const DEFAULT_TRUSTED_PROXIES = ["loopback"];
 
 interface ResolveBundledWebUiDistDirInput {

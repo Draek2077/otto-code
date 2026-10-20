@@ -1,3 +1,5 @@
+// oxlint-disable-next-line import/no-unassigned-import -- OTTO(environment): map OTTO_* onto PASEO_* first.
+import "@getpaseo/protocol/otto/apply-environment";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";

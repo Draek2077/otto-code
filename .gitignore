@@ -98,3 +98,6 @@ app.json
 
 # Project-local Serena configuration and memories.
 .serena/
+
+# Otto: scratch space for agent jobs
+.tmp*/

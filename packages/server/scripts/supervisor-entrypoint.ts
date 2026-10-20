@@ -1,3 +1,5 @@
+// oxlint-disable-next-line import/no-unassigned-import -- OTTO(environment): map OTTO_* onto PASEO_* first.
+import "@getpaseo/protocol/otto/apply-environment";
 import { fileURLToPath } from "url";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
@@ -15,7 +17,7 @@ import { loadPersistedConfig } from "../src/server/persisted-config.js";
 import { runSupervisor } from "./supervisor.js";
 import { resolveSupervisorLogFile } from "./supervisor-log-config.js";
 
-process.title = "Paseo Supervisor";
+process.title = "Otto Supervisor"; // OTTO(identity)
 
 interface DaemonRunnerConfig {
   devMode: boolean;

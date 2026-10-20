@@ -1,3 +1,4 @@
+import { OTTO_PROJECT_CONFIG_FILE } from "@getpaseo/protocol/otto/identity";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import {
@@ -272,9 +273,12 @@ export function readPaseoConfig(repoRoot: string): ReadPaseoConfigResult {
 
 export function paseoConfigParseError(failure: { configPath: string; error: unknown }): Error {
   const detail = failure.error instanceof Error ? failure.error.message : String(failure.error);
-  return new Error(`Failed to parse paseo.json at ${failure.configPath}: ${detail}`, {
-    cause: failure.error,
-  });
+  return new Error(
+    `Failed to parse ${OTTO_PROJECT_CONFIG_FILE} at ${failure.configPath}: ${detail}` /* OTTO(identity) */,
+    {
+      cause: failure.error,
+    },
+  );
 }
 
 function readPaseoConfigOrThrow(repoRoot: string): PaseoConfig | null {
@@ -812,8 +816,8 @@ export async function seedPaseoConfigFile(options: {
   sourceCwd: string;
   targetCwd: string;
 }): Promise<void> {
-  const sourceConfigPath = join(options.sourceCwd, "paseo.json");
-  const targetConfigPath = join(options.targetCwd, "paseo.json");
+  const sourceConfigPath = join(options.sourceCwd, OTTO_PROJECT_CONFIG_FILE); // OTTO(identity)
+  const targetConfigPath = join(options.targetCwd, OTTO_PROJECT_CONFIG_FILE); // OTTO(identity)
   await copyFile(sourceConfigPath, targetConfigPath, fsConstants.COPYFILE_EXCL).catch((error) => {
     const code = (error as NodeJS.ErrnoException).code;
     if (code !== "EEXIST" && code !== "ENOENT") throw error;

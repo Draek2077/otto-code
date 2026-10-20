@@ -1,3 +1,4 @@
+import { OTTO_DEFAULT_HOME } from "@getpaseo/protocol/otto/identity";
 import os from "node:os";
 import path from "node:path";
 
@@ -12,7 +13,7 @@ function expandHomeDir(input: string): string {
 }
 
 export function resolvePaseoHome(env: NodeJS.ProcessEnv = process.env): string {
-  const raw = env.PASEO_HOME ?? "~/.paseo";
+  const raw = env.PASEO_HOME ?? OTTO_DEFAULT_HOME; // OTTO(identity)
   const resolved = path.resolve(expandHomeDir(raw));
   return resolved;
 }

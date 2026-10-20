@@ -1,3 +1,4 @@
+import { OTTO_PROJECT_CONFIG_FILE } from "@getpaseo/protocol/otto/identity";
 import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -14,7 +15,7 @@ export {
   type ProjectConfigRpcError,
 } from "@getpaseo/protocol/paseo-config-schema";
 
-export const PASEO_CONFIG_FILE_NAME = "paseo.json";
+export const PASEO_CONFIG_FILE_NAME = OTTO_PROJECT_CONFIG_FILE; // OTTO(identity)
 
 export type ReadPaseoConfigForEditResult =
   | { ok: true; config: PaseoConfigRaw | null; revision: PaseoConfigRevision | null }

@@ -1,3 +1,4 @@
+import { OTTO_DEFAULT_HOME } from "@getpaseo/protocol/otto/identity";
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -137,7 +138,7 @@ export class PrivateHubCredentialStore implements HubCredentialStore {
 }
 
 function resolvePaseoHome(env: Readonly<Record<string, string | undefined>>): string {
-  const configured = env.PASEO_HOME ?? "~/.paseo";
+  const configured = env.PASEO_HOME ?? OTTO_DEFAULT_HOME; // OTTO(identity)
   const expanded = configured === "~" ? homedir() : configured.replace(/^~\//u, `${homedir()}/`);
   return path.resolve(expanded);
 }

@@ -1,4 +1,5 @@
-export const DEFAULT_SSH_DAEMON_PORT = 6767;
+import { OTTO_DEFAULT_DAEMON_PORT } from "./otto/identity.js";
+export const DEFAULT_SSH_DAEMON_PORT = OTTO_DEFAULT_DAEMON_PORT; // OTTO(identity)
 
 export interface SshTransportTarget {
   host: string;
