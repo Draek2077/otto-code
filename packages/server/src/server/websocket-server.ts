@@ -1,4 +1,10 @@
 import { stat } from "node:fs/promises";
+// OTTO(protocol): preserve Otto 0.9 clients without renaming Paseo internals.
+import {
+  encodeOttoServerMessage,
+  normalizeOttoClientMessage,
+  usesLegacyOttoRpcNames,
+} from "@getpaseo/protocol/otto/wire-compatibility";
 import type { CreationSnapshot } from "@getpaseo/protocol/messages";
 import { CreationService } from "./creation/index.js";
 import { MessageReceipts } from "./message-receipts/index.js";
@@ -532,6 +538,8 @@ export class VoiceAssistantWebSocketServer {
   private readonly socketIdentities: Map<WebSocketLike, WebSocketConnectionIdentity> = new Map();
   private readonly externalSessionsByKey: Map<string, ReconnectableSessionConnection> = new Map();
   private readonly pluginSocketIds = new WeakMap<WebSocketLike, string>();
+  // OTTO(protocol): RPC dialect belongs to the requesting socket, not a shared session.
+  private readonly legacyOttoSockets = new WeakSet<WebSocketLike>();
   private readonly pluginSocketCleanup = new WeakMap<WebSocketLike, () => void>();
   private readonly serverId: string;
   private readonly daemonVersion: string;
@@ -1178,17 +1186,30 @@ export class VoiceAssistantWebSocketServer {
 
     let payload: string;
     try {
-      payload = JSON.stringify(message);
+      // OTTO(protocol): additive aliases remain parseable by both client generations.
+      payload = JSON.stringify(encodeOttoServerMessage(message));
     } catch (err) {
       this.logger.warn({ err }, "ws_serialize_failed");
       return;
     }
 
     const payloadBytes = outboundFrameByteLength(payload);
+    // OTTO(protocol): serialize the legacy RPC spelling only when that dialect was
+    // requested. Mixed old/new sockets can share a logical session safely.
+    let legacyPayload: string | undefined;
     for (const ws of writableSockets) {
-      this.sendFrameToClient(ws, payload, payloadBytes, () => {
-        this.runtimeMetrics.recordOutboundMessage(message, ws.bufferedAmount);
-      });
+      if (this.legacyOttoSockets.has(ws) && legacyPayload === undefined) {
+        legacyPayload = JSON.stringify(encodeOttoServerMessage(message, true));
+      }
+      const frame = this.legacyOttoSockets.has(ws) ? legacyPayload! : payload;
+      this.sendFrameToClient(
+        ws,
+        frame,
+        frame === payload ? payloadBytes : outboundFrameByteLength(frame),
+        () => {
+          this.runtimeMetrics.recordOutboundMessage(message, ws.bufferedAmount);
+        },
+      );
     }
   }
 
@@ -2308,7 +2329,8 @@ export class VoiceAssistantWebSocketServer {
       }
 
       const parsed = JSON.parse(buffer.toString());
-      const parsedMessage = WSInboundMessageSchema.safeParse(parsed);
+      // OTTO(protocol): canonical validation still rejects malformed legacy requests.
+      const parsedMessage = WSInboundMessageSchema.safeParse(normalizeOttoClientMessage(parsed));
       if (!parsedMessage.success) {
         this.handleInvalidInboundMessage({
           ws,
@@ -2322,6 +2344,8 @@ export class VoiceAssistantWebSocketServer {
       }
 
       const message = parsedMessage.data;
+      // OTTO(protocol): remember the dialect only after the complete envelope validates.
+      this.rememberOttoRpcDialect(ws, parsed);
       this.recordInboundMessageType(message.type);
 
       if (message.type === "ping" && activeConnection) {
@@ -2372,6 +2396,11 @@ export class VoiceAssistantWebSocketServer {
     } catch (error) {
       this.handleRawMessageError({ ws, data, error, log });
     }
+  }
+
+  // OTTO(protocol): invoked only after full message validation succeeds.
+  private rememberOttoRpcDialect(ws: WebSocketLike, message: unknown): void {
+    if (usesLegacyOttoRpcNames(message)) this.legacyOttoSockets.add(ws);
   }
 
   private async dispatchSessionMessage(

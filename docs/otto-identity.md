@@ -63,6 +63,27 @@ previous document. The original recovery copy also retains settings and state fo
 features awaiting restoration. This boundary does not change wire validation or
 make deferred Otto features available in the clean baseline.
 
+Protected persistence writes share an ordering queue across store instances. A
+replacement store waits for pending saves before hydration, including the read
+needed to preserve dormant fields. Explicit removals follow those saves.
+
+## Otto 0.9 wire compatibility
+
+The transport codec in `packages/protocol/src/otto/wire-compatibility.ts` contains
+the compatibility boundary for existing Otto clients and hosts. Paseo's internal
+types and RPC names remain canonical. The daemon adds Otto's previous checkout,
+workspace-visibility and stash ownership fields at their declared wire locations.
+The client decodes those previous fields before full protocol validation; a
+malformed canonical value still fails validation.
+
+The daemon accepts the previous worktree RPC names and responds using the
+requesting socket's dialect. Other sockets sharing the session retain their own
+dialect. Clients recognize an Otto 0.9 host by its version and existing Brain
+capability, without treating a genuine Paseo host as an Otto host. A payload-free
+legacy activity-statistics invalidation is ignored while that UI is dormant.
+Arbitrary tool results, plugin payloads, user configuration, and the relay and
+Hub transport protocols are outside this codec.
+
 ## Marking edits to Paseo files
 
 Every edit inside a Paseo file carries an `OTTO(<seam>)` marker, for example

@@ -31,6 +31,13 @@ import {
   type ServerInfoStatusPayload,
 } from "@getpaseo/protocol/messages";
 import { validateWSOutboundMessage } from "@getpaseo/protocol/validation/ws-outbound";
+// OTTO(protocol): contain the 0.9 wire-name bridge at the transport boundary.
+import {
+  encodeOttoClientMessage,
+  isDormantOttoNotification,
+  isLegacyOttoServerInfo,
+  normalizeOttoServerMessage,
+} from "@getpaseo/protocol/otto/wire-compatibility";
 import type {
   AgentStreamEventPayload,
   AgentSnapshotPayload,
@@ -1295,6 +1302,8 @@ export class DaemonClient {
   private readonly logClientIdHash: string;
   private readonly logGeneration: number | null;
   private lastServerInfoMessage: ServerInfoStatusPayload | null = null;
+  // OTTO(protocol): selected from validated server_info before pending sends flush.
+  private legacyOttoWireNames = false;
   private runtimeMetricsInterval: ReturnType<typeof setInterval> | null = null;
   private runtimeMetrics: DaemonClientRuntimeMetrics | null = null;
   private pingProbe: PingProbe | null = null;
@@ -1775,7 +1784,10 @@ export class DaemonClient {
       envelopeType,
       messageType,
     });
-    this.sendTransportFrame(JSON.stringify(message));
+    // OTTO(protocol): old Otto hosts retain their existing worktree RPC names.
+    this.sendTransportFrame(
+      JSON.stringify(encodeOttoClientMessage(message, this.legacyOttoWireNames)),
+    );
   }
 
   private sendTransportFrame(frame: string | Uint8Array | ArrayBuffer): void {
@@ -6403,7 +6415,10 @@ export class DaemonClient {
       this.endTraceSection(parseTraceOpen);
     }
 
-    const parsed = validateWSOutboundMessage(parsedJson);
+    // OTTO(protocol): the former stats UI's payload-free signal has no consumer yet.
+    if (this.legacyOttoWireNames && isDormantOttoNotification(parsedJson)) return;
+    // OTTO(protocol): decoding aliases never bypasses complete message validation.
+    const parsed = validateWSOutboundMessage(normalizeOttoServerMessage(parsedJson));
     if (!parsed.success) {
       const responseIdentity = extractCorrelatedResponseIdentity(parsedJson);
       const envelopeType =
@@ -6776,6 +6791,8 @@ export class DaemonClient {
     if (consumerMessage.type === "status") {
       const serverInfo = parseServerInfoStatusPayload(consumerMessage.payload);
       if (serverInfo) {
+        // OTTO(protocol): inspect preserved feature metadata before typed projection.
+        this.legacyOttoWireNames = isLegacyOttoServerInfo(consumerMessage.payload);
         this.lastServerInfoMessage = serverInfo;
         if (this.connectionState.status === "connecting") {
           this.resetConnectTimeout();
