@@ -2,6 +2,7 @@ import { createPluginHosts } from "./hosts";
 import { afterEach, expect, it } from "vitest";
 import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { PluginRegistry } from "./registry";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 const audio = { play: async () => 0 };
 
@@ -74,7 +75,7 @@ it("rejects catalogs without requirements from pre-0.8 daemons", () => {
   result.installCatalog("host", [{ id: "example", clientBundle }], { client, audio });
   expect(starts()).toBe(0);
   expect(result.getEvaluationError("host", "example")).toContain(
-    "https://paseo.sh/docs/plugins/migration",
+    `${OTTO_WEBSITE_URL}/docs/plugins/migration`,
   );
 });
 

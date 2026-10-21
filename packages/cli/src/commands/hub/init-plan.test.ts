@@ -1,4 +1,5 @@
 import YAML from "yaml";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createHubInitScaffold,
@@ -11,9 +12,9 @@ import { githubRepositoryFromRemote } from "./init.js";
 describe("Hub init planning", () => {
   it("prints direct resumable commands for declined login continuations", () => {
     expect(hubLoginResumeCommand("connect", "https://hub.test")).toBe(
-      "paseo hub connect https://hub.test",
+      "otto hub connect https://hub.test",
     );
-    expect(hubLoginResumeCommand("init", "https://hub.test")).toBe("paseo hub init");
+    expect(hubLoginResumeCommand("init", "https://hub.test")).toBe("otto hub init");
   });
   it("reuses a connected daemon, waits for reconnect, and rejects a different Hub", () => {
     const status = {
@@ -94,7 +95,7 @@ describe("Hub init scaffold", () => {
       if (provider === "discord") expect(event.connection).toBe("discord-paseo");
       expect(event.filters.channels).toBeUndefined();
       expect(parsed.run).toMatchObject({
-        target: { daemon: "build-studio", cwd: "/workspace" },
+        target: { daemon: "build-studio", cwd: path.resolve("/workspace") },
         agent: { provider: "codex", model: "gpt-5", mode: "full-access" },
         continuation: { mode: "conversation" },
         max_runtime: "90m",
