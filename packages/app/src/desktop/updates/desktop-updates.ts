@@ -198,7 +198,7 @@ export function buildMacAppleSiliconDownloadUrl(version: string | null | undefin
     return null;
   }
 
-  return `${RELEASE_DOWNLOAD_BASE_URL}/v${normalizedVersion}/${OTTO_PRODUCT_NAME}-${normalizedVersion}-arm64.dmg`; // OTTO(identity)
+  return `${RELEASE_DOWNLOAD_BASE_URL}/v${normalizedVersion}/${OTTO_PRODUCT_NAME}-${normalizedVersion}-arm64-unsigned.dmg`; // OTTO(identity)
 }
 
 export function buildDaemonUpdateDiagnostics(result: LocalDaemonUpdateResult): string {

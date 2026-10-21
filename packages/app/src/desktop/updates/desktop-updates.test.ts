@@ -112,11 +112,11 @@ describe("desktop-updates helpers", () => {
     });
   });
 
-  it("builds the direct Apple Silicon DMG URL from a version", async () => {
+  it("builds the always-available unsigned Apple Silicon DMG URL from a version", async () => {
     const { buildMacAppleSiliconDownloadUrl } = await loadModuleForPlatform("web");
 
     expect(buildMacAppleSiliconDownloadUrl("v0.1.64")).toBe(
-      "https://github.com/Draek2077/otto-code/releases/download/v0.1.64/Otto-0.1.64-arm64.dmg",
+      "https://github.com/Draek2077/otto-code/releases/download/v0.1.64/Otto-0.1.64-arm64-unsigned.dmg",
     );
     expect(buildMacAppleSiliconDownloadUrl(null)).toBeNull();
   });

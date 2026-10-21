@@ -40,6 +40,33 @@ const identitySource = readFileSync(
 const identityBase = identitySource.match(/OTTO_PASEO_BASE_VERSION = "([^"]+)"/)?.[1];
 const baseMismatch = identityBase !== base.version;
 
+// The relay sees Paseo's routing, framing, and E2EE handshake. Otto identity and
+// compatibility fields belong above this transport, inside encrypted app traffic.
+const upstreamRelayPaths = [
+  "packages/relay/src",
+  "packages/protocol/src/daemon-endpoints.ts",
+  "packages/protocol/src/connection-offer.ts",
+  "packages/protocol/src/websocket-message-limit.ts",
+  "packages/client/src/daemon-client-relay-e2ee-transport.ts",
+  "packages/client/src/daemon-client-websocket-transport.ts",
+  "packages/client/src/daemon-client-transport.ts",
+  "packages/client/src/daemon-client-transport-types.ts",
+  "packages/client/src/daemon-client-transport-utils.ts",
+  "packages/server/src/server/relay-transport.ts",
+  "packages/server/src/server/relay-runtime.ts",
+  "packages/server/src/server/websocket/encrypted-relay-socket.ts",
+];
+const relayChanges = git(
+  "diff",
+  "--name-only",
+  "--no-renames",
+  base.sha,
+  "--",
+  ...upstreamRelayPaths,
+)
+  .split("\n")
+  .filter(Boolean);
+
 const seamCounts = new Map();
 const unmarked = [];
 let markedLines = 0;
@@ -77,6 +104,12 @@ for (const [seam, count] of [...seamCounts].sort((a, b) => b[1] - a[1])) {
 if (VERBOSE) {
   for (const file of modified) console.log(`  M ${file}`);
   for (const file of deleted) console.log(`  D ${file}`);
+}
+console.log(`Upstream relay boundary: ${relayChanges.length === 0 ? "unchanged" : "CHANGED"}`);
+if (relayChanges.length > 0) {
+  console.log("Relay-facing transport must match the pinned Paseo base:");
+  for (const file of relayChanges) console.log(`  ${file}`);
+  if (CHECK) process.exit(1);
 }
 if (baseMismatch) {
   console.log(

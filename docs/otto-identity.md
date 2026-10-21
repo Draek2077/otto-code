@@ -24,6 +24,11 @@ WebSocket subprotocol.
 
 Paseo's relay (`relay.paseo.sh`) and Hub are used exactly as Paseo ships them. Do not change the
 relay client or anything else that would make Otto's relay traffic differ from Paseo's.
+The relay-facing URL roles, protocol version, framing and encrypted-channel handshake
+remain upstream. Otto-specific application metadata and compatibility fields sit inside
+the encrypted payload. Normal browser Origin and User-Agent headers may identify the
+Otto app or website; they are not rewritten. The seam check rejects changes to the
+relay boundary against the recorded Paseo base.
 
 ## Mechanisms
 
@@ -63,6 +68,8 @@ previous document. The original recovery copy also retains settings and state fo
 features awaiting restoration. This boundary does not change wire validation or
 make deferred Otto features available in the clean baseline.
 
+`packages/app/src/otto/validated-persist-storage.ts` owns the preservation wrapper;
+the upstream persistence implementation remains intact for unprotected keys.
 Protected persistence writes share an ordering queue across store instances. A
 replacement store waits for pending saves before hydration, including the read
 needed to preserve dormant fields. Explicit removals follow those saves.
