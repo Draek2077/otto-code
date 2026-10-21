@@ -54,6 +54,8 @@ buildNpmPackage {
       && baseName != "node_modules"
       && baseName != ".git"
       && baseName != ".paseo"
+      && baseName != ".otto"
+      && baseName != ".tmp"
       && baseName != ".DS_Store"
       && baseName != "release";
   };
@@ -206,7 +208,7 @@ buildNpmPackage {
         --add-flags "$out/share/otto-desktop/electron-app" \
         --add-flags "--no-sandbox" \
         --add-flags "--class=otto-desktop" \
-        --set EXPO_DEV_URL "paseo://app/" \
+        --set EXPO_DEV_URL "otto://app/" \
         --set CHROME_DESKTOP "otto-desktop.desktop"
 
       copyDesktopItems

@@ -51,8 +51,8 @@ jobs:
       - name: Commit hash/lockfile updates
         run: |
           git diff --quiet package-lock.json nix/npm-deps.hash && exit 0
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "Draekz"
+          git config user.email "draekz@gmail.com"
           git add package-lock.json nix/npm-deps.hash
           git commit -m "fix: update lockfile signatures and Nix hash [skip ci]"
           git push

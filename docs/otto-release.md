@@ -69,6 +69,12 @@ the same renamed npm tarballs as the release workflow. Its external contract sta
 Otto: `ghcr.io/<owner>/otto`, `/home/otto`, `OTTO_*`, and port 6868. The Nix build
 retains the current upstream build machinery with Otto commands and metadata.
 
+The Nix workflow can verify a branch without publishing. It evaluates the existing
+`nixosModules.otto` and `services.otto` setup, including Otto's system user, data
+directory, port and launcher, then builds and smokes the daemon and builds the
+desktop packages. Its dependency-input artifact records any recalculated lockfile
+or dependency hash so the verified inputs can be reconciled before baseline review.
+
 Otto's website and public manual remain on Otto's deployment configuration. Relay
 hosting is retired; no release workflow deploys an Otto relay. Clients use Paseo's
 hosted relay through the unchanged upstream transport.

@@ -60,6 +60,7 @@ buildNpmPackage rec {
       && baseName != ".git"
       && baseName != ".paseo"
       && baseName != ".otto"
+      && baseName != ".tmp"
       && baseName != ".DS_Store";
   };
 
