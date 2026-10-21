@@ -273,7 +273,11 @@ test("renders the real 0.1.109 notice, which is the entry's whole point", () => 
 });
 
 test("preserves the standalone 0.1.96 Android notice", () => {
-  const changelog = readFileSync(path.resolve("CHANGELOG.md"), "utf8");
+  // OTTO(test-fixture): preserve the upstream regression independently of Otto's release history.
+  const changelog = readFileSync(
+    new URL("./otto/fixtures/paseo-android-update-notice.md", import.meta.url),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
   const entry = changelog.match(/## 0\.1\.96 - 2026-06-13\n([\s\S]*?)(?=\n## |$)/)?.[1];
   assert.ok(entry);
 
