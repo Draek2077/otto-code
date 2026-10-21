@@ -43,6 +43,26 @@ through the npm alias `@getpaseo/plugin`, preserving the upstream plugin import 
 Versioned test hosts inject their simulated plugin API version through the daemon's
 dependencies; production hosts use the recorded Paseo base.
 
+## Upgrading existing Otto app state
+
+The Metro AsyncStorage adapter keeps Otto's physical keys, including the colon-form
+remembered-workspace key. Electron main and its sandboxed preload both use the
+existing `persist:otto-browser` profile so cookies and browser sign-ins stay in place.
+
+Before protected settings or workspace state is read, rewritten or removed during
+migration, the adapter retains an exact first-observed recovery copy under
+`@otto:pre-0.10/`. These copies are excluded from normal hydration and key listings.
+An explicit storage clear removes them too. Credentials and host-registry keys are
+outside this recovery set; pairing continuity has its own migration.
+
+Otto-owned persistence adapters project unsupported object fields out before
+Paseo's strict local-state validation, then preserve those fields on disk when
+supported settings change. Invalid supported values still fail validation. Stable
+record IDs retain their metadata; deleting an entry does not restore it from the
+previous document. The original recovery copy also retains settings and state for
+features awaiting restoration. This boundary does not change wire validation or
+make deferred Otto features available in the clean baseline.
+
 ## Marking edits to Paseo files
 
 Every edit inside a Paseo file carries an `OTTO(<seam>)` marker, for example

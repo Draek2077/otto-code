@@ -1,3 +1,4 @@
+// OTTO(identity): expectations follow the visible Otto command and documentation.
 import { strict as assert } from "node:assert";
 import { describe, it } from "vitest";
 import { render } from "../../output/index.js";

@@ -1,3 +1,4 @@
+// OTTO(identity): expectations follow the visible Otto command and documentation.
 import { strict as assert } from "node:assert";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

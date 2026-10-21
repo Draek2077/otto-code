@@ -1,3 +1,4 @@
+// OTTO(identity): expectations follow the visible Otto command and documentation.
 import YAML from "yaml";
 import path from "node:path";
 import { describe, expect, it } from "vitest";

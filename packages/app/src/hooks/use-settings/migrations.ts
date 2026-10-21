@@ -2,6 +2,8 @@ import { z } from "zod";
 import { readValidatedJson } from "@/storage/validated-storage";
 import { APP_SETTINGS_KEY, SETTINGS_MIGRATIONS_KEY } from "./keys";
 import type { AppSettings, KeyValueStorage, PersistedAppSettings } from "./storage";
+// OTTO(storage): a user's explicit 0.9 choices are not fresh-install defaults.
+import { readOttoSettingsRecovery } from "@/otto/storage-continuity";
 
 const AppliedMigrationsSchema = z.strictObject({ applied: z.array(z.string()) });
 
@@ -35,6 +37,23 @@ export async function migrateAppSettings(
   );
   const applied = new Set(migrationMarker?.applied ?? []);
   let addedMigration = false;
+
+  const previous = await readOttoSettingsRecovery(storage);
+  if (
+    !applied.has(STEER_DEFAULT_MIGRATION) &&
+    ["interrupt", "steer", "queue"].includes(String(previous?.sendBehavior))
+  ) {
+    applied.add(STEER_DEFAULT_MIGRATION);
+    addedMigration = true;
+  }
+  if (
+    options.native &&
+    !applied.has(MOBILE_CONTENT_16_MIGRATION) &&
+    typeof previous?.contentFontSize === "number"
+  ) {
+    applied.add(MOBILE_CONTENT_16_MIGRATION);
+    addedMigration = true;
+  }
 
   let migrated = settings;
   if (!applied.has(STEER_DEFAULT_MIGRATION)) {

@@ -29,6 +29,8 @@ import {
 import { z } from "zod";
 import { APP_SETTINGS_KEY, LEGACY_SETTINGS_KEY } from "./keys";
 import { migrateAppSettings } from "./migrations";
+// OTTO(storage): preserve dormant Otto preferences when supported settings change.
+import { serializeOttoPersistedState } from "@/otto/persisted-state";
 
 export { APP_SETTINGS_KEY } from "./keys";
 export const APP_SETTINGS_QUERY_KEY = ["app-settings"];
@@ -606,10 +608,15 @@ async function writeAppSettings(
   const storedSidebarRowItems = persistedStored.sidebarRowItems;
   await storage.setItem(
     APP_SETTINGS_KEY,
-    JSON.stringify({
-      ...persistedStored,
-      ...settings,
-      sidebarRowItems: { ...storedSidebarRowItems, ...settings.sidebarRowItems },
-    }),
+    serializeOttoPersistedState(
+      APP_SETTINGS_KEY,
+      await storage.getItem(APP_SETTINGS_KEY),
+      {
+        ...persistedStored,
+        ...settings,
+        sidebarRowItems: { ...storedSidebarRowItems, ...settings.sidebarRowItems },
+      },
+      StoredAppSettingsSchema,
+    ),
   );
 }

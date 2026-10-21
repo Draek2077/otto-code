@@ -1,3 +1,4 @@
+// OTTO(storage): existing users keep their browser cookies and sessions.
 import { describe, expect, test } from "vitest";
 import {
   clearPaseoBrowserProfile,
@@ -106,9 +107,9 @@ describe("legacy browser profiles", () => {
     );
 
     expect(partitions).toEqual([
-      "persist:paseo-browser",
-      `persist:paseo-browser-${uuid}`,
-      `persist:paseo-browser-${fallbackId}`,
+      "persist:otto-browser",
+      `persist:otto-browser-${uuid}`,
+      `persist:otto-browser-${fallbackId}`,
     ]);
     expect(sessions).toHaveLength(3);
   });
@@ -124,7 +125,7 @@ describe("legacy browser profiles", () => {
 
     expect(getLegacyPaseoBrowserProfileSession(sessions, "1700000000000-abcd")).not.toBeNull();
     expect(getLegacyPaseoBrowserProfileSession(sessions, "invalid")).toBeNull();
-    expect(partitions).toEqual(["persist:paseo-browser-1700000000000-abcd"]);
+    expect(partitions).toEqual(["persist:otto-browser-1700000000000-abcd"]);
   });
 });
 

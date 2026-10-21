@@ -1,4 +1,5 @@
-export const PASEO_BROWSER_PROFILE_PARTITION = "persist:paseo-browser";
+// OTTO(storage): reuse the installed browser profile, including cookies and sign-ins.
+export const PASEO_BROWSER_PROFILE_PARTITION = "persist:otto-browser";
 const LEGACY_BROWSER_ID_PATTERN =
   /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|\d{13,}-[0-9a-f]+)$/i;
 const MAX_LEGACY_BROWSER_PROFILES = 1000;

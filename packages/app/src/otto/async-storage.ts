@@ -6,19 +6,22 @@
 // existing Otto data is read where it already is and Paseo call sites stay
 // untouched.
 
-import BaseAsyncStorage, {
+import RawAsyncStorage, {
   useAsyncStorage as baseUseAsyncStorage,
   type AsyncStorageStatic,
 } from "@react-native-async-storage/async-storage";
+import { createOttoStorageContinuity } from "./storage-continuity";
+
+const BaseAsyncStorage = createOttoStorageContinuity(RawAsyncStorage);
 
 export type { AsyncStorageStatic };
 
 export function toOttoStorageKey(key: string): string {
-  return key.replace(/^@paseo(?=[:/])/, "@otto").replace(/^paseo-/, "otto-");
+  return key.replace(/^@paseo(?=[:/])/, "@otto").replace(/^paseo(?=[:-])/, "otto");
 }
 
 export function fromOttoStorageKey(key: string): string {
-  return key.replace(/^@otto(?=[:/])/, "@paseo").replace(/^otto-/, "paseo-");
+  return key.replace(/^@otto(?=[:/])/, "@paseo").replace(/^otto(?=[:-])/, "paseo");
 }
 
 type KeyValuePair = [string, string | null];

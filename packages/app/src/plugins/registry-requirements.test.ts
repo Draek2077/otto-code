@@ -1,3 +1,4 @@
+// OTTO(identity): expectations follow the visible Otto command and documentation.
 import { createPluginHosts } from "./hosts";
 import { afterEach, expect, it } from "vitest";
 import { DaemonClient } from "@getpaseo/client/internal/daemon-client";

@@ -1,5 +1,8 @@
 import { z } from "zod";
 import type { PersistStorage, StateStorage } from "zustand/middleware";
+// OTTO(storage): keep old Otto fields on disk while validating the Paseo runtime shape.
+import { parseOttoPersistedState, serializeOttoPersistedState } from "@/otto/persisted-state";
+import { isProtectedOttoStorageKey } from "@/otto/storage-continuity";
 
 export function createValidatedPersistStorage<State>(
   backingStorage: StateStorage,
@@ -23,7 +26,7 @@ export function createValidatedPersistStorage<State>(
         return null;
       }
 
-      const result = envelopeSchema.safeParse(decoded);
+      const result = parseOttoPersistedState(name, decoded, envelopeSchema);
       if (!result.success) {
         await backingStorage.removeItem(name);
         return null;
@@ -36,7 +39,15 @@ export function createValidatedPersistStorage<State>(
         await backingStorage.removeItem(name);
         return;
       }
-      await backingStorage.setItem(name, JSON.stringify(result.data));
+      await backingStorage.setItem(
+        name,
+        serializeOttoPersistedState(
+          name,
+          isProtectedOttoStorageKey(name) ? await backingStorage.getItem(name) : null,
+          result.data,
+          envelopeSchema,
+        ),
+      );
     },
     removeItem: (name) => backingStorage.removeItem(name),
   };

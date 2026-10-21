@@ -1,3 +1,4 @@
+// OTTO(identity): expectations follow the visible Otto command and documentation.
 import { setImmediate as waitForCommandContinuations } from "node:timers/promises";
 import { Command } from "commander";
 import type {

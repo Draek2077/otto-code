@@ -28,7 +28,7 @@ describe("Otto storage keys", () => {
     expect(await BaseStorage.getItem("paseo-drafts")).toBeNull();
     await OttoStorage.removeItem("paseo-drafts");
     await OttoStorage.multiRemove(["@paseo/provider-snapshot/v2"]);
-    expect(await BaseStorage.getAllKeys()).toEqual([]);
+    expect(await OttoStorage.getAllKeys()).toEqual([]);
   });
 
   it("stores Paseo-named keys under the names Otto 0.9 used", () => {
