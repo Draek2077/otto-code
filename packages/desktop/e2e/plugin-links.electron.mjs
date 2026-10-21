@@ -50,7 +50,7 @@ export async function runPluginLinksRegression({
   const pluginEntry = page.getByRole("button", { name: "Plugin links QA", exact: true });
   await expect(pluginEntry).toBeVisible({ timeout: 90_000 });
   await page.evaluate((port) => {
-    const key = "@paseo:daemon-registry";
+    const key = "@otto:daemon-registry"; // OTTO(storage): seed the preserved physical key.
     const registry = JSON.parse(localStorage.getItem(key));
     const endpoint = `127.0.0.1:${port}`;
     const connection = { id: `direct:${endpoint}`, type: "directTcp", endpoint };

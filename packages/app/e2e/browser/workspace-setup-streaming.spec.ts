@@ -227,7 +227,7 @@ test.describe("Workspace setup streaming", () => {
       await openHomeWithProject(page, repo.path);
       await navigateToWorkspaceViaSidebar(page, workspace.id);
       await expectFailedSetupTabSeededInMainPane(page, workspace.id);
-      await expect(page.getByText(/Failed to parse paseo\.json at/)).toBeVisible();
+      await expect(page.getByText(/Failed to parse otto\.json at/)).toBeVisible();
       await closeSetupTab(page, workspace.id);
       await clickNewChat(page);
       await expectComposerVisible(page);
