@@ -4,6 +4,7 @@
     ".oxfmtrc.json": "Formatter skips the Otto Knowledge store (.otto/).",
     "LICENSE": "Otto distribution license (AGPL-3.0); Paseo's text is preserved in LICENSE-Paseo.",
     "package-lock.json": "Lockfile follows Otto's workspace versions.",
+    "nix/npm-deps.hash": "build: verified dependency hash for Otto's lockfile; the hash format cannot contain a comment.",
     "package.json": "Otto name, version line, and metadata; Otto scripts (otto:seams).",
     "packages/app/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
     "packages/cli/package.json": "identity: the otto command; Otto version line and package metadata.",

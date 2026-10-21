@@ -40,6 +40,11 @@ To verify a branch without publishing, dispatch `Desktop Release` with an existi
 version tag for metadata, the branch as `checkout_ref`, and `publish=false`.
 Artifacts are retained by the workflow. Do not create a release tag for this check.
 
+Build-only Linux verification also calls the reusable package check, which installs
+the Debian and RPM outputs and exercises portable launches with restricted and
+available user namespaces. The check runs from the caller's commit, so a branch can
+verify it before the workflow has landed on `main`.
+
 ## Android artifacts and store submissions
 
 `Android APK Release` builds the release APK directly on GitHub runners using

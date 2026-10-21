@@ -5,6 +5,17 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      checkout_ref:
+        required: false
+        default: ""
+        type: string
+  workflow_call:
+    inputs:
+      checkout_ref:
+        required: false
+        default: ""
+        type: string
   # Packaging leaves ordinary PR CI, but a PR that changes what gets packaged
   # or how it is smoked still proves the real artifacts before merge.
   pull_request:
@@ -24,6 +35,7 @@ permissions:
 
 env:
   ONNXRUNTIME_NODE_INSTALL: skip
+  NODE_OPTIONS: --max-old-space-size=4096
 
 jobs:
   linux:
@@ -31,6 +43,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:

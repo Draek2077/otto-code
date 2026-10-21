@@ -61,6 +61,13 @@ env:
   DESKTOP_PACKAGE_PATH: "packages/desktop"
 
 jobs:
+  # OTTO(release): the reusable check is available on this branch before main knows it.
+  verify-installed-linux:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'false' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux') }}
+    uses: ./.github/workflows/desktop-packages.yml
+    with:
+      checkout_ref: ${{ github.event.inputs.checkout_ref || github.sha }}
+
   create-release:
     if: ${{ (github.event_name == 'push' && !startsWith(github.ref_name, 'desktop-macos-v') && !startsWith(github.ref_name, 'desktop-linux-v') && !startsWith(github.ref_name, 'desktop-windows-v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.platform == 'all' && github.event.inputs.publish != 'false') }}
     # THIS job is the only creator of a release for a `v*` or `desktop-v*` tag.
