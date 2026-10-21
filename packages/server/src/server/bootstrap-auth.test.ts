@@ -1,3 +1,4 @@
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 import { WebSocket } from "ws";
 import { hash } from "bcryptjs";
 import { readFile, stat, writeFile } from "node:fs/promises";
@@ -260,7 +261,7 @@ describe("daemon bearer auth", () => {
   test("a desktop-style client connects to its password-protected local daemon without a saved password", async () => {
     const daemonHandle = await createTestPaseoDaemon({ auth: { password: CORRECT_PASSWORD_HASH } });
     const target = `127.0.0.1:${daemonHandle.port}`;
-    await writeFile(join(daemonHandle.paseoHome, "paseo.pid"), JSON.stringify({ listen: target }));
+    await writeFile(join(daemonHandle.paseoHome, "otto.pid"), JSON.stringify({ listen: target }));
     const client = new DaemonClient({
       url: `ws://${target}/ws`,
       clientId: "desktop-managed-test",

@@ -2,7 +2,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "no
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadPersistedConfig } from "../persisted-config.js";
+import {
+  loadPersistedConfig,
+  readPersistedConfig,
+  savePersistedConfig,
+} from "../persisted-config.js";
 import { OTTO_CONFIG_BACKUP_FILENAME, OTTO_CONFIG_FILENAME } from "./config-migration.js";
 
 const homes: string[] = [];
@@ -41,6 +45,101 @@ const otto09Config = {
 };
 
 describe("Otto 0.9 config migration", () => {
+  it("preserves prototype-named JSON settings as data", () => {
+    const home = homeWithConfig(JSON.parse('{"version":1,"__proto__":{"legacySetting":true}}'));
+    loadPersistedConfig(home);
+    expect(readJson(path.join(home, OTTO_CONFIG_FILENAME))).toEqual(
+      JSON.parse('{"__proto__":{"legacySetting":true}}'),
+    );
+    expect(Object.hasOwn(Object.prototype, "legacySetting")).toBe(false);
+  });
+  it("normalizes a read without rewriting or initializing the home", () => {
+    const home = homeWithConfig(otto09Config);
+    expect(readPersistedConfig(home).daemon?.listen).toBe("127.0.0.1:6788");
+    expect(readJson(path.join(home, "config.json"))).toEqual(otto09Config);
+    expect(existsSync(path.join(home, "otto-0.9-backup"))).toBe(false);
+    expect(existsSync(path.join(home, OTTO_CONFIG_FILENAME))).toBe(false);
+  });
+
+  it("preserves Otto settings when a config save happens before startup", () => {
+    const home = homeWithConfig(otto09Config);
+    const config = readPersistedConfig(home);
+    savePersistedConfig(home, {
+      ...config,
+      daemon: { ...config.daemon, listen: "127.0.0.1:6999" },
+    });
+    expect(readJson(path.join(home, OTTO_CONFIG_BACKUP_FILENAME))).toEqual(otto09Config);
+    expect(readJson(path.join(home, OTTO_CONFIG_FILENAME))).toHaveProperty("gitHosting");
+    expect(readPersistedConfig(home).daemon?.listen).toBe("127.0.0.1:6999");
+  });
+
+  it("moves Otto's daemon and public relay endpoints to Paseo with TLS", () => {
+    const original = {
+      version: 1,
+      daemon: {
+        relay: {
+          enabled: false,
+          endpoint: "relay.otto-code.me:443",
+          publicEndpoint: "relay.otto-code.me:443",
+          useTls: false,
+          publicUseTls: false,
+        },
+      },
+    };
+    const home = homeWithConfig(original);
+    const config = loadPersistedConfig(home);
+    expect(config.daemon?.relay).toEqual({
+      enabled: false,
+      endpoint: "relay.paseo.sh:443",
+      publicEndpoint: "relay.paseo.sh:443",
+      useTls: true,
+      publicUseTls: true,
+    });
+    expect(readJson(path.join(home, "config.json"))).toEqual(config);
+    expect(readJson(path.join(home, OTTO_CONFIG_BACKUP_FILENAME))).toEqual(original);
+  });
+
+  it("preserves self-hosted relays and their TLS settings", () => {
+    const original = {
+      version: 1,
+      daemon: { relay: { endpoint: "my-relay.example:8080", useTls: false } },
+    };
+    const home = homeWithConfig(original);
+    expect(loadPersistedConfig(home)).toEqual(original);
+    expect(existsSync(path.join(home, OTTO_CONFIG_BACKUP_FILENAME))).toBe(false);
+  });
+
+  it("enables public TLS when the migrated endpoint is also the implicit public endpoint", () => {
+    const home = homeWithConfig({
+      version: 1,
+      daemon: { relay: { endpoint: "relay.otto-code.me", publicUseTls: false } },
+    });
+    expect(loadPersistedConfig(home).daemon?.relay).toEqual({
+      endpoint: "relay.paseo.sh:443",
+      useTls: true,
+      publicUseTls: true,
+    });
+  });
+
+  it("keeps a custom public endpoint when migrating the daemon's old Otto endpoint", () => {
+    const home = homeWithConfig({
+      version: 1,
+      daemon: {
+        relay: {
+          endpoint: "relay.otto-code.me:443",
+          publicEndpoint: "custom.example:8080",
+          publicUseTls: false,
+        },
+      },
+    });
+    expect(loadPersistedConfig(home).daemon?.relay).toEqual({
+      endpoint: "relay.paseo.sh:443",
+      useTls: true,
+      publicEndpoint: "custom.example:8080",
+      publicUseTls: false,
+    });
+  });
+
   it("loads a 0.9 config and keeps the Paseo settings", () => {
     const home = homeWithConfig(otto09Config);
     const config = loadPersistedConfig(home);

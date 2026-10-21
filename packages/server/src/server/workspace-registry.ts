@@ -3,7 +3,8 @@ import { promises as fs } from "node:fs";
 import type { Logger } from "pino";
 import { z } from "zod";
 
-import { writeJsonFileAtomic } from "./atomic-file.js";
+// OTTO(store-continuity): preserve Otto-only fields on disk, outside Paseo's runtime records.
+import { normalizeOttoWorkspaceRecord, writeOttoRegistry } from "./otto/store-continuity.js";
 import { areEquivalentPaths } from "../utils/path.js";
 import {
   generateProjectId,
@@ -203,7 +204,10 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
       module: "workspace-registry",
       component: options.component,
     });
-    this.writeRecords = options.writeRecords ?? writeJsonFileAtomic;
+    this.writeRecords =
+      options.writeRecords ??
+      ((file, records) =>
+        writeOttoRegistry(file, records, (raw) => this.schema.parse(raw), this.getId)); // OTTO(store-continuity)
   }
 
   async initialize(): Promise<void> {
@@ -292,7 +296,11 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
     this.cache.clear();
     try {
       const raw = await fs.readFile(this.filePath, "utf8");
-      const parsed = z.array(this.schema).parse(JSON.parse(raw));
+      const decoded: unknown = JSON.parse(raw);
+      // OTTO(store-continuity): adopt Paseo's field names for earlier Otto workspace records.
+      const parsed = z
+        .array(this.schema)
+        .parse(Array.isArray(decoded) ? decoded.map(normalizeOttoWorkspaceRecord) : decoded);
       for (const record of parsed) {
         this.cache.set(this.getId(record), record);
       }

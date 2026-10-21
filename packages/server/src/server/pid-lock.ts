@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { uptime } from "node:os";
 import { getHostName } from "./host-name.js";
 import { z } from "zod";
+// OTTO(identity): use the same lock file as earlier Otto releases.
+import { OTTO_DAEMON_PID_FILENAME } from "@getpaseo/protocol/otto/identity";
 
 export const pidLockInfoSchema = z.object({
   pid: z.number().int().positive(),
@@ -100,7 +102,7 @@ export function isPidLockOwnerRunning(lock: PidLockInfo): boolean {
 }
 
 function getPidFilePath(paseoHome: string): string {
-  return join(paseoHome, "paseo.pid");
+  return join(paseoHome, OTTO_DAEMON_PID_FILENAME); // OTTO(identity)
 }
 
 async function touchPidLockFile(pidPath: string): Promise<void> {

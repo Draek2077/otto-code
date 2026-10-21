@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 
 /**
  * Regression: a reboot reassigns the supervisor's PID to an unrelated process. The lock
@@ -45,7 +46,7 @@ assert(bystander.pid, "bystander process should have a pid");
 try {
   const beforeThisBoot = new Date(Date.now() - uptime() * 1000 - 60 * 60_000);
   await writeFile(
-    join(paseoHome, "paseo.pid"),
+    join(paseoHome, "otto.pid"),
     JSON.stringify({
       pid: bystander.pid,
       startedAt: beforeThisBoot.toISOString(),

@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 
 /**
  * Regression: forced daemon stop must kill descendants even when they started
@@ -115,7 +116,7 @@ try {
 
   assert(ownerProcess.pid, "owner pid should exist");
   await writeFile(
-    join(paseoHome, "paseo.pid"),
+    join(paseoHome, "otto.pid"),
     JSON.stringify({
       pid: ownerProcess.pid,
       hostname: "test",

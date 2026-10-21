@@ -3,7 +3,8 @@ import path from "node:path";
 import { z } from "zod";
 import type { Logger } from "pino";
 
-import { writeJsonFileAtomic } from "../atomic-file.js";
+// OTTO(store-continuity): keep Otto-only fields when Paseo rewrites an agent record.
+import { writeOttoAgentRecord } from "../otto/store-continuity.js";
 import { AgentFeatureSchema, AgentStatusSchema } from "../messages.js";
 import { toStoredAgentRecord } from "./agent-projections.js";
 import type { ManagedAgent } from "./agent-manager.js";
@@ -189,7 +190,7 @@ export class AgentStorage {
     const nextPath = this.buildRecordPath(record);
     const previousPath = this.pathById.get(agentId);
 
-    await writeJsonFileAtomic(nextPath, record);
+    await writeOttoAgentRecord(nextPath, record, previousPath, parseStoredAgentRecord); // OTTO(store-continuity)
     this.addIndexedPath(agentId, nextPath);
 
     if (previousPath && previousPath !== nextPath) {

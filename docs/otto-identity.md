@@ -1,6 +1,6 @@
 # Otto identity and the Paseo boundary
 
-Otto is built on an unmodified Paseo source tree. Paseo code keeps Paseo names; Otto renames
+Otto starts from a clean Paseo source tree. Paseo code keeps Paseo names; Otto renames
 only what a user, an operating system, an app store, or npm can see. This page is the rule and
 the list of mechanisms. The decision behind it is the Knowledge page
 `otto-0-10-rebuilds-on-clean-paseo`.

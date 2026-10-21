@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { isAbsolute, join, resolve } from "path";
 import { z } from "zod";
+// OTTO(identity): preserve existing Otto worktree metadata without renaming Paseo APIs.
+import { OTTO_WORKTREE_METADATA_DIRECTORY } from "@getpaseo/protocol/otto/identity";
 
 const ChangeRequestLookupTargetSchema = z.object({
   headRef: z.string().min(1),
@@ -159,7 +161,7 @@ function getGitDirForWorktreeRoot(worktreeRoot: string): string {
 
 export function getPaseoWorktreeMetadataPath(worktreeRoot: string): string {
   const gitDir = getGitDirForWorktreeRoot(worktreeRoot);
-  return join(gitDir, "paseo", "worktree.json");
+  return join(gitDir, OTTO_WORKTREE_METADATA_DIRECTORY, "worktree.json"); // OTTO(identity)
 }
 
 export function isQualifiedRef(ref: string): boolean {

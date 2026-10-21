@@ -74,7 +74,18 @@ function resolveWithCustomWebOverlay(context, moduleName, platform) {
   return defaultResolveRequest(context, moduleName, platform);
 }
 
+// OTTO(storage): Paseo-named storage keys resolve to the names Otto 0.9 stored
+// data under; see src/otto/async-storage.ts. The wrapper itself gets the real module.
+const ASYNC_STORAGE_MODULE = "@react-native-async-storage/async-storage";
+const OTTO_ASYNC_STORAGE_MODULE = path.resolve(__dirname, "src/otto/async-storage.ts");
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    moduleName === ASYNC_STORAGE_MODULE &&
+    path.resolve(context.originModulePath) !== OTTO_ASYNC_STORAGE_MODULE
+  ) {
+    return defaultResolveRequest(context, OTTO_ASYNC_STORAGE_MODULE, platform);
+  }
   if (isFdroidBuild && platform === "android" && fdroidModuleOverrides[moduleName]) {
     return resolveWithCustomWebOverlay(context, fdroidModuleOverrides[moduleName], platform);
   }

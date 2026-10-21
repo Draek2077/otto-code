@@ -1,3 +1,4 @@
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 import { describe, expect, test } from "vitest";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -194,7 +195,7 @@ describe("hello admission", () => {
   test("writes a private rotating credential and reads it only for the matching target", async () => {
     const home = await mkdtemp(join(tmpdir(), "paseo-local-file-"));
     try {
-      await writeFile(join(home, "paseo.pid"), JSON.stringify({ listen: "127.0.0.1:6767" }));
+      await writeFile(join(home, "otto.pid"), JSON.stringify({ listen: "127.0.0.1:6767" }));
       const first = await writeLocalCredential(home);
       if (process.platform !== "win32") {
         expect((await stat(join(home, "local-credential"))).mode & 0o777).toBe(0o600);

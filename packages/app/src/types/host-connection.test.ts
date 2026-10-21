@@ -50,6 +50,39 @@ describe("orderHostsLocalFirst", () => {
 });
 
 describe("normalizeStoredHostProfile", () => {
+  // OTTO(relay-migration): existing pairings keep their identity on Paseo's relay.
+  it("moves Otto's saved relay pairing to Paseo without losing the preferred connection", () => {
+    const profile = normalizeStoredHostProfile({
+      serverId: "srv_otto",
+      password: "saved-password",
+      connections: [
+        { id: "direct:localhost:6868", type: "directTcp", endpoint: "localhost:6868" },
+        {
+          id: "relay:relay.otto-code.me:443",
+          type: "relay",
+          relayEndpoint: "relay.otto-code.me:443",
+          daemonPublicKeyB64: "saved-daemon-key",
+        },
+      ],
+      preferredConnectionId: "relay:relay.otto-code.me:443",
+    });
+    expect(profile).toMatchObject({
+      serverId: "srv_otto",
+      password: "saved-password",
+      preferredConnectionId: "relay:wss:relay.paseo.sh:443",
+      connections: [
+        { type: "directTcp", endpoint: "localhost:6868" },
+        {
+          id: "relay:wss:relay.paseo.sh:443",
+          type: "relay",
+          relayEndpoint: "relay.paseo.sh:443",
+          useTls: true,
+          daemonPublicKeyB64: "saved-daemon-key",
+        },
+      ],
+    });
+  });
+
   it("loads direct TCP connections stored before TLS and password fields existed", () => {
     const profile = normalizeStoredHostProfile({
       serverId: "srv_old",

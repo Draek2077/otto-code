@@ -2,6 +2,8 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { chmod, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+// OTTO(identity): local admission must read Otto's daemon lock.
+import { OTTO_DAEMON_PID_FILENAME } from "@getpaseo/protocol/otto/identity";
 import {
   normalizeLoopbackToLocalhost,
   parseConnectionUri,
@@ -67,7 +69,8 @@ function normalizeTarget(target: string): string | null {
 
 export function readLocalCredentialForTarget(home: string, target: string): string | null {
   try {
-    const lock = JSON.parse(readFileSync(join(home, "paseo.pid"), "utf8")) as {
+    const lock = JSON.parse(readFileSync(join(home, OTTO_DAEMON_PID_FILENAME), "utf8")) as {
+      // OTTO(identity)
       listen?: unknown;
     };
     if (typeof lock.listen !== "string") return null;

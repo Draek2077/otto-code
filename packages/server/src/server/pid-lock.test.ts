@@ -1,3 +1,4 @@
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 import { mkdtemp, open, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -68,7 +69,7 @@ describe("pid-lock ownership", () => {
     const replacementOwnerPid = process.pid + 10_000;
 
     try {
-      const pidPath = join(paseoHome, "paseo.pid");
+      const pidPath = join(paseoHome, "otto.pid");
       await writeFile(
         pidPath,
         JSON.stringify({
@@ -87,7 +88,7 @@ describe("pid-lock ownership", () => {
       await expect(isLocked(paseoHome)).resolves.toMatchObject({ locked: true });
       await expect(
         acquirePidLock(paseoHome, null, { ownerPid: replacementOwnerPid }),
-      ).rejects.toThrow("Another Paseo daemon is already running");
+      ).rejects.toThrow("Another Otto daemon is already running");
 
       const lock = await getPidLockInfo(paseoHome);
       expect(lock?.pid).toBe(process.pid);
@@ -101,7 +102,7 @@ describe("pid-lock ownership", () => {
     const replacementOwnerPid = process.pid + 10_000;
 
     try {
-      const pidPath = join(paseoHome, "paseo.pid");
+      const pidPath = join(paseoHome, "otto.pid");
       await writeFile(
         pidPath,
         JSON.stringify({
@@ -119,7 +120,7 @@ describe("pid-lock ownership", () => {
 
       await expect(
         acquirePidLock(paseoHome, null, { ownerPid: replacementOwnerPid }),
-      ).rejects.toThrow("Another Paseo daemon is already running");
+      ).rejects.toThrow("Another Otto daemon is already running");
 
       const lock = await getPidLockInfo(paseoHome);
       expect(lock?.pid).toBe(process.pid);
@@ -131,7 +132,7 @@ describe("pid-lock ownership", () => {
 
   test("keeps a stale live lock written by a pre-heartbeat daemon", async () => {
     const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-legacy-live-"));
-    const pidPath = join(paseoHome, "paseo.pid");
+    const pidPath = join(paseoHome, "otto.pid");
 
     try {
       await writeFile(
@@ -150,7 +151,7 @@ describe("pid-lock ownership", () => {
 
       await expect(
         acquirePidLock(paseoHome, null, { ownerPid: process.pid + 10_000 }),
-      ).rejects.toThrow("Another Paseo daemon is already running");
+      ).rejects.toThrow("Another Otto daemon is already running");
 
       const lock = await getPidLockInfo(paseoHome);
       expect(lock?.pid).toBe(process.pid);
@@ -162,7 +163,7 @@ describe("pid-lock ownership", () => {
   test("preserves a stale live legacy desktop lock", async () => {
     const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-legacy-desktop-"));
     const replacementOwnerPid = process.pid + 10_000;
-    const pidPath = join(paseoHome, "paseo.pid");
+    const pidPath = join(paseoHome, "otto.pid");
 
     try {
       await writeFile(
@@ -181,7 +182,7 @@ describe("pid-lock ownership", () => {
 
       await expect(
         acquirePidLock(paseoHome, null, { ownerPid: replacementOwnerPid }),
-      ).rejects.toThrow("Another Paseo daemon is already running");
+      ).rejects.toThrow("Another Otto daemon is already running");
 
       const lock = await getPidLockInfo(paseoHome);
       expect(lock?.pid).toBe(process.pid);
@@ -207,7 +208,7 @@ describe("pid-lock ownership", () => {
 
   test("retries a heartbeat refresh while its owner is rewriting the lock", async () => {
     const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-refresh-rewrite-"));
-    const pidPath = join(paseoHome, "paseo.pid");
+    const pidPath = join(paseoHome, "otto.pid");
 
     try {
       await acquirePidLock(paseoHome, null, { ownerPid: process.pid });
@@ -233,7 +234,7 @@ describe("pid-lock ownership", () => {
 
     try {
       await writeFile(
-        join(paseoHome, "paseo.pid"),
+        join(paseoHome, "otto.pid"),
         JSON.stringify({
           pid: process.pid,
           startedAt: new Date().toISOString(),
@@ -247,7 +248,7 @@ describe("pid-lock ownership", () => {
 
       await expect(
         acquirePidLock(paseoHome, null, { ownerPid: process.pid + 10_000 }),
-      ).rejects.toThrow("Another Paseo daemon is already running");
+      ).rejects.toThrow("Another Otto daemon is already running");
 
       const lock = await getPidLockInfo(paseoHome);
       expect(lock?.pid).toBe(process.pid);
@@ -262,7 +263,7 @@ describe("pid-lock ownership", () => {
     const ownerPid = process.pid + 10_000;
 
     try {
-      await writeFile(join(paseoHome, "paseo.pid"), "");
+      await writeFile(join(paseoHome, "otto.pid"), "");
 
       await expect(getPidLockInfo(paseoHome)).resolves.toBeNull();
       await acquirePidLock(paseoHome, null, { ownerPid });
@@ -276,7 +277,7 @@ describe("pid-lock ownership", () => {
 
   test("keeps a lock file whose contents cannot be read as a lock", async () => {
     const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-unparseable-"));
-    const pidPath = join(paseoHome, "paseo.pid");
+    const pidPath = join(paseoHome, "otto.pid");
 
     try {
       await writeFile(pidPath, JSON.stringify({ pid: "unknown" }));

@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 
 /**
  * Regression: `paseo daemon stop` must leave a reachable daemon alone when the
@@ -105,7 +106,7 @@ const port = await getAvailablePort();
 const paseoHome = await mkdtemp(join(tmpdir(), "paseo-stop-stale-reachable-"));
 const cliRoot = join(import.meta.dirname, "..");
 const host = `127.0.0.1:${port}`;
-const pidPath = join(paseoHome, "paseo.pid");
+const pidPath = join(paseoHome, "otto.pid");
 const stalePid = findUnusedPid();
 
 let workerProcess: ChildProcess | null = null;

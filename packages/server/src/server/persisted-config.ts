@@ -462,7 +462,7 @@ export function loadPersistedConfig(paseoHome: string, logger?: LoggerLike): Per
     });
   }
 
-  const config = parseConfigFile(configPath, raw);
+  const config = parseConfigFile(configPath, raw, true); // OTTO(config-migration): startup may persist the migration.
   log?.info(`Loaded from ${configPath}`);
   return config;
 }
@@ -484,7 +484,12 @@ export function readPersistedConfig(
   return parseConfigFile(configPath, raw);
 }
 
-function parseConfigFile(configPath: string, raw: string): PersistedConfig {
+function parseConfigFile(
+  configPath: string,
+  raw: string,
+  persistOttoMigration = false,
+): PersistedConfig {
+  // OTTO(config-migration)
   let parsed: unknown;
   try {
     parsed = parseConfigText(raw);
@@ -498,7 +503,12 @@ function parseConfigFile(configPath: string, raw: string): PersistedConfig {
   // OTTO(config-migration): move Otto 0.9 settings out of config.json before Paseo's
   // strict schema sees them; they are kept in otto-config.json.
   const result = PersistedConfigSchema.safeParse(
-    migrateOttoConfig(configPath, stripRemovedConfigFields(parsed), PersistedConfigSchema),
+    migrateOttoConfig(
+      configPath,
+      stripRemovedConfigFields(parsed),
+      PersistedConfigSchema,
+      persistOttoMigration,
+    ),
   );
   if (!result.success) {
     const issues = result.error.issues
@@ -593,6 +603,8 @@ export function savePersistedConfig(
   }
 
   try {
+    // OTTO(config-migration): keep old settings before a CLI/editor save can replace them.
+    if (existsSync(configPath)) loadPersistedConfig(paseoHome);
     writePrivateFileAtomicSync(configPath, JSON.stringify(result.data, null, 2) + "\n");
     log?.info(`Saved to ${configPath}`);
   } catch (err) {

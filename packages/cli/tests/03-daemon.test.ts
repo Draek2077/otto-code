@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 
 /**
  * Phase 2: Daemon Command Tests

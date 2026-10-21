@@ -1,4 +1,6 @@
 import type { ConnectionOffer } from "@getpaseo/protocol/connection-offer";
+// OTTO(relay-migration): migrate saved endpoints before Paseo normalizes the profile.
+import { migrateOttoLegacyRelayProfile } from "@getpaseo/protocol/otto/legacy-relay";
 import {
   normalizeHostPort,
   normalizeLoopbackToLocalhost,
@@ -505,7 +507,8 @@ export function normalizeStoredHostProfile(entry: unknown): HostProfile | null {
   if (!result.success) {
     return null;
   }
-  const record = result.data;
+  // COMPAT(ottoLegacyRelay): added in v0.10.0, remove after 2027-04-21 once 0.9 pairings have migrated.
+  const record = migrateOttoLegacyRelayProfile(result.data); // OTTO(relay-migration)
   const serverId = record.serverId;
   // COMPAT(connectionPassword): added in v0.9.1, remove after 2027-03-24 once stored direct passwords have migrated.
   const legacyPassword = record.connections.find(

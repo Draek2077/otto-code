@@ -1,3 +1,4 @@
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -15,7 +16,7 @@ function bootedAt(): number {
 }
 
 async function writeLock(paseoHome: string, lock: PidLockInfo): Promise<void> {
-  await writeFile(join(paseoHome, "paseo.pid"), JSON.stringify(lock));
+  await writeFile(join(paseoHome, "otto.pid"), JSON.stringify(lock));
 }
 
 function lockFor(pid: number, startedAt: Date): PidLockInfo {
@@ -91,7 +92,7 @@ describe("daemon instance identity across a reboot", () => {
 
     expect(existsSync(signalMarker)).toBe(false);
     expect(exited).toBe(false);
-    await expect(readFile(join(paseoHome, "paseo.pid"), "utf-8")).rejects.toThrow(/ENOENT/);
+    await expect(readFile(join(paseoHome, "otto.pid"), "utf-8")).rejects.toThrow(/ENOENT/);
   });
 });
 
@@ -120,7 +121,7 @@ describe.runIf(process.platform === "linux")("daemon instance identity on Linux"
     expect(await isLocked(paseoHome)).toMatchObject({ locked: true });
     await expect(
       acquirePidLock(paseoHome, null, { ownerPid: process.pid + 10_000 }),
-    ).rejects.toThrow("Another Paseo daemon is already running");
+    ).rejects.toThrow("Another Otto daemon is already running");
   });
 
   test("a lock written during another boot has no running owner", async () => {

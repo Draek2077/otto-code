@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+// OTTO(identity): inspect the lock shared with Otto's server and CLI.
+import { OTTO_DAEMON_PID_FILENAME } from "@getpaseo/protocol/otto/identity";
 import { app, ipcMain, powerMonitor } from "electron";
 import log from "electron-log/main";
 import {
@@ -134,7 +136,9 @@ function logFilePath(): string {
 export function isDesktopManagedDaemonRunningSync(): boolean {
   if (!ownedLaunch) return false;
   try {
-    const lock = JSON.parse(readFileSync(path.join(ownedLaunch.home, "paseo.pid"), "utf8"));
+    const lock = JSON.parse(
+      readFileSync(path.join(ownedLaunch.home, OTTO_DAEMON_PID_FILENAME), "utf8"),
+    ); // OTTO(identity)
     return isSameDaemonInstance(lock, ownedLaunch.instance) && isProcessRunning(lock.pid);
   } catch {
     return false;

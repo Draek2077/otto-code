@@ -1,3 +1,4 @@
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 import { readFileSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { expect, type Page } from "@playwright/test";

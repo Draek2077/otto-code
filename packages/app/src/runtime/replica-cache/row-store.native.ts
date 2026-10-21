@@ -18,7 +18,7 @@ export type {
 } from "./row-store";
 export { REPLICA_ROW_STORE_SCHEMA_VERSION, REPLICA_SINGLETON_ROW_ID } from "./row-store-schema";
 
-const DATABASE_NAME = "paseo-replica-row-store.db";
+const DATABASE_NAME = "otto-replica-row-store.db"; // OTTO(storage)
 
 function bind(params: readonly SqliteValue[]): SqliteValue[] {
   return [...params];

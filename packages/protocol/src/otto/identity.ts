@@ -5,6 +5,8 @@
 
 export const OTTO_PRODUCT_NAME = "Otto";
 export const OTTO_CLI_COMMAND = "otto";
+export const OTTO_DAEMON_PID_FILENAME = "otto.pid";
+export const OTTO_WORKTREE_METADATA_DIRECTORY = "otto";
 
 export const OTTO_HOME_DIRECTORY_NAME = ".otto";
 export const OTTO_DEFAULT_HOME = `~/${OTTO_HOME_DIRECTORY_NAME}`;
@@ -42,3 +44,7 @@ export const OTTO_MCP_SERVER_NAME = "otto";
 // requirements) compare against this, not Otto's own version. Keep it equal to
 // scripts/otto/paseo-base.json; `npm run otto:seams:check` enforces that.
 export const OTTO_PASEO_BASE_VERSION = "0.12.0";
+
+// Otto 0.9 ran its own relay. Otto 0.10 uses Paseo's relay; saved pairings and
+// daemon settings that point here move to Paseo's default relay.
+export const OTTO_LEGACY_RELAY_HOST = "relay.otto-code.me";

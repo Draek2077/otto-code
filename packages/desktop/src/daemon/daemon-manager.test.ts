@@ -1,3 +1,4 @@
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import path from "node:path";
@@ -147,7 +148,7 @@ describe("daemon-manager commands", () => {
 
   it("reports an errored daemon when the local daemon state cannot be read", async () => {
     mkdirSync(mocks.paseoHome);
-    writeFileSync(path.join(mocks.paseoHome, "paseo.pid"), "garbage");
+    writeFileSync(path.join(mocks.paseoHome, "otto.pid"), "garbage");
 
     const status = await createDaemonCommandHandlers().desktop_daemon_status();
 
@@ -167,7 +168,7 @@ describe("daemon-manager commands", () => {
       listen: "127.0.0.1:6799",
       desktopManaged: true,
     };
-    const lockPath = path.join(mocks.paseoHome, "paseo.pid");
+    const lockPath = path.join(mocks.paseoHome, "otto.pid");
     writeFileSync(lockPath, JSON.stringify(lock));
     const handler = createDaemonCommandHandlers().desktop_local_credential;
     expect(await handler({ listen: "localhost:6799" })).toBe(token);

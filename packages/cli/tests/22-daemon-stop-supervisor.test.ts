@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 
 /**
  * Regression: `paseo daemon stop` must stop supervised dev daemons
@@ -44,7 +45,7 @@ interface PidLockState {
 }
 
 async function readPidLockState(paseoHome: string): Promise<PidLockState> {
-  const pidPath = join(paseoHome, "paseo.pid");
+  const pidPath = join(paseoHome, "otto.pid");
 
   try {
     const content = await readFile(pidPath, "utf-8");
