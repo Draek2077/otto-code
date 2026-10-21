@@ -14,6 +14,7 @@ import { addJsonAndDaemonHostOptions, withGlobalOptions } from "../../utils/comm
 import { formatPairingInstructions } from "../../output/pairing.js";
 import { parseConnectionOfferFromUrl } from "@getpaseo/protocol/connection-offer";
 import { serializeRelayConnectionUri } from "@getpaseo/protocol/daemon-endpoints";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 interface PairOptions {
   daemonTarget: DaemonTarget;
@@ -37,7 +38,7 @@ export interface PairingOffer {
 }
 
 const PAIRING_DAEMON_RPC_TIMEOUT_MS = 1500;
-const RELAY_DOCS_URL = "https://paseo.sh/docs/security";
+const RELAY_DOCS_URL = `${OTTO_WEBSITE_URL}/docs/security`; // OTTO(identity)
 
 function createProcessOutput(): PairCommandOutput {
   return {
@@ -109,7 +110,8 @@ async function resolveDaemonPairingOffer(
   try {
     const serverInfo = client.getLastServerInfoMessage();
     if (serverInfo?.features?.daemonStatusRpc !== true) {
-      throw new Error("Update the Paseo daemon before pairing from this command.");
+      // OTTO(identity)
+      throw new Error("Update the Otto daemon before pairing from this command.");
     }
 
     let offer = await client.getDaemonPairingOffer({
@@ -117,7 +119,8 @@ async function resolveDaemonPairingOffer(
     });
     if (!offer.relayEnabled && enableRelay) {
       if (serverInfo.features.relayConfig !== true) {
-        throw new Error("Update the Paseo daemon before enabling relay from this command.");
+        // OTTO(identity)
+        throw new Error("Update the Otto daemon before enabling relay from this command.");
       }
       await client.patchDaemonConfig({ relay: { enabled: true } });
       try {
@@ -140,7 +143,8 @@ async function resolveDaemonPairingOffer(
 }
 
 export async function confirmRelayPairing(): Promise<boolean> {
-  log.message("Your connection is end-to-end encrypted. Paseo cannot read your code or messages.");
+  // OTTO(identity)
+  log.message("Your connection is end-to-end encrypted. Otto cannot read your code or messages.");
   log.message(`Learn how it works: ${RELAY_DOCS_URL}`);
   const answer = await confirm({
     message: "Enable relay to pair a device?",
@@ -169,7 +173,8 @@ export async function runPairCommand(options: PairOptions): Promise<void> {
 
   if (offline)
     output.writeStderr(
-      `Offline pairing offer. Start with: paseo daemon start --home ${JSON.stringify(target.kind === "instance" ? target.home : "")}\n`,
+      // OTTO(identity)
+      `Offline pairing offer. Start with: otto daemon start --home ${JSON.stringify(target.kind === "instance" ? target.home : "")}\n`,
     );
 
   outputPairingResult(pairing, options, output);
@@ -186,12 +191,14 @@ function outputPairingResult(
         `${JSON.stringify({
           code: "RELAY_DISABLED",
           message: "Relay pairing is disabled for this daemon.",
-          action: "Run paseo daemon pair --relay --json to enable it explicitly.",
+          // OTTO(identity)
+          action: "Run otto daemon pair --relay --json to enable it explicitly.",
         })}\n`,
       );
     } else {
       output.writeStderr(`${chalk.red("Relay pairing is disabled for this daemon.")}\n`);
-      output.writeStderr(`${chalk.yellow("Run paseo daemon pair --relay to enable it.")}\n`);
+      // OTTO(identity)
+      output.writeStderr(`${chalk.yellow("Run otto daemon pair --relay to enable it.")}\n`);
     }
     output.setExitCode(1);
     return;

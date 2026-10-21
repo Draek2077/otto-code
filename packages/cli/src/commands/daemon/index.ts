@@ -11,7 +11,8 @@ import { withOutput } from "../../output/index.js";
 import { addJsonOption, addLocalDaemonOptions } from "../../utils/command-options.js";
 
 export function createDaemonCommand(): Command {
-  const daemon = new Command("daemon").description("Manage the Paseo daemon");
+  // OTTO(identity)
+  const daemon = new Command("daemon").description("Manage the Otto daemon");
   for (const command of [
     startCommand(),
     daemonRunCommand(),

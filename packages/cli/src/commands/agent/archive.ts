@@ -48,7 +48,8 @@ export async function runArchiveCommand(
     const error: CommandError = {
       code: "MISSING_AGENT_ID",
       message: "Agent ID is required",
-      details: "Usage: paseo agent archive <id-or-name>",
+      // OTTO(identity)
+      details: "Usage: otto agent archive <id-or-name>",
     };
     throw error;
   }
@@ -63,7 +64,8 @@ export async function runArchiveCommand(
       const error: CommandError = {
         code: "AGENT_NOT_FOUND",
         message: `Agent not found: ${agentIdArg}`,
-        details: 'Use "paseo ls" to list available agents',
+        // OTTO(identity)
+        details: 'Use "otto ls" to list available agents',
       };
       throw error;
     }
@@ -88,7 +90,8 @@ export async function runArchiveCommand(
         code: "AGENT_RUNNING",
         message: `Agent ${agentId.slice(0, 7)} is currently running`,
         details:
-          "Use --force to archive a running agent (it will interrupt the active run), or stop it first with: paseo agent stop. Use paseo agent delete to hard-delete it.",
+          // OTTO(identity)
+          "Use --force to archive a running agent (it will interrupt the active run), or stop it first with: otto agent stop. Use otto agent delete to hard-delete it.",
       };
       throw error;
     }

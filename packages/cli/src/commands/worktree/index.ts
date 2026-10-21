@@ -6,19 +6,22 @@ import { withOutput } from "../../output/index.js";
 import { addJsonAndDaemonHostOptions } from "../../utils/command-options.js";
 
 export function createWorktreeCommand(): Command {
-  const worktree = new Command("worktree").description("Manage Paseo-managed git worktrees");
+  // OTTO(identity)
+  const worktree = new Command("worktree").description("Manage Otto-managed git worktrees");
 
   addJsonAndDaemonHostOptions(
     worktree
       .command("ls")
-      .description("List Paseo-managed git worktrees")
+      // OTTO(identity)
+      .description("List Otto-managed git worktrees")
       .option("--cwd <path>", "Repository directory (default: current)"),
   ).action(withOutput(runLsCommand));
 
   addJsonAndDaemonHostOptions(
     worktree
       .command("create")
-      .description("Create a Paseo-managed git worktree")
+      // OTTO(identity)
+      .description("Create an Otto-managed git worktree")
       .option("--mode <mode>", "Creation mode: branch-off, checkout-branch, or checkout-pr")
       .option("--new-branch <name>", "New branch name (--mode branch-off)")
       .option(

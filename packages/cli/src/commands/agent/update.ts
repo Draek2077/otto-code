@@ -166,7 +166,8 @@ function parseAgentChanges(options: AgentUpdateOptions): AgentChanges {
       code: "INVALID_THINKING_OPTION",
       message: "--thinking cannot be empty",
       details:
-        'Provide a thinking option ID. Use "paseo provider models <provider> --thinking" to list valid IDs.',
+        // OTTO(identity)
+        'Provide a thinking option ID. Use "otto provider models <provider> --thinking" to list valid IDs.',
     } satisfies CommandError;
   }
 
@@ -208,7 +209,8 @@ export async function runUpdateCommand(
     const error: CommandError = {
       code: "MISSING_AGENT_ID",
       message: "Agent ID is required",
-      details: "Usage: paseo agent update <id> [--name <name>] [--label <key=value>]",
+      // OTTO(identity)
+      details: "Usage: otto agent update <id> [--name <name>] [--label <key=value>]",
     };
     throw error;
   }
@@ -223,7 +225,8 @@ export async function runUpdateCommand(
       const error: CommandError = {
         code: "AGENT_NOT_FOUND",
         message: `Agent not found: ${agentIdArg}`,
-        details: 'Use "paseo ls" to list available agents',
+        // OTTO(identity)
+        details: 'Use "otto ls" to list available agents',
       };
       throw error;
     }

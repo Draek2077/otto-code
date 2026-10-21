@@ -35,7 +35,8 @@ const heartbeatDeleteSchema: OutputSchema<HeartbeatDeleteRow> = {
 function requireCallerAgentId(): string {
   const agentId = process.env.PASEO_AGENT_ID?.trim();
   if (!agentId) {
-    throw new Error("Heartbeat commands must run inside a Paseo agent");
+    // OTTO(identity)
+    throw new Error("Heartbeat commands must run inside an Otto agent");
   }
   return agentId;
 }

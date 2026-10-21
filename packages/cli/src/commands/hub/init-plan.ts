@@ -26,7 +26,8 @@ export interface HubInitScaffold {
 }
 
 export function hubLoginResumeCommand(step: "connect" | "init", origin: string): string {
-  return step === "connect" ? `paseo hub connect ${origin}` : "paseo hub init";
+  // OTTO(identity)
+  return step === "connect" ? `otto hub connect ${origin}` : "otto hub init";
 }
 
 export function resolveHubInitConnection(

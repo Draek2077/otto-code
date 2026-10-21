@@ -29,6 +29,7 @@ export function resolveHubCredential(input: ResolveHubInput & { origin: string }
   if (stored !== null) return stored.credential;
   throw new HubCommandError(
     "HUB_API_KEY_REQUIRED",
-    `No stored Hub login matches ${input.origin}. Run \`paseo hub login ${input.origin}\`, pass --api-key <secret>, or set PASEO_HUB_API_KEY.`,
+    // OTTO(identity)
+    `No stored Hub login matches ${input.origin}. Run \`otto hub login ${input.origin}\`, pass --api-key <secret>, or set PASEO_HUB_API_KEY.`,
   );
 }

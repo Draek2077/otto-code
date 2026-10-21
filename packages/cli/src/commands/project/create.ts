@@ -14,7 +14,8 @@ export function resolveProjectPath(input: {
       throw {
         code: "MISSING_PATH",
         message: "Project path is required when targeting a daemon explicitly",
-        details: "Usage: paseo project create <path> --host <host>",
+        // OTTO(identity)
+        details: "Usage: otto project create <path> --host <host>",
       } satisfies CommandError;
     }
     return input.pathArg;

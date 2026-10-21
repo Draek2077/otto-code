@@ -31,7 +31,8 @@ export function resolveProjectName(input: { name?: string; reset?: boolean }): s
     throw {
       code: "MISSING_NAME",
       message: "Project name cannot be empty",
-      details: "Usage: paseo project rename <project-id> <name> | --reset",
+      // OTTO(identity)
+      details: "Usage: otto project rename <project-id> <name> | --reset",
     } satisfies CommandError;
   }
   return name;

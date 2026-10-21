@@ -41,7 +41,8 @@ function homeOf(options: CommandOptions) {
 }
 
 async function applySaved(home: string, options: CommandOptions) {
-  const nextCommand = `paseo daemon start --home ${JSON.stringify(home)}`;
+  // OTTO(identity)
+  const nextCommand = `otto daemon start --home ${JSON.stringify(home)}`;
   const instance = await readDaemonInstance(home);
   if (!instance?.listen)
     return result({
@@ -58,7 +59,8 @@ async function applySaved(home: string, options: CommandOptions) {
       action: "saved",
       applied: false,
       message: "Saved; not applied to a running daemon",
-      nextCommand: `paseo daemon reload --home ${JSON.stringify(home)}`,
+      // OTTO(identity)
+      nextCommand: `otto daemon reload --home ${JSON.stringify(home)}`,
     });
   }
   try {

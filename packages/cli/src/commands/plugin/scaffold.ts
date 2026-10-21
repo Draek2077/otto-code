@@ -3,12 +3,13 @@ import path from "node:path";
 import { PluginIdSchema } from "@getpaseo/protocol/messages";
 import { resolveCliVersion } from "../../version.js";
 
+// OTTO(identity): product name in the overview and greeting templates.
 const OVERVIEW = `<!--
 OVERVIEW.md is required to list your plugin in the registry. Keep it beside
 paseo-plugin.json in your repository at the pinned commit and in your npm package.
 Replace this comment with useful facts before publishing.
 
-This overview is for people choosing a plugin in Paseo, on the plugin page under
+This overview is for people choosing a plugin in Otto, on the plugin page under
 its install command. README assumes a GitHub audience and includes technical
 details, installation instructions, and badges. Long, AI-generated READMEs leave
 people reading past that material to understand what the plugin does.
@@ -97,6 +98,7 @@ export function createGreeting({ name }: RpcInput<typeof greetingRpc>) {
 }
 `;
 
+// OTTO(identity)
 const CLIENT_GREETING = `import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useMutation } from "@tanstack/react-query";
@@ -128,17 +130,17 @@ export function GreetingScreen({ theme, layout }: PluginScreenProps) {
         accessibilityRole="button"
         accessibilityLabel="Create greeting"
         style={styles.button}
-        onPress={() => greeting.mutate({ name: "Paseo" })}
+        onPress={() => greeting.mutate({ name: "Otto" })}
       >
         <Text style={styles.buttonText}>Create greeting</Text>
       </Pressable>
       <Pressable
         accessibilityRole="link"
-        accessibilityLabel="Open the Paseo website"
+        accessibilityLabel="Open the Otto website"
         style={styles.button}
-        onPress={() => openExternal("https://paseo.sh")}
+        onPress={() => openExternal("https://otto-code.me")}
       >
-        <Text style={styles.buttonText}>Open paseo.sh</Text>
+        <Text style={styles.buttonText}>Open otto-code.me</Text>
       </Pressable>
     </View>
   );

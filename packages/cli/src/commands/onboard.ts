@@ -1,4 +1,11 @@
 import { addLocalDaemonOptions } from "../utils/command-options.js";
+import {
+  OTTO_APP_BASE_URL,
+  OTTO_DEFAULT_DAEMON_PORT,
+  OTTO_PRODUCT_NAME,
+  OTTO_RELEASES_LATEST_URL,
+  OTTO_WEBSITE_URL,
+} from "@getpaseo/protocol/otto/identity";
 import { cancel, confirm, intro, isCancel, log, note, outro } from "@clack/prompts";
 import { Command, Option } from "commander";
 import path from "node:path";
@@ -113,20 +120,22 @@ async function resolveVoiceSelection(mode: OnboardOptions["voice"]): Promise<boo
 
 function printNextSteps(pairingUrl: string | null, paseoHome: string, richUi: boolean): void {
   const daemonLogPath = path.join(paseoHome, "daemon.log");
+  // OTTO(identity)
   const nextStepsLines = [
     pairingUrl
-      ? "1. Open Paseo and scan the QR code above, or paste the pairing link."
-      : "1. Open Paseo and connect to your daemon.",
-    "2. Web app: https://app.paseo.sh",
-    "3. Desktop app: https://github.com/getpaseo/paseo/releases/latest",
-    "4. Docs: https://paseo.sh/docs",
-    `5. Example: paseo run --home ${JSON.stringify(paseoHome)} --output-schema schema.json "extract fields"`,
+      ? `1. Open ${OTTO_PRODUCT_NAME} and scan the QR code above, or paste the pairing link.`
+      : `1. Open ${OTTO_PRODUCT_NAME} and connect to your daemon.`,
+    `2. Web app: ${OTTO_APP_BASE_URL}`,
+    `3. Desktop app: ${OTTO_RELEASES_LATEST_URL}`,
+    `4. Docs: ${OTTO_WEBSITE_URL}/docs`,
+    `5. Example: otto run --home ${JSON.stringify(paseoHome)} --output-schema schema.json "extract fields"`,
   ];
   const quickReferenceLines = [
-    "1. paseo --help",
-    `2. paseo ls --home ${JSON.stringify(paseoHome)}`,
-    `3. paseo run --home ${JSON.stringify(paseoHome)} "your prompt"`,
-    `4. paseo status --home ${JSON.stringify(paseoHome)}`,
+    // OTTO(identity)
+    "1. otto --help",
+    `2. otto ls --home ${JSON.stringify(paseoHome)}`,
+    `3. otto run --home ${JSON.stringify(paseoHome)} "your prompt"`,
+    `4. otto status --home ${JSON.stringify(paseoHome)}`,
     `5. Daemon logs: ${daemonLogPath}`,
   ];
 
@@ -149,29 +158,32 @@ function printNextSteps(pairingUrl: string | null, paseoHome: string, richUi: bo
 }
 
 export function onboardCommand(): Command {
-  return addLocalDaemonOptions(new Command("onboard"))
-    .description("Run first-time setup, start daemon, and print pairing instructions")
-    .option("--listen <listen>", "Listen target (host:port, port, or unix socket path)")
-    .option("--port <port>", "Port to listen on (default: 6767)")
-    .option("--relay", "Enable relay connection without prompting")
-    .option("--no-relay", "Disable relay connection")
-    .option("--no-mcp", "Disable the Agent MCP HTTP endpoint")
-    .option(
-      "--hostnames <hosts>",
-      'Daemon hostnames (comma-separated, e.g. "myhost,.example.com" or "true" for any)',
-    )
-    .addOption(new Option("--allowed-hosts <hosts>").hideHelp())
-    .option("--timeout <seconds>", "Max time to wait for daemon readiness (default: 600)")
-    .option("--voice <mode>", "Voice setup mode: ask, enable, disable", "ask")
-    .action(
-      withGlobalOptions(async (options: RawOnboardOptions, command: Command) => {
-        await runOnboard({
-          ...options,
-          mcp: command.getOptionValueSource("mcp") === "cli" ? options.mcp : undefined,
-          hostnames: options.hostnames ?? options.allowedHosts,
-        });
-      }),
-    );
+  return (
+    addLocalDaemonOptions(new Command("onboard"))
+      .description("Run first-time setup, start daemon, and print pairing instructions")
+      .option("--listen <listen>", "Listen target (host:port, port, or unix socket path)")
+      // OTTO(identity)
+      .option("--port <port>", `Port to listen on (default: ${OTTO_DEFAULT_DAEMON_PORT})`)
+      .option("--relay", "Enable relay connection without prompting")
+      .option("--no-relay", "Disable relay connection")
+      .option("--no-mcp", "Disable the Agent MCP HTTP endpoint")
+      .option(
+        "--hostnames <hosts>",
+        'Daemon hostnames (comma-separated, e.g. "myhost,.example.com" or "true" for any)',
+      )
+      .addOption(new Option("--allowed-hosts <hosts>").hideHelp())
+      .option("--timeout <seconds>", "Max time to wait for daemon readiness (default: 600)")
+      .option("--voice <mode>", "Voice setup mode: ask, enable, disable", "ask")
+      .action(
+        withGlobalOptions(async (options: RawOnboardOptions, command: Command) => {
+          await runOnboard({
+            ...options,
+            mcp: command.getOptionValueSource("mcp") === "cli" ? options.mcp : undefined,
+            hostnames: options.hostnames ?? options.allowedHosts,
+          });
+        }),
+      )
+  );
 }
 
 async function resolveAndPersistVoice(
@@ -233,7 +245,8 @@ function persistSetupChoices(paseoHome: string, options: OnboardOptions): void {
 export async function runOnboard(options: OnboardOptions): Promise<void> {
   const richUi = process.stdin.isTTY && process.stdout.isTTY;
   if (richUi) {
-    intro("Welcome to Paseo");
+    // OTTO(identity)
+    intro("Welcome to Otto");
   }
 
   if (options.listen && options.port) {
@@ -248,7 +261,8 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
   const alreadyRunning = await readDaemonInstance(paseoHome);
   persistSetupChoices(paseoHome, options);
   if (richUi) {
-    renderNote(paseoHome, "Paseo home");
+    // OTTO(identity)
+    renderNote(paseoHome, "Otto home");
   }
 
   const voiceEnabled = await resolveAndPersistVoice(paseoHome, options);
@@ -275,7 +289,8 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
   if (options.relay === false) {
     log.message("Relay pairing skipped because --no-relay was provided.");
     printNextSteps(null, paseoHome, richUi);
-    if (richUi) outro("Paseo daemon is running.");
+    // OTTO(identity)
+    if (richUi) outro("Otto daemon is running.");
     return;
   }
 
@@ -289,7 +304,8 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
     if (!shouldEnable) {
       printDirectConnectionGuidance();
       printNextSteps(null, paseoHome, richUi);
-      if (richUi) outro("Paseo daemon is running.");
+      // OTTO(identity)
+      if (richUi) outro("Otto daemon is running.");
       return;
     }
     pairing = await resolveLocalPairingOffer({ paseoHome, enableRelay: true });
@@ -300,7 +316,8 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
     log.warn("Relay pairing URL is unavailable for this daemon configuration.");
     printNextSteps(null, paseoHome, richUi);
     if (richUi) {
-      outro("Paseo daemon is running.");
+      // OTTO(identity)
+      outro("Otto daemon is running.");
     }
     return;
   }
@@ -314,6 +331,7 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
   );
   printNextSteps(pairing.url, paseoHome, richUi);
   if (richUi) {
-    outro("Paseo is ready!");
+    // OTTO(identity)
+    outro("Otto is ready!");
   }
 }

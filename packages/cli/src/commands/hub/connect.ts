@@ -50,7 +50,8 @@ export async function runHubConnect(
     ) {
       await daemon.disconnectHub(false).catch(() => undefined);
       throw new Error(
-        "The daemon did not honor the requested Hub access. Update Paseo before connecting it.",
+        // OTTO(identity)
+        "The daemon did not honor the requested Hub access. Update Otto before connecting it.",
       );
     }
     return hubStatusResult(response.status);

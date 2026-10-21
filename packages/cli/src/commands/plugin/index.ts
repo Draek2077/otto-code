@@ -126,7 +126,8 @@ export async function runPluginInstallCommand(
   _command: Command,
 ): Promise<SingleResult<PluginListItem>> {
   process.stderr.write(
-    "Trusting plugin code: server code and preparation commands run unsandboxed on the daemon host; client code runs inside Paseo. Dependencies and future updates are part of the codebase you trust.\n",
+    // OTTO(identity)
+    "Trusting plugin code: server code and preparation commands run unsandboxed on the daemon host; client code runs inside Otto. Dependencies and future updates are part of the codebase you trust.\n",
   );
   const reference = parsePluginSourceReference(source);
   let resolvedSource = source;

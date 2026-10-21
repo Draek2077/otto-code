@@ -25,10 +25,13 @@ const openAgentSchema: OutputSchema<OpenAgentResult> = {
 };
 
 export function addOpenOptions(command: Command): Command {
-  return command
-    .description("Open an existing agent in Paseo Desktop")
-    .argument("<agent-id>", "Existing agent ID")
-    .option("--server <server-id>", "Server ID (defaults to the local daemon)");
+  return (
+    command
+      // OTTO(identity)
+      .description("Open an existing agent in Otto Desktop")
+      .argument("<agent-id>", "Existing agent ID")
+      .option("--server <server-id>", "Server ID (defaults to the local daemon)")
+  );
 }
 
 function toOpenError(err: unknown): CommandError {
@@ -64,7 +67,8 @@ async function resolveAgentTarget(
       const error: CommandError = {
         code: "AGENT_NOT_FOUND",
         message: `Agent not found: ${agentId}`,
-        details: 'Use "paseo ls" to list available agents',
+        // OTTO(identity)
+        details: 'Use "otto ls" to list available agents',
       };
       throw error;
     }

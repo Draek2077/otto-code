@@ -45,7 +45,8 @@ function findDesktopApp(): string | null {
       return null;
     }
 
-    const candidate = path.join(localAppData, "Programs", "Paseo", "Paseo.exe");
+    // OTTO(identity)
+    const candidate = path.join(localAppData, "Programs", "Otto", "Otto.exe");
     return existsSync(candidate) ? candidate : null;
   }
 
@@ -73,7 +74,8 @@ function spawnDetached(command: string, args: string[]): void {
 
 function launchDesktop(args: string[]): void {
   if (process.env.PASEO_DESKTOP_CLI === "1") {
-    throw new Error("Cannot open Paseo Desktop while running in desktop CLI passthrough mode.");
+    // OTTO(identity)
+    throw new Error("Cannot open Otto Desktop while running in desktop CLI passthrough mode.");
   }
 
   const desktopApp = findDesktopApp();

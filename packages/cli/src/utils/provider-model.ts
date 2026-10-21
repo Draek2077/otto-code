@@ -22,7 +22,8 @@ export function resolveProviderAndModel(
       code: "MISSING_PROVIDER",
       message: "Provider is required",
       details:
-        "Pass --provider <provider> or --provider <provider>/<model>. Use `paseo provider ls` to see providers and `paseo provider models <provider>` to see models.",
+        // OTTO(identity)
+        "Pass --provider <provider> or --provider <provider>/<model>. Use `otto provider ls` to see providers and `otto provider models <provider>` to see models.",
     };
     throw error;
   }

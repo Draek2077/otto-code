@@ -51,7 +51,8 @@ export async function runCloneCommand(
     throw cmdError(
       "UNSUPPORTED_BY_HOST",
       "This daemon does not support cloning GitHub repos.",
-      "Update the host to a newer Paseo version.",
+      // OTTO(identity)
+      "Update the host to a newer Otto version.",
     );
   }
 

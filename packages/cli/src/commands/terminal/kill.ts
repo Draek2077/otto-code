@@ -45,7 +45,8 @@ async function requireTerminalId(
   const error: CommandError = {
     code: "TERMINAL_NOT_FOUND",
     message: `No terminal found matching: ${terminalId}`,
-    details: "Use `paseo terminal ls --all` to list available terminals.",
+    // OTTO(identity)
+    details: "Use `otto terminal ls --all` to list available terminals.",
   };
   throw error;
 }

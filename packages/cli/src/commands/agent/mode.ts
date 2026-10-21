@@ -40,7 +40,8 @@ export interface AgentModeOptions extends CommandOptions {
 const missingModeError = (): CommandError => ({
   code: "MISSING_ARGUMENT",
   message: "Mode argument required unless --list is specified",
-  details: "Usage: paseo agent mode <id> <mode> | paseo agent mode --list <id>",
+  // OTTO(identity)
+  details: "Usage: otto agent mode <id> <mode> | otto agent mode --list <id>",
 });
 
 // This command returns two different data shapes (set result vs mode list).
@@ -70,7 +71,8 @@ export async function runModeCommand(
       const error: CommandError = {
         code: "AGENT_NOT_FOUND",
         message: `No agent found matching: ${id}`,
-        details: "Use `paseo ls` to list available agents",
+        // OTTO(identity)
+        details: "Use `otto ls` to list available agents",
       };
       throw error;
     }
@@ -120,7 +122,8 @@ export async function runModeCommand(
       const error: CommandError = {
         code: "DAEMON_NOT_RUNNING",
         message: `Cannot connect to daemon at ${host}: ${message}`,
-        details: "Start the daemon with: paseo daemon start",
+        // OTTO(identity)
+        details: "Start the daemon with: otto daemon start",
       };
       throw error;
     }

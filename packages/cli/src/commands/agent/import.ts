@@ -6,17 +6,20 @@ import { agentRunSchema, type AgentRunResult } from "./run.js";
 import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
 
 export function addImportOptions(cmd: Command): Command {
-  return cmd
-    .description("Import an existing provider session as a Paseo agent")
-    .argument("<id>", "Provider session/thread ID to import")
-    .requiredOption("--provider <provider>", "Agent provider id")
-    .option("--cwd <path>", "Working directory for providers that require it")
-    .option(
-      "--label <key=value>",
-      "Add label(s) to the agent (can be used multiple times)",
-      collectMultiple,
-      [],
-    );
+  return (
+    cmd
+      // OTTO(identity)
+      .description("Import an existing provider session as an Otto agent")
+      .argument("<id>", "Provider session/thread ID to import")
+      .requiredOption("--provider <provider>", "Agent provider id")
+      .option("--cwd <path>", "Working directory for providers that require it")
+      .option(
+        "--label <key=value>",
+        "Add label(s) to the agent (can be used multiple times)",
+        collectMultiple,
+        [],
+      )
+  );
 }
 
 export interface AgentImportOptions extends CommandOptions {
@@ -44,7 +47,8 @@ function parseImportProvider(provider: string | undefined): string {
     throw {
       code: "MISSING_PROVIDER",
       message: "Provider is required",
-      details: "Usage: paseo import --provider <provider> <id>",
+      // OTTO(identity)
+      details: "Usage: otto import --provider <provider> <id>",
     } satisfies CommandError;
   }
 
@@ -104,7 +108,8 @@ export async function runImportCommand(
     throw {
       code: "MISSING_SESSION_ID",
       message: "Session ID is required",
-      details: "Usage: paseo import --provider <provider> <id>",
+      // OTTO(identity)
+      details: "Usage: otto import --provider <provider> <id>",
     } satisfies CommandError;
   }
 

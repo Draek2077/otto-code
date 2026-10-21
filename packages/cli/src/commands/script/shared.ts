@@ -31,7 +31,8 @@ export async function connectWorkspaceScriptClient(target: DaemonTarget): Promis
     throw {
       code: "DAEMON_NOT_RUNNING",
       message: `Cannot connect to daemon at ${daemonHost}: ${message}`,
-      details: "Start the daemon with: paseo daemon start",
+      // OTTO(identity)
+      details: "Start the daemon with: otto daemon start",
     } satisfies CommandError;
   }
 }
@@ -61,8 +62,9 @@ export async function resolveWorkspaceScriptWorkspaceId(
   }
   throw {
     code: "WORKSPACE_NOT_FOUND",
-    message: `No Paseo workspace found for ${cwd}`,
-    details: "Open the directory in Paseo first, or pass --workspace <workspace-id>.",
+    // OTTO(identity)
+    message: `No Otto workspace found for ${cwd}`,
+    details: "Open the directory in Otto first, or pass --workspace <workspace-id>.",
   } satisfies CommandError;
 }
 

@@ -222,7 +222,8 @@ export async function runInspectCommand(
     const error: CommandError = {
       code: "MISSING_AGENT_ID",
       message: "Agent ID is required",
-      details: "Usage: paseo agent inspect <id>",
+      // OTTO(identity)
+      details: "Usage: otto agent inspect <id>",
     };
     throw error;
   }
@@ -235,7 +236,8 @@ export async function runInspectCommand(
       const error: CommandError = {
         code: "AGENT_NOT_FOUND",
         message: `Agent not found: ${agentIdArg}`,
-        details: 'Use "paseo ls" to list available agents',
+        // OTTO(identity)
+        details: 'Use "otto ls" to list available agents',
       };
       throw error;
     }

@@ -23,7 +23,8 @@ export async function connectTerminalClient(target: DaemonTarget) {
     const error: CommandError = {
       code: "DAEMON_NOT_RUNNING",
       message: `Cannot connect to daemon at ${daemonHost}: ${message}`,
-      details: "Start the daemon with: paseo daemon start",
+      // OTTO(identity)
+      details: "Start the daemon with: otto daemon start",
     };
     throw error;
   }
