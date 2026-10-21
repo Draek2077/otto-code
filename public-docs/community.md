@@ -1,5 +1,4 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Community projects
 description: Community-built tools and integrations for Otto, including self-hosted Docker builds and an alternative relay.
 nav: Community
@@ -8,8 +7,9 @@ description: Projects related to Otto and built by the community.
 nav: Related projects
 order: 7
 category: Getting started
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Community projects
 

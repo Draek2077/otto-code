@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { randomUUID } from "node:crypto";
 import type { ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -327,10 +328,10 @@ async function seedBrowserForDaemon(page: Page, input: { serverId: string; port:
   });
   await page.evaluate(
     ({ daemon, preferences }) => {
-      localStorage.setItem("@paseo:e2e", "1");
-      localStorage.setItem("@paseo:daemon-registry", JSON.stringify([daemon]));
-      localStorage.removeItem("@paseo:settings");
-      localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(preferences));
+      localStorage.setItem("@otto:e2e", "1");
+      localStorage.setItem("@otto:daemon-registry", JSON.stringify([daemon]));
+      localStorage.removeItem("@otto:settings");
+      localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(preferences));
     },
     {
       daemon: host,

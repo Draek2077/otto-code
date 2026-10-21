@@ -5,6 +5,8 @@ import os from "node:os";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import pino from "pino";
+// OTTO(paseo-version): mirror bootstrap's API version when checking Paseo plugins.
+import { OTTO_PASEO_BASE_VERSION } from "../packages/protocol/dist/otto/identity.js";
 import {
   builtinPlugins,
   resolveBuiltinPluginsRoot,
@@ -30,7 +32,9 @@ test("built output compiles and starts every listed built-in", async () => {
     await readFile(path.join(repoRoot, "packages/server/package.json"), "utf8"),
   );
   const settingsDirectory = await mkdtemp(path.join(os.tmpdir(), "builtin-dist-settings-"));
-  const runtime = new PluginRuntime(pino({ level: "silent" }), version, { settingsDirectory });
+  const runtime = new PluginRuntime(pino({ level: "silent" }), OTTO_PASEO_BASE_VERSION, {
+    settingsDirectory,
+  });
   runtime.bindPaseoSessionHost({
     async attachPluginSocket(_pluginId, socket) {
       const closed = new Promise((resolve) => socket.once("close", resolve));

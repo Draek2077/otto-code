@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Updates
 description: How Otto releases work, the difference between stable and beta channels, and how to opt in to earlier updates.
 nav: Updates
 order: 5
 category: Getting started
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Updates
 

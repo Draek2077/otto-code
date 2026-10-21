@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): restart hints use the Otto command.
 // OTTO(identity): fixtures use Otto's daemon lock filename.
 
 /**
@@ -292,7 +293,7 @@ try {
       const nestedReload = await daemonCommand(["reload", "--host", listen, "--json"]);
       assert.strictEqual(nestedReload.exitCode, 0, nestedReload.stderr);
       assert.deepStrictEqual(JSON.parse(nestedReload.stdout), {
-        restartCommand: `paseo daemon restart --host ${JSON.stringify(listen)}`,
+        restartCommand: `otto daemon restart --host ${JSON.stringify(listen)}`,
         appliedPaths: ["daemon.browserTools.enabled"],
         restartRequiredPaths: [],
         overrideControlledPaths: ["daemon.listen"],
@@ -305,7 +306,7 @@ try {
       });
       assert.strictEqual(aliasReload.exitCode, 0, aliasReload.stderr);
       assert.deepStrictEqual(JSON.parse(aliasReload.stdout), {
-        restartCommand: `paseo daemon restart --host ${JSON.stringify(listen)}`,
+        restartCommand: `otto daemon restart --host ${JSON.stringify(listen)}`,
         appliedPaths: ["daemon.browserTools.enabled"],
         restartRequiredPaths: [],
         overrideControlledPaths: [],
@@ -314,7 +315,7 @@ try {
       const yamlReload = await daemonCommand(["reload", "--host", listen, "--format", "yaml"]);
       assert.strictEqual(yamlReload.exitCode, 0, yamlReload.stderr);
       assert.deepStrictEqual(YAML.parse(yamlReload.stdout), {
-        restartCommand: `paseo daemon restart --host ${JSON.stringify(listen)}`,
+        restartCommand: `otto daemon restart --host ${JSON.stringify(listen)}`,
         appliedPaths: [],
         restartRequiredPaths: [],
         overrideControlledPaths: [],

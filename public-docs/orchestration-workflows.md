@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Common orchestration workflows
 description: Prompts for delegating, parallelizing, reviewing, and continuing agent work with Otto.
 nav: Common workflows
 order: 31
 category: Orchestration
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Common orchestration workflows
 

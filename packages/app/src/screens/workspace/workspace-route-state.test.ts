@@ -1,3 +1,4 @@
+// OTTO(identity): test the installed Otto identity.
 import { describe, expect, it } from "vitest";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import type { WorkspaceRecoveryModel } from "@/workspace-recovery/model";
@@ -150,7 +151,7 @@ describe("resolveWorkspaceRouteState", () => {
     ).toEqual({
       kind: "recoveryUnavailable",
       hostName: "Laptop",
-      message: "Update Paseo to recover this workspace.",
+      message: "Update Otto to recover this workspace.",
     });
   });
 

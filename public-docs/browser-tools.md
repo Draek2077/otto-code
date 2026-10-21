@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Browser tools
 description: The browser\_\* MCP tools agents use to drive Otto browser tabs.
 nav: Tools reference
 order: 37
 category: Browser
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Browser tools
 

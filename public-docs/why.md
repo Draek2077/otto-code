@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Why Otto?
 description: What Otto is, what it isn't, and how it fits into your workflow.
 nav: Why Otto?
 order: 2
 category: Getting started
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Why Otto?
 

@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { Page } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
 import { expectComposerVisible } from "../support/helpers/composer";
@@ -141,10 +142,7 @@ async function holdStreamAfterFirstCompletedToolCall(page: Page, agentId: string
 
 async function configureOverviewToolCalls(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "@paseo:app-settings",
-      JSON.stringify({ toolCallDetailLevel: "overview" }),
-    );
+    localStorage.setItem("@otto:app-settings", JSON.stringify({ toolCallDetailLevel: "overview" }));
   });
 }
 

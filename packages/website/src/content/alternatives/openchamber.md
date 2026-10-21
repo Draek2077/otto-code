@@ -1,11 +1,11 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: OpenChamber Alternative With Linux, Windows, and Mobile
 description: Otto ships Android and web access from mobile devices, runs on macOS, Linux, and Windows, and supports built-in and catalog providers. OpenChamber is macOS only with a PWA and is built around OpenCode.
 nav: OpenChamber
 order: 52
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Otto vs OpenChamber
 

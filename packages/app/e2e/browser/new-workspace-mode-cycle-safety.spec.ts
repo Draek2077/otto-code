@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, test, type Page } from "../support/fixtures";
 import type { FormPreferences } from "@/create-agent-preferences/preferences";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
@@ -8,7 +9,7 @@ import {
 } from "../support/helpers/new-workspace";
 import { seedWorkspace } from "../support/helpers/seed-client";
 
-const CREATE_AGENT_PREFERENCES_KEY = "@paseo:create-agent-preferences";
+const CREATE_AGENT_PREFERENCES_KEY = "@otto:create-agent-preferences";
 
 type WebSocketMessage = string | Buffer;
 

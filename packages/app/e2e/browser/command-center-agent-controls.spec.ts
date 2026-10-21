@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, test } from "../support/fixtures";
 import type { FormPreferences } from "@/create-agent-preferences/preferences";
 import { closeCommandCenter, openCommandCenter } from "../support/helpers/command-center";
@@ -17,7 +18,7 @@ import { expectAppRoute } from "../support/helpers/route-assertions";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { buildSchedulesRoute } from "@/utils/host-routes";
 
-const CREATE_AGENT_PREFERENCES_KEY = "@paseo:create-agent-preferences";
+const CREATE_AGENT_PREFERENCES_KEY = "@otto:create-agent-preferences";
 
 async function seedMockDraftPreferences(page: import("@playwright/test").Page): Promise<void> {
   await page.addInitScript(

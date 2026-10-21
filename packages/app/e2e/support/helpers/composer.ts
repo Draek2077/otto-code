@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, type Page } from "@playwright/test";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { createTempGitRepo } from "./workspace";
@@ -437,7 +438,7 @@ export async function queueComposerWithButton(page: Page): Promise<void> {
 }
 export async function configureComposerQueueSend(page: Page): Promise<void> {
   await page.addInitScript(() =>
-    localStorage.setItem("@paseo:app-settings", JSON.stringify({ sendBehavior: "queue" })),
+    localStorage.setItem("@otto:app-settings", JSON.stringify({ sendBehavior: "queue" })),
   );
 }
 

@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { test as base, expect, type Page } from "@playwright/test";
 import { startOutdatedDaemon, type OutdatedDaemon } from "./helpers/daemon-update";
 import { startE2EWorker } from "./helpers/e2e-worker";
@@ -11,7 +12,7 @@ import {
 import { connectSeedClient, type SeedDaemonClient } from "./helpers/seed-client";
 import { createWithWorkspace, type WithWorkspace } from "./helpers/with-workspace";
 
-const EXTRA_HOSTS_KEY = "@paseo:e2e-extra-hosts";
+const EXTRA_HOSTS_KEY = "@otto:e2e-extra-hosts";
 
 interface TrackedProjectPickerFixture extends ProjectPickerFixture {
   rememberProjectId: (projectId: string) => void;
@@ -158,7 +159,7 @@ const test = daemonTest.extend<{
           // `addInitScript` runs on every navigation (including reloads). Some tests intentionally
           // override storage and reload; they can opt out of seeding for the *next* navigation by
           // setting this flag before the reload.
-          const disableOnceKey = "@paseo:e2e-disable-default-seed-once";
+          const disableOnceKey = "@otto:e2e-disable-default-seed-once";
           const disableValue = localStorage.getItem(disableOnceKey);
           if (disableValue) {
             localStorage.removeItem(disableOnceKey);
@@ -167,16 +168,16 @@ const test = daemonTest.extend<{
             }
           }
 
-          localStorage.setItem("@paseo:e2e", "1");
-          localStorage.setItem("@paseo:e2e-seed-nonce", nonce);
+          localStorage.setItem("@otto:e2e", "1");
+          localStorage.setItem("@otto:e2e-seed-nonce", nonce);
 
           const rawExtraHosts = localStorage.getItem(extraHostsKey);
           const extraHosts = rawExtraHosts ? JSON.parse(rawExtraHosts) : [];
 
           // Hard-reset anything that could point to a developer's real daemon.
-          localStorage.setItem("@paseo:daemon-registry", JSON.stringify([daemon, ...extraHosts]));
-          localStorage.removeItem("@paseo:settings");
-          localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(preferences));
+          localStorage.setItem("@otto:daemon-registry", JSON.stringify([daemon, ...extraHosts]));
+          localStorage.removeItem("@otto:settings");
+          localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(preferences));
         },
         {
           daemon: testDaemon,

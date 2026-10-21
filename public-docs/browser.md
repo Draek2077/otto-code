@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Browser automation
 description: Give agents a real browser inside Otto to open pages, click, type, and verify their work.
 nav: Overview
 order: 35
 category: Browser
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Browser automation
 

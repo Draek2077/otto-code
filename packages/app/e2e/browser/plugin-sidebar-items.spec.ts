@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import path from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../support/fixtures";
@@ -28,7 +29,7 @@ import { getServerId } from "../support/helpers/server-id";
 import { installUsageReportsFixture } from "../support/helpers/usage-reports";
 import { claudeAndCodexReports } from "../support/helpers/usage-sidebar-item";
 
-const APP_SETTINGS_KEY = "@paseo:app-settings";
+const APP_SETTINGS_KEY = "@otto:app-settings";
 
 /** Set PASEO_QA_SCREENSHOT_DIR to keep QA screenshots of each state. */
 async function qaScreenshot(page: Page, name: string, area?: Locator) {

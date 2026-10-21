@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: When to use the Otto browser
 description: When to reach for Otto's built-in browser instead of Playwright or agent-browser.
 nav: When to use
 order: 36
 category: Browser
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # When to use
 

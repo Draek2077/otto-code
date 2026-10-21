@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: TypeScript SDK
 description: Run Otto coding agents from a TypeScript program.
 nav: Overview
 order: 50
 category: TypeScript SDK
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # TypeScript SDK
 

@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
-import { isAbsolute, join, resolve } from "path";
+import { dirname, isAbsolute, join, resolve } from "path";
 import { z } from "zod";
 // OTTO(identity): preserve existing Otto worktree metadata without renaming Paseo APIs.
 import { OTTO_WORKTREE_METADATA_DIRECTORY } from "@getpaseo/protocol/otto/identity";
@@ -344,7 +344,7 @@ function writePaseoWorktreeMetadataFile(
   metadata: PaseoWorktreeMetadata,
 ): void {
   const metadataPath = getPaseoWorktreeMetadataPath(worktreeRoot);
-  mkdirSync(join(getGitDirForWorktreeRoot(worktreeRoot), "paseo"), { recursive: true });
+  mkdirSync(dirname(metadataPath), { recursive: true }); // OTTO(identity): create the directory we write.
   const tempPath = `${metadataPath}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tempPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
   renameSync(tempPath, metadataPath);

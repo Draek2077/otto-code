@@ -1,3 +1,4 @@
+// OTTO(identity): plugin migration hints target Otto and its Paseo API.
 import { randomUUID } from "node:crypto";
 import {
   cp,
@@ -1224,7 +1225,7 @@ export default function contribute(plugin: unknown) {
       "Plugin entry points are missing",
     );
     await expect(service.installDirectory({ path: legacy })).rejects.toThrow(
-      "This plugin was made for an older version of Paseo and cannot run on Paseo v0.8. Ask its author to update it. Plugin authors can follow the migration guide: https://paseo.sh/docs/plugins/migration",
+      "This plugin was made for a plugin API older than Paseo v0.8 and cannot run in Otto. Ask its author to update it. Plugin authors can follow the migration guide: https://otto-code.me/docs/plugins/migration",
     );
     await expect(service.installDirectory({ path: startupFailure })).rejects.toThrow(
       "startup exploded",
@@ -1234,7 +1235,7 @@ export default function contribute(plugin: unknown) {
         id: "legacy-plugin",
         status: "failed",
         error:
-          "This plugin was made for an older version of Paseo and cannot run on Paseo v0.8. Ask its author to update it. Plugin authors can follow the migration guide: https://paseo.sh/docs/plugins/migration",
+          "This plugin was made for a plugin API older than Paseo v0.8 and cannot run in Otto. Ask its author to update it. Plugin authors can follow the migration guide: https://otto-code.me/docs/plugins/migration",
       }),
       expect.objectContaining({
         id: "missing-entry",

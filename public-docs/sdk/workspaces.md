@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Workspaces with the SDK
 description: Open directories as Paseo workspaces, place agents in them, follow changes, and archive them.
 nav: Workspaces
 order: 53
 category: TypeScript SDK
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Workspaces with the SDK
 

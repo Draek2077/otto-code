@@ -1,3 +1,4 @@
+// OTTO(identity): hooks invoke the installed Otto CLI.
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -57,8 +58,8 @@ describe("OpenCode terminal agent hooks", () => {
       dispose();
 
       expect(commands).toEqual([
-        ["paseo", "hooks", "opencode", "session.status.busy"],
-        ["paseo", "hooks", "opencode", "session.status.idle"],
+        ["otto", "hooks", "opencode", "session.status.busy"],
+        ["otto", "hooks", "opencode", "session.status.idle"],
       ]);
     },
   );
@@ -80,11 +81,11 @@ describe("OpenCode terminal agent hooks", () => {
 
     expect(plugin.id).toBe("paseo-terminal-activity");
     expect(commands).toEqual([
-      ["paseo", "hooks", "opencode", "session.status.busy"],
-      ["paseo", "hooks", "opencode", "permission.asked"],
-      ["paseo", "hooks", "opencode", "permission.replied"],
-      ["paseo", "hooks", "opencode", "session.status.retry"],
-      ["paseo", "hooks", "opencode", "session.status.idle"],
+      ["otto", "hooks", "opencode", "session.status.busy"],
+      ["otto", "hooks", "opencode", "permission.asked"],
+      ["otto", "hooks", "opencode", "permission.replied"],
+      ["otto", "hooks", "opencode", "session.status.retry"],
+      ["otto", "hooks", "opencode", "session.status.idle"],
     ]);
   });
 
@@ -102,8 +103,8 @@ describe("OpenCode terminal agent hooks", () => {
     dispose();
 
     expect(commands).toEqual([
-      ["paseo", "hooks", "opencode", "permission.asked"],
-      ["paseo", "hooks", "opencode", "permission.replied"],
+      ["otto", "hooks", "opencode", "permission.asked"],
+      ["otto", "hooks", "opencode", "permission.replied"],
     ]);
   });
 
@@ -122,13 +123,13 @@ describe("OpenCode terminal agent hooks", () => {
       event: { type: "session.status", properties: { status: { type: "idle" } } },
     });
     await Promise.resolve();
-    expect(commands).toEqual([["paseo", "hooks", "opencode", "session.status.busy"]]);
+    expect(commands).toEqual([["otto", "hooks", "opencode", "session.status.busy"]]);
 
     finishFirstHook();
     await Promise.all([working, idle]);
     expect(commands).toEqual([
-      ["paseo", "hooks", "opencode", "session.status.busy"],
-      ["paseo", "hooks", "opencode", "session.status.idle"],
+      ["otto", "hooks", "opencode", "session.status.busy"],
+      ["otto", "hooks", "opencode", "session.status.idle"],
     ]);
   });
 

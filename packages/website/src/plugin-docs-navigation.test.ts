@@ -1,45 +1,49 @@
-// OTTO(website): retain Otto's public site on the clean Paseo base.
+// OTTO(website): current plugin docs and the retained historical guides stay discoverable.
 import { describe, expect, it } from "vitest";
-import { buildDocsNavTree, getDocs, getLegacyDocsRedirect } from "./docs";
+import { buildDocsNavTree, getDoc, getDocs } from "./docs";
 
 describe("versioned plugin documentation", () => {
   it("keeps current and historical API versions together in the Plugins navigation", () => {
     const plugins = buildDocsNavTree(getDocs()).find(
       (node) => node.type === "category" && node.label === "Plugins",
     );
-
-    expect(plugins).toMatchObject({
-      type: "category",
-      children: [
-        { type: "page", label: "Versions", href: "/docs/plugins" },
-        {
+    expect(plugins?.type).toBe("category");
+    if (plugins?.type !== "category") throw new Error("Plugins navigation is missing");
+    expect(plugins.children).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "page",
+          label: "Quickstart (current)",
+          href: "/docs/plugins",
+        }),
+        expect.objectContaining({
+          type: "page",
+          label: "Reference",
+          href: "/docs/plugins/reference",
+        }),
+        expect.objectContaining({
           type: "group",
           label: "Paseo v0.7 (historical)",
           href: "/docs/plugins/v0.7",
-          children: [{ type: "page", label: "Reference", href: "/docs/plugins/v0.7/reference" }],
-        },
-        {
+        }),
+        expect.objectContaining({
           type: "group",
-          label: "Paseo v0.8 (current)",
+          label: "Paseo v0.8 (historical)",
           href: "/docs/plugins/v0.8",
-          children: [
-            { type: "page", label: "Provider plugins", href: "/docs/plugins/v0.8/providers" },
-            { type: "page", label: "Migration", href: "/docs/plugins/v0.8/migration" },
-            { type: "page", label: "Reference", href: "/docs/plugins/v0.8/reference" },
-          ],
-        },
-      ],
-    });
+        }),
+      ]),
+    );
   });
 
-  it("keeps existing plugin documentation URLs working", () => {
-    expect(getLegacyDocsRedirect("/docs/plugins/reference")).toBe("/docs/plugins/v0.7/reference");
-    expect(getLegacyDocsRedirect("/docs/plugins/reference.md")).toBe(
-      "/docs/plugins/v0.7/reference.md",
-    );
-    expect(getLegacyDocsRedirect("/docs/plugins/migration")).toBe("/docs/plugins/v0.8/migration");
-    expect(getLegacyDocsRedirect("/docs/plugins/migration.md")).toBe(
-      "/docs/plugins/v0.8/migration.md",
-    );
+  it("loads current plugin contracts and preserves document metadata", () => {
+    expect(getDoc("plugins/reference")?.content).toContain("client.addScreen(");
+    expect(getDoc("plugins/migration")?.frontmatter.nav).toBe("Migration");
+    expect(getDoc("")?.frontmatter).toMatchObject({
+      title: "Getting started",
+      nav: "Getting started",
+      order: 1,
+      category: "Getting started",
+    });
+    for (const doc of getDocs()) expect(doc.frontmatter.title, doc.sourcePath).not.toBe("");
   });
 });

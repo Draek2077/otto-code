@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Providers
 description: How Otto thinks about coding agents, wrapping existing CLIs, native vs ACP support, and where to go next.
 nav: Providers
 order: 20
 category: Providers
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Providers
 

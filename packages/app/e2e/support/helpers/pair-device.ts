@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, type Page } from "@playwright/test";
 import type { IsolatedHostDaemon } from "./isolated-host-daemon";
 import type { OutdatedDaemon } from "./daemon-update";
@@ -51,7 +52,7 @@ export async function prepareLocalPairingHost(
       events: { on: async () => () => undefined },
       opener: {
         openUrl: async (url: string) => {
-          localStorage.setItem("@paseo:e2e-opened-url", url);
+          localStorage.setItem("@otto:e2e-opened-url", url);
         },
       },
     };
@@ -132,9 +133,9 @@ export async function closePairDeviceModal(page: Page): Promise<void> {
 
 export async function reloadAndOpenPairDevice(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const nonce = localStorage.getItem("@paseo:e2e-seed-nonce");
+    const nonce = localStorage.getItem("@otto:e2e-seed-nonce");
     if (!nonce) throw new Error("Expected e2e seed nonce");
-    localStorage.setItem("@paseo:e2e-disable-default-seed-once", nonce);
+    localStorage.setItem("@otto:e2e-disable-default-seed-once", nonce);
   });
   await page.reload();
   await openPairDeviceModal(page);
@@ -163,9 +164,9 @@ export async function retryRelayAndExpectFailure(
 
 export async function openPairDeviceFromHome(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const nonce = localStorage.getItem("@paseo:e2e-seed-nonce");
+    const nonce = localStorage.getItem("@otto:e2e-seed-nonce");
     if (!nonce) throw new Error("Expected e2e seed nonce");
-    localStorage.setItem("@paseo:e2e-disable-default-seed-once", nonce);
+    localStorage.setItem("@otto:e2e-disable-default-seed-once", nonce);
   });
   await page.goto("/open-project");
   await page.getByTestId("open-project-pair-device").click();
@@ -209,7 +210,7 @@ export async function switchPairDeviceToHost(page: Page, serverId: string): Prom
 export async function openRelaySecurityDocs(page: Page): Promise<void> {
   await page.getByRole("link", { name: "Read how Paseo relay works" }).click();
   await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("@paseo:e2e-opened-url")))
+    .poll(() => page.evaluate(() => localStorage.getItem("@otto:e2e-opened-url")))
     .toBe("https://paseo.sh/docs/security");
 }
 

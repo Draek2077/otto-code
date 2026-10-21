@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Configuration
 description: Configure Otto via config.json, environment variables, and CLI overrides.
 nav: Configuration
 order: 40
 category: Configuration
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Configuration
 

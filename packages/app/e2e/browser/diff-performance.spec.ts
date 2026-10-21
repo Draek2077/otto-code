@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CDPSession, Locator, Page, TestInfo } from "@playwright/test";
@@ -16,7 +17,7 @@ const LINE_COUNT_PER_FILE = 1_200;
 const MANY_FILE_COUNT = Number(process.env.PASEO_DIFF_MANY_FILE_COUNT ?? 2_000);
 const FILE_PATHS = ["src/large-a.ts", "src/large-b.ts"] as const;
 const CPU_SLOWDOWN = Number(process.env.PASEO_DIFF_PERF_CPU_SLOWDOWN ?? 6);
-const CHANGES_PREFERENCES_KEY = "@paseo:changes-preferences";
+const CHANGES_PREFERENCES_KEY = "@otto:changes-preferences";
 const POC_MEDIAN_FRAME_MS = Number(
   process.env.PASEO_DIFF_POC_MEDIAN_FRAME_MS ?? DIFF_POC_BASELINE.medianFrameMs,
 );

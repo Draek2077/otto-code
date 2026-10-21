@@ -10,7 +10,10 @@ import {
   createPersistedWorkspaceRecord,
 } from "../workspace-registry.js";
 import { AgentStorage } from "../agent/agent-storage.js";
-import { readPaseoWorktreeMetadata } from "../../utils/worktree-metadata.js";
+import {
+  readPaseoWorktreeMetadata,
+  writePaseoWorktreeMetadata,
+} from "../../utils/worktree-metadata.js";
 
 const roots: string[] = [];
 const logger = pino({ level: "silent" });
@@ -30,6 +33,14 @@ it("reads the metadata directory used by existing Otto worktrees", async () => {
   const metadata = { version: 2, baseRefName: "main", baseRef: "refs/remotes/origin/main" };
   await writeFile(path.join(directory, ".git", "otto", "worktree.json"), JSON.stringify(metadata));
   expect(readPaseoWorktreeMetadata(directory)).toEqual(metadata);
+});
+
+it("creates Otto metadata for a fresh checkout before writing it", async () => {
+  const directory = await makeTempRoot();
+  await mkdir(path.join(directory, ".git"));
+  writePaseoWorktreeMetadata(directory, { baseRefName: "main" });
+  expect(readPaseoWorktreeMetadata(directory)).toEqual({ version: 1, baseRefName: "main" });
+  expect(await readdir(path.join(directory, ".git"))).toEqual(["otto"]);
 });
 
 it("retains Otto project settings on disk when Paseo renames and removes projects", async () => {

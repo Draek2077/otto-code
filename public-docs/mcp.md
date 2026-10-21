@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Otto MCP
 description: Otto MCP tools injected into agents.
 nav: Otto MCP
 order: 30
 category: Orchestration
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Otto MCP
 

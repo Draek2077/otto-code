@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, test } from "../support/fixtures";
 import type { Page } from "@playwright/test";
 import { openSettingsSection } from "../support/helpers/settings";
@@ -36,7 +37,7 @@ for (const name of ["Code font family", "Interface font family"]) {
 test("opens settings with defaults when a malformed font was already saved", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
-      "@paseo:app-settings",
+      "@otto:app-settings",
       JSON.stringify({ monoFontFamily: "'foo", uiFontFamily: '"foo' }),
     );
   });

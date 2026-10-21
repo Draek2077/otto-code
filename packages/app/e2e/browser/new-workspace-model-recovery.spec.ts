@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { test, expect, type Page } from "../support/fixtures";
 import {
@@ -21,7 +22,7 @@ async function rememberModel(page: Page) {
   await page.addInitScript(
     ({ provider, model }) => {
       localStorage.setItem(
-        "@paseo:create-agent-preferences",
+        "@otto:create-agent-preferences",
         JSON.stringify({
           provider,
           providerPreferences: { [provider]: { model } },

@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Agents with the SDK
 description: Create, run, find, reuse, parent, and archive coding agents from TypeScript.
 nav: Agents
 order: 52
 category: TypeScript SDK
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Agents with the SDK
 

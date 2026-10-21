@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { test, expect } from "../support/fixtures";
 import { openWorkspaceWithAgents } from "../support/helpers/archive-tab";
 import {
@@ -61,7 +62,7 @@ test.describe("Composer control density across tab switches", () => {
     try {
       await page.addInitScript(() => {
         localStorage.setItem(
-          "@paseo:create-agent-preferences",
+          "@otto:create-agent-preferences",
           JSON.stringify({
             provider: "mock",
             providerPreferences: { mock: { mode: "load-test" } },

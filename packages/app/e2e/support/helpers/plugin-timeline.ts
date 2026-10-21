@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -114,10 +115,7 @@ export async function withTimelinePlugin(
 ): Promise<void> {
   info.setTimeout(120_000);
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "@paseo:app-settings",
-      JSON.stringify({ toolCallDetailLevel: "overview" }),
-    );
+    localStorage.setItem("@otto:app-settings", JSON.stringify({ toolCallDetailLevel: "overview" }));
   });
   const agent = await seedMockAgentWorkspace({
     repoPrefix: "timeline-plugin-",

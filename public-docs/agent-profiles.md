@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Agent profiles
 description: Otto calls saved agent profiles Personalities.
 nav: Agent profiles
 order: 32
 category: Orchestration
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Agent profiles
 

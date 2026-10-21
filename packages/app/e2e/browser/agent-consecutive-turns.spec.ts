@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { Page } from "@playwright/test";
 import { expect, test as baseTest } from "../support/fixtures";
 import { expectAgentIdle } from "../support/helpers/agent-stream";
@@ -820,7 +821,7 @@ test("keeps the first prompt of a new agent in place through authoritative hydra
   try {
     await page.addInitScript(() => {
       localStorage.setItem(
-        "@paseo:create-agent-preferences",
+        "@otto:create-agent-preferences",
         JSON.stringify({
           provider: "mock",
           providerPreferences: {

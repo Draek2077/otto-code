@@ -2,7 +2,7 @@
 import startEntry from "@tanstack/react-start/server-entry";
 import { getAndroidVersionCode } from "~/android-version";
 import { getCanonicalRedirect } from "~/canonical-url";
-import { getDoc, getLegacyDocsRedirect } from "~/docs";
+import { getDoc } from "~/docs";
 import { FEEDBACK_INTAKE_PATH, handleFeedbackRequest } from "~/feedback-intake";
 import { getLatestAndroidVersion } from "~/latest-release";
 import { buildLlmsTxt } from "~/llms";
@@ -83,12 +83,6 @@ export default {
     // Ahead of the router: this is a write-only API for the app, not a page.
     if (url.pathname === FEEDBACK_INTAKE_PATH) {
       return handleFeedbackRequest(request);
-    }
-
-    const legacyDocsRedirect = getLegacyDocsRedirect(url.pathname);
-    if (legacyDocsRedirect) {
-      url.pathname = legacyDocsRedirect;
-      return Response.redirect(url.toString(), 301);
     }
 
     if (url.pathname === "/llms.txt") {

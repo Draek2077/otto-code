@@ -1,3 +1,4 @@
+// OTTO(identity): plugin migration hints target Otto and its Paseo API.
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { fork } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -1511,7 +1512,7 @@ export default function contribute(server: { registerProvider(provider: Provider
     const runtime = createTestRuntime();
 
     await expect(runtime.startPlugin("legacy", directory)).rejects.toThrow(
-      "This plugin was made for an older version of Paseo and cannot run on Paseo v0.8. Ask its author to update it. Plugin authors can follow the migration guide: https://paseo.sh/docs/plugins/migration",
+      "This plugin was made for a plugin API older than Paseo v0.8 and cannot run in Otto. Ask its author to update it. Plugin authors can follow the migration guide: https://otto-code.me/docs/plugins/migration",
     );
   });
 

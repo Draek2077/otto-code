@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Codex
 description: Run Codex in Otto using the official Codex CLI and your existing OpenAI account.
 nav: Codex
 order: 24
 category: Providers
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Codex
 

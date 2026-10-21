@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, test, type Page } from "../support/fixtures";
 import { gotoWorkspace } from "../support/helpers/launcher";
 import { seedWorkspace } from "../support/helpers/seed-client";
@@ -10,8 +11,8 @@ import { openCommandCenter } from "../support/helpers/command-center";
 import { runWorkspaceActionFromCommandCenter } from "../support/helpers/command-center-workspace-actions";
 import { selectModel } from "../support/helpers/app";
 
-const DISABLE_DEFAULT_SEED_ONCE_KEY = "@paseo:e2e-disable-default-seed-once";
-const SEED_NONCE_KEY = "@paseo:e2e-seed-nonce";
+const DISABLE_DEFAULT_SEED_ONCE_KEY = "@otto:e2e-disable-default-seed-once";
+const SEED_NONCE_KEY = "@otto:e2e-seed-nonce";
 
 async function openNewAgentTab(page: Page): Promise<void> {
   // Preference persistence does not depend on the animated tab-creation menu.
@@ -53,7 +54,7 @@ async function reloadWithPersistedPreferences(page: Page): Promise<void> {
 
 async function readRememberedThinking(page: Page, modelId: string): Promise<string | null> {
   return page.evaluate((selectedModelId) => {
-    const raw = localStorage.getItem("@paseo:create-agent-preferences");
+    const raw = localStorage.getItem("@otto:create-agent-preferences");
     if (!raw) return null;
     const preferences = JSON.parse(raw) as {
       providerPreferences?: { mock?: { thinkingByModel?: Record<string, string> } };
@@ -64,7 +65,7 @@ async function readRememberedThinking(page: Page, modelId: string): Promise<stri
 
 async function seedLegacyModelPreference(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const storageKey = "@paseo:create-agent-preferences";
+    const storageKey = "@otto:create-agent-preferences";
     const raw = localStorage.getItem(storageKey);
     const preferences = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
     localStorage.setItem(

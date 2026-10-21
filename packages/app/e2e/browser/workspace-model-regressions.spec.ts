@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { test, expect } from "../support/fixtures";
 import { expectWorkspaceTabVisible } from "../support/helpers/archive-tab";
 import {
@@ -216,7 +217,7 @@ test.describe("Workspace model regressions", () => {
 
       await page.addInitScript(() => {
         localStorage.setItem(
-          "@paseo:create-agent-preferences",
+          "@otto:create-agent-preferences",
           JSON.stringify({
             provider: "mock",
             providerPreferences: {

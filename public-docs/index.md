@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Getting started
 description: Install Otto and start running coding agents from anywhere.
 nav: Getting started
 order: 1
 category: Getting started
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Getting started
 

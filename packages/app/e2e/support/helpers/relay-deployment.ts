@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, type Page } from "@playwright/test";
 import { parseConnectionOfferFromUrl } from "@getpaseo/protocol/connection-offer";
 import type { LocalElixirRelay } from "./local-elixir-relay";
@@ -57,8 +58,8 @@ export async function connectDaemonWebAppOnlyThroughRelay(
   });
   await page.addInitScript(
     ({ storedHost, preferences }) => {
-      localStorage.setItem("@paseo:daemon-registry", JSON.stringify([storedHost]));
-      localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(preferences));
+      localStorage.setItem("@otto:daemon-registry", JSON.stringify([storedHost]));
+      localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(preferences));
     },
     { storedHost: host, preferences: buildCreateAgentPreferences() },
   );

@@ -77,7 +77,9 @@ function isPublishedOnRegistry(name, version) {
 }
 
 export function packedFilename(stdout) {
-  const parsed = JSON.parse(stdout);
+  // npm also forwards lifecycle stdout before its final JSON result.
+  const jsonStart = stdout.lastIndexOf("\n[");
+  const parsed = JSON.parse(jsonStart === -1 ? stdout : stdout.slice(jsonStart + 1));
   const entry = Array.isArray(parsed) ? parsed.at(-1) : parsed;
   if (!entry?.filename) throw new Error(`npm pack printed no filename:\n${stdout}`);
   // npm reports scoped names as "getpaseo-cli-1.0.0.tgz"; keep only the basename.

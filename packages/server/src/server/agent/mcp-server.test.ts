@@ -1,3 +1,4 @@
+// OTTO(identity): expect Otto-facing product text.
 import { setupFinishNotification, type PromptDispatchDisposition } from "./agent-prompt.js";
 import { parseAgentMessage } from "./agent-messages/index.js";
 import { execFileSync } from "node:child_process";
@@ -366,7 +367,7 @@ function configureOpenCodeProviderStub(
   const opencodeModes: AgentMode[] = [
     { id: "build", label: "Build", description: "Can edit" },
     { id: "plan", label: "Plan", description: "Read-only" },
-    { id: "paseo-custom", label: "Paseo Custom", description: "Custom OpenCode agent" },
+    { id: "paseo-custom", label: "Otto Custom", description: "Custom OpenCode agent" },
   ];
   const entries: ProviderSnapshotEntry[] = [
     buildSnapshotEntry({
@@ -393,7 +394,7 @@ function configureOpenCodeProviderStub(
   ];
   const customOpenCodeModes: AgentMode[] = [
     ...opencodeModes,
-    { id: "paseo-custom", label: "Paseo Custom" },
+    { id: "paseo-custom", label: "Otto Custom" },
   ];
   if (options.customOpenCodeProvider) {
     entries.push(
@@ -847,7 +848,7 @@ function createAgentMcpServer(options: Parameters<typeof createAgentMcpServerWit
   });
 }
 
-describe("bundled Paseo skill", () => {
+describe("bundled Otto skill", () => {
   it("documents only advertised create_workspace input names", async () => {
     const server = await createAgentMcpServer({
       agentManager: new BoundaryAgentManagerFake() as AgentManager,
@@ -890,7 +891,7 @@ describe("bundled Paseo skill", () => {
   });
 });
 
-describe("Paseo tool timeline presentation", () => {
+describe("Otto tool timeline presentation", () => {
   it("catalogs a timeline label for every advertised tool", async () => {
     const server = await createAgentMcpServer({
       agentManager: new BoundaryAgentManagerFake() as AgentManager,
@@ -1198,7 +1199,7 @@ describe("browser MCP tools", () => {
     expect(response.content).toEqual([
       {
         type: "text",
-        text: "No Paseo browser tabs are open. Call browser_new_tab to create one.",
+        text: "No Otto browser tabs are open. Call browser_new_tab to create one.",
       },
     ]);
     expect(response.structuredContent).toEqual({
@@ -1233,7 +1234,7 @@ describe("browser MCP tools", () => {
     expect(response.content).toEqual([
       {
         type: "text",
-        text: "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.",
+        text: "This browser tool needs a workspace. Start the agent from an Otto workspace before calling browser_new_tab or browser_list_tabs.",
       },
     ]);
     expect(response.structuredContent).toEqual({
@@ -1241,7 +1242,7 @@ describe("browser MCP tools", () => {
       error: {
         code: "browser_denied",
         message:
-          "This browser tool needs a workspace. Start the agent from a Paseo workspace before calling browser_new_tab or browser_list_tabs.",
+          "This browser tool needs a workspace. Start the agent from an Otto workspace before calling browser_new_tab or browser_list_tabs.",
         retryable: false,
       },
       context: { agentId: "agent-1", cwd: REPO_CWD },

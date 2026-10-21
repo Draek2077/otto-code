@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import path from "node:path";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { test, expect, type Page } from "../support/fixtures";
@@ -190,8 +191,8 @@ async function setRuntimeCatalog(client: DaemonClient, count: number, cwd: strin
 async function reloadSavedDraft(page: Page) {
   await page.evaluate(() =>
     localStorage.setItem(
-      "@paseo:e2e-disable-default-seed-once",
-      localStorage.getItem("@paseo:e2e-seed-nonce")!,
+      "@otto:e2e-disable-default-seed-once",
+      localStorage.getItem("@otto:e2e-seed-nonce")!,
     ),
   );
   await page.reload();

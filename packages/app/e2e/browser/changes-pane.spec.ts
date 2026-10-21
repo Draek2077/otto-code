@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -31,7 +32,7 @@ interface CleanupTask {
 }
 
 const cleanupTasks: CleanupTask[] = [];
-const APP_SETTINGS_KEY = "@paseo:app-settings";
+const APP_SETTINGS_KEY = "@otto:app-settings";
 
 function changesTree(page: Page) {
   return page.getByTestId("changes-file-tree").filter({ visible: true });
@@ -84,7 +85,7 @@ async function failNextDiscardRequest(page: Page): Promise<void> {
   });
 }
 
-const CHANGES_PREFERENCES_KEY = "@paseo:changes-preferences";
+const CHANGES_PREFERENCES_KEY = "@otto:changes-preferences";
 
 const BEFORE = `import { useLayoutEffect, useMemo, useRef, useState } from "react";
 

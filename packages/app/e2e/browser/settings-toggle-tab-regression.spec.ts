@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { buildHostAgentDetailRoute, buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { expect, test } from "../support/fixtures";
 import { createMockIdleAgent, openWorkspaceWithAgents } from "../support/helpers/archive-tab";
@@ -68,7 +69,7 @@ async function expectSendBehavior(
 ) {
   await expect
     .poll(async () => {
-      const raw = await page.evaluate(() => localStorage.getItem("@paseo:app-settings"));
+      const raw = await page.evaluate(() => localStorage.getItem("@otto:app-settings"));
       if (!raw) {
         return null;
       }

@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Security
 description: "Security model for Otto: architecture overview, connection methods, relay encryption, and best practices."
 nav: Security
 order: 5
 category: Getting started
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Security
 

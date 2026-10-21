@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Troubleshooting
 description: Why Otto can't find a provider you've installed, and how to fix the PATH and environment mismatches behind most setup issues.
 nav: Common problems
 order: 90
 category: Troubleshooting
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Troubleshooting
 

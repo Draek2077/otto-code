@@ -58,6 +58,13 @@ jobs:
       - name: Validate CI contracts
         run: node --test scripts/ci-workflow.test.mjs scripts/daemon-launch-contract.test.mjs scripts/sync-fdroid-changelogs.test.mjs scripts/upload-release-assets.test.mjs
 
+      # OTTO(integration): keep the fork boundary and release/dev adapters under CI.
+      - name: Verify Otto integration seams
+        run: node scripts/otto/seams.mjs --check
+
+      - name: Test Otto release and dev adapters
+        run: node --test scripts/otto/dev-environment.test.mjs scripts/otto/npm-rename.test.mjs scripts/publish-release-packages.test.mjs scripts/ensure-github-release.test.mjs
+
   quality:
     name: quality
     needs: changes
@@ -162,7 +169,7 @@ jobs:
         run: npm run typecheck
 
       - name: Run website tests
-        run: npx vitest run packages/website/src --bail=1
+        run: npm exec --workspace=@getpaseo/website -- vitest run src --bail=1
 
       # OTTO(website): Otto's retained site has its own unit tests and build.
       - name: Build Otto website

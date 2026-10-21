@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
@@ -159,10 +160,7 @@ test("measures an overview heading that becomes loading after its idle mount", a
 }, testInfo) => {
   test.setTimeout(120_000);
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "@paseo:app-settings",
-      JSON.stringify({ toolCallDetailLevel: "overview" }),
-    );
+    localStorage.setItem("@otto:app-settings", JSON.stringify({ toolCallDetailLevel: "overview" }));
   });
   const agent = await seedMockAgentWorkspace({
     repoPrefix: "tool-call-shimmer-",

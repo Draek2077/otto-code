@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { randomUUID } from "node:crypto";
 import { submitMessage, expectComposerEditable } from "../support/helpers/composer";
 import {
@@ -82,9 +83,9 @@ test("does not repeat an assistant block when the current app paginates a publis
     });
     await page.addInitScript(
       ({ seededHost, preferences }) => {
-        localStorage.setItem("@paseo:e2e", "1");
-        localStorage.setItem("@paseo:daemon-registry", JSON.stringify([seededHost]));
-        localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(preferences));
+        localStorage.setItem("@otto:e2e", "1");
+        localStorage.setItem("@otto:daemon-registry", JSON.stringify([seededHost]));
+        localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(preferences));
       },
       { seededHost: host, preferences: buildCreateAgentPreferences() },
     );

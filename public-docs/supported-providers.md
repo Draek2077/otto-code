@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Supported providers
 description: Every coding agent Otto can launch, natively supported providers and the ACP catalog.
 nav: Supported providers
 order: 21
 category: Providers
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Supported providers
 

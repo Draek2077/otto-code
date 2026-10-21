@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): match Otto CLI help and error hints.
 
 /**
  * Delete Command Tests
@@ -98,11 +99,11 @@ try {
   }
 
   {
-    console.log("Test 7: paseo --help shows delete command");
+    console.log("Test 7: otto --help shows delete command");
     const result = await runCli(["--help"]);
-    assert.strictEqual(result.exitCode, 0, "paseo --help should exit 0");
+    assert.strictEqual(result.exitCode, 0, "otto --help should exit 0");
     assert(result.stdout.includes("delete"), "help should mention delete command");
-    console.log("✓ paseo --help shows delete command\n");
+    console.log("✓ otto --help shows delete command\n");
   }
 
   {
@@ -129,7 +130,7 @@ try {
       assert.notStrictEqual(result.exitCode, 0, "delete should fail for an unknown ID");
       const { error } = JSON.parse(result.stderr);
       assert.strictEqual(error.code, "AGENT_NOT_FOUND", result.stderr);
-      assert.match(error.details, /paseo ls/);
+      assert.match(error.details, /otto ls/);
     } finally {
       await daemon.stop();
     }

@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test, type Page } from "../support/fixtures";
@@ -6,7 +7,7 @@ import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { openSubagentsTrack, seedParentWithSubagent } from "../support/helpers/subagents";
 
-const SETTINGS_KEY = "@paseo:app-settings";
+const SETTINGS_KEY = "@otto:app-settings";
 
 async function openParentInRightPane(page: Page, parentId: string, workspaceId: string) {
   await page.setViewportSize({ width: 1400, height: 900 });

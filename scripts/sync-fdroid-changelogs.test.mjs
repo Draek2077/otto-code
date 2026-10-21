@@ -85,7 +85,13 @@ test("writes the four stable 0.5.0 changelog files", () => {
     (dir) => {
       const result = syncFdroidChangelogs([], { cwd: dir });
       assert.deepEqual(
-        result.written.map((entry) => entry.replace(/ \(.+\)$/, "")),
+        // OTTO(test): compare generated paths consistently on Windows and POSIX.
+        result.written.map((entry) =>
+          entry
+            .replace(/ \(.+\)$/, "")
+            .split(path.sep)
+            .join("/"),
+        ),
         [
           "fastlane/metadata/android/en-US/changelogs/50001.txt",
           "fastlane/metadata/android/en-US/changelogs/50002.txt",
@@ -134,7 +140,8 @@ test("stays inside the 500 character limit and keeps the full-notes link", () =>
         contents.length <= CHANGELOG_CHARACTER_LIMIT,
         `expected <= ${CHANGELOG_CHARACTER_LIMIT}, got ${contents.length}`,
       );
-      assert.match(contents, /Full notes: https:\/\/paseo\.sh\/changelog\n$/);
+      // OTTO(identity): F-Droid metadata links to Otto's release notes.
+      assert.match(contents, /Full notes: https:\/\/otto-code\.me\/changelog\n$/);
       // Truncation happens at a bullet boundary, never mid-sentence.
       assert.equal(contents.includes("Shipped improvement number 0."), true);
       assert.equal(/- Shipped improvement number \d+\.\.\.$/m.test(contents), false);

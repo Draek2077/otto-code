@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Workspaces
 description: Understand Otto's project, workspace, and session model before setting up agents or git worktrees.
 nav: Workspaces
 order: 10
 category: Workspaces
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Workspaces
 

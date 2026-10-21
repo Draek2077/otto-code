@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Voice
 description: Otto voice architecture, local-first model execution, and provider configuration.
 nav: Voice
 order: 41
 category: Configuration
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Voice
 

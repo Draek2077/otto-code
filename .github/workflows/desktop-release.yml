@@ -52,6 +52,8 @@ permissions:
   contents: read
 
 env:
+  # OTTO(build): Paseo 0.12's generated validators exceed Node's default worker heap.
+  NODE_OPTIONS: --max-old-space-size=4096
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
   CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.checkout_ref || github.ref_name) || github.ref_name }}
   SHOULD_PUBLISH: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false' }}
@@ -392,8 +394,6 @@ jobs:
           OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
           PASEO_DESKTOP_SMOKE: "1"
           PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
-          # Use the system Python installed above; this skips the before-pack
-          # hook's venv provisioning (which would install the deps a second time).
         run: |
           set -euo pipefail
           build_args=(-- --publish never --linux --x64)
@@ -490,8 +490,6 @@ jobs:
           OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
           PASEO_DESKTOP_SMOKE: "1"
           PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
-          # Use the system Python installed above; this skips the before-pack
-          # hook's venv provisioning (which would install the deps a second time).
         run: |
           set -euo pipefail
           build_args=(-- --publish never --win --x64 --arm64)

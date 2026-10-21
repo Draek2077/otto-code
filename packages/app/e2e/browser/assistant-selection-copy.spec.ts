@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { BrowserContext, Locator } from "@playwright/test";
 import { expect, test, type Page } from "../support/fixtures";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
@@ -387,7 +388,7 @@ test("copying an assistant selection preserves Markdown structure and links", as
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("@paseo:app-settings", JSON.stringify({ uiFontFamily: "serif" }));
+    localStorage.setItem("@otto:app-settings", JSON.stringify({ uiFontFamily: "serif" }));
   });
   const agent = await seedMockAgentWorkspace({
     repoPrefix: "assistant-selection-copy-",

@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Provider options
 description: Sandboxing, permissions, and network rules for Codex, Claude, and OpenCode agents created from the SDK.
 nav: Provider options
 order: 55
 category: TypeScript SDK
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Provider options
 

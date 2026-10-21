@@ -1,11 +1,11 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Open Source Codex App Alternative With Linux, Mobile, and Multi-Provider Support
 description: Otto is an open source alternative to Codex App for developers who want Linux, native mobile apps, a self-hosted daemon, and Codex alongside Claude Code, OpenCode, Copilot, and more.
 nav: Codex App
 order: 54
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Otto vs Codex App
 

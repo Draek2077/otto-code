@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Metadata generation
 description: How Otto uses providers to generate branch names, commit messages, and pull request text, and how to configure them.
 nav: Metadata generation
 order: 42
 category: Configuration
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Metadata generation
 

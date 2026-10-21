@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): invoke Otto locally without downloading a CLI.
 
 /**
  * Permit LS Command Tests
@@ -35,7 +36,7 @@ try {
   // Test 1: permit --help shows subcommands
   {
     console.log("Test 1: permit --help shows subcommands");
-    const result = await $`npx paseo permit --help`.nothrow();
+    const result = await $`npx --no-install otto permit --help`.nothrow();
     assert.strictEqual(result.exitCode, 0, "permit --help should exit 0");
     assert(result.stdout.includes("ls"), "help should mention ls subcommand");
     assert(result.stdout.includes("allow"), "help should mention allow subcommand");
@@ -46,7 +47,7 @@ try {
   // Test 2: permit ls --help shows options
   {
     console.log("Test 2: permit ls --help shows options");
-    const result = await $`npx paseo permit ls --help`.nothrow();
+    const result = await $`npx --no-install otto permit ls --help`.nothrow();
     assert.strictEqual(result.exitCode, 0, "permit ls --help should exit 0");
     assert(result.stdout.includes("--host"), "help should mention --host option");
     console.log("✓ permit ls --help shows options\n");
@@ -56,7 +57,7 @@ try {
   {
     console.log("Test 3: permit ls handles daemon not running");
     const result =
-      await $`PASEO_HOME=${paseoHome} npx paseo --host localhost:${port} permit ls`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} permit ls`.nothrow();
     // Should fail because daemon not running
     assert.notStrictEqual(result.exitCode, 0, "should fail when daemon not running");
     const output = result.stdout + result.stderr;
@@ -72,7 +73,7 @@ try {
   {
     console.log("Test 4: permit ls --json handles errors");
     const result =
-      await $`PASEO_HOME=${paseoHome} npx paseo --host localhost:${port} permit ls --json`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} permit ls --json`.nothrow();
     // Should still fail (daemon not running)
     assert.notStrictEqual(result.exitCode, 0, "should fail when daemon not running");
     // But output should be valid JSON if present
@@ -94,7 +95,7 @@ try {
   {
     console.log("Test 5: -q (quiet) flag is accepted");
     const result =
-      await $`PASEO_HOME=${paseoHome} npx paseo --host localhost:${port} -q permit ls`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} -q permit ls`.nothrow();
     const output = result.stdout + result.stderr;
     assert(!output.includes("unknown option"), "should accept -q flag");
     assert(!output.includes("error: option"), "should not have option parsing error");

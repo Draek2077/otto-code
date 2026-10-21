@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { randomUUID } from "node:crypto";
 import { metroTest as test } from "../support/fixtures";
 import { expectSessionsEmptyState, openSessions } from "../support/helpers/archive-tab";
@@ -27,9 +28,9 @@ test("Sessions shows an empty placeholder when the host has no history", async (
     });
     await page.addInitScript(
       ({ seededHost, preferences }) => {
-        localStorage.setItem("@paseo:e2e", "1");
-        localStorage.setItem("@paseo:daemon-registry", JSON.stringify([seededHost]));
-        localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(preferences));
+        localStorage.setItem("@otto:e2e", "1");
+        localStorage.setItem("@otto:daemon-registry", JSON.stringify([seededHost]));
+        localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(preferences));
       },
       { seededHost: host, preferences: buildCreateAgentPreferences() },
     );

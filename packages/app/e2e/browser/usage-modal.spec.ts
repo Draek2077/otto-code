@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -486,7 +487,7 @@ for (const theme of ["light", "dark"] as const) {
     test(`Usage Settings cog ${size} ${theme}`, async ({ page }, testInfo) => {
       test.setTimeout(120_000);
       await page.addInitScript((value) => {
-        const key = "@paseo:app-settings";
+        const key = "@otto:app-settings";
         const current = JSON.parse(localStorage.getItem(key) ?? "{}");
         localStorage.setItem(key, JSON.stringify({ ...current, theme: value }));
       }, theme);

@@ -1,3 +1,4 @@
+// OTTO(identity): expect Otto-facing product text.
 import { describe, expect, it } from "vitest";
 
 import {
@@ -111,7 +112,7 @@ describe("prompt attachments", () => {
       }),
     ).toBe(
       [
-        "Paseo review attachment (base)",
+        "Otto review attachment (base)",
         "CWD: /tmp/repo",
         "Base: main",
         "",

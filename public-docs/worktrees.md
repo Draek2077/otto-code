@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Git worktrees
 description: Run agents in isolated git worktrees with setup hooks, scripts, and long-running services.
 nav: Git worktrees
 order: 11
 category: Workspaces
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Git worktrees
 

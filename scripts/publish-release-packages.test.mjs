@@ -66,6 +66,15 @@ test("npm pack tarball names are reduced to a file name", () => {
   );
 });
 
+test("npm pack lifecycle output cannot hide the final tarball result", () => {
+  assert.equal(
+    packedFilename(
+      'generated validators\n[build] ready\n[\n  {"filename":"getpaseo-protocol-0.10.0.tgz"}\n]\n',
+    ),
+    "getpaseo-protocol-0.10.0.tgz",
+  );
+});
+
 test("the publish workflow uses trusted publishing, not a token", async () => {
   const workflow = await read(".github/workflows/npm-publish.yml");
   assert.match(workflow, /^\s+id-token: write$/m);

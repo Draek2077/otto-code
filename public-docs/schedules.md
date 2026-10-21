@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Schedules
 description: Run Otto agents on a schedule, every few minutes or on a cron.
 nav: Overview
 order: 25
 category: Schedules
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Schedules
 

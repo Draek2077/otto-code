@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: SDK recipes
 description: Complete patterns for issue integrations, parallel review, resident agents, and safe temporary-agent cleanup.
 nav: Recipes
 order: 57
 category: TypeScript SDK
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # SDK recipes
 

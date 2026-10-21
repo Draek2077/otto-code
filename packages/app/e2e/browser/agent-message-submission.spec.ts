@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { Locator, Page } from "@playwright/test";
 import { expect, test as baseTest } from "../support/fixtures";
 import {
@@ -337,7 +338,7 @@ async function selectSendBehaviorInSettings(
   await page.getByRole("menuitem", { name: behaviorLabel, exact: true }).click();
   await expect
     .poll(async () => {
-      const raw = await page.evaluate(() => localStorage.getItem("@paseo:app-settings"));
+      const raw = await page.evaluate(() => localStorage.getItem("@otto:app-settings"));
       return raw ? (JSON.parse(raw) as { sendBehavior?: unknown }).sendBehavior : null;
     })
     .toBe(stored);

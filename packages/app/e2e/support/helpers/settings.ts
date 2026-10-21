@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, type Page } from "@playwright/test";
 import { buildCreateAgentPreferences, buildSeededHost, TEST_HOST_LABEL } from "./daemon-registry";
 import { getServerId } from "./server-id";
@@ -8,9 +9,9 @@ import {
   buildSettingsSectionRoute,
 } from "@/utils/host-routes";
 
-const DISABLE_DEFAULT_SEED_ONCE_KEY = "@paseo:e2e-disable-default-seed-once";
-const SEED_NONCE_KEY = "@paseo:e2e-seed-nonce";
-const REGISTRY_KEY = "@paseo:daemon-registry";
+const DISABLE_DEFAULT_SEED_ONCE_KEY = "@otto:e2e-disable-default-seed-once";
+const SEED_NONCE_KEY = "@otto:e2e-seed-nonce";
+const REGISTRY_KEY = "@otto:daemon-registry";
 
 interface SavedSettingsHostInput {
   serverId: string;
@@ -150,7 +151,7 @@ export async function seedSavedSettingsHosts(
       }
 
       localStorage.setItem(keys.registry, JSON.stringify(storedRegistry));
-      localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(storedPreferences));
+      localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(storedPreferences));
       localStorage.setItem(keys.disableDefaultSeedOnce, nonce);
     },
     {

@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Schedules from chat
 description: Ask an agent in chat to set up and manage a schedule for you.
 nav: Chat
 order: 26
 category: Schedules
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Schedules from chat
 

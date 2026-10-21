@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import { seedWorkspace } from "../support/helpers/seed-client";
@@ -26,7 +27,7 @@ test("keeps the selected workspace visible in Light", async ({ page }, testInfo)
 
   try {
     await page.addInitScript(() => {
-      localStorage.setItem("@paseo:app-settings", JSON.stringify({ theme: "light" }));
+      localStorage.setItem("@otto:app-settings", JSON.stringify({ theme: "light" }));
     });
     await gotoAppShell(page);
 
@@ -53,7 +54,7 @@ test("keeps the selected workspace visible in Pure black", async ({ page }, test
 
   try {
     await page.addInitScript(() => {
-      localStorage.setItem("@paseo:app-settings", JSON.stringify({ theme: "pureBlack" }));
+      localStorage.setItem("@otto:app-settings", JSON.stringify({ theme: "pureBlack" }));
     });
     await gotoAppShell(page);
 
@@ -74,7 +75,7 @@ test("keeps the selected workspace visible in Pure black", async ({ page }, test
 
 test("applies the interface font size to settings text", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("@paseo:app-settings", JSON.stringify({ uiBaseFontSize: 21 }));
+    localStorage.setItem("@otto:app-settings", JSON.stringify({ uiBaseFontSize: 21 }));
   });
   await page.goto("/settings");
   await expect(page.getByTestId("settings-sidebar")).toBeVisible();

@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Orchestration skills
 description: "Otto orchestration skills: teach coding agents to spawn, coordinate, and manage other agents using slash commands."
 nav: Skills
 order: 33
 category: Orchestration
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Orchestration skills
 

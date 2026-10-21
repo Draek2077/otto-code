@@ -12,6 +12,7 @@ decisions, and measured findings live in Otto Knowledge.
 | [development.md](development.md)                       | Development commands and isolation                       |
 | [release.md](release.md)                               | Release procedure                                        |
 | [otto-release.md](otto-release.md)                     | Otto build artifacts, signing, and CI publishing         |
+| [otto-writing-style.md](otto-writing-style.md)         | House rules for public prose                             |
 | [testing.md](testing.md)                               | Testing conventions                                      |
 | [protocol-compatibility.md](protocol-compatibility.md) | Compatibility contracts                                  |
 | [protocol-validation.md](protocol-validation.md)       | Protocol validation                                      |

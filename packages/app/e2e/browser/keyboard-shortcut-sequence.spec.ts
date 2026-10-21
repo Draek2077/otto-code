@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, test, type Page } from "../support/fixtures";
 
 // "Toggle command center" recorded as a two-key sequence. Both platform
@@ -13,7 +14,7 @@ const SEQUENCE_FINAL_KEY = "j";
 /** Record the sequence in Settings → Keyboard shortcuts, through its storage. */
 async function recordCommandCenterSequence(page: Page): Promise<void> {
   await page.addInitScript((overrides) => {
-    localStorage.setItem("@paseo:keyboard-shortcut-overrides", JSON.stringify(overrides));
+    localStorage.setItem("@otto:keyboard-shortcut-overrides", JSON.stringify(overrides));
   }, COMMAND_CENTER_SEQUENCE);
 }
 

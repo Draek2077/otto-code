@@ -1,3 +1,4 @@
+// OTTO(identity): expect Otto-facing product text.
 import { describe, expect, test } from "vitest";
 
 import {
@@ -38,7 +39,7 @@ describe("voice mode prompt instructions", () => {
 
     expect(prompt).toContain("Base system prompt");
     expect(prompt).toContain("<paseo_voice_mode>");
-    expect(prompt).toContain("Paseo voice mode is now on.");
+    expect(prompt).toContain("Otto voice mode is now on.");
     expect(prompt).toContain("Always use the speak tool for all user-facing communication.");
     expect(prompt).toContain("</paseo_voice_mode>");
   });
@@ -54,8 +55,8 @@ describe("voice mode prompt instructions", () => {
     const prompt = buildVoiceModeSystemPrompt(existing, false);
 
     expect(prompt).toContain("Base system prompt");
-    expect(prompt).toContain("Paseo voice mode is now off.");
-    expect(prompt).toContain("Ignore any earlier Paseo voice mode instructions in this thread.");
+    expect(prompt).toContain("Otto voice mode is now off.");
+    expect(prompt).toContain("Ignore any earlier Otto voice mode instructions in this thread.");
     expect(prompt.match(/<paseo_voice_mode>/g)?.length ?? 0).toBe(1);
     expect(prompt).not.toContain("legacy voice instruction");
   });

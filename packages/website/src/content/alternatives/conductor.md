@@ -1,11 +1,11 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Open Source Conductor Alternative With Linux, Windows, and Mobile
 description: Otto is open source, runs on macOS, Linux, and Windows, ships Android and web access from mobile devices, and supports built-in and catalog providers through the in-app catalog plus any ACP or CLI agent. Conductor is macOS only and Claude Code or Codex only.
 nav: Conductor
 order: 50
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Otto vs Conductor
 

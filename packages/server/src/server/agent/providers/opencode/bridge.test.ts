@@ -1,3 +1,4 @@
+// OTTO(identity): expect Otto-facing product text.
 import type { SessionMessageInfo } from "@opencode/client";
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -308,7 +309,7 @@ describe("OpenCodeBridge", () => {
       await expect(
         tools.get("paseo_echo_context")!.execute({ value: "blocked" }, { sessionID: "disabled" }),
       ).rejects.toMatchObject({
-        message: "Paseo tools are disabled for this session",
+        message: "Otto tools are disabled for this session",
         status: 403,
       });
       await dispose();
@@ -638,7 +639,7 @@ describe("OpenCodeBridge", () => {
         { method: "POST", headers, body: "{}" },
       );
       expect(unknownTool.status).toBe(404);
-      expect(await unknownTool.json()).toEqual({ error: "Paseo tool not found: missing" });
+      expect(await unknownTool.json()).toEqual({ error: "Otto tool not found: missing" });
 
       const malformedBody = await fetch(
         `${plugin.baseUrl}/_internal/opencode/sessions/ses_errors/tools/echo_context`,

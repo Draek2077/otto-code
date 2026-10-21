@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { Locator } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -11,7 +12,7 @@ import {
 } from "../support/helpers/composer";
 import { ensureExplorerSidebar, openFilesPanel } from "../support/helpers/workspace-tabs";
 
-const APP_SETTINGS_KEY = "@paseo:app-settings";
+const APP_SETTINGS_KEY = "@otto:app-settings";
 
 function visibleMainPane(page: Page) {
   return page.getByTestId("workspace-pane-main").filter({ visible: true });

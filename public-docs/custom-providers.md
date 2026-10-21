@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Custom providers
 description: Configure custom providers, alternative endpoints, profiles, custom binaries, and ACP agents in ~/.otto/config.json.
 nav: Custom providers
 order: 22
 category: Providers
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Custom providers
 

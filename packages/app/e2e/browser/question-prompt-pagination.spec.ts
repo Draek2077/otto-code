@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { fork } from "node:child_process";
 import path from "node:path";
 import { expect } from "@playwright/test";
@@ -227,7 +228,7 @@ const retryTest = test.extend<{
           nowIso: new Date().toISOString(),
         });
         await page.evaluate((extraHost) => {
-          localStorage.setItem("@paseo:e2e-extra-hosts", JSON.stringify([extraHost]));
+          localStorage.setItem("@otto:e2e-extra-hosts", JSON.stringify([extraHost]));
         }, host);
         await page.goto(buildAgentRoute(session.workspaceId, session.agentId, serverId), {
           waitUntil: "commit",

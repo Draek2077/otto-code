@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Docker
 description: Run the Otto daemon and bundled web UI with the official Docker image.
 nav: Docker
 order: 6
 category: Getting started
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Docker
 

@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Self-hosting the web UI
 description: Serve the Otto web app from your own daemon and reach it over your own LAN, VPN, reverse proxy, or tunnel.
 nav: Web UI
 order: 6
 category: Getting started
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Self-hosting the web UI
 

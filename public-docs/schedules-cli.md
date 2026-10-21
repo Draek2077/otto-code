@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Schedules from the CLI
 description: Create and manage Otto schedules with otto schedule.
 nav: CLI
 order: 27
 category: Schedules
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Schedules from the CLI
 

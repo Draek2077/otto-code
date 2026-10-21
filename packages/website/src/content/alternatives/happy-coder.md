@@ -1,11 +1,11 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Happy Coder Alternative With a Desktop App and Git Worktrees
 description: Otto ships a native desktop app, runs agents in isolated git worktrees, and supports built-in and catalog providers. Happy Coder is mobile and web only, wraps the agent CLI, and supports Claude Code and Codex.
 nav: Happy Coder
 order: 53
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Otto vs Happy Coder
 

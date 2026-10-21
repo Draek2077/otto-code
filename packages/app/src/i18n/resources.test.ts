@@ -1,3 +1,4 @@
+// OTTO(identity): test the installed Otto identity.
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -355,7 +356,7 @@ describe("translation resources", () => {
     expect(en.settings.host.notFound).toBe("Host not found");
     expect(en.settings.host.connections.title).toBe("Connections");
     expect(en.settings.host.daemon.restart.title).toBe("Restart daemon");
-    expect(en.settings.host.orchestration.enableTools.title).toBe("Enable Paseo tools");
+    expect(en.settings.host.orchestration.enableTools.title).toBe("Enable Otto tools");
     expect(en.settings.providers.title).toBe("Providers");
     expect(en.settings.providers.models.addModel).toBe("Add model");
     expect(en.settings.providers.diagnostic.title).toBe("Diagnostic");
@@ -435,7 +436,7 @@ describe("translation resources", () => {
   });
 
   it("includes onboarding and direct connection keys for the Batch 4E migration", () => {
-    expect(en.onboarding.title).toBe("Welcome to Paseo");
+    expect(en.onboarding.title).toBe("Welcome to Otto");
     expect(en.onboarding.actions.settings).toBe("Settings");
     expect(en.pairing.direct.title).toBe("Direct connection");
     expect(en.pairing.direct.fields.host).toBe("Host");
@@ -666,7 +667,7 @@ describe("translation resources", () => {
     expect(en.message.compaction.completed).toBe("Context compacted");
     expect(en.agentPanel.archived.callout).toBe("This agent is archived");
     expect(en.agentPanel.archived.unarchive).toBe("Unarchive");
-    expect(en.desktop.quitting.title).toBe("Quitting Paseo...");
+    expect(en.desktop.quitting.title).toBe("Quitting Otto...");
     expect(en.desktop.quitting.detail).toBe("Stopping the local daemon.");
     expect(en.composer.attachments.dropImagesHere).toBe("Drop images here");
   });
@@ -727,7 +728,7 @@ describe("translation resources", () => {
     );
     expect(en.desktop.rosetta.title).toBe("Download the Apple Silicon build");
     expect(en.desktop.rosetta.runningIntel).toBe(
-      "You're running the Intel build of Paseo under Rosetta on Apple Silicon.",
+      "You're running the Intel build of Otto under Rosetta on Apple Silicon.",
     );
     expect(en.desktop.rosetta.highCpu).toBe(
       "This causes high CPU usage. Download the Apple Silicon build to fix it.",
@@ -755,7 +756,7 @@ describe("translation resources", () => {
     expect(en.desktop.permissions.empty.notifications).toBe(
       "Notification status has not been checked yet.",
     );
-    expect(en.desktop.permissions.testNotification.title).toBe("Paseo notification test");
+    expect(en.desktop.permissions.testNotification.title).toBe("Otto notification test");
     expect(en.desktop.permissions.testNotification.failed).toBe("Failed to send notification.");
   });
 
@@ -776,7 +777,7 @@ describe("translation resources", () => {
       "Failed to fetch daemon status: {{message}}",
     );
     expect(en.desktop.daemon.loadFailed).toBe("Unable to load desktop daemon status.");
-    expect(en.desktop.integrations.cli.installFailed).toBe("Unable to install the Paseo CLI.");
+    expect(en.desktop.integrations.cli.installFailed).toBe("Unable to install the Otto CLI.");
   });
 
   it("includes remaining utility chrome keys for the Batch 4T migration", () => {

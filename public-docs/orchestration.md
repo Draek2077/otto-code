@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Orchestration
 description: Coordinate agents across providers and machines, delegate work, and keep tasks moving with schedules and heartbeats.
 nav: Overview
 order: 30
 category: Orchestration
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Orchestration
 

@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Connectivity
 description: Connect an Otto client to your daemon through SSH, the relay, or Tailscale.
 nav: Connectivity
 order: 4
 category: Getting started
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Connectivity
 

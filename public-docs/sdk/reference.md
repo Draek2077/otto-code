@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: SDK API reference
 description: Public configuration, methods, handles, results, defaults, and lifecycle behavior for @otto-code/client.
 nav: API reference
 order: 58
 category: TypeScript SDK
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # SDK API reference
 

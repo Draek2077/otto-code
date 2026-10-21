@@ -1,6 +1,7 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, type Locator, type Page } from "@playwright/test";
 
-const EXTRA_HOSTS_KEY = "@paseo:e2e-extra-hosts";
+const EXTRA_HOSTS_KEY = "@otto:e2e-extra-hosts";
 
 export interface LinkedHost {
   serverId: string;

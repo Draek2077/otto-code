@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: CLI
 description: "Otto CLI reference: manage projects, workspaces, chats, plugins, scripts, schedules, daemons, and permissions."
 nav: CLI
 order: 3
 category: Getting started
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # CLI reference
 

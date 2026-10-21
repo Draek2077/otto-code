@@ -1,3 +1,4 @@
+// OTTO(identity): test the installed Otto identity.
 import { describe, expect, it } from "vitest";
 import { AgentNavigationInbox, parseAgentDeepLinkFromArgv } from "./agent-navigation.js";
 
@@ -5,9 +6,9 @@ describe("desktop agent navigation", () => {
   it("finds an agent deep link among Electron launch arguments", () => {
     expect(
       parseAgentDeepLinkFromArgv([
-        "/Applications/Paseo.app/Contents/MacOS/Paseo",
+        "/Applications/Otto.app/Contents/MacOS/Otto",
         "--no-sandbox",
-        "paseo://h/server-1/agent/agent-2",
+        "otto://h/server-1/agent/agent-2",
       ]),
     ).toEqual({ serverId: "server-1", agentId: "agent-2" });
   });

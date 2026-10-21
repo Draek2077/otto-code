@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: SDK quickstart
 description: Connect to a Otto daemon, run one coding agent, and read its reply.
 nav: Quickstart
 order: 51
 category: TypeScript SDK
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # SDK quickstart
 

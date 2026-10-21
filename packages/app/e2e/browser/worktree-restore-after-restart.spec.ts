@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { randomUUID } from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -69,10 +70,10 @@ test.describe("Worktree restore after daemon restart", () => {
     const nowIso = new Date().toISOString();
     await page.addInitScript(
       ({ host, preferences }) => {
-        localStorage.setItem("@paseo:e2e", "1");
-        localStorage.setItem("@paseo:daemon-registry", JSON.stringify([host]));
-        localStorage.removeItem("@paseo:settings");
-        localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(preferences));
+        localStorage.setItem("@otto:e2e", "1");
+        localStorage.setItem("@otto:daemon-registry", JSON.stringify([host]));
+        localStorage.removeItem("@otto:settings");
+        localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(preferences));
       },
       {
         host: buildSeededHost({

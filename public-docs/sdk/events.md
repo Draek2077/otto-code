@@ -1,12 +1,12 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: SDK events
 description: Subscribe to agent status, timeline, workspace, and provider updates without maintaining a second state model.
 nav: Events
 order: 56
 category: TypeScript SDK
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # SDK events
 

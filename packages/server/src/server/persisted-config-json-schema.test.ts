@@ -1,3 +1,4 @@
+// OTTO(identity): publish the current daemon schema under Otto's existing URL.
 import { readFileSync } from "node:fs";
 import Ajv from "ajv";
 import { expect, test } from "vitest";
@@ -7,14 +8,14 @@ import { PersistedConfigSchema } from "./persisted-config.js";
 
 const publishedSchema = JSON.parse(
   readFileSync(
-    new URL("../../../website/public/schemas/paseo.config.v1.json", import.meta.url),
+    new URL("../../../website/public/schemas/otto.config.v1.json", import.meta.url),
     "utf8",
   ),
 );
 
 test("editors accept the daemon's browser, profile, plugin and metadata configuration", () => {
   const config = {
-    $schema: "https://paseo.sh/schemas/paseo.config.v1.json",
+    $schema: "https://otto-code.me/schemas/otto.config.v1.json",
     version: 1,
     daemon: {
       browserTools: { enabled: true },
@@ -40,7 +41,7 @@ test("the published schema stays current with the daemon's configuration schema"
     unrepresentable: "any",
     io: "input",
   });
-  generated.title = "PaseoConfigV1";
+  generated.title = "OttoConfigV1";
   expect(
     publishedSchema,
     "Run npm run generate:config-schema --workspace=@getpaseo/server",

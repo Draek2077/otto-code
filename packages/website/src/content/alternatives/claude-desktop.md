@@ -1,11 +1,11 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: Open Source Claude Desktop Alternative With Linux, Mobile, and Multi-Provider Support
 description: Otto is an open source Claude Desktop alternative for developers who want Linux, self-hosting, native mobile apps, and Claude Code alongside Codex, OpenCode, Copilot, and more.
 nav: Claude Desktop
 order: 55
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Otto vs Claude Desktop
 

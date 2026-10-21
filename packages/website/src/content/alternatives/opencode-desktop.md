@@ -1,11 +1,11 @@
-## <!-- OTTO(website): retain Otto public site and manual content. -->
-
+---
 title: OpenCode Desktop Alternative With Native Mobile and Multi-Provider Orchestration
 description: Otto is an OpenCode Desktop alternative for developers who want native mobile apps, a self-hosted daemon, and OpenCode alongside Claude Code, Codex, Copilot, and more.
 nav: OpenCode Desktop
 order: 56
-
 ---
+
+<!-- OTTO(website): retain Otto public site and manual content. -->
 
 # Otto vs OpenCode Desktop
 

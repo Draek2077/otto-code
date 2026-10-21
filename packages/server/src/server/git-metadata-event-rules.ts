@@ -1,3 +1,6 @@
+// OTTO(identity): watch the same metadata directory used by existing Otto worktrees.
+import { OTTO_WORKTREE_METADATA_DIRECTORY } from "@getpaseo/protocol/otto/identity";
+
 export type GitMetadataScope = "worktree" | "common";
 
 type GitMetadataEventRule = {
@@ -46,7 +49,7 @@ export const GIT_METADATA_EVENT_RULES = [
     id: "paseo-worktree-metadata",
     scope: "worktree",
     match: "exact",
-    path: "paseo/worktree.json",
+    path: `${OTTO_WORKTREE_METADATA_DIRECTORY}/worktree.json`,
     route: "owner",
     refreshBase: true,
   },
