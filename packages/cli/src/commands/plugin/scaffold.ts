@@ -2,6 +2,8 @@ import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { PluginIdSchema } from "@getpaseo/protocol/messages";
 import { resolveCliVersion } from "../../version.js";
+// OTTO(paseo-version): retain SDK import names while installing Otto's published SDK.
+import { OTTO_NPM_SCOPE, OTTO_PASEO_BASE_VERSION } from "@getpaseo/protocol/otto/identity";
 
 // OTTO(identity): product name in the overview and greeting templates.
 const OVERVIEW = `<!--
@@ -196,7 +198,7 @@ export async function scaffoldPluginDirectory(
     ],
     scripts: { typecheck: "tsc --noEmit" },
     devDependencies: {
-      "@getpaseo/plugin": version,
+      "@getpaseo/plugin": `npm:${OTTO_NPM_SCOPE}/plugin@${version}`,
       "@tanstack/react-query": "^5.90.11",
       "@types/react": "~19.2.0",
       react: "19.1.0",
@@ -214,7 +216,7 @@ export async function scaffoldPluginDirectory(
           $comment:
             'Add "name": "My plugin" to set a display name. Add "icon": "assets/icon.png" for a PNG inside the package. Add image or video paths (relative to this manifest) or HTTPS URLs to media. Include local assets in package.json files.',
           media: [],
-          requirements: { paseo: `>=${version}` },
+          requirements: { paseo: `>=${OTTO_PASEO_BASE_VERSION}` },
         },
         null,
         2,

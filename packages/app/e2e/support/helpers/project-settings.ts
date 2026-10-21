@@ -1,3 +1,4 @@
+// OTTO(identity): fixture paths and labels follow Otto's persisted identity.
 import { chmod, readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -179,15 +180,15 @@ export async function expectSaveButtonDisabled(page: Page): Promise<void> {
 }
 
 export async function expectUncommittedSetupWarning(page: Page): Promise<void> {
-  const warning = page.getByRole("alert").filter({ hasText: "Commit paseo.json changes" });
-  await expect(warning).toContainText("Commit paseo.json changes");
+  const warning = page.getByRole("alert").filter({ hasText: "Commit otto.json changes" });
+  await expect(warning).toContainText("Commit otto.json changes");
   await expect(warning).toContainText(
     "New worktrees use the setup script from the base branch you select.",
   );
 }
 
 export async function expectNoUncommittedSetupWarning(page: Page): Promise<void> {
-  const warning = page.getByRole("alert").filter({ hasText: "Commit paseo.json changes" });
+  const warning = page.getByRole("alert").filter({ hasText: "Commit otto.json changes" });
   await expect(warning).toHaveCount(0);
 }
 
@@ -245,11 +246,11 @@ export async function removeProjectScript(page: Page, scriptName: string): Promi
 // --- File manipulation ---
 
 export async function corruptPaseoConfig(repoPath: string): Promise<void> {
-  await writeFile(path.join(repoPath, "paseo.json"), "{not valid json}");
+  await writeFile(path.join(repoPath, "otto.json"), "{not valid json}");
 }
 
 export async function bumpPaseoConfigOnDisk(repoPath: string): Promise<void> {
-  const configPath = path.join(repoPath, "paseo.json");
+  const configPath = path.join(repoPath, "otto.json");
   const raw = await readFile(configPath, "utf8");
   const config = JSON.parse(raw) as Record<string, unknown>;
   config._bump = Date.now();
@@ -260,11 +261,11 @@ export async function restorePaseoConfig(
   repoPath: string,
   config: Record<string, unknown>,
 ): Promise<void> {
-  await writeFile(path.join(repoPath, "paseo.json"), JSON.stringify(config, null, 2) + "\n");
+  await writeFile(path.join(repoPath, "otto.json"), JSON.stringify(config, null, 2) + "\n");
 }
 
 export function commitPaseoConfig(repoPath: string): void {
-  execFileSync("git", ["add", "paseo.json"], { cwd: repoPath });
+  execFileSync("git", ["add", "otto.json"], { cwd: repoPath });
   execFileSync("git", ["commit", "-m", "Update project config"], { cwd: repoPath });
 }
 
@@ -280,7 +281,7 @@ export async function unblockPaseoConfigWrites(repoPath: string): Promise<void> 
 
 // --- WebSocket helpers ---
 
-// Proxies all daemon WS traffic transparently, but rejects paseo.json reads
+// Proxies all daemon WS traffic transparently, but rejects otto.json reads
 // until the test explicitly allows recovery. Closing the transport leaves the
 // client-side RPC pending across reconnects, so this injects the same correlated
 // rpc_error shape the daemon emits for failed async session requests.

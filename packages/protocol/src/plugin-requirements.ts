@@ -2,6 +2,8 @@ import type { PluginRequirements } from "./messages.js";
 import parse from "semver/functions/parse.js";
 import validRange from "semver/ranges/valid.js";
 import satisfies from "semver/functions/satisfies.js";
+// OTTO(identity): compatibility errors link to Otto's current migration guide.
+import { OTTO_WEBSITE_URL } from "./otto/identity.js";
 
 export function validatePluginRequirements(requirements: PluginRequirements | undefined): void {
   const range = requirements?.paseo;
@@ -33,7 +35,7 @@ export function assertPluginCompatibility(input: PluginCompatibilityInput): void
   if (satisfies(version, range) || satisfies(stableCore, range)) return;
   const action =
     input.requirements?.paseo === undefined
-      ? "This plugin has no requirements.paseo and targets Paseo before 0.8. Ask its author to migrate it: https://paseo.sh/docs/plugins/migration"
+      ? `This plugin has no requirements.paseo and targets Paseo before 0.8. Ask its author to migrate it: ${OTTO_WEBSITE_URL}/docs/plugins/migration`
       : `Use a compatible plugin version or update the ${input.runtime}.`;
   throw new Error(
     `Plugin "${input.id}" requires Paseo ${range}. Your ${input.runtime} is ${input.version}. ${action}`,

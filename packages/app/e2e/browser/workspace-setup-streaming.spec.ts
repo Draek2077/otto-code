@@ -1,3 +1,4 @@
+// OTTO(identity): fixture paths and labels follow Otto's persisted identity.
 import { daemonTest, test, expect } from "../support/fixtures";
 import { createTempGitRepo } from "../support/helpers/workspace";
 import {
@@ -206,7 +207,7 @@ test.describe("Workspace setup streaming", () => {
   test("keeps a workspace usable when its setup config cannot be parsed", async ({ page }) => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-invalid-config-", {
-      files: [{ path: "paseo.json", content: "{ invalid json\n" }],
+      files: [{ path: "otto.json", content: "{ invalid json\n" }],
     });
 
     try {
@@ -220,7 +221,7 @@ test.describe("Workspace setup streaming", () => {
         worktreeSlug: "workspace-setup-invalid-config",
       });
       const failedPayload = await failed;
-      expect(failedPayload.error).toContain("Failed to parse paseo.json");
+      expect(failedPayload.error).toContain("Failed to parse otto.json");
       expect(failedPayload.detail.commands).toEqual([]);
 
       await openHomeWithProject(page, repo.path);
@@ -231,7 +232,7 @@ test.describe("Workspace setup streaming", () => {
       await clickNewChat(page);
       await expectComposerVisible(page);
       await openFileExplorer(page);
-      await expectExplorerEntryVisible(page, "paseo.json");
+      await expectExplorerEntryVisible(page, "otto.json");
     } finally {
       await client.close();
       await repo.cleanup();

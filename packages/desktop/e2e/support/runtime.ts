@@ -1,5 +1,7 @@
 // OTTO(identity): fixtures use Otto's daemon lock filename.
 import { readFileSync } from "node:fs";
+// OTTO(identity): renderer ownership fixtures read the real Otto daemon lock.
+import { OTTO_DAEMON_PID_FILENAME } from "@getpaseo/protocol/otto/identity";
 import { appendFile } from "node:fs/promises";
 import { expect, type Page } from "@playwright/test";
 import { openSettings } from "../../../app/e2e/support/helpers/app";
@@ -30,7 +32,7 @@ export interface RealDaemonState {
 
 /**
  * Reads live state from the running E2E test daemon: version from the HTTP
- * status endpoint, PID from the paseo.pid lock file, log path from the
+ * status endpoint, PID from the Otto lock file, log path from the
  * E2E_PASEO_HOME directory. Call this in Node test code (not in the browser).
  */
 export async function loadRealDaemonState(): Promise<RealDaemonState> {
@@ -43,12 +45,12 @@ export async function loadRealDaemonState(): Promise<RealDaemonState> {
 
   let pid: number | null = null;
   try {
-    const raw = readFileSync(`${paseoHome}/paseo.pid`, "utf8");
+    const raw = readFileSync(`${paseoHome}/${OTTO_DAEMON_PID_FILENAME}`, "utf8");
     const pidContent: PidFileContent = JSON.parse(raw);
     pid = pidContent.pid ?? null;
   } catch (err) {
     // PID file may not be present yet on a very fresh daemon start
-    console.warn("[desktop-updates] paseo.pid not found:", err);
+    console.warn(`[desktop-updates] ${OTTO_DAEMON_PID_FILENAME} not found:`, err);
   }
 
   return { version: data.version, pid, logPath: `${paseoHome}/daemon.log` };

@@ -13,6 +13,8 @@ if (!Number.isInteger(listenPort) || listenPort < 0) {
 }
 
 const daemon = await createTestPaseoDaemon({
+  // OTTO(paseo-version): this fixture deliberately simulates another Paseo API release.
+  pluginApiVersion: daemonVersion,
   daemonVersion,
   ...(listenPort > 0 ? { listenPort } : {}),
   ...(paseoHomeRoot

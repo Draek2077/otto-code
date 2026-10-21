@@ -1,3 +1,4 @@
+// OTTO(identity): match Otto product copy and documentation URLs.
 // Locks two behaviours that used to break together on web/desktop:
 // 1) with the explorer pane focused, a newly appearing agent must auto-open into the
 //    MAIN pane in the background — the explorer pane is a background surface and must
@@ -252,7 +253,7 @@ async function expectNewLauncher(page: Page): Promise<void> {
   ).toBeVisible();
   await expect(draftTabChip(page)).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Message agent..." })).toHaveCount(0);
-  await expect(page.getByText("Paseo ran into a problem.", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Otto ran into a problem.", { exact: true })).toHaveCount(0);
 }
 
 async function openAgentDraftFromLauncher(page: Page): Promise<void> {

@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): password changes suggest the installed Otto command.
 
 import assert from "node:assert";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -54,7 +55,7 @@ try {
     assert.strictEqual(result.configPath, join(paseoHome, "config.json"));
     assert.strictEqual(
       result.restartCommand,
-      `paseo daemon restart --home ${JSON.stringify(paseoHome)}`,
+      `otto daemon restart --home ${JSON.stringify(paseoHome)}`,
     );
     assert.strictEqual(config.daemon.listen, "127.0.0.1:9999");
     assert.strictEqual(config.daemon.relay.enabled, false);

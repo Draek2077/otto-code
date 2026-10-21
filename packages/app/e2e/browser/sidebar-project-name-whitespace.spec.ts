@@ -1,3 +1,4 @@
+// OTTO(identity): match Otto product copy and documentation URLs.
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -55,7 +56,7 @@ async function expectProjectRow(page: Page, projectKey: string): Promise<void> {
 }
 
 async function expectAppShellRendered(page: Page): Promise<void> {
-  await expect(page.getByText("Paseo ran into a problem.")).toHaveCount(0);
+  await expect(page.getByText("Otto ran into a problem.")).toHaveCount(0);
 }
 
 // A project view key carries the project's path, so a directory whose name ends

@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { scaffoldPluginDirectory } from "./scaffold.js";
+// OTTO(paseo-version): the manifest range and the npm release identify different things.
+import { OTTO_PASEO_BASE_VERSION } from "@getpaseo/protocol/otto/identity";
 
 const directories: string[] = [];
 const execFileAsync = promisify(execFile);
@@ -41,7 +43,7 @@ describe("plugin scaffold", () => {
     expect(overview.replace(/<!--[\s\S]*?-->/g, "").trim()).toBe("");
     expect(overview).toContain("required to list");
     expect(overview).toContain("README");
-    expect(overview).toContain("choosing a plugin in Paseo");
+    expect(overview).toContain("choosing a plugin in Otto");
     expect(overview).toContain("Length follows complexity");
     expect(overview).toContain("1. Describe what your plugin is and does");
     expect(overview).toContain("2. Explain how it works only when it is not obvious");
@@ -95,7 +97,7 @@ describe("plugin scaffold", () => {
           id: "hello-plugin",
           $comment: expect.stringContaining('"icon": "assets/icon.png"'),
           media: [],
-          requirements: { paseo: `>=${cliPackageJson.version}` },
+          requirements: { paseo: `>=${OTTO_PASEO_BASE_VERSION}` },
         },
       );
       expect(JSON.parse(await readFile(path.join(directory, "package.json"), "utf8"))).toEqual({
@@ -115,7 +117,7 @@ describe("plugin scaffold", () => {
         ],
         scripts: { typecheck: "tsc --noEmit" },
         devDependencies: {
-          "@getpaseo/plugin": cliPackageJson.version,
+          "@getpaseo/plugin": `npm:@otto-code/plugin@${cliPackageJson.version}`,
           "@tanstack/react-query": "^5.90.11",
           "@types/react": "~19.2.0",
           react: "19.1.0",
@@ -145,7 +147,7 @@ describe("plugin scaffold", () => {
       );
       await expect(
         readFile(path.join(directory, "client/greeting.tsx"), "utf8"),
-      ).resolves.toContain(`openExternal("https://paseo.sh")`);
+      ).resolves.toContain(`openExternal("https://otto-code.me")`);
       await expect(readFile(path.join(directory, "server/greeting.ts"), "utf8")).resolves.toContain(
         '"Hello, " + name + "!"',
       );

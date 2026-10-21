@@ -50,7 +50,7 @@ try {
   assert(onboard.stdout.includes("otto --help"), "onboard output should include --help shortcut");
   assert(onboard.stdout.includes("otto ls"), "onboard output should include ls shortcut");
   assert(
-    onboard.stdout.includes(`paseo run --home ${JSON.stringify(paseoHome)} "your prompt"`),
+    onboard.stdout.includes(`otto run --home ${JSON.stringify(paseoHome)} "your prompt"`),
     "onboard output should include a run shortcut for the selected home",
   );
   assert(onboard.stdout.includes("otto status"), "onboard output should include status shortcut");

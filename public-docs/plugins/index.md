@@ -13,6 +13,10 @@ category: Plugins
 Otto 0.10 uses Paseo's 0.12 plugin API. The [v0.8 guide](/docs/plugins/v0.8)
 and [v0.7 guide](/docs/plugins/v0.7) remain available for historical plugins.
 
+The scaffold installs Otto's SDK through an npm alias named `@getpaseo/plugin`.
+Keep that import name and the `paseo-plugin.json` manifest filename. The manifest's
+`requirements.paseo` range describes the Paseo API version, independently of Otto's release number.
+
 A plugin is a TypeScript project installed into one Otto daemon. It can add
 [screens and sidebar items](/docs/plugins/reference#screens-and-sidebar-items),
 [workspace panels](/docs/plugins/reference#workspace-panels),

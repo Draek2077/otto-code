@@ -35,6 +35,14 @@ relay client or anything else that would make Otto's relay traffic differ from P
 | CLI command            | `packages/cli/package.json` installs `bin/paseo` as `otto`; the desktop app ships its launchers as `bin/otto` and `bin/otto.cmd`.                                                                                                                                                                                                                                                                                               |
 | Desktop scheme         | `otto` is both the OS deep-link scheme and the renderer origin (`otto://app`). The origin keys stored app state, so it must not change.                                                                                                                                                                                                                                                                                         |
 
+## Plugin compatibility
+
+Plugin requirements compare against `OTTO_PASEO_BASE_VERSION`, independently of Otto's
+product version. Scaffolds declare that API minimum and install `@otto-code/plugin`
+through the npm alias `@getpaseo/plugin`, preserving the upstream plugin import contract.
+Versioned test hosts inject their simulated plugin API version through the daemon's
+dependencies; production hosts use the recorded Paseo base.
+
 ## Marking edits to Paseo files
 
 Every edit inside a Paseo file carries an `OTTO(<seam>)` marker, for example

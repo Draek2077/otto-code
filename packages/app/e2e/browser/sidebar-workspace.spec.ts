@@ -1,3 +1,4 @@
+// OTTO(identity): fixture paths and labels follow Otto's persisted identity.
 import path from "node:path";
 import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
@@ -122,7 +123,7 @@ async function readCachedRowIds(
   return page.evaluate(
     async ({ serverId, kind }) => {
       const database = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open("paseo-replica-row-store");
+        const request = indexedDB.open("otto-replica-row-store");
         request.addEventListener("success", () => resolve(request.result));
         request.addEventListener("error", () => reject(request.error));
       });
@@ -163,7 +164,7 @@ async function simulateDamagedLegacyDirectoryCache(
   await page.evaluate(
     async ({ serverId, missingWorkspaceId }) => {
       const database = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open("paseo-replica-row-store");
+        const request = indexedDB.open("otto-replica-row-store");
         request.addEventListener("success", () => resolve(request.result));
         request.addEventListener("error", () => reject(request.error));
       });

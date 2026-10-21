@@ -1,3 +1,4 @@
+// OTTO(identity): match Otto product copy and documentation URLs.
 import { expect, test } from "../../app/e2e/support/fixtures";
 import { gotoAppShell, openSettings } from "../../app/e2e/support/helpers/app";
 import { getServerId } from "../../app/e2e/support/helpers/server-id";
@@ -44,7 +45,7 @@ test.describe("Desktop updates", () => {
     const updateCard = page.getByTestId("host-page-update-card");
     await expect(updateCard).toBeVisible();
     await expect(updateCard).toContainText(
-      "This daemon is managed by Paseo Desktop. Update Paseo Desktop on the host.",
+      "This daemon is managed by Otto Desktop. Update Otto Desktop on the host.",
     );
     await expect(page.getByTestId("host-page-update-button")).toBeDisabled();
   });

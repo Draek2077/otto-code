@@ -486,6 +486,8 @@ export interface PaseoDaemon {
 }
 
 export interface PaseoDaemonDependencies {
+  // OTTO(paseo-version): versioned compatibility hosts inject the plugin API separately.
+  pluginApiVersion?: string;
   builtinPlugins?: BuiltinPluginLoader;
   hubRelationshipRemote?: HubRelationshipRemote;
   hubRelationshipClock?: HubRelationshipClock;
@@ -629,7 +631,7 @@ export async function createPaseoDaemon(
   const pluginRuntime: PluginService = new PluginService(
     logger,
     daemonConfigStore,
-    OTTO_PASEO_BASE_VERSION,
+    dependencies.pluginApiVersion ?? OTTO_PASEO_BASE_VERSION,
     {
       usageAgents: {
         hasAgent: (id) => agentManager.getAgent(id) !== null,

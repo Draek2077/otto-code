@@ -1,3 +1,4 @@
+// OTTO(identity): fixture paths and labels follow Otto's persisted identity.
 import { execSync } from "node:child_process";
 import { mkdtemp, readFile, writeFile, rm, mkdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -78,10 +79,7 @@ export const createTempGitRepo = async (
   execSync("git config commit.gpgsign false", { cwd: repoPath, stdio: "ignore" });
   await writeFile(path.join(repoPath, "README.md"), "# Temp Repo\n");
   if (options?.paseoConfig) {
-    await writeFile(
-      path.join(repoPath, "paseo.json"),
-      JSON.stringify(options.paseoConfig, null, 2),
-    );
+    await writeFile(path.join(repoPath, "otto.json"), JSON.stringify(options.paseoConfig, null, 2));
   }
   for (const file of options?.files ?? []) {
     const filePath = path.join(repoPath, file.path);
@@ -90,7 +88,7 @@ export const createTempGitRepo = async (
   }
   execSync("git add README.md", { cwd: repoPath, stdio: "ignore" });
   if (options?.paseoConfig) {
-    execSync("git add paseo.json", { cwd: repoPath, stdio: "ignore" });
+    execSync("git add otto.json", { cwd: repoPath, stdio: "ignore" });
   }
   for (const file of options?.files ?? []) {
     execSync(`git add ${JSON.stringify(file.path)}`, { cwd: repoPath, stdio: "ignore" });
@@ -221,7 +219,7 @@ export async function readWorktreeBaseMetadata(
     .toString()
     .trim();
   const metadata = JSON.parse(
-    await readFile(path.join(gitDir, "paseo", "worktree.json"), "utf8"),
+    await readFile(path.join(gitDir, "otto", "worktree.json"), "utf8"),
   ) as { baseRefName?: string; baseRef?: string };
   if (!metadata.baseRefName) {
     throw new Error(`worktree.json has no baseRefName: ${worktreePath}`);

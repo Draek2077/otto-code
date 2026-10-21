@@ -2,9 +2,10 @@ import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import appPackage from "../../../package.json";
+// OTTO(paseo-version): plugin manifests describe the API, not Otto's release number.
+import { OTTO_PASEO_BASE_VERSION } from "@getpaseo/protocol/otto/identity";
 
-export const pluginRequirements = { paseo: `>=${appPackage.version}` };
+export const pluginRequirements = { paseo: `>=${OTTO_PASEO_BASE_VERSION}` };
 
 export async function copyPluginExample(name: string) {
   const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-example-"));

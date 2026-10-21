@@ -1,5 +1,6 @@
 #!/usr/bin/env npx tsx
-import { resolveCliVersion } from "../../src/version.js";
+// OTTO(paseo-version): manifest requirements target the integrated Paseo API.
+import { OTTO_PASEO_BASE_VERSION } from "@getpaseo/protocol/otto/identity";
 import { readPluginManifest } from "../../../server/src/server/plugins/manifest.js";
 
 import {
@@ -150,10 +151,10 @@ async function main(): Promise<void> {
     assert.equal(init.exitCode, 0, init.stderr);
     const manifestPath = path.join(scaffold, "paseo-plugin.json");
     const manifest = await readPluginManifest(scaffold);
-    assert.deepEqual(manifest.requirements, { paseo: `>=${resolveCliVersion()}` });
+    assert.deepEqual(manifest.requirements, { paseo: `>=${OTTO_PASEO_BASE_VERSION}` });
     await writeFile(
       path.join(directory, "paseo-plugin.json"),
-      JSON.stringify({ id: "cli-e2e", requirements: { paseo: `>=${resolveCliVersion()}` } }),
+      JSON.stringify({ id: "cli-e2e", requirements: { paseo: `>=${OTTO_PASEO_BASE_VERSION}` } }),
     );
     await writeFile(path.join(directory, "index.server.ts"), pluginSource);
 
@@ -172,7 +173,7 @@ async function main(): Promise<void> {
         path.join(target, "paseo-plugin.json"),
         JSON.stringify({
           id: "relative-cli",
-          requirements: { paseo: `>=${resolveCliVersion()}` },
+          requirements: { paseo: `>=${OTTO_PASEO_BASE_VERSION}` },
         }),
       );
       await writeFile(path.join(target, "index.server.ts"), pluginSource);
@@ -244,7 +245,10 @@ async function main(): Promise<void> {
     await git(gitDirectory, ["config", "user.email", "paseo@example.test"]);
     await writeFile(
       path.join(gitDirectory, "paseo-plugin.json"),
-      JSON.stringify({ id: "git-cli-e2e", requirements: { paseo: `>=${resolveCliVersion()}` } }),
+      JSON.stringify({
+        id: "git-cli-e2e",
+        requirements: { paseo: `>=${OTTO_PASEO_BASE_VERSION}` },
+      }),
     );
     await writeFile(path.join(gitDirectory, "index.server.ts"), pluginSource);
     await git(gitDirectory, ["add", "-A"]);
@@ -348,7 +352,7 @@ async function main(): Promise<void> {
         path.join(targetDirectory, "paseo-plugin.json"),
         JSON.stringify({
           id: "slow-reload-target",
-          requirements: { paseo: `>=${resolveCliVersion()}` },
+          requirements: { paseo: `>=${OTTO_PASEO_BASE_VERSION}` },
         }),
       );
       await writeFile(
@@ -367,7 +371,7 @@ async function main(): Promise<void> {
         path.join(slowRepository, "paseo-plugin.json"),
         JSON.stringify({
           id: "slow-build",
-          requirements: { paseo: `>=${resolveCliVersion()}` },
+          requirements: { paseo: `>=${OTTO_PASEO_BASE_VERSION}` },
           build: [[process.execPath, "-e", gateWaitBuild, buildStarted, buildGate]],
         }),
       );
@@ -433,7 +437,7 @@ async function main(): Promise<void> {
         path.join(brokenDirectory, "paseo-plugin.json"),
         JSON.stringify({
           id: "broken-reload",
-          requirements: { paseo: `>=${resolveCliVersion()}` },
+          requirements: { paseo: `>=${OTTO_PASEO_BASE_VERSION}` },
         }),
       );
       await writeFile(path.join(brokenDirectory, "index.server.ts"), "export default broken !!!");
