@@ -236,3 +236,10 @@ console.log(
 );
 
 await png(tileSvg(face, null, DEV_TILE_COLOR), 512, path.join(desktopAssets, "icon-dev.png"));
+
+// The store listing uses the same full-bleed mark as the installed mobile app.
+await png(
+  fullBleedSvg(face),
+  512,
+  path.join(root, "fastlane/metadata/android/en-US/images/icon.png"),
+);

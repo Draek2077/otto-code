@@ -1,0 +1,7 @@
+Fixed
+- Deliver a child chat's results to its orchestrator using the Default send setting instead of always queueing them
+- Steer a busy orchestrator with Workflow run notifications and orchestration hand-backs under the default Steer setting
+- Keep Hey Otto listening when the composer changes while voice mode is active
+- Stop a stale voice listener from shutting down the microphone session that replaced it
+
+Full notes: https://paseo.sh/changelog

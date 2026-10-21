@@ -1,0 +1,5 @@
+Fixed
+- Stop Android dictation from timing out when connected through the relay
+- Stop interrupted spoken replies from continuing to download in the background
+
+Full notes: https://paseo.sh/changelog

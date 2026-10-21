@@ -1,0 +1,7 @@
+Added
+- Choose Claude Opus 5.5 as the default Claude model on supported Claude Code versions
+
+Fixed
+- Show and apply native spelling suggestions from desktop right-click menus
+
+Full notes: https://paseo.sh/changelog

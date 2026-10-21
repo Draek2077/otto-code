@@ -1,0 +1,12 @@
+Otto now builds on Paseo 0.8.0.
+
+Before upgrading: the desktop app now requires macOS 13 or newer. Plugins written for Paseo 0.7 need the 0.8 migration guide.
+
+Added
+- Integrate Paseo 0.8.0's plugin, provider, and chat improvements
+- Sign in to connectors through Otto's hosted sign-in
+- Sign in to HubSpot through the hosted connector sign-in
+- Commit selected files with a message from the Changes panel
+- Choose which Otto tools each provider can use
+
+Full notes: https://paseo.sh/changelog

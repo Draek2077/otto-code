@@ -45,6 +45,15 @@
     "packages/desktop/assets/icon-dev.png": "identity: generated Otto brand artwork; binary assets cannot carry OTTO markers.",
     "packages/desktop/assets/icon.icns": "identity: generated Otto brand artwork; binary assets cannot carry OTTO markers.",
     "packages/desktop/assets/icon.ico": "identity: generated Otto brand artwork; binary assets cannot carry OTTO markers.",
-    "packages/desktop/assets/icon.png": "identity: generated Otto brand artwork; binary assets cannot carry OTTO markers."
+    "packages/desktop/assets/icon.png": "identity: generated Otto brand artwork; binary assets cannot carry OTTO markers.",
+    "fastlane/metadata/android/en-US/full_description.txt": "identity: Otto mobile listing text; plain store metadata cannot carry comments.",
+    "fastlane/metadata/android/en-US/short_description.txt": "identity: Otto mobile listing text; plain store metadata cannot carry comments.",
+    "fastlane/metadata/android/en-US/title.txt": "identity: Otto mobile listing text; plain store metadata cannot carry comments.",
+    "fastlane/metadata/android/ja/full_description.txt": "identity: Otto mobile listing text; plain store metadata cannot carry comments.",
+    "fastlane/metadata/android/ja/short_description.txt": "identity: Otto mobile listing text; plain store metadata cannot carry comments.",
+    "fastlane/metadata/android/zh-CN/full_description.txt": "identity: Otto mobile listing text; plain store metadata cannot carry comments.",
+    "fastlane/metadata/android/zh-CN/short_description.txt": "identity: Otto mobile listing text; plain store metadata cannot carry comments.",
+    "CHANGELOG.md": "release: preserve Otto published release history verbatim from otto-0.9-final.",
+    "fastlane/metadata/android/en-US/images/icon.png": "identity: generated Otto mobile store icon; binary artwork cannot carry comments."
   }
 }

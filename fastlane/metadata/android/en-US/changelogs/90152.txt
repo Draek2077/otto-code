@@ -1,0 +1,10 @@
+Added
+- Follow links to explicit anchors in rendered Markdown, so an ID reference jumps straight to its table row
+- Briefly highlight the heading or row a document link lands on
+- Reveal a collapsed sidebar by resting the pointer on the screen edge of a maximized or fullscreen desktop window
+- Reload a file from disk from the editor and preview toolbars
+
+Fixed
+- Keep the editor in sync when an agent rewrites a file several times in quick succession
+
+Full notes: https://paseo.sh/changelog

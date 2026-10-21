@@ -1,0 +1,10 @@
+Improved
+- Retry failed Workflow phases with the reviewer's feedback instead of repeating the same attempt
+- Mark a Workflow phase as iterative to keep refining the same chat until it passes review
+- Keep Workflow phases from stalling on tool permission prompts
+- Match the host browser toolbar to the app browser toolbar
+
+Fixed
+- Keep the app responsive while agents work on machines without GPU acceleration
+
+Full notes: https://paseo.sh/changelog

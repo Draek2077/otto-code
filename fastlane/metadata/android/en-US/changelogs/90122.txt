@@ -1,0 +1,11 @@
+Added
+- Explain, contest, research, or complete text you select in a chat transcript
+- Turn Autonomous mode on or off for a single chat from the message box
+- Choose how many prompt suggestions Otto follows in a row
+
+Changed
+- Follow prompt suggestions now sets the default for new chats instead of switching every chat at once
+- Refresh the agent catalog to the latest published versions
+- Update bundled dependencies to clear known security advisories
+
+Full notes: https://paseo.sh/changelog
