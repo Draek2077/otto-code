@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import {
   ChevronDown,
   Columns2,
@@ -64,7 +65,7 @@ export function TitleBar({ state }: { state: MockupStateId }) {
         {shipping ? (
           <>
             <GithubGlyph size={13} />
-            Merge PR
+            Merge PR (squash)
           </>
         ) : (
           <>

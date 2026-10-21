@@ -8,8 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsgo --noEmit",
-    "deploy": "npm run build && wrangler deploy",
-    "test:e2e": "playwright test"
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.29.1",

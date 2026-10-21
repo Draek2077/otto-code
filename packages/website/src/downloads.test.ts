@@ -1,36 +1,35 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { describe, expect, it } from "vitest";
-import { parseReleaseAssetUrl } from "./downloads";
-
-describe("parseReleaseAssetUrl", () => {
-  it("accepts a Paseo release file", () => {
-    const url =
-      "https://github.com/getpaseo/paseo/releases/download/v0.10.3/Paseo-0.10.3-arm64.dmg";
-    expect(parseReleaseAssetUrl(url)).toBe(url);
+import { getPrimaryDownload, downloadUrls, type ReleaseAssetInfo, webAppUrl } from "./downloads";
+const release: ReleaseAssetInfo = {
+  version: "0.9.10",
+  linuxAppImageAsset: "Otto-x86_64.AppImage",
+  windowsX64Asset: "Otto-Setup-0.9.10-x64.exe",
+  windowsArm64Asset: null,
+  macArm64Asset: null,
+  macX64Asset: null,
+};
+describe("Otto distribution over the shared visitor-platform owner", () => {
+  it("routes iOS to the web app and Android to Otto's APK, without upstream store links", () => {
+    expect(getPrimaryDownload(release, "ios")).toMatchObject({ label: "Web app", href: webAppUrl });
+    expect(getPrimaryDownload(release, "android").href).toBe(downloadUrls(release).androidApk);
+    expect(getPrimaryDownload(release, "android").href).toContain(
+      "Draek2077/otto-code/releases/download/v0.9.10/otto-v0.9.10-android.apk",
+    );
   });
-
-  it("rejects a path that climbs into another repository's releases", () => {
+  it("keeps Mac visitors on the unsigned-build instructions page with or without an artifact", () => {
+    expect(getPrimaryDownload(release, "mac")).toMatchObject({
+      href: "/download",
+      openInPage: true,
+    });
     expect(
-      parseReleaseAssetUrl(
-        "https://github.com/getpaseo/paseo/releases/download/v1/../../../../evil/repo/releases/download/v1/app.dmg",
-      ),
-    ).toBeNull();
-    expect(
-      parseReleaseAssetUrl(
-        "https://github.com/getpaseo/paseo/releases/download/v1/%2e%2e/%2e%2e/%2e%2e/%2e%2e/evil/repo/app.dmg",
-      ),
-    ).toBeNull();
+      getPrimaryDownload({ ...release, macArm64Asset: "Otto-arm64-unsigned.dmg" }, "mac"),
+    ).toMatchObject({ href: "/download", openInPage: true });
+    expect(downloadUrls(release).macDmgArm64).toBeNull();
+    expect(downloadUrls(release).macDmgX64).toBeNull();
   });
-
-  it("rejects other hosts and malformed values", () => {
-    expect(
-      parseReleaseAssetUrl(
-        "https://github.com.evil.test/getpaseo/paseo/releases/download/v1/a.dmg",
-      ),
-    ).toBeNull();
-    expect(
-      parseReleaseAssetUrl("http://github.com/getpaseo/paseo/releases/download/v1/a.dmg"),
-    ).toBeNull();
-    expect(parseReleaseAssetUrl("not a url")).toBeNull();
-    expect(parseReleaseAssetUrl(undefined)).toBeNull();
+  it("uses actual release asset names for desktop visitors", () => {
+    expect(getPrimaryDownload(release, "windows").href).toContain(release.windowsX64Asset);
+    expect(getPrimaryDownload(release, "linux").href).toContain(release.linuxAppImageAsset);
   });
 });

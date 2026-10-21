@@ -1,22 +1,21 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { getAlternativePages } from "~/data/alternative-pages";
 import { AGENT_PAGES } from "~/data/agent-pages";
 import { type Doc, getDocs } from "~/docs";
 
-const SITE_URL = "https://paseo.sh";
+const SITE_URL = "https://otto-code.me";
 
-const PRODUCT_PREAMBLE = `# Paseo
+const PRODUCT_PREAMBLE = `# Otto
 
-> Open source agentic development environment for desktop, mobile, web, and CLI.
+> A fully featured, self-hosted agentic coding assistant that brings frontier-model tooling to every provider, cloud and local alike, and lets you drive it from desktop, phone, browser, or terminal.
 
-Paseo is a full agentic development environment. For agent-driven development, it replaces your IDE: run coding agents, edit files, review diffs and pull requests, run tests in terminals, and check your app in the built-in desktop browser. Arrange agents, files, terminals, and browser tabs in split panes within a workspace.
+Otto is an open source application that runs AI coding agents in your own environment inside a rich, familiar setup: browser-verified previews, AI-generated artifacts, split panes with terminals and diffs, rich permission modes, and MCP integration. The tooling a frontier harness gives its own model works the same in Otto whether the agent is Claude Code, Codex, or a local model served from LM Studio or Ollama. Otto connects directly to your real development environment and has no required cloud service or account.
 
-Run many agents in parallel, each in its own git worktree and branch. Choose a provider and model for each task, inspect the results, and decide what to merge. Agents can also create worktrees, launch other agents, and communicate with them through Paseo's orchestration tools.
+A self-hosted daemon manages agent lifecycle, exposes a WebSocket API, and ships with an MCP server so other agents can talk to it. Native apps for macOS, Windows, Linux, and Android, plus a web app that covers iPhone, let you launch sessions, watch them work, review diffs, and ship from anywhere. A Docker-style CLI ("otto run", "otto ls", "otto logs", "otto wait") gives you scripting access. An end-to-end encrypted relay lets the mobile app reach your daemon over the public internet without exposing it.
 
-Agents run on your own machines with your existing tools, configuration, and credentials. Work from desktop, the full native iOS and Android app, a web browser, or the CLI. The desktop app starts its local daemon automatically. For remote work, run the daemon on another machine and connect directly or through the optional end-to-end encrypted relay.
+Otto supports built-in coding providers, an ACP catalog, configured OpenAI-compatible endpoints, and plugin providers. The selected adapter owns provider execution; Otto supplies I/O, agent persistence, git worktree isolation, schedules, skills, and shared tooling. Plugins can also add commands, settings, workspace panels, and chat components.
 
-Paseo supports Claude Code, Codex, GitHub Copilot, OpenCode, Pi, Antigravity, Muse Code, and additional ACP-compatible agents. The CLI, TypeScript SDK, and MCP tools expose agent and workspace operations for automation. Plugins extend providers, workflows, and the app's interface.
-
-Distribution: native apps for Mac, Windows, Linux, iOS, and Android; web app; Homebrew; npm. Source: Apache-2.0 at https://github.com/getpaseo/paseo. Marketing site: https://paseo.sh.
+Distribution: native apps for macOS, Windows, Linux, and Android (APK); web app for everything else, including iPhone. macOS builds are unsigned (no Apple Developer account) so they need a Gatekeeper bypass on first launch and do not auto-update. No native iOS build for the same reason. Source: AGPL-3.0 at https://github.com/Draek2077/otto-code. Marketing site: https://otto-code.me.
 `;
 
 function docLine(doc: Doc): string {
@@ -60,12 +59,11 @@ ${agents}
 
 ## Optional
 
-- [Changelog](${SITE_URL}/changelog): Release notes for the Paseo daemon, CLI, desktop, and mobile apps.
-- [Download](${SITE_URL}/download): Install Paseo on Mac, Windows, Linux, iOS, Android, or run the web app.
-- [Paseo Hub](${SITE_URL}/hub): Connect daemons and run GitHub, Slack, Discord, and Linear workflows through the hosted service or your own deployment.
-- [Blog](${SITE_URL}/blog): Updates and technical posts from the Paseo team.
+- [Changelog](${SITE_URL}/changelog): Release notes for the Otto daemon, CLI, desktop, and mobile apps.
+- [Download](${SITE_URL}/download): Install Otto on Mac, Windows, Linux, or Android; use the web app on iOS.
+- [Blog](${SITE_URL}/blog): Updates and technical posts from Philippe.
 - [Privacy](${SITE_URL}/privacy): Privacy policy.
-- [Terms](${SITE_URL}/terms): Terms for the official relay and hosted Hub.
-- [GitHub](https://github.com/getpaseo/paseo): Source code, issues, and releases.
+- [Security](${SITE_URL}/security): Security policy and responsibility disclaimer.
+- [GitHub](https://github.com/Draek2077/otto-code): Source code, issues, and releases.
 `;
 }

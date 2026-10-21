@@ -1,18 +1,32 @@
----
+## <!-- OTTO(website): retain Otto public site and manual content. -->
+
 title: Voice
-description: Paseo voice architecture, local-first model execution, and provider configuration.
+description: Otto voice architecture, local-first model execution, and provider configuration.
 nav: Voice
 order: 41
 category: Configuration
+
 ---
 
 # Voice
 
-Paseo has first-class voice support for dictation and voice mode conversations with your coding environment.
+Otto has first-class voice support for dictation and voice mode conversations with your coding environment.
+
+## Configuring voice in Host settings
+
+The quickest way to set voice up is **Host settings → Speech**, no config editing required. Three cards:
+
+- **Dictation**: turn dictation on, pick the speech-to-text engine (local or OpenAI) and model.
+- **Voice mode**: turn voice mode on, pick STT and TTS engines and models, choose a **voice** (with a preview button), and set the **speaking speed** (0.75× / 1× / 1.25× / 1.5×).
+- **OpenAI speech key**: one shared API key that unlocks the OpenAI STT/TTS engines. Leave it empty to use local speech only.
+
+Everything below documents the same settings as `config.json` and environment variables, for headless hosts, scripting, or advanced tuning. The UI writes the same config, so you can mix the two.
+
+[Agent personalities](/docs/personalities) can carry a voice of their own: an agent spawned from one speaks in that voice instead of the host default. If a personality's voice isn't available on the host, playback falls back to the default voice.
 
 ## Philosophy
 
-Voice is local-first. You can run speech fully on-device, or choose OpenAI for speech features. For voice reasoning/orchestration, Paseo reuses agent providers already installed and authenticated on your machine.
+Voice is local-first. You can run speech fully on-device, or choose OpenAI for speech features. For voice reasoning/orchestration, Otto reuses agent providers already installed and authenticated on your machine.
 
 This keeps credentials and execution in your environment and avoids introducing a separate cloud-only voice stack.
 
@@ -25,9 +39,19 @@ This keeps credentials and execution in your environment and avoids introducing 
 
 ## Local Speech
 
-Local speech defaults to model IDs `parakeet-tdt-0.6b-v2-int8` (STT) and `kokoro-en-v0_19` (TTS, speaker 0 / voice 00).
+Local speech defaults to model IDs `parakeet-tdt-0.6b-v2-int8` (STT) and `kokoro-multi-lang-v1_0` (TTS, "Kokoro v1.0", default voice `af_heart`).
 
-Missing models are downloaded at daemon startup into `$PASEO_HOME/models/local-speech`. Downloads happen only for missing files.
+Missing models are downloaded at daemon startup into `$OTTO_HOME/models/local-speech`. Downloads happen only for missing files.
+
+### Local TTS models (voices)
+
+| Model ID                      | Notes                                                                                                                |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `kokoro-multi-lang-v1_0`      | Kokoro v1.0 (default). 53 voices across English, Spanish, French, Hindi, Italian, Japanese, Portuguese, and Chinese. |
+| `kokoro-int8-multi-lang-v1_0` | Kokoro v1.0, int8: the same voices, smaller and faster, slightly lower fidelity.                                     |
+| `kokoro-en-v0_19`             | Kokoro v0.19 (legacy). 11 English voices. The former default.                                                        |
+
+Pick a voice by name (e.g. `af_heart`) rather than a numeric speaker id; the Host settings voice picker lists the friendly names, and the preview button plays a sample.
 
 ### Local STT models and language support
 
@@ -36,7 +60,7 @@ Missing models are downloaded at daemon startup into `$PASEO_HOME/models/local-s
 | `parakeet-tdt-0.6b-v2-int8` | English only (default). Includes punctuation and capitalization.                                                                                                                                                                                                             |
 | `parakeet-tdt-0.6b-v3-int8` | 25 European languages, auto-detected: Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish, Swedish, Ukrainian. |
 
-**To use a non-English language, switch the local STT model to `parakeet-tdt-0.6b-v3-int8`.** v3 detects the spoken language automatically — there is no per-language setting for it. The `language` field below does **not** steer the local Parakeet model (v2 is English-only, v3 auto-detects); it only applies to the OpenAI STT provider.
+**To use a non-English language, switch the local STT model to `parakeet-tdt-0.6b-v3-int8`.** v3 detects the spoken language automatically. There is no per-language setting for it. The `language` field below does **not** steer the local Parakeet model (v2 is English-only, v3 auto-detects); it only applies to the OpenAI STT provider.
 
 ```json
 {
@@ -48,18 +72,23 @@ Missing models are downloaded at daemon startup into `$PASEO_HOME/models/local-s
     "voiceMode": {
       "llm": { "provider": "claude", "model": "haiku" },
       "stt": { "provider": "local", "model": "parakeet-tdt-0.6b-v2-int8", "language": "en" },
-      "tts": { "provider": "local", "model": "kokoro-en-v0_19", "speakerId": 0 }
+      "tts": {
+        "provider": "local",
+        "model": "kokoro-multi-lang-v1_0",
+        "voice": "af_heart",
+        "speed": 1
+      }
     }
   },
   "providers": {
     "local": {
-      "modelsDir": "~/.paseo/models/local-speech"
+      "modelsDir": "~/.otto/models/local-speech"
     }
   }
 }
 ```
 
-For multilingual local dictation, set the model to v3 — it auto-detects the language, so no `language` field is needed:
+For multilingual local dictation, set the model to v3, which auto-detects the language, so no `language` field is needed:
 
 ```json
 {
@@ -72,7 +101,7 @@ For multilingual local dictation, set the model to v3 — it auto-detects the la
 }
 ```
 
-The `language` field applies only to the OpenAI STT provider: set `features.dictation.stt.language` for dictation and `features.voiceMode.stt.language` for voice mode. If voice language is omitted, Paseo uses the dictation language before falling back to `en`. It has no effect on the local Parakeet models.
+The `language` field applies only to the OpenAI STT provider: set `features.dictation.stt.language` for dictation and `features.voiceMode.stt.language` for voice mode. If voice language is omitted, Otto uses the dictation language before falling back to `en`. It has no effect on the local Parakeet models.
 
 ## OpenAI Voice Option
 
@@ -103,9 +132,9 @@ You can switch dictation, voice STT, and voice TTS to OpenAI by setting provider
 }
 ```
 
-`providers.openai.stt` covers dictation and voice mode speech-to-text, and `providers.openai.tts` covers voice mode text-to-speech. Because they resolve independently, you can point STT and TTS at different endpoints. Each falls back to `providers.openai.apiKey`/`baseUrl`, then `OPENAI_API_KEY`/`OPENAI_BASE_URL`, when unset. These settings configure only Paseo OpenAI speech traffic, without changing Codex or other OpenAI-backed tools.
+`providers.openai.stt` covers dictation and voice mode speech-to-text, and `providers.openai.tts` covers voice mode text-to-speech. Because they resolve independently, you can point STT and TTS at different endpoints. Each falls back to `providers.openai.apiKey`/`baseUrl`, then `OPENAI_API_KEY`/`OPENAI_BASE_URL`, when unset. These settings configure only Otto OpenAI speech traffic, without changing Codex or other OpenAI-backed tools.
 
-Paseo uses these paths under the configured OpenAI base URL:
+Otto uses these paths under the configured OpenAI base URL:
 
 - dictation STT: `/v1/audio/transcriptions`
 - voice mode STT: `/v1/audio/transcriptions`
@@ -113,16 +142,16 @@ Paseo uses these paths under the configured OpenAI base URL:
 
 ## Environment Variables
 
-- `PASEO_VOICE_LLM_PROVIDER`, voice agent provider override
-- `PASEO_DICTATION_STT_PROVIDER`, `PASEO_VOICE_STT_PROVIDER`, `PASEO_VOICE_TTS_PROVIDER`, speech provider selection (`local` or `openai`)
+- `OTTO_VOICE_LLM_PROVIDER`, voice agent provider override
+- `OTTO_DICTATION_STT_PROVIDER`, `OTTO_VOICE_STT_PROVIDER`, `OTTO_VOICE_TTS_PROVIDER`, speech provider selection (`local` or `openai`)
 - `OPENAI_STT_API_KEY`, `OPENAI_STT_BASE_URL`, OpenAI speech-to-text endpoint (dictation + voice mode STT)
 - `OPENAI_TTS_API_KEY`, `OPENAI_TTS_BASE_URL`, OpenAI text-to-speech endpoint (voice mode TTS)
-- `PASEO_LOCAL_MODELS_DIR`, local model storage directory
-- `PASEO_DICTATION_LOCAL_STT_MODEL`, local dictation STT model ID
-- `PASEO_VOICE_LOCAL_STT_MODEL`, `PASEO_VOICE_LOCAL_TTS_MODEL`, local voice STT/TTS model IDs
-- `PASEO_DICTATION_LANGUAGE`, dictation STT language (OpenAI STT only; ignored by local Parakeet)
-- `PASEO_VOICE_LANGUAGE`, voice mode STT language; falls back to `PASEO_DICTATION_LANGUAGE` when unset (OpenAI STT only; ignored by local Parakeet)
-- `PASEO_VOICE_LOCAL_TTS_SPEAKER_ID`, `PASEO_VOICE_LOCAL_TTS_SPEED`, optional local voice TTS tuning
+- `OTTO_LOCAL_MODELS_DIR`, local model storage directory
+- `OTTO_DICTATION_LOCAL_STT_MODEL`, local dictation STT model ID
+- `OTTO_VOICE_LOCAL_STT_MODEL`, `OTTO_VOICE_LOCAL_TTS_MODEL`, local voice STT/TTS model IDs
+- `OTTO_DICTATION_LANGUAGE`, dictation STT language (OpenAI STT only; ignored by local Parakeet)
+- `OTTO_VOICE_LANGUAGE`, voice mode STT language; falls back to `OTTO_DICTATION_LANGUAGE` when unset (OpenAI STT only; ignored by local Parakeet)
+- `OTTO_VOICE_LOCAL_TTS_SPEAKER_ID`, `OTTO_VOICE_LOCAL_TTS_SPEED`, optional local voice TTS tuning
 
 ## Operational Notes
 

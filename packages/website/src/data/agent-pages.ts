@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 // Source of truth for per-agent marketing landing pages.
 // To add a new agent, append an entry here and create a 4-line route file at
 // `src/routes/<slug>.tsx`. The sitemap (vite.config) reads `AGENT_PAGE_SLUGS`.
@@ -20,7 +21,7 @@ export const AGENT_PAGES = [
       "Run Claude Code on your machine, drive it from your phone or desktop. Launch agents, watch them work, review and merge from anywhere.",
     metaTitle: "Claude Code Mobile and Desktop App, Open Source",
     metaDescription:
-      "Open source mobile and desktop app for Claude Code. Run agents on your machine, monitor progress, review diffs, and merge from anywhere. Self-hosted, your code stays local.",
+      "Open source mobile and desktop app for Claude Code. Run agents on your machine, monitor progress, review diffs, and merge from anywhere. Self-hosted, with agents running in your own environment.",
   },
   {
     slug: "codex",
@@ -37,20 +38,20 @@ export const AGENT_PAGES = [
     name: "OpenCode",
     title: "Open source app for OpenCode",
     subtitle:
-      "Run OpenCode on your machine, drive it from your phone or desktop. Open source on both ends, your code stays local.",
+      "Run OpenCode on your machine, drive it from your phone or desktop. Open source on both ends, with agents running in your own environment.",
     metaTitle: "OpenCode Mobile and Desktop App, Open Source",
     metaDescription:
       "Open source mobile and desktop app for OpenCode. Launch agents on your machine, watch them work, ship code from anywhere. Self-hosted.",
   },
   {
-    slug: "pi",
-    name: "Pi Agent",
-    title: "Open source app for the Pi coding agent",
+    slug: "copilot",
+    name: "GitHub Copilot",
+    title: "Open source app for GitHub Copilot",
     subtitle:
-      "Run the Pi coding agent on your machine, drive it from your phone or desktop. Self-hosted and open source.",
-    metaTitle: "Pi Agent Mobile and Desktop App, Open Source",
+      "Drive GitHub Copilot from your phone or desktop. Same account, same machine, ship without sitting down at your desk.",
+    metaTitle: "GitHub Copilot Mobile and Desktop App, Open Source",
     metaDescription:
-      "Open source mobile and desktop app for the Pi coding agent. Launch sessions on your machine, monitor progress, merge from anywhere. Self-hosted.",
+      "Open source mobile and desktop app for GitHub Copilot. Launch sessions on your machine, monitor progress, merge from anywhere.",
   },
   {
     slug: "omp",
@@ -63,6 +64,16 @@ export const AGENT_PAGES = [
       "Open source mobile and desktop app for OMP (Oh My Pi). Launch sessions on your machine, monitor progress, merge from anywhere. Self-hosted.",
   },
   {
+    slug: "pi",
+    name: "Pi Agent",
+    title: "Open source app for the Pi coding agent",
+    subtitle:
+      "Run the Pi coding agent on your machine, drive it from your phone or desktop. Self-hosted and open source.",
+    metaTitle: "Pi Agent Mobile and Desktop App, Open Source",
+    metaDescription:
+      "Open source mobile and desktop app for the Pi coding agent. Launch sessions on your machine, monitor progress, merge from anywhere. Self-hosted.",
+  },
+  {
     slug: "cursor",
     name: "Cursor",
     title: "Open source app for Cursor",
@@ -71,36 +82,6 @@ export const AGENT_PAGES = [
     metaTitle: "Cursor Mobile and Desktop App, Open Source",
     metaDescription:
       "Open source mobile and desktop app for Cursor. Launch tasks on your machine, monitor output, review diffs, and merge from anywhere. Self-hosted.",
-  },
-  {
-    slug: "muse-code",
-    name: "Muse Code",
-    title: "Open source app for Muse Code",
-    subtitle:
-      "Run Meta's Muse Code on your machine, drive it from your phone or desktop. Choose models, review tool calls, and answer approvals from anywhere.",
-    metaTitle: "Muse Code Mobile and Desktop App, Open Source",
-    metaDescription:
-      "Open source mobile and desktop app for Meta Muse Code. Run your installed Muse CLI, watch streamed turns, and answer approvals. See setup and version limitations in the docs.",
-  },
-  {
-    slug: "antigravity",
-    name: "Antigravity",
-    title: "Open source app for Antigravity",
-    subtitle:
-      "Run your installed Antigravity CLI on your machine and drive it from your phone or desktop.",
-    metaTitle: "Antigravity Mobile and Desktop App, Open Source",
-    metaDescription:
-      "Run your installed Antigravity CLI through Paseo. Watch agents work and review changes from your phone or desktop. Self-hosted, your code stays on your machine.",
-  },
-  {
-    slug: "copilot",
-    name: "GitHub Copilot",
-    title: "Open source app for GitHub Copilot",
-    subtitle:
-      "Drive GitHub Copilot from your phone or desktop. Same account, same machine, ship without sitting down at your desk.",
-    metaTitle: "GitHub Copilot Mobile and Desktop App, Open Source",
-    metaDescription:
-      "Open source mobile and desktop app for GitHub Copilot. Launch sessions on your machine, monitor progress, merge from anywhere.",
   },
   {
     slug: "gemini",

@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type UserConfig } from "vite";
@@ -8,7 +9,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const repoRoot = path.resolve(__dirname, "../..");
-const siteHost = "https://paseo.sh";
+const siteHost = "https://otto-code.me";
 
 function discoverDocsRoutes(): string[] {
   const docsDir = path.join(repoRoot, "public-docs");
@@ -43,11 +44,9 @@ function discoverAgentRoutes(): string[] {
     "changelog",
     "docs",
     "download",
-    "hub",
     "index",
     "sponsor",
     "privacy",
-    "terms",
   ]);
   return fs
     .readdirSync(routesDir, { withFileTypes: true })
@@ -80,22 +79,14 @@ function discoverBlogRoutes(): string[] {
   return ["/blog", ...slugs.map((slug) => `/blog/${slug}`)];
 }
 
-// Author and detail URLs are served by /sitemap-plugins.xml as the registry changes.
-function discoverPluginRoutes(): string[] {
-  return ["/plugins"];
-}
-
 const sitemapPages = [
   "/",
   "/agents",
   "/changelog",
   "/download",
-  "/hub",
   "/privacy",
-  "/terms",
   ...discoverAgentRoutes(),
   ...discoverAlternativeRoutes(),
-  ...discoverPluginRoutes(),
   ...discoverDocsRoutes(),
   ...discoverBlogRoutes(),
 ].map((routePath) => ({
@@ -106,7 +97,14 @@ export default defineConfig((): UserConfig => {
   return {
     server: {
       host: "0.0.0.0",
-      port: 8082,
+      // 4300 - deliberately OUT of the 808x band, which belongs to Metro/Expo
+      // (root dev 8081, desktop dev 8082-8089, agent lane 8095). This used to
+      // be 8082, which is the desktop dev shell's first
+      // choice, so running `dev:desktop` and `dev:website` together handed one of
+      // them a port the other expected. `strictPort` stays false: a collision here
+      // should move the site, not fail the run - but it must not start inside a
+      // band something else is actively probing.
+      port: 4300,
       strictPort: false,
       fs: {
         allow: [repoRoot],
@@ -117,7 +115,14 @@ export default defineConfig((): UserConfig => {
     },
     plugins: [
       cloudflare({ viteEnvironment: { name: "ssr" } }),
-      tsConfigPaths({ projects: [path.join(__dirname, "tsconfig.json")] }),
+      tsConfigPaths({
+        // Otto checks out git worktrees under `.claude/worktrees/`. Those are
+        // separate checkouts without `node_modules`, so their tsconfigs (e.g.
+        // expo-module-scripts/tsconfig.base extends) can't resolve and make
+        // tsconfck throw EXTENDS_RESOLVE during discovery. They're never part
+        // of this project's TS graph, so skip them entirely.
+        skip: (dir) => dir === ".claude",
+      }),
       tanstackStart({
         router: {
           quoteStyle: "double",

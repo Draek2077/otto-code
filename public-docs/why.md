@@ -1,43 +1,48 @@
----
-title: Why Paseo?
-description: A full agentic development environment for running coding agents, editing files, reviewing changes, and testing your work.
-nav: Why Paseo?
+## <!-- OTTO(website): retain Otto public site and manual content. -->
+
+title: Why Otto?
+description: What Otto is, what it isn't, and how it fits into your workflow.
+nav: Why Otto?
 order: 2
 category: Getting started
+
 ---
 
-# Why Paseo?
+# Why Otto?
 
-Paseo is a full agentic development environment. Run coding agents, edit files, review diffs and pull requests, and test your app with terminals and a built-in desktop browser. For agent-driven development, Paseo replaces your IDE: take a task from the first prompt through review and testing in one app.
+Otto is a self-hostable, fully featured agentic coding assistant. It runs the agent CLIs you already use, on the hardware you already have, and gives you a UI, CLI, and API to drive them from anywhere, inside a familiar environment that never boxes you in.
 
-## Develop in one workspace
+The mission: bring frontier-model tooling to every provider equally. Browser-verified previews, artifacts, subagent visibility, context compaction, and rich permission modes work the same whether the agent is Claude Code on a frontier API or a local model served from LM Studio. A capability isn't done when one provider has it, it's done when they all do.
 
-Open the desktop app, choose a project and an agent, and start working. Keep the conversation, editor, terminal, diffs, and browser together in split panes. Run your app, inspect the result, and ask the agent for changes without leaving the workspace.
+## Architecture
 
-The desktop app is available on macOS, Windows, and Linux. It starts and manages its local daemon automatically.
+- Daemon-client architecture. The daemon manages agents; clients (mobile, desktop, web, CLI) connect locally or over a relay. Remote access isn't an add-on.
+- macOS, Windows, and Linux are all primary targets. None of them are a port or an afterthought.
+- Mobile, desktop, and web are separate native clients. The mobile app is built in React Native, not a webview.
 
-## Run tasks in parallel
+## Providers
 
-Give independent tasks their own worktrees and branches. Run several agents at once, inspect each diff, test each implementation, and choose what to merge. Use the same provider for every task or choose a different provider and model for each.
+- Bring your own. Use your Claude subscription, your OpenAI account, your own API keys, a self-hosted endpoint. Otto doesn't proxy model calls.
+- Local voice stack. Speech-to-text and text-to-speech run on-device by default. OpenAI providers are configurable if you want cloud quality.
+- Open source. No telemetry on your code.
 
-Configure [workspace scripts](/docs/worktrees#scripts-and-services) to start development servers with separate ports for each worktree. [Try the parallel development workflow](/docs/parallel-development).
+## Where agents run
 
-## Use your agents and tools
+- Your laptop, a homelab, a company server. Same daemon, same client surface.
+- Any directory, git or not. Launch agents, merge locally, review the diff in the app.
+- GitHub PRs, checks, and reviews surface in the app when you want them. Not required.
 
-Paseo runs the coding agents you already use, with your subscriptions, credentials, configuration, skills, and MCP servers. Your agents work with the files and tools on your machine. See [supported providers](/docs/supported-providers).
+## Parallel work
 
-Dictate tasks or use [voice mode](/docs/voice). Speech-to-text and text-to-speech run locally by default, with cloud providers available in settings.
+- Splits and panes. Agents, terminals, and browsers side by side in one workspace.
+- Per-worktree services. Each worktree gets allocated ports for dev servers and databases, reachable through proxy URLs like `web.fix-auth.my-app.localhost` so they don't collide.
+- Multiple agents on the same repo via worktrees.
 
-## Continue from another device
+## Automation
 
-The daemon owns the running agents and workspaces. The desktop app connects to it locally; mobile, web, and CLI clients connect to the same environment. That separation lets you continue working from another device or run your environment on a server.
+- The CLI exposes the same surface as the app. Anything in the UI is scriptable.
+- [Otto tools](/docs/orchestration). Agents can drive Otto themselves: create isolated workspaces, spawn subagents, open terminals, and send prompts.
 
-Use Paseo entirely on your laptop, or connect to another machine when you need it. The native iOS and Android app gives you agents, files, terminals, and diffs on your phone. The built-in browser runs in the desktop app. [Connect your devices](/docs/connectivity) directly or through the optional end-to-end encrypted relay.
+## What it isn't
 
-## Automate and extend your workflow
-
-Give agents [Paseo tools](/docs/orchestration) to create worktrees, launch other agents, send prompts, and collect results. Use the [CLI](/docs/cli) or [TypeScript SDK](/docs/sdk) to automate agent and workspace operations.
-
-[Plugins](/docs/plugins) add providers, workspace panels, commands, and workflows. [Hub](/docs/hub) connects external events to agents running on your machines.
-
-Paseo is open source under Apache-2.0, with no telemetry, tracking, or required Paseo account.
+Not a hosted agent, not a model provider, and not a replacement for your text editor. Otto runs the CLIs you already use and doesn't wrap or modify them. It's the environment your agents work in: previews, artifacts, terminals, diffs, and browsers in one place, with your editor still yours.

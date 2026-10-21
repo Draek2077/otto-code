@@ -1,14 +1,16 @@
----
+## <!-- OTTO(website): retain Otto public site and manual content. -->
+
 title: Supported providers
-description: Every coding agent Paseo can launch, natively supported providers and the ACP catalog.
+description: Every coding agent Otto can launch, natively supported providers and the ACP catalog.
 nav: Supported providers
 order: 21
 category: Providers
+
 ---
 
 # Supported providers
 
-For the concept and how Paseo manages providers, see [Providers](/docs/providers). To add or configure your own, see [Custom providers](/docs/custom-providers).
+For the concept and how Otto manages providers, see [Providers](/docs/providers). To add or configure your own, see [Custom providers](/docs/custom-providers).
 
 ## Native support
 
@@ -18,45 +20,6 @@ Work out of the box once the underlying CLI is installed and authenticated.
 - [Codex](/docs/codex). OpenAI's workspace agent with sandbox controls and optional network access.
 - [OpenCode](https://opencode.ai/). Open-source coding assistant with multi-provider model support.
 - [Pi](https://pi.dev). Minimal terminal-based coding agent with multi-provider LLM support.
-- [Antigravity](#antigravity). Uses your installed `agy` CLI through a built-in provider plugin.
-- [Muse Code](/docs/muse-code). Meta's terminal coding agent, bundled as a provider plugin.
-
-### Antigravity
-
-Install the Antigravity CLI (`agy`) on your daemon host, then run `agy` once to sign in. Pick
-**Antigravity** in Paseo. The provider ships with Paseo; no separate plugin install is required.
-
-**Full access** is the only permission mode. Antigravity cannot ask for permission when another
-app drives it, so Paseo starts `agy` with `--dangerously-skip-permissions`. Every tool call,
-including shell commands, runs without asking. Each session starts with a warning explaining
-this, including when you reopen a chat. Antigravity's own policy can still deny
-an action.
-
-After a daemon restart, Antigravity remembers the conversation, but Paseo's transcript starts
-fresh because `agy` does not replay its history.
-
-This integration uses your installed CLI and sign-in. It is not endorsed by Google.
-
-Paseo MCP tools and steering are unavailable. Your own `agy` MCP servers still work. Attached
-images are passed as file references for the agent to read.
-
-If `agy` is outside your daemon's PATH, override its command in `~/.paseo/config.json`. Use `env`
-for provider-specific environment variables:
-
-```json
-{
-  "agents": {
-    "providers": {
-      "antigravity": {
-        "command": ["/absolute/path/to/agy"],
-        "env": { "EXAMPLE_VARIABLE": "value" }
-      }
-    }
-  }
-}
-```
-
-See [Custom providers](/docs/custom-providers) for command and environment overrides.
 
 ## ACP catalog
 
@@ -84,10 +47,11 @@ Pick any of these from the in-app provider catalog. Each entry is a one-click in
 - [GLM Agent](https://github.com/stefandevo/glm-acp-agent), Zhipu AI's GLM coding agent.
 - [goose](https://block.github.io/goose/), Block's local open-source AI agent.
 - [Grok](https://docs.x.ai/build/overview), xAI's Grok Build agentic coding CLI.
+- [Harn](https://harnlang.com), runs .harn agent pipelines as a coding agent.
 - [Hermes Agent](https://hermes-agent.nousresearch.com/docs/user-guide/features/acp), Nous Research's self-improving agent.
-- [Hoplite](#hoplite), cloud coding agent through its local ACP bridge.
 - [Junie](https://junie.jetbrains.com/docs/junie-cli-acp.html), JetBrains' coding agent.
 - [Kilo Code](https://kilo.ai/docs/code-with-ai/platforms/cli), open-source coding agent.
+- [Kimchi](https://kimchi.dev), coding agent powered by multi-model orchestration.
 - [Kimi Code CLI](https://github.com/MoonshotAI/kimi-code), Moonshot AI's coding assistant.
 - [Minion Code](https://github.com/femto/minion-code), Minion-framework coding agent.
 - [Mistral Vibe](https://github.com/mistralai/mistral-vibe), Mistral's open-source CLI assistant.
@@ -102,17 +66,10 @@ Pick any of these from the in-app provider catalog. Each entry is a one-click in
 
 The in-app catalog is the canonical, version-pinned source. Anything not listed here can still be added manually, see [Custom providers](/docs/custom-providers).
 
-### Hoplite
+## Local & OpenAI-compatible endpoints
 
-Install the [Hoplite CLI](https://hoplite.sh/docs/cli) on your daemon host and run
-`hoplite login`. In **Settings → Hosts → your host → Providers**, find **Hoplite**
-in the catalog and choose **Add**. Paseo launches `hoplite acp` through the generic ACP adapter.
+No CLI required, Otto talks to these directly as an HTTP endpoint. See [Local models](/docs/local-models) for how this mechanism works.
 
-Hoplite runs the agent in a cloud workspace. Open a repository linked to a Hoplite project,
-or set `agents.providers.hoplite.env.HOPLITE_PROJECT_ID` to use one project everywhere.
-Without a linked repository or pinned project, discovery reports `No Hoplite project`.
-Your local files and Paseo's loopback MCP tools are not available in that cloud workspace.
-
-See [Hoplite's ACP guide](https://hoplite.sh/docs/cli/acp) for authentication and project setup.
-Use a [command override](/docs/custom-providers) if `hoplite` is outside your daemon's PATH;
-keep `acp` in the arguments.
+- [LM Studio](https://lmstudio.ai), run open models locally with a one-click GUI. Its default port is what the in-app "OpenAI Compatible" featured preset points at.
+- [Ollama](https://ollama.com), run open models locally from the command line.
+- Any other OpenAI-compatible server, vLLM, llama.cpp's server mode, LocalAI, or a hosted gateway that speaks the same API shape.

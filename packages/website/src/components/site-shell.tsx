@@ -1,24 +1,19 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import type { ReactNode } from "react";
 import { SiteFooter } from "~/components/site-footer";
 import { SiteHeader } from "~/components/site-header";
 
 interface SiteShellProps {
   children: ReactNode;
-  width: "default" | "prose" | "wide";
+  width: "default" | "prose";
 }
 
-const MAIN_CLASSES: Record<SiteShellProps["width"], string> = {
-  prose: "max-w-prose p-6 md:p-12 mx-auto",
-  default: "max-w-5xl p-6 md:p-20 mx-auto",
-  wide: "max-w-7xl p-6 md:p-20 mx-auto",
-};
-
 export function SiteShell({ children, width }: SiteShellProps) {
-  const mainClasses = MAIN_CLASSES[width];
+  const mainClasses = width === "prose" ? "site-frame site-frame-prose" : "site-frame";
   return (
     <div className="min-h-screen bg-background">
       <main className={mainClasses}>
-        <div className="mb-20">
+        <div className="site-header-slot">
           <SiteHeader />
         </div>
         {children}

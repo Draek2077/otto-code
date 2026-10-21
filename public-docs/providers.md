@@ -1,31 +1,42 @@
----
+## <!-- OTTO(website): retain Otto public site and manual content. -->
+
 title: Providers
-description: How Paseo thinks about coding agents, wrapping existing CLIs, native vs ACP support, and where to go next.
+description: How Otto thinks about coding agents, wrapping existing CLIs, native vs ACP support, and where to go next.
 nav: Providers
 order: 20
 category: Providers
+
 ---
 
 # Providers
 
-Paseo runs **existing coding agents you've installed and authenticated** in workspaces with an editor, terminals, diffs, and, on desktop, a browser. Run several agents in parallel, choose a provider for each task, and review their work in the same app. Your subscriptions, config, skills, and MCP servers stay intact.
-
-To try the workflow, [run parallel tasks in separate worktrees](/docs/parallel-development).
+Otto can launch and supervise **existing CLIs you've already installed and authenticated**, including Claude Code, Codex, OpenCode, Cursor, and Gemini. It also provides its own agent loop for model servers, described below. Your subscriptions, your config, your skills, your MCP servers all stay intact. Otto adds the assistant environment on top: a UI, a CLI, a relay, orchestration, browser-verified previews, and artifacts, the same tooling for every provider, cloud or local.
 
 ## Mental model
 
-A provider is the contract between Paseo and one external agent CLI: how to launch it, how to stream its output, how to send input back, what modes it supports. The actual binary lives on your machine and runs as a normal subprocess.
+A provider is the contract between Otto and one external agent CLI: how to launch it, how to stream its output, how to send input back, what modes it supports. The actual binary lives on your machine and runs as a normal subprocess.
 
-## Two tiers
+## Two tiers, both CLI-based
 
-- **Native support**, Paseo ships a bundled adapter for the major agents (Claude Code, Codex, OpenCode, Pi, [Antigravity](/docs/supported-providers#antigravity), [Muse Code](/docs/muse-code)). Auto-discovered when the underlying CLI is installed, with mode metadata and voice support where applicable.
-- **ACP catalog**, any agent speaking the [Agent Client Protocol](https://agentclientprotocol.com) is supported through a generic adapter. Paseo ships a curated catalog of one-click installs (Cursor, Gemini, GitHub Copilot, Hermes, Kimi, Qwen Code, and 25+ more), and you can add any other ACP agent yourself.
+- **Native support**, Otto ships a bundled adapter for the major agents (Claude Code, Codex, OpenCode, pi). Auto-discovered when the underlying CLI is installed, with mode metadata and voice support where applicable.
+- **ACP catalog**, any agent speaking the [Agent Client Protocol](https://agentclientprotocol.com) is supported through a generic adapter. Otto ships a curated catalog of one-click installs (Cursor, Gemini, GitHub Copilot, Hermes, Kimi, Qwen Code, and 25+ more), and you can add any other ACP agent yourself.
 
-Either way, **you install the underlying CLI**. Paseo runs it.
+Either way, **you install the underlying CLI**. Otto runs it as a subprocess. This is the right default: it's how you get frontier-model support, since it's the same CLI Anthropic, OpenAI, and the rest ship and update, with no reimplementation lag on Otto's side.
+
+## A third way: talking to a model server directly
+
+Not every model worth running has a CLI in front of it. Local inference servers, LM Studio, Ollama, vLLM, llama.cpp, expose an HTTP API instead, and plenty of hosted gateways speak the same shape. For these, Otto skips the subprocess entirely and talks to the endpoint itself, the daemon becomes the agent loop, not just a supervisor around one.
+
+This isn't a replacement for CLI-based providers, it's for the case CLI adapters don't cover: a model with no CLI at all, usually because it's running locally on your own hardware. See [Local models](/docs/local-models) for how the mechanism works and [Custom providers](/docs/custom-providers#openai-compatible-local-models) for the config reference.
+
+## Plugin providers
+
+A trusted plugin can register a complete provider, including model discovery, sessions, permissions, timeline rows, persistence, and recovery. Its registered provider appears alongside built-in providers. Otto keeps host-owned tools and MCP available through the shared provider boundaries; individual provider capabilities still determine which session operations are supported. See [Plugin providers](/docs/plugins/v0.8/providers) for the authoring contract.
 
 ## Where to go next
 
 - [Supported providers](/docs/supported-providers), the full list with install links.
-- [Agent profiles](/docs/agent-profiles), save model, mode, and thinking settings together, with notes to guide delegation.
-- [Custom providers](/docs/custom-providers), add your own provider, point an existing one at a different endpoint, configure multiple provider aliases, or override the binary in `~/.paseo/config.json`.
-- [paseo.sh/agents](/agents), per-agent landing page for each supported provider.
+- [Local models](/docs/local-models), connect LM Studio or any OpenAI-compatible server directly, no CLI required.
+- [Custom providers](/docs/custom-providers), add your own provider, point an existing one at a different endpoint, run multiple profiles, or override the binary in `~/.otto/config.json`.
+- [Agent personalities](/docs/personalities), save a provider + model + effort + mode as a named template you can pick in one tap.
+- [otto-code.me/agents](/agents), per-agent landing page for each supported provider.

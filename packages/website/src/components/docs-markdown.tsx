@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import * as React from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { openEnclosingExamples } from "~/docs-example-target";
@@ -69,6 +70,36 @@ const docsMarkdownComponents: Components = {
   pre: DocsPre,
 };
 
+function StandaloneDocsLink({
+  href,
+  children,
+  node: _node,
+  ...props
+}: React.ComponentProps<"a"> & { node?: unknown }) {
+  if (href === "/docs" || href?.startsWith("/docs/")) {
+    return (
+      <a {...props} href={`/docs-app${href.slice("/docs".length)}`}>
+        {children}
+      </a>
+    );
+  }
+
+  if (href?.startsWith("/") || /^https?:\/\/(?:www\.)?otto-code\.me(?:\/|$)/.test(href ?? "")) {
+    return <span>{children}</span>;
+  }
+
+  return (
+    <a {...props} href={href}>
+      {children}
+    </a>
+  );
+}
+
+const standaloneDocsMarkdownComponents: Components = {
+  ...docsMarkdownComponents,
+  a: StandaloneDocsLink,
+};
+
 // A collapsed example hides everything inside it, so a link to one scrolls to
 // nothing until the block is open.
 function revealHashTarget(): void {
@@ -91,7 +122,13 @@ function useHashTarget(content: string): void {
   }, [content]);
 }
 
-export function DocsMarkdown({ children }: { children: string }) {
+export function DocsMarkdown({
+  children,
+  standalone = false,
+}: {
+  children: string;
+  standalone?: boolean;
+}) {
   useHashTarget(children);
 
   return (
@@ -99,7 +136,7 @@ export function DocsMarkdown({ children }: { children: string }) {
       <ReactMarkdown
         remarkPlugins={docsRemarkPlugins}
         rehypePlugins={docsRehypePlugins}
-        components={docsMarkdownComponents}
+        components={standalone ? standaloneDocsMarkdownComponents : docsMarkdownComponents}
       >
         {children}
       </ReactMarkdown>

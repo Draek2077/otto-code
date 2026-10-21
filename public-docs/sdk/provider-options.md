@@ -1,53 +1,18 @@
----
+## <!-- OTTO(website): retain Otto public site and manual content. -->
+
 title: Provider options
 description: Sandboxing, permissions, and network rules for Codex, Claude, and OpenCode agents created from the SDK.
 nav: Provider options
 order: 55
 category: TypeScript SDK
+
 ---
 
 # Provider options
 
-Provider options are an opaque `Record<string, unknown>` passed to the provider.
-The provider decides how to validate and apply it. Claude, Codex, and OpenCode
-use strict schemas: an unknown or misspelled key fails agent creation with a
-message naming the bad key. Providers without option handling ignore the record.
-Pi, OMP, ACP, and plugin providers interpret their own keys.
+`config.options` passes settings straight through to the provider CLI. Otto validates the object against that provider's strict schema before starting the agent, so an unknown or misspelled key fails agent creation instead of silently doing nothing.
 
-You set options in two places:
-
-- **Provider defaults:** `config.json` → `agents.providers.<id>.options`.
-- **One agent:** `config.options` in `client.agents.create()`. Its wire name is
-  `providerOptions`.
-
-The daemon deep-merges the agent's options over the provider defaults at session
-launch or resume. Plain objects merge recursively; arrays, scalars, and `null`
-replace the base value. Only the agent's own options are stored. Changing
-`config.json` defaults takes effect on the next launch or resume.
-
-For example, set Codex defaults once:
-
-```json
-{
-  "agents": {
-    "providers": {
-      "codex": {
-        "options": {
-          "sandbox_mode": "read-only",
-          "approval_policy": "never",
-          "sandbox_workspace_write": { "network_access": false }
-        }
-      }
-    }
-  }
-}
-```
-
-Then create one agent with `config.options: { sandbox_mode: "workspace-write" }`.
-It receives `workspace-write`, retains `approval_policy: "never"`, and retains
-`sandbox_workspace_write.network_access: false`. With no per-agent options it
-receives the defaults above. Keys are provider-native; use the sections below
-for the options each provider accepts.
+Options are provider-native. A Codex sandbox key is not a Claude sandbox key. Codex, Claude, and OpenCode accept options; every other provider rejects a non-empty `options`.
 
 Provider options are not a host boundary. They constrain the agent CLI, which runs as your user on your machine. For untrusted work, run the daemon in a container or on a separate machine. See [Security](/docs/security).
 
@@ -56,9 +21,9 @@ Provider options are not a host boundary. They constrain the agent CLI, which ru
 Confine writes to one directory, cut off network access, and stop approval prompts so the run is unattended:
 
 ```ts
-import { createPaseoClient } from "@getpaseo/client";
+import { createOttoClient } from "@otto-code/client";
 
-const client = createPaseoClient({ url: "ws://127.0.0.1:6767/ws" });
+const client = createOttoClient({ url: "ws://127.0.0.1:6868/ws" });
 await client.connect();
 
 const agent = await client.agents.create({
@@ -100,14 +65,14 @@ await client.close();
 Turn on Claude's own sandbox, restrict writes to the project, deny reads of credential directories, and allow only two domains:
 
 ```ts
-import { createPaseoClient } from "@getpaseo/client";
+import { createOttoClient } from "@otto-code/client";
 
-const client = createPaseoClient({ url: "ws://127.0.0.1:6767/ws" });
+const client = createOttoClient({ url: "ws://127.0.0.1:6868/ws" });
 await client.connect();
 
 const agent = await client.agents.create({
   config: {
-    provider: "claude/claude-sonnet-5",
+    provider: "claude/claude-sonnet-5-5",
     options: {
       disallowedTools: ["WebFetch"],
       sandbox: {
@@ -152,9 +117,9 @@ await client.close();
 Allow reads and edits, deny anything that reaches outside the project, and gate shell commands by pattern:
 
 ```ts
-import { createPaseoClient } from "@getpaseo/client";
+import { createOttoClient } from "@otto-code/client";
 
-const client = createPaseoClient({ url: "ws://127.0.0.1:6767/ws" });
+const client = createOttoClient({ url: "ws://127.0.0.1:6868/ws" });
 await client.connect();
 
 const agent = await client.agents.create({
@@ -189,11 +154,11 @@ Every permission is `ask`, `allow`, or `deny`. Tools that take a target — `rea
 
 `permission: "deny"` as a bare string applies to everything at once.
 
-An `ask` resolves to a permission request in Paseo, and `waitForFinish()` returns `permission` while it is pending. Use `allow` and `deny` for unattended runs. See [Events](/docs/sdk/events) for reacting to a pending request.
+An `ask` resolves to a permission request in Otto, and `waitForFinish()` returns `permission` while it is pending. Use `allow` and `deny` for unattended runs. See [Events](/docs/sdk/events) for reacting to a pending request.
 
 ## Modes and options
 
-`modeId` picks a Paseo mode from the provider's published list, which the daemon shows in the app and reports through [provider discovery](/docs/sdk/providers). `options` is the provider's own configuration. They are separate controls and you can set both:
+`modeId` picks a Otto mode from the provider's published list, which the daemon shows in the app and reports through [provider discovery](/docs/sdk/providers). `options` is the provider's own configuration. They are separate controls and you can set both:
 
 ```ts
 config: {

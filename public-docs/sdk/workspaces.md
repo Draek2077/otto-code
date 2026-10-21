@@ -1,9 +1,11 @@
----
+## <!-- OTTO(website): retain Otto public site and manual content. -->
+
 title: Workspaces with the SDK
 description: Open directories as Paseo workspaces, place agents in them, follow changes, and archive them.
 nav: Workspaces
 order: 53
 category: TypeScript SDK
+
 ---
 
 # Workspaces with the SDK
@@ -50,24 +52,7 @@ const workspace = await client.workspaces.create({
 });
 ```
 
-Pass `agent` to create the workspace and its first agent in one call. See the
-[combined background workspace example](./agents.md#run-work-in-a-background-workspace).
-Set visibility on the workspace options; `agent.background` is rejected.
-
 You can pass `projectId` in either source when you already have one. Most integrations should omit it; the daemon finds or creates the project from the directory.
-
-Pass `background: true` to hide a workspace from default discovery. Its agents and terminals
-remain durable, with ordinary history, lifecycle hooks, archive, and exact-ID access. The app's
-sidebar offers **Show background** without dropping replicated state.
-
-`background` is creation-only. Omission defaults to false; when `callerAgentId` identifies an agent
-creating a new workspace, omission inherits its workspace's value. Explicit false or true overrides
-inheritance. Agent creation with `workspaceId` rejects explicit background creation intent; configure
-visibility when creating the workspace. SDK/RPC implicit agent creation also accepts `background`
-as workspace creation intent, never as an agent property.
-
-Creation and inclusive discovery require `features.backgroundWorkspaces`; the client rejects an
-unsupported host with an update-host message.
 
 ## Start an agent in a workspace
 
@@ -76,7 +61,7 @@ Create through the workspace handle:
 ```ts
 const agent = await workspace.agents.create({
   config: {
-    provider: "claude/claude-sonnet-5",
+    provider: "claude/claude-sonnet-5-5",
   },
   prompt: "Map the checkout flow before changing anything.",
 });
@@ -89,7 +74,7 @@ For a one-off agent, you can skip the workspace call:
 ```ts
 const agent = await client.agents.create({
   config: {
-    provider: "claude/claude-sonnet-5",
+    provider: "claude/claude-sonnet-5-5",
   },
   cwd: "/Users/me/dev/storefront",
   prompt: "Map the checkout flow before changing anything.",
@@ -132,11 +117,6 @@ do {
   cursor = page.pageInfo.nextCursor ?? undefined;
 } while (cursor);
 ```
-
-Background workspaces are left out unless `filter.includeBackground` is true. Use
-`client.workspaces.list({ filter: { includeBackground: true } })` or
-`client.agents.list({ filter: { includeBackground: true } })`. Workspace descriptors carry
-`background`; agents derive visibility from their workspace and have no separate setting.
 
 ## Refresh and archive a handle
 

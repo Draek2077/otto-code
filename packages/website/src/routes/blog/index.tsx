@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { getPosts, formatDate } from "~/posts";
@@ -14,8 +15,8 @@ export const Route = createFileRoute("/blog/")({
   },
   head: () =>
     pageMeta(
-      "Blog – Updates and announcements from the Paseo team",
-      "Product updates, technical posts, and announcements from the Paseo team. Notes on building a self-hosted, multi-agent dev environment for your phone.",
+      "Blog: updates and announcements about Otto",
+      "Product updates, technical posts, and announcements from the Otto team. Notes on building a self-hosted, multi-agent dev environment for your phone.",
       "/blog",
     ),
   component: BlogIndex,

@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { describe, expect, it } from "vitest";
 import { getCanonicalRedirect } from "./canonical-url";
 
@@ -9,8 +10,8 @@ describe("getCanonicalRedirect", () => {
   });
 
   it("redirects production requests to the canonical origin", () => {
-    const url = new URL("http://www.paseo.sh/download");
+    const url = new URL("http://www.otto-code.me/download");
 
-    expect(getCanonicalRedirect(url, "production")).toBe("https://paseo.sh/download");
+    expect(getCanonicalRedirect(url, "production")).toBe("https://otto-code.me/download");
   });
 });

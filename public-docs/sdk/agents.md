@@ -1,9 +1,11 @@
----
+## <!-- OTTO(website): retain Otto public site and manual content. -->
+
 title: Agents with the SDK
 description: Create, run, find, reuse, parent, and archive coding agents from TypeScript.
 nav: Agents
 order: 52
 category: TypeScript SDK
+
 ---
 
 # Agents with the SDK
@@ -15,7 +17,7 @@ An agent handle keeps a stable agent ID and exposes the turn lifecycle without e
 ```ts
 const agent = await client.agents.create({
   config: {
-    provider: "claude/claude-sonnet-5",
+    provider: "claude/claude-sonnet-5-5",
   },
   cwd: "/Users/me/dev/storefront",
   prompt: "Review the checkout flow and propose one focused fix.",
@@ -105,31 +107,6 @@ const child = await workspace.agents.create({
 
 `parent` establishes parentage. Archiving a parent cascade-archives its children. Call `detach()` first when a child should continue independently.
 
-## Run work in a background workspace
-
-Create a background workspace and its first agent in one call. Put `background` on the
-workspace options and the agent's configuration under `agent`:
-
-```ts
-const cwd = "/Users/me/dev/storefront";
-const workspace = await client.workspaces.create({
-  source: { kind: "directory", path: cwd },
-  background: true,
-  agent: {
-    cwd,
-    config: { provider: "codex/gpt-5.5" },
-    prompt: "Review the checkout flow.",
-  },
-});
-```
-
-The call returns a workspace handle and starts its first agent with the supplied prompt.
-
-Background agents keep their history and survive daemon restarts. Default discovery hides them;
-use `client.agents.list({ filter: { includeBackground: true } })` to include them.
-Exact-ID handles work normally. See [workspace creation](./workspaces.md#create-a-fresh-workspace)
-for defaults and caller inheritance.
-
 ## Request structured output
 
 ```ts
@@ -181,17 +158,12 @@ The handle exposes `status`, `capabilities`, `availableModes`, `pendingPermissio
 
 A handle from `ref()` has observed nothing, so every one of them is `null` until `refresh()`, `run()`, `waitForFinish()`, a timeline refetch, or `subscribe()` delivers a snapshot. Optional values in an observed snapshot also read as `null`. Use `current()` when you need the whole snapshot or need to distinguish those states.
 
-`subscribe()` is a local listener. An owned agent-directory observation supplies its updates:
+`subscribe()` keeps the properties current, so a long-lived handle can poll them without another RPC:
 
 ```ts
 const unsubscribe = agent.subscribe(() => {
   if (agent.status === "error") console.error(agent.lastError);
 });
-const directory = await client.agents.list({ subscribe: {} });
-
-// When this view closes:
-unsubscribe();
-await directory.subscription.release();
 ```
 
 ## List the commands a session loaded

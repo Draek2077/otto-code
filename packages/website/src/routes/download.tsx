@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import type { ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { changelogLink } from "~/changelog";
@@ -6,10 +7,10 @@ import { SiteShell } from "~/components/site-shell";
 import { pageMeta } from "~/meta";
 import {
   downloadUrls,
-  appStoreUrl,
-  playStoreUrl,
-  thanksPageHref,
   webAppUrl,
+  MAC_UNSIGNED_NOTE,
+  MAC_QUARANTINE_COMMAND,
+  MAC_NO_AUTOUPDATE_NOTE,
   AppleIcon,
   AndroidIcon,
   WindowsIcon,
@@ -32,8 +33,8 @@ export const Route = createFileRoute("/download")({
     search.channel === "beta" ? { channel: "beta" } : {},
   head: () =>
     pageMeta(
-      "Download Paseo for macOS, Windows, Linux, iOS, and Android",
-      "Install Paseo on every platform. Native desktop apps for macOS, Windows, and Linux. Mobile apps for iOS and Android. Self-hosted, open source, free to download.",
+      "Download Otto for Windows, Linux, macOS, and Android",
+      "Install Otto on your machines. Native desktop apps for Windows, Linux, and macOS, an Android APK, and a web app for everything else. Self-hosted, open source, free to download.",
       "/download",
     ),
   component: Download,
@@ -54,10 +55,10 @@ function Download() {
 
   return (
     <SiteShell width="default">
-      <div className="mb-10 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+      <header className="page-intro flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
         <div>
-          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mb-2">Download</h1>
-          <p className="text-muted-foreground">
+          <h1 className="page-intro-title">Downloads</h1>
+          <p className="page-intro-subtitle">
             v{version}
             <span className="mx-2 text-muted-foreground/40">·</span>
             <Link
@@ -69,12 +70,12 @@ function Download() {
           </p>
         </div>
         {beta && <ChannelSwitch onBeta={onBeta} />}
-      </div>
+      </header>
 
       {onBeta && <BetaNotice />}
 
       {/* Desktop */}
-      <section className="rounded-xl border border-border bg-card/40 p-6 md:p-8 mb-6">
+      <section className="mt-8 mb-6 rounded-xl border border-border bg-card/40 p-6 md:p-8">
         <div className="flex items-start justify-between mb-8">
           <div>
             <h2 className="text-2xl font-semibold">Desktop</h2>
@@ -86,39 +87,44 @@ function Download() {
         </div>
 
         <div className="divide-y divide-border">
-          <PlatformRow icon={AppleIcon} label="macOS">
-            <div className="flex flex-col items-start gap-2 sm:items-end">
+          {/* macOS: unsigned builds; the notes are load-bearing, see MAC_UNSIGNED_NOTE */}
+          <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0">
+            <PlatformRow icon={AppleIcon} label="macOS">
               <PillGroup>
-                <DownloadPill href={thanksPageHref(urls.macAppleSilicon)} label="Apple Silicon" />
-                <DownloadPill href={thanksPageHref(urls.macIntel)} label="Intel" />
+                {urls.macDmgArm64 && <DownloadPill href={urls.macDmgArm64} label="Apple Silicon" />}
+                {urls.macDmgX64 && <DownloadPill href={urls.macDmgX64} label="Intel" />}
+                {!urls.macDmgArm64 && !urls.macDmgX64 && (
+                  <p className="text-sm text-muted-foreground">
+                    Not attached to this release. Check GitHub releases.
+                  </p>
+                )}
               </PillGroup>
-              <span className="text-xs text-muted-foreground">Requires macOS 13 or newer</span>
-            </div>
-          </PlatformRow>
-
-          {!onBeta && (
-            <PlatformRow icon={TerminalIcon} label="Homebrew">
-              <CodeBlock size="sm">brew install --cask paseo</CodeBlock>
             </PlatformRow>
-          )}
+            <p className="text-xs text-muted-foreground">Requires macOS 13 or newer</p>
+            {(urls.macDmgArm64 || urls.macDmgX64) && (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-muted-foreground">{MAC_UNSIGNED_NOTE}</p>
+                <CodeBlock size="sm">{MAC_QUARANTINE_COMMAND}</CodeBlock>
+                <p className="text-sm text-muted-foreground">{MAC_NO_AUTOUPDATE_NOTE}</p>
+              </div>
+            )}
+          </div>
 
           <PlatformRow icon={WindowsIcon} label="Windows">
             <PillGroup>
               <DownloadPill
-                href={thanksPageHref(urls.windowsExeX64)}
+                href={urls.windowsExeX64}
                 label={urls.windowsExeArm64 ? "Intel / x64" : "Download"}
               />
-              {urls.windowsExeArm64 && (
-                <DownloadPill href={thanksPageHref(urls.windowsExeArm64)} label="ARM64" />
-              )}
+              {urls.windowsExeArm64 && <DownloadPill href={urls.windowsExeArm64} label="ARM64" />}
             </PillGroup>
           </PlatformRow>
 
           <PlatformRow icon={LinuxIcon} label="Linux">
             <PillGroup>
-              <DownloadPill href={thanksPageHref(urls.linuxAppImage)} label="AppImage" />
-              <DownloadPill href={thanksPageHref(urls.linuxDeb)} label="DEB" />
-              <DownloadPill href={thanksPageHref(urls.linuxRpm)} label="RPM" />
+              <DownloadPill href={urls.linuxAppImage} label="AppImage" />
+              <DownloadPill href={urls.linuxDeb} label="DEB" />
+              <DownloadPill href={urls.linuxRpm} label="RPM" />
             </PillGroup>
           </PlatformRow>
         </div>
@@ -134,18 +140,20 @@ function Download() {
         <div className="divide-y divide-border">
           <PlatformRow icon={AndroidIcon} label="Android">
             <PillGroup>
-              {!onBeta && <DownloadPill href={playStoreUrl} label="Play Store" external />}
-              <DownloadPill href={thanksPageHref(urls.androidApk)} label="APK" />
+              <DownloadPill href={urls.androidApk} label="APK" />
             </PillGroup>
           </PlatformRow>
 
-          {!onBeta && (
-            <PlatformRow icon={AppleIcon} label="iOS">
-              <PillGroup>
-                <DownloadPill href={appStoreUrl} label="App Store" external />
-              </PillGroup>
-            </PlatformRow>
-          )}
+          {/* iOS: no builds; unlike macOS there's no unsigned escape hatch */}
+          <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-center gap-3">
+              <AppleIcon className="h-5 w-5 text-foreground" />
+              <span className="font-medium">iOS</span>
+            </div>
+            <p className="text-sm text-muted-foreground sm:max-w-md sm:text-right">
+              No iOS build yet. Use the web app from Safari, or connect from another device.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -178,7 +186,7 @@ function Download() {
           <div>
             <h2 className="text-2xl font-semibold">Server</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Run the Paseo server anywhere, connect from any client
+              Run the Otto server anywhere, connect from any client
             </p>
           </div>
           <TerminalIcon className="h-5 w-5 text-muted-foreground mt-1.5" />
@@ -188,16 +196,16 @@ function Download() {
           <PlatformRow icon={TerminalIcon} label="npm">
             <CodeBlock size="sm">
               {onBeta
-                ? "npm install -g @getpaseo/cli@beta && paseo"
-                : "npm install -g @getpaseo/cli && paseo"}
+                ? "npm install -g @otto-code/cli@beta && otto"
+                : "npm install -g @otto-code/cli && otto"}
             </CodeBlock>
           </PlatformRow>
 
           <PlatformRow icon={TerminalIcon} label="Nix">
             <CodeBlock size="sm">
               {onBeta
-                ? `nix run github:getpaseo/paseo/v${version}`
-                : "nix run github:getpaseo/paseo"}
+                ? `nix run github:Draek2077/otto-code/v${version}`
+                : "nix run github:Draek2077/otto-code"}
             </CodeBlock>
           </PlatformRow>
         </div>
@@ -206,7 +214,7 @@ function Download() {
       <p className="text-center text-xs text-muted-foreground mt-8">
         All releases are available on{" "}
         <a
-          href="https://github.com/getpaseo/paseo/releases"
+          href="https://github.com/Draek2077/otto-code/releases"
           target="_blank"
           rel="noopener noreferrer"
           className="underline hover:text-foreground transition-colors"
@@ -307,7 +315,8 @@ function DownloadPill({
   return (
     <a
       href={href}
-      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+      target="_blank"
+      rel="noopener noreferrer"
       className="inline-flex items-center justify-center rounded-full bg-foreground px-4 py-1.5 text-sm font-medium text-background hover:bg-foreground/85 transition-colors"
     >
       {label}

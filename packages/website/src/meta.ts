@@ -1,6 +1,7 @@
-const SITE_ORIGIN = "https://paseo.sh";
+// OTTO(website): retain Otto's public site on the clean Paseo base.
+const SITE_ORIGIN = "https://otto-code.me";
 
-export function pageMeta(title: string, description: string, path: string, image?: string) {
+export function pageMeta(title: string, description: string, path: string) {
   const url = `${SITE_ORIGIN}${path}`;
   return {
     meta: [
@@ -9,12 +10,6 @@ export function pageMeta(title: string, description: string, path: string, image
       { property: "og:title", content: title },
       { property: "og:description", content: description },
       { property: "og:url", content: url },
-      ...(image
-        ? [
-            { property: "og:image", content: image },
-            { name: "twitter:image", content: image },
-          ]
-        : []),
       { name: "twitter:title", content: title },
       { name: "twitter:description", content: description },
     ],

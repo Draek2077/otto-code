@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeader } from "@tanstack/react-start/server";
 
@@ -25,10 +26,8 @@ export function detectPlatform(userAgent: string): VisitorPlatform {
 }
 
 /**
- * Resolved during SSR so the first paint already shows the right call to
- * action. The worker renders every HTML response per request and sets no
- * cache-control, so varying the markup on the user agent is safe — if the
- * homepage ever gains an edge cache, it has to vary on `user-agent` too.
+ * Resolved during SSR so the first paint already shows the correct distribution target.
+ * server-entry marks HTML and server-function responses private/no-store and varies by User-Agent.
  */
 export const getVisitorPlatform = createServerFn({ method: "GET" }).handler(
   (): VisitorPlatform => detectPlatform(getRequestHeader("user-agent") ?? ""),

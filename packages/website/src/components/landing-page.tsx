@@ -1,26 +1,5 @@
-import { PLUGINS_LINKED } from "~/plugins/launch";
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import * as React from "react";
-import {
-  ArrowRight,
-  Blocks,
-  Bot,
-  Braces,
-  Compass,
-  ExternalLink,
-  Gem,
-  GitFork,
-  LayoutPanelLeft,
-  Laptop,
-  Lock,
-  Merge,
-  Monitor,
-  Puzzle,
-  Smartphone,
-  Terminal,
-  Users,
-  Workflow,
-  type LucideIcon,
-} from "lucide-react";
 import {
   motion,
   AnimatePresence,
@@ -30,7 +9,7 @@ import {
   type Transition,
 } from "framer-motion";
 
-// Shared motion presets — hoisted so every JSX site receives the same object
+// Shared motion presets, hoisted so every JSX site receives the same object
 // reference and doesn't trigger jsx-no-new-object-as-prop.
 const FADE_IN_UP = { opacity: 0, y: 20 };
 const FADE_IN = { opacity: 1, y: 0 };
@@ -47,52 +26,35 @@ const EASE_OUT_015: Transition = { duration: 0.15, ease: "easeOut" };
 const DURATION_05: Transition = { duration: 0.5 };
 
 const VIEWPORT_60 = { once: true, margin: "-60px" };
-const AGENT_LIST_GRID_STYLE = {
-  gridTemplateColumns: "auto auto auto minmax(0, 1fr)",
-};
 
-// A ~240px-wide phone rotated 15° only foreshortens a couple percent at
-// perspective 1200 — it reads as a flat, skewed card. The side phones already
-// sit on a correctly projecting plane (the frame and its scaled interior share
-// one flattened texture), so the interior just needs the projection to be
-// strong enough to see: a tighter perspective gives the trio a real book-fold.
-const PHONE_PERSPECTIVE_STYLE = { minHeight: 480, perspective: 700 };
+const SVG_OVERFLOW_VISIBLE_STYLE = { overflow: "visible" as const };
+const PHONE_PERSPECTIVE_STYLE = { minHeight: 480, perspective: 1200 };
 import { CursorFieldProvider } from "~/components/butterfly";
 import { CommandDialog } from "~/components/command-dialog";
 import { AGENT_PAGES } from "~/data/agent-pages";
-import {
-  appStoreUrl,
-  playStoreUrl,
-  getDesktopDownload,
-  MOBILE_STORES,
-  AppleIcon,
-  PlayStoreIcon,
-  TerminalIcon,
-} from "~/downloads";
-import type { DesktopPlatform, MobilePlatform } from "~/platform";
-import { isMobilePlatform } from "~/platform";
+import { webAppUrl, getPrimaryDownload, TerminalIcon, GlobeIcon } from "~/downloads";
 import { useRelease, useVisitorPlatform } from "~/routes/__root";
 import { HeroMockup } from "~/components/hero-mockup";
 import {
-  AntigravityIcon,
   ClaudeCodeIcon,
   CodexIcon,
   CursorIcon,
-  MuseCodeIcon,
-  OmpIcon,
   OpenCodeIcon,
   PiIcon,
 } from "~/components/agent-icons";
-import { DiscordIcon, GitHubIcon, SlackIcon } from "~/components/brand-icons";
-import { MobileChat, MobileDiff, MobileSidebar, PhoneFrame } from "~/components/mockup";
+import { FeatureShot, ShotRow } from "~/components/feature-shot";
+import { ClaudeIcon } from "~/components/mockup";
 import { FAQItem } from "~/components/faq-item";
 import { SiteFooter } from "~/components/site-footer";
-import { SponsorSection, SponsorsSection } from "~/components/sponsorship";
 import { SiteHeader } from "~/components/site-header";
 import "~/styles.css";
 
 interface LandingPageProps {
   title: React.ReactNode;
+  /**
+   * A plain string gets the standard hero paragraph treatment (the agent pages
+   * pass one). Pass nodes only when the hero needs more than one paragraph.
+   */
   subtitle: React.ReactNode;
 }
 
@@ -101,7 +63,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
     <CursorFieldProvider>
       {/* Hero section with background image */}
       <div className="relative bg-cover bg-center bg-no-repeat">
-        <div className="relative px-6 pt-4 pb-10 md:px-32 md:pt-6 md:pb-12 max-w-7xl mx-auto">
+        <div className="relative site-frame site-frame-hero">
           <Nav />
           <Hero title={title} subtitle={subtitle} />
           <GetStarted />
@@ -112,41 +74,69 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
           initial={FADE_IN_UP_40}
           animate={FADE_IN}
           transition={EASE_OUT_08_DELAY_05}
-          className="relative px-6 md:px-8 pt-4 md:pt-8 pb-8 md:pb-16"
+          className="relative site-frame site-frame-visual"
         >
-          <div className="max-w-7xl mx-auto">
-            <HeroMockup />
-          </div>
+          <HeroVisual />
         </motion.div>
       </div>
 
       {/* Phone showcase */}
       <PhoneShowcase />
 
-      {/* Content section */}
-      <div className="landing-content bg-background">
-        <main className="p-6 md:p-20 md:pt-40 max-w-5xl mx-auto">
+      {/* Content section. Order and grouping: see
+          .otto/knowledge/projects/marketing-strategy.md */}
+      <div className="bg-background">
+        <main className="site-frame site-frame-content">
           <div className="space-y-24">
-            <SocialProofWall />
-            <MultiProviderSection />
-            <TurnkeySection />
-            <AutomationSection />
-            <ExtensibleSection />
-            <SponsorsSection placement="page" />
-            <SponsorSection />
-            <PhilosophySection />
+            <VisualizerSection />
+            <PreviewVerificationSection />
+            <BringAnyModelSection />
+            <AgentTeamSection />
+            <AutonomousWorkSection />
+            <CostSection />
+            <CodeIdeSection />
+            <ShipSection />
+            <InterfaceSection />
+            <OttoBrainSection />
+            <VoiceSection />
+            <FoundationCapabilitiesSection />
+            <BuiltOnPaseoSection />
             <FAQ />
+            <OttoCreditCTA />
           </div>
         </main>
-        <SiteFooter sponsors={false} />
+        <SiteFooter />
       </div>
     </CursorFieldProvider>
   );
 }
 
+/**
+ * The hero is a looping capture of the real app mid-turn: spinner spinning,
+ * tokens streaming. Not a still. Until `hero-desktop` is captured, the old
+ * hand-built replica keeps rendering. Flip this to false the moment the asset
+ * lands, then delete hero-mockup.tsx.
+ */
+const HERO_USE_MOCKUP = true;
+
+function HeroVisual() {
+  if (HERO_USE_MOCKUP) return <HeroMockup />;
+  return (
+    <FeatureShot
+      id="hero-desktop"
+      kind="loop"
+      ratio="16/9"
+      chrome
+      scenario="00-website-hero"
+      alt="Otto running an agent across a chat pane and a live diff"
+      spec="The whole app mid-turn: both staged repos in the sidebar, a real streaming reply with a named personality, and a second pane showing colour, either the diff or the browser."
+    />
+  );
+}
+
 function Nav() {
   return (
-    <nav className="mb-20 md:mb-24">
+    <nav className="mb-16">
       <SiteHeader />
     </nav>
   );
@@ -154,111 +144,27 @@ function Nav() {
 
 function Hero({ title, subtitle }: { title: React.ReactNode; subtitle: React.ReactNode }) {
   return (
-    <div className="space-y-6 text-center">
-      <h1 className="text-4xl md:text-6xl font-medium tracking-tight leading-[0.95]">{title}</h1>
-      <p className="text-base leading-relaxed text-white/70 md:text-lg max-w-lg mx-auto">
-        {subtitle}
-      </p>
+    <div className="space-y-6">
+      <h1 className="text-3xl md:text-5xl font-medium tracking-tight">{title}</h1>
+      {typeof subtitle === "string" ? (
+        <p className="text-white/70 text-lg leading-relaxed max-w-lg">{subtitle}</p>
+      ) : (
+        <div className="space-y-4 max-w-lg">{subtitle}</div>
+      )}
     </div>
   );
 }
 
-const FEATURED_AGENTS = [
-  { name: "Claude Code", Icon: ClaudeCodeIcon },
-  { name: "Codex", Icon: CodexIcon },
-  { name: "OpenCode", Icon: OpenCodeIcon },
-  { name: "Pi", Icon: PiIcon },
-  { name: "OMP", Icon: OmpIcon },
-  { name: "Cursor", Icon: CursorIcon },
-  { name: "Muse Code", Icon: MuseCodeIcon },
-  { name: "Antigravity", Icon: AntigravityIcon },
-] as const;
+const CLAUDE_CODE_BADGE_ICON = <ClaudeCodeIcon className="h-6 w-6" />;
+const CODEX_BADGE_ICON = <CodexIcon className="h-6 w-6" />;
+const OPENCODE_BADGE_ICON = <OpenCodeIcon className="h-6 w-6" />;
+const PI_BADGE_ICON = <PiIcon className="h-6 w-6" />;
+const CURSOR_BADGE_ICON = <CursorIcon className="h-6 w-6" />;
 
-const ADDITIONAL_AGENT_COUNT = AGENT_PAGES.length - FEATURED_AGENTS.length;
+const FEATURED_AGENT_COUNT = 5;
+const ADDITIONAL_AGENT_COUNT = AGENT_PAGES.length - FEATURED_AGENT_COUNT;
 
-const SOCIAL_PROOF_TWEETS = [
-  {
-    name: "Cam",
-    handle: "@ceeebeeebeee",
-    date: "Apr 6, 2026",
-    avatar: "/social-proof/ceeebeeebeee.jpg",
-    url: "https://x.com/ceeebeeebeee/status/2041008798798864537",
-    text: "without a doubt the most slept on orchestrator right now. Open source, every OS, and a mobile experience that truly blew me away.",
-  },
-  {
-    name: "Erik Sherman",
-    handle: "@erikksherman",
-    date: "Apr 11, 2026",
-    avatar: "/social-proof/erikksherman.jpg",
-    url: "https://x.com/erikksherman/status/2043011630590751008",
-    text: "control agents from anywhere - mac, phone, web. one simple change transformed my health while INCREASING productivity",
-  },
-  {
-    name: "Aman Kumar Jagdev",
-    handle: "@amankumarjagdev",
-    date: "Apr 16, 2026",
-    avatar: "/social-proof/amankumarjagdev.jpg",
-    url: "https://x.com/amankumarjagdev/status/2044815258414674307",
-    text: "I have tried 100s of agent orchestrator, cli and gui. the best one i have found. Please give it a try! it's really good",
-  },
-  {
-    name: "RUI",
-    handle: "@tietougongshiba",
-    date: "May 3, 2026",
-    avatar: "/social-proof/tietougongshiba.jpg",
-    url: "https://x.com/tietougongshiba/status/2050886374941925754",
-    text: "Being able to check and manage agent progress from my phone while I'm out is so convenient.",
-  },
-  {
-    name: "Jason Torres",
-    handle: "@jasontorres",
-    date: "May 11, 2026",
-    avatar: "/social-proof/jasontorres.jpg",
-    url: "https://x.com/jasontorres/status/2053875385515790731",
-    text: "Can interchange between Codex, Claude Code, Opencode, Pi. Stable mobile and desktop apps connected through a secure relay from your VMs.",
-  },
-  {
-    name: "A9",
-    handle: "@aadtyn",
-    date: "May 29, 2026",
-    avatar: "/social-proof/aadtyn.jpg",
-    url: "https://x.com/aadtyn/status/2060371229773803943",
-    text: "cross platform agent orchestration with inbuilt relay and tailscale / self host daemon options + the best UI ive seen in this segment",
-  },
-  {
-    name: "boris evstratov",
-    handle: "@bevstratov",
-    date: "May 30, 2026",
-    avatar: "/social-proof/bevstratov.jpg",
-    url: "https://x.com/bevstratov/status/2060733983042781550",
-    text: "It’s an incredible piece of software. The last building block I needed to fully work from my phone. everything super smooth.",
-  },
-  {
-    name: "Arnold Gamboa",
-    handle: "@arnoldgamboa",
-    date: "May 28, 2026",
-    avatar: "/social-proof/arnoldgamboa.jpg",
-    url: "https://x.com/arnoldgamboa/status/2059832028099436921",
-    text: "Paseo is a really good interface for Pi. It’s not the only thing it does, but that’s my current use case for now.",
-  },
-  {
-    name: "Dong",
-    handle: "@dongnaebi",
-    date: "Apr 12, 2026",
-    avatar: "/social-proof/dongnaebi.jpg",
-    url: "https://x.com/dongnaebi/status/2043162391941398735",
-    text: "Paseo is the best software I've used this year. Absolutely amazing!",
-  },
-] as const;
-
-const SOCIAL_PROOF_ROWS = [
-  { id: "top", tweets: SOCIAL_PROOF_TWEETS.slice(0, 5), reverse: false },
-  { id: "bottom", tweets: SOCIAL_PROOF_TWEETS.slice(5), reverse: true },
-] as const;
-
-type SocialProofTweet = (typeof SOCIAL_PROOF_TWEETS)[number];
-
-function AgentBadge({ name, Icon }: (typeof FEATURED_AGENTS)[number]) {
+function AgentBadge({ name, icon }: { name: string; icon: React.ReactNode }) {
   const [hovered, setHovered] = React.useState(false);
   const handleMouseEnter = React.useCallback(() => setHovered(true), []);
   const handleMouseLeave = React.useCallback(() => setHovered(false), []);
@@ -269,7 +175,7 @@ function AgentBadge({ name, Icon }: (typeof FEATURED_AGENTS)[number]) {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <Icon className="h-6 w-6" />
+      {icon}
       <AnimatePresence>
         {hovered && (
           <motion.span
@@ -291,13 +197,11 @@ function FeatureSection({
   title,
   description,
   badge,
-  links,
   children,
 }: {
   title: string;
   description: string;
   badge?: string;
-  links?: ReadonlyArray<{ href: string; label: string }>;
   children: React.ReactNode;
 }) {
   return (
@@ -307,7 +211,7 @@ function FeatureSection({
       viewport={VIEWPORT_60}
       transition={EASE_OUT_05}
     >
-      <SectionTitle title={title} description={description} badge={badge} links={links} />
+      <SectionTitle title={title} description={description} badge={badge} />
       {children}
     </motion.section>
   );
@@ -317,12 +221,10 @@ function SectionTitle({
   title,
   description,
   badge,
-  links,
 }: {
   title: string;
   description: string;
   badge?: string;
-  links?: ReadonlyArray<{ href: string; label: string }>;
 }) {
   return (
     <div className="mb-12 space-y-2">
@@ -334,28 +236,73 @@ function SectionTitle({
           </span>
         )}
       </div>
-      <p className="text-base text-pretty text-muted-foreground max-w-lg">{description}</p>
-      {links ? (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
-          {links.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-extra-muted-foreground transition-colors hover:text-muted-foreground"
-            >
-              {link.label}
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          ))}
-        </div>
-      ) : null}
+      <p className="text-base text-muted-foreground max-w-lg">{description}</p>
     </div>
   );
 }
 
-function SocialProofWall() {
+const UPSTREAM_PILLARS = [
+  {
+    title: "From Paseo, by Mo",
+    items: [
+      "Multi-provider agent orchestration",
+      "Self-hosted daemon, your machines",
+      "Mobile, desktop, web, and CLI clients",
+      "E2E encrypted relay for remote access",
+    ],
+  },
+  {
+    title: "From Agent Flow, by Simon Patole",
+    items: [
+      "The live orchestration graph render layer",
+      "Agent, subagent, and tool-call nodes",
+      "Timeline scrubbing and file-attention heat",
+      "A bridge protocol clean enough to re-feed",
+    ],
+  },
+  {
+    title: "The Otto mission",
+    items: [
+      "Frontier-model tooling for every provider",
+      "In-browser preview verification for agents",
+      "Real per-subagent token and cost accounting",
+      "Named agent personalities, spawnable by role",
+      "Local models via OpenAI Compatible providers",
+      "A familiar, refined UI that never boxes you in",
+    ],
+  },
+] as const;
+
+function FoundationCapabilitiesSection() {
+  return (
+    <FeatureSection
+      title="Everything in one place"
+      description="Keep your agents, development tools, automation, and remote access in one connected environment."
+    >
+      <div className="space-y-12">
+        <SplitPanesBlock />
+        <MultiProviderBlock />
+        <SelfHostedBlock />
+        <ServiceProxyBlock />
+        <ShortcutsBlock />
+        <CLIBlock />
+        <SubFeature
+          title="Extend your workspace"
+          description="Plugins add providers, commands, settings, workspace panels, and chat components through shared client and server APIs."
+        >
+          <a
+            href="/docs/plugins"
+            className="text-sm underline text-muted-foreground hover:text-foreground"
+          >
+            Explore the plugin API
+          </a>
+        </SubFeature>
+      </div>
+    </FeatureSection>
+  );
+}
+
+function BuiltOnPaseoSection() {
   return (
     <motion.section
       initial={FADE_IN_UP}
@@ -364,625 +311,1156 @@ function SocialProofWall() {
       transition={EASE_OUT_05}
     >
       <SectionTitle
-        title="Loved by developers"
-        description="See what developers are saying about Paseo"
+        title="Built on Paseo"
+        description="Otto's foundation is Paseo: multi-provider agent orchestration, a self-hosted daemon, real clients on every platform, split panes, worktrees, the CLI. Mo got those right first, and Otto keeps all of it intact."
       />
 
-      <div className="social-proof-marquee space-y-4 overflow-hidden">
-        {SOCIAL_PROOF_ROWS.map((row) => (
-          <SocialProofRow key={row.id} tweets={row.tweets} reverse={row.reverse} />
-        ))}
+      <div className="space-y-4">
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Otto is built on{" "}
+          <a
+            href="https://github.com/getpaseo/paseo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Paseo
+          </a>
+          , the self-hosted daemon by{" "}
+          <a
+            href="https://github.com/boudra"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Mo
+          </a>
+          . That covers the plumbing: process lifecycle, WebSocket protocol, cross-platform clients.
+          Everything above it, the features Otto is actually for, is built here. Paseo stays intact,
+          upstream history preserved.
+        </p>
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          The Visualizer is the render layer of{" "}
+          <a
+            href="https://github.com/patoles/agent-flow"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Agent Flow
+          </a>{" "}
+          (Apache-2.0) by{" "}
+          <a
+            href="https://github.com/patoles"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Simon Patole
+          </a>
+          . The renderer is cleanly separated from event collection and talks to a small documented
+          bridge. So Otto feeds it its own provider-neutral stream and the graph lights up for every
+          provider on day one: Claude, Codex, OpenCode, local models. If the graph is the part you
+          like, go star Agent Flow too.
+        </p>
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Architectural Views render with{" "}
+          <a
+            href="https://github.com/tt-a1i/archify"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Archify
+          </a>{" "}
+          (MIT) by tt-a1i.
+        </p>
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Otto is a personal project by Philippe, not a startup. Most of it is written by the agents
+          it runs. The problem I keep hitting is that agents can now do a lot of work on their own,
+          and it&apos;s hard to see what they did, what it cost, and where it went sideways. So the
+          work leans toward legibility: real per-subagent token and cost accounting, the
+          orchestration graph, and browser-verified previews so an agent proves a change instead of
+          claiming it. All credit for the foundations belongs to the people who wrote them.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {UPSTREAM_PILLARS.map((pillar) => (
+            <div
+              key={pillar.title}
+              className="rounded-2xl border border-white/10 bg-white/[0.02] p-5"
+            >
+              <p className="mb-3 text-sm font-medium text-white/80">{pillar.title}</p>
+              <ul className="space-y-2">
+                {pillar.items.map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm text-white/60">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/70" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       </div>
     </motion.section>
   );
 }
 
-function SocialProofRow({
-  tweets,
-  reverse,
-}: {
-  tweets: readonly SocialProofTweet[];
-  reverse: boolean;
-}) {
-  return (
-    <div className="social-proof-row">
-      <div className={`social-proof-track ${reverse ? "social-proof-track-reverse" : ""}`}>
-        <div className="flex shrink-0 gap-4 pr-4">
-          {tweets.map((tweet) => (
-            <SocialProofCard key={tweet.url} tweet={tweet} />
-          ))}
-        </div>
-        <div className="flex shrink-0 gap-4 pr-4" aria-hidden="true">
-          {tweets.map((tweet) => (
-            <SocialProofCard key={`${tweet.url}-clone`} tweet={tweet} inert />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SocialProofCard({ tweet, inert }: { tweet: SocialProofTweet; inert?: boolean }) {
-  return (
-    <a
-      href={tweet.url}
-      target="_blank"
-      rel="noreferrer"
-      tabIndex={inert ? -1 : undefined}
-      className="group flex h-[154px] w-[320px] shrink-0 flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition-colors hover:border-white/20 hover:bg-white/[0.05] md:w-[420px]"
-      aria-label={`Read ${tweet.name}'s original post`}
-    >
-      <div>
-        <div className="flex min-w-0 items-center gap-3">
-          <img
-            src={tweet.avatar}
-            alt=""
-            width={28}
-            height={28}
-            loading="lazy"
-            decoding="async"
-            className="h-7 w-7 shrink-0 rounded-full bg-white/10 object-cover"
-          />
-          <p className="truncate text-sm font-medium text-white/60">{tweet.handle}</p>
-        </div>
-        <p className="social-proof-card-text mt-4 text-sm leading-relaxed text-white/72">
-          {tweet.text}
-        </p>
-      </div>
-    </a>
-  );
-}
-
-function MultiProviderSection() {
-  return (
-    <FeatureSection
-      title="Works with your tools"
-      description="Bring your subscriptions, skills and configuration"
-    >
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-4">
-        {FEATURED_AGENTS.map((agent) => (
-          <div
-            key={agent.name}
-            className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 sm:gap-3 sm:px-5 sm:py-4"
-          >
-            <span className="shrink-0 text-white/80">
-              <agent.Icon className="h-5 w-5 sm:h-7 sm:w-7" />
-            </span>
-            <span className="truncate text-sm font-medium sm:text-base">{agent.name}</span>
-          </div>
-        ))}
-        <a
-          href="/agents"
-          className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.01] px-3 py-3 text-white/50 hover:text-white/80 hover:border-white/20 hover:bg-white/[0.03] transition-colors sm:gap-3 sm:px-5 sm:py-4"
-        >
-          <span className="text-sm font-medium sm:text-base">+{ADDITIONAL_AGENT_COUNT} more</span>
-        </a>
-      </div>
-    </FeatureSection>
-  );
-}
-
-function TurnkeySection() {
-  return (
-    <FeatureSection
-      title="Run it anywhere"
-      description="Use Paseo locally, from another machine, or with a team"
-    >
-      <div className="space-y-8">
-        <ProductLead
-          icon={Monitor}
-          title="Desktop app"
-          description="The one click experience, download the app and it just works, no server required"
-        />
-        <div className="grid gap-4 md:grid-cols-3">
-          <TurnkeyExtensionCard
-            icon={Smartphone}
-            title="Mobile"
-            description="Full client and native, not a WebView"
-            ctaHref="/download"
-            ctaLabel="Download"
-          />
-          <TurnkeyExtensionCard
-            icon={Laptop}
-            title="Remote machines"
-            description="Run Paseo on a home lab, or a cloud machine"
-            ctaHref="/docs#server--cli"
-            ctaLabel="Docs"
-          />
-          <TurnkeyExtensionCard
-            icon={Users}
-            title="Teams and triggers"
-            description="Share access or start work from GitHub, Slack, and Discord"
-            ctaHref="/hub"
-            ctaLabel="Paseo Hub"
-            showIntegrationIcons
-          />
-        </div>
-      </div>
-    </FeatureSection>
-  );
-}
-
-function TurnkeyExtensionCard({
-  icon: Icon,
-  title,
-  description,
-  ctaHref,
-  ctaLabel,
-  showIntegrationIcons = false,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-  ctaHref: string;
-  ctaLabel: string;
-  showIntegrationIcons?: boolean;
-}) {
-  return (
-    <FeatureCard icon={Icon} title={title} description={description}>
-      <div className="flex items-center justify-between">
-        <a
-          href={ctaHref}
-          className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-2.5 py-1.5 text-xs text-background transition-colors hover:bg-foreground/90"
-        >
-          {ctaLabel}
-          <ArrowRight className="h-3.5 w-3.5" />
-        </a>
-        {showIntegrationIcons ? INTEGRATION_ICONS : null}
-      </div>
-    </FeatureCard>
-  );
-}
-
-const INTEGRATION_ICONS = (
-  <span className="flex items-center gap-2 text-extra-muted-foreground">
-    <GitHubIcon className="h-4 w-4" />
-    <SlackIcon className="h-4 w-4" />
-    <DiscordIcon className="h-4 w-4" />
-  </span>
-);
-
-/** The lead product of a section: an icon tile and title on the page background. */
-function ProductLead({
-  icon: Icon,
-  title,
-  description,
-  actions,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description?: string;
-  actions?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-4">
-        <div className="rounded-xl border border-white/10 bg-white/[0.06] p-3 text-muted-foreground">
-          <Icon className="h-6 w-6" strokeWidth={1.5} />
-        </div>
-        <div className="space-y-0.5">
-          <h3 className="text-xl font-medium text-white/90">{title}</h3>
-          {description ? (
-            <p className="text-sm leading-relaxed text-white/50">{description}</p>
-          ) : null}
-        </div>
-      </div>
-      {actions ? <div className="flex shrink-0 items-center gap-3">{actions}</div> : null}
-    </div>
-  );
-}
-
-/** A small card: icon and title on one line, the blurb below, an optional action last. */
-function FeatureCard({
-  icon: Icon,
+/** A named block inside a section, one level below SectionTitle. */
+function SubFeature({
   title,
   description,
   children,
 }: {
-  icon: LucideIcon;
   title: string;
   description: string;
-  children?: React.ReactNode;
+  children: React.ReactNode;
 }) {
-  return (
-    <div className="flex flex-col rounded-xl border border-white/10 bg-white/[0.025] p-5">
-      <div className="flex items-center gap-3">
-        <Icon className="h-5 w-5 shrink-0 text-extra-muted-foreground" strokeWidth={1.5} />
-        <h3 className="font-medium text-white/85">{title}</h3>
-      </div>
-      <p className="mt-3 text-sm leading-relaxed text-white/45">{description}</p>
-      {children ? <div className="mt-auto pt-5">{children}</div> : null}
-    </div>
-  );
-}
-
-type AutomationKind = "mcp" | "cli" | "sdk";
-
-const AUTOMATION_OPTIONS: Array<{
-  kind: AutomationKind;
-  label: string;
-  caption: string;
-  icon: LucideIcon;
-}> = [
-  {
-    kind: "mcp",
-    label: "MCP",
-    caption: "From another agent",
-    icon: Bot,
-  },
-  {
-    kind: "cli",
-    label: "CLI",
-    caption: "From the terminal",
-    icon: Terminal,
-  },
-  {
-    kind: "sdk",
-    label: "SDK",
-    caption: "From code",
-    icon: Braces,
-  },
-];
-
-const AUTOMATION_LINKS = [
-  { href: "/docs/mcp", label: "MCP docs" },
-  { href: "/docs/cli", label: "CLI docs" },
-  { href: "/docs/sdk", label: "SDK docs" },
-] as const;
-
-function AutomationSection() {
-  const [activeKind, setActiveKind] = React.useState<AutomationKind>("mcp");
-
-  return (
-    <FeatureSection
-      title="Built for automation"
-      description="Use MCP, the CLI, or the TypeScript SDK to automate Paseo"
-      links={AUTOMATION_LINKS}
-    >
-      <div className="grid gap-4 md:grid-cols-[14rem_minmax(0,1fr)]">
-        <div className="grid self-start gap-2" role="tablist">
-          {AUTOMATION_OPTIONS.map((option) => (
-            <AutomationSelector
-              key={option.kind}
-              option={option}
-              active={option.kind === activeKind}
-              onSelect={setActiveKind}
-            />
-          ))}
-        </div>
-        <AutomationDetail kind={activeKind} />
-      </div>
-    </FeatureSection>
-  );
-}
-
-function AutomationSelector({
-  option,
-  active,
-  onSelect,
-}: {
-  option: (typeof AUTOMATION_OPTIONS)[number];
-  active: boolean;
-  onSelect: (kind: AutomationKind) => void;
-}) {
-  const Icon = option.icon;
-  const handleClick = React.useCallback(() => onSelect(option.kind), [onSelect, option.kind]);
-
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={handleClick}
-      className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors md:block md:p-4 ${
-        active
-          ? "border-white/20 bg-white/[0.07]"
-          : "border-white/10 bg-white/[0.025] hover:border-white/15 hover:bg-white/[0.04]"
-      }`}
-    >
-      <div className="flex shrink-0 items-center gap-2 text-muted-foreground md:mb-1">
-        <Icon className="h-3 w-3" strokeWidth={1.5} />
-        <span className="text-[10px]">{option.label}</span>
-      </div>
-      <p className="text-xs leading-snug text-white/85 md:text-sm">{option.caption}</p>
-    </button>
-  );
-}
-
-function AutomationDetail({ kind }: { kind: AutomationKind }) {
-  return (
-    <div
-      role="tabpanel"
-      className="min-h-80 min-w-0 overflow-hidden rounded-xl border border-white/10 bg-black/20 p-5 md:h-[26rem] md:p-6"
-    >
-      {kind === "mcp" ? <McpAutomationTranscript /> : null}
-      {kind === "cli" ? <CliAutomationExample /> : null}
-      {kind === "sdk" ? <SdkAutomationExample /> : null}
-    </div>
-  );
-}
-
-function McpAutomationTranscript() {
   return (
     <div className="space-y-5">
-      <div className="ml-auto w-fit max-w-xl rounded-xl rounded-tr-none bg-white/[0.07] px-4 py-3">
-        <p className="text-sm leading-relaxed text-white/75">
-          Take the open GitHub issues labeled ready and fan them out to separate worktree agents.
-        </p>
+      <div className="space-y-1.5">
+        <h3 className="text-xl font-medium text-white/90">{title}</h3>
+        <p className="max-w-lg text-sm text-muted-foreground">{description}</p>
       </div>
-      <div className="flex items-start gap-3">
-        <Bot className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={1.5} />
-        <div className="min-w-0 flex-1 space-y-4">
-          <p className="text-sm leading-relaxed text-white/55">
-            I found two ready issues. I will run each in its own worktree.
-          </p>
-          <div className="space-y-2 font-mono text-[11px]">
-            <McpAgentCall issue="#412" provider="claude/opus-4.6" />
-            <McpAgentCall issue="#417" provider="codex/gpt-5.6-sol" />
-          </div>
-          <p className="text-sm leading-relaxed text-white/55">
-            Done, two agents are running. I will let you know when they finish.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function McpAgentCall({ issue, provider }: { issue: string; provider: string }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-white/[0.07] bg-white/[0.025] px-3 py-2">
-      <span className="text-sky-300/80">create_agent</span>
-      <span className="text-white/25">{issue}</span>
-      <span className="text-white/35">{provider}</span>
-      <span className="text-white/25">worktree</span>
-    </div>
-  );
-}
-
-function CliAutomationExample() {
-  return (
-    <div className="font-mono text-[11px] leading-5 text-white/60">
-      <div className="space-y-6">
-        <div>
-          <ShellPrompt>
-            <span className="text-white">paseo run</span> <span className="text-white/35">\</span>
-          </ShellPrompt>
-          <div className="pl-5">
-            <span className="text-sky-300/75">--provider</span>{" "}
-            <span className="text-white/75">codex/gpt-5.6-sol</span>{" "}
-            <span className="text-white/35">\</span>
-          </div>
-          <div className="pl-5 text-emerald-300/80">{'"Fix issue #412 and add tests."'}</div>
-          <div className="mt-1 text-emerald-300/65">✓ Started agent a7f3c2</div>
-        </div>
-
-        <div className="space-y-1">
-          <ShellPrompt>
-            <span className="text-white">paseo ls</span>
-          </ShellPrompt>
-          <AgentListOutput />
-        </div>
-
-        <div>
-          <div className="text-white/30"># Target another host</div>
-          <ShellPrompt>
-            <span className="text-white">paseo ls</span>{" "}
-            <span className="text-sky-300/75">--host</span>{" "}
-            <span className="text-white/75">devbox:6767</span>
-          </ShellPrompt>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ShellPrompt({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="whitespace-nowrap">
-      <span className="select-none text-white/25">$ </span>
       {children}
     </div>
   );
 }
 
-function AgentListOutput() {
+function SplitPanesBlock() {
   return (
-    <div className="grid gap-x-5" style={AGENT_LIST_GRID_STYLE}>
-      <span className="text-white/30">AGENT</span>
-      <span className="text-white/30">STATUS</span>
-      <span className="text-white/30">PROVIDER/MODEL</span>
-      <span className="text-white/30">TITLE</span>
-      <span className="text-white/55">a7f3c2</span>
-      <span className="text-emerald-300/70">running</span>
-      <span className="text-white/55">codex/gpt-5.6-sol</span>
-      <span className="text-white/55">Fix issue #412 and add tests.</span>
+    <SubFeature
+      title="Split panels"
+      description="Open agents, browsers, terminals, diffs, and logs in the same workspace. Split them side by side or group them in tabs."
+    >
+      <FeatureShot
+        id="otto-panes"
+        kind="focus"
+        ratio="16/9"
+        scenario="15-workspace-layouts"
+        alt="One Otto workspace split into an agent chat, a browser pane, a terminal and a diff"
+        spec="A real four-pane workspace (agent, browser, terminal, diff), each pane with genuine content, tab rows visible."
+      />
+    </SubFeature>
+  );
+}
+
+const LIGHT_THEMES = ["Daylight", "Sherbet", "Meadow", "Terracotta", "Horizon", "Powder"] as const;
+const DARK_THEMES = [
+  "Twilight",
+  "Evergreen",
+  "Graphite",
+  "Nightfall",
+  "Ember",
+  "Slate",
+  "Neotokyo",
+] as const;
+
+const CUSTOMIZATION_OPTIONS = [
+  "UI and monospace fonts",
+  "Interface and code text sizes",
+  "Syntax highlighting themes",
+  "Chat column width",
+  "Light / dark / adaptive mode",
+] as const;
+
+function ThemeChip({ name, dark }: { name: string; dark: boolean }) {
+  return (
+    <span
+      className={`rounded-full border px-3 py-1 text-xs ${
+        dark
+          ? "border-white/10 bg-white/[0.04] text-white/70"
+          : "border-white/15 bg-white/[0.9] text-black/70"
+      }`}
+    >
+      {name}
+    </span>
+  );
+}
+
+function ThemesBlock() {
+  return (
+    <SubFeature
+      title="Made yours"
+      description="Cleaner surfaces and refined spacing on top of Otto, then the dials: a full set of light and dark themes, and the details tuned until it feels like your environment."
+    >
+      <FeatureShot
+        id="ui-themes"
+        kind="focus"
+        ratio="16/9"
+        scenario="12-themes"
+        alt="The same Otto workspace rendered in three different themes"
+        spec="Triptych: one identical workspace in three themes (Twilight, Daylight, Neotokyo), same scroll position in each so the comparison reads instantly."
+      />
+      <div className="space-y-6 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-white/80">Themes</p>
+          <div className="flex flex-wrap gap-2">
+            {DARK_THEMES.map((name) => (
+              <ThemeChip key={name} name={name} dark />
+            ))}
+            {LIGHT_THEMES.map((name) => (
+              <ThemeChip key={name} name={name} dark={false} />
+            ))}
+          </div>
+        </div>
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-white/80">Tune everything else</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {CUSTOMIZATION_OPTIONS.map((option) => (
+              <div key={option} className="flex items-start gap-2 text-sm text-white/60">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/70" />
+                {option}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </SubFeature>
+  );
+}
+
+function MultiProviderBlock() {
+  const providers = [
+    { name: "Claude Code", icon: <ClaudeIcon size={28} /> },
+    { name: "Codex", icon: <CodexIcon className="w-7 h-7" /> },
+    { name: "OpenCode", icon: <OpenCodeIcon className="w-7 h-7" /> },
+    { name: "Pi", icon: <PiIcon className="w-7 h-7" /> },
+    { name: "Cursor", icon: <CursorIcon className="w-7 h-7" /> },
+  ];
+
+  return (
+    <SubFeature
+      title="Works with your tools"
+      description="Run your agents from one interface. Otto uses each provider's native harness, so your subscriptions, skills, config, and MCP servers keep working."
+    >
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {providers.map((p) => (
+          <div
+            key={p.name}
+            className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4"
+          >
+            <span className="text-white/80">{p.icon}</span>
+            <span className="font-medium">{p.name}</span>
+          </div>
+        ))}
+        <a
+          href="/agents"
+          className="flex items-center justify-center gap-3 rounded-xl border border-dashed border-white/10 bg-white/[0.01] px-5 py-4 text-white/50 hover:text-white/80 hover:border-white/20 hover:bg-white/[0.03] transition-colors"
+        >
+          <span className="font-medium">+{ADDITIONAL_AGENT_COUNT} more</span>
+        </a>
+      </div>
+    </SubFeature>
+  );
+}
+
+const OPENAI_COMPATIBLE_ENDPOINTS = [
+  "LM Studio",
+  "Ollama",
+  "vLLM",
+  "Z.AI",
+  "Alibaba Qwen",
+  "Any OpenAI-compatible API",
+] as const;
+
+function BringAnyModelSection() {
+  return (
+    <FeatureSection
+      title="Bring any model"
+      description="Point Otto at any OpenAI-compatible endpoint and it becomes a first-class agent provider, with the same frontier-level tooling as the built-in ones: coding tools, browser-verified previews, MCP servers, context compaction, and rich permission modes. Run models locally or on your own server; your prompts never have to leave your network."
+    >
+      <div className="space-y-4">
+        <FeatureShot
+          id="model-local-verify"
+          kind="loop"
+          ratio="16/9"
+          chrome
+          scenario="02-preview-verify, DEMO_PROVIDER=local-ai"
+          alt="A local model running Otto's browser verification loop end to end"
+          spec="The same verification loop as the Preview section, driven by a model served from LM Studio. The model badge must be legible. This is the proof that none of it is Claude-only."
+        />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {OPENAI_COMPATIBLE_ENDPOINTS.map((name) => (
+            <div
+              key={name}
+              className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4"
+            >
+              <span className="font-medium">{name}</span>
+            </div>
+          ))}
+        </div>
+        <FeatureShot
+          id="model-local"
+          kind="focus"
+          ratio="16/10"
+          scenario="17-multi-provider"
+          alt="Otto's provider settings with a local endpoint configured"
+          spec="Provider settings with a local endpoint filled in and its model list loaded. Connection and Models tabs visible, no empty fields."
+        />
+      </div>
+    </FeatureSection>
+  );
+}
+
+// Starter team of agent personalities. Each carries two "spinner" glow colors
+// (the app tints a running agent's identity with them), represented here as a
+// gradient orb. Style objects live at module scope so JSX passes a stable
+// reference (jsx-no-new-object-as-prop).
+const PERSONALITY_TEAM = [
+  {
+    name: "Atlas",
+    model: "Claude · Opus",
+    roles: ["Orchestrator", "Chatter"],
+    orbStyle: { background: "linear-gradient(135deg, #4f46e5, #f59e0b)" },
+  },
+  {
+    name: "Sage",
+    model: "Claude · Opus",
+    roles: ["Advisor"],
+    orbStyle: { background: "linear-gradient(135deg, #14b8a6, #8b5cf6)" },
+  },
+  {
+    name: "Vera",
+    model: "Claude · Sonnet",
+    roles: ["Judger"],
+    orbStyle: { background: "linear-gradient(135deg, #f43f5e, #fbbf24)" },
+  },
+  {
+    name: "Pixel",
+    model: "Claude · Sonnet",
+    roles: ["Artificer"],
+    orbStyle: { background: "linear-gradient(135deg, #ec4899, #06b6d4)" },
+  },
+  {
+    name: "Dash",
+    model: "Claude · Haiku",
+    roles: ["Worker", "Scheduler"],
+    orbStyle: { background: "linear-gradient(135deg, #22c55e, #a3e635)" },
+  },
+  {
+    name: "Sprocket",
+    model: "Claude · Sonnet",
+    roles: ["Chatter", "Worker"],
+    orbStyle: { background: "linear-gradient(135deg, #64748b, #38bdf8)" },
+  },
+] as const;
+
+function PersonalityCard({
+  name,
+  model,
+  roles,
+  orbStyle,
+}: {
+  name: string;
+  model: string;
+  roles: readonly string[];
+  orbStyle: React.CSSProperties;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+      <span className="h-8 w-8 shrink-0 rounded-full ring-2 ring-white/10" style={orbStyle} />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="font-medium text-white/90">{name}</span>
+          <span className="truncate text-xs text-white/35">{model}</span>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {roles.map((role) => (
+            <span
+              key={role}
+              className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-white/55"
+            >
+              {role}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-function SdkAutomationExample() {
-  return (
-    <pre className="overflow-x-auto font-mono text-[11px] leading-5 text-white/60">
-      <span className="text-purple-300">import</span> {"{"} createPaseoClient {"}"}{" "}
-      <span className="text-purple-300">from</span>{" "}
-      <span className="text-emerald-300/80">{'"@getpaseo/client"'}</span>;{"\n\n"}
-      <span className="text-purple-300">const</span> client ={" "}
-      <span className="text-sky-300">createPaseoClient</span>({"{"}
-      {"\n"} url: <span className="text-emerald-300/80">{'"ws://127.0.0.1:6767/ws"'}</span>,{"\n"}
-      {"}"});
-      {"\n"}
-      <span className="text-purple-300">await</span> client.
-      <span className="text-sky-300">connect</span>();
-      {"\n\n"}
-      <span className="text-purple-300">const</span> agent ={" "}
-      <span className="text-purple-300">await</span> client.agents.
-      <span className="text-sky-300">create</span>({"{"}
-      {"\n"} config: {"{"} provider:{" "}
-      <span className="text-emerald-300/80">{'"codex/gpt-5.6-sol"'}</span> {"}"},{"\n"} cwd:{" "}
-      <span className="text-emerald-300/80">{'"/Users/me/dev/paseo"'}</span>,{"\n"} prompt:{" "}
-      <span className="text-emerald-300/80">{'"Fix issue #412 and add tests."'}</span>,{"\n"}
-      {"}"});
-      {"\n\n"}
-      <span className="text-purple-300">const</span> result ={" "}
-      <span className="text-purple-300">await</span> agent.
-      <span className="text-sky-300">waitForFinish</span>();
-    </pre>
-  );
-}
-
-function ExtensibleSection() {
+function AgentTeamSection() {
   return (
     <FeatureSection
-      title="Extend it with plugins"
-      description="Add new panels and functionality that work in desktop, web and mobile"
+      title="A team of agents, by name"
+      description="Save a provider, model, effort, permission mode, and prompt as a named personality with one or more roles. Pick one at the top of any model picker, or let an orchestrator spawn a whole team by role: a Worker to build, a Judger to review, an Advisor for a second opinion. Each gets its own color and voice, on a frontier API or a local model alike. They remember what they learn, and you can read, edit and transfer those lessons."
     >
-      <div className="space-y-8">
-        <ProductLead icon={Puzzle} title="Plugins" actions={PLUGIN_ACTIONS} />
-        <div className="grid gap-4 md:grid-cols-3">
-          {PLUGIN_CAPABILITIES.map((capability) => (
-            <FeatureCard key={capability.title} {...capability} />
+      <div className="space-y-4">
+        <FeatureShot
+          id="team-runs"
+          kind="focus"
+          ratio="16/9"
+          chrome
+          scenario="23-orchestration-runs"
+          alt="The Runs view following a multi-phase orchestration across several agents"
+          spec="A multi-phase run in flight: phases listed, one active, several named personalities working under it with their own colours."
+        />
+        <ShotRow cols={3}>
+          <FeatureShot
+            id="team-roster"
+            kind="focus"
+            ratio="4/3"
+            scenario="04-personalities"
+            alt="The personality roster with roles and colors"
+            spec="The roster, fully populated, each row showing role chips and its spinner colour."
+          />
+          <FeatureShot
+            id="team-switcher"
+            kind="focus"
+            ratio="4/3"
+            scenario="05-agent-teams"
+            alt="Switching the active agent team from the sidebar"
+            spec="The team switcher open in the sidebar, two teams present, one active."
+          />
+          <FeatureShot
+            id="team-memory"
+            kind="focus"
+            ratio="4/3"
+            scenario="23-orchestration-runs"
+            alt="A personality's accrued lessons"
+            spec="The personality memory panel with several real accrued lessons. The sci-fi-sounding feature that actually works."
+          />
+        </ShotRow>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {PERSONALITY_TEAM.map((p) => (
+            <PersonalityCard
+              key={p.name}
+              name={p.name}
+              model={p.model}
+              roles={p.roles}
+              orbStyle={p.orbStyle}
+            />
           ))}
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-white/45">Paseo is Apache 2.0.</p>
-          <a
-            href="https://github.com/getpaseo/paseo"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <GitFork className="h-4 w-4" strokeWidth={1.5} />
-            Fork the repo
-            <ExternalLink className="h-3.5 w-3.5 opacity-70" />
-          </a>
         </div>
       </div>
     </FeatureSection>
   );
 }
 
-const PLUGINS_BROWSE = PLUGINS_LINKED
-  ? { href: "/plugins", external: false }
-  : { href: "https://paseo.cafe", external: true };
-
-const PLUGIN_ACTIONS = (
-  <>
-    <a
-      href={PLUGINS_BROWSE.href}
-      {...(PLUGINS_BROWSE.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-      className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs text-background transition-colors hover:bg-foreground/90"
+// Generic UI icons: Material Symbols (outlined family), matching the app's icon
+// set (docs/ui-icons.md). Brand/provider logos below keep their own marks.
+function MaterialGlyph({ path, ...props }: { path: string } & React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 -960 960 960"
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
     >
-      Browse plugins
-      <ArrowRight className="h-3.5 w-3.5" />
-    </a>
-    <a
-      href="/docs/plugins"
-      className="inline-flex items-center gap-1.5 rounded-full border border-white/12 px-3 py-1.5 text-xs text-white/80 transition-colors hover:bg-white/10"
+      <path d={path} />
+    </svg>
+  );
+}
+
+const MONITOR_PATH =
+  "M260-120v-73l47-47H140q-24 0-42-18t-18-42v-480q0-24 18-42t42-18h680q24 0 42 18t18 42v480q0 24-18 42t-42 18H652l48 47v73H260ZM140-300h680v-480H140v480Zm0 0v-480 480Z";
+const GLOBE_PATH =
+  "M480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm-.27-60q142.38 0 241.19-99.5T820-480v-13q-6 26-27.41 43.5Q771.19-432 742-432h-80q-33 0-56.5-23.5T582-512v-40H422v-80q0-33 23.5-56.5T502-712h40v-22q0-16 13.5-40t30.5-29q-25-8-51.36-12.5Q508.29-820 480-820q-141 0-240.5 98.81T140-480h150q66 0 113 47t47 113v40H330v105q34 17 71.7 26t78.3 9Z";
+const MOBILE_PATH =
+  "M260-40q-24.75 0-42.37-17.63Q200-75.25 200-100v-760q0-24 18-42t42-18h438q24.75 0 42.38 17.62Q758-884.75 758-860v150q18 3 30 16.95 12 13.96 12 31.63V-587q0 19-12 33t-30 17v437q0 24.75-17.62 42.37Q722.75-40 698-40H260Zm0-60h438v-760H260v760Zm0 0v-760 760Zm240-629q9-9 9-21t-9-21q-9-9-21-9t-21 9q-9 9-9 21t9 21q9 9 21 9t21-9Z";
+const SERVER_PATH =
+  "M286.88-717q-20.88 0-35.38 14.62-14.5 14.62-14.5 35.5 0 20.88 14.62 35.38 14.62 14.5 35.5 14.5 20.88 0 35.38-14.62 14.5-14.62 14.5-35.5 0-20.88-14.62-35.38-14.62-14.5-35.5-14.5Zm0 414q-20.88 0-35.38 14.62-14.5 14.62-14.5 35.5 0 20.88 14.62 35.38 14.62 14.5 35.5 14.5 20.88 0 35.38-14.62 14.5-14.62 14.5-35.5 0-20.88-14.62-35.38-14.62-14.5-35.5-14.5ZM154-839h651q16 0 25.5 9.5t9.5 25.81V-535q0 17.42-9.5 29.21T805-494H154q-15 0-24.5-11.79T120-535v-268.69q0-16.31 9.5-25.81T154-839Zm26 60v225h600v-225H180Zm-26 353h647q15 0 27 12.5t12 28.53V-121q0 20-12 30.5T801-80H159q-16 0-27.5-10.5T120-121v-263.97q0-16.03 9.5-28.53T154-426Zm26 60v226h600v-226H180Zm0-413v225-225Zm0 413v226-226Z";
+const FOLDER_PATH =
+  "M140-160q-24 0-42-18.5T80-220v-520q0-23 18-41.5t42-18.5h281l60 60h339q23 0 41.5 18.5T880-680v460q0 23-18.5 41.5T820-160H140Zm0-60h680v-460H456l-60-60H140v520Zm0 0v-520 520Z";
+const ARROW_DOWN_PATH = "M450-800v526L202-522l-42 42 320 320 320-320-42-42-248 248v-526h-60Z";
+const ARROW_FORWARD_PATH = "M686-450H160v-60h526L438-758l42-42 320 320-320 320-42-42 248-248Z";
+const COPY_PATH =
+  "M300-200q-24 0-42-18t-18-42v-560q0-24 18-42t42-18h440q24 0 42 18t18 42v560q0 24-18 42t-42 18H300Zm0-60h440v-560H300v560ZM180-80q-24 0-42-18t-18-42v-620h60v620h500v60H180Zm120-180v-560 560Z";
+const CHECK_PATH = "M378-246 154-470l43-43 181 181 384-384 43 43-427 427Z";
+const TERMINAL_PATH =
+  "M140-160q-24 0-42-18t-18-42v-520q0-24 18-42t42-18h680q24 0 42 18t18 42v520q0 24-18 42t-42 18H140Zm0-60h680v-436H140v436Zm160-72-42-42 103-104-104-104 43-42 146 146-146 146Zm190 4v-60h220v60H490Z";
+
+function ServerIcon(props: React.SVGProps<SVGSVGElement>) {
+  return <MaterialGlyph path={SERVER_PATH} {...props} />;
+}
+
+function SelfHostedDiagram() {
+  const clients = [
+    { name: "Desktop", icon: <MaterialGlyph path={MONITOR_PATH} width={28} height={28} /> },
+    { name: "Web", icon: <MaterialGlyph path={GLOBE_PATH} width={28} height={28} /> },
+    { name: "Mobile", icon: <MaterialGlyph path={MOBILE_PATH} width={28} height={28} /> },
+    { name: "CLI", icon: <MaterialGlyph path={TERMINAL_PATH} width={28} height={28} /> },
+  ];
+  const hosts = ["MacBook Pro", "Hetzner VM", "Dev server"];
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const clientRefs = React.useRef<(HTMLDivElement | null)[]>([]);
+  const hostRefs = React.useRef<(HTMLDivElement | null)[]>([]);
+  const centerRef = React.useRef<HTMLDivElement>(null);
+
+  const setClientRef = React.useCallback(
+    (index: number) => (el: HTMLDivElement | null) => {
+      clientRefs.current[index] = el;
+    },
+    [],
+  );
+  const setHostRef = React.useCallback(
+    (index: number) => (el: HTMLDivElement | null) => {
+      hostRefs.current[index] = el;
+    },
+    [],
+  );
+  const [paths, setPaths] = React.useState<{ left: string[]; right: string[] }>({
+    left: [],
+    right: [],
+  });
+
+  React.useEffect(() => {
+    function computePaths() {
+      const container = containerRef.current;
+      const center = centerRef.current;
+      if (!container || !center) return;
+
+      const cRect = container.getBoundingClientRect();
+      const mRect = center.getBoundingClientRect();
+      const midL = mRect.left - cRect.left;
+      const midR = mRect.right - cRect.left;
+      const midY = mRect.top - cRect.top + mRect.height / 2;
+
+      const left = clientRefs.current.map((el) => {
+        if (!el) return "";
+        const r = el.getBoundingClientRect();
+        const x1 = r.right - cRect.left;
+        const y1 = r.top - cRect.top + r.height / 2;
+        const cpx = x1 + (midL - x1) * 0.6;
+        return `M${x1},${y1} C${cpx},${y1} ${midL - (midL - x1) * 0.3},${midY} ${midL},${midY}`;
+      });
+
+      const right = hostRefs.current.map((el) => {
+        if (!el) return "";
+        const r = el.getBoundingClientRect();
+        const x2 = r.left - cRect.left;
+        const y2 = r.top - cRect.top + r.height / 2;
+        const cpx = midR + (x2 - midR) * 0.4;
+        return `M${midR},${midY} C${cpx},${midY} ${x2 - (x2 - midR) * 0.3},${y2} ${x2},${y2}`;
+      });
+
+      setPaths({ left, right });
+    }
+
+    computePaths();
+    window.addEventListener("resize", computePaths);
+    return () => window.removeEventListener("resize", computePaths);
+  }, []);
+
+  return (
+    <>
+      {/* Mobile: vertical stack */}
+      <div className="md:hidden flex flex-col items-center gap-4 py-4">
+        <div className="space-y-2 w-full">
+          {clients.map((c) => (
+            <div
+              key={c.name}
+              className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4"
+            >
+              <span className="text-white/80">{c.icon}</span>
+              <span className="font-medium">{c.name}</span>
+            </div>
+          ))}
+        </div>
+        <div className="w-px h-6 border-l border-dashed border-white/25" />
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] px-6 py-5 text-center space-y-1">
+          <p className="text-xs font-medium text-white/50">E2E Encrypted Relay</p>
+          <p className="text-[10px] text-white/25">or</p>
+          <p className="text-xs font-medium text-white/50">Direct Connection</p>
+        </div>
+        <div className="w-px h-6 border-l border-dashed border-white/25" />
+        <div className="space-y-2 w-full">
+          {hosts.map((h) => (
+            <div
+              key={h}
+              className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4"
+            >
+              <span className="text-white/80">
+                <ServerIcon width={28} height={28} />
+              </span>
+              <span className="font-medium">{h}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Desktop: horizontal with bezier curves */}
+      <div ref={containerRef} className="relative hidden md:flex items-center py-4 gap-0">
+        {/* SVG curves */}
+        <svg
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          style={SVG_OVERFLOW_VISIBLE_STYLE}
+        >
+          {[...paths.left, ...paths.right].map(
+            (d) =>
+              d && (
+                <path
+                  key={d}
+                  d={d}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.25)"
+                  strokeWidth="1"
+                  strokeDasharray="4 4"
+                />
+              ),
+          )}
+        </svg>
+
+        {/* Clients */}
+        <div className="space-y-3 flex-shrink-0 relative z-10">
+          {clients.map((c, i) => (
+            <div
+              key={c.name}
+              ref={setClientRef(i)}
+              className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 backdrop-blur-sm"
+            >
+              <span className="text-white/80">{c.icon}</span>
+              <span className="font-medium">{c.name}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Center label */}
+        <div
+          ref={centerRef}
+          className="flex-shrink-0 rounded-xl border border-white/10 bg-white/[0.03] px-8 py-6 text-center space-y-1.5 relative z-10 backdrop-blur-sm"
+        >
+          <p className="text-sm font-medium text-white/50">E2E Encrypted Relay</p>
+          <p className="text-xs text-white/25">or</p>
+          <p className="text-sm font-medium text-white/50">Direct Connection</p>
+        </div>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Hosts */}
+        <div className="space-y-3 flex-shrink-0 relative z-10">
+          {hosts.map((h, i) => (
+            <div
+              key={h}
+              ref={setHostRef(i)}
+              className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 backdrop-blur-sm"
+            >
+              <span className="text-white/80">
+                <ServerIcon width={28} height={28} />
+              </span>
+              <span className="font-medium">{h}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SelfHostedBlock() {
+  return (
+    <SubFeature
+      title="Runs where you work"
+      description="Start agents on your laptop, a VM, or a dev server. Use them from any device over a direct connection or the end-to-end encrypted relay."
     >
-      Plugin docs
-    </a>
-  </>
-);
+      <SelfHostedDiagram />
+    </SubFeature>
+  );
+}
 
-const PLUGIN_CAPABILITIES: ReadonlyArray<{
-  icon: LucideIcon;
-  title: string;
-  description: string;
-}> = [
-  {
-    icon: LayoutPanelLeft,
-    title: "UI",
-    description: "Screens, workspace panels, sidebar items, slash commands, and themes",
-  },
-  {
-    icon: Workflow,
-    title: "Agent lifecycle",
-    description: "Change config and MCP servers, answer permissions, and follow up",
-  },
-  {
-    icon: Bot,
-    title: "Providers",
-    description: "Add a coding agent as a provider, used like the built-in ones",
-  },
-];
-
-const PRINCIPLES: ReadonlyArray<{ icon: LucideIcon; title: string; description: string }> = [
-  {
-    icon: Lock,
-    title: "Private",
-    description: "No telemetry, tracking, or forced login. Code stays on your machine.",
-  },
-  {
-    icon: Compass,
-    title: "Independent",
-    description: "Paseo doesn't answer to investors. Its users guide what gets built.",
-  },
-  {
-    icon: Gem,
-    title: "Polished",
-    description: "Install the app and start working. No need to know what a daemon is.",
-  },
-  {
-    icon: Merge,
-    title: "Unified",
-    description: "Every coding agent, used the same way. Switch providers any time.",
-  },
-  {
-    icon: Blocks,
-    title: "Composable",
-    description: "Run agents on a laptop or a server, and connect from any device.",
-  },
-  {
-    icon: Puzzle,
-    title: "Extensible",
-    description: "If Paseo doesn't fit how you work, change it with a plugin or fork.",
-  },
-];
-
-function PhilosophySection() {
+function ShipSection() {
   return (
     <FeatureSection
-      title="Philosophy"
-      description="What Paseo stands for, and what every feature is built on"
+      title="Review, preview, ship"
+      description="Review the diff against the right base, commit the files you choose with a message written by a Writer personality, then open a PR and merge, without leaving Otto. Investigate any file through git while you are at it: what changed, when, and who wrote each line."
     >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {PRINCIPLES.map((principle) => (
-          <FeatureCard key={principle.title} {...principle} />
+      <div className="space-y-4">
+        <FeatureShot
+          id="ship-diff"
+          kind="focus"
+          ratio="16/9"
+          chrome
+          scenario="03-diff-review"
+          alt="The Changes view showing a real diff across several files"
+          spec="Changes view with the staged repo's uncommitted work: several files, real additions and deletions, the file list and the diff body both in frame."
+        />
+        <ShotRow cols={3}>
+          <FeatureShot
+            id="ship-commit"
+            kind="focus"
+            ratio="4/3"
+            scenario="10-diff-ai-review"
+            alt="Committing selected files with an AI-written message"
+            spec="The commit sheet with files checked and a generated message filled in. Never an empty form."
+          />
+          <FeatureShot
+            id="ship-blame"
+            kind="focus"
+            ratio="4/3"
+            scenario="25-git-history"
+            alt="Blame gutter showing who last wrote each line"
+            spec="A file open with the blame gutter populated, with plausible authors and dates from the staged history."
+          />
+          <FeatureShot
+            id="ship-worktree"
+            kind="focus"
+            ratio="4/3"
+            scenario="18-worktrees"
+            alt="Archiving a worktree with its branch cleanup prompt"
+            spec="The archive prompt stating whether the branch is fully merged and how many commits deleting would discard."
+          />
+        </ShotRow>
+      </div>
+    </FeatureSection>
+  );
+}
+
+function AutonomousWorkSection() {
+  return (
+    <FeatureSection
+      title="Work that runs without you"
+      description="Agents generate shareable artifacts, run on a cron schedule, take on background tasks you can monitor or stop from the chat, and offer follow-up work as chips you start in a new chat, a sub-agent, or a fresh worktree. Unattended runs are deny-by-default: nothing pre-approved, nothing surprising."
+    >
+      <div className="space-y-4">
+        <ShotRow>
+          <FeatureShot
+            id="auto-artifacts"
+            kind="focus"
+            ratio="4/3"
+            scenario="13-artifacts"
+            alt="The Artifacts screen with generated documents"
+            spec="A populated Artifacts grid: several real generated documents, each card showing the personality that made it."
+          />
+          <FeatureShot
+            id="auto-artifact-tab"
+            kind="focus"
+            ratio="4/3"
+            scenario="13-artifacts"
+            alt="An artifact open as a workspace tab"
+            spec="One artifact open and rendered as a tab, with its regenerate control visible."
+          />
+        </ShotRow>
+        <ShotRow>
+          <FeatureShot
+            id="auto-schedules"
+            kind="focus"
+            ratio="4/3"
+            scenario="14-schedules"
+            alt="Scheduled agent runs"
+            spec="The Schedules cards with several schedules, each showing its cadence and the personality that last ran it. Fill the form completely if it is in frame."
+          />
+          <FeatureShot
+            id="auto-suggested"
+            kind="focus"
+            ratio="4/3"
+            scenario="09-composer-intelligence"
+            alt="Suggested follow-up tasks above the composer"
+            spec="Suggested task chips above the message box, with the start-mode picker open on one of them."
+          />
+        </ShotRow>
+      </div>
+    </FeatureSection>
+  );
+}
+
+function CodeIdeSection() {
+  return (
+    <FeatureSection
+      title="An IDE, not a chat box"
+      description="Jump to a symbol's definition, see its type on hover, find every reference, and rename it across a project. Problems from your language server and your linter land in the gutter and in a diagnostics panel. Create, rename, delete and move files. The Solution lens shows a .NET solution the way the build system sees it."
+    >
+      <div className="space-y-4">
+        <FeatureShot
+          id="ide-rename"
+          kind="loop"
+          ratio="16/9"
+          chrome
+          scenario="24-code-intelligence"
+          alt="Renaming a symbol across a whole project"
+          spec="A rename running across several files: the preview of affected sites, then the applied result. The single clearest proof this is a real IDE."
+        />
+        <ShotRow cols={3}>
+          <FeatureShot
+            id="ide-definition"
+            kind="focus"
+            ratio="4/3"
+            scenario="19-editor-ide"
+            alt="Go to definition in the editor"
+            spec="The editor with a go-to-definition result open, status bar showing language and cursor position."
+          />
+          <FeatureShot
+            id="ide-diagnostics"
+            kind="focus"
+            ratio="4/3"
+            scenario="24-code-intelligence"
+            alt="Language server and linter problems in the gutter"
+            spec="Diagnostics in the gutter right of the line numbers, plus the panel listing them. Real problems from the staged repo, not invented ones."
+          />
+          <FeatureShot
+            id="ide-solution"
+            kind="focus"
+            ratio="4/3"
+            scenario="24-code-intelligence"
+            alt="The Solution lens over a .NET solution"
+            spec="The Solution tree with projects expanded and their real file sets."
+          />
+        </ShotRow>
+      </div>
+    </FeatureSection>
+  );
+}
+
+function VisualizerSection() {
+  return (
+    <FeatureSection
+      title="See what your agents are doing"
+      description="A live, interactive map of the work in progress (agents, subagents, tool calls, messages, and a file-attention heatmap) that works for every provider and opens from any chat or scoped to a single run. Scrub the timeline, pin it as a picture-in-picture over your workspace, or let it read the room out loud."
+    >
+      <div className="space-y-4">
+        <FeatureShot
+          id="viz-graph"
+          kind="loop"
+          ratio="16/9"
+          chrome
+          scenario="08-visualizer"
+          alt="The Visualizer graph animating while agents work"
+          spec="The graph mid-run with a parent agent fanning out to subagents: nodes settling, tool calls firing, the heatmap warming. Motion is the whole point."
+        />
+        <ShotRow>
+          <FeatureShot
+            id="viz-node"
+            kind="focus"
+            ratio="4/3"
+            scenario="08-visualizer"
+            alt="A single agent node with its context readout and tool cards"
+            spec="One node close up: personality colour, context ring, and the tool cards with their token costs."
+          />
+          <FeatureShot
+            id="viz-pip"
+            kind="focus"
+            ratio="4/3"
+            scenario="08-visualizer"
+            alt="The Visualizer pinned as a picture-in-picture over a workspace"
+            spec="The PIP viewport floating over a working workspace, so the graph stays glanceable while you work."
+          />
+        </ShotRow>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          The render layer is{" "}
+          <a
+            href="https://github.com/patoles/agent-flow"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Agent Flow
+          </a>{" "}
+          by Simon Patole, fed by Otto&apos;s own provider-neutral event stream, which is why it
+          lights up for every provider, not just one. Go star it.
+        </p>
+      </div>
+    </FeatureSection>
+  );
+}
+
+function PreviewVerificationSection() {
+  return (
+    <FeatureSection
+      title="Agents that prove their work"
+      description="Otto ships a rebuilt, more functional preview server system. Agents start your dev server from a launch config, open the app in a browser pane, and verify their own changes: reading accessibility snapshots, inspecting the DOM, checking the console and network, clicking and filling forms, resizing the viewport, and capturing screenshots. You get proof, not 'should work now, can you check?'"
+    >
+      <div className="space-y-4">
+        <FeatureShot
+          id="preview-verify"
+          kind="loop"
+          ratio="16/9"
+          chrome
+          scenario="02-preview-verify"
+          alt="An agent verifying its own change in a live browser pane"
+          spec="Chat left, the real running app right. The agent edits, the page updates, the agent clicks through and confirms. One continuous take."
+        />
+        <ShotRow>
+          <FeatureShot
+            id="preview-proof"
+            kind="focus"
+            ratio="4/3"
+            scenario="02-preview-verify"
+            alt="A screenshot attached to the conversation as proof"
+            spec="The message bubble where the agent attaches its own screenshot and states what it verified."
+          />
+          <FeatureShot
+            id="preview-console"
+            kind="focus"
+            ratio="4/3"
+            scenario="02-preview-verify"
+            alt="Console and network output captured from the preview"
+            spec="Captured console and network output from the running dev server, in the agent's own tool output."
+          />
+        </ShotRow>
+      </div>
+    </FeatureSection>
+  );
+}
+
+function ServiceProxyBlock() {
+  const workspaces = [
+    { name: "fix-auth", url: "web.fix-auth.my-app.localhost" },
+    { name: "add-search", url: "web.add-search.my-app.localhost" },
+    { name: "upgrade-deps", url: "web.upgrade-deps.my-app.localhost" },
+  ];
+
+  return (
+    <SubFeature
+      title="Forget about ports"
+      description="When agents work in parallel, they all run dev servers. Otto gives each one a URL based on the branch name, no port conflicts, no guessing."
+    >
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+        <div className="px-5 py-4 space-y-3">
+          {/* Project */}
+          <div className="flex items-center gap-2.5">
+            <MaterialGlyph path={FOLDER_PATH} width={16} height={16} className="text-white/40" />
+            <span className="text-sm font-medium text-white/60">my-app</span>
+          </div>
+
+          {/* Workspaces indented */}
+          <div className="pl-6 space-y-2">
+            {workspaces.map((ws) => (
+              <div key={ws.name} className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span className="text-sm text-white/80">{ws.name}</span>
+                  <span className="text-xs text-white/25 font-mono">npm run dev</span>
+                </div>
+                <span className="text-xs font-mono text-white/30">{ws.url}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </SubFeature>
+  );
+}
+
+function ShortcutsBlock() {
+  const shortcuts = [
+    { keys: ["⌘", "1-9"], action: "Switch panels" },
+    { keys: ["⌘", "D"], action: "Split vertical" },
+    { keys: ["⌘", "Shift", "D"], action: "Split horizontal" },
+    { keys: ["⌘", "W"], action: "Close panel" },
+    { keys: ["⌘", "N"], action: "New agent" },
+    { keys: ["⌘", "K"], action: "Command palette" },
+  ];
+
+  return (
+    <SubFeature
+      title="Keyboard-first"
+      description="Every action has a shortcut. Panels, splits, agents - all from the keyboard."
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {shortcuts.map((s) => (
+          <div
+            key={s.action}
+            className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5"
+          >
+            <span className="text-sm text-white/60">{s.action}</span>
+            <div className="flex items-center gap-1">
+              {s.keys.map((k) => (
+                <kbd
+                  key={k}
+                  className="text-xs px-1.5 py-0.5 rounded bg-white/10 text-white/50 font-mono"
+                >
+                  {k}
+                </kbd>
+              ))}
+            </div>
+          </div>
         ))}
+      </div>
+    </SubFeature>
+  );
+}
+
+function VoiceSection() {
+  return (
+    <FeatureSection
+      title="Voice control, fully local"
+      description="Speech-to-text and text-to-speech run entirely on your machine by default. Nothing leaves your network. Replies queue up and play in order, with pauses where a voice would take them, and every personality can speak its own lines when it joins, starts thinking, and finishes."
+    >
+      <div className="space-y-4">
+        <FeatureShot
+          id="voice-mode"
+          kind="loop"
+          ratio="16/9"
+          chrome
+          scenario="21-voice"
+          alt="Voice mode driving an agent conversation hands-free"
+          spec="Voice mode live: the listening indicator, dictated text landing in the composer, then the reply being spoken back with its playback state visible."
+        />
+        <FeatureShot
+          id="voice-playback"
+          kind="focus"
+          ratio="16/10"
+          scenario="21-voice"
+          alt="Per-message playback controls and speech settings"
+          spec="A chat with the per-bubble play button showing, and the speech settings panel with its Dictation and Voice sections filled in."
+        />
+      </div>
+    </FeatureSection>
+  );
+}
+
+function OttoBrainSection() {
+  return (
+    <FeatureSection
+      title="Otto Brain"
+      description="A model hosting and management system, local or remote. Run a model on your machine or point Otto at a brain running on another installation of your own. Start, stop, and switch models from the same interface you use for Claude and Codex: no separate GUI, no separate process to babysit. Pull models from Hugging Face, calibrate context windows and reasoning budgets, and benchmark your models against each other. Your prompts stay on hardware you own."
+    >
+      <FeatureShot
+        id="brain-dashboard"
+        kind="focus"
+        ratio="16/9"
+        chrome
+        alt="The Otto Brain dashboard showing live VRAM, telemetry verdicts, and the running model"
+        spec="The dashboard sheet: model name and version at top, VRAM usage bar, telemetry bars (reasoning-only / truncated / failed), and the recent completions list showing live verdicts."
+      />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+          <p className="mb-2 text-sm font-medium text-white/80">Self-contained</p>
+          <p className="text-sm leading-relaxed text-white/60">
+            Owns its own llama.cpp runtime and models. Nothing else to install.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+          <p className="mb-2 text-sm font-medium text-white/80">Daemon-managed</p>
+          <p className="text-sm leading-relaxed text-white/60">
+            Starts, stops, and restarts with the daemon. Lifecycle is{" "}
+            <code className="text-xs text-white/70">otto brain start/stop/restart/status</code>.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+          <p className="mb-2 text-sm font-medium text-white/80">Calibrate &amp; benchmark</p>
+          <p className="text-sm leading-relaxed text-white/60">
+            Measure KV bytes per token, calibrate context windows and reasoning budgets, and rank
+            models against each other with evals and variance.
+          </p>
+        </div>
+      </div>
+    </FeatureSection>
+  );
+}
+
+function InterfaceSection() {
+  return (
+    <FeatureSection
+      title="The interface you live in"
+      description="Agents put small interactive widgets straight into the conversation. The task list is an open checklist you can pin above the chat. Messages you send mid-turn queue up and arrive together. Mermaid diagrams, AsciiDoc and embedded HTML all render properly, on every platform."
+    >
+      <div className="space-y-12">
+        <div className="space-y-4">
+          <FeatureShot
+            id="ui-widget"
+            kind="focus"
+            ratio="16/9"
+            chrome
+            scenario="22-widgets"
+            alt="An agent-built interactive widget inside the conversation"
+            spec="A real widget rendered inline in the chat: something interactive the agent built, not a static card. The best five seconds in this section."
+          />
+          <ShotRow>
+            <FeatureShot
+              id="ui-tasklist"
+              kind="focus"
+              ratio="4/3"
+              scenario="01-agent-live"
+              alt="The agent's live task checklist pinned above the chat"
+              spec="The task list pinned, with items done, one in progress, and the rest pending."
+            />
+            <FeatureShot
+              id="ui-mermaid"
+              kind="focus"
+              ratio="4/3"
+              scenario="22-widgets"
+              alt="A Mermaid diagram rendered in chat"
+              spec="A Mermaid diagram rendered in a reply, legible at reading size, not a wall of nodes."
+            />
+          </ShotRow>
+        </div>
+        <ThemesBlock />
+      </div>
+    </FeatureSection>
+  );
+}
+
+function CostSection() {
+  return (
+    <FeatureSection
+      title="Know what it costs"
+      description="A Context Management tab accounts for everything filling an agent's window before you type (context files, memory, skills, MCP tools, Otto's own prompt), read as a share of the model window rather than a bare token count. Usage is itemized per agent and per sub-agent at any nesting depth, with cost reported by the provider or left blank, never estimated from a rate table."
+    >
+      <div className="space-y-4">
+        <FeatureShot
+          id="cost-context"
+          kind="focus"
+          ratio="16/9"
+          chrome
+          scenario="20-context-cost"
+          alt="The Context Management tab accounting for a full context window"
+          spec="The three-pane Context tab with a real inventory: every category present, percentages of the window shown, and a finding selected so its assembled text is visible."
+        />
+        <ShotRow>
+          <FeatureShot
+            id="cost-ledger"
+            kind="focus"
+            ratio="4/3"
+            scenario="20-context-cost"
+            alt="The itemized usage log grouped by chat turn"
+            spec="The Usage Log tab: several turns, sub-agents nested under the turn that spawned them, real token and cost columns."
+          />
+          <FeatureShot
+            id="cost-metrics"
+            kind="focus"
+            ratio="4/3"
+            scenario="20-context-cost"
+            alt="The metrics bar above the chat"
+            spec="The metrics bar showing what the conversation has cost so far, with the context ring beside it."
+          />
+        </ShotRow>
       </div>
     </FeatureSection>
   );
 }
 
 function GetStarted() {
-  const platform = useVisitorPlatform();
   return (
     <div className="pt-10">
-      {/* The primary call to action owns its own row on phones so the small icon
-          buttons never wrap and orphan one of themselves onto a line alone. It
-          still hugs its label rather than stretching across the row. */}
-      <div className="mx-auto flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-        {isMobilePlatform(platform) ? (
-          <StoreButton platform={platform} />
-        ) : (
-          <DesktopDownloadButton platform={platform} />
-        )}
-        <div className="flex items-center justify-center gap-3">
-          {isMobilePlatform(platform) ? <DesktopAppLink /> : <StoreIconLinks />}
-          <ServerInstallButton />
-        </div>
+      <div className="flex flex-row flex-wrap gap-3">
+        <DownloadButton />
+        <a
+          href={webAppUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
+        >
+          <GlobeIcon className="h-4 w-4" />
+          Web App
+        </a>
+        <ServerInstallButton />
       </div>
-      <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 pt-6">
+      <div className="pt-3">
+        <a
+          href="/download"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          All download options
+        </a>
+      </div>
+      <div className="flex items-center gap-2 pt-6">
         <span className="text-xs text-muted-foreground">Supports</span>
         <div className="flex items-center gap-1">
-          {FEATURED_AGENTS.map((agent) => (
-            <AgentBadge key={agent.name} name={agent.name} Icon={agent.Icon} />
-          ))}
+          <AgentBadge name="Claude Code" icon={CLAUDE_CODE_BADGE_ICON} />
+          <AgentBadge name="Codex" icon={CODEX_BADGE_ICON} />
+          <AgentBadge name="OpenCode" icon={OPENCODE_BADGE_ICON} />
+          <AgentBadge name="Pi" icon={PI_BADGE_ICON} />
+          <AgentBadge name="Cursor" icon={CURSOR_BADGE_ICON} />
         </div>
         <a
           href="/agents"
-          className="whitespace-nowrap text-xs text-muted-foreground hover:text-foreground transition-colors"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           +{ADDITIONAL_AGENT_COUNT} more
         </a>
@@ -991,73 +1469,29 @@ function GetStarted() {
   );
 }
 
-const PRIMARY_CTA_CLASS =
-  "inline-flex items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-background hover:bg-foreground/90 transition-colors";
-const SECONDARY_CTA_CLASS =
-  "inline-flex items-center justify-center gap-2 rounded-lg border border-white/12 px-3 py-2.5 text-sm text-white hover:bg-white/10 transition-colors";
+function DownloadButton() {
+  const release = useRelease();
+  const platform = useVisitorPlatform();
+  const primary = getPrimaryDownload(release, platform);
 
-function DesktopDownloadButton({ platform }: { platform: DesktopPlatform }) {
-  const download = getDesktopDownload(useRelease(), platform);
-  const Icon = download.icon;
+  const PrimaryIcon = primary.icon;
+
   return (
-    <a href={download.href} className={PRIMARY_CTA_CLASS}>
-      <Icon className="h-4 w-4" />
-      Download for {download.label}
+    <a
+      href={primary.href}
+      {...(primary.openInPage ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+      className="inline-flex items-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-foreground/90 transition-colors"
+    >
+      <PrimaryIcon className="h-4 w-4" />
+      {platform === "ios" ? "Open the web app" : `Download for ${primary.label}`}
     </a>
-  );
-}
-
-function StoreButton({ platform }: { platform: MobilePlatform }) {
-  const store = MOBILE_STORES[platform];
-  const Icon = store.icon;
-  return (
-    <a href={store.href} target="_blank" rel="noopener noreferrer" className={PRIMARY_CTA_CLASS}>
-      <Icon className="h-4 w-4" />
-      Get the {store.label} app
-    </a>
-  );
-}
-
-// On a phone the desktop build is the secondary path, so it points at /download
-// instead of handing the visitor a .dmg they cannot open.
-function DesktopAppLink() {
-  return (
-    <a href="/download" className={SECONDARY_CTA_CLASS}>
-      <Monitor className="h-4 w-4" strokeWidth={1.5} />
-      Desktop app
-    </a>
-  );
-}
-
-function StoreIconLinks() {
-  return (
-    <>
-      <a
-        href={appStoreUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={SECONDARY_CTA_CLASS}
-        aria-label="App Store"
-      >
-        <AppleIcon className="h-5 w-5" />
-      </a>
-      <a
-        href={playStoreUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={SECONDARY_CTA_CLASS}
-        aria-label="Google Play"
-      >
-        <PlayStoreIcon className="h-5 w-5" />
-      </a>
-    </>
   );
 }
 
 const SERVER_INSTALL_TRIGGER = (
   <span
-    className="inline-flex items-center justify-center rounded-lg border border-white/12 px-3 py-2.5 text-white hover:bg-white/10 transition-colors"
     aria-label="Install the daemon on a remote machine"
+    className="inline-flex items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-white hover:bg-white/10 transition-colors"
   >
     <TerminalIcon className="h-5 w-5" />
   </span>
@@ -1065,7 +1499,7 @@ const SERVER_INSTALL_TRIGGER = (
 
 const SERVER_INSTALL_FOOTNOTE = (
   <>
-    Requires Node.js 18+. Run <span className="font-mono text-white/40">paseo</span> to start the
+    Requires Node.js 18+. Run <span className="font-mono text-white/40">otto</span> to start the
     daemon.
   </>
 );
@@ -1075,12 +1509,204 @@ function ServerInstallButton() {
     <CommandDialog
       trigger={SERVER_INSTALL_TRIGGER}
       title="Run agents on a remote machine"
-      description="For headless machines you want to connect to from the Paseo apps. The desktop app already includes a built-in daemon"
-      command="npm install -g @getpaseo/cli && paseo"
+      description="For headless machines you want to connect to from the Otto apps. The desktop app already includes a built-in daemon."
+      command="npm install -g @otto-code/cli && otto"
       footnote={SERVER_INSTALL_FOOTNOTE}
     />
   );
 }
+
+const bashKeywords = new Set([
+  "while",
+  "do",
+  "done",
+  "if",
+  "then",
+  "fi",
+  "else",
+  "break",
+  "true",
+  "false",
+]);
+const bashCommands = new Set(["otto", "echo", "jq"]);
+
+function tokenizeBashComment(code: string, i: number): { node: React.ReactNode; len: number } {
+  const end = code.indexOf("\n", i);
+  const comment = end === -1 ? code.slice(i) : code.slice(i, end);
+  return {
+    node: <span className="text-white/30 italic">{comment}</span>,
+    len: comment.length,
+  };
+}
+
+function tokenizeBashDoubleQuoted(code: string, i: number): { node: React.ReactNode; len: number } {
+  let j = i + 1;
+  while (j < code.length && code[j] !== '"') {
+    if (code[j] === "\\") j++;
+    j++;
+  }
+  const str = code.slice(i, j + 1);
+  return { node: <span className="text-green-400/80">{str}</span>, len: str.length };
+}
+
+function tokenizeBashSingleQuoted(code: string, i: number): { node: React.ReactNode; len: number } {
+  let j = i + 1;
+  while (j < code.length && code[j] !== "'") j++;
+  const str = code.slice(i, j + 1);
+  return { node: <span className="text-green-400/80">{str}</span>, len: str.length };
+}
+
+function tokenizeBashDollar(code: string, i: number): { node: React.ReactNode; len: number } {
+  if (code[i + 1] === "(") {
+    return { node: <span className="text-amber-300/70">$(</span>, len: 2 };
+  }
+  let j = i + 1;
+  while (j < code.length && /\w/.test(code[j])) j++;
+  return {
+    node: <span className="text-amber-300/70">{code.slice(i, j)}</span>,
+    len: j - i,
+  };
+}
+
+function tokenizeBashFlag(code: string, i: number): { node: React.ReactNode; len: number } {
+  let j = i;
+  if (code[j + 1] === "-") j++;
+  j++;
+  while (j < code.length && /[\w-]/.test(code[j])) j++;
+  return {
+    node: <span className="text-sky-300/70">{code.slice(i, j)}</span>,
+    len: j - i,
+  };
+}
+
+function tokenizeBashWord(code: string, i: number): { node: React.ReactNode; len: number } {
+  let j = i;
+  while (j < code.length && /\w/.test(code[j])) j++;
+  const word = code.slice(i, j);
+  const len = j - i;
+  if (bashKeywords.has(word)) {
+    return { node: <span className="text-purple-400">{word}</span>, len };
+  }
+  if (bashCommands.has(word)) {
+    return { node: <span className="text-white">{word}</span>, len };
+  }
+  return { node: word, len };
+}
+
+function isBashFlagStart(code: string, i: number): boolean {
+  return (
+    code[i] === "-" &&
+    (i === 0 || /\s/.test(code[i - 1])) &&
+    i + 1 < code.length &&
+    /[\w-]/.test(code[i + 1])
+  );
+}
+
+function isBashCommentStart(code: string, i: number): boolean {
+  return code[i] === "#" && (i === 0 || /[\s(]/.test(code[i - 1]));
+}
+
+function tokenizeBashChar(code: string, i: number): { node: React.ReactNode; len: number } {
+  const c = code[i];
+  if (c === "|" || (c === "&" && code[i + 1] === "&")) {
+    const op = c === "|" ? "|" : "&&";
+    return { node: <span className="text-white/40">{op}</span>, len: op.length };
+  }
+  if (c === "\\") return { node: <span className="text-white/40">\</span>, len: 1 };
+  if (c === ")") return { node: <span className="text-amber-300/70">)</span>, len: 1 };
+  return { node: c, len: 1 };
+}
+
+function nextBashToken(code: string, i: number): { node: React.ReactNode; len: number } {
+  if (isBashCommentStart(code, i)) return tokenizeBashComment(code, i);
+  if (code[i] === '"') return tokenizeBashDoubleQuoted(code, i);
+  if (code[i] === "'") return tokenizeBashSingleQuoted(code, i);
+  if (code[i] === "$") return tokenizeBashDollar(code, i);
+  if (isBashFlagStart(code, i)) return tokenizeBashFlag(code, i);
+  if (/[a-zA-Z_]/.test(code[i])) return tokenizeBashWord(code, i);
+  return tokenizeBashChar(code, i);
+}
+
+function highlightBash(code: string): React.ReactNode {
+  const tokens: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+
+  while (i < code.length) {
+    const { node, len } = nextBashToken(code, i);
+    if (React.isValidElement(node)) {
+      tokens.push(React.cloneElement(node, { key: key++ }));
+    } else {
+      tokens.push(node);
+    }
+    i += len;
+  }
+
+  return tokens;
+}
+
+function CLICodeBlock({ children }: { children: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = React.useCallback(() => {
+    navigator.clipboard.writeText(children);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [children]);
+
+  return (
+    <div className="relative bg-white/5 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="absolute top-3 right-3 text-white/30 hover:text-white/70 transition-colors p-1"
+        title="Copy to clipboard"
+      >
+        {copied ? (
+          <MaterialGlyph path={CHECK_PATH} width={14} height={14} />
+        ) : (
+          <MaterialGlyph path={COPY_PATH} width={14} height={14} />
+        )}
+      </button>
+      <pre className="p-4 pr-10 text-xs leading-relaxed overflow-x-auto text-white/70 font-mono whitespace-pre">
+        {highlightBash(children)}
+      </pre>
+    </div>
+  );
+}
+
+interface CLIExample {
+  title: string;
+  description: string;
+  code: string;
+}
+
+const cliExamples: CLIExample[] = [
+  {
+    title: "Run agents",
+    description:
+      "Launch agents locally or on any remote host. The --worktree flag spins up an isolated git branch so you can run multiple agents on the same repo without conflicts.",
+    code: `otto run "implement user authentication"
+otto run --provider codex --worktree feature-x "implement feature X"
+otto run --host devbox:6868 "run the full test suite"
+
+otto ls                           # list running agents
+otto attach abc123                # stream live output
+otto send abc123 "also add tests" # follow-up task`,
+  },
+  {
+    title: "Schedules",
+    description:
+      "Run agents on a cron schedule. Automate recurring tasks like dependency updates, security audits, or report generation.",
+    code: `# Run a security audit every Monday at 9am
+otto schedule create --cron "0 9 * * 1" \\
+  "audit the codebase for security issues and open PRs for fixes"
+
+otto schedule ls                    # list all schedules
+otto schedule pause abc123          # pause a schedule
+otto schedule delete abc123         # remove a schedule`,
+  },
+];
 
 function PhoneShowcase() {
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -1128,71 +1754,135 @@ function PhoneShowcase() {
         transition={DURATION_05}
         className="flex flex-col items-center gap-1.5 px-6"
       >
-        <svg
-          width="24"
-          height="24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          viewBox="0 0 24 24"
-          className="text-white/20"
-        >
-          <path d="M12 5v14M5 12l7 7 7-7" />
-        </svg>
-        <p className="max-w-md text-balance text-center text-lg text-white/80">
-          When you want to step away from your desk, you can.
+        <MaterialGlyph path={ARROW_DOWN_PATH} width={24} height={24} className="text-white/20" />
+        <p className="text-lg text-white/80 text-center">
+          When you want to step away from your desk,
+          <br className="md:hidden" /> you can.
         </p>
-        <p className="max-w-sm text-balance text-center text-sm text-white/50">
-          The native mobile app has full feature parity with desktop.
+        <p className="text-sm text-white/50 text-center">
+          Android and the web app keep your agents close. Desktop-only tools stay on desktop.
         </p>
       </motion.div>
 
-      {/* Phone trio — side phones are absolute, start behind center, slide outward with perspective rotation */}
+      {/* Phone trio. Side phones are absolute, start behind center, slide outward with perspective rotation */}
       <div
         className="relative flex items-center justify-center overflow-x-clip w-full"
         style={PHONE_PERSPECTIVE_STYLE}
       >
-        {/* Left phone — workspace drawer, rotated to face inward */}
-        <motion.div
-          style={leftPhoneStyle}
-          className="w-[160px] md:w-[240px] absolute"
-          role="img"
-          aria-label="Paseo workspace drawer"
-        >
-          <PhoneFrame time="18:54" depth="right">
-            <MobileSidebar />
-          </PhoneFrame>
+        {/* Left phone, rotated to face inward */}
+        <motion.div style={leftPhoneStyle} className="w-[160px] md:w-[240px] absolute">
+          <img
+            src="/phone-1-480.webp"
+            srcSet="/phone-1-320.webp 320w, /phone-1-480.webp 480w"
+            sizes="(min-width: 768px) 240px, 160px"
+            alt="Otto sessions list"
+            width={480}
+            height={1044}
+            loading="lazy"
+            decoding="async"
+            className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
+          />
         </motion.div>
 
-        {/* Center phone — agent chat */}
+        {/* Center phone */}
         <motion.div
           initial={FADE_IN_UP_XL}
           animate={centerPhoneAnimate}
           transition={EASE_OUT_06_DELAY_01}
           className="w-[220px] md:w-[240px] relative z-10"
-          role="img"
-          aria-label="Paseo agent chat"
         >
-          <PhoneFrame time="18:53">
-            <MobileChat />
-          </PhoneFrame>
+          <img
+            src="/phone-2-480.webp"
+            srcSet="/phone-2-320.webp 320w, /phone-2-480.webp 480w"
+            sizes="(min-width: 768px) 240px, 220px"
+            alt="Otto agent chat"
+            width={480}
+            height={1044}
+            loading="lazy"
+            decoding="async"
+            className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
+          />
         </motion.div>
 
-        {/* Right phone — diff view, rotated to face inward */}
-        <motion.div
-          style={rightPhoneStyle}
-          className="w-[160px] md:w-[240px] absolute"
-          role="img"
-          aria-label="Paseo diff view"
-        >
-          <PhoneFrame time="18:55" depth="left">
-            <MobileDiff />
-          </PhoneFrame>
+        {/* Right phone, rotated to face inward */}
+        <motion.div style={rightPhoneStyle} className="w-[160px] md:w-[240px] absolute">
+          <img
+            src="/phone-3-480.webp"
+            srcSet="/phone-3-320.webp 320w, /phone-3-480.webp 480w"
+            sizes="(min-width: 768px) 240px, 160px"
+            alt="Otto diff view"
+            width={480}
+            height={1044}
+            loading="lazy"
+            decoding="async"
+            className="w-full rounded-[40px] shadow-2xl border-[3px] border-black outline-[3px] outline-white/20"
+          />
         </motion.div>
       </div>
     </div>
+  );
+}
+
+function CLITabButton({
+  title,
+  index,
+  active,
+  onSelect,
+}: {
+  title: string;
+  index: number;
+  active: boolean;
+  onSelect: (i: number) => void;
+}) {
+  const handleClick = React.useCallback(() => onSelect(index), [onSelect, index]);
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+        active
+          ? "border-white/40 text-white bg-white/10"
+          : "border-white/15 text-white/50 hover:text-white/80 hover:border-white/30"
+      }`}
+    >
+      {title}
+    </button>
+  );
+}
+
+function CLIBlock() {
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const active = cliExamples[activeIndex];
+
+  return (
+    <SubFeature
+      title="Fully scriptable"
+      description="Everything you can do in the app, you can do from the terminal."
+    >
+      <div className="mb-3 flex flex-wrap gap-2">
+        {cliExamples.map((example, i) => (
+          <CLITabButton
+            key={example.title}
+            title={example.title}
+            index={i}
+            active={i === activeIndex}
+            onSelect={setActiveIndex}
+          />
+        ))}
+      </div>
+
+      <div className="mb-3">
+        <CLICodeBlock>{active.code}</CLICodeBlock>
+      </div>
+
+      <a
+        href="/docs/cli"
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Full CLI reference
+        <MaterialGlyph path={ARROW_FORWARD_PATH} width={12} height={12} />
+      </a>
+    </SubFeature>
   );
 }
 
@@ -1207,39 +1897,79 @@ function FAQ() {
     >
       <h2 className="text-3xl font-medium">FAQ</h2>
       <div className="space-y-6">
+        <FAQItem question="How is Otto related to Paseo?">
+          Otto is an open-source fork of{" "}
+          <a
+            href="https://github.com/getpaseo/paseo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Paseo
+          </a>
+          , with full upstream history preserved. I&apos;m proud of that lineage. Paseo is a
+          fantastic platform to build on. Otto tracks upstream improvements and adds its own
+          direction on top: growing into a fully featured agentic coding assistant, with in-browser
+          preview verification, artifacts, and frontier-model tooling brought to every provider,
+          cloud APIs and local models alike. Otto is an independent project and isn&apos;t
+          affiliated with or endorsed by the Paseo team; Paseo&apos;s community, sponsors, and
+          testimonials are theirs, not mine.
+        </FAQItem>
+        <FAQItem question="What powers the Visualizer?">
+          The render layer of{" "}
+          <a
+            href="https://github.com/patoles/agent-flow"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Agent Flow
+          </a>{" "}
+          (Apache-2.0) by{" "}
+          <a
+            href="https://github.com/patoles"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Simon Patole
+          </a>
+          , vendored into Otto and fed by Otto&apos;s own provider-neutral event stream rather than
+          its original ingestion, which is why the graph works for every provider, not just one.
+          Simon&apos;s separation between rendering and event collection is what made that possible,
+          and it&apos;s been a pleasure to work with. Agent Flow is an independent project; it
+          doesn&apos;t endorse Otto, and its name and logos are its own. Go star it.
+        </FAQItem>
         <FAQItem question="Is this free?">
-          Yes. Paseo is free and open source. You need agent providers installed with your own
-          credentials. Voice is local-first by default and can optionally use cloud speech providers
-          if you configure them.
+          Yes. Otto is free and open source. Use an installed provider or configure an
+          OpenAI-compatible endpoint with your own credentials. Voice is local-first by default and
+          can optionally use OpenAI speech providers if you configure them.
         </FAQItem>
         <FAQItem question="Does my code leave my machine?">
-          Paseo doesn&apos;t send your code anywhere. Agents run locally and talk to their own APIs
-          as they normally would. For remote access, you can use the optional{" "}
+          Otto runs agents on the host you choose. Cloud provider APIs, Git remotes, MCP servers,
+          integrations, and other network-enabled tools can send code or context away from that host
+          according to your configuration. Otto does not require a cloud service or account. For
+          remote access, you can use the optional{" "}
           <a href="/docs/security" className="underline hover:text-white/80">
             end-to-end encrypted relay
           </a>
           , connect directly over your local network, or use your own tunnel.
         </FAQItem>
         <FAQItem question="What agents does it support?">
-          Paseo supports many providers. It has custom implementations for Claude, Codex, OpenCode,
-          Pi, OMP, Antigravity, and Muse Code, and supports many more via ACP. See the full list
-          here:{" "}
-          <a href="/agents" className="underline hover:text-white/80">
-            all supported providers
-          </a>
-          . See{" "}
-          <a href="/docs/muse-code" className="underline hover:text-white/80">
-            Muse Code setup and limitations
+          Claude Code, Codex, OpenCode, Pi, OMP, and ACP providers, plus configured
+          OpenAI-compatible endpoints and plugin providers. See{" "}
+          <a href="/agents" className="underline">
+            supported providers
           </a>
           .
         </FAQItem>
-        <FAQItem question="How does Paseo run providers?">
-          Paseo runs the providers installed on your machine as you&apos;d normally run them. Paseo
-          doesn&apos;t modify or change their behavior.
-        </FAQItem>
         <FAQItem question="Do I need the desktop app?">
-          No. You can run the daemon headless and use any client to connect. The desktop app just
-          bundles the daemon with a UI.
+          No. You can run the daemon headless with{" "}
+          <code className="font-mono text-muted-foreground">
+            npm install -g @otto-code/cli && otto
+          </code>{" "}
+          and use the CLI, web app, or mobile app to connect. The desktop app just bundles the
+          daemon with a UI.
         </FAQItem>
         <FAQItem question="How does voice work?">
           Voice runs locally on your device by default. You talk, the app transcribes and sends it
@@ -1251,7 +1981,7 @@ function FAQ() {
           .
         </FAQItem>
         <FAQItem question="Can I connect from outside my network?">
-          Yes. You can use the hosted relay (end-to-end encrypted, Paseo can&apos;t read your
+          Yes. You can use the hosted relay (end-to-end encrypted, Otto can&apos;t read your
           traffic), set up your own tunnel (Tailscale, Cloudflare Tunnel, etc.), or expose the
           daemon port directly. See{" "}
           <a href="/docs/configuration" className="underline hover:text-white/80">
@@ -1260,16 +1990,19 @@ function FAQ() {
           .
         </FAQItem>
         <FAQItem question="Do I need git or GitHub?">
-          No. Paseo works in any directory. Worktrees are optional and only relevant if you use git.
+          No. Otto works in any directory. Worktrees are optional and only relevant if you use git.
           You can run agents anywhere you&apos;d normally work.
         </FAQItem>
-        <FAQItem question="Can I get banned for using Paseo?">
-          Paseo is designed to use each provider&apos;s officially supported integration and does
-          not attempt to bypass its terms of service. It doesn&apos;t extract tokens or call
-          inference APIs directly.
+        <FAQItem question="Can I get banned for using Otto?">
+          <p>I can&apos;t make promises on behalf of providers.</p>
+          <p>
+            Otto uses each provider&apos;s configured integration. Hosted harnesses keep their own
+            authentication; custom OpenAI-compatible providers call the endpoint you configure.
+            Provider terms still apply to that usage.
+          </p>
         </FAQItem>
         <FAQItem question="How do worktrees work?">
-          When you launch an agent with the worktree option (from the app, desktop, or CLI), Paseo
+          When you launch an agent with the worktree option (from the app, desktop, or CLI), Otto
           creates a git worktree and runs the agent inside it. The agent works on an isolated branch
           without touching your main working directory. See the{" "}
           <a href="/docs/worktrees" className="underline hover:text-white/80">
@@ -1277,6 +2010,94 @@ function FAQ() {
           </a>
           .
         </FAQItem>
+      </div>
+    </motion.div>
+  );
+}
+
+function OttoCreditCTA() {
+  return (
+    <motion.div
+      initial={FADE_IN_UP}
+      whileInView={FADE_IN}
+      viewport={VIEWPORT_60}
+      transition={EASE_OUT_05}
+      className="rounded-xl bg-white/5 border border-white/10 p-8 md:p-10 text-left space-y-4 max-w-xl mx-auto"
+    >
+      <div className="text-sm text-muted-foreground leading-relaxed space-y-3">
+        <p>
+          Otto is an independent open-source fork of{" "}
+          <a
+            href="https://github.com/getpaseo/paseo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Paseo
+          </a>
+          , created by{" "}
+          <a
+            href="https://github.com/boudra"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Mo
+          </a>
+          . None of this would exist without the platform Mo built and shares under an open-source
+          license. That generosity is what makes projects like Otto possible. The Visualizer is the
+          same story: it&apos;s the render layer of{" "}
+          <a
+            href="https://github.com/patoles/agent-flow"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Agent Flow
+          </a>{" "}
+          (Apache-2.0) by{" "}
+          <a
+            href="https://github.com/patoles"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
+          >
+            Simon Patole
+          </a>
+          , driven by Otto&apos;s own event stream.
+        </p>
+        <p>
+          Otto doesn&apos;t take sponsorships or donations. If you&apos;d like to support this work,
+          support the projects underneath it instead. They did the hard parts.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-3 pt-2">
+        <a
+          href="https://github.com/sponsors/boudra"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg bg-white/10 border border-white/20 px-5 py-2.5 text-sm font-medium text-white hover:bg-white/15 transition-colors"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="text-pink-400"
+          >
+            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+          </svg>
+          Sponsor Mo on GitHub
+        </a>
+        <a
+          href="https://github.com/patoles/agent-flow"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg bg-white/5 border border-white/15 px-5 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10 transition-colors"
+        >
+          Star Agent Flow
+        </a>
       </div>
     </motion.div>
   );

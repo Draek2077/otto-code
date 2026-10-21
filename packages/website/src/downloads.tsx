@@ -1,8 +1,9 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import * as React from "react";
-import type { DesktopPlatform, MobilePlatform } from "~/platform";
+import type { DesktopPlatform, VisitorPlatform } from "~/platform";
 
 export function releaseBase(version: string) {
-  return `https://github.com/getpaseo/paseo/releases/download/v${version}`;
+  return `https://github.com/Draek2077/otto-code/releases/download/v${version}`;
 }
 
 export interface ReleaseAssetInfo {
@@ -10,54 +11,59 @@ export interface ReleaseAssetInfo {
   linuxAppImageAsset: string;
   windowsX64Asset: string | null;
   windowsArm64Asset: string | null;
+  macArm64Asset: string | null;
+  macX64Asset: string | null;
 }
 
 export function downloadUrls(release: ReleaseAssetInfo) {
   const { version, linuxAppImageAsset, windowsX64Asset, windowsArm64Asset } = release;
+  const { macArm64Asset, macX64Asset } = release;
   const base = releaseBase(version);
   return {
-    macAppleSilicon: `${base}/Paseo-${version}-arm64.dmg`,
-    macIntel: `${base}/Paseo-${version}-x64.dmg`,
     linuxAppImage: `${base}/${linuxAppImageAsset}`,
-    linuxDeb: `${base}/Paseo-${version}-amd64.deb`,
-    linuxRpm: `${base}/Paseo-${version}-x86_64.rpm`,
-    windowsExeX64: `${base}/${windowsX64Asset ?? `Paseo-Setup-${version}.exe`}`,
+    linuxDeb: `${base}/Otto-${version}-amd64.deb`,
+    linuxRpm: `${base}/Otto-${version}-x86_64.rpm`,
+    windowsExeX64: `${base}/${windowsX64Asset ?? `Otto-Setup-${version}.exe`}`,
     windowsExeArm64: windowsArm64Asset ? `${base}/${windowsArm64Asset}` : null,
-    androidApk: `${base}/paseo-v${version}-android.apk`,
+    // Null when that release has no mac artifact. The mac jobs can finish after
+    // a release publishes, and a failed mac build ships without one.
+    macDmgArm64: macArm64Asset ? `${base}/${macArm64Asset}` : null,
+    macDmgX64: macX64Asset ? `${base}/${macX64Asset}` : null,
+    androidApk: `${base}/otto-v${version}-android.apk`,
   };
 }
 
-const RELEASE_ASSETS_ORIGIN = "https://github.com";
-const RELEASE_ASSETS_PATH = "/getpaseo/paseo/releases/download/";
+export const webAppUrl = "https://app.otto-code.me";
 
-/**
- * The release file a thanks-page link asks for, or null when it is not one of
- * ours. Parsing normalizes `..` segments, so a link cannot climb out of this
- * repo's releases into another repo's.
- */
-export function parseReleaseAssetUrl(value: unknown): string | null {
-  if (typeof value !== "string" || !URL.canParse(value)) return null;
-  const url = new URL(value);
-  if (url.origin !== RELEASE_ASSETS_ORIGIN) return null;
-  if (!url.pathname.startsWith(RELEASE_ASSETS_PATH)) return null;
-  return url.href;
-}
+// macOS builds ship unsigned: this fork has no Apple Developer identity, so they
+// are not notarized and cannot auto-update. Gatekeeper quarantines a downloaded
+// unsigned app and reports it as *damaged* rather than showing the usual
+// unidentified-developer prompt, so first-launch instructions aren't optional:
+// without them the build reads as a broken download.
+export const MAC_UNSIGNED_NOTE =
+  "Unsigned build. macOS will say Otto is damaged the first time. Right-click the app and choose Open, or run the command below.";
 
-/** Download buttons link here; the thanks page starts the download itself. */
-export function thanksPageHref(fileUrl: string): string {
-  return `/download/thanks?${new URLSearchParams({ file: fileUrl })}`;
-}
+export const MAC_QUARANTINE_COMMAND = "xattr -dr com.apple.quarantine /Applications/Otto.app";
 
-export const appStoreUrl = "https://apps.apple.com/app/paseo-pocket-engineer/id6758887924";
-export const playStoreUrl = "https://play.google.com/store/apps/details?id=sh.paseo";
-export const webAppUrl = "https://app.paseo.sh";
+// macOS can't replace itself in place without a signing identity, so these
+// builds don't auto-update. The app notifies and links back here instead.
+export const MAC_NO_AUTOUPDATE_NOTE =
+  "These builds don't auto-update. Otto will tell you when a new version is out. Download it here and replace the app.";
 
 export interface PrimaryDownload {
   label: string;
   href: string;
   icon: (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
+  /**
+   * Href points at a page on this site rather than a release asset, so the link
+   * opens in place. macOS uses this: handing someone an unsigned .dmg without
+   * the first-launch steps beside it produces a build that looks broken.
+   */
+  openInPage?: boolean;
 }
 
+// Both Mac architectures deliberately open the notes page: Otto's builds are unsigned,
+// and User-Agent cannot reliably distinguish Intel from Apple Silicon.
 export function getDesktopDownload(
   release: ReleaseAssetInfo,
   platform: DesktopPlatform,
@@ -65,18 +71,24 @@ export function getDesktopDownload(
   const urls = downloadUrls(release);
   switch (platform) {
     case "windows":
-      return { label: "Windows", href: thanksPageHref(urls.windowsExeX64), icon: WindowsIcon };
+      return { label: "Windows", href: urls.windowsExeX64, icon: WindowsIcon };
     case "linux":
-      return { label: "Linux", href: thanksPageHref(urls.linuxAppImage), icon: LinuxIcon };
+      return { label: "Linux", href: urls.linuxAppImage, icon: LinuxIcon };
     case "mac":
-      return { label: "Mac", href: thanksPageHref(urls.macAppleSilicon), icon: AppleIcon };
+      return { label: "macOS", href: "/download", icon: AppleIcon, openInPage: true };
   }
 }
 
-export const MOBILE_STORES: Record<MobilePlatform, PrimaryDownload> = {
-  ios: { label: "iPhone", href: appStoreUrl, icon: AppleIcon },
-  android: { label: "Android", href: playStoreUrl, icon: PlayStoreIcon },
-};
+/** Otto's published distribution differs from Paseo's App Store/Play Store release channels. */
+export function getPrimaryDownload(
+  release: ReleaseAssetInfo,
+  platform: VisitorPlatform,
+): PrimaryDownload {
+  if (platform === "ios") return { label: "Web app", href: webAppUrl, icon: GlobeIcon };
+  if (platform === "android")
+    return { label: "Android", href: downloadUrls(release).androidApk, icon: AndroidIcon };
+  return getDesktopDownload(release, platform);
+}
 
 export function AppleIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -158,21 +170,18 @@ export function LinuxIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+// Generic UI icons are Material Symbols (outlined family) to match the app's
+// icon set. See docs/ui-icons.md. Brand/OS logos above stay as their marks.
 export function TerminalIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      viewBox="0 -960 960 960"
+      fill="currentColor"
       aria-hidden="true"
       {...props}
     >
-      <polyline points="4 17 10 11 4 5" />
-      <line x1="12" x2="20" y1="19" y2="19" />
+      <path d="M140-160q-24 0-42-18t-18-42v-520q0-24 18-42t42-18h680q24 0 42 18t18 42v520q0 24-18 42t-42 18H140Zm0-60h680v-436H140v436Zm160-72-42-42 103-104-104-104 43-42 146 146-146 146Zm190 4v-60h220v60H490Z" />
     </svg>
   );
 }
@@ -181,19 +190,12 @@ export function GlobeIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      viewBox="0 -960 960 960"
+      fill="currentColor"
       aria-hidden="true"
       {...props}
     >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18" />
-      <path d="M12 3a15 15 0 0 1 0 18" />
-      <path d="M12 3a15 15 0 0 0 0 18" />
+      <path d="M480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm-.27-60q142.38 0 241.19-99.5T820-480v-13q-6 26-27.41 43.5Q771.19-432 742-432h-80q-33 0-56.5-23.5T582-512v-40H422v-80q0-33 23.5-56.5T502-712h40v-22q0-16 13.5-40t30.5-29q-25-8-51.36-12.5Q508.29-820 480-820q-141 0-240.5 98.81T140-480h150q66 0 113 47t47 113v40H330v105q34 17 71.7 26t78.3 9Z" />
     </svg>
   );
 }

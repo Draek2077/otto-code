@@ -1,6 +1,6 @@
-import { PLUGINS_LINKED } from "~/plugins/launch";
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import "~/styles.css";
-import { DiscordIcon, GitHubIcon } from "~/components/brand-icons";
+import { GitHubIcon } from "~/components/brand-icons";
 import { useStars } from "~/routes/__root";
 
 export function SiteHeader() {
@@ -8,23 +8,27 @@ export function SiteHeader() {
   return (
     <header className="flex flex-col items-center gap-4 md:flex-row md:justify-between">
       <a href="/" className="flex items-center gap-3">
-        <img src="/logo.svg" alt="Paseo" className="w-6 h-6" />
-        <span className="text-lg font-medium">Paseo</span>
+        <img src="/logo-wink.svg" alt="Otto" className="w-12 h-12" />
+        <span className="text-lg font-medium">Otto</span>
       </a>
       <div className="flex flex-wrap items-center justify-center gap-4">
-        {PLUGINS_LINKED && (
-          <a
-            href="/plugins"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Plugins
-          </a>
-        )}
         <a
           href="/blog"
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           Blog
+        </a>
+        <a
+          href="/changelog"
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Releases
+        </a>
+        <a
+          href="/download"
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Downloads
         </a>
         <a
           href="/docs"
@@ -33,34 +37,13 @@ export function SiteHeader() {
           Docs
         </a>
         <a
-          href="/changelog"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Changelog
-        </a>
-        <a
-          href="/download"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Download
-        </a>
-        <a
           href="/sponsor"
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          Sponsor
+          Support
         </a>
         <a
-          href="https://discord.gg/jz8T2uahpH"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Discord"
-          className="text-muted-foreground hover:text-foreground transition-colors inline-flex items-center"
-        >
-          <DiscordIcon width="18" height="18" />
-        </a>
-        <a
-          href="https://github.com/getpaseo/paseo"
+          href="https://github.com/Draek2077/otto-code"
           target="_blank"
           rel="noopener noreferrer"
           aria-label={stars ? `GitHub, ${stars} stars` : "GitHub"}

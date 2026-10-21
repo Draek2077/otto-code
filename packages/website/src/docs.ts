@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import Slugger from "github-slugger";
 
 interface DocFrontmatter {
@@ -157,15 +158,15 @@ export function getDoc(slug: string): Doc | undefined {
   return getDocs().find((d) => d.slug === slug);
 }
 
+const legacyPluginDocRedirects: Readonly<Record<string, string>> = {
+  "/docs/plugins/reference": "/docs/plugins/v0.7/reference",
+  "/docs/plugins/reference.md": "/docs/plugins/v0.7/reference.md",
+  "/docs/plugins/migration": "/docs/plugins/v0.8/migration",
+  "/docs/plugins/migration.md": "/docs/plugins/v0.8/migration.md",
+};
+
 export function getLegacyDocsRedirect(pathname: string): string | undefined {
-  const match =
-    /^\/docs\/plugins\/v0\.[78](?:(\.md)|\/(index|reference|providers|migration)(\.md)?)?\/?$/.exec(
-      pathname,
-    );
-  if (!match) return undefined;
-  const page = match[2] && match[2] !== "index" ? `/${match[2]}` : "";
-  const extension = match[1] || match[3] ? ".md" : "";
-  return `/docs/plugins${page}${extension}`;
+  return legacyPluginDocRedirects[pathname];
 }
 
 function formatLabel(segment: string): string {

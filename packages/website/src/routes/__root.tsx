@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 import { Outlet, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
@@ -17,6 +18,8 @@ const ReleaseCtx = createContext<ReleaseChannels>({
     linuxAppImageAsset: "",
     windowsX64Asset: null,
     windowsArm64Asset: null,
+    macArm64Asset: null,
+    macX64Asset: null,
   },
   beta: null,
 });
@@ -59,12 +62,12 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { name: "theme-color", content: "#101615" },
-      { property: "og:site_name", content: "Paseo" },
+      { name: "theme-color", content: "#18181b" },
+      { property: "og:site_name", content: "Otto" },
       { property: "og:type", content: "website" },
-      { property: "og:image", content: "https://paseo.sh/og-image.png" },
+      { property: "og:image", content: "https://otto-code.me/og-image.png" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:image", content: "https://paseo.sh/og-image.png" },
+      { name: "twitter:image", content: "https://otto-code.me/og-image.png" },
     ],
     links: [
       { rel: "icon", href: "/favicon.ico", sizes: "48x48" },

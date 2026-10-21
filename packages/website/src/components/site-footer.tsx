@@ -1,29 +1,20 @@
-import { PLUGINS_LINKED } from "~/plugins/launch";
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { getAlternativePages } from "~/data/alternative-pages";
-import { appStoreUrl, playStoreUrl, webAppUrl } from "~/downloads";
-import { SponsorsSection } from "~/components/sponsorship";
+import { webAppUrl } from "~/downloads";
 
 interface SiteFooterProps {
-  width?: "default" | "prose" | "wide";
-  /** Pages that show the sponsors in their content turn the footer band off. */
-  sponsors?: boolean;
+  width?: "default" | "prose";
 }
 
-const WIDTH_CLASSES: Record<NonNullable<SiteFooterProps["width"]>, string> = {
-  prose: "max-w-prose p-6 md:p-12 md:pt-0",
-  default: "max-w-5xl p-6 md:p-20 md:pt-0",
-  wide: "max-w-7xl p-6 md:p-20 md:pt-0",
-};
-
-export function SiteFooter({ width = "default", sponsors = true }: SiteFooterProps) {
-  const widthClasses = WIDTH_CLASSES[width];
+export function SiteFooter({ width = "default" }: SiteFooterProps) {
+  const widthClasses =
+    width === "prose" ? "site-footer-frame site-frame-prose" : "site-footer-frame";
   const alternatives = getAlternativePages();
   return (
-    <footer className={`${widthClasses} mx-auto mt-12 md:mt-16`}>
-      {sponsors ? <SponsorsSection placement="footer" /> : null}
+    <footer className={`${widthClasses} mx-auto`}>
       <div className="border-t border-white/10 pt-8 pb-4 grid grid-cols-2 sm:grid-cols-5 gap-8 text-sm">
         <div className="space-y-3">
-          <p className="text-extra-muted-foreground">Product</p>
+          <p className="text-white/60 font-medium">Product</p>
           <div className="space-y-2">
             <a
               href="/blog"
@@ -32,30 +23,28 @@ export function SiteFooter({ width = "default", sponsors = true }: SiteFooterPro
               Blog
             </a>
             <a
+              href="/changelog"
+              className="block text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Releases
+            </a>
+            <a
+              href="/download"
+              className="block text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Downloads
+            </a>
+            <a
               href="/docs"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
               Docs
             </a>
-            {PLUGINS_LINKED && (
-              <a
-                href="/plugins"
-                className="block text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Plugins
-              </a>
-            )}
             <a
-              href="/changelog"
+              href="/sponsor"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
-              Changelog
-            </a>
-            <a
-              href="/hub"
-              className="block text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Hub
+              Support
             </a>
             <a
               href="/docs/cli"
@@ -70,21 +59,15 @@ export function SiteFooter({ width = "default", sponsors = true }: SiteFooterPro
               Privacy
             </a>
             <a
-              href="/terms"
+              href="/security"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
-              Terms
-            </a>
-            <a
-              href="/sponsor"
-              className="block text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Sponsor
+              Security
             </a>
           </div>
         </div>
         <div className="space-y-3">
-          <p className="text-extra-muted-foreground">Agents</p>
+          <p className="text-white/60 font-medium">Agents</p>
           <div className="space-y-2">
             <a
               href="/claude-code"
@@ -105,18 +88,6 @@ export function SiteFooter({ width = "default", sponsors = true }: SiteFooterPro
               OpenCode
             </a>
             <a
-              href="/antigravity"
-              className="block text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Antigravity
-            </a>
-            <a
-              href="/muse-code"
-              className="block text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Muse Code
-            </a>
-            <a
               href="/agents"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
@@ -125,7 +96,7 @@ export function SiteFooter({ width = "default", sponsors = true }: SiteFooterPro
           </div>
         </div>
         <div className="space-y-3">
-          <p className="text-extra-muted-foreground">Alternatives</p>
+          <p className="text-white/60 font-medium">Alternatives</p>
           <div className="space-y-2">
             {alternatives.map((page) => (
               <a
@@ -139,23 +110,23 @@ export function SiteFooter({ width = "default", sponsors = true }: SiteFooterPro
           </div>
         </div>
         <div className="space-y-3">
-          <p className="text-extra-muted-foreground">Community</p>
+          <p className="text-white/60 font-medium">Community</p>
           <div className="space-y-2">
             <a
-              href="https://discord.gg/jz8T2uahpH"
+              href="https://github.com/Draek2077/otto-code/issues"
               target="_blank"
               rel="noopener noreferrer"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
-              Discord
+              Issues
             </a>
             <a
-              href="https://www.reddit.com/r/PaseoAI/"
+              href="https://github.com/Draek2077/otto-code"
               target="_blank"
               rel="noopener noreferrer"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
-              Reddit
+              GitHub
             </a>
             <a
               href="https://github.com/getpaseo/paseo"
@@ -163,31 +134,21 @@ export function SiteFooter({ width = "default", sponsors = true }: SiteFooterPro
               rel="noopener noreferrer"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
-              GitHub
+              Paseo (upstream)
             </a>
           </div>
         </div>
         <div className="space-y-3">
-          <p className="text-extra-muted-foreground">Download</p>
+          <p className="text-white/60 font-medium">Download</p>
           <div className="space-y-2">
             <a
-              href={appStoreUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/download"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
-              App Store
+              Android (APK)
             </a>
             <a
-              href={playStoreUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Google Play
-            </a>
-            <a
-              href="https://github.com/getpaseo/paseo/releases"
+              href="https://github.com/Draek2077/otto-code/releases"
               target="_blank"
               rel="noopener noreferrer"
               className="block text-muted-foreground hover:text-foreground transition-colors"

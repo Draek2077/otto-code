@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { DocsMarkdown } from "~/components/docs-markdown";
 import { SiteShell } from "~/components/site-shell";
 import { getAlternativePage } from "~/data/alternative-pages";
@@ -9,7 +10,7 @@ export function alternativeRouteOptions(slug: string) {
   return {
     head: () =>
       pageMeta(
-        page?.title ?? "Alternative - Paseo",
+        page?.title ?? "Alternative - Otto",
         page?.description ?? "",
         `/alternatives/${slug}`,
       ),
@@ -32,9 +33,7 @@ function AlternativePageContent({ slug }: { slug: string }) {
 
   return (
     <SiteShell width="default">
-      <div className="comparison-prose">
-        <DocsMarkdown>{page.content}</DocsMarkdown>
-      </div>
+      <DocsMarkdown>{page.content}</DocsMarkdown>
     </SiteShell>
   );
 }

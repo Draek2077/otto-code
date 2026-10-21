@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { createFileRoute } from "@tanstack/react-router";
 import ReactMarkdown from "react-markdown";
 import { getPost, formatDate } from "~/posts";
@@ -8,8 +9,8 @@ export const Route = createFileRoute("/blog/$")({
     const slug = params._splat ?? "";
     const path = `/blog/${slug}`;
     const post = getPost(slug);
-    if (!post) return pageMeta("Not Found - Paseo", "Post not found.", path);
-    return pageMeta(`${post.frontmatter.title} - Paseo`, post.frontmatter.description, path);
+    if (!post) return pageMeta("Not Found - Otto", "Post not found.", path);
+    return pageMeta(`${post.frontmatter.title} - Otto`, post.frontmatter.description, path);
   },
   component: BlogPost,
 });
@@ -46,13 +47,12 @@ function BlogPost() {
         <h1 className="text-4xl font-bold mb-4">{post.frontmatter.title}</h1>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <a
-            href="https://x.com/moboudra"
+            href="https://github.com/Draek2077"
             target="_blank"
             rel="nofollow noopener noreferrer"
             className="flex items-center gap-3 text-foreground hover:text-primary transition-colors"
           >
-            <img src="/9viSwGkz_400x400.jpg" alt="Mo Boudra" className="size-6 rounded-full" />
-            <span className="font-medium">Mo Boudra</span>
+            <span className="font-medium">Philippe</span>
           </a>
           <span>·</span>
           <span className="tabular-nums">{formatDate(new Date(post.frontmatter.date))}</span>
