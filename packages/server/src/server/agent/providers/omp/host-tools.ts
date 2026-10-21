@@ -92,7 +92,8 @@ function sendMissingCatalogResult(
   runtimeSession.sendHostToolResult(
     toOmpHostToolErrorResult(
       request.id,
-      `Host tool "${request.toolName}" was called before Paseo tools were registered`,
+      // OTTO(identity)
+      `Host tool "${request.toolName}" was called before Otto tools were registered`,
     ),
   );
 }

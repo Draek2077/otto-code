@@ -170,7 +170,8 @@ export class OpenCodeBridge {
       if (request.method === "GET" && contextMatch) {
         const binding = this.sessions.get(decodeURIComponent(contextMatch[1]));
         if (!binding) {
-          sendJson(response, 404, { error: "OpenCode session is not bound to a Paseo agent" });
+          // OTTO(identity)
+          sendJson(response, 404, { error: "OpenCode session is not bound to an Otto agent" });
           return;
         }
         sendJson(response, 200, {
@@ -244,15 +245,18 @@ export class OpenCodeBridge {
   }): Promise<void> {
     const binding = this.sessions.get(input.sessionId);
     if (!binding) {
-      sendJson(input.response, 404, { error: "OpenCode session is not bound to a Paseo agent" });
+      // OTTO(identity)
+      sendJson(input.response, 404, { error: "OpenCode session is not bound to an Otto agent" });
       return;
     }
     if (!binding.tools) {
-      sendJson(input.response, 403, { error: "Paseo tools are disabled for this session" });
+      // OTTO(identity)
+      sendJson(input.response, 403, { error: "Otto tools are disabled for this session" });
       return;
     }
     if (!binding.tools.getTool(input.toolName)) {
-      throw new OpenCodeBridgeClientError(404, `Paseo tool not found: ${input.toolName}`);
+      // OTTO(identity)
+      throw new OpenCodeBridgeClientError(404, `Otto tool not found: ${input.toolName}`);
     }
     const body = await readJsonBody(input.request);
     const controller = new AbortController();

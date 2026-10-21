@@ -286,7 +286,8 @@ async function resolveEntryPaths(directory: string): Promise<{
   const legacyEntry = await findEntry(directory, ["index.ts", "index.tsx"]);
   if (legacyEntry) {
     throw new Error(
-      "This plugin was made for an older version of Paseo and cannot run on Paseo v0.8. Ask its author to update it. Plugin authors can follow the migration guide: https://paseo.sh/docs/plugins/migration",
+      // OTTO(identity)
+      "This plugin was made for a plugin API older than Paseo v0.8 and cannot run in Otto. Ask its author to update it. Plugin authors can follow the migration guide: https://otto-code.me/docs/plugins/migration",
     );
   }
   throw new Error(

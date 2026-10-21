@@ -702,7 +702,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     ): Promise<PaseoToolResult> {
       const tool = tools.get(name);
       if (!tool) {
-        throw new PaseoToolInputError(`Paseo tool not found: ${name}`);
+        // OTTO(identity)
+        throw new PaseoToolInputError(`Otto tool not found: ${name}`);
       }
       return tool.handler(await parseToolInput(tool, input), context);
     },
@@ -1024,7 +1025,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           .string()
           .min(1)
           .optional()
-          .describe("Optional worktree slug/path label. Omit to let Paseo generate one."),
+          // OTTO(identity)
+          .describe("Optional worktree slug/path label. Omit to let Otto generate one."),
         branchName: z
           .string()
           .min(1)
@@ -1037,21 +1039,24 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           .describe("Optional base branch. Defaults to the repository default branch."),
       })
       .strict()
-      .describe("Create a new branch in a new Paseo worktree."),
+      // OTTO(identity)
+      .describe("Create a new branch in a new Otto worktree."),
     z
       .object({
         kind: z.literal("checkout-branch"),
         branch: z.string().min(1).describe("Existing branch to check out."),
       })
       .strict()
-      .describe("Check out an existing branch in a new Paseo worktree."),
+      // OTTO(identity)
+      .describe("Check out an existing branch in a new Otto worktree."),
     z
       .object({
         kind: z.literal("checkout-pr"),
         githubPrNumber: z.number().int().positive().describe("GitHub pull request number."),
       })
       .strict()
-      .describe("Check out a GitHub pull request in a new Paseo worktree."),
+      // OTTO(identity)
+      .describe("Check out a GitHub pull request in a new Otto worktree."),
   ]);
   const AgentWorkspaceInputSchema = z.discriminatedUnion("kind", [
     z
@@ -1324,7 +1329,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     {
       title: "Create workspace",
       description:
-        "Create a workspace using an existing local checkout or a new Paseo-managed worktree.",
+        // OTTO(identity)
+        "Create a workspace using an existing local checkout or a new Otto-managed worktree.",
       inputSchema: {
         isolation: z.enum(["local", "worktree"]),
         path: z
@@ -2386,10 +2392,12 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     {
       title: "Start workspace script",
       description:
-        "Start one configured workspace script through Paseo's managed workspace-script launcher.",
+        // OTTO(identity)
+        "Start one configured workspace script through Otto's managed workspace-script launcher.",
       inputSchema: {
         workspaceId: z.string().describe("Workspace ID containing the configured script."),
-        scriptName: z.string().min(1).describe("Configured paseo.json script name to start."),
+        // OTTO(identity)
+        scriptName: z.string().min(1).describe("Configured otto.json script name to start."),
       },
       outputSchema: {
         script: WorkspaceScriptPayloadSchema,
@@ -2415,7 +2423,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       description: "Stop a running workspace script through its supervised terminal lifecycle.",
       inputSchema: {
         workspaceId: z.string().describe("Workspace ID containing the running script."),
-        scriptName: z.string().min(1).describe("Configured paseo.json script name to stop."),
+        // OTTO(identity)
+        scriptName: z.string().min(1).describe("Configured otto.json script name to stop."),
       },
       outputSchema: {
         script: WorkspaceScriptPayloadSchema,

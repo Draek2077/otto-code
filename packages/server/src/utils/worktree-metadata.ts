@@ -320,7 +320,8 @@ export function requirePaseoWorktreeBaseRefName(worktreeRoot: string): string {
   const metadataPath = getPaseoWorktreeMetadataPath(worktreeRoot);
   const metadata = readPaseoWorktreeMetadata(worktreeRoot);
   if (!metadata) {
-    throw new Error(`Missing Paseo worktree base metadata: ${metadataPath}`);
+    // OTTO(identity)
+    throw new Error(`Missing Otto worktree base metadata: ${metadataPath}`);
   }
   return metadata.baseRefName;
 }

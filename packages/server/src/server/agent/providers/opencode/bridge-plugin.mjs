@@ -14,7 +14,8 @@ export default async function paseoPlugin(input, options) {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       const detail = formatErrorDetail(payload.issues ?? payload.details);
-      const message = payload.error ?? `Paseo OpenCode bridge failed: ${response.status}`;
+      // OTTO(identity)
+      const message = payload.error ?? `Otto OpenCode bridge failed: ${response.status}`;
       const error = new Error(detail ? `${message}: ${detail}` : message);
       error.status = response.status;
       if (detail) error.details = detail;

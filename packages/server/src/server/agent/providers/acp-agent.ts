@@ -1471,7 +1471,8 @@ export class ACPAgentClient implements AgentClient {
               this.clientCapabilityMeta,
               configuredOptions.clientCapabilities ?? this.clientCapabilities,
             ),
-            clientInfo: { name: "Paseo", version: "dev" },
+            // OTTO(identity)
+            clientInfo: { name: "Otto", version: "dev" },
           }),
           transport.spawnError,
           ...(initializeTimeoutPromise ? [initializeTimeoutPromise] : []),
@@ -2929,7 +2930,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
             this.clientCapabilityMeta,
             this.clientCapabilities,
           ),
-          clientInfo: { name: "Paseo", version: "dev" },
+          // OTTO(identity)
+          clientInfo: { name: "Otto", version: "dev" },
         }),
         spawnError,
       ]),

@@ -1107,7 +1107,8 @@ export async function deletePaseoWorktree({
   } else if (cwd) {
     resolvedWorktreesRoot = await getPaseoWorktreesRoot(cwd, paseoHome, worktreesBaseRoot);
   } else {
-    throw new Error("cwd or worktreesRoot is required to delete a Paseo worktree");
+    // OTTO(identity)
+    throw new Error("cwd or worktreesRoot is required to delete an Otto worktree");
   }
 
   const requestedPath = worktreePath ?? join(resolvedWorktreesRoot, worktreeSlug!);
@@ -1124,7 +1125,8 @@ export async function deletePaseoWorktree({
     resolvedWorktree,
   );
   if (relativeWorktreePath === null || relativeWorktreePath === "") {
-    throw new Error("Refusing to delete non-Paseo worktree");
+    // OTTO(identity)
+    throw new Error("Refusing to delete non-Otto worktree");
   }
 
   if (await pathExists(resolvedWorktree)) {
@@ -1669,10 +1671,12 @@ async function validateGitBranchName(cwd: string, branchName: string): Promise<v
 function normalizeRequiredBaseBranch(baseBranch: string): string {
   const normalizedBaseBranch = normalizeBaseRefName(baseBranch);
   if (!normalizedBaseBranch) {
-    throw new Error("Base branch is required when creating a Paseo worktree");
+    // OTTO(identity)
+    throw new Error("Base branch is required when creating an Otto worktree");
   }
   if (normalizedBaseBranch === "HEAD") {
-    throw new Error("Base branch cannot be HEAD when creating a Paseo worktree");
+    // OTTO(identity)
+    throw new Error("Base branch cannot be HEAD when creating an Otto worktree");
   }
   return normalizedBaseBranch;
 }

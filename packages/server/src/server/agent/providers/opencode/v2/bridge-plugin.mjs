@@ -19,7 +19,8 @@ export default {
         const message =
           typeof payload?.error === "string" && payload.error
             ? payload.error
-            : `Paseo tool bridge returned HTTP ${response.status}`;
+            : // OTTO(identity)
+              `Otto tool bridge returned HTTP ${response.status}`;
         const error = new Error(detail ? `${message}: ${detail}` : message);
         error.status = response.status;
         if (detail) error.details = detail;
@@ -40,7 +41,8 @@ export default {
         const session = await context.session.get({ sessionID });
         sessionID = session.parentID;
       }
-      throw new Error("OpenCode session is not bound to a Paseo agent");
+      // OTTO(identity)
+      throw new Error("OpenCode session is not bound to an Otto agent");
     }
     const manifest = await request("/tools");
     const registration = await context.tool.transform((editor) => {
