@@ -53,6 +53,11 @@ The workflow accepts `checkout_ref` and `publish=false` for branch verification.
 That mode skips GitHub release creation and retains the signed APK as a workflow
 artifact. A normal release tag attaches the APK to its GitHub release.
 
+Set `include_aab=true` to build an AAB in the same native pass and retain it as a
+workflow artifact. The bundle's JAR signature must verify and its certificate must
+match the verified release APK. This check uses no EAS build quota and performs no
+Play submission.
+
 Google Play AAB submission and iOS submission remain separate workflows with their
 existing credentials and gates. Play's internal submission profile is preserved;
 building a sideloadable APK does not depend on an EAS quota or a Play submission.

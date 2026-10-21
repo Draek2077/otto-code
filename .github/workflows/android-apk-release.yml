@@ -46,6 +46,11 @@ on:
         default: "true"
         type: choice
         options: ["true", "false"]
+      include_aab:
+        description: "Also build and retain a signed AAB for verification; does not submit to Play."
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: android-apk-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
@@ -55,6 +60,7 @@ env:
   SHOULD_PUBLISH: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false' }}
   CHECKOUT_REF: ${{ github.event.inputs.checkout_ref || github.event.inputs.tag || github.ref }}
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+  INCLUDE_AAB: ${{ github.event.inputs.include_aab || 'false' }}
 
 jobs:
   # Keep release creation/wait separate from the expensive APK build.
@@ -330,7 +336,9 @@ jobs:
           sampler=$!
           trap 'kill "$sampler" 2>/dev/null || true' EXIT
 
-          ./gradlew :app:assembleRelease \
+          release_tasks=(:app:assembleRelease)
+          if [ "$INCLUDE_AAB" = "true" ]; then release_tasks+=(:app:bundleRelease); fi
+          ./gradlew "${release_tasks[@]}" \
             --no-parallel --max-workers=1 \
             -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease \
             -x generateReleaseLintModel -x generateReleaseLintVitalModel \
@@ -382,6 +390,36 @@ jobs:
 
           echo "asset_name=$asset_name" >> "$GITHUB_OUTPUT"
           echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
+
+      # OTTO(release): exercise Play's bundle format without EAS quota or a store write.
+      - name: Verify the optional Android App Bundle
+        id: bundle
+        if: env.INCLUDE_AAB == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          aab="$(find packages/app/android/app/build/outputs/bundle/release -name '*.aab' | head -n 1)"
+          test -n "$aab"
+          unzip -Z1 "$aab" | grep -Fx base/manifest/AndroidManifest.xml
+          jarsigner -verify -verbose "$aab" > "$RUNNER_TEMP/aab-signature.txt"
+          grep -F 'jar verified.' "$RUNNER_TEMP/aab-signature.txt"
+          keytool -printcert -jarfile "$aab" > "$RUNNER_TEMP/aab-certificate.txt"
+          bundle_digest="$(sed -n 's/^[[:space:]]*SHA256: //p' "$RUNNER_TEMP/aab-certificate.txt" | head -n 1 | tr -d ':' | tr 'A-F' 'a-f')"
+          apk_digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/signer.txt")"
+          test -n "$bundle_digest"
+          test "$bundle_digest" = "$apk_digest"
+          asset_path="$RUNNER_TEMP/otto-${RELEASE_TAG}-android.aab"
+          cp "$aab" "$asset_path"
+          echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
+
+      - name: Retain verification AAB as a workflow artifact
+        if: env.INCLUDE_AAB == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: otto-android-aab
+          path: ${{ steps.bundle.outputs.asset_path }}
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload APK to GitHub Release
         if: env.SHOULD_PUBLISH == 'true'
