@@ -5,6 +5,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const { smokePackagedDesktopApp } = require("./packaged-app-smoke.js");
+const { OTTO_PRODUCT_NAME } = require("@getpaseo/protocol/otto/identity");
+const installedPath = path.join("/opt", OTTO_PRODUCT_NAME);
 
 async function main() {
   if (process.getuid() === 0) throw new Error("Launch the smoke as an unprivileged user");
@@ -20,18 +22,18 @@ async function main() {
   };
   try {
     process.env.PASEO_DESKTOP_SMOKE_ARTIFACT_DIR = path.join(artifactRoot, "installed");
-    const helper = fs.statSync("/opt/Paseo/chrome-sandbox");
+    const helper = fs.statSync(path.join(installedPath, "chrome-sandbox"));
     if (helper.uid !== 0 || (helper.mode & 0o7777) !== 0o4755) {
       throw new Error("Installed native package did not provide a root-owned 4755 helper");
     }
-    await smokePackagedDesktopApp({ appPath: "/opt/Paseo", expectedSandbox: true });
+    await smokePackagedDesktopApp({ appPath: installedPath, expectedSandbox: true });
     if (installedOnly) return;
 
     const appImage = findArtifact(".AppImage");
     fs.chmodSync(appImage, 0o755);
     execFileSync(appImage, ["--appimage-extract"], { cwd: extracted, stdio: "ignore" });
     const appDir = path.join(extracted, "squashfs-root");
-    const desktopEntry = fs.readFileSync(path.join(appDir, "Otto.desktop"), "utf8");
+    const desktopEntry = fs.readFileSync(path.join(appDir, `${OTTO_PRODUCT_NAME}.desktop`), "utf8");
     if (/^Exec=.*--no-sandbox/m.test(desktopEntry)) {
       throw new Error("AppImage desktop entry bypasses runtime sandbox policy");
     }
@@ -46,7 +48,7 @@ async function main() {
     const tarDir = path.join(extracted, "tar");
     fs.mkdirSync(tarDir);
     execFileSync("tar", ["-xzf", findArtifact(".tar.gz"), "-C", tarDir]);
-    const appPath = fs.existsSync(path.join(tarDir, "Otto"))
+    const appPath = fs.existsSync(path.join(tarDir, OTTO_PRODUCT_NAME))
       ? tarDir
       : path.join(tarDir, fs.readdirSync(tarDir)[0]);
     process.env.PASEO_DESKTOP_SMOKE_ARTIFACT_DIR = path.join(artifactRoot, "tar");
