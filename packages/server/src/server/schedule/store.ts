@@ -7,7 +7,8 @@ import {
   type ScheduleTarget,
   type StoredSchedule,
 } from "@getpaseo/protocol/schedule/types";
-import { writeJsonFileAtomic } from "../atomic-file.js";
+// OTTO(store-continuity): preserve dormant schedule fields and skip unsupported saved targets.
+import { parseOttoStoredSchedule, writeOttoStoredSchedule } from "../otto/schedule-continuity.js";
 
 function generateScheduleId(): string {
   return randomBytes(4).toString("hex");
@@ -94,10 +95,10 @@ function parseStoredSchedule(
   let json: unknown;
   try {
     json = JSON.parse(content);
+    return { success: true, data: parseOttoStoredSchedule(json) };
   } catch (error) {
     return { success: false, error };
   }
-  return StoredScheduleSchema.safeParse(json);
 }
 
 export class ScheduleStore {
@@ -151,7 +152,7 @@ export class ScheduleStore {
     await this.ensureDir();
     try {
       const content = await readFile(this.filePath(id), "utf-8");
-      return StoredScheduleSchema.parse(JSON.parse(content));
+      return parseOttoStoredSchedule(JSON.parse(content)); // OTTO(store-continuity)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return null;
@@ -218,7 +219,7 @@ export class ScheduleStore {
 
   private async write(schedule: StoredSchedule): Promise<void> {
     await this.ensureDir();
-    await writeJsonFileAtomic(this.filePath(schedule.id), schedule);
+    await writeOttoStoredSchedule(this.filePath(schedule.id), schedule); // OTTO(store-continuity)
   }
 
   async delete(id: string): Promise<void> {

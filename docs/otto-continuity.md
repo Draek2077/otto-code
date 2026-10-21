@@ -47,3 +47,12 @@ The opt-in server test `src/server/otto/hosted-relay.real.e2e.test.ts` pairs an 
 daemon through the hosted relay, exchanges encrypted RPCs while reporting Otto
 version `0.10.0`, and opens a second connection. Run it from `packages/server` with
 `RUN_LIVE_RELAY_E2E=1 npx vitest run src/server/otto/hosted-relay.real.e2e.test.ts --bail=1`.
+
+## Saved schedules during the clean baseline
+
+Otto schedule metadata and run history survive supported schedule rewrites. Saved
+workflow targets, profile-bound targets and legacy flat provider policies remain
+intact on disk but are excluded from execution while their owning Otto features
+await restoration. They are not launched with those settings silently stripped.
+The daemon logs the unsupported target; ordinary Paseo schedules keep their normal
+behavior. Explicit deletion still deletes the selected schedule.
