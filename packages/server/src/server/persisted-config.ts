@@ -11,6 +11,8 @@ import {
 } from "./agent/provider-launch-config.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
+import { migrateOttoConfig } from "./otto/config-migration.js";
+import { ensureOttoHomeSnapshot } from "./otto/home-snapshot.js";
 import { AgentProfileSchema, AgentSkillSelectionSchema } from "@getpaseo/protocol/agent-profile";
 import { PluginIdSchema, PluginSourceSchema } from "@getpaseo/protocol/plugin-config";
 import { TerminalProfileSchema } from "@getpaseo/protocol/terminal-profile";
@@ -374,7 +376,7 @@ const DEFAULT_PERSISTED_CONFIG = PersistedConfigSchema.parse({
     },
   },
   app: {
-    baseUrl: "https://app.paseo.sh",
+    baseUrl: OTTO_APP_BASE_URL, // OTTO(identity)
   },
 }) as PersistedConfig;
 
@@ -432,6 +434,8 @@ function stripRemovedConfigFields(parsed: unknown): unknown {
 
 export function loadPersistedConfig(paseoHome: string, logger?: LoggerLike): PersistedConfig {
   const log = getLogger(logger);
+  // OTTO(config-migration): keep an untouched copy of an earlier Otto home first.
+  ensureOttoHomeSnapshot(paseoHome);
   const configPath = getConfigPath(paseoHome);
 
   if (!existsSync(configPath)) {
@@ -491,7 +495,11 @@ function parseConfigFile(configPath: string, raw: string): PersistedConfig {
     });
   }
 
-  const result = PersistedConfigSchema.safeParse(stripRemovedConfigFields(parsed));
+  // OTTO(config-migration): move Otto 0.9 settings out of config.json before Paseo's
+  // strict schema sees them; they are kept in otto-config.json.
+  const result = PersistedConfigSchema.safeParse(
+    migrateOttoConfig(configPath, stripRemovedConfigFields(parsed), PersistedConfigSchema),
+  );
   if (!result.success) {
     const issues = result.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
