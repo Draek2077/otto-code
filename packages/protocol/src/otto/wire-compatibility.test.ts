@@ -95,7 +95,7 @@ describe("Otto 0.9 transport names", () => {
     const encoded = encodeOttoServerMessage(current);
     expect(JSON.stringify(encoded)).toContain('"isOttoOwnedWorktree":false');
     expect(validateWSOutboundMessage(encoded).success).toBe(true);
-    expect(normalizeOttoServerMessage(encoded)).toEqual(encoded);
+    expect(normalizeOttoServerMessage(encoded)).toEqual(current);
     expect(current).toEqual(session(message));
   });
 
@@ -180,7 +180,12 @@ describe("Otto 0.9 transport names", () => {
         isOttoOwnedWorktree: true,
       },
     });
-    expect(normalizeOttoServerMessage(input)).toBe(input);
+    expect(normalizeOttoServerMessage(input)).toEqual(
+      session({
+        type: "checkout_status_response",
+        payload: { isPaseoOwnedWorktree: false },
+      }),
+    );
     expect(encodeOttoServerMessage(input)).toMatchObject({
       message: {
         payload: {

@@ -8,12 +8,14 @@ import {
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { seedSavedSettingsHosts } from "../support/helpers/settings";
-import { LAST_WORKSPACE_SELECTION_STORAGE_KEY } from "@/stores/last-workspace-selection";
 import { buildHostWorkspaceRoute, buildNewWorkspaceRoute } from "@/utils/host-routes";
 import {
   switchWorkspaceViaSidebar,
   waitForSidebarHydration,
 } from "../support/helpers/workspace-ui";
+
+// OTTO(identity): browser fixtures seed the preserved physical key directly.
+const LAST_WORKSPACE_SELECTION_STORAGE_KEY = "otto:last-workspace-route-selection";
 
 const OFFLINE_SERVER_IDS = [
   "srv_e2e_preselect_offline_1",

@@ -33,6 +33,16 @@ function booleanAlias(value: unknown, from: string, to: string, overwrite = fals
   return { ...value, [to]: value[from] };
 }
 
+function decodeBooleanAlias(value: unknown, from: string, to: string): unknown {
+  const decoded = booleanAlias(value, from, to);
+  if (!record(decoded) || !Object.hasOwn(decoded, from)) return decoded;
+  // The generated validator retains unknown fields. Consume transport aliases
+  // here so strict local cache schemas receive only the canonical representation.
+  const canonical = { ...decoded };
+  delete canonical[from];
+  return canonical;
+}
+
 const RPC_NAMES: Readonly<Record<string, string>> = {
   otto_worktree_list_request: "paseo_worktree_list_request",
   otto_worktree_archive_request: "paseo_worktree_archive_request",
@@ -61,7 +71,7 @@ function serverMessage(input: unknown, legacy: boolean, legacyRpcNames: boolean)
   const renamed = renameType(input, legacyRpcNames ? LEGACY_RPC_NAMES : RPC_NAMES);
   if (!record(renamed)) return renamed;
   const ownership: Mapper = (value) =>
-    booleanAlias(
+    (legacy ? booleanAlias : decodeBooleanAlias)(
       value,
       legacy ? "isPaseoOwnedWorktree" : "isOttoOwnedWorktree",
       legacy ? "isOttoOwnedWorktree" : "isPaseoOwnedWorktree",
@@ -71,7 +81,7 @@ function serverMessage(input: unknown, legacy: boolean, legacyRpcNames: boolean)
   const workspace: Mapper = (value) =>
     field(
       field(
-        booleanAlias(
+        (legacy ? booleanAlias : decodeBooleanAlias)(
           value,
           legacy ? "background" : "hidden",
           legacy ? "hidden" : "background",
@@ -113,7 +123,7 @@ function serverMessage(input: unknown, legacy: boolean, legacyRpcNames: boolean)
       case "stash_list_response":
         return field(payload, "entries", (values) =>
           items(values, (value) =>
-            booleanAlias(
+            (legacy ? booleanAlias : decodeBooleanAlias)(
               value,
               legacy ? "isPaseo" : "isOtto",
               legacy ? "isOtto" : "isPaseo",

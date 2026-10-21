@@ -73,8 +73,9 @@ The transport codec in `packages/protocol/src/otto/wire-compatibility.ts` contai
 the compatibility boundary for existing Otto clients and hosts. Paseo's internal
 types and RPC names remain canonical. The daemon adds Otto's previous checkout,
 workspace-visibility and stash ownership fields at their declared wire locations.
-The client decodes those previous fields before full protocol validation; a
-malformed canonical value still fails validation.
+The client consumes those previous fields before full protocol validation and
+passes only canonical names downstream, keeping strict local caches compatible.
+A malformed canonical value still fails validation.
 
 The daemon accepts the previous worktree RPC names and responds using the
 requesting socket's dialect. Other sockets sharing the session retain their own

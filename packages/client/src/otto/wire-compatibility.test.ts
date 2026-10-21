@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { DaemonClient, type DaemonTransport } from "../daemon-client.js";
+import { encodeOttoServerMessage } from "@getpaseo/protocol/otto/wire-compatibility";
 
 test("uses the old host's worktree dialect and resets it on new server_info", async () => {
   const sent: string[] = [];
@@ -73,6 +74,53 @@ test("uses the old host's worktree dialect and resets it on new server_info", as
       },
     });
     await expect(currentRequest).resolves.toMatchObject({ worktrees: [], error: null });
+
+    const workspaces = client.fetchWorkspaces();
+    const listWire = JSON.parse(sent.at(-1)!).message;
+    const checkout = {
+      cwd: "/repo",
+      isGit: true,
+      currentBranch: "main",
+      remoteUrl: null,
+      worktreeRoot: "/repo",
+      isPaseoOwnedWorktree: false,
+      mainRepoRoot: null,
+    };
+    const workspace = {
+      id: "wks_1",
+      projectId: "/repo",
+      projectDisplayName: "Repo",
+      projectRootPath: "/repo",
+      workspaceDirectory: "/repo",
+      projectKind: "git",
+      workspaceKind: "local_checkout",
+      name: "Repo",
+      status: "done",
+      activityAt: null,
+      scripts: [],
+      background: false,
+      gitRuntime: { isPaseoOwnedWorktree: false },
+      project: { projectKey: "/repo", projectName: "Repo", checkout },
+    };
+    const frame = JSON.stringify(
+      encodeOttoServerMessage({
+        type: "session",
+        message: {
+          type: "fetch_workspaces_response",
+          payload: {
+            requestId: listWire.requestId,
+            entries: [workspace],
+            pageInfo: { nextCursor: null, prevCursor: null, hasMore: false },
+          },
+        },
+      }),
+    );
+    expect(frame).toContain('"isOttoOwnedWorktree":false');
+    receive(frame);
+    const [canonical] = (await workspaces).entries;
+    expect(canonical?.gitRuntime).toEqual({ isPaseoOwnedWorktree: false });
+    expect(canonical?.project?.checkout).toEqual(checkout);
+    expect(canonical).not.toHaveProperty("hidden");
     expect(logger.warn).not.toHaveBeenCalled();
   } finally {
     await client.close();
