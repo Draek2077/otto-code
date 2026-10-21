@@ -5,6 +5,7 @@ import {
   encodeOttoClientMessage,
   encodeOttoServerMessage,
   isLegacyOttoServerInfo,
+  isDormantOttoNotification,
   normalizeOttoClientMessage,
   normalizeOttoServerMessage,
   usesLegacyOttoRpcNames,
@@ -306,5 +307,24 @@ describe("Otto 0.9 transport names", () => {
     for (const input of [null, [], "hello", { type: "pong" }, session(null)]) {
       expect(normalizeOttoServerMessage(input)).toBe(input);
     }
+  });
+
+  it("recognizes only the dormant UI notifications' declared envelopes", () => {
+    expect(isDormantOttoNotification(session({ type: "activity_stats_changed" }))).toBe(true);
+    expect(
+      isDormantOttoNotification(
+        session({
+          type: "suggested_tasks_changed",
+          payload: {
+            parentAgentId: "parent",
+            tasks: [],
+          },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isDormantOttoNotification(session({ type: "suggested_tasks_changed", payload: {} })),
+    ).toBe(false);
+    expect(isDormantOttoNotification(session({ type: "rpc_error" }))).toBe(false);
   });
 });

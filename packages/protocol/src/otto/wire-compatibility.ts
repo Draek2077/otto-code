@@ -189,13 +189,15 @@ export function isLegacyOttoServerInfo(input: unknown): boolean {
   );
 }
 
-// The old stats UI's invalidation signal carries no payload. Accept and ignore
-// it while that Otto feature is dormant, rather than logging a protocol error.
+// These old UI invalidations have no consumer while their Otto features are
+// dormant. Only recognize their declared shapes; never hide arbitrary RPC errors.
 export function isDormantOttoNotification(input: unknown): boolean {
+  if (!record(input) || input.type !== "session" || !record(input.message)) return false;
+  if (input.message.type === "activity_stats_changed") return true;
   return (
-    record(input) &&
-    input.type === "session" &&
-    record(input.message) &&
-    input.message.type === "activity_stats_changed"
+    input.message.type === "suggested_tasks_changed" &&
+    record(input.message.payload) &&
+    typeof input.message.payload.parentAgentId === "string" &&
+    Array.isArray(input.message.payload.tasks)
   );
 }

@@ -79,8 +79,9 @@ malformed canonical value still fails validation.
 The daemon accepts the previous worktree RPC names and responds using the
 requesting socket's dialect. Other sockets sharing the session retain their own
 dialect. Clients recognize an Otto 0.9 host by its version and existing Brain
-capability, without treating a genuine Paseo host as an Otto host. A payload-free
-legacy activity-statistics invalidation is ignored while that UI is dormant.
+capability, without treating a genuine Paseo host as an Otto host. Legacy
+activity-statistics and suggested-task invalidations are ignored while those UIs
+are dormant.
 Arbitrary tool results, plugin payloads, user configuration, and the relay and
 Hub transport protocols are outside this codec.
 

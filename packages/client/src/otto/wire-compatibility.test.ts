@@ -45,6 +45,7 @@ test("uses the old host's worktree dialect and resets it on new server_info", as
     info("0.9.35", { brainControl: true });
     await connected;
     message({ type: "activity_stats_changed" });
+    message({ type: "suggested_tasks_changed", payload: { parentAgentId: "parent", tasks: [] } });
     const oldRequest = client.getPaseoWorktreeList({ cwd: "/repo" });
     const oldWire = JSON.parse(sent.at(-1)!).message;
     expect(oldWire.type).toBe("otto_worktree_list_request");

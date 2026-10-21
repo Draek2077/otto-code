@@ -6415,7 +6415,7 @@ export class DaemonClient {
       this.endTraceSection(parseTraceOpen);
     }
 
-    // OTTO(protocol): the former stats UI's payload-free signal has no consumer yet.
+    // OTTO(protocol): former stats/task UI invalidations have no consumer yet.
     if (this.legacyOttoWireNames && isDormantOttoNotification(parsedJson)) return;
     // OTTO(protocol): decoding aliases never bypasses complete message validation.
     const parsed = validateWSOutboundMessage(normalizeOttoServerMessage(parsedJson));
