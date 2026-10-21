@@ -102,3 +102,13 @@ changed Paseo files.
 `--check` fails when a modified Paseo file has no marker and no registry entry. Keep the modified
 count as small as possible; new Otto functionality belongs in Otto-owned files, named Otto, under
 `otto/` directories or `packages/otto-*`.
+
+## Brand asset maintenance
+
+The SVG masters in `branding/` define Otto's face. Run
+`node scripts/otto/generate-brand-assets.mjs` to generate the app, adaptive Android,
+notification, splash, browser status, PWA, desktop ICO/ICNS/Linux and website icons.
+Keep Paseo's asset filenames so its existing build pipelines consume Otto artwork.
+Both website mockup sets share `components/otto/brand-mark.tsx`.
+CI runs the generator with `--check` to reject stale or replaced artwork without
+rewriting files.

@@ -1,5 +1,4 @@
-<!-- OTTO(website): retain Otto public site and manual content. -->
-<svg width="48" height="48" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none"><rect width="512" height="512" rx="114" fill="black"/><svg x="24" y="24" width="464" height="464" viewBox="0 0 512 512" fill="none">
+<svg width="48" height="48" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none"><!-- OTTO(identity): generated from branding/otto-icon.svg. --><rect width="512" height="512" rx="114" fill="black"/><svg x="24" y="24" width="464" height="464" viewBox="0 0 512 512" fill="none">
   <g stroke="white" stroke-width="28">
     <circle cx="114.72778" cy="280" r="70"/>
     <circle cx="396.91559" cy="280" r="70"/>

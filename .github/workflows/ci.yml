@@ -100,6 +100,10 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npm run lint
 
+      # OTTO(identity): generated artwork must match Otto masters on every build.
+      - name: Verify Otto brand assets
+        run: node scripts/otto/generate-brand-assets.mjs --check
+
       - name: Test lint rules
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
         run: node --test scripts/oxlint/paseo-plugin.test.mjs
