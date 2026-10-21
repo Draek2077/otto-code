@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// OTTO(dev-isolation): seed the same checkout-local home every launcher uses.
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -18,8 +19,9 @@ seedPaseoHome();
 copyServerEnv();
 
 function seedPaseoHome() {
-  const source = process.env.PASEO_DEV_SEED_HOME || join(sourceRoot, ".dev/paseo-home");
-  const target = join(targetRoot, ".dev/paseo-home");
+  const source =
+    process.env.PASEO_DEV_SEED_HOME || join(sourceRoot, "packages/desktop/.dev/otto-home");
+  const target = join(targetRoot, "packages/desktop/.dev/otto-home");
 
   if (!existsSync(source)) {
     console.log(`  Seed:    skipped (${source} missing)`);

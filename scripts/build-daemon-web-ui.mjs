@@ -5,6 +5,8 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { constants as zlibConstants, createBrotliCompress, createGzip } from "node:zlib";
+// OTTO(build): npm is a .cmd wrapper on Windows; invoke its JS entry point safely.
+import { npmCommand } from "./otto/npm-command.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -37,7 +39,8 @@ function run(command, args, options) {
 
 async function exportBrowserWebApp() {
   console.log("Exporting browser web app...");
-  await run("npm", ["run", "build:web", "--workspace=@getpaseo/app"], {
+  const invocation = npmCommand(["run", "build:web", "--workspace=@getpaseo/app"]); // OTTO(build)
+  await run(invocation.command, invocation.args, {
     cwd: REPO_ROOT,
   });
 }

@@ -9,6 +9,12 @@ function isNotFoundError(error) {
   return String(error?.stderr ?? "").includes("HTTP 404");
 }
 
+// OTTO(release): Otto names its releases "Otto <tag>"; drafts from before the
+// rename, or created under the tag name, still match so a retry finds them.
+function draftMatch(tag) {
+  return `.draft == true and (.tag_name == ${JSON.stringify(tag)} or .name == ${JSON.stringify(`Otto ${tag}`)} or .name == ${JSON.stringify(`Paseo ${tag}`)})`;
+}
+
 export function getGitHubRelease(repo, tag, execFileSync = nodeExecFileSync) {
   try {
     return parseJson(
@@ -21,14 +27,13 @@ export function getGitHubRelease(repo, tag, execFileSync = nodeExecFileSync) {
     if (!isNotFoundError(error)) {
       throw error;
     }
-    const expectedName = `Paseo ${tag}`;
     const output = execFileSync(
       "gh",
       [
         "api",
         `repos/${repo}/releases?per_page=100`,
         "--jq",
-        `[.[] | select(.draft == true and .name == ${JSON.stringify(expectedName)})] | sort_by(.id)`,
+        `[.[] | select(${draftMatch(tag)})] | sort_by(.id)`, // OTTO(release)
       ],
       {
         encoding: "utf8",
@@ -81,14 +86,13 @@ if (isMainModule(import.meta.url)) {
     process.exitCode = 1;
   } else {
     if (cleanupDuplicates && release.draft === true) {
-      const expectedName = `Paseo ${tag}`;
       const duplicateIds = nodeExecFileSync(
         "gh",
         [
           "api",
           `repos/${repo}/releases?per_page=100`,
           "--jq",
-          `.[] | select(.draft == true and .name == ${JSON.stringify(expectedName)} and .id != ${release.id}) | .id`,
+          `.[] | select((${draftMatch(tag)}) and .id != ${release.id}) | .id`, // OTTO(release)
         ],
         { encoding: "utf8" },
       )

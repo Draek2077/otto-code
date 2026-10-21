@@ -1,0 +1,113 @@
+# OTTO(release): retain Otto release identities and deployment ownership.
+name: npm Publish
+
+# Publishes the eight @getpaseo/* packages when a release tag is pushed.
+# Authentication is npm trusted publishing (OIDC): no npm token, no 2FA prompt.
+# Each package's trusted publisher on npmjs.com names this file, so renaming it
+# breaks publishing until every package is reconfigured.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (for example v0.9.13). Already-published packages are skipped."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  # The onnxruntime-node postinstall download is not needed to build or pack.
+  ONNXRUNTIME_NODE_INSTALL: skip
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Require npm with trusted publishing
+        run: |
+          node -e '
+            const [major, minor, patch] = require("child_process").execSync("npm -v").toString().trim().split(".").map(Number);
+            const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+            if (!ok) { console.error("npm >= 11.5.1 is required for trusted publishing"); process.exit(1); }
+          ' || npm install -g npm@11
+          npm -v
+
+      - name: Install JS dependencies
+        run: node scripts/npm-retry.mjs ci
+
+      - name: Build release packages
+        run: npm run build:server:clean
+
+      - name: Publish packages
+        env:
+          OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: "1"
+        run: node scripts/publish-release-packages.mjs
+
+      # A stable release also points `beta` at itself, so the beta channel never
+      # lags stable. It reuses this job's short-lived per-package npm token (the
+      # same OIDC exchange the publish step performs), so nobody logs in by hand.
+      - name: Point beta at the new stable
+        if: ${{ !contains(env.RELEASE_TAG, '-') }}
+        # The registry answered 401 to this token on the v0.9.19 rerun; keep the
+        # publish job green until the dist-tag route is proven.
+        continue-on-error: true
+        run: |
+          node --input-type=module <<'EOF'
+          import { RELEASE_PACKAGES } from "./scripts/publish-release-packages.mjs";
+          const version = process.env.RELEASE_TAG.replace(/^v/, "");
+          const idRes = await fetch(
+            `${process.env.ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org`,
+            { headers: { Authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` } },
+          );
+          const { value: idToken } = await idRes.json();
+          let failed = false;
+          for (const name of RELEASE_PACKAGES) {
+            const escaped = name.replace("/", "%2f");
+            const exchange = await fetch(
+              `https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/${escaped}`,
+              { method: "POST", headers: { Authorization: `Bearer ${idToken}` } },
+            );
+            if (!exchange.ok) {
+              console.error(`${name}: token exchange ${exchange.status} ${await exchange.text()}`);
+              failed = true;
+              continue;
+            }
+            const { token } = await exchange.json();
+            const res = await fetch(`https://registry.npmjs.org/-/package/${escaped}/dist-tags/beta`, {
+              method: "PUT",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify(version),
+            });
+            if (res.ok) {
+              console.log(`${name}: beta -> ${version}`);
+            } else {
+              console.error(`${name}: dist-tag ${res.status} ${await res.text()}`);
+              failed = true;
+            }
+          }
+          process.exit(failed ? 1 : 0);
+          EOF

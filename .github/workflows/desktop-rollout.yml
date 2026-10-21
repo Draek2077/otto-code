@@ -1,3 +1,4 @@
+# OTTO(release): retain Otto release identities and deployment ownership.
 name: Desktop Rollout
 
 on:
@@ -26,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           sparse-checkout: |
             package.json
@@ -38,18 +39,14 @@ jobs:
         run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: package-lock.json
-          registry-url: "https://npm.pkg.github.com"
-          scope: "@boudra"
 
       - name: Install JS dependencies
         run: node scripts/npm-retry.mjs ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download release manifests
         env:

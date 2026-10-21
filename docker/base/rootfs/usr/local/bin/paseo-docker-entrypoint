@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
+# OTTO(identity): keep Otto's container environment and filesystem contract.
 set -euo pipefail
 
-IMAGE_HOME="/home/paseo"
+IMAGE_HOME="/home/otto"
 
 : "${HOME:=$IMAGE_HOME}"
-: "${PASEO_HOME:=${HOME}/.paseo}"
-: "${PASEO_LISTEN:=0.0.0.0:6767}"
-: "${PASEO_WEB_UI_ENABLED:=true}"
-: "${PASEO_LOG_LEVEL:=info}"
-: "${PASEO_LOG_FORMAT:=json}"
+: "${OTTO_HOME:=${HOME}/.otto}"
+: "${OTTO_LISTEN:=0.0.0.0:6868}"
+: "${OTTO_WEB_UI_ENABLED:=true}"
+: "${OTTO_LOG_LEVEL:=info}"
+: "${OTTO_LOG_FORMAT:=json}"
 : "${CLAUDE_CONFIG_DIR:=${HOME}/.claude}"
 : "${CODEX_HOME:=${HOME}/.codex}"
 : "${XDG_CONFIG_HOME:=${HOME}/.config}"
@@ -17,11 +18,11 @@ IMAGE_HOME="/home/paseo"
 : "${XDG_CACHE_HOME:=${HOME}/.cache}"
 
 export HOME
-export PASEO_HOME
-export PASEO_LISTEN
-export PASEO_WEB_UI_ENABLED
-export PASEO_LOG_LEVEL
-export PASEO_LOG_FORMAT
+export OTTO_HOME
+export OTTO_LISTEN
+export OTTO_WEB_UI_ENABLED
+export OTTO_LOG_LEVEL
+export OTTO_LOG_FORMAT
 export CLAUDE_CONFIG_DIR
 export CODEX_HOME
 export XDG_CONFIG_HOME
@@ -36,13 +37,13 @@ ensure_dir() {
     local owner
     owner="$(stat -c "%u" "$dir")"
     if [[ "$owner" == "0" ]]; then
-      chown paseo:paseo "$dir"
+      chown otto:otto "$dir"
     fi
   fi
 }
 
 ensure_dir "$HOME"
-ensure_dir "$PASEO_HOME"
+ensure_dir "$OTTO_HOME"
 ensure_dir "$CLAUDE_CONFIG_DIR"
 ensure_dir "$CODEX_HOME"
 ensure_dir "$XDG_CONFIG_HOME"
@@ -52,27 +53,27 @@ ensure_dir "$XDG_CACHE_HOME"
 
 if [[ "$#" -gt 0 ]]; then
   if [[ "$(id -u)" == "0" ]]; then
-    exec gosu paseo "$@"
+    exec gosu otto "$@"
   fi
   exec "$@"
 fi
 
-if [[ -z "${PASEO_PASSWORD:-}" ]]; then
+if [[ -z "${OTTO_PASSWORD:-}" ]]; then
   {
-    echo "[paseo] WARNING: PASEO_PASSWORD is not set."
-    echo "[paseo] The daemon accepts unauthenticated control connections from any client that can reach it."
-    echo "[paseo] Set PASEO_PASSWORD for any published port or network-reachable deployment."
+    echo "[otto] WARNING: OTTO_PASSWORD is not set."
+    echo "[otto] The daemon accepts unauthenticated control connections from any client that can reach it."
+    echo "[otto] Set OTTO_PASSWORD for any published port or network-reachable deployment."
   } >&2
 fi
 
-if [[ ! -f /etc/paseo-server-entry ]]; then
-  echo "[paseo] FATAL: /etc/paseo-server-entry is missing." >&2
+if [[ ! -f /etc/otto-server-entry ]]; then
+  echo "[otto] FATAL: /etc/otto-server-entry is missing." >&2
   exit 1
 fi
 
-entry="$(cat /etc/paseo-server-entry)"
-echo "[paseo] starting daemon on ${PASEO_LISTEN} with web UI ${PASEO_WEB_UI_ENABLED}"
+entry="$(cat /etc/otto-server-entry)"
+echo "[otto] starting daemon on ${OTTO_LISTEN} with web UI ${OTTO_WEB_UI_ENABLED}"
 if [[ "$(id -u)" == "0" ]]; then
-  exec gosu paseo node "$entry"
+  exec gosu otto node "$entry"
 fi
 exec node "$entry"

@@ -1,0 +1,142 @@
+# OTTO(release): retain Otto release identities and deployment ownership.
+name: Android Play Release
+
+# Builds an Android App Bundle (AAB) via EAS and submits it to the Google Play
+# **internal testing** track on a release tag. This is the automated replacement
+# for hand-downloading the AAB and uploading it in the Play Console.
+#
+# Kept separate from android-apk-release.yml (which builds a sideloadable APK and
+# attaches it to the GitHub Release) so the two can be retried independently: a
+# failed Play submission does not require rebuilding the sideload APK, and a
+# retry tag `android-play-vX.Y.Z` rebuilds/submits only this path.
+#
+# Retrying a failed *submit* without rebuilding: run this workflow via
+# workflow_dispatch with `build_id` set to an already-finished EAS build id. The
+# build step is skipped and that build is submitted as-is (e.g. after enabling a
+# missing Google API or fixing a Play permission).
+#
+# Requires two repo secrets:
+#   - EXPO_TOKEN                     (already set; authenticates the EAS build)
+#   - GOOGLE_SERVICE_ACCOUNT_KEY     (full JSON of a Google Play service-account
+#                                     key with the "Release to testing tracks"
+#                                     permission for me.ottocode.mobile)
+#
+# Deliberately NOT triggered by `v*` (removed 2026-07-27). EAS's free tier allows
+# 15 Android builds a month, and firing this on every release tag spent half of
+# that budget on a path that has never gone green end-to-end: 20 runs, 20
+# failures, and 0.5.1 - the only build to reach Play - was uploaded by hand. The
+# APK workflow was starved as a direct result and shipped no Android artifact at
+# all for 0.5.2 through 0.7.1.
+#
+# Note that a quota-refused run is not free: EAS increments the remote versionCode
+# *before* it checks the budget, so every failed run burns a versionCode (that is
+# why the counter reads 50 while the last real build was 0.5.1).
+#
+# Restore the `v*` trigger once a submit actually succeeds from CI.
+
+on:
+  push:
+    tags:
+      - "android-play-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to check out (e.g. v0.5.1 or android-play-v0.5.1)"
+        required: true
+        type: string
+      build_id:
+        description: "Existing EAS build id to submit as-is (skips the build). Leave empty to build from the tag."
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: android-play-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  submit-play-internal:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Write Google Play service account key
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GOOGLE_SERVICE_ACCOUNT_KEY:-}" ]; then
+            echo "GOOGLE_SERVICE_ACCOUNT_KEY secret is not set - cannot submit to Play." >&2
+            exit 1
+          fi
+          # eas.json's submit.internal profile reads ./google-service-account.json
+          # (relative to packages/app). Written from a secret so it never lands in git.
+          printf '%s' "$GOOGLE_SERVICE_ACCOUNT_KEY" > packages/app/google-service-account.json
+
+      - name: Build Android App Bundle on EAS
+        id: eas_build
+        # Skip the build when a caller supplies an existing build id to submit
+        # as-is (retry-a-failed-submit path). Empty for tag pushes, so they build.
+        if: ${{ github.event.inputs.build_id == '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packages/app
+
+          build_json="$(npx eas build --platform android --profile production --non-interactive --wait --json)"
+          echo "$build_json" > "$RUNNER_TEMP/eas-build.json"
+
+          build_id="$(jq -r 'if type == "array" then .[0].id // empty else .id // empty end' "$RUNNER_TEMP/eas-build.json")"
+          if [ -z "$build_id" ]; then
+            echo "Failed to determine EAS build ID." >&2
+            cat "$RUNNER_TEMP/eas-build.json"
+            exit 1
+          fi
+
+          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+
+      - name: Submit AAB to Play internal track
+        shell: bash
+        env:
+          INPUT_BUILD_ID: ${{ github.event.inputs.build_id }}
+          BUILT_BUILD_ID: ${{ steps.eas_build.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          cd packages/app
+          # Prefer a caller-supplied build id (submit-only retry); otherwise use
+          # the id from the build step above.
+          submit_id="${INPUT_BUILD_ID:-}"
+          if [ -z "$submit_id" ]; then submit_id="${BUILT_BUILD_ID:-}"; fi
+          if [ -z "$submit_id" ]; then
+            echo "No EAS build id to submit (build step skipped and no build_id input)." >&2
+            exit 1
+          fi
+          echo "Submitting EAS build $submit_id to Play internal track"
+          npx eas submit --platform android --profile internal --id "$submit_id" --non-interactive
+
+      - name: Clean up service account key
+        if: always()
+        shell: bash
+        run: rm -f packages/app/google-service-account.json

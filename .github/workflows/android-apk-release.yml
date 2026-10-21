@@ -1,4 +1,28 @@
+# OTTO(release): retain Otto release identities and deployment ownership.
 name: Android APK Release
+
+# Builds the sideloadable release APK ON THIS RUNNER (expo prebuild + gradle),
+# not on EAS, and attaches it to the GitHub Release.
+#
+# It used to shell out to `eas build --profile production-apk`. EAS's free tier
+# allows 15 Android builds a month shared across every Android workflow, and the
+# budget was exhausted on 2026-07-12 - 0.5.2 through 0.7.1 shipped with no
+# Android artifact at all, and a quota-refused run still burns a versionCode.
+# Building here is unlimited and removes the need to ration releases.
+#
+# This does not affect Play: the AAB goes down android-play-release.yml, and
+# Play App Signing already means the store APK and this sideload APK carry
+# different signatures.
+#
+# Requires four repo secrets (the same keystore EAS uses, so this APK installs
+# as a drop-in update over an EAS-built Otto - a different key would force
+# users to uninstall first):
+#   - ANDROID_KEYSTORE_BASE64      base64 of the .jks from `eas credentials`
+#   - ANDROID_KEYSTORE_PASSWORD    keystore password
+#   - ANDROID_KEY_ALIAS            key alias
+#   - ANDROID_KEY_PASSWORD         key password
+# Without them the signing step fails loudly rather than shipping an unsigned or
+# debug-signed APK.
 
 on:
   push:
@@ -11,140 +35,367 @@ on:
         description: "Existing tag to build (e.g. v0.1.0)"
         required: true
         type: string
+      checkout_ref:
+        description: "Optional source ref for build verification."
+        required: false
+        default: ""
+        type: string
+      publish:
+        description: "Attach the APK to a GitHub release."
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
 
 concurrency:
   group: android-apk-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
+  SHOULD_PUBLISH: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false' }}
+  CHECKOUT_REF: ${{ github.event.inputs.checkout_ref || github.event.inputs.tag || github.ref }}
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
 
 jobs:
+  # Keep release creation/wait separate from the expensive APK build.
   ensure-release:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false' }}
+    # On a `v*` tag Desktop Release creates the release and this job only waits
+    # for it. On an `android-v*` retry tag Desktop Release does not run at all,
+    # so this job is the creator instead.
+    #
+    # Do not restore the repo-wide concurrency group these three workflows used
+    # to share to serialize their creates. A group holds at most ONE pending
+    # job, so a third arrival cancels the one already waiting, and a cancelled
+    # lock job silently skips everything downstream of it: 0.7.5 lost this APK
+    # that way, 0.7.6 lost all three desktop platforms. See
+    # scripts/ensure-github-release.mjs.
     permissions:
       contents: write
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           sparse-checkout: scripts
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          ref: ${{ env.CHECKOUT_REF }}
 
       - name: Resolve release tag
         shell: bash
         run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Ensure GitHub release exists
+        if: env.IS_SMOKE_TAG != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A plain `v*` push also starts Desktop Release, which owns creation.
+          # Anything else reached this workflow on its own and must create.
+          ENSURE_MODE: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'v') && 'wait' || 'create' }}
         shell: bash
         run: |
           set -euo pipefail
-
-          if node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG" >/dev/null 2>&1; then
-            exit 0
-          fi
-
-          release_args=(
-            release create "$RELEASE_TAG"
-            --repo "${{ github.repository }}"
-            --title "Paseo $RELEASE_TAG"
-            --notes ""
-            --draft
-          )
-
+          prerelease_flag=()
           if [[ "$IS_PRERELEASE" == "true" ]]; then
-            release_args+=(--prerelease)
+            prerelease_flag=(--prerelease)
           fi
-
-          if ! gh "${release_args[@]}"; then
-            echo "Release creation raced with another workflow; continuing."
-            node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG" >/dev/null
-          fi
+          node scripts/ensure-github-release.mjs \
+            --tag "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --mode "$ENSURE_MODE" \
+            --draft \
+            "${prerelease_flag[@]}"
 
   publish-android-apk:
-    needs: [ensure-release]
+    if: ${{ !cancelled() && (needs.ensure-release.result == 'success' || needs.ensure-release.result == 'skipped') }}
+    needs: ensure-release
     permissions:
       contents: write
       packages: read
     runs-on: ubuntu-latest
+    # A healthy run is ~45 minutes, almost all of it inside assembleRelease. The
+    # cap exists so a stalled build says "exceeded the maximum execution time"
+    # instead of sitting there; without it the default is six hours.
+    timeout-minutes: 90
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          ref: ${{ env.CHECKOUT_REF }}
+
+      # Native ABI compilation and the Hermes bytecode pass are the memory peak
+      # of this build, and they land right after Metro finishes bundling. On EAS
+      # the same peak OOM-killed Hermes until production moved to a `large`
+      # worker (packages/app/eas.json). A GitHub-hosted runner cannot be resized,
+      # so buy the headroom instead: the preinstalled Android SDK/NDK, .NET and
+      # Haskell trees are dead weight here, and the default 4GB swapfile is thin
+      # for a peak this shape. A run terminated with a bare "The operation was
+      # canceled." and no annotation is what that peak looks like from outside.
+      #
+      # 12G still wasn't enough for the v0.8.1 tag (2026-08-04): the runner died
+      # a few seconds into createBundleReleaseJsAndAssets handing off to the
+      # native/Hermes pass, same silent-cancel shape. Bumped to 24G - the
+      # `df -h` "Before" line has consistently shown ~88G free on this runner
+      # image, so 24G still leaves comfortable headroom for the build outputs.
+      #
+      # 24G was not enough for the v0.9.0 tag either (2026-09-04). Swap is not
+      # the lever: the structural fix is running the Hermes pass in its own
+      # Gradle invocation before the native build (see "Bundle the JS and
+      # Hermes bytecode" below). The swapfile stays as a safety margin only.
+      - name: Make room for the native build
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Before:"
+          df -h / | tail -1
+          free -h | sed -n '1,3p'
+
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile /swapfile || true
+          sudo fallocate -l 24G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+
+          echo "After:"
+          df -h / | tail -1
+          free -h | sed -n '1,3p'
 
       - name: Resolve release tag
         shell: bash
         run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
-          registry-url: "https://npm.pkg.github.com"
-          scope: "@boudra"
+
+      - name: Setup Java
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Install JS dependencies
         run: node scripts/npm-retry.mjs ci
+
+      # What EAS ran as eas-build-post-install. The webview bundles are generated
+      # sources: the committed copies go stale, and prebuild does not rebuild them.
+      - name: Build workspace deps and webview bundles
+        run: npm run eas-build-post-install --workspace=@getpaseo/app
+
+      - name: Prebuild the Android project
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_VARIANT: production
+        run: npx expo prebuild --platform android --clean --non-interactive
+        working-directory: packages/app
 
-      - name: Setup Expo and EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      # The generated gradle.properties is deliberately left ALONE. Two attempts
+      # to raise org.gradle.jvmargs here cost two builds: the file ends without
+      # a trailing newline, so appending welded the new key onto the last
+      # existing one and Gradle read the Kotlin version as
+      # `2.1.20org.gradle.jvmargs=-Xmx5g...`, and the guard added to catch that
+      # then asserted a `kotlinVersion=` line this file does not actually carry.
+      #
+      # Beyond being fragile, it was aimed at the wrong thing. The peak that
+      # kills this build is native ABI compilation and the Hermes pass, which
+      # are separate processes: a bigger JVM heap takes memory AWAY from them.
+      # Headroom belongs on the runner (see "Make room for the native build"),
+      # not in the JVM. Print the file so a future failure has the evidence
+      # neither of those attempts had.
+      - name: Show the generated Gradle configuration
+        shell: bash
+        working-directory: packages/app/android
+        run: cat gradle.properties
 
-      - name: Build Android APK on EAS
-        id: eas_build
+      # `-Pandroid.injected.version.code` is a NO-OP for assembleRelease under
+      # AGP 8 - it silently yields versionCode 1, which Android refuses to
+      # install over an existing Otto. So the value has to come from the
+      # generated build.gradle, and this step verifies it rather than trusting
+      # it. That file is gitignored (prebuild regenerates it), so nothing
+      # tracked changes here.
+      #
+      # This step used to OVERWRITE the value using a second formula
+      # (major*10000 + minor*100 + patch, so 0.8.15 -> 815) that disagreed with
+      # `packages/app/native-release-version.js` and with docs/android.md
+      # (major*1_000_000 + minor*1_000 + patch, so 0.8.15 -> 8015). The released
+      # APK therefore never carried the version code visible in the repo, which
+      # defeats the reason for keeping it there: a source-based build (F-Droid)
+      # produced 8015 and would sit permanently above every official release, so
+      # official updates could never install over it. app.config.js is now the
+      # single source of truth and CI only asserts it.
+      - name: Verify versionCode matches the source of truth
         shell: bash
         run: |
           set -euo pipefail
-          cd packages/app
-
-          build_json="$(npx eas build --platform android --profile production-apk --non-interactive --wait --json)"
-          echo "$build_json" > "$RUNNER_TEMP/eas-build.json"
-
-          build_id="$(jq -r 'if type == "array" then .[0].id // empty else .id // empty end' "$RUNNER_TEMP/eas-build.json")"
-          if [ -z "$build_id" ]; then
-            echo "Failed to determine EAS build ID."
-            cat "$RUNNER_TEMP/eas-build.json"
+          expected=$(node -p "require('./packages/app/native-release-version').getNativeReleaseVersion('${RELEASE_VERSION}').androidVersionCode")
+          gradle_file=packages/app/android/app/build.gradle
+          actual=$(perl -ne 'print $1 if /versionCode\s+(\d+)/' "$gradle_file")
+          echo "versionCode expected=$expected actual=$actual for $RELEASE_VERSION"
+          if [ "$actual" = "1" ]; then
+            echo "::error::versionCode is 1; prebuild did not carry app.config.js through"
+            exit 1
+          fi
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::versionCode mismatch: build.gradle has $actual, native-release-version.js says $expected"
             exit 1
           fi
 
-          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+      - name: Decode signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 is not set. Add the release keystore secrets" >&2
+            echo "before tagging; see the header of this workflow." >&2
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
 
-      - name: Resolve APK artifact URL
+      # The JS bundle is built in its OWN Gradle invocation, before any native
+      # module is compiled, and the Gradle daemon is stopped afterwards.
+      #
+      # Why: `createBundleReleaseJsAndAssets` runs Metro, then `hermesc` over the
+      # whole bundle, then `compose-source-maps.js` over two large source maps.
+      # That chain is the memory peak of the build, and inside a single
+      # `assembleRelease` it lands LAST - after the Gradle daemon and the Kotlin
+      # compile daemon have grown their heaps compiling every native module.
+      # The v0.9.0 tag (2026-09-04) died five minutes into that silent pass with
+      # the bare "The operation was canceled." shape, on a 24G swapfile, with a
+      # bundle that had grown 5950 -> 6389 modules since the last green run.
+      # More swap does not fix this: a thrashing runner stops answering its
+      # heartbeat and the service cancels the job. Running the bundle task alone
+      # means the Hermes pass only ever shares the box with a fresh, small
+      # daemon. `assembleRelease` then finds the task UP-TO-DATE (its inputs are
+      # the JS sources and outputs the bundle directories, neither of which the
+      # native build touches) and goes straight to the native and packaging
+      # work, which never needed the extra headroom on its own.
+      #
+      # `sample_memory` prints `free -m` into this step's log every 15s so the
+      # next silent cancel comes with the numbers this one did not have: the
+      # step log streams as it goes, so the samples survive the runner dying.
+      # First sampled run (android-v0.9.0, 2026-09-04): the Hermes pass alone
+      # held ~15.6G RAM plus the entire 24G swapfile for eighteen minutes, with
+      # under 400M available. That peak was hermesc compiling the zod-aot outbound
+      # validator as one giant function; protocol now generates one validator per
+      # message type (docs/android.md, docs/protocol-validation.md).
+      - name: Bundle the JS and Hermes bytecode
+        shell: bash
+        working-directory: packages/app/android
+        run: |
+          set -euo pipefail
+          sample_memory() {
+            while true; do
+              echo "[mem $(date -u +%H:%M:%S)] $(free -m | awk '/^Mem:/{printf "used=%dM avail=%dM", $3, $7} /^Swap:/{printf " swap=%dM/%dM", $3, $2}')"
+              sleep 15
+            done
+          }
+          sample_memory &
+          sampler=$!
+          trap 'kill "$sampler" 2>/dev/null || true' EXIT
+
+          ./gradlew :app:createBundleReleaseJsAndAssets \
+            --no-parallel --max-workers=1
+          ./gradlew --stop
+
+      # Mirrors the eas.json production-apk gradleCommand exactly, lint tasks and
+      # all. Signing properties are injected (unlike the version code, these do
+      # work) and read straight from secrets, so nothing is written to disk or
+      # echoed.
+      - name: Assemble the release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        working-directory: packages/app/android
+        run: |
+          set -euo pipefail
+          sample_memory() {
+            while true; do
+              echo "[mem $(date -u +%H:%M:%S)] $(free -m | awk '/^Mem:/{printf "used=%dM avail=%dM", $3, $7} /^Swap:/{printf " swap=%dM/%dM", $3, $2}')"
+              sleep 15
+            done
+          }
+          sample_memory &
+          sampler=$!
+          trap 'kill "$sampler" 2>/dev/null || true' EXIT
+
+          ./gradlew :app:assembleRelease \
+            --no-parallel --max-workers=1 \
+            -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease \
+            -x generateReleaseLintModel -x generateReleaseLintVitalModel \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release.jks" \
+            -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD" \
+            | tee "$RUNNER_TEMP/assemble.log"
+
+          # The split above only buys headroom if the bundle task is reused
+          # here. If it re-ran, the peak moved back to where it was and this
+          # run surviving proves nothing - say so rather than pass quietly.
+          if ! grep -q ':app:createBundleReleaseJsAndAssets UP-TO-DATE' "$RUNNER_TEMP/assemble.log"; then
+            echo "::warning::createBundleReleaseJsAndAssets was not UP-TO-DATE in assembleRelease; the Hermes pass re-ran under the full native-build memory load."
+          fi
+
+      - name: Collect and verify the APK
         id: artifact
         shell: bash
         run: |
           set -euo pipefail
-          cd packages/app
-
-          build_view_json="$(npx eas build:view '${{ steps.eas_build.outputs.build_id }}' --json)"
-          echo "$build_view_json" > "$RUNNER_TEMP/eas-build-view.json"
-
-          artifact_url="$(jq -r '.artifacts.buildUrl // .artifacts.applicationArchiveUrl // empty' "$RUNNER_TEMP/eas-build-view.json")"
-          if [ -z "$artifact_url" ]; then
-            echo "Failed to determine APK artifact URL."
-            cat "$RUNNER_TEMP/eas-build-view.json"
+          apk="$(find packages/app/android/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          if [ -z "$apk" ]; then
+            echo "No APK produced." >&2
             exit 1
           fi
 
-          asset_name="paseo-${RELEASE_TAG}-android.apk"
-          asset_path="$RUNNER_TEMP/$asset_name"
+          # OTTO(release): verify the base APK; Hey Otto assets return with that feature.
+          unzip -Z1 "$apk" | grep -Fx AndroidManifest.xml
 
-          curl --fail --location --output "$asset_path" "$artifact_url"
+          # Fail loudly on a debug-signed APK: it would install for nobody who
+          # already has Otto, and the failure is otherwise silent until a user
+          # tries to update.
+          build_tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+          "$build_tools/apksigner" verify --print-certs "$apk" | tee "$RUNNER_TEMP/signer.txt"
+          if grep -qi "CN=Android Debug" "$RUNNER_TEMP/signer.txt"; then
+            echo "APK is debug-signed; refusing to publish." >&2
+            exit 1
+          fi
+          badging="$("$build_tools/aapt2" dump badging "$apk")"
+          package_line="$(grep "^package:" <<< "$badging")"
+          expected=$(node -p "require('./packages/app/native-release-version').getNativeReleaseVersion('${RELEASE_VERSION}').androidVersionCode")
+          grep -F "name='me.ottocode.mobile'" <<< "$package_line"
+          grep -F "versionCode='$expected'" <<< "$package_line"
+
+          asset_name="otto-${RELEASE_TAG}-android.apk"
+          asset_path="$RUNNER_TEMP/$asset_name"
+          cp "$apk" "$asset_path"
 
           echo "asset_name=$asset_name" >> "$GITHUB_OUTPUT"
           echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK to GitHub Release
+        if: env.SHOULD_PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
           gh release upload "$release_lookup" "${{ steps.artifact.outputs.asset_path }}" --clobber --repo "${{ github.repository }}"
+
+      - name: Retain verification APK as a workflow artifact
+        if: env.SHOULD_PUBLISH != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: otto-android-apk
+          path: ${{ steps.artifact.outputs.asset_path }}
+          if-no-files-found: error
+          retention-days: 7

@@ -142,7 +142,7 @@ export function syncReleaseNotes(argv = process.argv.slice(2), deps = {}) {
     "--repo",
     args.repo,
     "--title",
-    `Paseo ${targetTag}`,
+    `Otto ${targetTag}`, // OTTO(release): Otto's release title
     "--notes-file",
     notesPath,
     "--verify-tag",

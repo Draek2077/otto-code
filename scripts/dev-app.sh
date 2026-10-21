@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# OTTO(identity): user-visible launcher title.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +16,7 @@ DAEMON_ENDPOINT="$(resolve_dev_daemon_endpoint)"
 DEV_BUILD_LABEL="$(git -C "$ROOT_DIR" branch --show-current 2>/dev/null || true)"
 
 echo "══════════════════════════════════════════════════════"
-echo "  Paseo App Dev"
+echo "  Otto App Dev"
 echo "══════════════════════════════════════════════════════"
 echo "  Metro:   http://localhost:${EXPO_PORT}"
 echo "  Daemon:  ${DAEMON_ENDPOINT}"

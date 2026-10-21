@@ -9,7 +9,13 @@ const { extractFile } = require("@electron/asar");
 const { WebSocket } = require("ws");
 const assert = require("node:assert/strict");
 
-const EXECUTABLE_NAME = "Paseo";
+// OTTO(identity): verify the shipped Otto executable, CLI, origin, and pid file.
+const {
+  OTTO_PRODUCT_NAME,
+  OTTO_CLI_COMMAND,
+  OTTO_URL_SCHEME,
+} = require("@getpaseo/protocol/otto/identity");
+const EXECUTABLE_NAME = OTTO_PRODUCT_NAME;
 const SMOKE_TIMEOUT_MS = 60_000;
 const EXIT_TIMEOUT_MS = 10_000;
 const TERMINAL_CAPTURE_ATTEMPTS = 20;
@@ -79,14 +85,14 @@ function getExecutablePath(appPath) {
 
 function getCliShimPath(appPath) {
   if (process.platform === "darwin") {
-    return path.join(appPath, "Contents", "Resources", "bin", "paseo");
+    return path.join(appPath, "Contents", "Resources", "bin", OTTO_CLI_COMMAND);
   }
 
   if (process.platform === "win32") {
-    return path.join(appPath, "resources", "bin", "paseo.cmd");
+    return path.join(appPath, "resources", "bin", `${OTTO_CLI_COMMAND}.cmd`);
   }
 
-  return path.join(appPath, "resources", "bin", "paseo");
+  return path.join(appPath, "resources", "bin", OTTO_CLI_COMMAND);
 }
 
 function getMacMainExecutablePath(appPath) {
@@ -462,13 +468,13 @@ async function waitForPackagedAppPage(browser, deadline) {
     const page = browser
       .contexts()
       .flatMap((context) => context.pages())
-      .find((candidate) => candidate.url().startsWith("paseo://app/"));
+      .find((candidate) => candidate.url().startsWith(`${OTTO_URL_SCHEME}://app/`));
     if (page) {
       return page;
     }
     await delay(250);
   }
-  throw new Error("Timed out waiting for the packaged paseo://app/ renderer");
+  throw new Error("Timed out waiting for the packaged Otto renderer");
 }
 
 async function assertPackagedRendererLoaded(page, deadline) {
@@ -642,7 +648,7 @@ async function smokeCliShim({ appPath, env }) {
 
 async function smokeColdCliDaemonStart({ appPath }) {
   const home = createTempDir("paseo-smoke-cli-daemon-home-");
-  const pidPath = path.join(home, "paseo.pid");
+  const pidPath = path.join(home, `${OTTO_CLI_COMMAND}.pid`);
   const port = await reserveLocalTcpPort();
   const listen = `127.0.0.1:${port}`;
   const env = createDefaultDaemonEnv({ HOME: home, USERPROFILE: home });
@@ -993,7 +999,7 @@ if (require.main === module) {
   const appIndex = process.argv.indexOf("--app");
   const appPath = appIndex >= 0 ? process.argv[appIndex + 1] : null;
   if (!appPath) {
-    process.stderr.write("Usage: node smoke-packaged-desktop-app.js --app <Paseo.app>\n");
+    process.stderr.write("Usage: node smoke-packaged-desktop-app.js --app <Otto.app>\n");
     process.exit(2);
   }
 

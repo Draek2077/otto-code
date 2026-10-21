@@ -1,6 +1,8 @@
-# Running Paseo in Docker
+<!-- OTTO(identity): Otto container names, paths, configuration, and registry. -->
 
-Paseo publishes a container image for running the daemon on a server, VM, NAS,
+# Running Otto in Docker
+
+Otto publishes a container image for running the daemon on a server, VM, NAS,
 or homelab box. The image also serves the bundled browser web UI, so one
 container gives you both the daemon API and a self-hosted UI.
 
@@ -10,39 +12,39 @@ The image source lives in [`docker/`](../docker/).
 
 The official image:
 
-- builds `@getpaseo/server` and `@getpaseo/cli` from source-built workspace tarballs
+- builds `@getpaseo/server` and `@otto-code/cli` from source-built workspace tarballs
 - runs the daemon as the non-root `paseo` user
-- listens on `0.0.0.0:6767` inside the container
-- enables the bundled daemon web UI with `PASEO_WEB_UI_ENABLED=true`
-- stores daemon state and agent credentials under `/home/paseo`
+- listens on `0.0.0.0:6868` inside the container
+- enables the bundled daemon web UI with `OTTO_WEB_UI_ENABLED=true`
+- stores daemon state and agent credentials under `/home/otto`
 - leaves agent CLIs out of the base image
 
-Open the container's HTTP origin, for example `http://localhost:6767`, to load
+Open the container's HTTP origin, for example `http://localhost:6868`, to load
 the web UI. The served app receives a same-origin connection hint and connects
 back to that daemon. Static UI files load without daemon auth; API and
-WebSocket requests still require `PASEO_PASSWORD` when one is configured.
+WebSocket requests still require `OTTO_PASSWORD` when one is configured.
 
-Host-side CLI commands select the container explicitly, for example `paseo project ls --host 127.0.0.1:6767`. Without an endpoint selector the CLI looks for a local home’s supervisor. Container environment settings are deployment overrides; worker restart preserves them. Your container manager owns full supervisor replacement.
+Host-side CLI commands select the container explicitly, for example `paseo project ls --host 127.0.0.1:6868`. Without an endpoint selector the CLI looks for a local home’s supervisor. Container environment settings are deployment overrides; worker restart preserves them. Your container manager owns full supervisor replacement.
 
 ## Quick Start
 
 ```bash
-docker run -d --name paseo \
-  -p 6767:6767 \
-  -e PASEO_PASSWORD=change-me \
-  -v "$PWD/paseo-home:/home/paseo" \
+docker run -d --name otto \
+  -p 6868:6868 \
+  -e OTTO_PASSWORD=change-me \
+  -v "$PWD/otto-home:/home/otto" \
   -v "$PWD:/workspace" \
-  ghcr.io/getpaseo/paseo:latest
+  ghcr.io/draek2077/otto:latest
 ```
 
 Then open:
 
 ```text
-http://localhost:6767
+http://localhost:6868
 ```
 
-If you set `PASEO_PASSWORD`, enter the same password when adding the direct
-daemon connection in the web UI or another Paseo client.
+If you set `OTTO_PASSWORD`, enter the same password when adding the direct
+daemon connection in the web UI or another Otto client.
 
 ## Docker Compose
 
@@ -59,27 +61,27 @@ Minimal example:
 ```yaml
 services:
   paseo:
-    image: ghcr.io/getpaseo/paseo:latest
+    image: ghcr.io/draek2077/otto:latest
     restart: unless-stopped
     ports:
-      - "6767:6767"
+      - "6868:6868"
     environment:
-      PASEO_PASSWORD: "change-me"
+      OTTO_PASSWORD: "change-me"
     volumes:
-      - ./paseo-home:/home/paseo
+      - ./otto-home:/home/otto
       - ./workspace:/workspace
 ```
 
 ## Installing Agents
 
 The base image does not preinstall Claude Code, Codex, OpenCode, Copilot, Pi, or
-other agent CLIs. That keeps the default image small and avoids coupling Paseo
+other agent CLIs. That keeps the default image small and avoids coupling Otto
 releases to third-party agent release cycles.
 
 Create a child image for the agents you use:
 
 ```Dockerfile
-FROM ghcr.io/getpaseo/paseo:latest
+FROM ghcr.io/draek2077/otto:latest
 
 USER root
 RUN npm install -g @openai/codex @anthropic-ai/claude-code opencode-ai
@@ -108,25 +110,25 @@ docker exec -it --user paseo paseo codex
 docker exec -it --user paseo paseo claude
 ```
 
-Agent credentials and config persist in `/home/paseo`, alongside daemon state.
+Agent credentials and config persist in `/home/otto`, alongside daemon state.
 Provider environment variables such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
 `OPENAI_BASE_URL`, or `ANTHROPIC_BASE_URL` can be passed through `docker run -e`
-or `compose.environment`; Paseo passes them to launched agents.
+or `compose.environment`; Otto passes them to launched agents.
 
 ## Volumes
 
-| Mount         | Purpose                                                                  |
-| ------------- | ------------------------------------------------------------------------ |
-| `/home/paseo` | Paseo state under `.paseo` plus agent config such as `.codex`, `.claude` |
-| `/workspace`  | Code that Paseo and launched agents can read and write                   |
+| Mount        | Purpose                                                                 |
+| ------------ | ----------------------------------------------------------------------- |
+| `/home/otto` | Otto state under `.paseo` plus agent config such as `.codex`, `.claude` |
+| `/workspace` | Code that Otto and launched agents can read and write                   |
 
 The image defaults:
 
-| Variable       | Default              |
-| -------------- | -------------------- |
-| `HOME`         | `/home/paseo`        |
-| `PASEO_HOME`   | `/home/paseo/.paseo` |
-| `PASEO_LISTEN` | `0.0.0.0:6767`       |
+| Variable      | Default            |
+| ------------- | ------------------ |
+| `HOME`        | `/home/otto`       |
+| `OTTO_HOME`   | `/home/otto/.otto` |
+| `OTTO_LISTEN` | `0.0.0.0:6868`     |
 
 If you bind-mount host directories on Linux, make sure the container user can
 write them. The built-in `paseo` user has uid/gid `1000:1000`. For a different
@@ -135,14 +137,14 @@ container with Docker's `--user` / Compose `user:` option.
 
 ## Reverse Proxies
 
-When serving Paseo behind a reverse proxy, forward normal HTTP requests and
+When serving Otto behind a reverse proxy, forward normal HTTP requests and
 WebSocket upgrades to the same daemon port.
 
 Caddy example:
 
 ```caddy
 paseo.example.com {
-  reverse_proxy 127.0.0.1:6767
+  reverse_proxy 127.0.0.1:6868
 }
 ```
 
@@ -154,7 +156,7 @@ server {
     server_name paseo.example.com;
 
     location / {
-        proxy_pass http://127.0.0.1:6767;
+        proxy_pass http://127.0.0.1:6868;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -164,26 +166,26 @@ server {
 }
 ```
 
-If you reach the daemon by DNS name, set `PASEO_HOSTNAMES` so host-header
+If you reach the daemon by DNS name, set `OTTO_HOSTNAMES` so host-header
 validation allows that name:
 
 ```yaml
 environment:
-  PASEO_HOSTNAMES: "paseo.example.com,.lan"
+  OTTO_HOSTNAMES: "paseo.example.com,.lan"
 ```
 
 IPs and `localhost` are allowed by default.
 
 ## Security
 
-- Set `PASEO_PASSWORD` for any published port or network-reachable deployment.
+- Set `OTTO_PASSWORD` for any published port or network-reachable deployment.
 - Prefer HTTPS at the reverse proxy for direct browser access.
-- Use the [official Paseo relay](https://github.com/getpaseo/paseo-relay) for
+- Use the [official Otto relay](https://github.com/getpaseo/paseo-relay) for
   untrusted networks or mobile access when you do not want to expose the daemon
   port directly.
 - The container is the isolation boundary for agents. Agents can read and write
   whatever you mount into `/workspace` and whatever credentials you place in
-  `/home/paseo`.
+  `/home/otto`.
 - The bundled web UI static files are public on the daemon origin. The daemon
   API and WebSocket remain protected by password auth when configured.
 
@@ -199,7 +201,7 @@ To assert the source tree version while building:
 
 ```bash
 docker build \
-  --build-arg PASEO_VERSION=0.1.102 \
+  --build-arg OTTO_VERSION=0.1.102 \
   -t paseo:0.1.102 \
   -f docker/base/Dockerfile \
   .
@@ -207,9 +209,9 @@ docker build \
 
 The Docker workflow builds the image on pull requests and on `main` as a
 non-publishing check. Stable `vX.Y.Z` tag pushes publish
-`ghcr.io/getpaseo/paseo:X.Y.Z` and `ghcr.io/getpaseo/paseo:latest`. Beta tags
+`ghcr.io/draek2077/otto:X.Y.Z` and `ghcr.io/draek2077/otto:latest`. Beta tags
 publish only the exact prerelease tag, such as
-`ghcr.io/getpaseo/paseo:0.1.102-beta.1`, and do not update `latest`.
+`ghcr.io/draek2077/otto:0.1.102-beta.1`, and do not update `latest`.
 
 To replace a Docker image in place without rebuilding desktop, APK, or EAS
 mobile release artifacts, dispatch the Docker workflow manually instead of
@@ -230,12 +232,12 @@ The published image is multi-arch for `linux/amd64` and `linux/arm64`.
 
 ## Troubleshooting
 
-- **The web UI loads but cannot connect**: if `PASEO_PASSWORD` is set, add a
+- **The web UI loads but cannot connect**: if `OTTO_PASSWORD` is set, add a
   direct connection with the same password.
-- **403 Host not allowed**: set `PASEO_HOSTNAMES` to the DNS names you use.
+- **403 Host not allowed**: set `OTTO_HOSTNAMES` to the DNS names you use.
 - **Provider not available**: install that agent CLI in a child image or mount a
   runtime where the binary is on `PATH`.
 - **Permission errors in `/workspace`**: make the mounted directory writable by
   uid/gid `1000:1000`, or run the container as the host uid/gid.
 - **Logs**: inspect `docker logs paseo` or
-  `/home/paseo/.paseo/daemon.log` inside the container.
+  `/home/otto/.otto/daemon.log` inside the container.

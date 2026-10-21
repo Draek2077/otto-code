@@ -19,8 +19,12 @@
         "APP_VARIANT": "production"
       },
       "android": {
-        "resourceClass": "large",
-        "gradleCommand": ":app:bundleRelease -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease -x generateReleaseLintModel -x generateReleaseLintVitalModel"
+        "autoIncrement": "versionCode",
+        "gradleCommand": ":app:bundleRelease --no-parallel --max-workers=1 -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease -x generateReleaseLintModel -x generateReleaseLintVitalModel",
+        "resourceClass": "large"
+      },
+      "ios": {
+        "autoIncrement": "buildNumber"
       }
     },
     "production-apk": {
@@ -29,18 +33,26 @@
       "android": {
         "resourceClass": "large",
         "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease -x generateReleaseLintModel -x generateReleaseLintVitalModel"
+        "gradleCommand": ":app:assembleRelease --no-parallel --max-workers=1 -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease -x generateReleaseLintModel -x generateReleaseLintVitalModel"
       }
     }
   },
   "submit": {
-    "production": {
-      "ios": {
-        "ascAppId": "6758887924"
-      },
+    "internal": {
       "android": {
+        "serviceAccountKeyPath": "./google-service-account.json",
+        "track": "internal",
+        "releaseStatus": "completed"
+      }
+    },
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./google-service-account.json",
         "track": "production",
         "releaseStatus": "completed"
+      },
+      "ios": {
+        "ascAppId": "REPLACE_WITH_ASC_APP_ID"
       }
     }
   }

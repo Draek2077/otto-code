@@ -1,3 +1,4 @@
+// OTTO(identity): smoke Otto artifact names while keeping Paseo's sandbox checks.
 // Observe published Linux artifacts without repairing their sandbox permissions.
 const fs = require("node:fs");
 const os = require("node:os");
@@ -30,7 +31,7 @@ async function main() {
     fs.chmodSync(appImage, 0o755);
     execFileSync(appImage, ["--appimage-extract"], { cwd: extracted, stdio: "ignore" });
     const appDir = path.join(extracted, "squashfs-root");
-    const desktopEntry = fs.readFileSync(path.join(appDir, "Paseo.desktop"), "utf8");
+    const desktopEntry = fs.readFileSync(path.join(appDir, "Otto.desktop"), "utf8");
     if (/^Exec=.*--no-sandbox/m.test(desktopEntry)) {
       throw new Error("AppImage desktop entry bypasses runtime sandbox policy");
     }
@@ -45,7 +46,7 @@ async function main() {
     const tarDir = path.join(extracted, "tar");
     fs.mkdirSync(tarDir);
     execFileSync("tar", ["-xzf", findArtifact(".tar.gz"), "-C", tarDir]);
-    const appPath = fs.existsSync(path.join(tarDir, "Paseo"))
+    const appPath = fs.existsSync(path.join(tarDir, "Otto"))
       ? tarDir
       : path.join(tarDir, fs.readdirSync(tarDir)[0]);
     process.env.PASEO_DESKTOP_SMOKE_ARTIFACT_DIR = path.join(artifactRoot, "tar");

@@ -1,3 +1,5 @@
+// OTTO(test-paths): URL pathnames include a leading slash before Windows drive letters.
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { relative as relativePath } from "node:path";
@@ -11,6 +13,48 @@ const nixWorkflowPath = new URL(".github/workflows/nix.yml", repoRoot);
 const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
 const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
 const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
+
+// OTTO(release): these are the fork's required build outcomes on the clean base.
+test("unsigned macOS artifacts remain independent of Apple signing", () => {
+  const source = readFileSync(new URL(".github/workflows/desktop-release.yml", repoRoot), "utf8");
+  const unsigned = jobBlocks(source).get("build-macos-unsigned").join("\n");
+  assert.match(unsigned, /CSC_IDENTITY_AUTO_DISCOVERY: "false"/);
+  assert.match(unsigned, /mac.notarize=false/);
+  assert.match(unsigned, /mac.hardenedRuntime=false/);
+  assert.match(unsigned, /release-unsigned/);
+  assert.match(unsigned, /--publish never/);
+  assert.doesNotMatch(unsigned, /needs\.apple-signing-gate/);
+  assert.doesNotMatch(source, /resources\/zoom-recorder/);
+  assert.match(source, /PASEO_DESKTOP_SMOKE: "1"/);
+});
+
+test("Android builds and verifies a signed Otto APK without relying on EAS", () => {
+  const source = readFileSync(
+    new URL(".github/workflows/android-apk-release.yml", repoRoot),
+    "utf8",
+  );
+  const apk = jobBlocks(source).get("publish-android-apk").join("\n");
+  assert.match(source, /"v\*"/);
+  assert.match(apk, /:app:assembleRelease/);
+  assert.match(apk, /apksigner.*verify --print-certs/);
+  assert.match(apk, /CN=Android Debug/);
+  assert.match(apk, /me\.ottocode\.mobile/);
+  assert.match(apk, /native-release-version/);
+  assert.match(apk, /Retain verification APK as a workflow artifact/);
+  assert.match(apk, /if: env\.SHOULD_PUBLISH == 'true'/);
+  assert.doesNotMatch(apk, /eas build|assets\/wake-word/);
+});
+
+test("the Docker image installs the same renamed packages and retains Otto's runtime contract", () => {
+  const dockerfile = readFileSync(new URL("docker/base/Dockerfile", repoRoot), "utf8");
+  assert.match(dockerfile, /scripts\/publish-release-packages\.mjs --pack-only/);
+  assert.match(dockerfile, /@otto-code\/server/);
+  assert.match(dockerfile, /OTTO_HOME=\/home\/otto\/\.otto/);
+  assert.match(dockerfile, /EXPOSE 6868/);
+  const entrypoint = "docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint";
+  assert.match(dockerfile, new RegExp(`COPY ${entrypoint} /usr/local/bin/otto-docker-entrypoint`));
+  assert.match(readFileSync(new URL(entrypoint, repoRoot), "utf8"), /exec gosu otto node/);
+});
 
 const gatedCiJobs = new Map([
   ["quality", { name: "quality", contracts: ["format", "quality", "relay", "sdk"] }],
@@ -76,7 +120,7 @@ function filesUnder(relativeDirectory, predicate) {
   return readdirSync(directory, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
     .map((entry) =>
-      [relativeDirectory, relativePath(directory.pathname, entry.parentPath), entry.name]
+      [relativeDirectory, relativePath(fileURLToPath(directory), entry.parentPath), entry.name]
         .filter(Boolean)
         .join("/")
         .replaceAll("\\", "/"),

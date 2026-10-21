@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# OTTO(identity): user-visible launcher title.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +16,7 @@ if [ -z "${PASEO_LOCAL_MODELS_DIR}" ]; then
 fi
 
 echo "══════════════════════════════════════════════════════"
-echo "  Paseo Dev Daemon"
+echo "  Otto Dev Daemon"
 echo "══════════════════════════════════════════════════════"
 echo "  Home:    ${PASEO_HOME}"
 echo "  Models:  ${PASEO_LOCAL_MODELS_DIR}"

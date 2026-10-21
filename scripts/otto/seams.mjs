@@ -22,13 +22,13 @@ const MARKER = /OTTO\(([a-z0-9-]+)\)/g;
 const git = (...args) =>
   execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
 
-const modified = git("diff", "--name-only", "--no-renames", "--diff-filter=M", base.sha, "HEAD")
+const modified = git("diff", "--name-only", "--no-renames", "--diff-filter=M", base.sha)
   .split("\n")
   .filter(Boolean);
-const added = git("diff", "--name-only", "--no-renames", "--diff-filter=A", base.sha, "HEAD")
+const added = git("diff", "--name-only", "--no-renames", "--diff-filter=A", base.sha)
   .split("\n")
   .filter(Boolean);
-const deleted = git("diff", "--name-only", "--no-renames", "--diff-filter=D", base.sha, "HEAD")
+const deleted = git("diff", "--name-only", "--no-renames", "--diff-filter=D", base.sha)
   .split("\n")
   .filter(Boolean);
 
@@ -50,7 +50,7 @@ for (const file of modified) {
   }
   let text;
   try {
-    text = git("show", `HEAD:${file}`);
+    text = readFileSync(path.join(root, file), "utf8");
   } catch {
     continue;
   }
@@ -65,7 +65,7 @@ for (const file of modified) {
   }
 }
 
-const stat = git("diff", "--shortstat", "--diff-filter=M", base.sha, "HEAD").trim();
+const stat = git("diff", "--shortstat", "--diff-filter=M", base.sha).trim();
 console.log(`Paseo base: v${base.version} (${base.sha.slice(0, 9)})`);
 console.log(`Paseo files modified: ${modified.length}  (${stat || "no changes"})`);
 console.log(`Paseo files deleted:  ${deleted.length}`);

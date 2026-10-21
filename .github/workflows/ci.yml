@@ -164,11 +164,15 @@ jobs:
       - name: Run website tests
         run: npx vitest run packages/website/src --bail=1
 
-      - name: Install website test browsers
-        run: npx playwright install --with-deps chromium webkit
+      # OTTO(website): Otto's retained site has its own unit tests and build.
+      - name: Build Otto website
+        run: npm run build --workspace=@getpaseo/website
 
-      - name: Verify website mockups
-        run: npm run test:e2e --workspace=@getpaseo/website
+      # OTTO(release): check the publish-time Otto package names as well.
+      - name: Pack Otto release packages
+        run: |
+          npm run build:daemon-web-ui
+          node scripts/publish-release-packages.mjs --pack-only --ignore-scripts --out .tmp/release-packages
 
       - name: Verify public package contents
         run: |

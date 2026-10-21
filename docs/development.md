@@ -1,3 +1,5 @@
+<!-- OTTO(dev-isolation): Otto homes, ports, and entry points override Paseo defaults. -->
+
 # Development
 
 ## Prerequisites
@@ -15,7 +17,7 @@ npm run dev:desktop
 
 Root checkout dev is intentionally split across terminals:
 
-- `npm run dev:server` runs the daemon on `127.0.0.1:6768`.
+- `npm run dev:server` runs the daemon on `127.0.0.1:6788`.
 - `npm run dev:app` runs Expo on `http://localhost:8081` and connects to the dev daemon.
 - `npm run dev:desktop` runs its own Electron-flavored Expo server on the first free port from `8082` through `8089`. It never claims port `8081`.
 
@@ -27,7 +29,7 @@ The web and desktop dev launchers pass the current Git branch to Metro as
 `EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL`. The expanded desktop sidebar shows it in
 the titlebar row. Production builds leave the variable unset and show no label.
 
-`npm run dev` is only a shorthand for `npm run dev:server`. Keep `127.0.0.1:6767` for the packaged app and production-style `~/.paseo` state.
+`npm run dev` is only a shorthand for `npm run dev:server`. Keep `127.0.0.1:6868` for the packaged app and production-style `~/.otto` state.
 
 ## Nix desktop package
 
@@ -37,36 +39,41 @@ The flake exposes `packages.<system>.desktop` on Linux and macOS:
 nix build .#desktop
 ```
 
-Linux produces the `paseo-desktop` launcher and desktop entry. macOS produces
-`Applications/Paseo.app` plus the `paseo-desktop` launcher. Both use the nixpkgs
+Linux produces the `otto-desktop` launcher and desktop entry. macOS produces
+`Applications/Otto.app` plus the `otto-desktop` launcher. Both use the nixpkgs
 Electron runtime and the checkout's built daemon, client, and renderer rather
 than downloading a published desktop release.
 
 ### PASEO_HOME
 
+`OTTO_*` settings map to the corresponding `PASEO_*` readers. The shell and Windows
+launchers share the checkout-local home and dev port. Explicit homes are honored
+without seeding their configuration. `npm run dev:win` uses the Windows launcher;
+`npm run cli -- ...` selects the native wrapper automatically.
+
 `PASEO_HOME` is the directory that holds runtime state (agents, worktrees, workspace config, sockets, daemon log). Resolution rules:
 
-- The **server itself** (e.g. when launched by the desktop app or `npm run start`) defaults to `~/.paseo` (see `packages/server/src/server/paseo-home.ts`).
-- **Repo dev scripts** default to `$ROOT/.dev/paseo-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app.
-- **`npm run cli -- ...`** runs through the same dev-home wrapper as the dev scripts, so the in-repo CLI automatically targets the current checkout's `.dev/paseo-home` and configured dev daemon endpoint.
-- **Paseo-created worktrees** seed `$PASEO_WORKTREE_PATH/.dev/paseo-home` from `$PASEO_SOURCE_CHECKOUT_PATH/.dev/paseo-home` by copying durable JSON metadata. Runtime files like pid files, sockets, and logs are not copied.
+- The **server itself** (e.g. when launched by the desktop app or `npm run start`) defaults to `~/.otto` (see `packages/server/src/server/paseo-home.ts`).
+- **Repo dev scripts** default to `$ROOT/packages/desktop/.dev/otto-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app.
+- **`npm run cli -- ...`** runs through the same dev-home wrapper as the dev scripts, so the in-repo CLI automatically targets the current checkout's `packages/desktop/.dev/otto-home` and configured dev daemon endpoint.
+- **Paseo-created worktrees** seed `$PASEO_WORKTREE_PATH/packages/desktop/.dev/otto-home` from `$PASEO_SOURCE_CHECKOUT_PATH/packages/desktop/.dev/otto-home` by copying durable JSON metadata. Runtime files like pid files, sockets, and logs are not copied.
 - **This repo's worktree setup** also best-effort seeds `packages/app/ios` and the newest `.dev/ios-build` entry from the source checkout so iOS simulator services can reuse native project and Xcode cache state when it is safe enough to do so.
 
 Override knobs:
 
 ```bash
-PASEO_HOME=~/.paseo-blue npm run dev          # explicit home
+PASEO_HOME=~/.otto-blue npm run dev          # explicit home
 PASEO_DEV_SEED_HOME=/path/to/home npm run dev # seed from a different source home
 PASEO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived worktree home
 ```
 
 ### Daemon endpoints
 
-- Stable daemon launched by the desktop app: `localhost:6767`.
-- Root checkout dev daemon: `localhost:6768`.
+- Stable daemon launched by the desktop app: `localhost:6868`.
+- Root checkout dev daemon: `localhost:6788`.
 - Root checkout Expo: `http://localhost:8081`.
 - Root checkout desktop dev Expo: first free port from `8082` through `8089`.
-- `npm run dev` (Windows): `localhost:6767` for the daemon.
+- `npm run dev` (Windows): `localhost:6868` for the daemon.
 
 In Paseo-managed worktree services, use the injected service environment rather than hardcoded root checkout ports.
 
@@ -106,11 +113,11 @@ npm run ios        # → expo run:ios (packages/app): builds and launches the ap
 
 `expo run:ios` starts its own Metro and gives you the normal Simulator.app window (full speed, native touch, no stream).
 
-**Pointing the app at a daemon.** The client resolves its local daemon from `EXPO_PUBLIC_LOCAL_DAEMON` (`packages/app/src/runtime/host-runtime.ts`); when unset it falls back to `localhost:6767`, the production `~/.paseo` daemon. To target a worktree's dev daemon instead, set it on the build command:
+**Pointing the app at a daemon.** The client resolves its local daemon from `EXPO_PUBLIC_LOCAL_DAEMON` (`packages/app/src/runtime/host-runtime.ts`); when unset it falls back to `localhost:6868`, the production `~/.otto` daemon. To target a worktree's dev daemon instead, set it on the build command:
 
 ```bash
 EXPO_PUBLIC_LOCAL_DAEMON=localhost:${PASEO_SERVICE_DAEMON_PORT} npm run ios   # worktree daemon running as a Paseo service
-EXPO_PUBLIC_LOCAL_DAEMON=localhost:6768 npm run ios                          # standalone `npm run dev:server`
+EXPO_PUBLIC_LOCAL_DAEMON=localhost:6788 npm run ios                          # standalone `npm run dev:server`
 ```
 
 The iOS simulator shares the Mac's loopback, so `localhost:<port>` reaches the host daemon directly.
@@ -248,7 +255,7 @@ For the desktop Explorer sidebar toggle, run the app against the root checkout's
 npm run profile:explorer-toggle --workspace=@getpaseo/app
 ```
 
-The harness verifies port `6768`, opens the Paseo workspace, creates and warms the Explorer pane,
+The harness verifies port `6788`, opens the Paseo workspace, creates and warms the Explorer pane,
 records an idle control, then measures settled and 50 ms burst Cmd+E toggles. It reports
 input-to-DOM and input-to-paint latency, React commits, mounts, unmounts, and DOM mutations. Set
 `PASEO_PROFILE_TRACE_PATH=/tmp/explorer-toggle.trace.json` or
@@ -485,9 +492,9 @@ Or persist it in `config.json`:
 }
 ```
 
-When enabled, opening the daemon HTTP origin (for example `http://localhost:6767/`) serves the web app. The same HTTP server continues to serve `/api/*`, `/mcp/*`, `/public/*`, the WebSocket upgrade, and service-proxy routes. Static files load without daemon bearer auth; API and WebSocket calls still enforce auth.
+When enabled, opening the daemon HTTP origin (for example `http://localhost:6868/`) serves the web app. The same HTTP server continues to serve `/api/*`, `/mcp/*`, `/public/*`, the WebSocket upgrade, and service-proxy routes. Static files load without daemon bearer auth; API and WebSocket calls still enforce auth.
 
-The served app auto-bootstraps a connection to the same origin, so opening `http://localhost:6767/` directly usually skips the Add Host step.
+The served app auto-bootstraps a connection to the same origin, so opening `http://localhost:6868/` directly usually skips the Add Host step.
 
 Build the artifact for packaging or measurement with:
 
@@ -561,7 +568,7 @@ install.
 
 ## CLI reference
 
-Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's `.dev/paseo-home` and dev daemon endpoint unless you pass an explicit override. The globally installed `paseo` binary on macOS is a symlink into the installed Paseo desktop app, not this checkout — use it to drive the desktop's built-in daemon, but use `npm run cli` when you want to talk to the CLI you are editing.
+Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's `packages/desktop/.dev/otto-home` and dev daemon endpoint unless you pass an explicit override. The globally installed `paseo` binary on macOS is a symlink into the installed Paseo desktop app, not this checkout — use it to drive the desktop's built-in daemon, but use `npm run cli` when you want to talk to the CLI you are editing.
 
 Canonical automation uses `paseo project create/ls/rename/delete`, `paseo workspace create/ls/rename/archive`, `paseo heartbeat create/update/delete`, and the full `paseo schedule` group. MCP heartbeat automation is intentionally smaller: create and delete only. Detach remains an explicit user lifecycle action rather than an agent tool. `paseo run --new-workspace local|worktree` composes workspace creation with agent creation. The old `paseo worktree` and `paseo run --worktree` forms are hidden compatibility aliases.
 
@@ -585,7 +592,7 @@ npm run cli -- --host ssh://user@host ls -a
 Set `PASEO_HOST` to use the same target across invocations. An explicit
 selector overrides both environment selectors. With both `PASEO_HOME` and `PASEO_HOST` set, pass an explicit selector. See [CLI target selection](../public-docs/cli.md#select-one-daemon).
 
-In an SSH URI, the URL port is the SSH server port. The remote daemon defaults to `127.0.0.1:6767`; use `?daemonPort=7777` to override it. The transport runs non-interactively through the local OpenSSH client and never installs, starts, or configures the remote daemon. User-facing setup and troubleshooting live in [public-docs/connectivity.md](../public-docs/connectivity.md#ssh).
+In an SSH URI, the URL port is the SSH server port. The remote daemon defaults to `127.0.0.1:6868`; use `?daemonPort=7777` to override it. The transport runs non-interactively through the local OpenSSH client and never installs, starts, or configures the remote daemon. User-facing setup and troubleshooting live in [public-docs/connectivity.md](../public-docs/connectivity.md#ssh).
 
 Desktop integrations can focus an existing agent without creating one or
 sending a message. Use `paseo://h/<server-id>/agent/<agent-id>`, or run

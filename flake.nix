@@ -1,5 +1,6 @@
+# OTTO(identity): expose the existing Otto flake entry point.
 {
-  description = "Paseo - self-hosted daemon for AI coding agents";
+  description = "Otto - self-hosted daemon for AI coding agents";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -38,6 +39,7 @@
         {
           default = paseo;
           paseo = paseo;
+          otto = paseo;
           desktop = pkgs.callPackage ./nix/desktop-package.nix {
             inherit paseo;
             buildVersion = desktopBuildVersion;

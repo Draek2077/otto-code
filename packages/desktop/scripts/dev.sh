@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# OTTO(identity): user-visible launcher title.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,7 +35,7 @@ export PASEO_CORS_ORIGINS="${PASEO_CORS_ORIGINS:-*}"
 npm --prefix "$DESKTOP_DIR" run build:main
 
 echo "══════════════════════════════════════════════════════"
-echo "  Paseo Desktop Dev"
+echo "  Otto Desktop Dev"
 echo "══════════════════════════════════════════════════════"
 echo "  Metro:      ${EXPO_DEV_URL}"
 echo "  Daemon:     ${PASEO_LISTEN}"

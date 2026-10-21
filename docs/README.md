@@ -1,0 +1,20 @@
+# Software documentation
+
+These pages describe the current software. Project charters, delivery status,
+decisions, and measured findings live in Otto Knowledge.
+
+| Page                                                   | Purpose                                                  |
+| ------------------------------------------------------ | -------------------------------------------------------- |
+| [otto-agents.md](otto-agents.md)                       | Working rules for Otto additions to the Paseo base       |
+| [otto-identity.md](otto-identity.md)                   | Branding boundary, environment mapping, and marked seams |
+| [otto-continuity.md](otto-continuity.md)               | Existing data, app storage, and relay migration          |
+| [architecture.md](architecture.md)                     | Paseo base architecture                                  |
+| [development.md](development.md)                       | Development commands and isolation                       |
+| [release.md](release.md)                               | Release procedure                                        |
+| [otto-release.md](otto-release.md)                     | Otto build artifacts, signing, and CI publishing         |
+| [testing.md](testing.md)                               | Testing conventions                                      |
+| [protocol-compatibility.md](protocol-compatibility.md) | Compatibility contracts                                  |
+| [protocol-validation.md](protocol-validation.md)       | Protocol validation                                      |
+| [hub.md](hub.md)                                       | Opt-in Hub relationship and its separate transport       |
+
+The root [CLAUDE.md](../CLAUDE.md) also indexes the inherited Paseo subsystem guides.

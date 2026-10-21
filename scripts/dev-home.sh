@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# OTTO(dev-isolation): configure Otto's lane before Paseo's launchers read it.
+source "$(dirname "${BASH_SOURCE[0]}")/otto/dev-environment.sh"
+
 default_dev_paseo_root() {
   git rev-parse --show-toplevel 2>/dev/null || pwd
 }
@@ -68,18 +71,8 @@ configure_dev_daemon_config() {
   fi
 
   mkdir -p "$PASEO_HOME"
-  node -e '
-const fs = require("fs");
-const [path, listen] = [process.argv[1], process.argv[2]];
-let cfg = {};
-try { cfg = JSON.parse(fs.readFileSync(path, "utf8")); } catch {}
-cfg.version = cfg.version || 1;
-cfg.daemon = cfg.daemon || {};
-cfg.daemon.listen = listen;
-cfg.daemon.cors = cfg.daemon.cors || {};
-cfg.daemon.cors.allowedOrigins = ["*"];
-fs.writeFileSync(path, JSON.stringify(cfg, null, 2));
-' "$PASEO_HOME/config.json" "$PASEO_LISTEN"
+  # OTTO(dev-isolation): seed only the script-managed config, without losing invalid input.
+  node "$(dirname "${BASH_SOURCE[0]}")/otto/seed-dev-config.mjs" "$PASEO_HOME/config.json" "$PASEO_LISTEN"
 }
 
 resolve_dev_daemon_endpoint() {

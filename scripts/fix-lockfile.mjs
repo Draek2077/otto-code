@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// OTTO(release): retain Otto's lockfile completion for the Nix hash pipeline.
 // Workaround for https://github.com/npm/cli/issues/4460
 //
 // npm silently omits `resolved` and `integrity` fields from some
@@ -11,7 +12,7 @@
 // so they can pre-fetch all tarballs in a sandbox with no network access.
 //
 // This script finds incomplete entries and fills them in using `npm view`.
-// It's idempotent — running it on an already-complete lockfile is a no-op.
+// It's idempotent - running it on an already-complete lockfile is a no-op.
 //
 // See also: https://github.com/npm/cli/issues/4263
 //           https://github.com/npm/cli/issues/6301

@@ -1,3 +1,4 @@
+# OTTO(release): retain Otto release identities and deployment ownership.
 name: Deploy Website
 
 on:
@@ -7,7 +8,6 @@ on:
       - "CHANGELOG.md"
       - "public-docs/**"
       - "packages/website/**"
-      - "packages/protocol/**"
       - "package.json"
       - "package-lock.json"
       - "patches/**"
@@ -16,24 +16,24 @@ on:
     types: [published]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     if: ${{ github.event_name != 'release' || (!github.event.release.prerelease && !github.event.release.draft) }}
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
 
       - name: Install dependencies
-        run: node scripts/npm-retry.mjs ci --workspace=@getpaseo/website --workspace=@getpaseo/protocol --include-workspace-root
-
-      - name: Build protocol
-        run: npm run build:protocol
+        run: node scripts/npm-retry.mjs ci --workspace=@getpaseo/website --include-workspace-root
 
       - name: Typecheck
         run: npm run typecheck --workspace=@getpaseo/website

@@ -1,5 +1,6 @@
 {
   "files": {
+    "packages/app/public/manifest.json": "identity: Otto web app name and short name.",
     ".oxfmtrc.json": "Formatter skips the Otto Knowledge store (.otto/).",
     "LICENSE": "Otto distribution license (AGPL-3.0); Paseo's text is preserved in LICENSE-Paseo.",
     "package-lock.json": "Lockfile follows Otto's workspace versions.",
@@ -14,7 +15,13 @@
     "packages/protocol/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
     "packages/relay/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
     "packages/server/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
-    "packages/website/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
-    "plugins/package.json": "identity: Otto version line and package metadata (synced from the root package.json)."
+    "packages/website/package.json": "website: retain Otto public site and manual assets; generated or non-commentable format.",
+    "plugins/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/app/eas.json": "release: preserve Otto Google Play submission profiles and signing identity.",
+    "packages/website/public/favicon.ico": "website: retain Otto public site and manual assets; generated or non-commentable format.",
+    "packages/website/public/hero-mockup.png": "website: retain Otto public site and manual assets; generated or non-commentable format.",
+    "packages/website/public/homepage-hero.png": "website: retain Otto public site and manual assets; generated or non-commentable format.",
+    "packages/website/public/og-image.png": "website: retain Otto public site and manual assets; generated or non-commentable format.",
+    "packages/website/src/routeTree.gen.ts": "website: retain Otto public site and manual assets; generated or non-commentable format."
   }
 }

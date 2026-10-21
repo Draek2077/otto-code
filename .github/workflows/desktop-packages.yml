@@ -1,3 +1,4 @@
+# OTTO(identity): package names are read from the built Debian metadata.
 name: Desktop Packages
 
 on:
@@ -73,7 +74,7 @@ jobs:
       - name: Smoke installed RPM with restricted user namespaces
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
-          sudo dpkg --remove paseo
+          sudo dpkg --remove "$(dpkg-deb --field packages/desktop/release/*.deb Package)"
           # Ubuntu supplies the runtime libraries under Debian package names.
           # RPM still performs the real payload installation and postinstall.
           sudo rpm --install --nodeps packages/desktop/release/*.rpm

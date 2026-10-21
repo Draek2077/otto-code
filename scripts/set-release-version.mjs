@@ -61,8 +61,22 @@ if (args.print) {
   process.exit(0);
 }
 
+// OTTO(release): invoke npm through its own JS entry point (npm sets
+// npm_execpath for any script it runs) instead of "npm"/"npm.cmd". On Windows
+// the "--message" value's parens would otherwise be re-parsed by cmd.exe.
+const npmExecPath = process.env.npm_execpath;
+const [npmCommand, npmPrefixArgs] =
+  npmExecPath && process.platform === "win32" ? [process.execPath, [npmExecPath]] : ["npm", []];
+
 execFileSync(
-  "npm",
-  ["version", nextVersion, "--include-workspace-root", "--message", "chore(release): cut %s"],
+  npmCommand,
+  [
+    ...npmPrefixArgs,
+    "version",
+    nextVersion,
+    "--include-workspace-root",
+    "--message",
+    "chore(release): cut %s",
+  ],
   { cwd: rootDir, stdio: "inherit" },
 );

@@ -1,3 +1,4 @@
+# OTTO(identity): keep source package paths, expose Otto commands and metadata.
 {
   lib,
   stdenv,
@@ -20,7 +21,7 @@
 }:
 
 buildNpmPackage rec {
-  pname = "paseo";
+  pname = "otto";
   version = (builtins.fromJSON (builtins.readFile ../package.json)).version;
 
   src = lib.cleanSourceWith {
@@ -58,6 +59,7 @@ buildNpmPackage rec {
       && baseName != "node_modules"
       && baseName != ".git"
       && baseName != ".paseo"
+      && baseName != ".otto"
       && baseName != ".DS_Store";
   };
 
@@ -133,12 +135,12 @@ buildNpmPackage rec {
     # Create wrapper for the server entry point (for systemd / direct use)
     mkdir -p $out/bin
     # Keep Paseo's runtime mode separate from NODE_ENV, which belongs to spawned agents.
-    makeWrapper ${nodejs}/bin/node $out/bin/paseo-server \
+    makeWrapper ${nodejs}/bin/node $out/bin/otto-server \
       --add-flags "$out/lib/paseo/packages/server/dist/scripts/supervisor-entrypoint.js" \
       --set PASEO_NODE_ENV production
 
     # Create wrapper for the CLI
-    makeWrapper ${nodejs}/bin/node $out/bin/paseo \
+    makeWrapper ${nodejs}/bin/node $out/bin/otto \
       --add-flags "$out/lib/paseo/packages/cli/dist/index.js" \
       --set NODE_PATH "$out/lib/paseo/node_modules"
 
@@ -147,9 +149,9 @@ buildNpmPackage rec {
 
   meta = {
     description = "Self-hosted daemon for Claude Code, Codex, and OpenCode";
-    homepage = "https://github.com/getpaseo/paseo";
+    homepage = "https://github.com/Draek2077/otto-code";
     license = lib.licenses.agpl3Plus;
-    mainProgram = "paseo";
+    mainProgram = "otto";
     platforms = lib.platforms.linux ++ lib.platforms.darwin;
   };
 }
