@@ -60,6 +60,15 @@ test("the bundled Otto provider publishes shared client settings and completes a
     expect(
       await client.invokePluginRpc("otto-openai-compatible-provider", rpc.write.name, {
         revision: initial.revision,
+        values: { baseUrl: "ftp://fixture.invalid/v1" },
+      }),
+    ).toMatchObject({ status: "invalid" });
+    expect(
+      await client.invokePluginRpc("otto-openai-compatible-provider", rpc.read.name, {}),
+    ).toEqual(initial);
+    expect(
+      await client.invokePluginRpc("otto-openai-compatible-provider", rpc.write.name, {
+        revision: initial.revision,
         values: { baseUrl: `http://127.0.0.1:${address.port}/v1` },
       }),
     ).toMatchObject({ status: "saved" });

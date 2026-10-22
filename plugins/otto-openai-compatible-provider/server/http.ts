@@ -1,16 +1,9 @@
+import { apiBaseUrl } from "../shared/settings.js";
+
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 export function endpoint(baseUrl: string, operation: string): string {
-  const url = new URL(baseUrl);
-  if (
-    !["http:", "https:"].includes(url.protocol) ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash
-  ) {
-    throw new Error("Use an HTTP(S) endpoint without credentials, query parameters or a fragment.");
-  }
+  const url = new URL(apiBaseUrl.parse(baseUrl));
   return `${url.href.replace(/\/$/, "")}/${operation}`;
 }
 

@@ -31,7 +31,8 @@ function ConnectionScreen({ theme }: PluginSurfaceProps) {
   const discard = useCallback(() => {
     setDraft(null);
     setGeneration((value) => value + 1);
-  }, []);
+    void settings.reload();
+  }, [settings]);
   const reload = useCallback(() => void settings.reload(), [settings]);
   const editUrl = useCallback((value: string) => edit("baseUrl", value), [edit]);
   const editModel = useCallback((value: string) => edit("model", value), [edit]);
