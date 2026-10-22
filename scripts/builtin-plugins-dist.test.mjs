@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import os from "node:os";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import pino from "pino";
@@ -31,7 +30,11 @@ test("built output compiles and starts every listed built-in", async () => {
   const { version } = JSON.parse(
     await readFile(path.join(repoRoot, "packages/server/package.json"), "utf8"),
   );
-  const settingsDirectory = await mkdtemp(path.join(os.tmpdir(), "builtin-dist-settings-"));
+  // OTTO(provider-home): match the daemon's resolved <home>/plugin-settings layout.
+  const scratch = path.join(repoRoot, ".tmp");
+  await mkdir(scratch, { recursive: true });
+  const hostHome = await mkdtemp(path.join(scratch, "builtin-dist-home-"));
+  const settingsDirectory = path.join(hostHome, "plugin-settings");
   const runtime = new PluginRuntime(pino({ level: "silent" }), OTTO_PASEO_BASE_VERSION, {
     settingsDirectory,
   });
@@ -82,6 +85,6 @@ test("built output compiles and starts every listed built-in", async () => {
     }
   } finally {
     await runtime.stopAll();
-    await rm(settingsDirectory, { recursive: true, force: true });
+    await rm(hostHome, { recursive: true, force: true });
   }
 });
