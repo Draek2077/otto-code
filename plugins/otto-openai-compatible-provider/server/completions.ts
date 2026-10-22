@@ -10,8 +10,18 @@ export interface ToolCall {
 export type ChatContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
+export const reasoningFieldsSchema = z.object({
+  reasoning: z.string().optional(),
+  reasoning_content: z.string().optional(),
+  reasoning_details: z.array(z.record(z.string(), z.json())).optional(),
+});
+export type ReasoningFields = z.infer<typeof reasoningFieldsSchema>;
 export type ChatMessage =
-  | { role: "system" | "assistant"; content: string | null; tool_calls?: ToolCall[] }
+  | ({
+      role: "system" | "assistant";
+      content: string | null;
+      tool_calls?: ToolCall[];
+    } & ReasoningFields)
   | { role: "user"; content: string | ChatContentPart[] }
   | { role: "tool"; tool_call_id: string; content: string };
 export interface ToolDefinition {
@@ -25,6 +35,11 @@ interface CompletionInput {
   messages: ChatMessage[];
   tools: ToolDefinition[];
   signal: AbortSignal;
+  maxTokens?: number;
+  outputTokenParameter?: "max_tokens" | "max_completion_tokens";
+  reasoningEffort?: string;
+  reasoning?: { effort: string };
+  cacheKey?: string;
   onText?(text: string): void;
   onReasoning?(text: string): void;
 }
@@ -38,6 +53,8 @@ const chunkSchema = z.object({
       delta: z.object({
         content: z.string().nullable().optional(),
         reasoning_content: z.string().nullable().optional(),
+        reasoning: z.string().nullable().optional(),
+        reasoning_details: z.array(z.record(z.string(), z.json())).optional(),
         tool_calls: z
           .array(
             z.object({
@@ -68,6 +85,8 @@ const chunkSchema = z.object({
 interface CompletionState {
   content: string;
   reasoning: string;
+  reasoningFields: ReasoningFields;
+  reasoningBytes: number;
   finished: boolean;
   usage?: ProviderUsage;
   calls: Map<number, ToolCall>;
@@ -87,10 +106,7 @@ function mergeChoice(state: CompletionState, choice: Choice, input: CompletionIn
     state.content += choice.delta.content;
     input.onText?.(state.content);
   }
-  if (choice.delta.reasoning_content) {
-    state.reasoning += choice.delta.reasoning_content;
-    input.onReasoning?.(state.reasoning);
-  }
+  mergeReasoning(state, choice.delta, input);
   for (const part of choice.delta.tool_calls ?? []) mergeCall(state.calls, part);
   if (
     state.content.length + state.reasoning.length > 2 * 1024 * 1024 ||
@@ -98,6 +114,30 @@ function mergeChoice(state: CompletionState, choice: Choice, input: CompletionIn
     [...state.calls.values()].some((call) => call.function.arguments.length > 1024 * 1024)
   )
     throw new Error("The completion exceeded the supported output limit.");
+}
+
+function mergeReasoning(
+  state: CompletionState,
+  delta: Choice["delta"],
+  input: CompletionInput,
+): void {
+  for (const key of ["reasoning", "reasoning_content"] as const) {
+    const text = delta[key];
+    if (text) state.reasoningFields[key] = (state.reasoningFields[key] ?? "") + text;
+  }
+  const reasoning = delta.reasoning_content ?? delta.reasoning;
+  if (reasoning) {
+    state.reasoning += reasoning;
+    input.onReasoning?.(state.reasoning);
+  }
+  if (delta.reasoning_details?.length) {
+    // Signed/encrypted chunks are opaque. Preserve the complete sequence without
+    // merging by id/index, decoding, or rewriting any vendor fields.
+    state.reasoningBytes += Buffer.byteLength(JSON.stringify(delta.reasoning_details));
+    if (state.reasoningBytes > 2 * 1024 * 1024)
+      throw new Error("The completion exceeded the supported reasoning limit.");
+    (state.reasoningFields.reasoning_details ??= []).push(...delta.reasoning_details);
+  }
 }
 
 function mergeCall(
@@ -115,6 +155,22 @@ function mergeCall(
   calls.set(part.index, call);
 }
 
+function requestBody(input: CompletionInput) {
+  return {
+    model: input.model,
+    messages: input.messages,
+    stream: true,
+    stream_options: { include_usage: true },
+    ...(input.maxTokens === undefined
+      ? {}
+      : { [input.outputTokenParameter ?? "max_tokens"]: input.maxTokens }),
+    ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
+    ...(input.reasoning ? { reasoning: input.reasoning } : {}),
+    ...(input.cacheKey ? { prompt_cache_key: input.cacheKey } : {}),
+    ...(input.tools.length ? { tools: input.tools, tool_choice: "auto" } : {}),
+  };
+}
+
 export async function streamCompletion(input: CompletionInput) {
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -126,20 +182,21 @@ export async function streamCompletion(input: CompletionInput) {
     headers,
     redirect: "error",
     signal: input.signal,
-    body: JSON.stringify({
-      model: input.model,
-      messages: input.messages,
-      stream: true,
-      stream_options: { include_usage: true },
-      ...(input.tools.length ? { tools: input.tools, tool_choice: "auto" } : {}),
-    }),
+    body: JSON.stringify(requestBody(input)),
   });
   await requireOk(response, "OpenAI-compatible endpoint", input.apiKey);
   if (!response.headers.get("content-type")?.includes("text/event-stream")) {
     await response.body?.cancel();
     throw new Error("The endpoint must support streamed Chat Completions.");
   }
-  const state: CompletionState = { content: "", reasoning: "", finished: false, calls: new Map() };
+  const state: CompletionState = {
+    content: "",
+    reasoning: "",
+    reasoningFields: {},
+    reasoningBytes: 0,
+    finished: false,
+    calls: new Map(),
+  };
   for await (const data of serverEvents(response)) {
     if (data === "[DONE]") break;
     const chunk = chunkSchema.parse(JSON.parse(data));
@@ -159,5 +216,13 @@ export async function streamCompletion(input: CompletionInput) {
   const toolCalls = [...state.calls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call);
   if (toolCalls.some((call) => !call.id || !call.function.name))
     throw new Error("The endpoint returned an incomplete tool call.");
-  return { content: state.content, reasoning: state.reasoning, toolCalls, usage: state.usage };
+  return {
+    content: state.content,
+    reasoning: state.reasoning,
+    toolCalls,
+    usage: state.usage,
+    ...(Object.keys(state.reasoningFields).length
+      ? { reasoningFields: state.reasoningFields }
+      : {}),
+  };
 }

@@ -13,12 +13,21 @@ test("the bundled Otto provider publishes shared client settings and completes a
   const scratch = fileURLToPath(new URL("../../../../../.tmp/", import.meta.url));
   await mkdir(scratch, { recursive: true });
   const root = await mkdtemp(path.join(scratch, "otto-provider-e2e-"));
-  const prompts: Array<{ messages: Array<{ role: string; content: string }>; tools?: unknown[] }> =
-    [];
+  const prompts: Array<{
+    model: string;
+    reasoning_effort?: string;
+    max_tokens?: number;
+    messages: Array<{ role: string; content: string }>;
+    tools?: Array<{ function: { name: string } }>;
+  }> = [];
   const server = createServer(async (request, response) => {
     if (request.url === "/v1/models") {
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ data: [{ id: "fixture" }] }));
+      response.end(
+        JSON.stringify({
+          data: [{ id: "fixture" }, { id: "configured", reasoning_efforts: ["low", "high"] }],
+        }),
+      );
       return;
     }
     let body = "";
@@ -73,7 +82,7 @@ test("the bundled Otto provider publishes shared client settings and completes a
       }),
     ).toMatchObject({ status: "saved" });
     expect(await client.listProviderModels("openai-compatible", { cwd: root })).toMatchObject({
-      models: [{ id: "fixture" }],
+      models: [{ id: "fixture" }, { id: "configured" }],
     });
     const agent = await client.createAgent({
       provider: "openai-compatible",
@@ -93,6 +102,18 @@ test("the bundled Otto provider publishes shared client settings and completes a
     expect(prompts).toHaveLength(1);
     expect(prompts[0]?.messages).toContainEqual({ role: "user", content: "Say hello" });
     expect(prompts[0]?.tools?.length).toBeGreaterThanOrEqual(3);
+    await client.setAgentModel(agent.id, "configured");
+    await client.setAgentThinkingOption(agent.id, "high");
+    await client.setAgentMode(agent.id, "plan");
+    await client.setAgentFeature(agent.id, "output_limit", "4096");
+    await client.sendMessage(agent.id, "Use the saved session controls");
+    expect((await client.waitForFinish(agent.id, 15_000)).status).toBe("idle");
+    expect(prompts[1]).toMatchObject({
+      model: "configured",
+      reasoning_effort: "high",
+      max_tokens: 4096,
+    });
+    expect(prompts[1]?.tools?.some((tool) => tool.function.name === "otto_write_file")).toBe(false);
   } finally {
     await client.close();
     await daemon.close();

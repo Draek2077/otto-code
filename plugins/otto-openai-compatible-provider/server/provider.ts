@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { createHash } from "node:crypto";
 import {
   negotiateProviderCapabilities,
@@ -7,15 +6,18 @@ import {
   type ProviderEvent,
   type ProviderInput,
   type ProviderRegistration,
+  type ProviderModel,
 } from "@getpaseo/plugin/server/provider";
 import type { ConnectionSettings } from "../shared/settings.js";
-import { endpoint, readBody, requireOk } from "./http.js";
 import { OpenAiSession } from "./session.js";
+import { discoverModels } from "./catalog.js";
+import { modes } from "./session-config.js";
 
 const capabilities = [
   "prompt.message",
   "prompt.image",
   "session.persistence",
+  "session.configure",
   "permission",
   "permission.tool_policy",
 ] as const;
@@ -24,22 +26,32 @@ export function createOpenAiProvider(
   readSettings: () => Promise<ConnectionSettings>,
   options: { imageDirectory?: string } = {},
 ): ProviderRegistration {
+  let latest: { key: string; models: ProviderModel[] } | undefined;
+  const catalogKey = (settings: ConnectionSettings) =>
+    createHash("sha256")
+      .update(
+        JSON.stringify([
+          settings.baseUrl,
+          settings.model,
+          settings.apiKeyEnv,
+          process.env[settings.apiKeyEnv],
+        ]),
+      )
+      .digest("hex");
+  const models = async (settings: ConnectionSettings, signal: AbortSignal, refresh = false) => {
+    const key = catalogKey(settings);
+    if (!refresh && latest?.key === key) return latest.models;
+    const values = await discoverModels(settings, signal);
+    latest = { key, models: values };
+    return values;
+  };
   return {
     id: "openai-compatible",
     label: "OpenAI-compatible",
     description: "Use a local or hosted OpenAI-compatible Chat Completions endpoint with Otto.",
     async getCatalogCacheKey() {
       const settings = await readSettings();
-      return createHash("sha256")
-        .update(
-          JSON.stringify([
-            settings.baseUrl,
-            settings.model,
-            settings.apiKeyEnv,
-            process.env[settings.apiKeyEnv],
-          ]),
-        )
-        .digest("hex");
+      return catalogKey(settings);
     },
     async status() {
       const settings = await readSettings();
@@ -62,6 +74,7 @@ export function createOpenAiProvider(
             : capabilities.filter((capability) => capability !== "prompt.image"),
         ),
         options.imageDirectory,
+        models,
       );
     },
   };
@@ -71,6 +84,11 @@ function connection(
   readSettings: () => Promise<ConnectionSettings>,
   supported: readonly string[],
   imageDirectory?: string,
+  getModels: (
+    settings: ConnectionSettings,
+    signal: AbortSignal,
+    refresh?: boolean,
+  ) => Promise<ProviderModel[]> = discoverModels,
 ): ProviderConnection {
   const listeners = new Set<(event: ProviderEvent) => void>();
   const sessions = new Map<string, OpenAiSession>();
@@ -90,31 +108,13 @@ function connection(
     switch (input.type) {
       case "catalog": {
         const settings = await readSettings();
-        if (!settings.baseUrl) throw new Error("Configure an OpenAI-compatible endpoint first.");
-        let models = settings.model ? [{ id: settings.model, label: settings.model }] : [];
-        if (!models.length) {
-          const apiKey = process.env[settings.apiKeyEnv];
-          const response = await fetch(endpoint(settings.baseUrl, "models"), {
-            headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-            redirect: "error",
-            signal: AbortSignal.any([lifecycle.signal, AbortSignal.timeout(settings.timeoutMs)]),
-          });
-          await requireOk(response, "Model discovery", apiKey);
-          models = z
-            .object({ data: z.array(z.object({ id: z.string().min(1) })) })
-            .parse(JSON.parse(await readBody(response)))
-            .data.map(({ id }) => ({ id, label: id }));
-        }
-        if (!models.length)
-          throw new Error(
-            "The endpoint has no available models. Load a model on that host or configure its model ID.",
-          );
+        const models = await getModels(settings, lifecycle.signal, true);
         emit({
           type: "catalog",
           requestId: input.requestId,
           catalog: {
             models,
-            modes: [{ id: "default", label: "Ask before tools" }],
+            modes,
             defaultModel: models[0]!.id,
             defaultMode: "default",
           },
@@ -131,6 +131,7 @@ function connection(
           input.persistence,
           supported.includes("permission"),
           imageDirectory,
+          await getModels(settings, lifecycle.signal),
         );
         await value.prepare(lifecycle.signal);
         if (closed || closing) {
@@ -153,14 +154,7 @@ function connection(
         emit({
           type: "session.config",
           sessionId: input.sessionId,
-          config: {
-            model: input.config.model,
-            mode: "default",
-            models: [{ id: input.config.model!, label: input.config.model! }],
-            modes: [{ id: "default", label: "Ask before tools" }],
-            thinkingOptions: [],
-            settings: [],
-          },
+          config: value.configState(),
         });
         emit({ type: "session.ready", requestId: input.requestId, sessionId: input.sessionId });
         opening.delete(input.sessionId);
@@ -171,6 +165,10 @@ function connection(
         return;
       case "session.permission":
         session(input.sessionId).respond(input.permissionId, input.response);
+        return;
+      case "session.configure":
+        session(input.sessionId).configure(input.changes);
+        emit({ type: "request.completed", requestId: input.requestId });
         return;
       case "session.interrupt":
         await session(input.sessionId).interrupt();

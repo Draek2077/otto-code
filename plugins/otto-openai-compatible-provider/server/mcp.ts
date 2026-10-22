@@ -22,6 +22,7 @@ const toolSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   inputSchema: z.record(z.string(), z.json()),
+  annotations: z.object({ readOnlyHint: z.boolean().optional() }).optional(),
 });
 
 class HttpMcpClient {
@@ -217,6 +218,7 @@ export async function loadMcpTools(
         if (tools.some((existing) => existing.definition.function.name === name))
           throw new Error(`Duplicate MCP tool: ${server}/${tool.name}`);
         tools.push({
+          access: tool.annotations?.readOnlyHint ? "read" : "unknown",
           definition: {
             type: "function",
             function: {

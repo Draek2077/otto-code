@@ -35,14 +35,14 @@ all messages and tool cards.
 
 The initial mode is **Ask before tools**. Native tools read a bounded text file, atomically
 write UTF-8 content, or execute a bounded shell command using the session's host environment.
-Every native tool requires approval. Shell commands have a deadline and use the plugin
+In this mode every native tool requires approval. Shell commands have a deadline and use the plugin
 SDK's process termination helper; process-tree termination guarantees follow that helper's
 platform behavior. Denied tools produce feedback without execution. Cancellation aborts
 model requests and pending permission waits, and interrupts the active tool.
 
 The provider consumes daemon-injected stdio, Streamable HTTP and legacy SSE MCP servers. It preserves server
 instructions, tool descriptions and input schemas. Only an exact daemon-supplied server
-and tool preapproval bypasses the permission prompt. Model-visible names are stable hashes;
+and tool preapproval bypasses the permission prompt in Ask before tools. Model-visible names are stable hashes;
 policy matching uses the original identities. MCP sessions close when the provider session
 closes. Stdio servers run in the session workspace with the session environment and
 their configured overrides. Cancellation notifies the MCP server and releases the request;
@@ -65,13 +65,36 @@ reexecutes them automatically. A different configured endpoint is refused when r
 saved history, preventing an accidental history transfer to another service.
 
 The provider supports one endpoint, text and image prompts, native file/shell tools, MCP over all three standard transports,
-streaming, approval, cancellation and recovery of its own new sessions. It does not yet
+streaming, approval, cancellation, live configuration and recovery of its own new sessions. It does not yet
 implement multiple endpoint
-profiles, credential entry, compaction, rewind, live session configuration, or importing
+profiles, credential entry, compaction, rewind, or importing
 Otto 0.9 provider sessions/settings. Older data remains preserved by the continuity layer;
 preservation does not imply those sessions can resume through this new provider.
 
 The full OpenAI-compatible feature family remains in progress. Brain is a separate phase.
+
+## Session controls
+
+Paseo's existing session controls select models, reasoning effort, permission mode and an
+optional maximum response token count. Endpoint default sends no output cap or reasoning
+override. Explicit output limits can include reasoning tokens. Model discovery retains
+advertised context windows, supported reasoning efforts and output token parameter names.
+Unknown endpoints can reject an effort they do not support; selecting Endpoint default
+leaves the choice to that endpoint. A manually configured model ID does not require discovery.
+
+Ask before tools is the default. Accept file edits permits reads and writes inside the
+workspace, checking real filesystem paths; other actions still ask. Read only offers read
+tools and rejects write tools even if the model requests one. Don't ask permits workspace
+reads and exact host MCP grants, and denies actions that would ask. Bypass explicitly permits
+available tools without approval. These modes are application policies, not OS sandboxes.
+MCP read-only annotations control availability in Read only; they do not grant permission.
+
+Configuration changes made during a turn apply to the next turn. The admitted turn and its
+pending approvals retain their original settings. Desired settings persist through restart.
+Reasoning text and signed or encrypted reasoning details remain in model history across
+tool calls and recovery, with opaque chunks preserved in wire order. Each conversation also
+retains a stable prompt cache key. These fields travel only within the encrypted application
+channel and model requests, leaving Paseo relay identity unchanged.
 
 ## Attachments
 

@@ -10,9 +10,11 @@ import {
   type ProviderPermissionResponse,
   type ProviderToolCallDetail,
   type ProviderUsage,
+  type ProviderConfigChanges,
+  type ProviderModel,
 } from "@getpaseo/plugin/server/provider";
 import type { ConnectionSettings } from "../shared/settings.js";
-import { streamCompletion, type ToolCall } from "./completions.js";
+import { streamCompletion, reasoningFieldsSchema, type ToolCall } from "./completions.js";
 import { endpoint } from "./http.js";
 import { boundedResult, nativeTools, type AgentTool } from "./tools.js";
 import { loadMcpTools } from "./mcp.js";
@@ -23,6 +25,12 @@ import {
   type StoredMessage,
   type StoredContent,
 } from "./prompt-content.js";
+import {
+  SessionConfiguration,
+  preferencesSchema,
+  type SessionPreferences,
+} from "./session-config.js";
+import { isToolAvailable, toolDecision } from "./tool-policy.js";
 
 const savedMessage = z.discriminatedUnion("role", [
   z.object({
@@ -32,6 +40,7 @@ const savedMessage = z.discriminatedUnion("role", [
   z.object({
     role: z.literal("assistant"),
     content: z.string().nullable(),
+    ...reasoningFieldsSchema.shape,
     tool_calls: z
       .array(
         z.object({
@@ -50,6 +59,8 @@ const savedSession = z.object({
   messages: z.array(savedMessage),
   timeline: z.array(z.json()),
   pendingToolImages: z.array(storedContentSchema).optional(),
+  preferences: preferencesSchema.optional(),
+  cacheKey: z.string().min(1).optional(),
 });
 const jsonObject = z.record(z.string(), z.json());
 
@@ -57,6 +68,8 @@ export class OpenAiSession {
   readonly timeline = new Map<string, ProviderTimelineItem>();
   readonly messages: StoredMessage[];
   private readonly images: PromptImages;
+  private readonly preferences: SessionConfiguration;
+  private readonly cacheKey: string;
   private readonly pendingToolImages: StoredContent[] = [];
   private active: { controller: AbortController; promise: Promise<void> } | null = null;
   private readonly tools: Map<string, AgentTool>;
@@ -71,14 +84,11 @@ export class OpenAiSession {
     persistence?: ProviderPersistence,
     private readonly supportsPermissions = true,
     imageDirectory?: string,
+    models: readonly ProviderModel[] = [],
   ) {
     this.images = new PromptImages(imageDirectory);
-    if (!config.model)
-      throw new Error("Choose a model before creating an OpenAI-compatible agent.");
-    if (config.mode && config.mode !== "default")
-      throw new Error(
-        "This provider currently supports Ask before tools mode. Saved settings were left intact.",
-      );
+    let previousPreferences: SessionPreferences | undefined;
+    let previousCacheKey: string | undefined;
     endpoint(settings.baseUrl, "chat/completions");
     if (persistence) {
       if (persistence.version !== 1)
@@ -86,6 +96,8 @@ export class OpenAiSession {
           "This saved OpenAI-compatible session needs a supported migration. Its data was left intact.",
         );
       const saved = savedSession.parse(persistence.data);
+      previousPreferences = saved.preferences;
+      previousCacheKey = saved.cacheKey;
       if (saved.endpoint !== endpoint(settings.baseUrl, "chat/completions"))
         throw new Error(
           "This conversation belongs to a different endpoint. Restore that endpoint before resuming it.",
@@ -97,6 +109,8 @@ export class OpenAiSession {
         if (event.type === "timeline.item") this.timeline.set(event.item.id, event.item);
       }
     } else this.messages = [];
+    this.preferences = new SessionConfiguration(config, models, previousPreferences);
+    this.cacheKey = previousCacheKey ?? randomUUID();
     this.tools = new Map(nativeTools(config).map((tool) => [tool.definition.function.name, tool]));
     this.closeUnansweredTools();
     this.flushToolImages();
@@ -135,6 +149,8 @@ export class OpenAiSession {
           messages: this.messages,
           timeline: [...this.timeline.values()],
           ...(this.pendingToolImages.length ? { pendingToolImages: this.pendingToolImages } : {}),
+          preferences: this.preferences.snapshot(),
+          cacheKey: this.cacheKey,
         }),
       ),
     );
@@ -152,8 +168,9 @@ export class OpenAiSession {
     const prepared = prepareContent(prompt.input.content);
     const turnId = randomUUID();
     const controller = new AbortController();
+    const preferences = this.preferences.snapshot();
     const promise = Promise.resolve().then(() =>
-      this.run(turnId, controller, prepared, prompt.clientMessageId),
+      this.run(turnId, controller, prepared, prompt.clientMessageId, preferences),
     );
     this.active = { controller, promise };
     this.emit({
@@ -170,6 +187,7 @@ export class OpenAiSession {
     controller: AbortController,
     prepared: ReturnType<typeof prepareContent>,
     clientMessageId: string,
+    preferences: SessionPreferences,
   ): Promise<void> {
     let partial = "";
     let partialCommitted = false;
@@ -198,13 +216,17 @@ export class OpenAiSession {
         const result = await streamCompletion({
           baseUrl: this.settings.baseUrl,
           apiKey: this.config.env[this.settings.apiKeyEnv] ?? process.env[this.settings.apiKeyEnv],
-          model: this.config.model!,
+          model: preferences.model,
+          ...this.preferences.requestSettings(this.settings.baseUrl, preferences),
+          cacheKey: this.cacheKey,
           messages: [
             ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
             ...(await this.images.wire(this.messages, signal)),
           ],
           tools: this.supportsPermissions
-            ? [...this.tools.values()].map((tool) => tool.definition)
+            ? [...this.tools.values()]
+                .filter((tool) => isToolAvailable(preferences.mode, tool))
+                .map((tool) => tool.definition)
             : [],
           signal: AbortSignal.any([signal, AbortSignal.timeout(this.settings.timeoutMs)]),
           onText: (text) => {
@@ -216,6 +238,7 @@ export class OpenAiSession {
         this.messages.push({
           role: "assistant",
           content: result.content || null,
+          ...result.reasoningFields,
           ...(result.toolCalls.length ? { tool_calls: result.toolCalls } : {}),
         });
         partialCommitted = true;
@@ -228,7 +251,7 @@ export class OpenAiSession {
         }
         for (const call of result.toolCalls) {
           signal.throwIfAborted();
-          this.pendingToolImages.push(...(await this.callTool(call, controller)));
+          this.pendingToolImages.push(...(await this.callTool(call, controller, preferences.mode)));
           this.persist();
           signal.throwIfAborted();
         }
@@ -270,7 +293,12 @@ export class OpenAiSession {
     input: z.infer<typeof jsonObject>,
     detail: ProviderToolCallDetail,
     controller: AbortController,
+    mode: SessionPreferences["mode"],
   ): Promise<z.infer<typeof jsonObject>> {
+    if (!this.supportsPermissions)
+      throw new Error("Tool execution was not negotiated with this host.");
+    if (!isToolAvailable(mode, tool))
+      throw new Error("This tool is unavailable in Read only mode.");
     const grant = tool.preapproval;
     if (
       grant &&
@@ -279,6 +307,10 @@ export class OpenAiSession {
       )
     )
       return input;
+    const authority = await toolDecision(mode, tool, detail, this.config.cwd);
+    if (authority === "allow") return input;
+    if (authority === "deny")
+      throw new Error("The selected mode denies this action without asking.");
     const decision = await this.permission(
       tool.definition.function.name,
       input,
@@ -292,7 +324,11 @@ export class OpenAiSession {
     return decision.updatedInput ?? input;
   }
 
-  private async callTool(call: ToolCall, controller: AbortController): Promise<StoredContent[]> {
+  private async callTool(
+    call: ToolCall,
+    controller: AbortController,
+    mode: SessionPreferences["mode"],
+  ): Promise<StoredContent[]> {
     const itemId = randomUUID();
     let detail: ProviderToolCallDetail = {
       type: "unknown",
@@ -313,7 +349,7 @@ export class OpenAiSession {
         status: "running",
         error: null,
       });
-      input = await this.approvedInput(tool, input, detail, controller);
+      input = await this.approvedInput(tool, input, detail, controller, mode);
       controller.signal.throwIfAborted();
       detail = tool.detail(input);
       const result = await tool.execute(input, controller.signal);
@@ -439,6 +475,28 @@ export class OpenAiSession {
     const resolve = this.permissions.get(id);
     if (!resolve) throw new Error("This permission request is no longer pending.");
     resolve(response);
+  }
+
+  configState() {
+    return this.preferences.state();
+  }
+
+  configure(changes: ProviderConfigChanges): void {
+    this.preferences.update(changes);
+    this.persist();
+    this.emit({ type: "session.config", sessionId: this.id, config: this.configState() });
+    if (this.active)
+      this.emit({
+        type: "session.notice",
+        sessionId: this.id,
+        notice: {
+          id: "configuration-next-turn",
+          severity: "info",
+          title: "Settings saved for the next turn.",
+          description:
+            "The current turn and its pending permission requests keep their original model, mode and response settings.",
+        },
+      });
   }
 
   async interrupt(): Promise<void> {

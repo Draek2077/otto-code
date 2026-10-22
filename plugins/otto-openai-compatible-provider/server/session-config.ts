@@ -1,0 +1,154 @@
+import { z } from "zod";
+import type {
+  ProviderConfigChanges,
+  ProviderConfigState,
+  ProviderMode,
+  ProviderModel,
+  ProviderSessionConfig,
+} from "@getpaseo/plugin/server/provider";
+import { parseModels } from "./catalog.js";
+
+export const modes: ProviderMode[] = [
+  {
+    id: "default",
+    label: "Ask before tools",
+    description: "Ask before executing tools, except exact host-approved MCP grants.",
+  },
+  {
+    id: "acceptEdits",
+    label: "Accept file edits",
+    description: "Allow reads and file writes inside this workspace; ask before other actions.",
+  },
+  {
+    id: "plan",
+    label: "Read only",
+    description: "Offer read tools only. This mode is an application policy, not an OS sandbox.",
+  },
+  {
+    id: "dontAsk",
+    label: "Don't ask",
+    description:
+      "Allow workspace reads and exact host grants; deny actions that would require approval.",
+    isUnattended: true,
+  },
+  {
+    id: "bypassPermissions",
+    label: "Bypass",
+    description: "Run available tools without approval prompts.",
+    isUnattended: true,
+  },
+];
+const outputLimits = ["default", "1024", "4096", "8192", "16384", "32768", "65536"] as const;
+export const preferencesSchema = z.object({
+  model: z.string().min(1),
+  mode: z.enum(["default", "acceptEdits", "plan", "dontAsk", "bypassPermissions"]),
+  thinkingOption: z.string(),
+  output_limit: z.enum(outputLimits),
+});
+export type SessionPreferences = z.infer<typeof preferencesSchema>;
+
+export class SessionConfiguration {
+  private value: SessionPreferences;
+  constructor(
+    config: ProviderSessionConfig,
+    private readonly models: readonly ProviderModel[],
+    saved?: SessionPreferences,
+  ) {
+    this.value = preferencesSchema.parse({
+      model: config.model ?? saved?.model,
+      mode: config.mode ?? saved?.mode ?? "default",
+      thinkingOption: config.thinkingOption ?? saved?.thinkingOption ?? "default",
+      output_limit: config.settings.output_limit ?? saved?.output_limit ?? "default",
+    });
+    this.checkSettings(config.settings);
+    this.validate(this.value);
+  }
+
+  private checkSettings(settings: ProviderConfigChanges["settings"]): void {
+    for (const key of Object.keys(settings ?? {}))
+      if (key !== "output_limit")
+        throw new Error(
+          `Unsupported OpenAI-compatible setting: ${key}. Existing values were left intact.`,
+        );
+  }
+
+  private validate(value: SessionPreferences): void {
+    const options = this.model(value.model).thinkingOptions ?? [];
+    if (
+      value.thinkingOption !== "default" &&
+      !options.some((option) => option.id === value.thinkingOption)
+    )
+      throw new Error(
+        `The selected model does not advertise reasoning option ${value.thinkingOption}. Select Endpoint default or an advertised option.`,
+      );
+  }
+
+  model(id = this.value.model): ProviderModel {
+    // A catalog is metadata, not authority to replace an explicitly selected model ID.
+    return this.models.find((model) => model.id === id) ?? parseModels({ data: [{ id }] })[0]!;
+  }
+
+  snapshot(): SessionPreferences {
+    return { ...this.value };
+  }
+
+  update(changes: ProviderConfigChanges): void {
+    this.checkSettings(changes.settings);
+    const next = preferencesSchema.parse({
+      model: changes.model === undefined ? this.value.model : (changes.model ?? this.models[0]?.id),
+      mode: changes.mode === undefined ? this.value.mode : (changes.mode ?? "default"),
+      thinkingOption:
+        changes.thinkingOption === undefined
+          ? this.value.thinkingOption
+          : (changes.thinkingOption ?? "default"),
+      output_limit: changes.settings?.output_limit ?? this.value.output_limit,
+    });
+    this.validate(next);
+    this.value = next;
+  }
+
+  state(): ProviderConfigState {
+    const model = this.model();
+    return {
+      model: this.value.model,
+      mode: this.value.mode,
+      thinkingOption: this.value.thinkingOption,
+      models: this.models.some((item) => item.id === model.id)
+        ? this.models
+        : [...this.models, model],
+      modes,
+      thinkingOptions: model.thinkingOptions ?? [],
+      settings: [
+        {
+          type: "select",
+          id: "output_limit",
+          label: "Maximum response tokens",
+          description:
+            "Endpoint default leaves the response limit unset. For reasoning models, an explicit limit can include reasoning tokens.",
+          value: this.value.output_limit,
+          options: outputLimits.map((value) => ({
+            value,
+            label: value === "default" ? "Endpoint default" : `${value} tokens`,
+          })),
+        },
+      ],
+    };
+  }
+
+  requestSettings(baseUrl: string, value = this.value) {
+    const effort = value.thinkingOption;
+    const reasoning =
+      effort !== "default" && new URL(baseUrl).hostname === "openrouter.ai"
+        ? { effort: effort === "off" ? "none" : effort }
+        : undefined;
+    return {
+      ...(effort !== "default" && !reasoning ? { reasoningEffort: effort } : {}),
+      ...(reasoning ? { reasoning } : {}),
+      ...(value.output_limit !== "default" ? { maxTokens: Number(value.output_limit) } : {}),
+      outputTokenParameter:
+        this.model(value.model).metadata?.outputTokenParameter === "max_completion_tokens"
+          ? ("max_completion_tokens" as const)
+          : ("max_tokens" as const),
+    };
+  }
+}

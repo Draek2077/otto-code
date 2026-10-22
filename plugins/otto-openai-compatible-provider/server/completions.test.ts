@@ -99,3 +99,52 @@ it("assembles streamed text, fragmented tool arguments and final request usage",
     usage: { inputTokens: 31, outputTokens: 12, cachedInputTokens: 7 },
   });
 });
+
+it("retains opaque reasoning chunks in wire order and reports reasoning aliases", async () => {
+  const details = [
+    { type: "reasoning.encrypted", id: "signed", index: 2, data: "opaque-first" },
+    { type: "reasoning.encrypted", id: "signed", index: 0, data: "opaque-second" },
+  ];
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    for (const [index, detail] of details.entries())
+      response.write(
+        `data: ${JSON.stringify({
+          choices: [
+            {
+              index: 0,
+              delta: {
+                reasoning: index === 0 ? "Thinking" : " more",
+                reasoning_details: [detail],
+              },
+            },
+          ],
+        })}\n\n`,
+      );
+    response.end(
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Done" }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+    );
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  cleanup.push(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw Error("Missing test endpoint");
+  const updates: string[] = [];
+  const result = await streamCompletion({
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    model: "reasoner",
+    messages: [],
+    tools: [],
+    signal: AbortSignal.timeout(5000),
+    onReasoning: (value) => updates.push(value),
+  });
+  expect(updates).toEqual(["Thinking", "Thinking more"]);
+  expect(result.reasoning).toBe("Thinking more");
+  expect(result).toMatchObject({
+    reasoningFields: { reasoning: "Thinking more", reasoning_details: details },
+  });
+});

@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { ToolDefinition } from "./completions.js";
 
 export interface AgentTool {
+  access?: "read" | "write" | "execute" | "unknown";
   definition: ToolDefinition;
   detail(input: Record<string, unknown>): ProviderToolCallDetail;
   execute(input: Record<string, unknown>, signal: AbortSignal): Promise<string | ToolOutput>;
@@ -46,9 +47,10 @@ const commandInput = z.object({
 export function nativeTools(config: ProviderSessionConfig): AgentTool[] {
   return [
     {
+      access: "read",
       definition: definition(
         "otto_read_file",
-        "Read a text file on the agent host. Paths resolve from the workspace. Use offset (1-based line) and limit to inspect a bounded part of a file. Otto asks the user before execution.",
+        "Read a text file on the agent host. Paths resolve from the workspace. Use offset (1-based line) and limit to inspect a bounded part of a file. Execution follows the selected permission mode.",
         readInput,
       ),
       detail(input) {
@@ -81,9 +83,10 @@ export function nativeTools(config: ProviderSessionConfig): AgentTool[] {
       },
     },
     {
+      access: "write",
       definition: definition(
         "otto_write_file",
-        "Write UTF-8 text to a file on the agent host, replacing its content. Read an existing file before changing it. Paths resolve from the workspace. Otto asks the user before execution.",
+        "Write UTF-8 text to a file on the agent host, replacing its content. Read an existing file before changing it. Paths resolve from the workspace. Execution follows the selected permission mode.",
         writeInput,
       ),
       detail(input) {
@@ -119,9 +122,10 @@ export function nativeTools(config: ProviderSessionConfig): AgentTool[] {
       },
     },
     {
+      access: "execute",
       definition: definition(
         "otto_exec_command",
-        "Run a shell command on the agent host in the workspace. Explain destructive operations in the command request. Otto asks the user before execution. Output is bounded; use timeout_ms for a shorter deadline.",
+        "Run a shell command on the agent host in the workspace. Explain destructive operations in the command request. Execution follows the selected permission mode. Output is bounded; use timeout_ms for a shorter deadline.",
         commandInput,
       ),
       detail(input) {
