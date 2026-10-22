@@ -5,11 +5,17 @@ import { HostCredentials } from "./server/credentials.js";
 import { registerHostCredentials } from "./server/credential-handlers.js";
 import { LegacyProviders, legacySettingsDefinition } from "./server/legacy-config.js";
 import { legacyStatus } from "./shared/legacy.js";
-import { BUILTIN_PROVIDER_IDS } from "@getpaseo/protocol/provider-manifest";
+import { z } from "zod";
 import { endpoint } from "./server/http.js";
 
 export default function contribute(server: PluginServerContext) {
   const home = process.env.OTTO_PROVIDER_HOST_HOME;
+  // The daemon owns its reserved identities. Plugin source compiles from a
+  // separate resources directory in desktop builds, so depend only on the SDK
+  // and its host-provided context rather than importing daemon-private packages.
+  const reserved = new Set(
+    z.array(z.string()).parse(JSON.parse(process.env.OTTO_PROVIDER_RESERVED_IDS ?? "null")),
+  );
   const legacy = home ? new LegacyProviders(home) : undefined;
   let initial;
   try {
@@ -44,7 +50,7 @@ export default function contribute(server: PluginServerContext) {
           id,
           label,
           enabled,
-          diagnostic: BUILTIN_PROVIDER_IDS.includes(id)
+          diagnostic: reserved.has(id)
             ? "This preserved identity conflicts with a Paseo built-in and was left inactive."
             : diagnostic,
         })),
@@ -89,7 +95,7 @@ export default function contribute(server: PluginServerContext) {
     /* Exposed through legacy.status. */
   }
   for (const alias of aliases) {
-    if (alias.id === "openai-compatible" || BUILTIN_PROVIDER_IDS.includes(alias.id)) continue;
+    if (alias.id === "openai-compatible" || reserved.has(alias.id)) continue;
     server.registerProvider(
       createOpenAiProvider(
         async () => {

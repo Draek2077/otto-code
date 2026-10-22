@@ -56,6 +56,7 @@ test("Otto 0.9 provider settings and aliases work unchanged without activating B
             OPENAI_API_KEY: "synthetic-studio-key",
           },
         },
+        codex: { extends: "openai-compatible", label: "Preserved Codex alias" },
         "otto-brain": {
           extends: "openai-compatible",
           env: { OPENAI_BASE_URL: "http://127.0.0.1:1/v1" },
@@ -93,6 +94,11 @@ test("Otto 0.9 provider settings and aliases work unchanged without activating B
       await client.invokePluginRpc("otto-openai-compatible-provider", "legacy.status", {}),
     ).toMatchObject({
       providers: [
+        {
+          id: "codex",
+          label: "Preserved Codex alias",
+          diagnostic: expect.stringContaining("conflicts"),
+        },
         { id: "old-studio", label: "Old studio", enabled: true },
         { id: "openai-compatible", label: "Cloud", enabled: true },
       ],

@@ -42,6 +42,9 @@ explicit reload and retry. If the endpoint changes while editing a key, saving i
 until that draft is discarded. A stored key is bound to the endpoint URL; changing that URL
 requires explicitly replacing or removing the stored key. The daemon supplies the resolved
 host directory to this Otto built-in through a small tagged worker-initialization seam.
+That same host context supplies the daemon's reserved provider IDs. The plugin uses
+the public SDK and host values, avoiding private package imports from desktop resource
+directories or renamed npm installations.
 
 ## Preserved Otto 0.9 configuration
 

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { BUILTIN_PROVIDER_IDS } from "@getpaseo/protocol/provider-manifest";
 
 interface PluginHostInput {
   pluginId: string;
@@ -19,5 +20,8 @@ export function ottoPluginEnvironment({
     path.basename(path.dirname(settingsDirectory)) !== "plugin-settings"
   )
     throw new Error("The Otto provider requires the daemon's resolved host settings directory.");
-  return { OTTO_PROVIDER_HOST_HOME: path.dirname(path.dirname(settingsDirectory)) };
+  return {
+    OTTO_PROVIDER_HOST_HOME: path.dirname(path.dirname(settingsDirectory)),
+    OTTO_PROVIDER_RESERVED_IDS: JSON.stringify(BUILTIN_PROVIDER_IDS),
+  };
 }

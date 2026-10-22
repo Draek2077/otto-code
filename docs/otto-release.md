@@ -5,10 +5,6 @@ secrets, and artifact names. Source workspaces remain `@getpaseo/*`. Published n
 packages are `@otto-code/*`; the packing script renames manifests and compiled
 imports while preserving the SDK identifiers Paseo plugin authors use.
 
-Bundled plugin sources keep `@getpaseo/plugin` SDK imports because the plugin compiler
-supplies those modules. Their other workspace dependencies, including protocol runtime
-imports, follow the `@otto-code` package rename and resolve from the installed packages.
-
 ## Preparation and publication
 
 The next product release is 0.10.0. Phase 0 produces verifiable builds; it does not

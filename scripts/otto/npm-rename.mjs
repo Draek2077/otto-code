@@ -15,10 +15,9 @@
 //   Paseo plugin. A module specifier (`from "..."`, `import(...)`,
 //   `require(...)`) is the host's own import of its dependency and is renamed,
 //   because the installed dependency is `@otto-code/plugin`.
-// - SDK imports in plugin source the server compiles at runtime
-//   (`dist/server/builtin-plugins/`). The compiler supplies these SDK modules
-//   by their Paseo names. Other workspace dependencies are real installed
-//   packages and must follow the rename, including protocol runtime imports.
+// - Plugin source the server ships to compile at runtime
+//   (`dist/server/builtin-plugins/`). Those files are plugin-author code and
+//   import the SDK by its Paseo name.
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -29,7 +28,7 @@ export const OTTO_REPOSITORY_URL = "git+https://github.com/Draek2077/otto-code.g
 export const OTTO_HOMEPAGE = "https://otto-code.me";
 export const OTTO_BUGS_URL = "https://github.com/Draek2077/otto-code/issues";
 
-// Package-relative directories whose SDK imports remain plugin-author identifiers.
+// Package-relative directories holding plugin-author source. Never rewritten.
 export const AUTHOR_SOURCE_DIRECTORIES = ["dist/server/builtin-plugins/"];
 
 const TEXT_EXTENSIONS = new Set([
@@ -69,17 +68,13 @@ function isPluginAuthorLiteral(value) {
 }
 
 /** Index ranges of `@getpaseo/` occurrences that must stay Paseo. */
-function preservedRanges(text, authorSource) {
+function preservedRanges(text) {
   const ranges = [];
   for (const match of text.matchAll(QUOTED_PASEO_LITERAL)) {
     const value = match[2];
     if (!isPluginAuthorLiteral(value)) continue;
     const before = text.slice(Math.max(0, match.index - 24), match.index);
-    if (
-      SPECIFIER_CONTEXT.test(before) &&
-      !(authorSource && /^@getpaseo\/plugin(?:\/|$)/.test(value))
-    )
-      continue;
+    if (SPECIFIER_CONTEXT.test(before)) continue;
     const start = match.index + 1;
     ranges.push([start, start + value.length]);
   }
@@ -99,8 +94,8 @@ function scopeOccurrences(text) {
  * Renames `@getpaseo/` to `@otto-code/` in source text, except the plugin
  * author literals described at the top of this file.
  */
-export function rewriteText(text, { authorSource = false } = {}) {
-  const ranges = preservedRanges(text, authorSource);
+export function rewriteText(text) {
+  const ranges = preservedRanges(text);
   const isPreserved = (index) => ranges.some(([start, end]) => index >= start && index < end);
   let out = "";
   let cursor = 0;
@@ -120,8 +115,8 @@ export function rewriteText(text, { authorSource = false } = {}) {
 }
 
 /** Occurrences rewriteText would still rename; zero after a correct rewrite. */
-export function countUnrenamed(text, options) {
-  return rewriteText(text, options).renamed;
+export function countUnrenamed(text) {
+  return rewriteText(text).renamed;
 }
 
 function renameKeys(map) {
@@ -199,17 +194,16 @@ export function rewritePackedTree(packageDir, { directory, license } = {}) {
       changedFiles.push(relativePath);
       continue;
     }
-    if (!isTextCandidate(relativePath)) continue;
+    if (isAuthorSource(relativePath) || !isTextCandidate(relativePath)) continue;
     if (statSync(filePath).size === 0) continue;
     const buffer = readFileSync(filePath);
     if (buffer.includes(0)) continue;
     const source = buffer.toString("utf8");
     if (!source.includes(PASEO_SCOPE)) continue;
-    const options = { authorSource: isAuthorSource(relativePath) };
-    const result = rewriteText(source, options);
+    const result = rewriteText(source);
     preserved += result.preserved;
     if (result.renamed === 0) continue;
-    if (countUnrenamed(result.text, options) !== 0) {
+    if (countUnrenamed(result.text) !== 0) {
       throw new Error(`Rename left @getpaseo/ references in ${relativePath}`);
     }
     writeFileSync(filePath, result.text);

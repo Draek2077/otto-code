@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@getpaseo/plugin": "*",
-    "@getpaseo/protocol": "*",
     "zod": "^4.4.3"
   },
   "devDependencies": {
