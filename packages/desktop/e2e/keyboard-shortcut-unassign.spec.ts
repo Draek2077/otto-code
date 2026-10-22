@@ -219,6 +219,7 @@ for (const { platform, keys, label, firstCombo, secondCombo } of [
 async function rebindTabNumbers(page: Page) {
   await captureShortcut(page, "Jump to tab", "workspace-tab-jump-index", "Control+1");
   await page.getByRole("button", { name: "Done", exact: true }).click();
+  await expectTabNumberRange(page);
 }
 
 async function expectTabNumberRange(page: Page) {
@@ -240,6 +241,11 @@ async function openTwoDraftTabs(page: Page, workspaceId: string) {
 
 async function expectTabNumberNavigation(page: Page) {
   const tabs = page.locator('[data-testid^="workspace-tab-draft_"]').filter({ visible: true });
+  // OTTO(test): Back and reload return before workspace restoration finishes.
+  // Establish the previous selection before sending a one-shot navigation key.
+  await expect(page.getByTestId("settings-sidebar")).toHaveCount(0);
+  await expect(tabs).toHaveCount(2);
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Control+1");
   await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Control+2");

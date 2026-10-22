@@ -381,6 +381,18 @@ jobs:
         if: ${{ runner.os == 'Linux' }}
         run: npm run test:e2e:renderer --workspace=@getpaseo/desktop
 
+      # OTTO(test): keep renderer traces and screenshots when a desktop assertion fails.
+      - name: Upload desktop renderer diagnostics
+        uses: actions/upload-artifact@v4
+        if: ${{ failure() && runner.os == 'Linux' }}
+        with:
+          name: desktop-renderer-e2e
+          path: |
+            packages/desktop/test-results/
+            packages/desktop/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Run desktop browser E2E
         if: ${{ runner.os == 'Linux' }}
         run: npm run test:e2e:browser-tabs --workspace=@getpaseo/desktop
