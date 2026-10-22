@@ -43,6 +43,22 @@ until that draft is discarded. A stored key is bound to the endpoint URL; changi
 requires explicitly replacing or removing the stored key. The daemon supplies the resolved
 host directory to this Otto built-in through a small tagged worker-initialization seam.
 
+## Preserved Otto 0.9 configuration
+
+The provider reads `config.json` and the migration's `otto-config.json` sidecar on its
+own host. When new connection fields are absent, defaults come from the preserved
+`openai-compatible` endpoint. Explicit new values, including an empty URL, take precedence.
+The old key is read privately for the matching primary URL, after any managed key and
+before the daemon environment. It is never copied into plugin settings. Named legacy
+providers derived from `openai-compatible` retain their provider IDs and labels, and read
+their own preserved host configuration. Brain and providers derived from Brain stay inactive.
+
+The preserved-provider section reports disabled providers and historical options requiring
+review. Unported policies and custom tool environment entries are kept intact and prevent
+that legacy endpoint from running; they are never silently ignored. Paseo built-in identity
+collisions remain inactive. These adapters do not reinstate Brain, old provider policy UI or
+deferred feature tooling. Original configuration files are read without rewriting them.
+
 ## Execution and ownership
 
 The daemon owns model requests, history, tools, permissions, cancellation and provider

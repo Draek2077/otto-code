@@ -12,6 +12,7 @@ import {
 } from "@getpaseo/plugin/client/ui";
 import { providerSettings, type EndpointSettings } from "../shared/settings.js";
 import { CredentialCard } from "./credentials.js";
+import { LegacyProviderStatus } from "./legacy-status.js";
 import { useConnectionDraft, type ReadySettings } from "./connection-state.js";
 
 interface ConnectionFieldsProps {
@@ -183,5 +184,10 @@ export function ConnectionScreen({ theme, host }: PluginSurfaceProps) {
         </SettingsCard>
       </SettingsSection>
     );
-  return <ReadyConnection settings={settings} theme={theme} hostId={host.id} />;
+  return (
+    <>
+      <ReadyConnection settings={settings} theme={theme} hostId={host.id} />
+      <LegacyProviderStatus hostId={host.id} />
+    </>
+  );
 }
