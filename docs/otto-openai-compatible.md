@@ -118,8 +118,9 @@ to another origin. Neither HTTP transport follows redirects.
 Tool results are capped at 16,000 characters with a truncation notice. Model output is
 bounded; a truncated or unfinished completion cannot execute partial tool calls. Tool
 rounds default to 24 and request deadlines to five minutes. The permission decision wait
-does not consume the model request deadline. Endpoint usage is reported when supplied;
-missing usage is not invented.
+does not consume the model request deadline. Endpoint usage is reported when supplied,
+including usage received before a failed or canceled stream. Each request contributes its
+last reported cumulative usage once; missing usage is not invented.
 
 ## Persistence and current limits
 
@@ -129,12 +130,11 @@ Recovery completes unanswered tool-call records with interruption feedback and n
 reexecutes them automatically. A different configured endpoint is refused when resuming
 saved history, preventing an accidental history transfer to another service.
 
-The provider supports one endpoint, text and image prompts, native file/shell tools, MCP over all three standard transports,
-streaming, approval, cancellation, live configuration, compaction and recovery of its own new sessions. It does not yet
-implement multiple endpoint
-profiles, credential entry, or importing
-Otto 0.9 provider sessions/settings. Older data remains preserved by the continuity layer;
-preservation does not imply those sessions can resume through this new provider.
+The provider supports named endpoints, host-owned credentials, text and image prompts,
+native file/shell tools, MCP over all three standard transports, streaming, approval,
+cancellation, live configuration, compaction, rewind and recovery. Supported Otto 0.9
+configuration and conversation imports follow the explicit boundaries above. Unported
+provider policies and feature tooling remain preserved for later review.
 
 The full OpenAI-compatible feature family remains in progress. Brain is a separate phase.
 
@@ -160,6 +160,30 @@ Reasoning text and signed or encrypted reasoning details remain in model history
 tool calls and recovery, with opaque chunks preserved in wire order. Each conversation also
 retains a stable prompt cache key. These fields travel only within the encrypted application
 channel and model requests, leaving Paseo relay identity unchanged.
+
+## Repository instructions
+
+The provider reads `AGENTS.md`, falling back to `CLAUDE.md` when absent, in the host's
+Otto home and from the nearest Git root through the session's working directory. Outside
+a Git repository, the working directory is the root. Real symlinks and the Windows
+checkout convention of an `AGENTS.md` file containing `CLAUDE.md` are supported. An empty
+`AGENTS.md` intentionally suppresses its directory's fallback.
+
+Literal local `@path.md` imports are loaded recursively. Markdown links and references
+inside code examples remain on demand. Imported files must resolve inside the workspace
+or Otto home. Instructions have a combined 128 KiB, 32-file and eight-level import budget;
+missing imports, unreadable files and exceeded budgets produce visible errors. Source
+files are never rewritten to recover from an error.
+
+The current files appear once in each model request, outside persisted conversation
+history, and their weight contributes to the compaction trigger. Native file tools load
+applicable deeper directory rules for the current turn. A native write waits if applicable
+instructions have not yet reached the model or changed since its request; the next request
+contains those rules before the model retries. Shell and MCP operations retain their
+existing permissions and instruct the model to inspect affected directory rules. This is
+instruction handling, not filesystem containment or a shell parser. The instruction source
+is provider-owned and reusable by the later Context Management phase; that phase's graph
+and UI are not restored here.
 
 ## Context compaction
 
@@ -221,6 +245,25 @@ corresponding image content. Pending image references persist with completed too
 so recovery retains captures without rerunning a completed tool.
 
 ## Verification
+
+### Historical capability review
+
+| Otto 0.9 capability                                                   | Current implementation or explicit boundary                                                                                                                                               |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenAI-compatible endpoints and derived provider names                | Named connection profiles plus preserved legacy aliases and endpoint-bound private credentials.                                                                                           |
+| Native agent tools, permission modes and MCP                          | Provider-owned file/shell tools, Paseo permission events and daemon-injected MCP over stdio, Streamable HTTP and SSE. Tools from deferred Otto features return with their owning feature. |
+| Text, images and reasoning                                            | Bounded host image storage, streaming text/reasoning and opaque signed reasoning replay. Unsupported model modalities remain endpoint errors.                                             |
+| Model controls and output budgeting                                   | Existing Paseo controls expose model, mode, reasoning and optional output limits. Endpoint default omits the output cap; paid endpoints need no special setup.                            |
+| Repository instructions                                               | One provider-owned fixed/scoped instruction source with explicit import and size limits. Context graph editing and broader Context Management remain deferred.                            |
+| Context compaction and rewind                                         | Bounded summary requests, full transcript archive and conversation rewind. File undo is not advertised.                                                                                   |
+| Saved settings and conversations                                      | Original configuration remains read-only; supported complete 0.9 handles are backed up and imported into host archives. Unknown shapes fail without resetting data.                       |
+| Historical custom policy and tool environment options                 | Preserved with an explicit diagnostic; an affected legacy endpoint stays inactive until those policies have an accepted implementation.                                                   |
+| Brain, agent profiles/teams, orchestration and feature-specific tools | Separate restoration phases. None are implicitly enabled by this provider.                                                                                                                |
+| Usage/performance presentation                                        | Existing Paseo usage events receive endpoint-reported counts. The deferred Otto statistics UI is not restored.                                                                            |
+
+Requests are not replayed automatically after partial output, tool effects or a billing
+error. Free-model acceptance establishes the tested endpoint behavior; it does not imply
+that every model supports every tool, reasoning control or image format.
 
 Targeted provider tests exercise fragmented SSE, approvals/denials/cancellation, recovery,
 failure boundaries, and exact MCP grants against local fixture endpoints. The daemon

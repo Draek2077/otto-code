@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ProviderTimelineItem, ProviderUsage } from "@getpaseo/plugin/server/provider";
+import type { ProviderTimelineItem } from "@getpaseo/plugin/server/provider";
 import type { ChatMessage, streamCompletion } from "./completions.js";
 import { ContextHistory, estimateTokens } from "./context-history.js";
 
@@ -9,7 +9,6 @@ interface CompactOptions {
   instruction?: string;
   complete(messages: ChatMessage[]): ReturnType<typeof streamCompletion>;
   signal: AbortSignal;
-  usage(value: ProviderUsage | undefined): void;
 }
 
 /** Summary calls contain no tool catalog and cannot execute tools. */
@@ -66,7 +65,6 @@ export class Compactor {
           content: `${options.instruction ? `User's summary focus: ${options.instruction}\n\n` : ""}Historical transcript:\n${JSON.stringify(transcript)}`,
         },
       ]);
-      options.usage(result.usage);
       options.signal.throwIfAborted();
       if (result.toolCalls.length)
         throw new Error("The summarizer requested tools; original context was retained.");

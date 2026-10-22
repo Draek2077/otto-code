@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ProviderUsage } from "@getpaseo/plugin/server/provider";
-import { endpoint, requireOk, serverEvents } from "./http.js";
+import { authorization, endpoint, requireOk, serverEvents } from "./http.js";
 
 export interface ToolCall {
   id: string;
@@ -42,34 +42,37 @@ interface CompletionInput {
   cacheKey?: string;
   onText?(text: string): void;
   onReasoning?(text: string): void;
+  onUsage?(usage: ProviderUsage): void;
 }
 
 const chunkSchema = z.object({
   error: z.object({ message: z.string() }).optional(),
-  choices: z.array(
-    z.object({
-      index: z.number(),
-      finish_reason: z.string().nullable().optional(),
-      delta: z.object({
-        content: z.string().nullable().optional(),
-        reasoning_content: z.string().nullable().optional(),
-        reasoning: z.string().nullable().optional(),
-        reasoning_details: z.array(z.record(z.string(), z.json())).optional(),
-        tool_calls: z
-          .array(
-            z.object({
-              index: z.number().int().nonnegative(),
-              id: z.string().optional(),
-              type: z.literal("function").optional(),
-              function: z
-                .object({ name: z.string().optional(), arguments: z.string().optional() })
-                .optional(),
-            }),
-          )
-          .optional(),
+  choices: z
+    .array(
+      z.object({
+        index: z.number(),
+        finish_reason: z.string().nullable().optional(),
+        delta: z.object({
+          content: z.string().nullable().optional(),
+          reasoning_content: z.string().nullable().optional(),
+          reasoning: z.string().nullable().optional(),
+          reasoning_details: z.array(z.record(z.string(), z.json())).optional(),
+          tool_calls: z
+            .array(
+              z.object({
+                index: z.number().int().nonnegative(),
+                id: z.string().optional(),
+                type: z.literal("function").optional(),
+                function: z
+                  .object({ name: z.string().optional(), arguments: z.string().optional() })
+                  .optional(),
+              }),
+            )
+            .optional(),
+        }),
       }),
-    }),
-  ),
+    )
+    .optional(),
   usage: z
     .object({
       prompt_tokens: z.number().nonnegative(),
@@ -91,7 +94,7 @@ interface CompletionState {
   usage?: ProviderUsage;
   calls: Map<number, ToolCall>;
 }
-type Choice = z.infer<typeof chunkSchema>["choices"][number];
+type Choice = NonNullable<z.infer<typeof chunkSchema>["choices"]>[number];
 
 function mergeChoice(state: CompletionState, choice: Choice, input: CompletionInput): void {
   if (choice.index !== 0) return;
@@ -175,8 +178,8 @@ export async function streamCompletion(input: CompletionInput) {
   const headers: Record<string, string> = {
     "content-type": "application/json",
     accept: "text/event-stream",
+    ...authorization(input.apiKey),
   };
-  if (input.apiKey) headers.Authorization = `Bearer ${input.apiKey}`;
   const response = await fetch(endpoint(input.baseUrl, "chat/completions"), {
     method: "POST",
     headers,
@@ -197,32 +200,41 @@ export async function streamCompletion(input: CompletionInput) {
     finished: false,
     calls: new Map(),
   };
-  for await (const data of serverEvents(response)) {
-    if (data === "[DONE]") break;
-    const chunk = chunkSchema.parse(JSON.parse(data));
-    if (chunk.error) throw new Error(chunk.error.message);
-    for (const choice of chunk.choices) mergeChoice(state, choice, input);
-    if (chunk.usage)
-      state.usage = {
-        inputTokens: chunk.usage.prompt_tokens,
-        outputTokens: chunk.usage.completion_tokens,
-        ...(chunk.usage.prompt_tokens_details?.cached_tokens === undefined
-          ? {}
-          : { cachedInputTokens: chunk.usage.prompt_tokens_details.cached_tokens }),
-      };
+  try {
+    for await (const data of serverEvents(response)) {
+      if (data === "[DONE]") break;
+      const chunk = chunkSchema.parse(JSON.parse(data));
+      if (chunk.usage)
+        state.usage = {
+          inputTokens: chunk.usage.prompt_tokens,
+          outputTokens: chunk.usage.completion_tokens,
+          ...(chunk.usage.prompt_tokens_details?.cached_tokens === undefined
+            ? {}
+            : { cachedInputTokens: chunk.usage.prompt_tokens_details.cached_tokens }),
+        };
+      if (chunk.error)
+        throw new Error(
+          input.apiKey
+            ? chunk.error.message.replaceAll(input.apiKey, "[redacted]")
+            : chunk.error.message,
+        );
+      for (const choice of chunk.choices ?? []) mergeChoice(state, choice, input);
+    }
+    input.signal.throwIfAborted();
+    if (!state.finished) throw new Error("The completion stream ended before the model finished.");
+    const toolCalls = [...state.calls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call);
+    if (toolCalls.some((call) => !call.id || !call.function.name))
+      throw new Error("The endpoint returned an incomplete tool call.");
+    return {
+      content: state.content,
+      reasoning: state.reasoning,
+      toolCalls,
+      usage: state.usage,
+      ...(Object.keys(state.reasoningFields).length
+        ? { reasoningFields: state.reasoningFields }
+        : {}),
+    };
+  } finally {
+    if (state.usage) input.onUsage?.(state.usage);
   }
-  input.signal.throwIfAborted();
-  if (!state.finished) throw new Error("The completion stream ended before the model finished.");
-  const toolCalls = [...state.calls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call);
-  if (toolCalls.some((call) => !call.id || !call.function.name))
-    throw new Error("The endpoint returned an incomplete tool call.");
-  return {
-    content: state.content,
-    reasoning: state.reasoning,
-    toolCalls,
-    usage: state.usage,
-    ...(Object.keys(state.reasoningFields).length
-      ? { reasoningFields: state.reasoningFields }
-      : {}),
-  };
 }

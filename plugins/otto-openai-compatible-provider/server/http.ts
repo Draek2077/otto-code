@@ -2,6 +2,18 @@ import { apiBaseUrl } from "../shared/settings.js";
 
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
+export function authorization(apiKey: string | undefined): Record<string, string> {
+  if (!apiKey) return {};
+  if (
+    !apiKey.trim() ||
+    Array.from(apiKey).some(
+      (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) > 126,
+    )
+  )
+    throw new Error("The configured API key contains invalid characters. Update it on the host.");
+  return { Authorization: `Bearer ${apiKey}` };
+}
+
 export function endpoint(baseUrl: string, operation: string): string {
   const url = new URL(apiBaseUrl.parse(baseUrl));
   return `${url.href.replace(/\/$/, "")}/${operation}`;

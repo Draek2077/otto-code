@@ -13,6 +13,7 @@ import { EndpointCatalog, type ResolveApiKey } from "./endpoint-catalog.js";
 import { endpointProfiles, modelReference } from "./endpoints.js";
 import { SessionArchive } from "./session-store.js";
 import { importLegacyConversation, restoredLegacyConfig } from "./legacy-history.js";
+import { InstructionSource } from "./instructions.js";
 
 const capabilities = [
   "prompt.message",
@@ -156,6 +157,7 @@ function connection({
       emit,
       persistence,
       archive,
+      instructions: home ? await InstructionSource.create({ cwd: config.cwd, home }) : undefined,
       supportsPermissions: supported.includes("permission"),
       imageDirectory,
       models: models.filter((entry) => entry.metadata?.endpointProfileId === profile.id),

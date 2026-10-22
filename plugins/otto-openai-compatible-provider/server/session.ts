@@ -30,6 +30,7 @@ import { ContextHistory, type ContextState } from "./context-history.js";
 import { Compactor } from "./compaction.js";
 import { savedSession } from "./session-state.js";
 import type { SessionArchive } from "./session-store.js";
+import type { InstructionSource } from "./instructions.js";
 
 const jsonObject = z.record(z.string(), z.json());
 const revertToken = z.object({ format: z.literal("otto-openai-revert-v1"), id: z.string().min(1) });
@@ -45,6 +46,7 @@ interface OpenAiSessionOptions {
   models?: readonly ProviderModel[];
   profileId?: string;
   archive?: SessionArchive;
+  instructions?: InstructionSource;
   resolveApiKey?(): Promise<string | undefined>;
 }
 
@@ -65,6 +67,7 @@ export class OpenAiSession {
   private readonly compactor: Compactor;
   private readonly pendingToolImages: StoredContent[] = [];
   private readonly archive?: SessionArchive;
+  private readonly instructions?: InstructionSource;
   private readonly legacyOrigin?: { provider: string; sessionId: string };
   private storageFailure: Error | null = null;
   private active: { controller: AbortController; promise: Promise<void> } | null = null;
@@ -76,6 +79,7 @@ export class OpenAiSession {
     const { id, config, settings, emit, persistence, imageDirectory, models = [] } = options;
     this.id = id;
     this.archive = options.archive;
+    this.instructions = options.instructions;
     this.config = config;
     this.settings = settings;
     this.emit = emit;
@@ -268,10 +272,8 @@ export class OpenAiSession {
     let partialCommitted = false;
     const signal = controller.signal;
     const usage: ProviderUsage = {};
-    const systemPrompt = [this.config.systemPrompt, ...(this.external?.instructions ?? [])]
-      .filter(Boolean)
-      .join("\n\n");
     try {
+      this.instructions?.beginTurn();
       await this.images.save(prepared.images, signal);
       signal.throwIfAborted();
       const userId = randomUUID();
@@ -297,6 +299,13 @@ export class OpenAiSession {
               .map((tool) => tool.definition)
           : [];
         const window = this.preferences.model(preferences.model).contextWindowMaxTokens;
+        const systemPrompt = [
+          this.config.systemPrompt,
+          ...(this.external?.instructions ?? []),
+          await this.instructions?.forRequest(),
+        ]
+          .filter(Boolean)
+          .join("\n\n");
         if (
           this.compactor.shouldCompact(
             preferences.auto_compact,
@@ -318,6 +327,7 @@ export class OpenAiSession {
             this.item({ id: assistantId, type: "assistant_message", text });
           },
           onReasoning: (text) => this.item({ id: reasoningId, type: "reasoning", text }),
+          onUsage: (value) => this.addUsage(turnId, usage, value),
         });
         this.messages.push({
           role: "assistant",
@@ -326,7 +336,6 @@ export class OpenAiSession {
           ...(result.toolCalls.length ? { tool_calls: result.toolCalls } : {}),
         });
         partialCommitted = true;
-        this.addUsage(turnId, usage, result.usage);
         this.persist();
         if (!result.toolCalls.length) {
           this.active = null;
@@ -391,12 +400,12 @@ export class OpenAiSession {
           ...(await this.completionSettings(preferences)),
           messages,
           tools: [],
+          onUsage: (value) => this.addUsage(turnId, usage, value),
           signal: AbortSignal.any([
             controller.signal,
             AbortSignal.timeout(this.settings.timeoutMs),
           ]),
         }),
-      usage: (next) => this.addUsage(turnId, usage, next),
     });
     this.persist();
   }
@@ -501,6 +510,14 @@ export class OpenAiSession {
       input = await this.approvedInput(tool, input, detail, controller, mode);
       controller.signal.throwIfAborted();
       detail = tool.detail(input);
+      if (
+        (call.function.name === "otto_read_file" && detail.type === "read") ||
+        (call.function.name === "otto_write_file" && detail.type === "write")
+      )
+        await this.instructions?.beforeFile({
+          file: detail.filePath,
+          write: detail.type === "write",
+        });
       const result = await tool.execute(input, controller.signal);
       const output = boundedResult(typeof result === "string" ? result : result.text);
       const images = typeof result === "string" ? undefined : prepareContent(result.images);

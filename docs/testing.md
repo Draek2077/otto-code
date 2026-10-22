@@ -214,6 +214,11 @@ Agent providers handle their own auth. Do not add auth checks, environment varia
 
 <!-- OTTO(provider-tests): coverage for the independently owned provider plugin. -->
 
+Repository instruction coverage in `plugins/otto-openai-compatible-provider/server/instructions.test.ts`
+uses real files and an HTTP endpoint to verify fixed/scoped rules, imports, budgets and
+write deferral when current rules have not reached the model. `server/usage.test.ts` in
+the same plugin checks failed/canceled stream accounting and credential-safe errors.
+
 The F01 provider uses deterministic local HTTP endpoints for protocol behavior, isolated
 daemon homes for persistence and credential checks, and real browser settings interactions.
 These checks do not require a separate Android device run for daemon-only changes; Android

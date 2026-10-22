@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ProviderModel, ProviderThinkingOption } from "@getpaseo/plugin/server/provider";
 import type { ConnectionSettings } from "../shared/settings.js";
-import { endpoint, readBody, requireOk } from "./http.js";
+import { authorization, endpoint, readBody, requireOk } from "./http.js";
 
 const standardEfforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 const rawModel = z.object({
@@ -76,7 +76,7 @@ export async function discoverModels(
   if (!settings.baseUrl) throw new Error("Configure an OpenAI-compatible endpoint first.");
   if (settings.model) return parseModels({ data: [{ id: settings.model }] });
   const response = await fetch(endpoint(settings.baseUrl, "models"), {
-    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+    headers: authorization(apiKey),
     redirect: "error",
     signal: AbortSignal.any([signal, AbortSignal.timeout(Math.min(settings.timeoutMs, 15000))]),
   });

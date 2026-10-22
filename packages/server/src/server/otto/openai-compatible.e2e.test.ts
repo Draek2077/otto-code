@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
@@ -13,6 +13,8 @@ test("the bundled Otto provider publishes shared client settings and completes a
   const scratch = fileURLToPath(new URL("../../../../../.tmp/", import.meta.url));
   await mkdir(scratch, { recursive: true });
   const root = await mkdtemp(path.join(scratch, "otto-provider-e2e-"));
+  await writeFile(path.join(root, ".git"), "gitdir: fixture");
+  await writeFile(path.join(root, "AGENTS.md"), "OTTO_REPOSITORY_INSTRUCTION_PROOF");
   const prompts: Array<{
     model: string;
     reasoning_effort?: string;
@@ -106,6 +108,11 @@ test("the bundled Otto provider publishes shared client settings and completes a
     expect(JSON.stringify(timeline.entries)).toContain("Otto provider integration proof");
     expect(prompts).toHaveLength(1);
     expect(prompts[0]?.messages).toContainEqual({ role: "user", content: firstPrompt });
+    expect(prompts[0]?.messages[0]).toMatchObject({
+      role: "system",
+      content: expect.stringContaining("OTTO_REPOSITORY_INSTRUCTION_PROOF"),
+    });
+    expect(JSON.stringify(timeline.entries)).not.toContain("OTTO_REPOSITORY_INSTRUCTION_PROOF");
     expect(prompts[0]?.tools?.length).toBeGreaterThanOrEqual(3);
     await client.setAgentModel(agent.id, "configured");
     await client.setAgentThinkingOption(agent.id, "high");

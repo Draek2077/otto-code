@@ -125,7 +125,7 @@ export function nativeTools(config: ProviderSessionConfig): AgentTool[] {
       access: "execute",
       definition: definition(
         "otto_exec_command",
-        "Run a shell command on the agent host in the workspace. Explain destructive operations in the command request. Execution follows the selected permission mode. Output is bounded; use timeout_ms for a shorter deadline.",
+        "Run a shell command on the agent host in the workspace. Before changing files, inspect AGENTS.md or CLAUDE.md rules in their directories. Explain destructive operations in the command request. Execution follows the selected permission mode. Output is bounded; use timeout_ms for a shorter deadline.",
         commandInput,
       ),
       detail(input) {
