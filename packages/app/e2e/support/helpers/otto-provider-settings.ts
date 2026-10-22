@@ -135,5 +135,5 @@ export async function openOttoProviderSettings(page: Page, compact = false) {
   await openHostSettings(page, compact);
   await page.getByTestId("settings-host-section-plugins").click();
   await page.getByRole("button", { name: "Configure Otto provider", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "API base URL", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add connection", exact: true })).toBeVisible();
 }

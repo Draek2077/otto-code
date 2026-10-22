@@ -26,6 +26,9 @@ const capabilities = [
   "permission.tool_policy",
 ] as const;
 
+type ManagedConnection = ProviderConnection & { retireProfile(profileId: string): Promise<void> };
+type OttoProvider = ProviderRegistration & { retireProfile(profileId: string): Promise<void> };
+
 export function createOpenAiProvider(
   readSettings: () => Promise<ConnectionSettings>,
   options: {
@@ -36,12 +39,16 @@ export function createOpenAiProvider(
     id?: string;
     label?: string;
   } = {},
-): ProviderRegistration {
+): OttoProvider {
   const catalog = new EndpointCatalog(options.resolveApiKey);
+  const connections = new Set<ManagedConnection>();
   return {
     id: options.id ?? "openai-compatible",
     label: options.label ?? "OpenAI-compatible",
     description: "Use a local or hosted OpenAI-compatible Chat Completions endpoint with Otto.",
+    async retireProfile(profileId) {
+      await Promise.all([...connections].map((value) => value.retireProfile(profileId)));
+    },
     async getCatalogCacheKey() {
       const settings = await readSettings();
       return catalog.key(settings);
@@ -59,7 +66,7 @@ export function createOpenAiProvider(
     async connect(request) {
       if (!request.versions.includes(1))
         throw new Error("Provider protocol version 1 is required.");
-      return connection({
+      const value: ManagedConnection = connection({
         readSettings,
         supported: negotiateProviderCapabilities(
           request.capabilities,
@@ -72,7 +79,10 @@ export function createOpenAiProvider(
         home: options.home,
         providerId: options.id ?? "openai-compatible",
         catalog,
+        onClosed: () => connections.delete(value),
       });
+      connections.add(value);
+      return value;
     },
   };
 }
@@ -85,6 +95,7 @@ interface ConnectionServices {
   home?: string;
   providerId: string;
   catalog: EndpointCatalog;
+  onClosed(): void;
 }
 
 function connection({
@@ -95,9 +106,11 @@ function connection({
   home,
   providerId,
   catalog,
-}: ConnectionServices): ProviderConnection {
+  onClosed,
+}: ConnectionServices): ManagedConnection {
   const listeners = new Set<(event: ProviderEvent) => void>();
   const sessions = new Map<string, OpenAiSession>();
+  const profiles = new Map<string, string>();
   const opening = new Set<string>();
   const lifecycle = new AbortController();
   let closed = false;
@@ -150,6 +163,7 @@ function connection({
       throw new Error(
         "This endpoint profile was removed. Restore it before resuming this conversation.",
       );
+    profiles.set(input.sessionId, profile.id);
     return new OpenAiSession({
       id: input.sessionId,
       config: { ...config, model },
@@ -162,7 +176,11 @@ function connection({
       imageDirectory,
       models: models.filter((entry) => entry.metadata?.endpointProfileId === profile.id),
       profileId: profile.id,
-      resolveApiKey: () => catalog.credential(profile, input.config.env),
+      resolveApiKey: async () => {
+        if (!endpointProfiles(await readSettings(), true).some((entry) => entry.id === profile.id))
+          throw new Error("This connection was removed. Chat history is retained.");
+        return catalog.credential(profile, input.config.env);
+      },
     });
   }
   async function dispatch(input: ProviderInput): Promise<void> {
@@ -265,6 +283,7 @@ function connection({
       case "session.close":
         await session(input.sessionId).close();
         sessions.delete(input.sessionId);
+        profiles.delete(input.sessionId);
         emit({ type: "session.closed", sessionId: input.sessionId });
         emit({ type: "request.completed", requestId: input.requestId });
         return;
@@ -273,6 +292,22 @@ function connection({
     }
   }
   return {
+    async retireProfile(profileId) {
+      for (const [sessionId, value] of sessions) {
+        if (profiles.get(sessionId) !== profileId) continue;
+        await value.close();
+        sessions.delete(sessionId);
+        profiles.delete(sessionId);
+        emit({
+          type: "session.closed",
+          sessionId,
+          error: {
+            code: "connection_removed",
+            message: "This connection was removed. Chat history is retained.",
+          },
+        });
+      }
+    },
     version: 1,
     capabilities: supported,
     async send(input) {
@@ -308,7 +343,9 @@ function connection({
         await Promise.all([...sessions.values()].map((value) => value.close()));
         closed = true;
         sessions.clear();
+        profiles.clear();
         listeners.clear();
+        onClosed();
       })();
       return closing;
     },

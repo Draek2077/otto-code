@@ -1,6 +1,6 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import type { RpcInput } from "@getpaseo/plugin";
-import { credentialSave, credentialStatus } from "../shared/credentials.js";
+import { credentialSave, credentialStatus, credentialRetire } from "../shared/credentials.js";
 import type { ConnectionSettings } from "../shared/settings.js";
 import { endpointProfiles, type EndpointProfile } from "./endpoints.js";
 import type { HostCredentials } from "./credentials.js";
@@ -11,6 +11,7 @@ interface CredentialServices {
   credentials?: HostCredentials;
   readSettings(): Promise<{ revision: string; values: ConnectionSettings }>;
   legacyKey?(profile: EndpointProfile): string | undefined;
+  onRetire?(profileId: string): Promise<void>;
 }
 
 export function registerHostCredentials({
@@ -18,6 +19,7 @@ export function registerHostCredentials({
   credentials,
   readSettings,
   legacyKey,
+  onRetire,
 }: CredentialServices): void {
   async function profileFor(input: RpcInput<typeof credentialStatus>) {
     if (!credentials) throw new Error("Host credential storage is unavailable on this daemon.");
@@ -39,7 +41,8 @@ export function registerHostCredentials({
     const profile = await profileFor(input);
     const saved = await credentials!.status(input.profileId, profile.settings.baseUrl);
     let source: "managed" | "environment" | "legacy" | "none" = "none";
-    if (saved.configured) source = "managed";
+    if (saved.retired) source = "none";
+    else if (saved.configured) source = "managed";
     else if (!saved.endpointChanged && legacyKey?.(profile)) source = "legacy";
     else if (!saved.endpointChanged && process.env[profile.settings.apiKeyEnv])
       source = "environment";
@@ -49,6 +52,12 @@ export function registerHostCredentials({
   server.handle(credentialSave, async (input) => {
     await profileFor(input);
     await credentials!.save(input);
+    return status(input);
+  });
+  server.handle(credentialRetire, async (input) => {
+    await profileFor(input);
+    await credentials!.retire(input);
+    await onRetire?.(input.profileId);
     return status(input);
   });
 }

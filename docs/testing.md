@@ -231,8 +231,9 @@ packaging remains a build gate.
 | Otto 0.9 settings          | `packages/server/src/server/otto/openai-compatible-legacy-config.e2e.test.ts`: original files unchanged, provider identity and keys retained, explicit new endpoint never receives the old key, Brain inactive                                          |
 | Otto 0.9 conversations     | `packages/server/src/server/otto/openai-compatible-legacy-history.e2e.test.ts`: existing agent identity and unknown fields, text/images/instructions, display-only reasoning, complete tool groups, no tool replay, private original backup and restart |
 | Host conversation archives | `plugins/otto-openai-compatible-provider/server/session-store.test.ts`: small opaque handle with large retained history, stale-writer rejection, malformed-file preservation, checkpoint failure settles the turn before tool effects                   |
-| Wide settings              | `packages/app/e2e/browser/otto-provider-settings.spec.ts`: fresh provider setup from the model sheet, URL/key save and discovered models, discoverable host settings, additional endpoint, reload, disabling without losing values                      |
-| Compact settings           | Same spec: fresh provider setup from the model sheet, connection/key conflicts retain drafts, explicit reload/retry, endpoint change blocks an unreviewed key save, constrained width                                                                   |
+| Wide settings              | `packages/app/e2e/browser/otto-provider-settings.spec.ts`: two-field setup from the model sheet, one Save action, discovered models, multiple connections, edit/reload, disabled state, removal confirmation and key privacy                            |
+| Compact settings           | Same spec: two-field setup with collapsed advanced options, settings/key conflicts retain drafts, explicit review/retry and adoption of untouched peer changes                                                                                          |
+| Connection removal         | `plugins/otto-openai-compatible-provider/server/provider-removal.test.ts` and `server/credentials.test.ts`: cancel only affected sessions, retain transcript persistence, delete the key and persist retirement across restart                          |
 
 ## Debugging with tests
 

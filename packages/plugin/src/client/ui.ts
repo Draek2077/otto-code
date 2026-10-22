@@ -1,4 +1,6 @@
 import type { ComponentType, ReactNode, Ref } from "react";
+// OTTO(provider-settings): reuse Paseo's controls in Otto-owned plugin settings.
+export { SettingsButton, SettingsExpander } from "../otto/settings-ui.js";
 
 export interface SettingsSectionProps {
   title: string;

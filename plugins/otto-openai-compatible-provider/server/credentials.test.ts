@@ -4,6 +4,41 @@ import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import { HostCredentials } from "./credentials.js";
 
+it("disconnects a removed connection persistently and deletes its key without deleting other connections", async () => {
+  const root = fileURLToPath(new URL("../../../.tmp/", import.meta.url));
+  await mkdir(root, { recursive: true });
+  const home = await mkdtemp(path.join(root, "provider-retired-"));
+  try {
+    const credentials = new HostCredentials(home);
+    const target = { profileId: "connection-one", baseUrl: "https://one.invalid/v1" };
+    const empty = await credentials.status(target.profileId, target.baseUrl);
+    await credentials.save({ ...target, revision: empty.revision, key: "synthetic-removed-key" });
+    const current = await credentials.status(target.profileId, target.baseUrl);
+    await credentials.retire({ ...target, revision: current.revision });
+    const reopened = new HostCredentials(home);
+    await expect(reopened.key(target.profileId, target.baseUrl)).rejects.toThrow("removed");
+    const retiredState = await reopened.status(target.profileId, target.baseUrl);
+    await expect(
+      reopened.save({ ...target, revision: retiredState.revision, key: "synthetic-resurrection" }),
+    ).rejects.toThrow("removed");
+    const state = await reopened.status(target.profileId, target.baseUrl);
+    expect(state).toMatchObject({ configured: false, retired: true });
+    expect(await readFile(path.join(home, "credentials.json"), "utf8")).not.toContain(
+      "synthetic-removed-key",
+    );
+    await reopened.save({
+      profileId: "another",
+      baseUrl: target.baseUrl,
+      revision: state.revision,
+      key: "synthetic-other-key",
+    });
+    expect(await reopened.key("another", target.baseUrl)).toBe("synthetic-other-key");
+    await expect(reopened.key(target.profileId, target.baseUrl)).rejects.toThrow("removed");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 it("stores keys on the host, exposes only status, binds keys to endpoints and rejects stale writes", async () => {
   const root = fileURLToPath(new URL("../../../.tmp/", import.meta.url));
   await mkdir(root, { recursive: true });

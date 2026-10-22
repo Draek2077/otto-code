@@ -37,6 +37,7 @@ export default function contribute(server: PluginServerContext) {
     credentials,
     readSettings,
     legacyKey: (profile) => legacy?.key("openai-compatible", profile),
+    onRetire: (profileId) => provider.retireProfile(profileId),
   });
   const legacyProfiles = () =>
     (legacy?.ids() ?? []).flatMap((id) => {
@@ -63,31 +64,29 @@ export default function contribute(server: PluginServerContext) {
       };
     }
   });
-  server.registerProvider(
-    createOpenAiProvider(async () => (await readSettings()).values, {
-      imageDirectory: home ? path.join(home, "otto-openai-compatible", "images") : undefined,
-      home,
-      sessionDirectory: home ? path.join(home, "otto-openai-compatible", "sessions") : undefined,
-      label: initial?.label,
-      resolveApiKey: async (profile) => {
-        const old = legacy?.profile("openai-compatible");
-        if (
-          profile.id === "primary" &&
-          old?.settings.baseUrl &&
-          endpoint(old.settings.baseUrl, "chat/completions") ===
-            endpoint(profile.settings.baseUrl, "chat/completions")
-        ) {
-          if (!old.enabled)
-            throw new Error("This provider is disabled in preserved Otto settings.");
-          if (old.diagnostic) throw new Error(old.diagnostic);
-        }
-        return (
-          (await credentials?.key(profile.id, profile.settings.baseUrl)) ??
-          legacy?.key("openai-compatible", profile)
-        );
-      },
-    }),
-  );
+  const provider = createOpenAiProvider(async () => (await readSettings()).values, {
+    imageDirectory: home ? path.join(home, "otto-openai-compatible", "images") : undefined,
+    home,
+    sessionDirectory: home ? path.join(home, "otto-openai-compatible", "sessions") : undefined,
+    label: initial?.label,
+    resolveApiKey: async (profile) => {
+      const old = legacy?.profile("openai-compatible");
+      if (
+        profile.id === "primary" &&
+        old?.settings.baseUrl &&
+        endpoint(old.settings.baseUrl, "chat/completions") ===
+          endpoint(profile.settings.baseUrl, "chat/completions")
+      ) {
+        if (!old.enabled) throw new Error("This provider is disabled in preserved Otto settings.");
+        if (old.diagnostic) throw new Error(old.diagnostic);
+      }
+      return (
+        (await credentials?.key(profile.id, profile.settings.baseUrl)) ??
+        legacy?.key("openai-compatible", profile)
+      );
+    },
+  });
+  server.registerProvider(provider);
   let aliases: ReturnType<typeof legacyProfiles> = [];
   try {
     aliases = legacyProfiles();

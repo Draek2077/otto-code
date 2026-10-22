@@ -11,6 +11,7 @@ const status = z.object({
   revision: z.string(),
   configured: z.boolean(),
   endpointChanged: z.boolean(),
+  retired: z.boolean().optional(),
   source: z.enum(["managed", "environment", "legacy", "none"]),
 });
 export const credentialStatus = defineRpc({
@@ -24,5 +25,10 @@ export const credentialSave = defineRpc({
     revision: z.string(),
     key: z.string().trim().min(1).max(16384).nullable(),
   }),
+  output: status,
+});
+export const credentialRetire = defineRpc({
+  name: "credentials.retire",
+  input: target.extend({ revision: z.string() }),
   output: status,
 });

@@ -114,6 +114,8 @@ import {
   HostTerminalsPage,
 } from "@/screens/settings/host-page";
 import { PluginSettingsContent } from "@/plugins/settings";
+// OTTO(provider-settings): use the product label for Otto's bundled provider screen.
+import { ottoPluginSettingsTitle } from "@/otto/plugin-settings-identity";
 import { useInstalledPlugins } from "@/plugins/registry";
 import { HostPluginsPage } from "@/screens/settings/plugins-page";
 import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-page";
@@ -1328,6 +1330,9 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const installedPlugins = useInstalledPlugins();
   const detailTitle = ((): string | undefined => {
     if (view.kind === "plugin") {
+      // OTTO(provider-settings): keep the internal plugin ID out of the screen title.
+      const ottoTitle = ottoPluginSettingsTitle(view.pluginId, view.screenId);
+      if (ottoTitle) return ottoTitle;
       const screen = installedPlugins
         .find((plugin) => plugin.serverId === view.serverId && plugin.id === view.pluginId)
         ?.settingsScreens.find((candidate) => candidate.id === view.screenId);

@@ -7,6 +7,7 @@ import { endpoint } from "./http.js";
 
 const fileSchema = z.object({
   version: z.literal(1),
+  retired: z.array(z.string()).optional(),
   entries: z.record(
     z.string(),
     z.object({ endpoint: z.string(), key: z.string().min(1).max(16384) }),
@@ -57,11 +58,14 @@ export class HostCredentials {
       revision,
       configured: Boolean(entry && matches),
       endpointChanged: Boolean(entry && !matches),
+      ...(data.retired?.includes(profileId) ? { retired: true } : {}),
     };
   }
 
   async key(profileId: string, baseUrl: string): Promise<string | undefined> {
     const { data } = await this.read();
+    if (data.retired?.includes(profileId))
+      throw new Error("This connection was removed. Add a new connection to continue.");
     const entry = Object.hasOwn(data.entries, profileId) ? data.entries[profileId] : undefined;
     if (entry && entry.endpoint !== endpoint(baseUrl, "chat/completions"))
       throw new Error(
@@ -71,7 +75,15 @@ export class HostCredentials {
   }
 
   save(change: CredentialChange) {
-    const result = this.writing.then(() => this.write(change));
+    return this.enqueue(() => this.write(change));
+  }
+
+  retire(change: Omit<CredentialChange, "key">) {
+    return this.enqueue(() => this.write({ ...change, key: null }, true));
+  }
+
+  private enqueue(write: () => ReturnType<HostCredentials["write"]>) {
+    const result = this.writing.then(write);
     this.writing = result.then(
       () => undefined,
       () => undefined,
@@ -79,11 +91,14 @@ export class HostCredentials {
     return result;
   }
 
-  private async write(change: CredentialChange) {
+  private async write(change: CredentialChange, retire = false) {
     apiBaseUrl.parse(change.baseUrl);
     const { data, revision } = await this.read();
     if (revision !== change.revision)
       throw new Error("Host credentials changed. Reload before saving your key.");
+    if (data.retired?.includes(change.profileId) && !retire)
+      throw new Error("This connection was removed. Add a new connection to continue.");
+    if (retire) data.retired = [...new Set([...(data.retired ?? []), change.profileId])];
     if (change.key === null) delete data.entries[change.profileId];
     else {
       const key = z.string().trim().min(1).max(16384).parse(change.key);

@@ -6,6 +6,12 @@ in `plugins/otto-openai-compatible-provider/`. The Otto-owned built-in list is t
 integration with the daemon registry. Relay, Hub, client protocol, agent storage and
 chat rendering use the existing Paseo implementations.
 
+The settings screen uses Paseo's existing buttons, cards and collapsible rows. Two
+small tagged exports expose those controls to the plugin; provider-specific UI and
+state remain Otto-owned. Older clients without that UI bridge show an app-update
+message. A bundled plugin's client code is delivered by its daemon, so a source
+update needs the updated client and a refreshed dev daemon to load the new bundle.
+
 ## Host configuration
 
 Open the **OpenAI-compatible** provider and choose **Configure endpoint** to set up a
@@ -14,17 +20,24 @@ host's endpoint settings on desktop and mobile. You can also open
 **Settings > Host > Plugins > Configure Otto provider** for the target host. An
 Otto-owned entry exposes the bundled provider alongside Paseo's installed plugins. The
 command center also offers **Otto OpenAI-compatible settings** when a host workspace is
-active. Set the API
-base URL including its prefix, such as `http://localhost:1234/v1`. Localhost refers
-to the daemon machine, including when the client is on a phone. Leave Model ID empty
-to use `GET models`, or set an explicit model ID for endpoints without discovery.
+active. A fresh setup opens **Add connection** with **API URL**, **API key** and
+one **Save connection** action. Include the API prefix in the URL, such as
+`http://localhost:1234/v1`. The key is optional for an unkeyed local server.
+Localhost refers to the daemon machine, including when the client is on a phone.
+Saved connections share a list with **Add connection**, **Edit** and **Remove**.
+**Advanced options** expands the optional name, model ID, environment-variable
+alternative, new-chat availability and host-wide tool-round/timeout defaults.
+Leaving Model ID empty discovers models through `GET models`.
 The endpoint must support streamed `POST chat/completions` and function tools.
 
-Add named endpoints to expose their models together in the new-chat model picker. Model
+Connections expose their models together in the new-chat model picker. Model
 IDs are namespaced internally to distinguish identical IDs on different endpoints. A chat
 stays on its original endpoint; switching endpoints requires a new chat. Disabling a named
 endpoint preserves its settings and existing chats, while hiding it from new chats. An
-unavailable endpoint does not prevent other endpoints from working.
+unavailable endpoint does not prevent other endpoints from working. Removing a connection
+requires confirmation, disconnects its active sessions, deletes its saved key and hides it
+from new chats. Chat history remains. Removed identities stay retired, so an old chat cannot
+silently attach to a new connection at the same URL or fall through to an environment key.
 
 For a keyed endpoint, save its API key in the host's private credential file, or set its
 secret in the daemon's environment and enter the variable's name (default `OPENAI_API_KEY`).
@@ -35,15 +48,17 @@ or the environment-variable field. Endpoint URLs reject embedded credentials, qu
 parameters and fragments. Requests do not follow redirects.
 
 Save captures the revision at the start of editing. A conflicting save preserves the
-draft and the newer host values; Discard loads those newer values. Invalid persisted
+draft and the newer host values. **Review latest** adopts untouched peer changes while
+retaining edited fields and the key draft for explicit review and retry. Invalid persisted
 settings are reported without a reset. New sessions use the current host configuration;
 already-open sessions retain their configuration. Model catalog cache keys include the
 endpoint and model configuration.
 
-Key saves use separate revision checks. Concurrent changes preserve the unsaved key for an
-explicit reload and retry. If the endpoint changes while editing a key, saving is blocked
-until that draft is discarded. A stored key is bound to the endpoint URL; changing that URL
-requires explicitly replacing or removing the stored key. The daemon supplies the resolved
+The single Save action writes the connection and then its private key using separate
+revision checks. A failed key write keeps the key draft and explicitly reports that the
+connection was saved but its key was not. **Review latest** enables an explicit retry.
+A URL change requires a key for the new URL, or an empty key to remove the previous saved
+key for an unkeyed server. The daemon supplies the resolved
 host directory to this Otto built-in through a small tagged worker-initialization seam.
 That same host context supplies the daemon's reserved provider IDs. The plugin uses
 the public SDK and host values, avoiding private package imports from desktop resource
@@ -59,7 +74,7 @@ before the daemon environment. It is never copied into plugin settings. Named le
 providers derived from `openai-compatible` retain their provider IDs and labels, and read
 their own preserved host configuration. Brain and providers derived from Brain stay inactive.
 
-The preserved-provider section reports disabled providers and historical options requiring
+The connection-issues section appears only for disabled providers, errors and historical options requiring
 review. Unported policies and custom tool environment entries are kept intact and prevent
 that legacy endpoint from running; they are never silently ignored. Paseo built-in identity
 collisions remain inactive. These adapters do not reinstate Brain, old provider policy UI or

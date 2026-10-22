@@ -11,14 +11,16 @@ export function LegacyProviderStatus({ hostId }: { hostId: string }) {
     retry: false,
   });
   const error = state.error?.message ?? state.data?.error;
-  if (!error && !state.data?.providers.length) return null;
+  const problems =
+    state.data?.providers.filter((provider) => provider.diagnostic || !provider.enabled) ?? [];
+  if (!error && !problems.length) return null;
   return (
-    <SettingsSection title="Preserved Otto providers">
+    <SettingsSection title="Connection issues">
       <SettingsCard>
         {error ? (
           <SettingsRow label={error} />
         ) : (
-          state.data?.providers.map((provider) => (
+          problems.map((provider) => (
             <SettingsRow
               key={provider.id}
               label={provider.label}
