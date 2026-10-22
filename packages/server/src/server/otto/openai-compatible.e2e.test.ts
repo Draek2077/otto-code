@@ -10,7 +10,7 @@ import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 
 test("the bundled Otto provider publishes shared client settings and completes a normal daemon chat", async () => {
-  const scratch = fileURLToPath(new URL("../../../../../../.tmp/", import.meta.url));
+  const scratch = fileURLToPath(new URL("../../../../../.tmp/", import.meta.url));
   await mkdir(scratch, { recursive: true });
   const root = await mkdtemp(path.join(scratch, "otto-provider-e2e-"));
   const prompts: Array<{ messages: Array<{ role: string; content: string }>; tools?: unknown[] }> =
