@@ -7,7 +7,11 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { CheckoutSnapshotFacts, CheckoutStatusGit } from "../utils/checkout-git.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { createFileObserver } from "./file-observer/index.js";
-import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
+import {
+  WorkspaceGitServiceImpl,
+  WORKSPACE_GIT_WATCHER_SUBSCRIBE_TIMEOUT_MS,
+} from "./workspace-git-service.js";
+import { WATCHER_LIVENESS_CANARY_TIMEOUT_MS } from "./watcher-liveness-canary.js";
 import type { FileChange, FileObserver, SubscribeToFileChanges } from "./file-observer/index.js";
 
 function createLogger(): pino.Logger {
@@ -228,7 +232,10 @@ test("recursive observation updates tracked state and prunes ignored storms", as
 
   await vi.waitFor(
     () => {
-      expect(activeWatcherCount).toBe(2);
+      expect(
+        activeWatcherCount,
+        JSON.stringify({ observation: observer.getDiagnostics(), service: service.getMetrics() }),
+      ).toBe(2);
       expect(service.peekSnapshot(repoDir)).not.toBeNull();
       expect(service.getMetrics()).toMatchObject({
         workspaceObservationSetupInFlightCount: 0,
@@ -236,7 +243,12 @@ test("recursive observation updates tracked state and prunes ignored storms", as
         workspaceRefreshQueuedCount: 0,
       });
     },
-    { timeout: 5_000 },
+    // OTTO(test): working-tree and Git metadata subscriptions each perform a
+    // liveness check. A five-second assertion preempted valid macOS startup.
+    {
+      timeout:
+        2 * (WORKSPACE_GIT_WATCHER_SUBSCRIBE_TIMEOUT_MS + WATCHER_LIVENESS_CANARY_TIMEOUT_MS),
+    },
   );
 
   writeFileSync(trackedPath, "base\n");
@@ -434,7 +446,7 @@ test("recursive observation updates tracked state and prunes ignored storms", as
   expect(getCheckoutWorktreeState).not.toHaveBeenCalled();
   expect(getCheckoutDiff).not.toHaveBeenCalled();
   expect(service.getMetrics().workspaceRefreshQueuedCount).toBe(0);
-}, 30_000);
+}, 60_000);
 
 test("a late Git-ignored tree is pruned while tracked changes still notify consumers", async () => {
   const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "paseo-real-ignore-")));
