@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { SessionConfiguration } from "./session-config.js";
 import { parseModels } from "./catalog.js";
+import { qualifyModel } from "./endpoints.js";
 
 it("commits a validated configuration atomically and leaves endpoint output limits unchanged by default", () => {
   const config = new SessionConfiguration(
@@ -47,4 +48,18 @@ it("commits a validated configuration atomically and leaves endpoint output limi
   expect(config.state().settings).toContainEqual(
     expect.objectContaining({ id: "output_limit", value: "4096" }),
   );
+});
+
+it("sends a profile's actual model ID and refuses to move existing history to another endpoint", () => {
+  const model = qualifyModel("remote", "vendor/model:free");
+  const config = new SessionConfiguration(
+    { cwd: process.cwd(), env: {}, mcpServers: {}, settings: {}, persist: true, model },
+    [{ id: model, label: "Remote model" }],
+    undefined,
+    "remote",
+  );
+  expect(config.requestSettings("https://remote.invalid/v1").model).toBe("vendor/model:free");
+  const before = config.snapshot();
+  expect(() => config.update({ model: "primary-model" })).toThrow("new chat");
+  expect(config.snapshot()).toEqual(before);
 });

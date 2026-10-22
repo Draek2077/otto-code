@@ -7,6 +7,7 @@ import type {
   ProviderSessionConfig,
 } from "@getpaseo/plugin/server/provider";
 import { parseModels } from "./catalog.js";
+import { modelReference } from "./endpoints.js";
 
 export const modes: ProviderMode[] = [
   {
@@ -56,6 +57,7 @@ export class SessionConfiguration {
     config: ProviderSessionConfig,
     private readonly models: readonly ProviderModel[],
     saved?: SessionPreferences,
+    private readonly profileId = "primary",
   ) {
     this.value = preferencesSchema.parse({
       model: config.model ?? saved?.model,
@@ -88,8 +90,16 @@ export class SessionConfiguration {
   }
 
   model(id = this.value.model): ProviderModel {
+    const reference = modelReference(id);
+    if (reference.profileId !== this.profileId)
+      throw new Error(
+        "Create a new chat to use a different endpoint. This conversation stays on its original host.",
+      );
     // A catalog is metadata, not authority to replace an explicitly selected model ID.
-    return this.models.find((model) => model.id === id) ?? parseModels({ data: [{ id }] })[0]!;
+    const known = this.models.find((model) => model.id === id);
+    if (known?.isSelectable === false)
+      throw new Error(known.description ?? "This endpoint is unavailable.");
+    return known ?? { ...parseModels({ data: [{ id: reference.modelId }] })[0]!, id };
   }
 
   snapshot(): SessionPreferences {
@@ -159,6 +169,7 @@ export class SessionConfiguration {
         ? { effort: effort === "off" ? "none" : effort }
         : undefined;
     return {
+      model: modelReference(value.model).modelId,
       ...(effort !== "default" && !reasoning ? { reasoningEffort: effort } : {}),
       ...(reasoning ? { reasoning } : {}),
       ...(value.output_limit !== "default" ? { maxTokens: Number(value.output_limit) } : {}),

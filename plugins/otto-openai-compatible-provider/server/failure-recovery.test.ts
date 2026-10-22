@@ -57,9 +57,9 @@ it("refuses to resume another endpoint's history without mutating saved data", (
   const original = structuredClone(persistence);
   expect(
     () =>
-      new OpenAiSession(
-        "one",
-        {
+      new OpenAiSession({
+        id: "one",
+        config: {
           cwd: process.cwd(),
           env: {},
           model: "fixture",
@@ -67,16 +67,16 @@ it("refuses to resume another endpoint's history without mutating saved data", (
           mcpServers: {},
           persist: true,
         },
-        {
+        settings: {
           baseUrl: "http://second.invalid/v1",
           model: "fixture",
           apiKeyEnv: "OPENAI_API_KEY",
           maxToolRounds: 4,
           timeoutMs: 5000,
         },
-        () => {},
+        emit: () => {},
         persistence,
-      ),
+      }),
   ).toThrow("different endpoint");
   expect(persistence).toEqual(original);
 });

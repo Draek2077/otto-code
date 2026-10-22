@@ -1,3 +1,4 @@
+import { OttoProviderSettingsMenu } from "@/otto/provider-settings-menu"; // OTTO(provider-settings)
 import { formatPluginInstallation } from "@getpaseo/protocol/plugin-source-reference";
 import { PluginSettingsMenuItems } from "@/plugins/settings";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -528,6 +529,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
           />
         ) : null}
         {catalogContent}
+        <OttoProviderSettingsMenu serverId={serverId} /> {/* OTTO(provider-settings) */}
       </SettingsSection>
       {client && logsPluginId ? (
         <PluginLogsSheet

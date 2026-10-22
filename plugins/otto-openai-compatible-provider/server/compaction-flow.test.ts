@@ -56,7 +56,12 @@ async function fixture() {
     persist: true,
   };
   const events: ProviderEvent[] = [];
-  let session = new OpenAiSession("one", config, settings, (event) => events.push(event));
+  let session = new OpenAiSession({
+    id: "one",
+    config,
+    settings,
+    emit: (event) => events.push(event),
+  });
   const message = async (id: string, text: string) => {
     session.start({
       clientMessageId: id,
@@ -89,13 +94,13 @@ async function fixture() {
     },
     resume: async (persistence: ProviderPersistence) => {
       await session.close();
-      session = new OpenAiSession(
-        "resumed",
+      session = new OpenAiSession({
+        id: "resumed",
         config,
         settings,
-        (event) => events.push(event),
+        emit: (event) => events.push(event),
         persistence,
-      );
+      });
     },
     close: async () => {
       await session.close();

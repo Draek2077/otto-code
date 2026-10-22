@@ -264,6 +264,8 @@ export function createPluginWorker(options: {
   });
 
   async function initialize(message: Extract<PluginProcessRequest, { type: "initialize" }>) {
+    // OTTO(provider-home): inherited environment is not authoritative for host storage.
+    Object.assign(process.env, ottoPluginEnvironment(message));
     daemonClient = new DaemonClient({
       url: `ipc://plugin/${encodeURIComponent(message.pluginId)}`,
       clientId: createPluginClientId(message.pluginId),
@@ -574,3 +576,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (worker) for (const handler of handlers) handler(raw as PluginProcessRequest);
   });
 }
+// OTTO(provider-home): bind the Otto builtin to the daemon's actual host home.
+import { ottoPluginEnvironment } from "../otto/plugin-host-environment.js";

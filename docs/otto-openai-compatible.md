@@ -8,15 +8,26 @@ chat rendering use the existing Paseo implementations.
 
 ## Host configuration
 
-On the target host, open **Settings > Plugins > Otto OpenAI-compatible**. Set the API
+Open **Settings > Host > Plugins > Configure Otto provider** for the target host. An
+Otto-owned entry exposes the bundled provider alongside Paseo's installed plugins. The
+command center also offers **Otto OpenAI-compatible settings** when a host workspace is
+active. Set the API
 base URL including its prefix, such as `http://localhost:1234/v1`. Localhost refers
 to the daemon machine, including when the client is on a phone. Leave Model ID empty
 to use `GET models`, or set an explicit model ID for endpoints without discovery.
 The endpoint must support streamed `POST chat/completions` and function tools.
 
-For a keyed endpoint, set its secret in the daemon's environment. The settings screen
-stores only the variable's name, defaulting to `OPENAI_API_KEY`. Settings documents
-are ordinary host JSON and are not a credential vault. Do not enter secrets in the URL
+Add named endpoints to expose their models together in the new-chat model picker. Model
+IDs are namespaced internally to distinguish identical IDs on different endpoints. A chat
+stays on its original endpoint; switching endpoints requires a new chat. Disabling a named
+endpoint preserves its settings and existing chats, while hiding it from new chats. An
+unavailable endpoint does not prevent other endpoints from working.
+
+For a keyed endpoint, save its API key in the host's private credential file, or set its
+secret in the daemon's environment and enter the variable's name (default `OPENAI_API_KEY`).
+A saved key takes precedence. The client never reads back saved keys. Keys remain outside
+ordinary plugin settings, agent persistence and logs. The credential file is private host
+storage with owner-only Unix permissions, not an OS keychain. Do not enter secrets in the URL
 or the environment-variable field. Endpoint URLs reject embedded credentials, query
 parameters and fragments. Requests do not follow redirects.
 
@@ -25,6 +36,12 @@ draft and the newer host values; Discard loads those newer values. Invalid persi
 settings are reported without a reset. New sessions use the current host configuration;
 already-open sessions retain their configuration. Model catalog cache keys include the
 endpoint and model configuration.
+
+Key saves use separate revision checks. Concurrent changes preserve the unsaved key for an
+explicit reload and retry. If the endpoint changes while editing a key, saving is blocked
+until that draft is discarded. A stored key is bound to the endpoint URL; changing that URL
+requires explicitly replacing or removing the stored key. The daemon supplies the resolved
+host directory to this Otto built-in through a small tagged worker-initialization seam.
 
 ## Execution and ownership
 

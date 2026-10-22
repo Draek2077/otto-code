@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   negotiateProviderCapabilities,
   requireProviderCapabilities,
@@ -6,12 +5,12 @@ import {
   type ProviderEvent,
   type ProviderInput,
   type ProviderRegistration,
-  type ProviderModel,
 } from "@getpaseo/plugin/server/provider";
 import type { ConnectionSettings } from "../shared/settings.js";
 import { OpenAiSession } from "./session.js";
-import { discoverModels } from "./catalog.js";
 import { modes } from "./session-config.js";
+import { EndpointCatalog, type ResolveApiKey } from "./endpoint-catalog.js";
+import { endpointProfiles, modelReference } from "./endpoints.js";
 
 const capabilities = [
   "prompt.message",
@@ -26,72 +25,63 @@ const capabilities = [
 
 export function createOpenAiProvider(
   readSettings: () => Promise<ConnectionSettings>,
-  options: { imageDirectory?: string } = {},
+  options: {
+    imageDirectory?: string;
+    resolveApiKey?: ResolveApiKey;
+    id?: string;
+    label?: string;
+  } = {},
 ): ProviderRegistration {
-  let latest: { key: string; models: ProviderModel[] } | undefined;
-  const catalogKey = (settings: ConnectionSettings) =>
-    createHash("sha256")
-      .update(
-        JSON.stringify([
-          settings.baseUrl,
-          settings.model,
-          settings.apiKeyEnv,
-          process.env[settings.apiKeyEnv],
-        ]),
-      )
-      .digest("hex");
-  const models = async (settings: ConnectionSettings, signal: AbortSignal, refresh = false) => {
-    const key = catalogKey(settings);
-    if (!refresh && latest?.key === key) return latest.models;
-    const values = await discoverModels(settings, signal);
-    latest = { key, models: values };
-    return values;
-  };
+  const catalog = new EndpointCatalog(options.resolveApiKey);
   return {
-    id: "openai-compatible",
-    label: "OpenAI-compatible",
+    id: options.id ?? "openai-compatible",
+    label: options.label ?? "OpenAI-compatible",
     description: "Use a local or hosted OpenAI-compatible Chat Completions endpoint with Otto.",
     async getCatalogCacheKey() {
       const settings = await readSettings();
-      return catalogKey(settings);
+      return catalog.key(settings);
     },
     async status() {
       const settings = await readSettings();
-      return settings.baseUrl
+      return endpointProfiles(settings).length
         ? { available: true }
         : {
             available: false,
-            diagnostic: "Configure the endpoint in Settings > Plugins > Otto OpenAI-compatible.",
+            diagnostic:
+              "Open Settings > Host > Plugins > Configure Otto provider to configure an endpoint.",
           };
     },
     async connect(request) {
       if (!request.versions.includes(1))
         throw new Error("Provider protocol version 1 is required.");
-      return connection(
+      return connection({
         readSettings,
-        negotiateProviderCapabilities(
+        supported: negotiateProviderCapabilities(
           request.capabilities,
           options.imageDirectory
             ? capabilities
             : capabilities.filter((capability) => capability !== "prompt.image"),
         ),
-        options.imageDirectory,
-        models,
-      );
+        imageDirectory: options.imageDirectory,
+        catalog,
+      });
     },
   };
 }
 
-function connection(
-  readSettings: () => Promise<ConnectionSettings>,
-  supported: readonly string[],
-  imageDirectory?: string,
-  getModels: (
-    settings: ConnectionSettings,
-    signal: AbortSignal,
-    refresh?: boolean,
-  ) => Promise<ProviderModel[]> = discoverModels,
-): ProviderConnection {
+interface ConnectionServices {
+  readSettings(): Promise<ConnectionSettings>;
+  supported: readonly string[];
+  imageDirectory?: string;
+  catalog: EndpointCatalog;
+}
+
+function connection({
+  readSettings,
+  supported,
+  imageDirectory,
+  catalog,
+}: ConnectionServices): ProviderConnection {
   const listeners = new Set<(event: ProviderEvent) => void>();
   const sessions = new Map<string, OpenAiSession>();
   const opening = new Set<string>();
@@ -106,35 +96,73 @@ function connection(
     if (!value) throw new Error(`Unknown provider session: ${id}`);
     return value;
   };
+  async function createSession(input: Extract<ProviderInput, { type: "session.open" }>) {
+    const root = await readSettings();
+    const models = await catalog.models(root, lifecycle.signal);
+    const data = input.persistence?.data;
+    let savedModel: string | undefined;
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      const preferences = data.preferences;
+      if (
+        preferences &&
+        typeof preferences === "object" &&
+        !Array.isArray(preferences) &&
+        typeof preferences.model === "string"
+      )
+        savedModel = preferences.model;
+    }
+    const model =
+      input.config.model ?? savedModel ?? models.find((entry) => entry.isSelectable !== false)?.id;
+    if (!model)
+      throw new Error("No endpoint model is available. Check the host's connection settings.");
+    const reference = modelReference(model);
+    const profile = endpointProfiles(root, Boolean(input.persistence)).find(
+      (entry) => entry.id === reference.profileId,
+    );
+    if (!profile)
+      throw new Error(
+        "This endpoint profile was removed. Restore it before resuming this conversation.",
+      );
+    return new OpenAiSession({
+      id: input.sessionId,
+      config: { ...input.config, model },
+      settings: profile.settings,
+      emit,
+      persistence: input.persistence,
+      supportsPermissions: supported.includes("permission"),
+      imageDirectory,
+      models: models.filter((entry) => entry.metadata?.endpointProfileId === profile.id),
+      profileId: profile.id,
+      resolveApiKey: () => catalog.credential(profile, input.config.env),
+    });
+  }
   async function dispatch(input: ProviderInput): Promise<void> {
     switch (input.type) {
       case "catalog": {
         const settings = await readSettings();
-        const models = await getModels(settings, lifecycle.signal, true);
+        const models = await catalog.models(settings, lifecycle.signal, true);
+        const defaultModel = models.find((model) => model.isSelectable !== false);
+        if (!defaultModel)
+          throw new Error(
+            models
+              .map((model) => model.description)
+              .join("\n")
+              .slice(0, 4000),
+          );
         emit({
           type: "catalog",
           requestId: input.requestId,
           catalog: {
             models,
             modes,
-            defaultModel: models[0]!.id,
+            defaultModel: defaultModel.id,
             defaultMode: "default",
           },
         });
         return;
       }
       case "session.open": {
-        const settings = await readSettings();
-        const value = new OpenAiSession(
-          input.sessionId,
-          input.config,
-          settings,
-          emit,
-          input.persistence,
-          supported.includes("permission"),
-          imageDirectory,
-          await getModels(settings, lifecycle.signal),
-        );
+        const value = await createSession(input);
         await value.prepare(lifecycle.signal);
         if (closed || closing) {
           await value.close();

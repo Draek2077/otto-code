@@ -210,6 +210,22 @@ The smallest meaningful contract wins over package ownership. Tiny structural in
 
 Agent providers handle their own auth. Do not add auth checks, environment variable gates, or conditional skips to tests. If auth fails, report it.
 
+## Otto provider coverage
+
+<!-- OTTO(provider-tests): coverage for the independently owned provider plugin. -->
+
+The F01 provider uses deterministic local HTTP endpoints for protocol behavior, isolated
+daemon homes for persistence and credential checks, and real browser settings interactions.
+These checks do not require a separate Android device run for daemon-only changes; Android
+packaging remains a build gate.
+
+| Surface           | Behavioral coverage                                                                                                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Endpoint routing  | `plugins/otto-openai-compatible-provider/server/endpoint-routing.test.ts`: identical model IDs, independent credentials, unavailable endpoint isolation, endpoint-bound chats |
+| Private host keys | `packages/server/src/server/otto/openai-compatible-credentials.e2e.test.ts`: save, conflict, endpoint binding, daemon restart and secret exclusion from settings/history/logs |
+| Wide settings     | `packages/app/e2e/browser/otto-provider-settings.spec.ts`: discoverable host settings, additional endpoint, key save, reload, disabling without losing values                 |
+| Compact settings  | Same spec: connection/key conflicts retain drafts, explicit reload/retry, endpoint change blocks an unreviewed key save, constrained width                                    |
+
 ## Debugging with tests
 
 Use the test as your debugging ground:

@@ -71,14 +71,14 @@ export function parseModels(raw: unknown): ProviderModel[] {
 export async function discoverModels(
   settings: ConnectionSettings,
   signal: AbortSignal,
+  apiKey = process.env[settings.apiKeyEnv],
 ): Promise<ProviderModel[]> {
   if (!settings.baseUrl) throw new Error("Configure an OpenAI-compatible endpoint first.");
   if (settings.model) return parseModels({ data: [{ id: settings.model }] });
-  const apiKey = process.env[settings.apiKeyEnv];
   const response = await fetch(endpoint(settings.baseUrl, "models"), {
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
     redirect: "error",
-    signal: AbortSignal.any([signal, AbortSignal.timeout(settings.timeoutMs)]),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(Math.min(settings.timeoutMs, 15000))]),
   });
   await requireOk(response, "Model discovery", apiKey);
   const models = parseModels(JSON.parse(await readBody(response)));

@@ -71,16 +71,13 @@ it("keeps an admitted turn's permissions and model, then restores desired settin
     { id: "one", label: "One" },
     { id: "two", label: "Two" },
   ];
-  let session = new OpenAiSession(
-    "first",
+  let session = new OpenAiSession({
+    id: "first",
     config,
     settings,
-    (event) => events.push(event),
-    undefined,
-    true,
-    undefined,
+    emit: (event) => events.push(event),
     models,
-  );
+  });
   const prompt = (id: string) =>
     session.start({
       clientMessageId: id,
@@ -115,16 +112,14 @@ it("keeps an admitted turn's permissions and model, then restores desired settin
     const cacheKey = requests[0]!.prompt_cache_key;
     const firstHistory = structuredClone(session.messages);
     await session.close();
-    session = new OpenAiSession(
-      "resumed",
-      { ...config, model: undefined },
+    session = new OpenAiSession({
+      id: "resumed",
+      config: { ...config, model: undefined },
       settings,
-      (event) => events.push(event),
-      persisted.persistence,
-      true,
-      undefined,
+      emit: (event) => events.push(event),
+      persistence: persisted.persistence,
       models,
-    );
+    });
     prompt("second");
     await expect.poll(() => session.running).toBe(false);
     expect(await readFile(path.join(cwd, "proof.txt"), "utf8")).toBe("next turn");
@@ -150,16 +145,14 @@ it("keeps an admitted turn's permissions and model, then restores desired settin
     const rewound = events.findLast((event) => event.type === "session.persistence");
     if (rewound?.type !== "session.persistence") throw Error("Missing rewound persistence");
     await session.close();
-    session = new OpenAiSession(
-      "rewound",
-      { ...config, model: undefined },
+    session = new OpenAiSession({
+      id: "rewound",
+      config: { ...config, model: undefined },
       settings,
-      (event) => events.push(event),
-      rewound.persistence,
-      true,
-      undefined,
+      emit: (event) => events.push(event),
+      persistence: rewound.persistence,
       models,
-    );
+    });
     expect(session.messages).toEqual(firstHistory);
   } finally {
     await session.close();

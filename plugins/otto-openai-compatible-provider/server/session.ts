@@ -69,7 +69,26 @@ const savedSession = z.object({
 const jsonObject = z.record(z.string(), z.json());
 const revertToken = z.object({ format: z.literal("otto-openai-revert-v1"), id: z.string().min(1) });
 
+interface OpenAiSessionOptions {
+  id: string;
+  config: ProviderSessionConfig;
+  settings: ConnectionSettings;
+  emit(event: ProviderEvent): void;
+  persistence?: ProviderPersistence;
+  supportsPermissions?: boolean;
+  imageDirectory?: string;
+  models?: readonly ProviderModel[];
+  profileId?: string;
+  resolveApiKey?(): Promise<string | undefined>;
+}
+
 export class OpenAiSession {
+  readonly id: string;
+  readonly config: ProviderSessionConfig;
+  readonly settings: ConnectionSettings;
+  private readonly emit: (event: ProviderEvent) => void;
+  private readonly supportsPermissions: boolean;
+  private readonly resolveApiKey: () => Promise<string | undefined>;
   readonly timeline = new Map<string, ProviderTimelineItem>();
   private readonly timelineTimestamps = new Map<string, string>();
   readonly messages: StoredMessage[];
@@ -84,16 +103,16 @@ export class OpenAiSession {
   private readonly permissions = new Map<string, (response: ProviderPermissionResponse) => void>();
   private external: Awaited<ReturnType<typeof loadMcpTools>> | null = null;
 
-  constructor(
-    readonly id: string,
-    readonly config: ProviderSessionConfig,
-    readonly settings: ConnectionSettings,
-    private readonly emit: (event: ProviderEvent) => void,
-    persistence?: ProviderPersistence,
-    private readonly supportsPermissions = true,
-    imageDirectory?: string,
-    models: readonly ProviderModel[] = [],
-  ) {
+  constructor(options: OpenAiSessionOptions) {
+    const { id, config, settings, emit, persistence, imageDirectory, models = [] } = options;
+    this.id = id;
+    this.config = config;
+    this.settings = settings;
+    this.emit = emit;
+    this.supportsPermissions = options.supportsPermissions ?? true;
+    this.resolveApiKey =
+      options.resolveApiKey ??
+      (async () => config.env[settings.apiKeyEnv] ?? process.env[settings.apiKeyEnv]);
     this.images = new PromptImages(imageDirectory);
     let previousPreferences: SessionPreferences | undefined;
     let previousCacheKey: string | undefined;
@@ -121,7 +140,12 @@ export class OpenAiSession {
         if (event.type === "timeline.item") this.timeline.set(event.item.id, event.item);
       }
     } else this.messages = [];
-    this.preferences = new SessionConfiguration(config, models, previousPreferences);
+    this.preferences = new SessionConfiguration(
+      config,
+      models,
+      previousPreferences,
+      options.profileId,
+    );
     this.cacheKey = previousCacheKey ?? randomUUID();
     this.tools = new Map(nativeTools(config).map((tool) => [tool.definition.function.name, tool]));
     this.closeUnansweredTools();
@@ -141,6 +165,10 @@ export class OpenAiSession {
       this.item(item);
       this.persist();
     });
+    this.reconcileTimeline();
+  }
+
+  private reconcileTimeline(): void {
     const rewindIds = new Set(this.context.snapshot().turns.map((turn) => turn.id));
     for (const [itemId, item] of this.timeline) {
       if (item.type === "user_message" && rewindIds.has(itemId))
@@ -278,7 +306,7 @@ export class OpenAiSession {
         )
           await this.compactHistory(turnId, controller, preferences, usage, "auto");
         const result = await streamCompletion({
-          ...this.completionSettings(preferences),
+          ...(await this.completionSettings(preferences)),
           messages: [
             ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
             ...(await this.images.wire(this.context.active(), signal)),
@@ -336,11 +364,10 @@ export class OpenAiSession {
     }
   }
 
-  private completionSettings(preferences: SessionPreferences) {
+  private async completionSettings(preferences: SessionPreferences) {
     return {
       baseUrl: this.settings.baseUrl,
-      apiKey: this.config.env[this.settings.apiKeyEnv] ?? process.env[this.settings.apiKeyEnv],
-      model: preferences.model,
+      apiKey: await this.resolveApiKey(),
       ...this.preferences.requestSettings(this.settings.baseUrl, preferences),
       cacheKey: this.cacheKey,
     };
@@ -359,9 +386,9 @@ export class OpenAiSession {
       instruction,
       contextWindow: this.preferences.model(preferences.model).contextWindowMaxTokens,
       signal: controller.signal,
-      complete: (messages) =>
+      complete: async (messages) =>
         streamCompletion({
-          ...this.completionSettings(preferences),
+          ...(await this.completionSettings(preferences)),
           messages,
           tools: [],
           signal: AbortSignal.any([
