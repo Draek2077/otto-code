@@ -3,6 +3,13 @@ import { z } from "zod";
 import type { ProviderMcpServerConfig } from "@getpaseo/plugin/server/provider";
 import { readBody, requireOk, serverEvents } from "./http.js";
 import { boundedResult, type AgentTool } from "./tools.js";
+import { DuplexMcpClient } from "./mcp-duplex.js";
+
+interface McpClient {
+  request(method: string, params: unknown, signal: AbortSignal): Promise<unknown>;
+  initialize(signal: AbortSignal): Promise<string | undefined>;
+  close(): Promise<void>;
+}
 
 const packetSchema = z.object({
   jsonrpc: z.literal("2.0"),
@@ -137,7 +144,7 @@ class HttpMcpClient {
 }
 
 async function listTools(
-  client: HttpMcpClient,
+  client: McpClient,
   signal: AbortSignal,
 ): Promise<Array<z.infer<typeof toolSchema>>> {
   const tools: Array<z.infer<typeof toolSchema>> = [];
@@ -179,12 +186,13 @@ function modelResult(raw: unknown): string {
   return content;
 }
 
-export async function loadHttpMcpTools(
+export async function loadMcpTools(
   config: Readonly<Record<string, ProviderMcpServerConfig>>,
   timeoutMs: number,
   signal: AbortSignal,
+  context: { cwd: string; env: Readonly<Record<string, string>> },
 ) {
-  const clients: HttpMcpClient[] = [];
+  const clients: McpClient[] = [];
   const tools: AgentTool[] = [];
   const instructions: string[] = [];
   const close = async () => {
@@ -192,11 +200,10 @@ export async function loadHttpMcpTools(
   };
   try {
     for (const [server, connection] of Object.entries(config)) {
-      if (connection.type !== "http")
-        throw new Error(
-          `MCP server ${server} uses ${connection.type}. This provider slice supports Streamable HTTP MCP; its settings were left intact.`,
-        );
-      const client = new HttpMcpClient(connection.url, connection.headers, timeoutMs);
+      const client =
+        connection.type === "http"
+          ? new HttpMcpClient(connection.url, connection.headers, timeoutMs)
+          : new DuplexMcpClient(connection, timeoutMs, context);
       clients.push(client);
       const instruction = await client.initialize(signal);
       if (instruction) instructions.push(`[${server}]\n${instruction}`);

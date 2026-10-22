@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { afterEach, expect, it } from "vitest";
-import { loadHttpMcpTools } from "./mcp.js";
+import { loadMcpTools } from "./mcp.js";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -85,10 +85,11 @@ it("negotiates the HTTP MCP session and retains the exact tool-policy identity",
   });
   const address = server.address();
   if (!address || typeof address === "string") throw Error("Missing endpoint");
-  const loaded = await loadHttpMcpTools(
+  const loaded = await loadMcpTools(
     { "otto-host": { type: "http", url: `http://127.0.0.1:${address.port}/mcp` } },
     5000,
     AbortSignal.timeout(5000),
+    { cwd: process.cwd(), env: {} },
   );
   cleanup.unshift(() => loaded.close());
   expect(loaded.instructions).toEqual(["[otto-host]\nKeep this server instruction."]);

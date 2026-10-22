@@ -34,7 +34,9 @@ export async function requireOk(response: Response, label: string, apiKey?: stri
   throw new Error(`${label} returned HTTP ${response.status}: ${detail}`);
 }
 
-export async function* serverEvents(response: Response): AsyncGenerator<string> {
+export async function* sseEvents(
+  response: Response,
+): AsyncGenerator<{ event: string; data: string }> {
   if (!response.body) throw new Error("The endpoint returned an empty event stream.");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -53,7 +55,13 @@ export async function* serverEvents(response: Response): AsyncGenerator<string> 
           .filter((line) => line.startsWith("data:"))
           .map((line) => line.slice(5).replace(/^ /, ""))
           .join("\n");
-        if (data) yield data;
+        const event =
+          block
+            .split(/\r?\n/)
+            .find((line) => line.startsWith("event:"))
+            ?.slice(6)
+            .trim() ?? "message";
+        if (data) yield { event, data };
       }
       if (chunk.done) {
         if (buffer.trim()) throw new Error("The endpoint event stream ended mid-event.");
@@ -64,4 +72,8 @@ export async function* serverEvents(response: Response): AsyncGenerator<string> 
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
+}
+
+export async function* serverEvents(response: Response): AsyncGenerator<string> {
+  for await (const event of sseEvents(response)) yield event.data;
 }

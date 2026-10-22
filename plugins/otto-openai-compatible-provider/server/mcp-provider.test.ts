@@ -9,9 +9,14 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).toReversed()) await close();
 });
 
-it.each([true, false])(
-  "integrates daemon-injected MCP tools with exact preapproval=%s",
-  async (preapproved) => {
+it.each([
+  { transport: "http", preapproved: true },
+  { transport: "http", preapproved: false },
+  { transport: "stdio", preapproved: true },
+  { transport: "stdio", preapproved: false },
+])(
+  "integrates daemon-injected $transport MCP tools with exact preapproval=$preapproved",
+  async ({ transport, preapproved }) => {
     let calls = 0;
     const prompts: Array<{
       messages: Array<{ role: string; content: string }>;
@@ -109,7 +114,28 @@ it.each([true, false])(
         model: "fixture",
         settings: {},
         persist: false,
-        mcpServers: { "otto-host": { type: "http", url: `${base}/mcp` } },
+        mcpServers: {
+          "otto-host":
+            transport === "http"
+              ? { type: "http", url: `${base}/mcp` }
+              : {
+                  type: "stdio",
+                  command: process.execPath,
+                  args: [
+                    "--input-type=module",
+                    "-e",
+                    `
+            import {createInterface} from 'node:readline';
+            const lines=createInterface({input:process.stdin});
+            lines.on('line',async line=>{
+              const response=await fetch(${JSON.stringify(`${base}/mcp`)},{method:'POST',body:line});
+              if(response.status===200)process.stdout.write(await response.text()+'\\n');
+            });
+            lines.on('close',()=>process.exit(0));
+          `,
+                  ],
+                },
+        },
         toolPolicy: {
           preapproved: [
             { server: "otto-host", tool: preapproved ? "project.inspect" : "project.other" },

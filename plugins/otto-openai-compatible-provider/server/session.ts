@@ -15,7 +15,7 @@ import type { ConnectionSettings } from "../shared/settings.js";
 import { streamCompletion, type ChatMessage, type ToolCall } from "./completions.js";
 import { endpoint } from "./http.js";
 import { boundedResult, nativeTools, type AgentTool } from "./tools.js";
-import { loadHttpMcpTools } from "./mcp.js";
+import { loadMcpTools } from "./mcp.js";
 
 const savedMessage = z.discriminatedUnion("role", [
   z.object({ role: z.literal("user"), content: z.string() }),
@@ -48,7 +48,7 @@ export class OpenAiSession {
   private active: { controller: AbortController; promise: Promise<void> } | null = null;
   private readonly tools: Map<string, AgentTool>;
   private readonly permissions = new Map<string, (response: ProviderPermissionResponse) => void>();
-  private external: Awaited<ReturnType<typeof loadHttpMcpTools>> | null = null;
+  private external: Awaited<ReturnType<typeof loadMcpTools>> | null = null;
 
   constructor(
     readonly id: string,
@@ -94,7 +94,12 @@ export class OpenAiSession {
   }
 
   async prepare(signal: AbortSignal): Promise<void> {
-    this.external = await loadHttpMcpTools(this.config.mcpServers, this.settings.timeoutMs, signal);
+    this.external = await loadMcpTools(
+      this.config.mcpServers,
+      this.settings.timeoutMs,
+      signal,
+      this.config,
+    );
     for (const tool of this.external.tools) this.tools.set(tool.definition.function.name, tool);
   }
 

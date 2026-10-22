@@ -40,11 +40,15 @@ SDK's process termination helper; process-tree termination guarantees follow tha
 platform behavior. Denied tools produce feedback without execution. Cancellation aborts
 model requests and pending permission waits, and interrupts the active tool.
 
-The provider consumes daemon-injected Streamable HTTP MCP servers. It preserves server
+The provider consumes daemon-injected stdio, Streamable HTTP and legacy SSE MCP servers. It preserves server
 instructions, tool descriptions and input schemas. Only an exact daemon-supplied server
 and tool preapproval bypasses the permission prompt. Model-visible names are stable hashes;
 policy matching uses the original identities. MCP sessions close when the provider session
-closes. Unsupported MCP transports fail clearly instead of silently omitting tools.
+closes. Stdio servers run in the session workspace with the session environment and
+their configured overrides. Cancellation notifies the MCP server and releases the request;
+shutdown closes stdin before bounded process termination. Legacy SSE uses the advertised
+message endpoint only on the configured origin, so authentication headers are not forwarded
+to another origin. Neither HTTP transport follows redirects.
 
 Tool results are capped at 16,000 characters with a truncation notice. Model output is
 bounded; a truncated or unfinished completion cannot execute partial tool calls. Tool
@@ -60,9 +64,9 @@ Recovery completes unanswered tool-call records with interruption feedback and n
 reexecutes them automatically. A different configured endpoint is refused when resuming
 saved history, preventing an accidental history transfer to another service.
 
-This first slice supports one endpoint, text prompts, native file/shell tools, HTTP MCP,
+The provider supports one endpoint, text prompts, native file/shell tools, MCP over all three standard transports,
 streaming, approval, cancellation and recovery of its own new sessions. It does not yet
-implement images, other attachment types, stdio or legacy SSE MCP, multiple endpoint
+implement images, other attachment types, multiple endpoint
 profiles, credential entry, compaction, rewind, live session configuration, or importing
 Otto 0.9 provider sessions/settings. Older data remains preserved by the continuity layer;
 preservation does not imply those sessions can resume through this new provider.

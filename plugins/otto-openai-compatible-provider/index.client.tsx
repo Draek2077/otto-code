@@ -86,7 +86,7 @@ function ConnectionScreen({ theme }: PluginSurfaceProps) {
         />
         <SettingsAction
           label="Connection settings"
-          hint="Tools ask for approval. This first slice supports text, file read/write, shell commands and Streamable HTTP MCP."
+          hint="Tools ask for approval. Supports text, file read/write, shell commands and MCP over stdio, Streamable HTTP or SSE."
           error={settings.saveError ?? undefined}
           actionLabel={settings.saving ? "Saving…" : "Save"}
           disabled={!draft || settings.saving}
