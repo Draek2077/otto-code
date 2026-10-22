@@ -15,6 +15,7 @@ import { modes } from "./session-config.js";
 
 const capabilities = [
   "prompt.message",
+  "prompt.command",
   "prompt.image",
   "session.persistence",
   "session.configure",
@@ -156,6 +157,18 @@ function connection(
           sessionId: input.sessionId,
           config: value.configState(),
         });
+        if (supported.includes("prompt.command"))
+          emit({
+            type: "session.commands",
+            sessionId: input.sessionId,
+            commands: [
+              {
+                name: "compact",
+                description: "Summarize older context while retaining the transcript",
+                argumentHint: "[summary focus]",
+              },
+            ],
+          });
         emit({ type: "session.ready", requestId: input.requestId, sessionId: input.sessionId });
         opening.delete(input.sessionId);
         return;

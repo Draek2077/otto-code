@@ -91,7 +91,12 @@ test("the bundled Otto provider publishes shared client settings and completes a
       cwd: root,
       title: "Otto provider proof",
     });
-    await client.sendMessage(agent.id, "Say hello");
+    await client.setAgentFeature(agent.id, "auto_compact", "off");
+    expect(await client.listCommands(agent.id)).toMatchObject({
+      commands: [expect.objectContaining({ name: "compact" })],
+    });
+    const firstPrompt = `Say hello. ${"Earlier project context. ".repeat(400)}`.trim();
+    await client.sendMessage(agent.id, firstPrompt);
     expect((await client.waitForFinish(agent.id, 15_000)).status).toBe("idle");
     const timeline = await client.fetchAgentTimeline(agent.id, {
       direction: "tail",
@@ -100,7 +105,7 @@ test("the bundled Otto provider publishes shared client settings and completes a
     });
     expect(JSON.stringify(timeline.entries)).toContain("Otto provider integration proof");
     expect(prompts).toHaveLength(1);
-    expect(prompts[0]?.messages).toContainEqual({ role: "user", content: "Say hello" });
+    expect(prompts[0]?.messages).toContainEqual({ role: "user", content: firstPrompt });
     expect(prompts[0]?.tools?.length).toBeGreaterThanOrEqual(3);
     await client.setAgentModel(agent.id, "configured");
     await client.setAgentThinkingOption(agent.id, "high");
@@ -114,6 +119,17 @@ test("the bundled Otto provider publishes shared client settings and completes a
       max_tokens: 4096,
     });
     expect(prompts[1]?.tools?.some((tool) => tool.function.name === "otto_write_file")).toBe(false);
+    await client.sendMessage(agent.id, "/compact Keep the project objective");
+    expect((await client.waitForFinish(agent.id, 15_000)).status).toBe("idle");
+    expect(prompts[2]?.tools).toBeUndefined();
+    expect(prompts[2]?.messages[0]?.content).toContain("Summarize the supplied");
+    await client.sendMessage(agent.id, "Continue after compaction");
+    expect((await client.waitForFinish(agent.id, 15_000)).status).toBe("idle");
+    expect(prompts[3]?.messages).not.toContainEqual({ role: "user", content: firstPrompt });
+    expect(prompts[3]?.messages).toContainEqual({
+      role: "user",
+      content: "Use the saved session controls",
+    });
   } finally {
     await client.close();
     await daemon.close();

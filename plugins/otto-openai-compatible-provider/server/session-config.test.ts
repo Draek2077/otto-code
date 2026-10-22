@@ -24,6 +24,7 @@ it("commits a validated configuration atomically and leaves endpoint output limi
     mode: "default",
     thinkingOption: "default",
     output_limit: "default",
+    auto_compact: "80",
   });
   config.update({
     model: "model-two",
@@ -37,6 +38,7 @@ it("commits a validated configuration atomically and leaves endpoint output limi
     mode: "plan",
     thinkingOption: "low",
     output_limit: "4096",
+    auto_compact: "80",
   });
   expect(() => config.update({ model: "model-one", mode: "unexpected" })).toThrow();
   expect(config.snapshot()).toEqual(saved);

@@ -39,11 +39,14 @@ export const modes: ProviderMode[] = [
   },
 ];
 const outputLimits = ["default", "1024", "4096", "8192", "16384", "32768", "65536"] as const;
+const autoCompaction = ["off", "50", "60", "70", "80", "90"] as const;
 export const preferencesSchema = z.object({
   model: z.string().min(1),
   mode: z.enum(["default", "acceptEdits", "plan", "dontAsk", "bypassPermissions"]),
   thinkingOption: z.string(),
   output_limit: z.enum(outputLimits),
+  // COMPAT(providerPreferences): added in v0.10.0; remove the old-record default after 2027-04-22.
+  auto_compact: z.enum(autoCompaction).default("80"),
 });
 export type SessionPreferences = z.infer<typeof preferencesSchema>;
 
@@ -59,6 +62,7 @@ export class SessionConfiguration {
       mode: config.mode ?? saved?.mode ?? "default",
       thinkingOption: config.thinkingOption ?? saved?.thinkingOption ?? "default",
       output_limit: config.settings.output_limit ?? saved?.output_limit ?? "default",
+      auto_compact: config.settings.auto_compact ?? saved?.auto_compact ?? "80",
     });
     this.checkSettings(config.settings);
     this.validate(this.value);
@@ -66,7 +70,7 @@ export class SessionConfiguration {
 
   private checkSettings(settings: ProviderConfigChanges["settings"]): void {
     for (const key of Object.keys(settings ?? {}))
-      if (key !== "output_limit")
+      if (key !== "output_limit" && key !== "auto_compact")
         throw new Error(
           `Unsupported OpenAI-compatible setting: ${key}. Existing values were left intact.`,
         );
@@ -102,6 +106,7 @@ export class SessionConfiguration {
           ? this.value.thinkingOption
           : (changes.thinkingOption ?? "default"),
       output_limit: changes.settings?.output_limit ?? this.value.output_limit,
+      auto_compact: changes.settings?.auto_compact ?? this.value.auto_compact,
     });
     this.validate(next);
     this.value = next;
@@ -119,6 +124,18 @@ export class SessionConfiguration {
       modes,
       thinkingOptions: model.thinkingOptions ?? [],
       settings: [
+        {
+          type: "select",
+          id: "auto_compact",
+          label: "Automatic compaction",
+          description:
+            "Summarize older context at this estimated share of the model window. Off leaves manual /compact available. Unknown windows use an 8192-token trigger estimate.",
+          value: this.value.auto_compact,
+          options: autoCompaction.map((value) => ({
+            value,
+            label: value === "off" ? "Off" : `${value}%`,
+          })),
+        },
         {
           type: "select",
           id: "output_limit",

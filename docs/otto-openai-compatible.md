@@ -65,9 +65,9 @@ reexecutes them automatically. A different configured endpoint is refused when r
 saved history, preventing an accidental history transfer to another service.
 
 The provider supports one endpoint, text and image prompts, native file/shell tools, MCP over all three standard transports,
-streaming, approval, cancellation, live configuration and recovery of its own new sessions. It does not yet
+streaming, approval, cancellation, live configuration, compaction and recovery of its own new sessions. It does not yet
 implement multiple endpoint
-profiles, credential entry, compaction, rewind, or importing
+profiles, credential entry, rewind, or importing
 Otto 0.9 provider sessions/settings. Older data remains preserved by the continuity layer;
 preservation does not imply those sessions can resume through this new provider.
 
@@ -95,6 +95,30 @@ Reasoning text and signed or encrypted reasoning details remain in model history
 tool calls and recovery, with opaque chunks preserved in wire order. Each conversation also
 retains a stable prompt cache key. These fields travel only within the encrypted application
 channel and model requests, leaving Paseo relay identity unchanged.
+
+## Context compaction
+
+`/compact [summary focus]` summarizes older model context while retaining the full transcript
+and recent context. Automatic compaction defaults to an estimated 80% of the model window;
+the session control offers 50%, 60%, 70%, 80%, 90% and Off. Off leaves the manual command
+available. A missing model window uses an 8192-token trigger estimate, which is never
+reported as measured usage or an advertised model limit. The trigger includes the system
+prompt and tool catalog. A single large prompt or tool group can still exceed an endpoint's
+window; compaction cannot split an unfinished tool exchange.
+
+The recent-context target is one quarter of the known window, capped at 20,000 estimated
+tokens. Boundaries retain complete tool-call/result groups, including during a long turn.
+Repeated compaction sends the previous summary and newly older context to the summarizer,
+avoiding repeated processing of the full archive. Summary calls carry no tools; old images
+remain references, with recorded findings preserved in the summary. Opaque reasoning
+signatures remain in the archive and recent context, without being copied into summary calls.
+
+A summary commits only after a completed, nonempty response that reduces context. Failure
+or cancellation preserves the previous context. Automatic failure shows a warning and
+suppresses repeated attempts until enough new context has accumulated; manual retry remains
+available. Summary usage contributes to the turn's endpoint-reported token counts. Both the
+summary and its archive boundary persist, so restarting does not restore the larger request
+prefix or delete transcript history.
 
 ## Attachments
 

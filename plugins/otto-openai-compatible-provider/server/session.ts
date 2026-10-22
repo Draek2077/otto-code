@@ -31,6 +31,8 @@ import {
   type SessionPreferences,
 } from "./session-config.js";
 import { isToolAvailable, toolDecision } from "./tool-policy.js";
+import { ContextHistory, contextStateSchema, type ContextState } from "./context-history.js";
+import { Compactor } from "./compaction.js";
 
 const savedMessage = z.discriminatedUnion("role", [
   z.object({
@@ -61,6 +63,7 @@ const savedSession = z.object({
   pendingToolImages: z.array(storedContentSchema).optional(),
   preferences: preferencesSchema.optional(),
   cacheKey: z.string().min(1).optional(),
+  context: contextStateSchema.optional(),
 });
 const jsonObject = z.record(z.string(), z.json());
 
@@ -70,6 +73,8 @@ export class OpenAiSession {
   private readonly images: PromptImages;
   private readonly preferences: SessionConfiguration;
   private readonly cacheKey: string;
+  private readonly context: ContextHistory;
+  private readonly compactor: Compactor;
   private readonly pendingToolImages: StoredContent[] = [];
   private active: { controller: AbortController; promise: Promise<void> } | null = null;
   private readonly tools: Map<string, AgentTool>;
@@ -89,6 +94,7 @@ export class OpenAiSession {
     this.images = new PromptImages(imageDirectory);
     let previousPreferences: SessionPreferences | undefined;
     let previousCacheKey: string | undefined;
+    let previousContext: ContextState | undefined;
     endpoint(settings.baseUrl, "chat/completions");
     if (persistence) {
       if (persistence.version !== 1)
@@ -98,6 +104,7 @@ export class OpenAiSession {
       const saved = savedSession.parse(persistence.data);
       previousPreferences = saved.preferences;
       previousCacheKey = saved.cacheKey;
+      previousContext = saved.context;
       if (saved.endpoint !== endpoint(settings.baseUrl, "chat/completions"))
         throw new Error(
           "This conversation belongs to a different endpoint. Restore that endpoint before resuming it.",
@@ -114,9 +121,26 @@ export class OpenAiSession {
     this.tools = new Map(nativeTools(config).map((tool) => [tool.definition.function.name, tool]));
     this.closeUnansweredTools();
     this.flushToolImages();
+    // COMPAT(providerHistory): v0.10.0, remove after 2027-04-22. Earlier plugin
+    // records lack human turn offsets. User-role boundaries conservatively keep
+    // complete tool groups; old MCP image batches may retain additional context.
+    this.context = new ContextHistory(
+      this.messages,
+      previousContext ?? {
+        turns: this.messages.flatMap((message, offset) =>
+          message.role === "user" ? [{ id: `historical-${offset}`, offset }] : [],
+        ),
+      },
+    );
+    this.compactor = new Compactor(this.context, (item) => {
+      this.item(item);
+      this.persist();
+    });
     for (const [itemId, item] of this.timeline) {
       if (item.type === "tool_call" && item.status === "running")
         this.timeline.set(itemId, { ...item, status: "canceled", error: null });
+      if (item.type === "compaction" && item.status === "loading")
+        this.timeline.set(itemId, { ...item, status: "completed" });
     }
   }
 
@@ -151,6 +175,7 @@ export class OpenAiSession {
           ...(this.pendingToolImages.length ? { pendingToolImages: this.pendingToolImages } : {}),
           preferences: this.preferences.snapshot(),
           cacheKey: this.cacheKey,
+          context: this.context.snapshot(),
         }),
       ),
     );
@@ -163,14 +188,22 @@ export class OpenAiSession {
 
   start(prompt: ProviderPrompt): void {
     if (this.active) throw new Error("This provider session already has an active turn.");
-    if (prompt.input.type !== "message")
-      throw new Error("This provider does not support that command.");
-    const prepared = prepareContent(prompt.input.content);
+    const input = prompt.input;
+    if (input.type === "command" && (input.name !== "compact" || input.arguments.length > 4000))
+      throw new Error("Use /compact with an optional summary focus of at most 4000 characters.");
+    const prepared = input.type === "message" ? prepareContent(input.content) : undefined;
     const turnId = randomUUID();
     const controller = new AbortController();
     const preferences = this.preferences.snapshot();
     const promise = Promise.resolve().then(() =>
-      this.run(turnId, controller, prepared, prompt.clientMessageId, preferences),
+      prepared
+        ? this.run(turnId, controller, prepared, prompt.clientMessageId, preferences)
+        : this.compactTurn(
+            turnId,
+            controller,
+            preferences,
+            input.type === "command" ? input.arguments : "",
+          ),
     );
     this.active = { controller, promise };
     this.emit({
@@ -199,9 +232,11 @@ export class OpenAiSession {
     try {
       await this.images.save(prepared.images, signal);
       signal.throwIfAborted();
+      const userId = randomUUID();
+      this.context.recordTurn(userId, this.messages.length);
       this.messages.push({ role: "user", content: prepared.content });
       this.item({
-        id: randomUUID(),
+        id: userId,
         type: "user_message",
         text: prepared.text,
         messageId: clientMessageId,
@@ -213,21 +248,27 @@ export class OpenAiSession {
         partialCommitted = false;
         const assistantId = randomUUID();
         const reasoningId = randomUUID();
+        const tools = this.supportsPermissions
+          ? [...this.tools.values()]
+              .filter((tool) => isToolAvailable(preferences.mode, tool))
+              .map((tool) => tool.definition)
+          : [];
+        const window = this.preferences.model(preferences.model).contextWindowMaxTokens;
+        if (
+          this.compactor.shouldCompact(
+            preferences.auto_compact,
+            window,
+            Math.ceil((systemPrompt.length + JSON.stringify(tools).length) / 4),
+          )
+        )
+          await this.compactHistory(turnId, controller, preferences, usage, "auto");
         const result = await streamCompletion({
-          baseUrl: this.settings.baseUrl,
-          apiKey: this.config.env[this.settings.apiKeyEnv] ?? process.env[this.settings.apiKeyEnv],
-          model: preferences.model,
-          ...this.preferences.requestSettings(this.settings.baseUrl, preferences),
-          cacheKey: this.cacheKey,
+          ...this.completionSettings(preferences),
           messages: [
             ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
-            ...(await this.images.wire(this.messages, signal)),
+            ...(await this.images.wire(this.context.active(), signal)),
           ],
-          tools: this.supportsPermissions
-            ? [...this.tools.values()]
-                .filter((tool) => isToolAvailable(preferences.mode, tool))
-                .map((tool) => tool.definition)
-            : [],
+          tools,
           signal: AbortSignal.any([signal, AbortSignal.timeout(this.settings.timeoutMs)]),
           onText: (text) => {
             partial = text;
@@ -277,6 +318,72 @@ export class OpenAiSession {
           state: "failed",
           error: { message: error instanceof Error ? error.message : String(error) },
         });
+    }
+  }
+
+  private completionSettings(preferences: SessionPreferences) {
+    return {
+      baseUrl: this.settings.baseUrl,
+      apiKey: this.config.env[this.settings.apiKeyEnv] ?? process.env[this.settings.apiKeyEnv],
+      model: preferences.model,
+      ...this.preferences.requestSettings(this.settings.baseUrl, preferences),
+      cacheKey: this.cacheKey,
+    };
+  }
+
+  private async compactHistory(
+    turnId: string,
+    controller: AbortController,
+    preferences: SessionPreferences,
+    usage: ProviderUsage,
+    trigger: "auto" | "manual",
+    instruction?: string,
+  ): Promise<void> {
+    await this.compactor.run({
+      trigger,
+      instruction,
+      contextWindow: this.preferences.model(preferences.model).contextWindowMaxTokens,
+      signal: controller.signal,
+      complete: (messages) =>
+        streamCompletion({
+          ...this.completionSettings(preferences),
+          messages,
+          tools: [],
+          signal: AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(this.settings.timeoutMs),
+          ]),
+        }),
+      usage: (next) => this.addUsage(turnId, usage, next),
+    });
+    this.persist();
+  }
+
+  private async compactTurn(
+    turnId: string,
+    controller: AbortController,
+    preferences: SessionPreferences,
+    instruction: string,
+  ): Promise<void> {
+    try {
+      await this.compactHistory(turnId, controller, preferences, {}, "manual", instruction);
+      this.active = null;
+      this.emit({ type: "session.turn", sessionId: this.id, turnId, state: "completed" });
+    } catch (error) {
+      this.persist();
+      this.active = null;
+      if (controller.signal.aborted)
+        this.emit({ type: "session.turn", sessionId: this.id, turnId, state: "canceled" });
+      else
+        this.emit({
+          type: "session.turn",
+          sessionId: this.id,
+          turnId,
+          state: "failed",
+          error: { message: error instanceof Error ? error.message : String(error) },
+        });
+    } finally {
+      this.active = null;
     }
   }
 
