@@ -1,8 +1,11 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+// OTTO(providers): keep the fork's bundled provider list outside upstream's registry.
+import { ottoBuiltinPlugins } from "../../otto/builtin-plugins.js";
 
 export const builtinPlugins = [
+  ...ottoBuiltinPlugins,
   "antigravity-provider",
   "claude-usage-source",
   "codex-usage-source",
