@@ -113,13 +113,26 @@ export const test = base.extend<{
 });
 export { expect };
 
-export async function openOttoProviderSettings(page: Page, compact = false) {
+async function openHostSettings(page: Page, compact: boolean) {
   await gotoAppShell(page);
   if (compact) {
     await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
     await page.getByTestId("sidebar-settings").click();
     await expect(page.getByTestId("settings-sidebar")).toBeVisible();
   } else await openSettings(page);
+}
+
+export async function openOttoProviderDetails(page: Page, compact = false) {
+  await openHostSettings(page, compact);
+  await page.getByTestId("settings-host-section-providers").click();
+  await page
+    .getByRole("button", { name: "OpenAI-compatible provider details", exact: true })
+    .click();
+  await expect(page.getByTestId("provider-settings-sheet")).toBeVisible();
+}
+
+export async function openOttoProviderSettings(page: Page, compact = false) {
+  await openHostSettings(page, compact);
   await page.getByTestId("settings-host-section-plugins").click();
   await page.getByRole("button", { name: "Configure Otto provider", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "API base URL", exact: true })).toBeVisible();

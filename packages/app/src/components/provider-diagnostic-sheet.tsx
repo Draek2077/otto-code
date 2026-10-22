@@ -23,6 +23,8 @@ import { useTimeAgo } from "@/hooks/use-time-ago";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { settingsStyles } from "@/styles/settings";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
+// OTTO(provider-settings): expose host endpoint setup from the provider model sheet.
+import { OttoProviderConfigurationAction } from "@/otto/provider-settings-menu";
 import { compareMatchScores, scoreTextFields } from "@getpaseo/protocol/search/text-match";
 import type { AgentModelDefinition, AgentProvider } from "@getpaseo/protocol/agent-types";
 import type { ProviderProfileModel } from "@getpaseo/protocol/provider-config";
@@ -697,6 +699,8 @@ export function ProviderDiagnosticSheet({
         })}
         snapPoints={MAIN_SNAP_POINTS}
       >
+        {/* OTTO(provider-settings): keep first-run configuration beside the model catalog. */}
+        <OttoProviderConfigurationAction serverId={serverId} provider={provider} onOpen={onClose} />
         <ProviderModalBody
           discoveredCount={discoveredModels.length}
           additionalCount={additionalModels.length}

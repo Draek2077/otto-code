@@ -1,6 +1,51 @@
-import { test, expect, openOttoProviderSettings } from "../support/helpers/otto-provider-settings";
+import {
+  test,
+  expect,
+  openOttoProviderSettings,
+  openOttoProviderDetails,
+} from "../support/helpers/otto-provider-settings";
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
+
+for (const compact of [false, true]) {
+  test(`unconfigured provider opens its endpoint editor and discovers models (${compact ? "compact" : "wide"})`, async ({
+    page,
+    ottoProvider,
+  }, testInfo) => {
+    if (compact) await page.setViewportSize({ width: 390, height: 844 });
+    await ottoProvider.update({ baseUrl: "", model: "", endpoints: [] });
+    await openOttoProviderDetails(page, compact);
+    await expect(
+      page
+        .getByTestId("provider-settings-sheet")
+        .getByText("Configure an OpenAI-compatible endpoint first.", { exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("endpoint-setup-entry.png") });
+    await page.getByRole("button", { name: "Configure endpoint", exact: true }).click();
+    await expect(page.getByTestId("provider-settings-sheet")).not.toBeVisible();
+    const url = page.getByRole("textbox", { name: "API base URL", exact: true });
+    await expect(url).toHaveValue("");
+    await url.fill(ottoProvider.url);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    const key = page.getByLabel("API key", { exact: true });
+    await expect(key).toBeEnabled();
+    await key.fill("synthetic-first-setup-key");
+    await page.getByRole("button", { name: "Save key", exact: true }).click();
+    await expect(
+      page.getByText("Using the key stored privately on this host.", { exact: true }),
+    ).toBeVisible();
+    await expect(key).toHaveValue("");
+    await openOttoProviderDetails(page, compact);
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect(page.getByText("fixture", { exact: true }).first()).toBeVisible();
+    await expect(
+      page
+        .getByTestId("provider-settings-sheet")
+        .getByText("Configure an OpenAI-compatible endpoint first.", { exact: true }),
+    ).not.toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("endpoint-setup-models.png") });
+  });
+}
 
 test("Otto endpoint profiles and private keys survive reload without exposing the saved key", async ({
   page,

@@ -5,6 +5,41 @@ import { Button } from "@/components/ui/button";
 import { useInstalledPlugin } from "@/plugins/registry";
 import { buildPluginSettingsRoute } from "@/plugins/settings/routes";
 
+// Keep setup reachable from the provider's model sheet, including on a fresh host.
+export function OttoProviderConfigurationAction({
+  serverId,
+  provider,
+  onOpen,
+}: {
+  serverId: string;
+  provider: string;
+  onOpen: () => void;
+}) {
+  const pluginId = "otto-openai-compatible-provider";
+  const plugin = useInstalledPlugin(serverId, pluginId);
+  const open = useCallback(() => {
+    onOpen();
+    router.push(buildPluginSettingsRoute(serverId, pluginId, "connection"));
+  }, [serverId, onOpen]);
+  if (
+    provider !== "openai-compatible" ||
+    !plugin?.settingsScreens.some((screen) => screen.id === "connection")
+  )
+    return null;
+  return (
+    <SettingsCard>
+      <SettingsRow
+        label="Endpoint configuration"
+        hint="Set the API URL, API key and models on this host."
+      >
+        <Button variant="outline" size="sm" onPress={open}>
+          Configure endpoint
+        </Button>
+      </SettingsRow>
+    </SettingsCard>
+  );
+}
+
 // OTTO(provider-settings): built-ins are intentionally absent from Paseo's installed-plugin list.
 export function OttoProviderSettingsMenu({ serverId }: { serverId: string }) {
   const pluginId = "otto-openai-compatible-provider";

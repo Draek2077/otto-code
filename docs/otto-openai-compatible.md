@@ -8,7 +8,10 @@ chat rendering use the existing Paseo implementations.
 
 ## Host configuration
 
-Open **Settings > Host > Plugins > Configure Otto provider** for the target host. An
+Open the **OpenAI-compatible** provider and choose **Configure endpoint** to set up a
+fresh host or edit its connection. The action closes the model sheet and opens that
+host's endpoint settings on desktop and mobile. You can also open
+**Settings > Host > Plugins > Configure Otto provider** for the target host. An
 Otto-owned entry exposes the bundled provider alongside Paseo's installed plugins. The
 command center also offers **Otto OpenAI-compatible settings** when a host workspace is
 active. Set the API
