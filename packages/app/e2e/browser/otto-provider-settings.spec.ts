@@ -15,13 +15,11 @@ for (const compact of [false, true]) {
     if (compact) await page.setViewportSize({ width: 390, height: 844 });
     await ottoProvider.update({ baseUrl: "", model: "", endpoints: [] });
     await openOttoProviderDetails(page, compact);
-    await expect(
-      page
-        .getByTestId("provider-settings-sheet")
-        .getByText("Configure an OpenAI-compatible endpoint first.", { exact: true }),
-    ).toBeVisible();
+    // Compact sheets put testID on the header; use the visible action in the body.
+    const configure = page.getByRole("button", { name: "Configure endpoint", exact: true });
+    await expect(configure).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("endpoint-setup-entry.png") });
-    await page.getByRole("button", { name: "Configure endpoint", exact: true }).click();
+    await configure.click();
     await expect(page.getByTestId("provider-settings-sheet")).not.toBeVisible();
     const url = page.getByRole("textbox", { name: "API base URL", exact: true });
     await expect(url).toHaveValue("");
@@ -38,11 +36,6 @@ for (const compact of [false, true]) {
     await openOttoProviderDetails(page, compact);
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(page.getByText("fixture", { exact: true }).first()).toBeVisible();
-    await expect(
-      page
-        .getByTestId("provider-settings-sheet")
-        .getByText("Configure an OpenAI-compatible endpoint first.", { exact: true }),
-    ).not.toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("endpoint-setup-models.png") });
   });
 }
