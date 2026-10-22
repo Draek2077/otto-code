@@ -700,7 +700,12 @@ export function ProviderDiagnosticSheet({
         snapPoints={MAIN_SNAP_POINTS}
       >
         {/* OTTO(provider-settings): keep first-run configuration beside the model catalog. */}
-        <OttoProviderConfigurationAction serverId={serverId} provider={provider} onOpen={onClose} />
+        <OttoProviderConfigurationAction
+          serverId={serverId}
+          provider={provider}
+          hasModels={discoveredModels.length > 0}
+          onOpen={onClose}
+        />
         <ProviderModalBody
           discoveredCount={discoveredModels.length}
           additionalCount={additionalModels.length}

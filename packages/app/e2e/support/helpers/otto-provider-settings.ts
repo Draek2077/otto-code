@@ -126,7 +126,7 @@ export async function openOttoProviderDetails(page: Page, compact = false) {
   await openHostSettings(page, compact);
   await page.getByTestId("settings-host-section-providers").click();
   await page
-    .getByRole("button", { name: "OpenAI-compatible provider details", exact: true })
+    .getByRole("button", { name: "OpenAI Compatible API provider details", exact: true })
     .click();
   await expect(page.getByTestId("provider-settings-sheet")).toBeVisible();
 }

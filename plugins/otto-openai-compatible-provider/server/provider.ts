@@ -44,7 +44,7 @@ export function createOpenAiProvider(
   const connections = new Set<ManagedConnection>();
   return {
     id: options.id ?? "openai-compatible",
-    label: options.label ?? "OpenAI-compatible",
+    label: options.label ?? "OpenAI Compatible API",
     description: "Use a local or hosted OpenAI-compatible Chat Completions endpoint with Otto.",
     async retireProfile(profileId) {
       await Promise.all([...connections].map((value) => value.retireProfile(profileId)));

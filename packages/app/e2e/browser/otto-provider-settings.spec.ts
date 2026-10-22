@@ -36,6 +36,12 @@ for (const compact of [false, true]) {
     await expect(
       page.getByText(`${new URL(ottoProvider.url).host} / fixture`, { exact: true }),
     ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Configure endpoint", exact: true })).toHaveCount(
+      0,
+    );
+    await expect(page.getByTestId("provider-settings-sheet")).toContainText(
+      "OpenAI Compatible API",
+    );
   });
 }
 

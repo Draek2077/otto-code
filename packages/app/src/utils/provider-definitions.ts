@@ -1,4 +1,6 @@
 import type { ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
+// OTTO(provider-identity): keep display labels separate from stable provider IDs.
+import { ottoProviderLabel } from "@/otto/provider-identity";
 import {
   type AgentModeColorTier,
   type AgentModeIcon,
@@ -26,7 +28,8 @@ export function buildProviderDefinitions(
 
   return snapshotEntries.map((entry) => ({
     id: entry.provider,
-    label: entry.label ?? entry.provider,
+    // OTTO(provider-identity)
+    label: ottoProviderLabel(entry.provider, entry.label ?? entry.provider),
     description: entry.description ?? "",
     defaultModeId: entry.defaultModeId ?? null,
     modes: buildProviderModes(entry),
@@ -37,7 +40,11 @@ export function resolveProviderLabel(
   provider: string,
   snapshotEntries: ProviderSnapshotEntry[] | undefined,
 ): string {
-  return snapshotEntries?.find((entry) => entry.provider === provider)?.label ?? provider;
+  // OTTO(provider-identity)
+  return ottoProviderLabel(
+    provider,
+    snapshotEntries?.find((entry) => entry.provider === provider)?.label ?? provider,
+  );
 }
 
 export function resolveProviderDefinition(

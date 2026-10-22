@@ -9,10 +9,12 @@ import { buildPluginSettingsRoute } from "@/plugins/settings/routes";
 export function OttoProviderConfigurationAction({
   serverId,
   provider,
+  hasModels,
   onOpen,
 }: {
   serverId: string;
   provider: string;
+  hasModels: boolean;
   onOpen: () => void;
 }) {
   const pluginId = "otto-openai-compatible-provider";
@@ -23,6 +25,7 @@ export function OttoProviderConfigurationAction({
   }, [serverId, onOpen]);
   if (
     provider !== "openai-compatible" ||
+    hasModels ||
     !plugin?.settingsScreens.some((screen) => screen.id === "connection")
   )
     return null;
@@ -51,7 +54,7 @@ export function OttoProviderSettingsMenu({ serverId }: { serverId: string }) {
   if (!plugin?.settingsScreens.some((screen) => screen.id === "connection")) return null;
   return (
     <SettingsCard>
-      <SettingsRow label="Otto OpenAI-compatible" hint="Host endpoints, models and API keys.">
+      <SettingsRow label="OpenAI Compatible Provider" hint="Host endpoints, models and API keys.">
         <Button variant="outline" size="sm" onPress={open}>
           Configure Otto provider
         </Button>

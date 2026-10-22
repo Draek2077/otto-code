@@ -6,6 +6,9 @@ in `plugins/otto-openai-compatible-provider/`. The Otto-owned built-in list is t
 integration with the daemon registry. Relay, Hub, client protocol, agent storage and
 chat rendering use the existing Paseo implementations.
 
+The plugin is displayed as **OpenAI Compatible Provider** and its provider as
+**OpenAI Compatible API**. Their stable IDs and existing saved configurations do not change.
+
 The settings screen uses Paseo's existing buttons, cards and collapsible rows. Two
 small tagged exports expose those controls to the plugin; provider-specific UI and
 state remain Otto-owned. Older clients without that UI bridge show an app-update
@@ -14,12 +17,13 @@ update needs the updated client and a refreshed dev daemon to load the new bundl
 
 ## Host configuration
 
-Open the **OpenAI-compatible** provider and choose **Configure endpoint** to set up a
-fresh host or edit its connection. The action closes the model sheet and opens that
-host's endpoint settings on desktop and mobile. You can also open
+Open the **OpenAI Compatible API** provider and choose **Configure endpoint** to set up a
+fresh host. The setup card hides once the endpoint has discovered models. The action
+closes the model sheet and opens that host's connection settings on desktop and mobile.
+To manage existing connections, open
 **Settings > Host > Plugins > Configure Otto provider** for the target host. An
 Otto-owned entry exposes the bundled provider alongside Paseo's installed plugins. The
-command center also offers **Otto OpenAI-compatible settings** when a host workspace is
+command center also offers **OpenAI Compatible API settings** when a host workspace is
 active. A fresh setup opens **Add connection** with **API URL**, **API key** and
 one **Save connection** action. Include the API prefix in the URL, such as
 `http://localhost:1234/v1`. The key is optional for an unkeyed local server.

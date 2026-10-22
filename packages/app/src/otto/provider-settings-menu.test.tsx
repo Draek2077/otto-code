@@ -33,6 +33,7 @@ vi.mock("@/components/ui/button", () => ({
 }));
 
 import { OttoProviderConfigurationAction } from "./provider-settings-menu";
+import { resolveProviderLabel } from "@/utils/provider-definitions";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -61,6 +62,7 @@ it("opens the selected host's endpoint editor after dismissing the provider shee
       <OttoProviderConfigurationAction
         serverId="selected-host"
         provider="openai-compatible"
+        hasModels={false}
         onOpen={close}
       />,
     ),
@@ -86,6 +88,7 @@ it.each(["claude", "codex", "custom-openai"])(
         <OttoProviderConfigurationAction
           serverId="selected-host"
           provider={provider}
+          hasModels={false}
           onOpen={vi.fn()}
         />,
       ),
@@ -100,10 +103,30 @@ it("does not offer another host's settings when the target host lacks the editor
       <OttoProviderConfigurationAction
         serverId="other-host"
         provider="openai-compatible"
+        hasModels={false}
         onOpen={vi.fn()}
       />,
     ),
   );
   expect(installedPlugin).toHaveBeenCalledWith("other-host", "otto-openai-compatible-provider");
   expect(container.textContent).toBe("");
+});
+
+it("hides setup once the endpoint has discovered models", () => {
+  act(() =>
+    root.render(
+      <OttoProviderConfigurationAction
+        serverId="selected-host"
+        provider="openai-compatible"
+        hasModels
+        onOpen={close}
+      />,
+    ),
+  );
+  expect(container.textContent).toBe("");
+});
+
+it("uses the friendly provider name even before its host snapshot arrives", () => {
+  expect(resolveProviderLabel("openai-compatible", undefined)).toBe("OpenAI Compatible API");
+  expect(resolveProviderLabel("custom-provider", undefined)).toBe("custom-provider");
 });

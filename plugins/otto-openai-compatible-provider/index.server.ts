@@ -68,7 +68,7 @@ export default function contribute(server: PluginServerContext) {
     imageDirectory: home ? path.join(home, "otto-openai-compatible", "images") : undefined,
     home,
     sessionDirectory: home ? path.join(home, "otto-openai-compatible", "sessions") : undefined,
-    label: initial?.label,
+    label: "OpenAI Compatible API",
     resolveApiKey: async (profile) => {
       const old = legacy?.profile("openai-compatible");
       if (
