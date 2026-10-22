@@ -1,4 +1,5 @@
 import type { PluginLifecycle } from "./lifecycle/index.js";
+import { ottoProviderRegistration } from "../otto/plugin-provider-compat.js"; // OTTO(provider-history)
 import path from "node:path";
 import { stat, rm } from "node:fs/promises";
 import type pino from "pino";
@@ -653,9 +654,15 @@ export class PluginService {
     );
     const ids = registrations.map((provider) => provider.id);
     for (const provider of registrations) {
-      this.providers.set(provider.id, {
-        ...provider,
-      });
+      // OTTO(provider-history): bind our native archives and legacy handles to this host.
+      this.providers.set(
+        provider.id,
+        ottoProviderRegistration({
+          registration: { ...provider },
+          pluginId,
+          settingsDirectory: this.dependencies.settingsDirectory,
+        }),
+      );
     }
     if (ids.length > 0) {
       this.providerIdsByPlugin.set(pluginId, ids);

@@ -36,6 +36,9 @@ function summaryMessage(summary: string): StoredMessage {
 /** Provider context is a view over the archive; summarization never deletes transcript data. */
 export class ContextHistory {
   private state: ContextState;
+  restore(state: ContextState): void {
+    this.state = new ContextHistory(this.messages, state).snapshot();
+  }
   constructor(
     private readonly messages: StoredMessage[],
     saved?: ContextState,

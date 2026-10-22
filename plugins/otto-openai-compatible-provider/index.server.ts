@@ -60,6 +60,8 @@ export default function contribute(server: PluginServerContext) {
   server.registerProvider(
     createOpenAiProvider(async () => (await readSettings()).values, {
       imageDirectory: home ? path.join(home, "otto-openai-compatible", "images") : undefined,
+      home,
+      sessionDirectory: home ? path.join(home, "otto-openai-compatible", "sessions") : undefined,
       label: initial?.label,
       resolveApiKey: async (profile) => {
         const old = legacy?.profile("openai-compatible");
@@ -105,6 +107,10 @@ export default function contribute(server: PluginServerContext) {
           id: alias.id,
           label: alias.label,
           imageDirectory: home ? path.join(home, "otto-openai-compatible", "images") : undefined,
+          home,
+          sessionDirectory: home
+            ? path.join(home, "otto-openai-compatible", "sessions")
+            : undefined,
           resolveApiKey: async (profile) => legacy?.key(alias.id, profile),
         },
       ),

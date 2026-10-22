@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 // OTTO(provider-history): authoritative snapshot replay for Otto-owned provider history.
 import { ottoProviderHistory } from "../otto/plugin-provider-history.js";
+import {
+  ottoLegacyPersistence,
+  ottoProviderContext,
+  type OttoProviderContext,
+} from "../otto/plugin-provider-compat.js"; // OTTO(provider-history)
 import { resolve as resolvePath } from "node:path";
 import type { Logger } from "pino";
 import type { JsonValue } from "@getpaseo/protocol/agent-types";
@@ -902,6 +907,7 @@ interface PendingChild {
 
 class PluginAgentClient implements AgentClient {
   readonly provider: string;
+  private readonly ottoContext?: OttoProviderContext; // OTTO(provider-history)
   private readonly runtime: ProviderRuntime;
   private readonly rootsBySession = new Map<string, PluginAgentSession>();
   private readonly pendingChildren: PendingChild[] = [];
@@ -910,6 +916,7 @@ class PluginAgentClient implements AgentClient {
 
   constructor(registration: ProviderRegistration, runtimeSettings?: ProviderRuntimeSettings) {
     this.provider = registration.id;
+    this.ottoContext = ottoProviderContext(registration); // OTTO(provider-history)
     this.runtime = new ProviderRuntime(registration, runtimeSettings);
     if (registration.getCatalogCacheKey)
       this.getCatalogCacheKey = (options) => this.runtime.catalogCacheKey(options);
@@ -944,7 +951,7 @@ class PluginAgentClient implements AgentClient {
     return await this.openSession({
       config: { ...overrides, provider: this.provider, cwd: overrides.cwd },
       launchContext,
-      persistence: decodePersistence(handle),
+      persistence: this.persistenceFor(handle), // OTTO(provider-history)
       history: "replay",
       persist: true,
     });
@@ -1024,11 +1031,18 @@ class PluginAgentClient implements AgentClient {
   }
 
   async archiveNativeSession(handle: AgentPersistenceHandle): Promise<void> {
-    await this.runtime.archive(decodePersistence(handle));
+    await this.runtime.archive(this.persistenceFor(handle)); // OTTO(provider-history)
   }
 
   async unarchiveNativeSession(handle: AgentPersistenceHandle): Promise<void> {
-    await this.runtime.unarchive(decodePersistence(handle));
+    await this.runtime.unarchive(this.persistenceFor(handle)); // OTTO(provider-history)
+  }
+
+  // OTTO(provider-history): only a trusted Otto registration can accept 0.9 handles.
+  private persistenceFor(handle: AgentPersistenceHandle): ProviderPersistence {
+    return (
+      ottoLegacyPersistence({ context: this.ottoContext, handle }) ?? decodePersistence(handle)
+    );
   }
 
   async shutdown(): Promise<void> {
@@ -1049,9 +1063,14 @@ class PluginAgentClient implements AgentClient {
       persistence: input.persistence,
       history: input.history,
     });
-    const session = new PluginAgentSession(this.provider, bridge, () => {
-      this.rootsBySession.delete(bridge.id);
-    });
+    const session = new PluginAgentSession(
+      this.provider,
+      bridge,
+      () => {
+        this.rootsBySession.delete(bridge.id);
+      },
+      this.ottoContext,
+    ); // OTTO(provider-history)
     this.rootsBySession.set(bridge.id, session);
     this.attachPendingChildren();
     return session;
@@ -1111,6 +1130,7 @@ class PluginAgentSession implements AgentSession {
     readonly provider: string,
     private readonly bridge: ProviderRuntimeSession,
     private readonly onClose: () => void,
+    private readonly ottoContext?: OttoProviderContext, // OTTO(provider-history)
   ) {
     this.subagentIdsBySession.set(bridge.id, null);
     for (const event of bridge.history) this.accept(event, false);
@@ -1205,6 +1225,7 @@ class PluginAgentSession implements AgentSession {
       provider: this.provider,
       persistence: this.bridge.persistence,
       mapItem: mapTimelineItem,
+      home: this.ottoContext?.home,
     });
     if (own) {
       yield* own;

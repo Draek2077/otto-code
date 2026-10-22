@@ -14,58 +14,23 @@ import {
   type ProviderModel,
 } from "@getpaseo/plugin/server/provider";
 import type { ConnectionSettings } from "../shared/settings.js";
-import { streamCompletion, reasoningFieldsSchema, type ToolCall } from "./completions.js";
+import { streamCompletion, type ToolCall } from "./completions.js";
 import { endpoint } from "./http.js";
 import { boundedResult, nativeTools, type AgentTool } from "./tools.js";
 import { loadMcpTools } from "./mcp.js";
 import {
   prepareContent,
   PromptImages,
-  storedContentSchema,
   type StoredMessage,
   type StoredContent,
 } from "./prompt-content.js";
-import {
-  SessionConfiguration,
-  preferencesSchema,
-  type SessionPreferences,
-} from "./session-config.js";
+import { SessionConfiguration, type SessionPreferences } from "./session-config.js";
 import { isToolAvailable, toolDecision } from "./tool-policy.js";
-import { ContextHistory, contextStateSchema, type ContextState } from "./context-history.js";
+import { ContextHistory, type ContextState } from "./context-history.js";
 import { Compactor } from "./compaction.js";
+import { savedSession } from "./session-state.js";
+import type { SessionArchive } from "./session-store.js";
 
-const savedMessage = z.discriminatedUnion("role", [
-  z.object({
-    role: z.literal("user"),
-    content: z.union([z.string(), z.array(storedContentSchema)]),
-  }),
-  z.object({
-    role: z.literal("assistant"),
-    content: z.string().nullable(),
-    ...reasoningFieldsSchema.shape,
-    tool_calls: z
-      .array(
-        z.object({
-          id: z.string(),
-          type: z.literal("function"),
-          function: z.object({ name: z.string(), arguments: z.string() }),
-        }),
-      )
-      .optional(),
-  }),
-  z.object({ role: z.literal("tool"), tool_call_id: z.string(), content: z.string() }),
-]);
-const savedSession = z.object({
-  format: z.literal("otto-openai-compatible-v1"),
-  endpoint: z.string(),
-  messages: z.array(savedMessage),
-  timeline: z.array(z.json()),
-  timelineTimestamps: z.record(z.string(), z.string()).optional(),
-  pendingToolImages: z.array(storedContentSchema).optional(),
-  preferences: preferencesSchema.optional(),
-  cacheKey: z.string().min(1).optional(),
-  context: contextStateSchema.optional(),
-});
 const jsonObject = z.record(z.string(), z.json());
 const revertToken = z.object({ format: z.literal("otto-openai-revert-v1"), id: z.string().min(1) });
 
@@ -79,6 +44,7 @@ interface OpenAiSessionOptions {
   imageDirectory?: string;
   models?: readonly ProviderModel[];
   profileId?: string;
+  archive?: SessionArchive;
   resolveApiKey?(): Promise<string | undefined>;
 }
 
@@ -98,6 +64,9 @@ export class OpenAiSession {
   private readonly context: ContextHistory;
   private readonly compactor: Compactor;
   private readonly pendingToolImages: StoredContent[] = [];
+  private readonly archive?: SessionArchive;
+  private readonly legacyOrigin?: { provider: string; sessionId: string };
+  private storageFailure: Error | null = null;
   private active: { controller: AbortController; promise: Promise<void> } | null = null;
   private readonly tools: Map<string, AgentTool>;
   private readonly permissions = new Map<string, (response: ProviderPermissionResponse) => void>();
@@ -106,6 +75,7 @@ export class OpenAiSession {
   constructor(options: OpenAiSessionOptions) {
     const { id, config, settings, emit, persistence, imageDirectory, models = [] } = options;
     this.id = id;
+    this.archive = options.archive;
     this.config = config;
     this.settings = settings;
     this.emit = emit;
@@ -124,6 +94,7 @@ export class OpenAiSession {
           "This saved OpenAI-compatible session needs a supported migration. Its data was left intact.",
         );
       const saved = savedSession.parse(persistence.data);
+      this.legacyOrigin = saved.legacyOrigin;
       previousPreferences = saved.preferences;
       previousCacheKey = saved.cacheKey;
       previousContext = saved.context;
@@ -218,17 +189,46 @@ export class OpenAiSession {
           preferences: this.preferences.snapshot(),
           cacheKey: this.cacheKey,
           context: this.context.snapshot(),
+          ...(this.legacyOrigin ? { legacyOrigin: this.legacyOrigin } : {}),
         }),
       ),
     );
     this.emit({
       type: "session.persistence",
       sessionId: this.id,
-      persistence: { version: 1, data },
+      persistence: this.saveArchive(data),
     });
   }
 
+  checkpoint(): void {
+    this.persist();
+  }
+
+  private saveArchive(data: ProviderPersistence["data"]): ProviderPersistence {
+    if (this.storageFailure) throw this.storageFailure;
+    try {
+      return this.archive?.save(data) ?? { version: 1, data };
+    } catch (error) {
+      this.storageFailure = new Error(
+        `Conversation history could not be saved. Reopen this chat before continuing. ${error instanceof Error ? error.message : "Saved history was left intact."}`,
+        { cause: error },
+      );
+      this.active?.controller.abort();
+      throw this.storageFailure;
+    }
+  }
+
+  private checkpointAfterFailure(error: unknown): unknown {
+    try {
+      this.persist();
+    } catch (storageError) {
+      return storageError;
+    }
+    return error;
+  }
+
   start(prompt: ProviderPrompt): void {
+    if (this.storageFailure) throw this.storageFailure;
     if (this.active) throw new Error("This provider session already has an active turn.");
     const input = prompt.input;
     if (input.type === "command" && (input.name !== "compact" || input.arguments.length > 4000))
@@ -349,9 +349,9 @@ export class OpenAiSession {
       if (partial && !partialCommitted) this.messages.push({ role: "assistant", content: partial });
       this.closeUnansweredTools();
       this.flushToolImages();
-      this.persist();
+      const failure = this.checkpointAfterFailure(error);
       this.active = null;
-      if (controller.signal.aborted)
+      if (controller.signal.aborted && !this.storageFailure)
         this.emit({ type: "session.turn", sessionId: this.id, turnId, state: "canceled" });
       else
         this.emit({
@@ -359,7 +359,7 @@ export class OpenAiSession {
           sessionId: this.id,
           turnId,
           state: "failed",
-          error: { message: error instanceof Error ? error.message : String(error) },
+          error: { message: failure instanceof Error ? failure.message : String(failure) },
         });
     }
   }
@@ -412,9 +412,9 @@ export class OpenAiSession {
       this.active = null;
       this.emit({ type: "session.turn", sessionId: this.id, turnId, state: "completed" });
     } catch (error) {
-      this.persist();
+      const failure = this.checkpointAfterFailure(error);
       this.active = null;
-      if (controller.signal.aborted)
+      if (controller.signal.aborted && !this.storageFailure)
         this.emit({ type: "session.turn", sessionId: this.id, turnId, state: "canceled" });
       else
         this.emit({
@@ -422,7 +422,7 @@ export class OpenAiSession {
           sessionId: this.id,
           turnId,
           state: "failed",
-          error: { message: error instanceof Error ? error.message : String(error) },
+          error: { message: failure instanceof Error ? failure.message : String(failure) },
         });
     } finally {
       this.active = null;
@@ -641,18 +641,43 @@ export class OpenAiSession {
     const index = ids.indexOf(id);
     if (index < 0)
       throw new Error("Unknown conversation rewind boundary. Original context was retained.");
+    const before = {
+      messages: [...this.messages],
+      context: this.context.snapshot(),
+      timeline: [...this.timeline],
+      timestamps: [...this.timelineTimestamps],
+      images: [...this.pendingToolImages],
+    };
     this.context.rewind(id);
     for (const removed of ids.slice(index)) {
       this.timeline.delete(removed);
       this.timelineTimestamps.delete(removed);
     }
     this.pendingToolImages.length = 0;
-    this.persist();
+    try {
+      this.persist();
+    } catch (error) {
+      this.messages.splice(0, this.messages.length, ...before.messages);
+      this.context.restore(before.context);
+      this.timeline.clear();
+      for (const [key, value] of before.timeline) this.timeline.set(key, value);
+      this.timelineTimestamps.clear();
+      for (const [key, value] of before.timestamps) this.timelineTimestamps.set(key, value);
+      this.pendingToolImages.push(...before.images);
+      throw error;
+    }
   }
 
   configure(changes: ProviderConfigChanges): void {
+    if (this.storageFailure) throw this.storageFailure;
+    const before = this.preferences.snapshot();
     this.preferences.update(changes);
-    this.persist();
+    try {
+      this.persist();
+    } catch (error) {
+      this.preferences.restore(before);
+      throw error;
+    }
     this.emit({ type: "session.config", sessionId: this.id, config: this.configState() });
     if (this.active)
       this.emit({

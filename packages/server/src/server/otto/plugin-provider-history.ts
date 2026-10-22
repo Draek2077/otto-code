@@ -1,4 +1,6 @@
 import { z } from "zod";
+import path from "node:path";
+import { readFileSync, statSync } from "node:fs";
 import {
   ProviderEventSchema,
   type ProviderPersistence,
@@ -19,6 +21,7 @@ const savedTimeline = z.object({
 interface ProviderHistoryInput {
   provider: string;
   persistence: ProviderPersistence | null;
+  home?: string;
   mapItem: (
     item: ProviderTimelineItem,
     snapshots: Map<string, ProviderTimelineItem>,
@@ -29,8 +32,25 @@ export function ottoProviderHistory({
   provider,
   persistence,
   mapItem,
+  home,
 }: ProviderHistoryInput): AgentStreamEvent[] | null {
-  const data = persistence?.data;
+  let data = persistence?.data;
+  if (
+    data &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    data.format === "otto-openai-host-session-v1"
+  ) {
+    if (!home)
+      throw new Error(
+        "The Otto conversation archive has no bound host. Saved history was left intact.",
+      );
+    const pointer = z.object({ id: z.uuid() }).parse(data);
+    const file = path.join(home, "otto-openai-compatible", "sessions", `${pointer.id}.json`);
+    if (statSync(file).size > 128 * 1024 * 1024)
+      throw new Error("The Otto conversation archive exceeds 128 MiB.");
+    data = z.json().parse(JSON.parse(readFileSync(file, "utf8")));
+  }
   if (
     !data ||
     typeof data !== "object" ||

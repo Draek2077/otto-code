@@ -53,6 +53,9 @@ export type SessionPreferences = z.infer<typeof preferencesSchema>;
 
 export class SessionConfiguration {
   private value: SessionPreferences;
+  restore(value: SessionPreferences): void {
+    this.value = preferencesSchema.parse(value);
+  }
   constructor(
     config: ProviderSessionConfig,
     private readonly models: readonly ProviderModel[],

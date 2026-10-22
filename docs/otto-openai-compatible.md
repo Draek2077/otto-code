@@ -59,12 +59,44 @@ that legacy endpoint from running; they are never silently ignored. Paseo built-
 collisions remain inactive. These adapters do not reinstate Brain, old provider policy UI or
 deferred feature tooling. Original configuration files are read without rewriting them.
 
+## Otto 0.9 conversation import
+
+The trusted built-in registration enables a narrow compatibility adapter for old
+OpenAI-compatible handles, including preserved provider aliases. Other plugins keep
+Paseo's normal handle decoder. Before importing, the provider verifies the original URL
+against `config.json.otto-0.9.bak` and the current endpoint. A changed or unverifiable URL,
+unsupported history shape or unknown version fails while retaining the original data.
+The full original handle is saved privately under `otto-openai-compatible/legacy-imports/`
+before conversion. Core agent IDs, labels, titles and unported record fields remain intact.
+
+Supported text, image attachments, tool results, summaries and injected instructions become
+the native host archive. Historical system and subtree instructions remain context without
+appearing as human chat turns. Old display-only reasoning remains visible without being
+echoed to the model. Tool images follow the complete tool-result group. Unanswered calls
+receive an explicit interrupted-result record and are never executed by import. Existing
+file effects remain untouched. The old `off` reasoning setting retains its original behavior
+of omitting the request parameter, including when the core retains the old feature field.
+
+Stable legacy message identities support conversation rewind. Original 0.9 message handles
+did not contain timestamps, so imported rows use a recorded import time. Context or transcript
+data already removed by the old provider cannot be recovered from its remaining handle;
+the adapter retains everything present in that handle and keeps its original copy.
+
 ## Execution and ownership
 
 The daemon owns model requests, history, tools, permissions, cancellation and provider
 persistence. The shared client contribution uses Paseo's React Native settings controls
 and host frame, with no desktop-only API. Existing chat and permission surfaces render
 all messages and tool cards.
+
+Conversation archives live at `otto-openai-compatible/sessions/<id>.json` in the resolved
+host home. The opaque Paseo handle contains only a format and stable session ID, keeping
+large transcripts out of session identity and repeated metadata. Archive checkpoints use
+an atomic private-file replacement. Conflicting live writers fail visibly and require
+reopening the chat; a failed checkpoint stops further model requests and tool effects.
+An archive has a 128 MiB safety limit. A missing or invalid archive is reported without
+resetting the conversation. Back up this directory and its sibling `images/` together
+with the normal host data. Earlier inline checkpoints are retained under `sessions/imports/`.
 
 The initial mode is **Ask before tools**. Native tools read a bounded text file, atomically
 write UTF-8 content, or execute a bounded shell command using the session's host environment.

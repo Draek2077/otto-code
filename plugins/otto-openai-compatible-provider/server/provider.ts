@@ -11,6 +11,8 @@ import { OpenAiSession } from "./session.js";
 import { modes } from "./session-config.js";
 import { EndpointCatalog, type ResolveApiKey } from "./endpoint-catalog.js";
 import { endpointProfiles, modelReference } from "./endpoints.js";
+import { SessionArchive } from "./session-store.js";
+import { importLegacyConversation, restoredLegacyConfig } from "./legacy-history.js";
 
 const capabilities = [
   "prompt.message",
@@ -27,6 +29,8 @@ export function createOpenAiProvider(
   readSettings: () => Promise<ConnectionSettings>,
   options: {
     imageDirectory?: string;
+    sessionDirectory?: string;
+    home?: string;
     resolveApiKey?: ResolveApiKey;
     id?: string;
     label?: string;
@@ -63,6 +67,9 @@ export function createOpenAiProvider(
             : capabilities.filter((capability) => capability !== "prompt.image"),
         ),
         imageDirectory: options.imageDirectory,
+        sessionDirectory: options.sessionDirectory,
+        home: options.home,
+        providerId: options.id ?? "openai-compatible",
         catalog,
       });
     },
@@ -73,6 +80,9 @@ interface ConnectionServices {
   readSettings(): Promise<ConnectionSettings>;
   supported: readonly string[];
   imageDirectory?: string;
+  sessionDirectory?: string;
+  home?: string;
+  providerId: string;
   catalog: EndpointCatalog;
 }
 
@@ -80,6 +90,9 @@ function connection({
   readSettings,
   supported,
   imageDirectory,
+  sessionDirectory,
+  home,
+  providerId,
   catalog,
 }: ConnectionServices): ProviderConnection {
   const listeners = new Set<(event: ProviderEvent) => void>();
@@ -98,8 +111,21 @@ function connection({
   };
   async function createSession(input: Extract<ProviderInput, { type: "session.open" }>) {
     const root = await readSettings();
+    const imported = await importLegacyConversation({
+      persistence: input.persistence,
+      provider: providerId,
+      home,
+      settings: root,
+      config: input.config,
+      signal: lifecycle.signal,
+    });
+    const archive = sessionDirectory
+      ? new SessionArchive(sessionDirectory, imported.persistence)
+      : undefined;
+    const persistence = archive?.restored ?? imported.persistence;
+    const config = restoredLegacyConfig({ config: imported.config, persistence });
     const models = await catalog.models(root, lifecycle.signal);
-    const data = input.persistence?.data;
+    const data = persistence?.data;
     let savedModel: string | undefined;
     if (data && typeof data === "object" && !Array.isArray(data)) {
       const preferences = data.preferences;
@@ -112,7 +138,7 @@ function connection({
         savedModel = preferences.model;
     }
     const model =
-      input.config.model ?? savedModel ?? models.find((entry) => entry.isSelectable !== false)?.id;
+      config.model ?? savedModel ?? models.find((entry) => entry.isSelectable !== false)?.id;
     if (!model)
       throw new Error("No endpoint model is available. Check the host's connection settings.");
     const reference = modelReference(model);
@@ -125,10 +151,11 @@ function connection({
       );
     return new OpenAiSession({
       id: input.sessionId,
-      config: { ...input.config, model },
+      config: { ...config, model },
       settings: profile.settings,
       emit,
-      persistence: input.persistence,
+      persistence,
+      archive,
       supportsPermissions: supported.includes("permission"),
       imageDirectory,
       models: models.filter((entry) => entry.metadata?.endpointProfileId === profile.id),
@@ -163,7 +190,13 @@ function connection({
       }
       case "session.open": {
         const value = await createSession(input);
-        await value.prepare(lifecycle.signal);
+        try {
+          await value.prepare(lifecycle.signal);
+          value.checkpoint();
+        } catch (error) {
+          await value.close();
+          throw error;
+        }
         if (closed || closing) {
           await value.close();
           return;
