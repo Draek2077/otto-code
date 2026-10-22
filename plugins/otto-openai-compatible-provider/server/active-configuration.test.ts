@@ -113,6 +113,7 @@ it("keeps an admitted turn's permissions and model, then restores desired settin
     const persisted = events.findLast((event) => event.type === "session.persistence");
     if (persisted?.type !== "session.persistence") throw Error("Missing persistence");
     const cacheKey = requests[0]!.prompt_cache_key;
+    const firstHistory = structuredClone(session.messages);
     await session.close();
     session = new OpenAiSession(
       "resumed",
@@ -134,6 +135,32 @@ it("keeps an admitted turn's permissions and model, then restores desired settin
       prompt_cache_key: cacheKey,
     });
     expect(requests[2]!.messages[1]).toMatchObject({ reasoning_details: opaque });
+    const target = events.findLast(
+      (event) =>
+        event.type === "timeline.item" &&
+        event.sessionId === "resumed" &&
+        event.item.type === "user_message",
+    );
+    if (target?.type !== "timeline.item") throw Error("Missing rewind target");
+    const requestCount = requests.length;
+    session.revert(target.item.revertToken);
+    expect(session.messages).toEqual(firstHistory);
+    expect(await readFile(path.join(cwd, "proof.txt"), "utf8")).toBe("next turn");
+    expect(requests).toHaveLength(requestCount);
+    const rewound = events.findLast((event) => event.type === "session.persistence");
+    if (rewound?.type !== "session.persistence") throw Error("Missing rewound persistence");
+    await session.close();
+    session = new OpenAiSession(
+      "rewound",
+      { ...config, model: undefined },
+      settings,
+      (event) => events.push(event),
+      rewound.persistence,
+      true,
+      undefined,
+      models,
+    );
+    expect(session.messages).toEqual(firstHistory);
   } finally {
     await session.close();
     server.closeAllConnections();

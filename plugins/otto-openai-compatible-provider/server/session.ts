@@ -60,15 +60,18 @@ const savedSession = z.object({
   endpoint: z.string(),
   messages: z.array(savedMessage),
   timeline: z.array(z.json()),
+  timelineTimestamps: z.record(z.string(), z.string()).optional(),
   pendingToolImages: z.array(storedContentSchema).optional(),
   preferences: preferencesSchema.optional(),
   cacheKey: z.string().min(1).optional(),
   context: contextStateSchema.optional(),
 });
 const jsonObject = z.record(z.string(), z.json());
+const revertToken = z.object({ format: z.literal("otto-openai-revert-v1"), id: z.string().min(1) });
 
 export class OpenAiSession {
   readonly timeline = new Map<string, ProviderTimelineItem>();
+  private readonly timelineTimestamps = new Map<string, string>();
   readonly messages: StoredMessage[];
   private readonly images: PromptImages;
   private readonly preferences: SessionConfiguration;
@@ -110,6 +113,8 @@ export class OpenAiSession {
           "This conversation belongs to a different endpoint. Restore that endpoint before resuming it.",
         );
       this.messages = saved.messages;
+      for (const [itemId, timestamp] of Object.entries(saved.timelineTimestamps ?? {}))
+        this.timelineTimestamps.set(itemId, timestamp);
       this.pendingToolImages.push(...(saved.pendingToolImages ?? []));
       for (const item of saved.timeline) {
         const event = ProviderEventSchema.parse({ type: "timeline.item", sessionId: id, item });
@@ -136,7 +141,13 @@ export class OpenAiSession {
       this.item(item);
       this.persist();
     });
+    const rewindIds = new Set(this.context.snapshot().turns.map((turn) => turn.id));
     for (const [itemId, item] of this.timeline) {
+      if (item.type === "user_message" && rewindIds.has(itemId))
+        this.timeline.set(itemId, {
+          ...item,
+          revertToken: { format: "otto-openai-revert-v1", id: itemId },
+        });
       if (item.type === "tool_call" && item.status === "running")
         this.timeline.set(itemId, { ...item, status: "canceled", error: null });
       if (item.type === "compaction" && item.status === "loading")
@@ -160,7 +171,9 @@ export class OpenAiSession {
 
   private item(item: ProviderTimelineItem): void {
     this.timeline.set(item.id, item);
-    this.emit({ type: "timeline.item", sessionId: this.id, item });
+    const timestamp = this.timelineTimestamps.get(item.id) ?? new Date().toISOString();
+    this.timelineTimestamps.set(item.id, timestamp);
+    this.emit({ type: "timeline.item", sessionId: this.id, item, timestamp });
   }
 
   private persist(): void {
@@ -172,6 +185,7 @@ export class OpenAiSession {
           endpoint: endpoint(this.settings.baseUrl, "chat/completions"),
           messages: this.messages,
           timeline: [...this.timeline.values()],
+          timelineTimestamps: Object.fromEntries(this.timelineTimestamps),
           ...(this.pendingToolImages.length ? { pendingToolImages: this.pendingToolImages } : {}),
           preferences: this.preferences.snapshot(),
           cacheKey: this.cacheKey,
@@ -238,6 +252,7 @@ export class OpenAiSession {
       this.item({
         id: userId,
         type: "user_message",
+        revertToken: { format: "otto-openai-revert-v1", id: userId },
         text: prepared.text,
         messageId: clientMessageId,
         clientMessageId,
@@ -586,6 +601,26 @@ export class OpenAiSession {
 
   configState() {
     return this.preferences.state();
+  }
+
+  timestamp(id: string): string | undefined {
+    return this.timelineTimestamps.get(id);
+  }
+
+  revert(token: unknown): void {
+    if (this.active) throw new Error("Stop the current turn before rewinding.");
+    const { id } = revertToken.parse(token);
+    const ids = [...this.timeline.keys()];
+    const index = ids.indexOf(id);
+    if (index < 0)
+      throw new Error("Unknown conversation rewind boundary. Original context was retained.");
+    this.context.rewind(id);
+    for (const removed of ids.slice(index)) {
+      this.timeline.delete(removed);
+      this.timelineTimestamps.delete(removed);
+    }
+    this.pendingToolImages.length = 0;
+    this.persist();
   }
 
   configure(changes: ProviderConfigChanges): void {

@@ -81,6 +81,16 @@ export class ContextHistory {
       : this.messages.slice();
   }
 
+  rewind(id: string): void {
+    const index = this.state.turns.findIndex((turn) => turn.id === id);
+    if (index < 0)
+      throw new Error("Unknown conversation rewind boundary. Original context was retained.");
+    const offset = this.state.turns[index]!.offset;
+    this.messages.splice(offset);
+    this.state.turns.splice(index);
+    if ((this.state.compaction?.throughIndex ?? 0) > offset) delete this.state.compaction;
+  }
+
   private safeOffsets(): number[] {
     const offsets: number[] = [];
     const pending = new Set<string>();

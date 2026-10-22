@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+// OTTO(provider-history): authoritative snapshot replay for Otto-owned provider history.
+import { ottoProviderHistory } from "../otto/plugin-provider-history.js";
 import { resolve as resolvePath } from "node:path";
 import type { Logger } from "pino";
 import type { JsonValue } from "@getpaseo/protocol/agent-types";
@@ -1198,6 +1200,16 @@ class PluginAgentSession implements AgentSession {
   }
 
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
+    // OTTO(provider-history): keep rewound rows out of core timeline hydration.
+    const own = ottoProviderHistory({
+      provider: this.provider,
+      persistence: this.bridge.persistence,
+      mapItem: mapTimelineItem,
+    });
+    if (own) {
+      yield* own;
+      return;
+    }
     for (const event of this.history) yield event;
   }
 

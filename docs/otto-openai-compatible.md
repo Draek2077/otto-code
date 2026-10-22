@@ -67,7 +67,7 @@ saved history, preventing an accidental history transfer to another service.
 The provider supports one endpoint, text and image prompts, native file/shell tools, MCP over all three standard transports,
 streaming, approval, cancellation, live configuration, compaction and recovery of its own new sessions. It does not yet
 implement multiple endpoint
-profiles, credential entry, rewind, or importing
+profiles, credential entry, or importing
 Otto 0.9 provider sessions/settings. Older data remains preserved by the continuity layer;
 preservation does not imply those sessions can resume through this new provider.
 
@@ -119,6 +119,22 @@ suppresses repeated attempts until enough new context has accumulated; manual re
 available. Summary usage contributes to the turn's endpoint-reported token counts. Both the
 summary and its archive boundary persist, so restarting does not restore the larger request
 prefix or delete transcript history.
+
+## Conversation rewind
+
+The existing Rewind action removes a selected human turn and all later conversation context.
+It does not undo file writes or other tool effects. The provider advertises conversation
+rewind only, with no file-undo capability. Unknown or stale rewind boundaries fail before
+changing context. If a summary includes removed context, it is discarded so later requests
+cannot recover those removed instructions from a summary. Rewound state persists through
+restart, and completed tools are never executed by the rewind operation.
+
+Paseo 0.12's plugin adapter caches earlier transcript events. A small `OTTO(provider-history)`
+hook delegates history replay for this provider's saved format to
+`packages/server/src/server/otto/plugin-provider-history.ts`. It uses the authoritative
+provider snapshots, preserving message timestamps and excluding removed rows or stale
+loading versions. Other provider formats retain upstream replay behavior. The compatibility
+marker records the upstream-removal review date.
 
 ## Attachments
 

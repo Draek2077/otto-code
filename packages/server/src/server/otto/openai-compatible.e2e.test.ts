@@ -123,13 +123,38 @@ test("the bundled Otto provider publishes shared client settings and completes a
     expect((await client.waitForFinish(agent.id, 15_000)).status).toBe("idle");
     expect(prompts[2]?.tools).toBeUndefined();
     expect(prompts[2]?.messages[0]?.content).toContain("Summarize the supplied");
-    await client.sendMessage(agent.id, "Continue after compaction");
+    await client.sendMessage(agent.id, "Continue after compaction", { messageId: "rewind-target" });
     expect((await client.waitForFinish(agent.id, 15_000)).status).toBe("idle");
     expect(prompts[3]?.messages).not.toContainEqual({ role: "user", content: firstPrompt });
     expect(prompts[3]?.messages).toContainEqual({
       role: "user",
       content: "Use the saved session controls",
     });
+    await client.rewindAgent(agent.id, "rewind-target", "conversation");
+    const rewound = await client.fetchAgentTimeline(agent.id, {
+      direction: "tail",
+      limit: 0,
+      projection: "canonical",
+    });
+    expect(JSON.stringify(rewound.entries)).not.toContain("Continue after compaction");
+    expect(
+      rewound.entries.flatMap((entry) =>
+        entry.item.type === "compaction" ? [entry.item.status] : [],
+      ),
+    ).toEqual(["completed"]);
+    await client.sendMessage(agent.id, "Replacement after rewind", { messageId: "replacement" });
+    expect((await client.waitForFinish(agent.id, 15_000)).status).toBe("idle");
+    expect(prompts[4]?.messages).not.toContainEqual({
+      role: "user",
+      content: "Continue after compaction",
+    });
+    await client.rewindAgent(agent.id, "replacement", "conversation");
+    const again = await client.fetchAgentTimeline(agent.id, {
+      direction: "tail",
+      limit: 0,
+      projection: "canonical",
+    });
+    expect(again.entries[0]?.timestamp).toBe(rewound.entries[0]?.timestamp);
   } finally {
     await client.close();
     await daemon.close();

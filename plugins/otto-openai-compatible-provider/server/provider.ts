@@ -19,6 +19,7 @@ const capabilities = [
   "prompt.image",
   "session.persistence",
   "session.configure",
+  "session.revert.conversation",
   "permission",
   "permission.tool_policy",
 ] as const;
@@ -151,7 +152,12 @@ function connection(
         });
         if (input.history === "replay")
           for (const item of value.timeline.values())
-            emit({ type: "timeline.item", sessionId: input.sessionId, item });
+            emit({
+              type: "timeline.item",
+              sessionId: input.sessionId,
+              item,
+              timestamp: value.timestamp(item.id),
+            });
         emit({
           type: "session.config",
           sessionId: input.sessionId,
@@ -181,6 +187,12 @@ function connection(
         return;
       case "session.configure":
         session(input.sessionId).configure(input.changes);
+        emit({ type: "request.completed", requestId: input.requestId });
+        return;
+      case "session.revert":
+        if (input.scope !== "conversation")
+          throw new Error("This provider rewinds conversations only; file changes are retained.");
+        session(input.sessionId).revert(input.token);
         emit({ type: "request.completed", requestId: input.requestId });
         return;
       case "session.interrupt":

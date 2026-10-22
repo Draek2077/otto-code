@@ -64,3 +64,25 @@ it("can compact a long single turn while retaining complete recent tool groups",
   expect(history.active().slice(1)).toEqual(messages.slice(5));
   expect(new ContextHistory(messages, history.snapshot()).active()).toEqual(history.active());
 });
+
+it("rewinds before a human turn and invalidates summaries containing removed context", () => {
+  const messages: StoredMessage[] = [
+    { role: "user", content: "original".repeat(200) },
+    { role: "assistant", content: "first answer" },
+    { role: "user", content: "later" },
+    { role: "assistant", content: "later answer" },
+  ];
+  const history = new ContextHistory(messages);
+  history.recordTurn("first", 0);
+  history.recordTurn("later", 2);
+  history.commit(history.plan(20000, true)!, "Remember original work.");
+  const before = structuredClone(messages);
+  expect(() => history.rewind("unknown")).toThrow("Unknown");
+  expect(messages).toEqual(before);
+  history.rewind("later");
+  expect(messages).toEqual(before.slice(0, 2));
+  expect(history.active()[0]?.content).toContain("Remember original work.");
+  history.rewind("first");
+  expect(history.active()).toEqual([]);
+  expect(history.snapshot()).toEqual({ turns: [] });
+});
