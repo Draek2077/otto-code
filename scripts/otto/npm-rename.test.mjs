@@ -98,7 +98,7 @@ test("the published manifest carries Otto's name, dependencies, and repository",
   assert.equal(manifest.license, "AGPL-3.0-or-later");
 });
 
-test("an unpacked tarball is rewritten in place, leaving author plugin source alone", () => {
+test("packed plugin SDK imports stay Paseo while installed runtime dependencies become Otto", () => {
   const root = mkdtempSync(path.join(tmpdir(), "otto-npm-rename-"));
   const write = (relativePath, contents) => {
     const filePath = path.join(root, relativePath);
@@ -132,6 +132,10 @@ test("an unpacked tarball is rewritten in place, leaving author plugin source al
       'import type { UsageReport } from "@getpaseo/plugin/server/usage";\n',
     );
     write("dist/server/model.onnx", Buffer.from([0, 1, 2, 64, 103, 101, 116]));
+    write(
+      "dist/server/builtin-plugins/otto-openai-compatible-provider/index.server.ts",
+      'import type { PluginServerContext } from "@getpaseo/plugin/server";\nimport { BUILTIN_PROVIDER_IDS } from "@getpaseo/protocol/provider-manifest";\n',
+    );
 
     const result = rewritePackedTree(root, { directory: "packages/server" });
 
@@ -149,11 +153,17 @@ test("an unpacked tarball is rewritten in place, leaving author plugin source al
       read("dist/server/builtin-plugins/zai-usage-source/index.server.ts"),
       /"@getpaseo\/plugin\/server\/usage"/,
     );
-    assert.equal(result.preserved, 1);
-    assert.equal(result.renamed, 5);
+    const provider = read(
+      "dist/server/builtin-plugins/otto-openai-compatible-provider/index.server.ts",
+    );
+    assert.match(provider, /"@getpaseo\/plugin\/server"/);
+    assert.match(provider, /"@otto-code\/protocol\/provider-manifest"/);
+    assert.equal(result.preserved, 3);
+    assert.equal(result.renamed, 6);
     assert.deepEqual(result.changedFiles.sort(), [
       "README.md",
       "bin/paseo",
+      "dist/server/builtin-plugins/otto-openai-compatible-provider/index.server.ts",
       "dist/server/data.json",
       "dist/server/index.d.ts",
       "dist/server/utils/spawn.js",
