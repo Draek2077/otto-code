@@ -12,13 +12,23 @@ import {
   type ProviderUsage,
 } from "@getpaseo/plugin/server/provider";
 import type { ConnectionSettings } from "../shared/settings.js";
-import { streamCompletion, type ChatMessage, type ToolCall } from "./completions.js";
+import { streamCompletion, type ToolCall } from "./completions.js";
 import { endpoint } from "./http.js";
 import { boundedResult, nativeTools, type AgentTool } from "./tools.js";
 import { loadMcpTools } from "./mcp.js";
+import {
+  prepareContent,
+  PromptImages,
+  storedContentSchema,
+  type StoredMessage,
+  type StoredContent,
+} from "./prompt-content.js";
 
 const savedMessage = z.discriminatedUnion("role", [
-  z.object({ role: z.literal("user"), content: z.string() }),
+  z.object({
+    role: z.literal("user"),
+    content: z.union([z.string(), z.array(storedContentSchema)]),
+  }),
   z.object({
     role: z.literal("assistant"),
     content: z.string().nullable(),
@@ -39,12 +49,15 @@ const savedSession = z.object({
   endpoint: z.string(),
   messages: z.array(savedMessage),
   timeline: z.array(z.json()),
+  pendingToolImages: z.array(storedContentSchema).optional(),
 });
 const jsonObject = z.record(z.string(), z.json());
 
 export class OpenAiSession {
   readonly timeline = new Map<string, ProviderTimelineItem>();
-  readonly messages: ChatMessage[];
+  readonly messages: StoredMessage[];
+  private readonly images: PromptImages;
+  private readonly pendingToolImages: StoredContent[] = [];
   private active: { controller: AbortController; promise: Promise<void> } | null = null;
   private readonly tools: Map<string, AgentTool>;
   private readonly permissions = new Map<string, (response: ProviderPermissionResponse) => void>();
@@ -57,7 +70,9 @@ export class OpenAiSession {
     private readonly emit: (event: ProviderEvent) => void,
     persistence?: ProviderPersistence,
     private readonly supportsPermissions = true,
+    imageDirectory?: string,
   ) {
+    this.images = new PromptImages(imageDirectory);
     if (!config.model)
       throw new Error("Choose a model before creating an OpenAI-compatible agent.");
     if (config.mode && config.mode !== "default")
@@ -76,6 +91,7 @@ export class OpenAiSession {
           "This conversation belongs to a different endpoint. Restore that endpoint before resuming it.",
         );
       this.messages = saved.messages;
+      this.pendingToolImages.push(...(saved.pendingToolImages ?? []));
       for (const item of saved.timeline) {
         const event = ProviderEventSchema.parse({ type: "timeline.item", sessionId: id, item });
         if (event.type === "timeline.item") this.timeline.set(event.item.id, event.item);
@@ -83,6 +99,7 @@ export class OpenAiSession {
     } else this.messages = [];
     this.tools = new Map(nativeTools(config).map((tool) => [tool.definition.function.name, tool]));
     this.closeUnansweredTools();
+    this.flushToolImages();
     for (const [itemId, item] of this.timeline) {
       if (item.type === "tool_call" && item.status === "running")
         this.timeline.set(itemId, { ...item, status: "canceled", error: null });
@@ -117,6 +134,7 @@ export class OpenAiSession {
           endpoint: endpoint(this.settings.baseUrl, "chat/completions"),
           messages: this.messages,
           timeline: [...this.timeline.values()],
+          ...(this.pendingToolImages.length ? { pendingToolImages: this.pendingToolImages } : {}),
         }),
       ),
     );
@@ -129,28 +147,14 @@ export class OpenAiSession {
 
   start(prompt: ProviderPrompt): void {
     if (this.active) throw new Error("This provider session already has an active turn.");
-    if (
-      prompt.input.type !== "message" ||
-      prompt.input.content.some((part) => part.type !== "text")
-    )
-      throw new Error(
-        "This provider slice accepts text prompts. Other attachment types need the corresponding provider capability.",
-      );
-    const text = prompt.input.content
-      .map((part) => (part.type === "text" ? part.text : ""))
-      .join("\n");
+    if (prompt.input.type !== "message")
+      throw new Error("This provider does not support that command.");
+    const prepared = prepareContent(prompt.input.content);
     const turnId = randomUUID();
     const controller = new AbortController();
-    this.messages.push({ role: "user", content: text });
-    this.item({
-      id: randomUUID(),
-      type: "user_message",
-      text,
-      messageId: prompt.clientMessageId,
-      clientMessageId: prompt.clientMessageId,
-    });
-    this.persist();
-    const promise = Promise.resolve().then(() => this.run(turnId, controller));
+    const promise = Promise.resolve().then(() =>
+      this.run(turnId, controller, prepared, prompt.clientMessageId),
+    );
     this.active = { controller, promise };
     this.emit({
       type: "session.prompt_result",
@@ -161,7 +165,12 @@ export class OpenAiSession {
     this.emit({ type: "session.turn", sessionId: this.id, turnId, state: "started" });
   }
 
-  private async run(turnId: string, controller: AbortController): Promise<void> {
+  private async run(
+    turnId: string,
+    controller: AbortController,
+    prepared: ReturnType<typeof prepareContent>,
+    clientMessageId: string,
+  ): Promise<void> {
     let partial = "";
     let partialCommitted = false;
     const signal = controller.signal;
@@ -170,6 +179,17 @@ export class OpenAiSession {
       .filter(Boolean)
       .join("\n\n");
     try {
+      await this.images.save(prepared.images, signal);
+      signal.throwIfAborted();
+      this.messages.push({ role: "user", content: prepared.content });
+      this.item({
+        id: randomUUID(),
+        type: "user_message",
+        text: prepared.text,
+        messageId: clientMessageId,
+        clientMessageId,
+      });
+      this.persist();
       for (let round = 0; round < this.settings.maxToolRounds; round += 1) {
         partial = "";
         partialCommitted = false;
@@ -181,7 +201,7 @@ export class OpenAiSession {
           model: this.config.model!,
           messages: [
             ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
-            ...this.messages,
+            ...(await this.images.wire(this.messages, signal)),
           ],
           tools: this.supportsPermissions
             ? [...this.tools.values()].map((tool) => tool.definition)
@@ -208,10 +228,12 @@ export class OpenAiSession {
         }
         for (const call of result.toolCalls) {
           signal.throwIfAborted();
-          await this.callTool(call, controller);
+          this.pendingToolImages.push(...(await this.callTool(call, controller)));
           this.persist();
           signal.throwIfAborted();
         }
+        this.flushToolImages();
+        this.persist();
       }
       throw new Error(
         `The tool round limit (${this.settings.maxToolRounds}) was reached. Review the result before continuing.`,
@@ -219,6 +241,7 @@ export class OpenAiSession {
     } catch (error) {
       if (partial && !partialCommitted) this.messages.push({ role: "assistant", content: partial });
       this.closeUnansweredTools();
+      this.flushToolImages();
       this.persist();
       this.active = null;
       if (controller.signal.aborted)
@@ -269,7 +292,7 @@ export class OpenAiSession {
     return decision.updatedInput ?? input;
   }
 
-  private async callTool(call: ToolCall, controller: AbortController): Promise<void> {
+  private async callTool(call: ToolCall, controller: AbortController): Promise<StoredContent[]> {
     const itemId = randomUUID();
     let detail: ProviderToolCallDetail = {
       type: "unknown",
@@ -293,9 +316,13 @@ export class OpenAiSession {
       input = await this.approvedInput(tool, input, detail, controller);
       controller.signal.throwIfAborted();
       detail = tool.detail(input);
-      const output = boundedResult(await tool.execute(input, controller.signal));
+      const result = await tool.execute(input, controller.signal);
+      const output = boundedResult(typeof result === "string" ? result : result.text);
+      const images = typeof result === "string" ? undefined : prepareContent(result.images);
+      if (images) await this.images.save(images.images, controller.signal);
       if (detail.type === "read") detail = { ...detail, content: output };
       else if (detail.type === "shell") detail = { ...detail, output };
+      else if (detail.type === "unknown") detail = { ...detail, output };
       this.messages.push({ role: "tool", tool_call_id: call.id, content: output });
       this.item({
         id: itemId,
@@ -306,6 +333,7 @@ export class OpenAiSession {
         status: "completed",
         error: null,
       });
+      return images && Array.isArray(images.content) ? images.content : [];
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.messages.push({
@@ -333,6 +361,7 @@ export class OpenAiSession {
           status: "failed",
           error: { message },
         });
+      return [];
     }
   }
 
@@ -355,6 +384,11 @@ export class OpenAiSession {
           content:
             "The previous turn was interrupted. This tool was not resumed; inspect any earlier effects before retrying.",
         });
+  }
+
+  private flushToolImages(): void {
+    if (this.pendingToolImages.length)
+      this.messages.push({ role: "user", content: this.pendingToolImages.splice(0) });
   }
 
   private permission(

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { ProviderMcpServerConfig } from "@getpaseo/plugin/server/provider";
 import { readBody, requireOk, serverEvents } from "./http.js";
-import { boundedResult, type AgentTool } from "./tools.js";
+import { boundedResult, type AgentTool, type ToolOutput } from "./tools.js";
 import { DuplexMcpClient } from "./mcp-duplex.js";
 
 interface McpClient {
@@ -166,7 +166,7 @@ async function listTools(
   return tools;
 }
 
-function modelResult(raw: unknown): string {
+function modelResult(raw: unknown): string | ToolOutput {
   const result = z
     .object({
       content: z.array(z.record(z.string(), z.json())).optional(),
@@ -175,15 +175,20 @@ function modelResult(raw: unknown): string {
     })
     .parse(raw);
   const text = (result.content ?? [])
-    .map((part) =>
-      part.type === "text" && typeof part.text === "string"
-        ? part.text
-        : `[MCP returned ${String(part.type)} content; this provider slice supports text results.]`,
-    )
+    .map((part) => {
+      if (part.type === "text" && typeof part.text === "string") return part.text;
+      if (part.type === "image") return `[MCP image: ${String(part.mimeType)}]`;
+      return `[MCP returned ${String(part.type)} content.]`;
+    })
     .join("\n");
   const content = boundedResult(text || JSON.stringify(result.structuredContent ?? {}));
   if (result.isError) throw new Error(content);
-  return content;
+  const images = (result.content ?? [])
+    .filter((part) => part.type === "image")
+    .map((part) =>
+      z.object({ type: z.literal("image"), data: z.string(), mimeType: z.string() }).parse(part),
+    );
+  return images.length ? { text: content, images } : content;
 }
 
 export async function loadMcpTools(

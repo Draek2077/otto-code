@@ -64,14 +64,33 @@ Recovery completes unanswered tool-call records with interruption feedback and n
 reexecutes them automatically. A different configured endpoint is refused when resuming
 saved history, preventing an accidental history transfer to another service.
 
-The provider supports one endpoint, text prompts, native file/shell tools, MCP over all three standard transports,
+The provider supports one endpoint, text and image prompts, native file/shell tools, MCP over all three standard transports,
 streaming, approval, cancellation and recovery of its own new sessions. It does not yet
-implement images, other attachment types, multiple endpoint
+implement multiple endpoint
 profiles, credential entry, compaction, rewind, live session configuration, or importing
 Otto 0.9 provider sessions/settings. Older data remains preserved by the continuity layer;
 preservation does not imply those sessions can resume through this new provider.
 
 The full OpenAI-compatible feature family remains in progress. Brain is a separate phase.
+
+## Attachments
+
+PNG, JPEG, GIF and WebP inputs use Chat Completions image content. Select a model that
+supports images; a text-only endpoint can reject an image request. Images are stored
+atomically in the host's `otto-openai-compatible/images` directory and checked by their
+SHA-256 content hash when a request is built. Provider persistence contains hash references,
+so image bytes are not repeated in every agent snapshot. Retain that directory alongside
+the host's agent data when backing up or moving a host.
+
+Each prompt accepts at most 20 MiB of decoded image data and 1 MiB of text. Model requests
+accept at most 40 MiB of decoded image context. Invalid or changed attachments produce an
+error without sending a partial request. Text attachments retain their title, source and
+body; forge and review attachments retain their supplied context. Uploaded files are
+represented by host path, name, MIME type and size, so the agent inspects them through an
+approved host tool rather than reading arbitrary attachment paths during prompt conversion.
+MCP image results use the same host storage. All tool replies in a model round precede the
+corresponding image content. Pending image references persist with completed tool replies,
+so recovery retains captures without rerunning a completed tool.
 
 ## Verification
 

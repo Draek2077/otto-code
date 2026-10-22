@@ -7,8 +7,12 @@ export interface ToolCall {
   type: "function";
   function: { name: string; arguments: string };
 }
+export type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
 export type ChatMessage =
-  | { role: "system" | "user" | "assistant"; content: string | null; tool_calls?: ToolCall[] }
+  | { role: "system" | "assistant"; content: string | null; tool_calls?: ToolCall[] }
+  | { role: "user"; content: string | ChatContentPart[] }
   | { role: "tool"; tool_call_id: string; content: string };
 export interface ToolDefinition {
   type: "function";

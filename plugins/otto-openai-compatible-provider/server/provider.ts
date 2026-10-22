@@ -14,6 +14,7 @@ import { OpenAiSession } from "./session.js";
 
 const capabilities = [
   "prompt.message",
+  "prompt.image",
   "session.persistence",
   "permission",
   "permission.tool_policy",
@@ -21,6 +22,7 @@ const capabilities = [
 
 export function createOpenAiProvider(
   readSettings: () => Promise<ConnectionSettings>,
+  options: { imageDirectory?: string } = {},
 ): ProviderRegistration {
   return {
     id: "openai-compatible",
@@ -53,7 +55,13 @@ export function createOpenAiProvider(
         throw new Error("Provider protocol version 1 is required.");
       return connection(
         readSettings,
-        negotiateProviderCapabilities(request.capabilities, capabilities),
+        negotiateProviderCapabilities(
+          request.capabilities,
+          options.imageDirectory
+            ? capabilities
+            : capabilities.filter((capability) => capability !== "prompt.image"),
+        ),
+        options.imageDirectory,
       );
     },
   };
@@ -62,6 +70,7 @@ export function createOpenAiProvider(
 function connection(
   readSettings: () => Promise<ConnectionSettings>,
   supported: readonly string[],
+  imageDirectory?: string,
 ): ProviderConnection {
   const listeners = new Set<(event: ProviderEvent) => void>();
   const sessions = new Map<string, OpenAiSession>();
@@ -121,6 +130,7 @@ function connection(
           emit,
           input.persistence,
           supported.includes("permission"),
+          imageDirectory,
         );
         await value.prepare(lifecycle.signal);
         if (closed || closing) {

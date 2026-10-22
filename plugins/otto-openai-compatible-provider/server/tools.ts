@@ -12,8 +12,12 @@ import type { ToolDefinition } from "./completions.js";
 export interface AgentTool {
   definition: ToolDefinition;
   detail(input: Record<string, unknown>): ProviderToolCallDetail;
-  execute(input: Record<string, unknown>, signal: AbortSignal): Promise<string>;
+  execute(input: Record<string, unknown>, signal: AbortSignal): Promise<string | ToolOutput>;
   preapproval?: { server: string; tool: string };
+}
+export interface ToolOutput {
+  text: string;
+  images: Array<{ type: "image"; mimeType: string; data: string }>;
 }
 
 export function boundedResult(text: string): string {
