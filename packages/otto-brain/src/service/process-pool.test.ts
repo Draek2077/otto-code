@@ -88,6 +88,22 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 describe("ModelProcessPool", () => {
+  it("protects queued and loading model files before a supervisor becomes ready", async () => {
+    const release = deferred();
+    const { pool } = createPool(1, 1, () => release.promise);
+    const loading = pool.preload(model("a"));
+    expect(pool.isModelInUse("a")).toBe(true);
+    expect(pool.isModelInUse("unrelated")).toBe(false);
+    await waitFor(() => pool.supervisorFor("a") !== null);
+    expect(pool.isModelInUse("a")).toBe(true);
+    release.resolve();
+    await loading;
+    expect(pool.isModelInUse("a")).toBe(true);
+    await pool.unload("a");
+    expect(pool.isModelInUse("a")).toBe(false);
+    await pool.stop();
+  });
+
   it("serves different models concurrently in independent processes", async () => {
     const { pool } = createPool(2, 2);
     const releaseA = deferred();
@@ -234,6 +250,23 @@ it("settles an aborted queued model without waiting for a busy resident", async 
   expect(loads.map((load) => load.model.id)).toEqual(["a"]);
   release.resolve();
   await active;
+  await pool.stop();
+});
+
+it("reloads current host settings through the same lease when no temporary profile is supplied", async () => {
+  const { pool, loads } = createPool(1);
+  await pool.submitOperation(
+    model("a"),
+    async (lease) => {
+      await lease.start(ProfileSchema.parse({ contextSize: 8192 }));
+      expect(lease.supervisor.profile!.contextSize).toBe(8192);
+      await lease.start();
+      expect(lease.supervisor.profile!.contextSize).toBe(2048);
+      await lease.stop();
+    },
+    { kind: "benchmark" },
+  );
+  expect(loads.at(-1)!.profile).toBeUndefined();
   await pool.stop();
 });
 

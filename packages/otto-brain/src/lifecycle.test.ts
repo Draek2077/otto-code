@@ -71,10 +71,14 @@ it("recovers an abruptly exited standalone host in its existing isolated home", 
   await killFixture(first.child);
   const second = await launch(home);
   expect((await fetch(`http://127.0.0.1:${second.port}/health`)).status).toBe(200);
-  expect(await (await fetch(`http://127.0.0.1:${second.port}/__host/status`)).json()).toEqual({
-    state: "stopped",
-    model: null,
-    modelId: null,
-  });
+  expect(await (await fetch(`http://127.0.0.1:${second.port}/__host/status`)).json()).toMatchObject(
+    {
+      state: "stopped",
+      model: null,
+      modelId: null,
+      running: true,
+      residents: [],
+    },
+  );
   expect(readFileSync(paths.configFile, "utf8")).toBe(original);
 }, 15000);

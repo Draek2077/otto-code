@@ -682,9 +682,10 @@ export function parseDeviceList(stdout: string): string[] {
 export async function listRuntimeDevices(
   runtime: Runtime,
   platform: NodeJS.Platform = process.platform,
+  signal?: AbortSignal,
 ): Promise<string[]> {
   const env = buildEnv(runtime, process.env, platform);
-  const { code, stdout } = await runCapture(runtime.exe, ["--list-devices"], env);
+  const { code, stdout } = await runCapture(runtime.exe, ["--list-devices"], env, signal);
   if (code !== 0) return [];
   return parseDeviceList(stdout);
 }

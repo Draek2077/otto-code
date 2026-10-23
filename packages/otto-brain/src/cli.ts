@@ -1,36 +1,51 @@
 import { Command } from "commander";
-import { loadBrainConfig } from "./config/store.js";
-import { readRunningService } from "./service/pid-lock.js";
 import { resolveVersion } from "./version.js";
+import { withOutput } from "./output/with-output.js";
+import {
+  addServeOptions,
+  addStartOptions,
+  addStopOptions,
+  addRestartOptions,
+  addStatusOptions,
+  runServeCommand,
+  runStartCommand,
+  runStopCommand,
+  runRestartCommand,
+  runStatusCommand,
+} from "./commands/lifecycle.js";
+import { addCalibrateOptions, runCalibrateCommand } from "./commands/calibrate.js";
+import { addSweepOptions, runSweepCommand } from "./commands/sweep.js";
+import { addScanOptions, runScanCommand } from "./commands/scan.js";
+import { addCatalogOptions, runCatalogCommand } from "./commands/catalog.js";
+import { addSearchOptions, runSearchCommand } from "./commands/search.js";
+import {
+  addConfigShowOptions,
+  addConfigSetOptions,
+  runConfigShowCommand,
+  runConfigSetCommand,
+} from "./commands/config.js";
 
-/** Shared registration for the standalone command and the future Otto adapter. */
+/** Shared registration; constructing help never resolves a home or starts a host. */
 export function registerBrainCommands(program: Command): void {
   program
-    .command("serve")
-    .description("Run the Brain host in the foreground")
-    .action(async () => {
-      const { startService } = await import("./service/serve.js");
-      const host = await startService({ config: loadBrainConfig() });
-      process.stdout.write(
-        `Otto Brain listening on ${host.secure ? "https" : "http"}://${host.displayHost}:${host.port}\n`,
-      );
-      const shutdown = (): void => {
-        process.off("SIGTERM", shutdown);
-        process.off("SIGINT", shutdown);
-        void host.stop().catch(() => {
-          process.stderr.write("Otto Brain could not shut down cleanly.\n");
-          process.exitCode = 1;
-        });
-      };
-      process.once("SIGTERM", shutdown);
-      process.once("SIGINT", shutdown);
-    });
-  program
-    .command("status")
-    .description("Show the local Brain host record")
-    .action(() => {
-      process.stdout.write(`${JSON.stringify(readRunningService() ?? { status: "stopped" })}\n`);
-    });
+    .option("-o, --format <format>", "output format: table, json, yaml", "table")
+    .option("--json", "output in JSON format")
+    .option("-q, --quiet", "minimal output (ids only)")
+    .option("--no-headers", "omit table headers")
+    .option("--no-color", "disable colored output");
+  addServeOptions(program.command("serve")).action(runServeCommand);
+  addStartOptions(program.command("start")).action(withOutput(runStartCommand));
+  addStopOptions(program.command("stop")).action(withOutput(runStopCommand));
+  addRestartOptions(program.command("restart")).action(withOutput(runRestartCommand));
+  addStatusOptions(program.command("status")).action(withOutput(runStatusCommand));
+  addCalibrateOptions(program.command("calibrate")).action(withOutput(runCalibrateCommand));
+  addSweepOptions(program.command("sweep")).action(withOutput(runSweepCommand));
+  addScanOptions(program.command("scan")).action(withOutput(runScanCommand));
+  addCatalogOptions(program.command("catalog")).action(withOutput(runCatalogCommand));
+  addSearchOptions(program.command("search")).action(withOutput(runSearchCommand));
+  const config = program.command("config").description("Inspect and edit Brain configuration");
+  addConfigShowOptions(config.command("show")).action(withOutput(runConfigShowCommand));
+  addConfigSetOptions(config.command("set")).action(withOutput(runConfigSetCommand));
 }
 export function createBrainCommand(): Command {
   const program = new Command("brain").description("Manage Otto Brain");

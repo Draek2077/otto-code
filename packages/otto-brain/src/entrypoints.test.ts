@@ -28,6 +28,7 @@ it("imports public built entry points without touching a home or starting a host
     "service/supervisor",
     "ops/index",
     "cli",
+    "host",
   ].map((name) => pathToFileURL(path.join(packageRoot, `dist/${name}.js`)).href);
   const child = spawnSync(
     process.execPath,
@@ -50,5 +51,34 @@ it("standalone help succeeds without reading or creating user configuration", ()
   expect(child.stderr).toBe("");
   expect(child.status).toBe(0);
   expect(child.stdout).toContain("Otto Brain standalone host");
+  for (const command of [
+    "serve",
+    "start",
+    "stop",
+    "restart",
+    "status",
+    "calibrate",
+    "sweep",
+    "scan",
+    "catalog",
+    "search",
+    "config",
+  ])
+    expect(child.stdout).toContain(command);
+  expect(existsSync(home)).toBe(false);
+});
+
+it("calibration and sweep help are inert even without a runtime or saved configuration", () => {
+  const { home, env } = environment();
+  for (const command of ["calibrate", "sweep"]) {
+    const child = spawnSync(
+      process.execPath,
+      [path.join(packageRoot, "bin/otto-brain"), command, "--help"],
+      { env, encoding: "utf8", timeout: 5000, windowsHide: true },
+    );
+    expect(child.status).toBe(0);
+    expect(child.stderr).toBe("");
+    expect(child.stdout).toContain("--model");
+  }
   expect(existsSync(home)).toBe(false);
 });

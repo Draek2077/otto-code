@@ -17,7 +17,11 @@ export {
   type ServiceHandle,
   type StartServiceOptions,
   type BrainRuntime,
+  type BrainRuntimeContext,
 } from "./service/serve.js";
+export { HostEngine, createHostRuntime, type HostEnginePorts } from "./service/engine.js";
+export { startLocalBrain, stopLocalBrain, type LocalBrainState } from "./service/lifecycle.js";
+export { localBrainRequest, type LocalBrainClientOptions } from "./service/local-client.js";
 
 export {
   Scheduler,

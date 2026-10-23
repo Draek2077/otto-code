@@ -47,6 +47,72 @@ it("serves management while unloaded and releases its exact listener and ownersh
   await start(options);
 });
 
+it("creates an engine only after ownership and exposes its authenticated management contract", async () => {
+  const options = fixture();
+  options.config.auth = { mode: "token", token: "fixture-owner-token" };
+  let creations = 0;
+  let stops = 0;
+  const createRuntime: NonNullable<Parameters<typeof startService>[0]["createRuntime"]> = (
+    context,
+  ) => {
+    creations++;
+    expect(existsSync(`${context.paths.pidFile}.owner`)).toBe(true);
+    expect(context.instanceId).toBeTruthy();
+    return {
+      status: () => ({ state: "stopped", model: null, modelId: null }),
+      snapshot: async () => ({
+        state: "stopped",
+        model: null,
+        modelId: null,
+        residents: [],
+        instanceId: context.instanceId,
+      }),
+      capabilities: { load: true, processPool: true },
+      handleRequest: () => false,
+      stop: async () => {
+        stops++;
+      },
+    };
+  };
+  const host = await start({ ...options, createRuntime });
+  await expect(startService({ ...options, createRuntime })).rejects.toThrow("already running");
+  expect(creations).toBe(1);
+  const base = `http://127.0.0.1:${host.port}`;
+  expect((await fetch(`${base}/__host/status`)).status).toBe(401);
+  const headers = { Authorization: "Bearer fixture-owner-token" };
+  expect(await (await fetch(`${base}/__host/status`, { headers })).json()).toMatchObject({
+    residents: [],
+    instanceId: expect.any(String),
+  });
+  expect(await (await fetch(`${base}/__host/capabilities`, { headers })).json()).toMatchObject({
+    load: true,
+    processPool: true,
+    delete: false,
+  });
+  await host.stop();
+  expect(stops).toBe(1);
+});
+
+it("does not create an engine for unsafe transport and stops a created engine after bind failure", async () => {
+  const options = fixture();
+  const createRuntime = vi.fn(
+    (): BrainRuntime => ({
+      status: () => ({ state: "stopped", model: null, modelId: null }),
+      handleRequest: () => false,
+      stop: vi.fn(async () => {}),
+    }),
+  );
+  options.config.listen.host = "0.0.0.0";
+  await expect(startService({ ...options, createRuntime })).rejects.toThrow("without auth");
+  expect(createRuntime).not.toHaveBeenCalled();
+  const occupied = await start(fixture());
+  options.config.listen.host = "127.0.0.1";
+  options.config.listen.port = occupied.port;
+  await expect(startService({ ...options, createRuntime })).rejects.toThrow("EADDRINUSE");
+  expect(createRuntime).toHaveBeenCalledOnce();
+  expect(createRuntime.mock.results[0]!.value.stop).toHaveBeenCalledOnce();
+});
+
 it("releases ownership after bind failure so the owner can retry", async () => {
   const occupied = await start(fixture());
   const options = fixture();

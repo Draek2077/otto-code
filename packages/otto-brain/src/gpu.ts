@@ -8,23 +8,32 @@ export interface GpuQuery extends GpuInfo {
   temperature: number | null;
 }
 
-function run(args: string[], timeout = 10_000): Promise<string> {
+function run(args: string[], timeout = 10_000, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile("nvidia-smi", args, { timeout, windowsHide: true }, (error, stdout) => {
-      if (error) reject(error);
-      else resolve(String(stdout));
-    });
+    execFile(
+      "nvidia-smi",
+      args,
+      { timeout, windowsHide: true, signal, maxBuffer: 64 * 1024 },
+      (error, stdout) => {
+        if (error) reject(error);
+        else resolve(String(stdout));
+      },
+    );
   });
 }
 
 const MIB = 1024 * 1024;
 
-async function queryNvidia(): Promise<GpuQuery | null> {
+async function queryNvidia(signal?: AbortSignal): Promise<GpuQuery | null> {
   try {
-    const out = await run([
-      "--query-gpu=name,memory.total,memory.used,utilization.gpu,temperature.gpu,driver_version,compute_cap",
-      "--format=csv,noheader,nounits",
-    ]);
+    const out = await run(
+      [
+        "--query-gpu=name,memory.total,memory.used,utilization.gpu,temperature.gpu,driver_version,compute_cap",
+        "--format=csv,noheader,nounits",
+      ],
+      10_000,
+      signal,
+    );
     const line = out.trim().split(/\r?\n/)[0];
     if (!line) return null;
     const [name, total, used, util, temp, driver, cap] = line.split(",").map((s) => s.trim());
@@ -105,7 +114,10 @@ export function metalAllocatedBytes(logLines: string[]): number | null {
   return foundModel && foundKv ? total : null;
 }
 
-async function queryMetal(runtime?: Runtime | null): Promise<GpuQuery | null> {
+async function queryMetal(
+  runtime?: Runtime | null,
+  signal?: AbortSignal,
+): Promise<GpuQuery | null> {
   if (process.platform !== "darwin" || process.arch !== "arm64") return null;
   // Resolve the selected runtime lazily: runtime/index uses the NVIDIA probe
   // during installation, and importing it at module initialization would cycle.
@@ -122,7 +134,7 @@ async function queryMetal(runtime?: Runtime | null): Promise<GpuQuery | null> {
   if (!probe) {
     probe = (async () => {
       const { listRuntimeDevices } = await import("./runtime/managed.js");
-      return parseMetalDevice(await listRuntimeDevices(selected));
+      return parseMetalDevice(await listRuntimeDevices(selected, process.platform, signal));
     })();
     metalProbes.set(selected.exe, probe);
   }
@@ -131,16 +143,20 @@ async function queryMetal(runtime?: Runtime | null): Promise<GpuQuery | null> {
   return result;
 }
 
-async function query(runtime?: Runtime | null): Promise<GpuQuery | null> {
-  if (process.platform === "darwin" && process.arch === "arm64") return queryMetal(runtime);
-  return queryNvidia();
+async function query(runtime?: Runtime | null, signal?: AbortSignal): Promise<GpuQuery | null> {
+  if (process.platform === "darwin" && process.arch === "arm64") return queryMetal(runtime, signal);
+  return queryNvidia(signal);
 }
 
 /** Just the used-VRAM figure, for sampling during a load. */
-async function usedBytes(): Promise<number | null> {
+async function usedBytes(signal?: AbortSignal): Promise<number | null> {
   if (process.platform === "darwin") return null;
   try {
-    const out = await run(["--query-gpu=memory.used", "--format=csv,noheader,nounits"]);
+    const out = await run(
+      ["--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+      10_000,
+      signal,
+    );
     return Number(out.trim().split(/\r?\n/)[0]) * MIB;
   } catch {
     return null;

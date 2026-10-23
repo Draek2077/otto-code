@@ -39,10 +39,10 @@
       "default": "./src/config/index.ts"
     },
     "./host": {
-      "types": "./dist/service/serve.d.ts",
-      "node": "./dist/service/serve.js",
-      "import": "./src/service/serve.ts",
-      "default": "./src/service/serve.ts"
+      "types": "./dist/host.d.ts",
+      "node": "./dist/host.js",
+      "import": "./src/host.ts",
+      "default": "./src/host.ts"
     },
     "./runtime": {
       "types": "./dist/runtime/index.d.ts",
@@ -76,8 +76,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@clack/prompts": "^1.0.0",
+    "chalk": "^4.1.2",
     "commander": "^12.0.0",
     "selfsigned": "^2.4.1",
+    "yaml": "^2.8.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {

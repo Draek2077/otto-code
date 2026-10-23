@@ -5,15 +5,18 @@ name `@getpaseo/brain` follows this checkout's workspace convention; release pac
 maps it to the existing public package `@otto-code/brain`. Its executable remains
 `otto-brain`. No app or daemon is required to import or run the package.
 
-The restored foundation currently provides `otto-brain serve`, `status` and help,
+The standalone CLI provides `serve`, detached `start`/`stop`/`restart`, `status`,
+`scan`, `catalog`, `search`, `config show`/`set`, `calibrate`, `sweep` and help,
 configuration persistence, home ownership, HTTP/HTTPS, credential masking and host
 shutdown. The library also provides concrete llama.cpp process supervision,
 runtime acquisition and model inventory/download operations. Its scheduling library
 provides per-model admission, shared exclusive operations and a bounded process pool.
-Capacity/quality operation libraries are also available. Their public management
-composition, full CLI coverage, Remote Brain integration and the existing Brain
-renderer remain restoration work tracked in Otto Knowledge. This package is not
-yet the complete Brain product. `serve` still starts an unloaded host.
+Capacity/quality jobs and host inference share the resident process pool. Full CLI
+coverage, TUI host composition, Remote Brain, provider/settings registration and
+app availability remain restoration work tracked in Otto Knowledge. The original
+Brain renderer and five operational screens exist in Otto-owned app files but
+are not registered. This package is not yet the complete Brain product. `serve`
+starts unloaded unless its caller explicitly passes `--model`.
 
 ## Ownership and continuity
 
@@ -37,8 +40,9 @@ Keep configuration and engine integrations on these explicit boundaries.
 
 The listener remains available while no model is loaded. `/health` describes host
 liveness; `/__host/status` describes model state. Management capabilities report
-only implemented operations. The foundation does not advertise model management,
-events or remote writes. Empty model listings remain valid, and completion requests
+only implemented operations. Host composition supplies inference, model inventory,
+load/unload, revisioned profiles, budget preview, rename/reset, guarded deletion,
+jobs and demand-owned events. Empty model listings remain valid, and completion requests
 without an engine return an actionable 503.
 
 Brain owns transport authentication and TLS. Non-loopback binding requires an
@@ -62,10 +66,12 @@ ready. Shutdown requests termination, escalates after two seconds and waits for
 the child to close before returning. Owned children must stop before a replacement
 starts. Logs and incomplete log lines are bounded.
 
-Attach the supervisor as `startService({config, env, runtime: supervisor})` and
-claim the host before calling `supervisor.start`. It contributes the ready model
-to `/v1/models` and `/api/v0/models`; inference routing/admission belongs to the
-scheduler restoration. No HTTP load/delete/job capability is advertised yet.
+`startService({config, env, createRuntime: createHostRuntime})` claims the home
+before constructing the host engine. This composition owns the process pool,
+routes inference to resident models and validates management operations. A bare
+transport or injected supervisor advertises only its implemented capabilities.
+Management writes reject browser Origins; remote writes require the owner's
+`allowRemoteConfig` setting in addition to transport authentication.
 
 ## Runtime and model libraries
 
@@ -100,7 +106,9 @@ restart. Cancellation never publishes a partial model. Existing complete files
 count toward bundle progress. Storage plans keep shared projectors while another
 quant remains and conservatively retain cross-repository companions. Callers must
 resolve trusted model IDs and reject resident/shared optional components before
-executing removal; the later host adapter owns those checks.
+executing removal. The host's synchronous deletion guard includes queued work,
+loading/resident models, admitted jobs and shared artifact references. No await
+separates its checks from the filesystem mutation.
 
 ## Residency and scheduling
 
@@ -125,16 +133,18 @@ abort signal; it must honor that signal during probes and before launching a chi
 activity tracker distinguishes processing, thinking and generating from actual
 stream signals, including concurrent requests. The demand-owned status publisher
 coalesces complete snapshots and stops sampling when its last listener leaves.
-These library components are not yet wired to `serve` or Otto's app; no new host
-management or UI capability is advertised by this checkpoint.
+These components are wired to `serve`; Otto app registration remains unfinished.
 
 ## Capacity and quality libraries
 
 The `operations` export supplies calibration, reasoning sweeps, benchmarks,
 transcript replay, history/report generation and diagnostic samplers. Importing
 these APIs does not resolve a home, probe hardware, create a process or start an
-operation. They are library APIs; the current host does not advertise new HTTP
-management capabilities merely because these functions exist.
+operation. The host exposes calibration, sweep and benchmark jobs through the
+same pool. CLI calibration and sweeps reuse the existing owner, or claim a
+temporary loopback host for that explicit operation. They release only their own
+temporary host; an interrupted command requests cancellation of its admitted job.
+An event-feed disconnection alone does not cancel durable host work.
 
 Calibration and sweeps require a `ModelOperationProcess` lease from the owning
 process pool. They never create an independent supervisor. Every temporary launch

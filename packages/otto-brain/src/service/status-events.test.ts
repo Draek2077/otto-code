@@ -295,6 +295,12 @@ it("publishes a change in the exclusive model operation", () => {
   expect(statusChangeKey(a)).not.toBe(statusChangeKey(b));
 });
 
+it("publishes host job transitions without requiring a model or inference counter change", () => {
+  const queued = { state: "stopped", jobRevision: 1 };
+  const running = { state: "stopped", jobRevision: 2 };
+  expect(statusChangeKey(running)).not.toBe(statusChangeKey(queued));
+});
+
 it("does not resample or replay an in-flight result after the final subscriber leaves", async () => {
   const publisher = new BrainStatusPublisher();
   let finish = () => {};

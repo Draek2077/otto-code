@@ -61,7 +61,8 @@ export interface ModelProcessPoolOptions<TSupervisor extends PoolSupervisor> {
  */
 export interface ManagedModelProcess<TSupervisor extends PoolSupervisor = PoolSupervisor> {
   supervisor: TSupervisor;
-  start: (profile: Profile) => Promise<void>;
+  /** Omit the profile to reload current host settings with ordinary VRAM fitting. */
+  start: (profile?: Profile) => Promise<void>;
   stop: () => Promise<void>;
 }
 
@@ -192,6 +193,16 @@ export class ModelProcessPool<
 
   supervisorFor(modelId: string): TSupervisor | null {
     return this.#slots.find((slot) => slot.assignedModelId === modelId)?.supervisor ?? null;
+  }
+
+  /** Synchronous file-mutation guard, including work admitted before native loading. */
+  isModelInUse(modelId: string): boolean {
+    if (this.#queue.some((job) => job.model.id === modelId)) return true;
+    return this.#slots.some(
+      (slot) =>
+        slot.assignedModelId === modelId &&
+        (slot.pending > 0 || !slot.scheduler.isIdle || slot.supervisor.state !== "stopped"),
+    );
   }
 
   supervisors(): TSupervisor[] {

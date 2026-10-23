@@ -8,7 +8,10 @@ import { CommandError } from "../output/types.js";
 import { rankModels, type RankedModel } from "../ops/results.js";
 import type { Model } from "../types.js";
 
-export function pickModel(catalog: Model[], needle: string | undefined): Model {
+export function pickModel<T extends Pick<Model, "id" | "displayName">>(
+  catalog: readonly T[],
+  needle: string | undefined,
+): T {
   if (!needle) {
     throw new CommandError({
       code: "NO_MODEL",
