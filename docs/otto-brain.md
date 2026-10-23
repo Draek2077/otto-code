@@ -8,8 +8,9 @@ maps it to the existing public package `@otto-code/brain`. Its executable remain
 The restored foundation currently provides `otto-brain serve`, `status` and help,
 configuration persistence, home ownership, HTTP/HTTPS, credential masking and host
 shutdown. The library also provides concrete llama.cpp process supervision,
-runtime acquisition and model inventory/download operations. Scheduling, quality
-operations, full CLI coverage, Remote Brain integration and the existing Brain
+runtime acquisition and model inventory/download operations. Its scheduling library
+provides per-model admission, shared exclusive operations and a bounded process pool.
+Quality operations, full CLI coverage, Remote Brain integration and the existing Brain
 renderer remain restoration work tracked in Otto Knowledge. This package is not
 yet the complete Brain product. `serve` still starts an unloaded host.
 
@@ -99,6 +100,31 @@ count toward bundle progress. Storage plans keep shared projectors while another
 quant remains and conservatively retain cross-repository companions. Callers must
 resolve trusted model IDs and reject resident/shared optional components before
 executing removal; the later host adapter owns those checks.
+
+## Residency and scheduling
+
+`ModelProcessPool` owns one supervisor and scheduler per resident model. Its limit
+is host-configured (1 to 16). It routes resident work to its existing process,
+keeps busy models resident and evicts the least recently used idle model when
+another needs a process. Loads serialize reservation decisions so simultaneous
+loads cannot each spend the same free memory. An operation receives a pool-owned
+lease for temporary profile launches; its stops and starts update the same
+reservations and slot ownership as ordinary inference.
+
+Within each process, requests share the configured sequence slots. Model turns
+preserve fairness, exclusive calibration/sweep/benchmark work drains inference,
+and measured free slots are combined with the process ceiling without subtracting
+running requests twice. Session affinity preserves useful caches; slot handoffs
+await the supplied runtime eraser before posting a completion. Queued aborts
+settle immediately. Shutdown closes both queue levels and prevents work that was
+waiting on a load from starting afterwards.
+
+`decideModelGate` enforces the host's selected model lock before admission. The
+activity tracker distinguishes processing, thinking and generating from actual
+stream signals, including concurrent requests. The demand-owned status publisher
+coalesces complete snapshots and stops sampling when its last listener leaves.
+These library components are not yet wired to `serve` or Otto's app; no new host
+management or UI capability is advertised by this checkpoint.
 
 ## Verification
 

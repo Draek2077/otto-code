@@ -10,7 +10,7 @@ home or model in tests. Use isolated `.tmp/` fixtures and ephemeral loopback por
 
 The package provides configuration continuity, host transport, explicit llama.cpp
 process ownership, runtime acquisition and model inventory/download libraries.
-Scheduling, operations, full CLI, plugins and the Brain renderer remain later
-checkpoints. Do not advertise an unimplemented management capability. Native
+Scheduling and process-pool libraries are present. Host integration, operations,
+full CLI, plugins and the Brain renderer remain restoration work. Do not advertise an unimplemented management capability. Native
 helpers and model processes must have bounded readiness/probe and shutdown paths.
 See `docs/otto-brain.md`.
