@@ -3,15 +3,14 @@
  * annotated with whether it is already installed. The installed flag reuses the
  * authoritative catalog↔model join (enrichWithCatalog sets `catalogId` back-
  * references on scanned models), so it agrees with `scan`/`pull` and works with
- * no llama-server running. The daemon shells this out (`--json`) to power the
- * Brain "Models" UI, which is why the row carries rich fields (repo, size,
- * params, tier, use-cases) that only the JSON output surfaces.
+ * no llama-server running. CLI output keeps its rich fields (repo, size, params,
+ * tier and use-cases) while reading the same host catalog and inventory as the UI.
  */
 import type { Command } from "commander";
 
-import { loadBrainConfig, loadCatalog } from "../config/index.js";
 import type { CatalogModel } from "../config/schema.js";
-import { formatBytes, scanModels } from "../models/index.js";
+import { formatBytes } from "../models/scan.js";
+import { withAcquisitionHost } from "./acquisition-host.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 
 export interface CatalogRow {
@@ -60,35 +59,33 @@ export async function runCatalogCommand(
   _options: unknown,
   _command: Command,
 ): Promise<AnyCommandResult<CatalogRow>> {
-  const config = loadBrainConfig();
-  const catalog = loadCatalog();
-  // Metadata-free scan: the catalog join is by path/repo, not GGUF headers, so
-  // skip the header reads for speed.
-  const installed = scanModels(config, process.env, { withMetadata: false });
-  const installedCatalogIds = new Set(
-    installed.map((model) => model.catalogId).filter((id): id is string => Boolean(id)),
-  );
+  return withAcquisitionHost(async (host) => {
+    const catalog = { models: await host.catalog() };
+    const installedCatalogIds = new Set(
+      (await host.inventory()).flatMap((model) => (model.catalogId ? [model.catalogId] : [])),
+    );
 
-  const rows: CatalogRow[] = catalog.models.map((model) => ({
-    id: model.id,
-    name: model.name,
-    family: model.family ?? null,
-    favorite: model.favorite,
-    installed: installedCatalogIds.has(model.id),
-    publisher: model.publisher ?? "",
-    repo: model.hfRepo,
-    quant: model.quant,
-    params: model.params ?? "",
-    sizeBytes: model.approxWeightsBytes ?? null,
-    size: model.approxWeightsBytes ? formatBytes(model.approxWeightsBytes) : "",
-    vision: model.vision ?? false,
-    thinking: model.thinking ?? false,
-    contextMax: model.contextMax ?? null,
-    tier: model.tier ?? "",
-    useCases: model.useCases ?? [],
-    why: model.why ?? "",
-    components: model.components,
-  }));
+    const rows: CatalogRow[] = catalog.models.map((model) => ({
+      id: model.id,
+      name: model.name,
+      family: model.family ?? null,
+      favorite: model.favorite,
+      installed: installedCatalogIds.has(model.id),
+      publisher: model.publisher ?? "",
+      repo: model.hfRepo,
+      quant: model.quant,
+      params: model.params ?? "",
+      sizeBytes: model.approxWeightsBytes ?? null,
+      size: model.approxWeightsBytes ? formatBytes(model.approxWeightsBytes) : "",
+      vision: model.vision ?? false,
+      thinking: model.thinking ?? false,
+      contextMax: model.contextMax ?? null,
+      tier: model.tier ?? "",
+      useCases: model.useCases ?? [],
+      why: model.why ?? "",
+      components: model.components,
+    }));
 
-  return { type: "list", data: rows, schema: catalogSchema };
+    return { type: "list", data: rows, schema: catalogSchema };
+  });
 }

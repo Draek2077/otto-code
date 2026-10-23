@@ -2,7 +2,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Model, GpuInfo, Runtime } from "../types.js";
 import type { Profile, ProfilesStore } from "../config/schema.js";
-import { loadProfilesStore, saveProfilesStore } from "../config/store.js";
+import { loadCatalog, loadProfilesStore, saveProfilesStore } from "../config/store.js";
 import { forModel, getCalibrationForBudget } from "../config/profiles.js";
 import {
   scanModels,
@@ -10,6 +10,10 @@ import {
   diskUsage,
   totalModelBytes,
   managedModelsDir,
+  downloadRepoFiles,
+  listRepoQuants,
+  searchModels,
+  resolveHfToken,
 } from "../models/index.js";
 import { resolveRuntime, runtimeBuild } from "../runtime/index.js";
 import { query, usedBytes } from "../gpu.js";
@@ -37,6 +41,7 @@ import { loadAll, rankModels, type RankedModel } from "../ops/results.js";
 import { ModelLibrary } from "./model-library.js";
 import { createRuntimeManagement } from "./runtime-host.js";
 import type { RuntimeManagement } from "./runtime-management.js";
+import { ModelAcquisition } from "./model-acquisition.js";
 
 interface ResidentSignals {
   reasoning: ReasoningTracker;
@@ -75,6 +80,7 @@ export class HostEngine implements BrainRuntime {
   private readonly management: EngineManagement;
   private readonly library: ModelLibrary;
   private readonly runtimeManagement: RuntimeManagement;
+  private readonly acquisition: ModelAcquisition;
   get capabilities() {
     return {
       apiVersion: 3,
@@ -93,6 +99,9 @@ export class HostEngine implements BrainRuntime {
       rename: true,
       reset: true,
       runtimes: true,
+      catalog: true,
+      hfSearch: true,
+      modelAcquisition: true,
     };
   }
   private readonly lifetime = new AbortController();
@@ -206,6 +215,21 @@ export class HostEngine implements BrainRuntime {
       selected: this.runtime,
       isRuntimeInUse: (runtime) => this.runtimeInUse(runtime),
       changed: () => this.events.notify(),
+      requireWrite: (request) => this.requireWrite(request),
+    });
+    this.acquisition = new ModelAcquisition({
+      jobs: this.jobs,
+      catalog: () => loadCatalog(context.paths).models,
+      destination: () => managedModelsDir(context.config, context.env),
+      token: () => resolveHfToken(context.config, context.env),
+      quants: listRepoQuants,
+      search: (searchText, limit, token, signal) =>
+        searchModels(searchText, { limit, token, signal }),
+      download: downloadRepoFiles,
+      changed: () => {
+        this.models(true);
+        this.events.notify();
+      },
       requireWrite: (request) => this.requireWrite(request),
     });
   }
@@ -413,6 +437,7 @@ export class HostEngine implements BrainRuntime {
     const lifetime = requestLifetime(response, this.lifetime.signal);
     try {
       if (await this.runtimeManagement.handle(request, response, lifetime.signal)) return true;
+      if (await this.acquisition.handle(request, response, lifetime.signal)) return true;
       if (await this.library.handle(request, response, lifetime.signal)) return true;
       if (await this.management.handle(request, response, lifetime.signal)) return true;
       if (request.method === "GET" && MODEL_LISTS.has(route)) {

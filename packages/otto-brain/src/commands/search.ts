@@ -1,44 +1,9 @@
-/**
- * `otto brain search <query>` and `otto brain repo-quants <repo>` - Hugging Face
- * model discovery. These wrap the surface-agnostic primitives in models/hf.ts so
- * the same code serves the TUI (in-process) and the Otto app (daemon shells out
- * to `--json`, mirroring `catalog`/`scan`).
- */
+/** Search, quant discovery and direct additions use the canonical Brain owner. */
 import type { Command } from "commander";
-
-import { loadBrainConfig } from "../config/index.js";
-import {
-  listRepoQuants,
-  managedModelsDir,
-  repoOfModel,
-  resolveHfToken,
-  scanModels,
-  searchModels,
-} from "../models/index.js";
-import { formatBytes } from "../models/scan.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
+import { formatBytes } from "../models/scan.js";
 import { CommandError } from "../output/types.js";
-import { downloadRepoFilesWithProgress } from "./repo-download.js";
-
-/** What is already on disk, so search + quant listings can mark installed rows. */
-function installedIndex(config: ReturnType<typeof loadBrainConfig>): {
-  repos: Set<string>;
-  quants: Map<string, string>;
-  projectorRepos: Set<string>;
-} {
-  const repos = new Set<string>();
-  const quants = new Map<string, string>();
-  const projectorRepos = new Set<string>();
-  for (const model of scanModels(config)) {
-    const repo = repoOfModel(model);
-    if (!repo) continue;
-    repos.add(repo.toLowerCase());
-    if (model.quant) quants.set(`${repo.toLowerCase()} ${model.quant.toUpperCase()}`, model.id);
-    if (model.mmprojPath) projectorRepos.add(repo.toLowerCase());
-  }
-  return { repos, quants, projectorRepos };
-}
-
+import { withAcquisitionHost } from "./acquisition-host.js";
 export interface SearchRow {
   repo: string;
   downloads: number;
@@ -71,25 +36,18 @@ export async function runSearchCommand(
   options: { limit?: string },
   _command: Command,
 ): Promise<AnyCommandResult<SearchRow>> {
-  const config = loadBrainConfig();
-  const token = resolveHfToken(config);
-  const limit = Math.max(1, Math.min(100, Number(options.limit) || 25));
-  const results = await searchModels(query, { limit, token });
-  const { repos } = installedIndex(config);
-  return {
+  const limit = Number(options.limit ?? 25);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
+    throw new CommandError({
+      code: "INVALID_LIMIT",
+      message: "Choose a result limit from 1 to 100.",
+    });
+  return withAcquisitionHost(async (host) => ({
     type: "list",
-    data: results.map((r) => ({
-      repo: r.repo,
-      downloads: r.downloads,
-      likes: r.likes,
-      gated: r.gated ? "yes" : "",
-      installed: repos.has(r.repo.toLowerCase()),
-      summary: r.summary,
-    })),
+    data: await host.search(query, limit),
     schema: searchSchema,
-  };
+  }));
 }
-
 export interface AddRow {
   repo: string;
   quant: string;
@@ -148,86 +106,32 @@ export async function runAddCommand(
   },
   _command: Command,
 ): Promise<AnyCommandResult<AddRow>> {
-  const config = loadBrainConfig();
-  const token = resolveHfToken(config);
-  const { quants, mmproj } = await listRepoQuants(repo, token);
-
-  if (options.listQuants || !options.quant) {
-    const { quants: installedQuants, projectorRepos } = installedIndex(config);
-    const listing: AnyCommandResult<AddQuantRow> = {
-      type: "list",
-      data: quants.map((q) => ({
-        quant: q.quant,
-        size: formatBytes(q.sizeBytes),
-        sizeBytes: q.sizeBytes,
-        files: q.files.length,
-        modelId: installedQuants.get(`${repo.toLowerCase()} ${q.quant.toUpperCase()}`) ?? null,
-        installed: installedQuants.has(`${repo.toLowerCase()} ${q.quant.toUpperCase()}`),
-        ...(mmproj
-          ? {
-              projector: {
-                file: mmproj.files[0],
-                sizeBytes: mmproj.sizeBytes,
-                installed: projectorRepos.has(repo.toLowerCase()),
-              },
-            }
-          : {}),
-      })),
-      schema: addQuantSchema,
-    };
-    // withOutput infers one row type; the renderer is schema-driven, so a
-    // differently-shaped result renders correctly at runtime.
-    return listing as unknown as AnyCommandResult<AddRow>;
-  }
-
-  const wanted = options.quant.toLowerCase();
-  const choice = quants.find((q) => q.quant.toLowerCase() === wanted);
-  if (!choice) {
-    throw new CommandError({
-      code: "NO_QUANT",
-      message: `${repo} has no ${options.quant} - available: ${quants.map((q) => q.quant).join(", ") || "none"}`,
-    });
-  }
-  const requested = new Set(options.component ?? []);
-  const unknown = [...requested].filter((id) => id !== "vision-projector");
-  if (unknown.length)
-    throw new CommandError({
-      code: "NO_COMPONENT",
-      message: `unknown bundle components: ${unknown.join(", ")}`,
-    });
-  const includeProjector =
-    Boolean(mmproj) &&
-    (requested.has("vision-projector") ||
-      (!options.primaryOnly && options.component === undefined));
-  if (options.componentsOnly && !includeProjector) {
-    throw new CommandError({
-      code: "NO_COMPONENT",
-      message: "--components-only requires a selected bundle component",
-    });
-  }
-  const files = [
-    ...(options.componentsOnly ? [] : choice.files),
-    ...(includeProjector ? mmproj!.files : []),
-  ];
-  const total =
-    (options.componentsOnly ? 0 : choice.sizeBytes) + (includeProjector ? mmproj!.sizeBytes : 0);
-  const written = await downloadRepoFilesWithProgress({
-    activityTarget: `${repo} (${choice.quant})`,
-    progressLabel: `${repo} ${choice.quant}`,
-    totalBytes: total,
-    repo,
-    files,
-    destRoot: managedModelsDir(config),
-    token,
-  });
-  return {
-    type: "single",
-    data: {
+  return withAcquisitionHost(async (host) => {
+    if (options.listQuants || !options.quant) {
+      const listing: AnyCommandResult<AddQuantRow> = {
+        type: "list",
+        data: await host.quantRows(repo),
+        schema: addQuantSchema,
+      };
+      // Retain the existing CLI's schema-driven heterogeneous listing contract.
+      return listing as unknown as AnyCommandResult<AddRow>;
+    }
+    const result = await host.download("add", {
       repo,
-      quant: choice.quant,
-      path: written[0] ?? "(already present)",
-      size: formatBytes(total),
-    },
-    schema: addSchema,
-  };
+      quant: options.quant,
+      ...(options.component === undefined ? {} : { components: options.component }),
+      ...(options.primaryOnly === undefined ? {} : { primaryOnly: options.primaryOnly }),
+      ...(options.componentsOnly === undefined ? {} : { componentsOnly: options.componentsOnly }),
+    });
+    return {
+      type: "single",
+      data: {
+        repo: result.repo,
+        quant: options.quant,
+        path: result.path,
+        size: result.totalBytes === null ? "-" : formatBytes(result.totalBytes),
+      },
+      schema: addSchema,
+    };
+  });
 }

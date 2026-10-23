@@ -115,6 +115,17 @@ it("resolves latest when the job runs, installs that exact build and restores au
   expect(value.selected()).toBeNull();
   expect(JSON.stringify(value.jobs.get(job.id))).not.toContain("private host path");
 });
+it("releases an install canceled before execution so the candidate can be retried", async () => {
+  const value = fixture();
+  const candidate = value.manager.offer("latest");
+  const first = value.manager.install(candidate.id);
+  value.jobs.cancel(first.job.id);
+  expect(await value.jobs.wait(first.job.id)).toMatchObject({ state: "canceled" });
+  expect(value.installs).toEqual([]);
+  const second = value.manager.install(candidate.id);
+  expect(await value.jobs.wait(second.job.id)).toMatchObject({ state: "completed" });
+  expect(value.installs).toEqual(["b99999"]);
+});
 it("does not replace a failed latest lookup with a packaged pin", async () => {
   const value = fixture({
     latest: async () => {

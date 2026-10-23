@@ -426,7 +426,7 @@ function acquireDownloadLock(file: string): () => void {
 }
 
 /** Reject remote traversal and filesystem links before touching a partial. */
-function destinationFor(destRoot: string, repo: string, file: string): string {
+export function destinationFor(destRoot: string, repo: string, file: string): string {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repo)) throw new Error("unsafe repository id");
   const segments = [...repo.split("/"), ...file.split("/")];
   if (

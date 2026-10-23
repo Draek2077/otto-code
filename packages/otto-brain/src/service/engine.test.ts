@@ -113,6 +113,27 @@ it("keeps an empty host inert and reports only implemented management capabiliti
   expect(fixture.scans()).toBe(0);
 });
 
+it("exposes catalog acquisition without loading a model and rejects an unsafe plan before transfer", async () => {
+  const fixture = await host();
+  const catalog = z
+    .object({ models: z.array(z.object({ id: z.string() })) })
+    .parse(await (await fetch(`${fixture.base}/__host/catalog`)).json());
+  expect(catalog.models.length).toBeGreaterThan(0);
+  const admission = await fetch(`${fixture.base}/__host/jobs/pull`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ modelId: catalog.models[0]!.id, file: "../../outside.gguf" }),
+  });
+  expect(admission.status).toBe(202);
+  const admitted = z.object({ job: z.object({ id: z.string() }) }).parse(await admission.json());
+  expect(await fixture.engine.jobs.wait(admitted.job.id)).toMatchObject({
+    state: "failed",
+    error: "Brain operation failed",
+  });
+  expect(fixture.creations()).toBe(0);
+  expect(fixture.engine.pool.residentSupervisors()).toEqual([]);
+});
+
 it("updates profiles by revision and refuses stale writes, browser writes and unsupported jobs", async () => {
   const fixture = await host();
   const route = `${fixture.base}/__host/model/profile?id=${encodeURIComponent(fixture.models[0]!.id)}`;

@@ -193,11 +193,18 @@ function cleanCardSummary(markdown: string): string | null {
  * for as long as the socket lives, which is the whole reason the summary
  * fetches carry one too.
  */
-async function fetchHf(url: string, token: string | null, what: string): Promise<Response> {
+async function fetchHf(
+  url: string,
+  token: string | null,
+  what: string,
+  signal?: AbortSignal,
+): Promise<Response> {
   try {
     return await fetch(url, {
       headers: authHeaders(token),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
+        : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (cause) {
     const timedOut = cause instanceof Error && cause.name === "TimeoutError";
@@ -350,7 +357,8 @@ export async function searchModels(
     limit = 25,
     token = null,
     summaryBudgetMs = DEFAULT_SUMMARY_BUDGET_MS,
-  }: { limit?: number; token?: string | null; summaryBudgetMs?: number } = {},
+    signal,
+  }: { limit?: number; token?: string | null; summaryBudgetMs?: number; signal?: AbortSignal } = {},
 ): Promise<ModelSearchResult[]> {
   const params = new URLSearchParams({
     search: query,
@@ -359,7 +367,7 @@ export async function searchModels(
     direction: "-1",
     limit: String(limit),
   });
-  const res = await fetchHf(`${HF_BASE}/api/models?${params.toString()}`, token, "search");
+  const res = await fetchHf(`${HF_BASE}/api/models?${params.toString()}`, token, "search", signal);
   if (!res.ok) {
     throw new Error(`Hugging Face search failed (${res.status}) for "${query}"`);
   }
@@ -376,7 +384,11 @@ export async function searchModels(
   if (summaryBudgetMs > 0 && rows.length > 0) {
     const controller = new AbortController();
     const gather = mapWithConcurrency(rows, 4, async (row, index) => {
-      summaries[index] = await modelCardSummary(row.repo, token, controller.signal);
+      summaries[index] = await modelCardSummary(
+        row.repo,
+        token,
+        signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
+      );
     }).catch(() => undefined);
     let expire: NodeJS.Timeout | undefined;
     const deadline = new Promise<void>((resolve) => {
@@ -388,6 +400,7 @@ export async function searchModels(
     if (expire) clearTimeout(expire);
     controller.abort();
   }
+  signal?.throwIfAborted();
   return rows.map((row, index) => Object.assign(row, { summary: summaries[index] ?? null }));
 }
 
@@ -420,9 +433,10 @@ export function quantRank(quant: string): number {
 export async function listRepoQuants(
   repo: string,
   token: string | null = null,
+  signal?: AbortSignal,
 ): Promise<RepoQuants> {
   const url = `${HF_BASE}/api/models/${repo}/tree/main?recursive=true`;
-  const res = await fetchHf(url, token, `listing for ${repo}`);
+  const res = await fetchHf(url, token, `listing for ${repo}`, signal);
   if (!res.ok) {
     throw new Error(`Hugging Face listing failed (${res.status}) for ${repo}`);
   }

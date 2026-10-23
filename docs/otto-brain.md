@@ -6,7 +6,7 @@ maps it to the existing public package `@otto-code/brain`. Its executable remain
 `otto-brain`. No app or daemon is required to import or run the package.
 
 The standalone CLI provides `serve`, detached `start`/`stop`/`restart`, `status`,
-`scan`, `catalog`, `search`, `config show`/`set`, `runtime list`/`install`/`select`/`remove`,
+`scan`, `catalog`, `search`, `pull`, `add`, `config show`/`set`, `runtime list`/`install`/`select`/`remove`,
 `calibrate`, `sweep` and help,
 configuration persistence, home ownership, HTTP/HTTPS, credential masking and host
 shutdown. The library also provides concrete llama.cpp process supervision,
@@ -131,6 +131,20 @@ resolve trusted model IDs and reject resident/shared optional components before
 executing removal. The host's synchronous deletion guard includes queued work,
 loading/resident models, admitted jobs and shared artifact references. No await
 separates its checks from the filesystem mutation.
+
+Catalog and direct-repository acquisition run as host jobs. The owner resolves its
+HF credential, model directory, quant shards and shared or catalog-declared bundle
+components. Clients submit model/repository selections rather than destinations or
+credentials. Discovery requests honor cancellation and retain their own deadlines.
+One active download per repository prevents shared-projector transfers from racing
+inside a host; filesystem claims also protect against other processes. Explicit job
+cancellation stops its transfer and leaves resumable partials under the existing
+identity rules. Canceling before execution does not block a later download.
+
+CLI search, catalog, quant listing, `pull` and `add` use those same APIs, preserving
+installed-model indicators and the existing table/JSON fields. Catalog membership
+is joined using the host's stable catalog id. Direct additions retain primary-only
+and projector-only selection; importing or requesting help performs none of them.
 
 ## Residency and scheduling
 

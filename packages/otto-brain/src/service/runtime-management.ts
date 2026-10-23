@@ -119,7 +119,9 @@ export class RuntimeManagement {
   install(id: string) {
     const candidate = this.candidates.get(id);
     if (!candidate) throw new RequestError(404, "Brain runtime install choice not found");
-    if (this.installing.has(id))
+    const pendingId = this.installing.get(id);
+    const pending = pendingId ? this.ports.jobs.get(pendingId) : null;
+    if (pending && (pending.state === "queued" || pending.state === "running"))
       throw new RequestError(409, "This runtime is already being installed");
     const selectionRevision = this.ports.selectionRevision();
     const job = this.ports.jobs.start(

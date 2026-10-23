@@ -17,7 +17,13 @@ import { addCalibrateOptions, runCalibrateCommand } from "./commands/calibrate.j
 import { addSweepOptions, runSweepCommand } from "./commands/sweep.js";
 import { addScanOptions, runScanCommand } from "./commands/scan.js";
 import { addCatalogOptions, runCatalogCommand } from "./commands/catalog.js";
-import { addSearchOptions, runSearchCommand } from "./commands/search.js";
+import {
+  addSearchOptions,
+  runSearchCommand,
+  addAddOptions,
+  runAddCommand,
+} from "./commands/search.js";
+import { addPullOptions, runPullCommand } from "./commands/pull.js";
 import {
   addRuntimeListOptions,
   addRuntimeInstallOptions,
@@ -53,6 +59,8 @@ export function registerBrainCommands(program: Command): void {
   addScanOptions(program.command("scan")).action(withOutput(runScanCommand));
   addCatalogOptions(program.command("catalog")).action(withOutput(runCatalogCommand));
   addSearchOptions(program.command("search")).action(withOutput(runSearchCommand));
+  addPullOptions(program.command("pull")).action(withOutput(runPullCommand));
+  addAddOptions(program.command("add")).action(withOutput(runAddCommand));
   const config = program.command("config").description("Inspect and edit Brain configuration");
   addConfigShowOptions(config.command("show")).action(withOutput(runConfigShowCommand));
   addConfigSetOptions(config.command("set")).action(withOutput(runConfigSetCommand));

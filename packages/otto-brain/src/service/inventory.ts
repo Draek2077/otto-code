@@ -72,6 +72,7 @@ function modelIdentity(model: Model) {
     headCountKv: model.metadata?.headCountKv ?? null,
     repo: repoOfModel(model),
     catalogOwned: Boolean(model.catalogId),
+    catalogId: model.catalogId ?? null,
   };
 }
 

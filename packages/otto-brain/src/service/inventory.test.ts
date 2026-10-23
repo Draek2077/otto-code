@@ -39,6 +39,7 @@ it("joins scores by exact model id before considering identity-less historical n
   expect(result).toMatchObject({
     repo: "fixture/repo",
     catalogOwned: true,
+    catalogId: "fixture",
     budget: null,
     maxContextThatFits: null,
   });

@@ -317,3 +317,26 @@ test("still reports a rejected search by status", async () => {
 
   await assert.rejects(searchModels("q"), /Hugging Face search failed \(429\)/u);
 });
+
+test.each(["search", "quants"])(
+  "forwards owner cancellation through the %s request",
+  async (operation) => {
+    let received: AbortSignal | null | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: string, options?: RequestInit) => {
+        received = options?.signal;
+        return hangingResponse(received);
+      }),
+    );
+    const controller = new AbortController();
+    const pending =
+      operation === "search"
+        ? searchModels("fixture", { signal: controller.signal, summaryBudgetMs: 0 })
+        : listRepoQuants("fixture/repo", null, controller.signal);
+    const rejected = assert.rejects(pending, /could not reach the server/u);
+    controller.abort();
+    await rejected;
+    assert.equal(received?.aborted, true);
+  },
+);
