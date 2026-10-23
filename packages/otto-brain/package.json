@@ -1,0 +1,73 @@
+{
+  "name": "@getpaseo/brain",
+  "version": "0.9.35",
+  "description": "Otto Brain standalone host foundation",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Draek2077/otto-code.git",
+    "directory": "packages/otto-brain"
+  },
+  "bin": {
+    "otto-brain": "bin/otto-brain"
+  },
+  "files": [
+    "bin",
+    "config/downloads.json",
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": "./dist/index.js",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "node": "./dist/cli.js",
+      "import": "./src/cli.ts",
+      "default": "./src/cli.ts"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "node": "./dist/config/index.js",
+      "import": "./src/config/index.ts",
+      "default": "./src/config/index.ts"
+    },
+    "./host": {
+      "types": "./dist/service/serve.d.ts",
+      "node": "./dist/service/serve.js",
+      "import": "./src/service/serve.ts",
+      "default": "./src/service/serve.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "clean": "node ../../scripts/clean-package-dist.mjs",
+    "build": "tsc -p tsconfig.json --incremental false",
+    "build:clean": "npm run clean && npm run build",
+    "prepack": "npm run build:clean",
+    "typecheck": "tsgo --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "selfsigned": "^2.4.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  }
+}

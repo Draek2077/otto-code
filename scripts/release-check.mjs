@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Release gate. CI's typecheck job already does a clean install, builds every
-// published package, typechecks all workspaces, and packs and renames the seven
+// published package, typechecks all workspaces, and packs and renames the eight
 // @otto-code packages; CI's quality job checks formatting, lint, and the
 // lockfile; npm Publish then rebuilds from the tag. Rebuilding all of that
 // locally before tagging only repeated CI. Instead, confirm CI's gate jobs

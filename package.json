@@ -32,6 +32,7 @@
     "packages/relay",
     "packages/website",
     "packages/desktop",
+    "packages/otto-brain",
     "packages/cli"
   ],
   "scripts": {
@@ -57,8 +58,8 @@
     "build:protocol:clean": "npm run build:clean --workspace=@getpaseo/protocol",
     "build:client": "npm run build --workspace=@getpaseo/client",
     "build:client:clean": "npm run build:protocol:clean && npm run build:clean --workspace=@getpaseo/client",
-    "build:server-deps": "npm run build:client && concurrently --kill-others-on-fail --names highlight,plugin,relay --prefix-colors yellow,green,blue \"npm run build:highlight\" \"npm run build:plugin\" \"npm run build:relay\"",
-    "build:server-deps:clean": "npm run build:client:clean && npm run build:highlight:clean && npm run build:plugin:clean && npm run build:relay:clean",
+    "build:server-deps": "npm run build:brain && npm run build:client && concurrently --kill-others-on-fail --names highlight,plugin,relay --prefix-colors yellow,green,blue \"npm run build:highlight\" \"npm run build:plugin\" \"npm run build:relay\"",
+    "build:server-deps:clean": "npm run build:brain:clean && npm run build:client:clean && npm run build:highlight:clean && npm run build:plugin:clean && npm run build:relay:clean",
     "build:server": "npm run build:server-deps && npm run build --workspace=@getpaseo/server && npm run build --workspace=@getpaseo/cli",
     "build:server:clean": "npm run build:server-deps:clean && npm run build:clean --workspace=@getpaseo/server && npm run build:clean --workspace=@getpaseo/cli",
     "build:daemon-web-ui": "node scripts/build-daemon-web-ui.mjs",
@@ -122,7 +123,9 @@
     "release:patch": "npm run release:check && npm run version:all:patch && npm run release:push",
     "release:minor": "npm run release:check && npm run version:all:minor && npm run release:push",
     "release:major": "npm run release:check && npm run version:all:major && npm run release:push",
-    "release:check:local": "npm run release:prepare && npm run typecheck --workspace=@getpaseo/highlight && npm run typecheck --workspace=@getpaseo/relay && npm run typecheck --workspace=@getpaseo/protocol && npm run build:client:clean && npm run typecheck --workspace=@getpaseo/client && npm run typecheck --workspace=@getpaseo/plugin && npm run build:server:clean && npm run typecheck --workspace=@getpaseo/server && npm run typecheck --workspace=@getpaseo/cli && npm pack --dry-run --workspace=@getpaseo/highlight && npm pack --dry-run --workspace=@getpaseo/relay && npm pack --dry-run --workspace=@getpaseo/protocol && npm pack --dry-run --workspace=@getpaseo/client && npm pack --dry-run --workspace=@getpaseo/plugin && npm pack --dry-run --workspace=@getpaseo/server && npm pack --dry-run --workspace=@getpaseo/cli"
+    "release:check:local": "npm run release:prepare && npm run typecheck --workspace=@getpaseo/highlight && npm run typecheck --workspace=@getpaseo/relay && npm run typecheck --workspace=@getpaseo/protocol && npm run build:client:clean && npm run typecheck --workspace=@getpaseo/client && npm run typecheck --workspace=@getpaseo/plugin && npm run build:server:clean && npm run typecheck --workspace=@getpaseo/server && npm run typecheck --workspace=@getpaseo/cli && npm pack --dry-run --workspace=@getpaseo/highlight && npm pack --dry-run --workspace=@getpaseo/relay && npm pack --dry-run --workspace=@getpaseo/protocol && npm pack --dry-run --workspace=@getpaseo/client && npm pack --dry-run --workspace=@getpaseo/plugin && npm pack --dry-run --workspace=@getpaseo/server && npm pack --dry-run --workspace=@getpaseo/brain && npm pack --dry-run --workspace=@getpaseo/cli",
+    "build:brain": "npm run build --workspace=@getpaseo/brain",
+    "build:brain:clean": "npm run build:clean --workspace=@getpaseo/brain"
   },
   "devDependencies": {
     "@types/ws": "^8.5.14",

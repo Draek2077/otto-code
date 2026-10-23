@@ -244,6 +244,12 @@ jobs:
         if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
         run: npm run test --workspace=@getpaseo/builtin-plugins
 
+      # OTTO(brain): fixture-only tests; no real models or downloads.
+      - &server_brain_tests
+        name: Run standalone Brain tests
+        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
+        run: npm run test --workspace=@getpaseo/brain -- --maxWorkers=2
+
       - &server_hub_contract
         name: Run Hub CLI/daemon contract
         if: ${{ needs.changes.outputs.full == 'false' && needs.changes.outputs.server == 'false' && needs.changes.outputs.hub != 'false' }}
@@ -269,6 +275,7 @@ jobs:
         env: *server_test_env
 
       - *server_plugin_tests
+      - *server_brain_tests
       - *server_hub_contract
 
   # Keep the serial integration chain off the Windows unit critical path.

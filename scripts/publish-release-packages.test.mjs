@@ -16,7 +16,7 @@ test("stable versions publish to latest and prereleases to beta", () => {
   assert.equal(distTagFor("0.10.1-beta.2"), "beta");
 });
 
-test("Otto publishes the same seven packages under its npm scope", () => {
+test("Otto publishes its packages including standalone Brain under its npm scope", () => {
   assert.deepEqual(RELEASE_PACKAGES, [
     "@otto-code/highlight",
     "@otto-code/relay",
@@ -24,6 +24,7 @@ test("Otto publishes the same seven packages under its npm scope", () => {
     "@otto-code/client",
     "@otto-code/plugin",
     "@otto-code/server",
+    "@otto-code/brain",
     "@otto-code/cli",
   ]);
 });
