@@ -8,6 +8,14 @@ export {
   type LocalBrainClientOptions,
 } from "./service/local-client.js";
 export type { BrainHostEvent } from "./service/event-decoder.js";
+export { BrainOwnerSettings, type BrainOwnerSettingsRead } from "./service/owner-settings.js";
+export {
+  OwnerSettingsSaveSchema,
+  OwnerSettingsGenerateSchema,
+  OwnerSettingsError,
+  type OwnerSettingsSave,
+  type OwnerCredentialIntent,
+} from "./service/owner-settings-contract.js";
 export {
   followBrainJob,
   localJobTransport,

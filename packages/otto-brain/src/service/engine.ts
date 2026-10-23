@@ -15,7 +15,7 @@ import {
   searchModels,
   resolveHfToken,
 } from "../models/index.js";
-import { resolveRuntime, runtimeBuild } from "../runtime/index.js";
+import { listAllRuntimes, resolveRuntime, runtimeBuild } from "../runtime/index.js";
 import { query, usedBytes } from "../gpu.js";
 import { budget, fitToBudget, reserveBytesForGpu } from "../vram.js";
 import { SlotActivityTracker, type SlotInfo } from "../sysmon.js";
@@ -42,6 +42,8 @@ import { ModelLibrary } from "./model-library.js";
 import { createRuntimeManagement } from "./runtime-host.js";
 import type { RuntimeManagement } from "./runtime-management.js";
 import { ModelAcquisition } from "./model-acquisition.js";
+import { BrainOwnerSettings } from "./owner-settings.js";
+import { handleOwnerSettings } from "./owner-settings-http.js";
 
 interface ResidentSignals {
   reasoning: ReasoningTracker;
@@ -81,6 +83,7 @@ export class HostEngine implements BrainRuntime {
   private readonly library: ModelLibrary;
   private readonly runtimeManagement: RuntimeManagement;
   private readonly acquisition: ModelAcquisition;
+  private readonly settings: BrainOwnerSettings;
   get capabilities() {
     return {
       apiVersion: 3,
@@ -103,6 +106,7 @@ export class HostEngine implements BrainRuntime {
       hfSearch: true,
       modelAcquisition: true,
       benchmarkOptions: true,
+      ownerSettings: true,
     };
   }
   private readonly lifetime = new AbortController();
@@ -127,6 +131,14 @@ export class HostEngine implements BrainRuntime {
     this.profiles = ports.profiles ?? (() => loadProfilesStore(context.paths));
     this.runtime = ports.runtime ?? (() => resolveRuntime(context.config, context.env));
     this.ranking = ports.ranking ?? (() => rankModels(loadAll(context.env)));
+    const ownedRuntime = ports.runtime;
+    this.settings = new BrainOwnerSettings(context, {
+      runtimes: ports.runtimeList ?? (() => listAllRuntimes(context.env)),
+      resolve: ownedRuntime
+        ? () => ownedRuntime()
+        : (config) => resolveRuntime(config, context.env),
+      changed: () => this.events.notify(),
+    });
     this.gpu = ports.gpu ?? (async (signal) => query(this.availableRuntime(), signal));
     const create =
       ports.createSupervisor ??
@@ -446,6 +458,16 @@ export class HostEngine implements BrainRuntime {
     }
     const lifetime = requestLifetime(response, this.lifetime.signal);
     try {
+      if (
+        await handleOwnerSettings(
+          this.settings,
+          request,
+          response,
+          lifetime.signal,
+          (ownerRequest) => this.requireWrite(ownerRequest),
+        )
+      )
+        return true;
       if (await this.runtimeManagement.handle(request, response, lifetime.signal)) return true;
       if (await this.acquisition.handle(request, response, lifetime.signal)) return true;
       if (await this.library.handle(request, response, lifetime.signal)) return true;

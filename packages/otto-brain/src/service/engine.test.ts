@@ -112,6 +112,7 @@ it("keeps an empty host inert and reports only implemented management capabiliti
     inventory: true,
     runtimes: true,
     benchmarkOptions: true,
+    ownerSettings: true,
     writable: false,
   });
   expect(fixture.creations()).toBe(0);
@@ -120,6 +121,68 @@ it("keeps an empty host inert and reports only implemented management capabiliti
     .parse(await (await fetch(`${fixture.base}/__host/runtimes`)).json());
   expect(runtimeInventory.runtimes).toEqual([]);
   expect(fixture.scans()).toBe(0);
+});
+
+it("serves revisioned owner settings and stages a save without creating a model process", async () => {
+  const fixture = await host();
+  const endpoint = `${fixture.base}/__host/settings`;
+  const Owner = z.object({
+    ownerId: z.string(),
+    revision: z.string(),
+    requiresRestart: z.boolean(),
+  });
+  const origin = Owner.parse(await (await fetch(endpoint)).json());
+  const save = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ownerId: origin.ownerId,
+      expectedRevision: origin.revision,
+      patch: { runtime: { logVerbosity: 4 } },
+    }),
+  });
+  expect(save.status).toBe(200);
+  expect(Owner.parse(await save.json()).requiresRestart).toBe(true);
+  expect(fixture.creations()).toBe(0);
+  const stale = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ownerId: origin.ownerId,
+      expectedRevision: origin.revision,
+      patch: { maxLoadedModels: 3 },
+    }),
+  });
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toMatchObject({ error: { kind: "conflict" } });
+  const blocked = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "https://unrelated.invalid" },
+    body: "{}",
+  });
+  expect(blocked.status).toBe(403);
+  expect(fixture.creations()).toBe(0);
+});
+
+it("returns only a newly generated owner key and never includes it in later settings reads", async () => {
+  const fixture = await host();
+  const endpoint = `${fixture.base}/__host/settings`;
+  const origin = z
+    .object({ ownerId: z.string(), revision: z.string() })
+    .parse(await (await fetch(endpoint)).json());
+  const generated = await fetch(`${endpoint}/access-key`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ownerId: origin.ownerId, expectedRevision: origin.revision }),
+  });
+  expect(generated.status).toBe(200);
+  const result = z
+    .object({ secret: z.string(), owner: z.object({ requiresRestart: z.boolean() }) })
+    .parse(await generated.json());
+  expect(result.owner.requiresRestart).toBe(true);
+  expect(JSON.stringify(result.owner)).not.toContain(result.secret);
+  expect(await (await fetch(endpoint)).text()).not.toContain(result.secret);
+  expect(fixture.creations()).toBe(0);
 });
 
 it("exposes catalog acquisition without loading a model and rejects an unsafe plan before transfer", async () => {

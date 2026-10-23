@@ -48,6 +48,23 @@ Exact local stop uses that trust material and its private lifetime proof, so a
 staged certificate location or replacement access key cannot lock its owner out
 of restarting. Browser Origins and mismatched lifetimes are rejected.
 
+The engine advertises `ownerSettings` for revisioned `GET`/`POST /__host/settings`.
+These routes use the existing listener authentication and management write policy.
+Reads contain credential presence and environment provenance, never saved keys.
+Writes carry a stable owner ID, originating revision, partial known settings and
+separate `keep`/`replace`/`remove` credential intents. Proven pre-write validation
+rejections are distinguished from conflicts and uncertain failures; a caller must
+not infer a safe retry from an HTTP status alone. Environment-owned runtime,
+storage and credentials report their ownership and reject ineffective changes.
+An installed runtime ID is resolved to its actual source and executable by the host.
+
+Owner settings saves are staged for explicit host restart and report whether the
+effective saved configuration differs from the running host. They never rebind a
+listener, alter its active key, load/unload a model or apply autostart. Explicit
+`POST /__host/settings/access-key` generates and persists a replacement against the
+same owner revision; only that direct response contains the new key. Subsequent
+reads and canonical settings projections contain status only.
+
 The host claims its home before binding a listener. It records a per-lifetime
 instance ID as well as the PID, refuses another live owner, and releases only its
 own record. A malformed ownership record or reused live PID fails closed. A claim
