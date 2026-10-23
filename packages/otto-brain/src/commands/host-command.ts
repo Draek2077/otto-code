@@ -78,11 +78,8 @@ export function commandJobProgress(
 export async function withCommandHost<T>(
   run: (port: HostCommandPort, signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
-  const controller = new AbortController();
-  const interrupt = () => controller.abort(new Error("Brain command interrupted"));
-  process.once("SIGINT", interrupt);
-  try {
-    return await withOperationHost((client) => {
+  return withCommandSignal((signal) =>
+    withOperationHost((client) => {
       // COMPAT(brainHostJobs): added in v0.10.0, remove after 2027-04-23.
       if (!client.record.instanceId)
         throw new CommandError({
@@ -92,11 +89,20 @@ export async function withCommandHost<T>(
       return run(
         {
           ...localJobTransport(client),
-          request: (route, signal, body) => localBrainRequest(client, route, body, signal),
+          request: (route, requestSignal, body) =>
+            localBrainRequest(client, route, body, requestSignal),
         },
-        controller.signal,
+        signal,
       );
-    });
+    }),
+  );
+}
+export async function withCommandSignal<T>(run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const interrupt = () => controller.abort(new Error("Brain command interrupted"));
+  process.once("SIGINT", interrupt);
+  try {
+    return await run(controller.signal);
   } finally {
     process.off("SIGINT", interrupt);
   }

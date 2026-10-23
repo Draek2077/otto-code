@@ -161,6 +161,12 @@ it("benchmarks the pool resident endpoint, saves with the owning environment, an
     runSuite: async (options) => {
       suiteHost = options!.host;
       expect(options!.port).toBe(1);
+      expect(options).toMatchObject({
+        execute: false,
+        depths: [1000],
+        only: ["fixture"],
+        concurrency: 2,
+      });
       options!.onProgress?.({
         phase: "failed",
         summary: "private fixture benchmark failure",
@@ -180,6 +186,13 @@ it("benchmarks the pool resident endpoint, saves with the owning environment, an
     save: (options, env) => {
       savedEnv = env;
       expect(options.args).toEqual(["--fixture"]);
+      expect(options.suite).toEqual({
+        execute: false,
+        depths: [1000],
+        only: ["fixture"],
+        concurrency: 2,
+        mined: false,
+      });
       return {
         file: "fixture",
         record: { overall: 1, grade: "A", ranAt: "2026-10-23T00:00:00Z" },
@@ -193,7 +206,11 @@ it("benchmarks the pool resident endpoint, saves with the owning environment, an
   value.lease.stop = async () => {
     stops++;
   };
-  const job = value.operations.start(model, "benchmark");
+  const job = value.operations.start(model, "benchmark", {
+    operation: "benchmark",
+    modelId: model.id,
+    options: { execute: false, depths: [1000], only: ["fixture"], concurrency: 2 },
+  });
   const completed = await value.jobs.wait(job.id);
   expect(completed).toMatchObject({
     state: "completed",

@@ -263,7 +263,16 @@ interface DepthReportPoint {
 /** Render a scorecard for one model. */
 export function formatReport(
   report: SuiteReport,
-  { modelName = "model", profile = null }: { modelName?: string; profile?: Profile | null } = {},
+  {
+    modelName = "model",
+    profile = null,
+  }: {
+    modelName?: string;
+    profile?: Pick<
+      Profile,
+      "contextSize" | "cacheTypeK" | "cacheTypeV" | "reasoningBudget" | "vision"
+    > | null;
+  } = {},
 ): string {
   const lines: string[] = [];
   const bar = (score: number): string => {

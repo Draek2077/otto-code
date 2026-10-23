@@ -102,6 +102,7 @@ export class HostEngine implements BrainRuntime {
       catalog: true,
       hfSearch: true,
       modelAcquisition: true,
+      benchmarkOptions: true,
     };
   }
   private readonly lifetime = new AbortController();

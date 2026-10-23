@@ -4,9 +4,8 @@
  * The raw `otto brain bench --repo-*` flags mine any workspace on demand; these
  * presets name a few known-good, dependency-light workspaces so a repeatable
  * "curated" run is one flag instead of five. Each preset still needs the caller
- * to point `--repo-dir` at a working copy to mine, because the harness resets
- * that copy hard (git reset --hard + git clean -fd) between tasks - it must never
- * be aimed at a checkout with work you care about.
+ * to point `--repo-dir` at the source history to mine. Task execution resets only
+ * a separate Brain-owned disposable checkout; it never resets that source.
  *
  * Presets target this repo's own TypeScript/vitest workspaces (the miner keys off
  * `.test.ts` companions), so the flow runs out of the box against a spare

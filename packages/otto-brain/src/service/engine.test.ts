@@ -103,6 +103,7 @@ it("keeps an empty host inert and reports only implemented management capabiliti
     jobs: true,
     inventory: true,
     runtimes: true,
+    benchmarkOptions: true,
     writable: false,
   });
   expect(fixture.creations()).toBe(0);
@@ -132,6 +133,17 @@ it("exposes catalog acquisition without loading a model and rejects an unsafe pl
   });
   expect(fixture.creations()).toBe(0);
   expect(fixture.engine.pool.residentSupervisors()).toEqual([]);
+  const invalidBenchmark = await fetch(`${fixture.base}/__host/jobs`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      operation: "benchmark",
+      modelId: fixture.models[0]!.id,
+      options: { concurrency: 0 },
+    }),
+  });
+  expect(invalidBenchmark.status).toBe(400);
+  expect(fixture.creations()).toBe(0);
 });
 
 it("updates profiles by revision and refuses stale writes, browser writes and unsupported jobs", async () => {

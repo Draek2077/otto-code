@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { BrainJobStatus } from "../service/job-client.js";
-import { commandJobProgress } from "./host-command.js";
+import { commandJobProgress, withCommandSignal } from "./host-command.js";
 
 function job(progress: unknown): BrainJobStatus {
   return { id: "fixture", state: "running", progress, result: null, error: null };
@@ -51,4 +51,16 @@ it("ignores malformed progress, unknown phases and nonfinite measurements", () =
   ])
     receive(job(progress));
   expect(lines).toEqual(["  failed\n"]);
+});
+it("releases the command's signal handler when an external operation fails", async () => {
+  const before = process.listenerCount("SIGINT");
+  const primary = new Error("fixture external operation");
+  await expect(
+    withCommandSignal(async (signal) => {
+      expect(signal.aborted).toBe(false);
+      expect(process.listenerCount("SIGINT")).toBe(before + 1);
+      throw primary;
+    }),
+  ).rejects.toBe(primary);
+  expect(process.listenerCount("SIGINT")).toBe(before);
 });

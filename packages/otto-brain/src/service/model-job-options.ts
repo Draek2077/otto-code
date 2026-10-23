@@ -1,5 +1,6 @@
 /** The same bounded admission contract is used by host requests and CLI commands. */
 import { z } from "zod/v3";
+import { BenchmarkOptionsSchema } from "./benchmark-options.js";
 
 const modelId = z.string().min(1);
 export const SweepBudgetsSchema = z
@@ -11,6 +12,12 @@ export const ModelJobRequestSchema = z.discriminatedUnion("operation", [
   z
     .object({ operation: z.literal("sweep"), modelId, budgets: SweepBudgetsSchema.optional() })
     .strict(),
-  z.object({ operation: z.literal("benchmark"), modelId }).strict(),
+  z
+    .object({
+      operation: z.literal("benchmark"),
+      modelId,
+      options: BenchmarkOptionsSchema.optional(),
+    })
+    .strict(),
 ]);
 export type ModelJobRequest = z.infer<typeof ModelJobRequestSchema>;

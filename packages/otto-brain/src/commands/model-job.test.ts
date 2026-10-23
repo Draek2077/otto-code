@@ -5,6 +5,7 @@ import { parseSweepBudgets } from "./sweep.js";
 function fixture() {
   const requests: { route: string; body: unknown }[] = [];
   let supported = true;
+  let benchmarkOptions = true;
   let state = "completed";
   let failFeed: (error: Error) => void = () => {};
   const port: ModelJobPort = {
@@ -12,7 +13,8 @@ function fixture() {
     request: async (route, signal, body) => {
       signal.throwIfAborted();
       requests.push({ route, body });
-      if (route.endsWith("capabilities")) return { jobs: supported, events: true, inventory: true };
+      if (route.endsWith("capabilities"))
+        return { jobs: supported, events: true, inventory: true, benchmarkOptions };
       if (route.endsWith("models"))
         return {
           models: [
@@ -42,6 +44,9 @@ function fixture() {
     unsupported: () => {
       supported = false;
     },
+    noBenchmarkOptions: () => {
+      benchmarkOptions = false;
+    },
     pending: () => {
       state = "running";
     },
@@ -63,6 +68,31 @@ it("uses host model identity and forwards explicit sweep budgets without a local
     modelId: "repo/a",
     budgets: [0, 128],
   });
+});
+it("forwards benchmark controls with the resolved host model identity", async () => {
+  const value = fixture();
+  await runHostedModelJob(
+    value.port,
+    {
+      operation: "benchmark",
+      model: "Alpha",
+      benchmark: { execute: false, depths: [1000], concurrency: 2 },
+    },
+    new AbortController().signal,
+  );
+  expect(value.requests.find((request) => request.route === "/__host/jobs")?.body).toEqual({
+    operation: "benchmark",
+    modelId: "repo/a",
+    options: { execute: false, depths: [1000], concurrency: 2 },
+  });
+});
+it("gates benchmark controls before inventory or admission without simulating legacy operations", async () => {
+  const value = fixture();
+  value.noBenchmarkOptions();
+  await expect(
+    runHostedModelJob(value.port, { operation: "benchmark" }, new AbortController().signal),
+  ).rejects.toMatchObject({ code: "UPDATE_HOST" });
+  expect(value.requests).toEqual([{ route: "/__host/capabilities", body: undefined }]);
 });
 it("keeps the host's saved last-model selection when no fragment is supplied", async () => {
   const value = fixture();

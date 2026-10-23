@@ -24,6 +24,7 @@ import {
   runAddCommand,
 } from "./commands/search.js";
 import { addPullOptions, runPullCommand } from "./commands/pull.js";
+import { addBenchOptions, runBenchCommand } from "./commands/bench.js";
 import {
   addRuntimeListOptions,
   addRuntimeInstallOptions,
@@ -61,6 +62,7 @@ export function registerBrainCommands(program: Command): void {
   addSearchOptions(program.command("search")).action(withOutput(runSearchCommand));
   addPullOptions(program.command("pull")).action(withOutput(runPullCommand));
   addAddOptions(program.command("add")).action(withOutput(runAddCommand));
+  addBenchOptions(program.command("bench")).action(withOutput(runBenchCommand));
   const config = program.command("config").description("Inspect and edit Brain configuration");
   addConfigShowOptions(config.command("show")).action(withOutput(runConfigShowCommand));
   addConfigSetOptions(config.command("set")).action(withOutput(runConfigSetCommand));

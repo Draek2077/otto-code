@@ -7,7 +7,7 @@ maps it to the existing public package `@otto-code/brain`. Its executable remain
 
 The standalone CLI provides `serve`, detached `start`/`stop`/`restart`, `status`,
 `scan`, `catalog`, `search`, `pull`, `add`, `config show`/`set`, `runtime list`/`install`/`select`/`remove`,
-`calibrate`, `sweep` and help,
+`calibrate`, `sweep`, `bench` and help,
 configuration persistence, home ownership, HTTP/HTTPS, credential masking and host
 shutdown. The library also provides concrete llama.cpp process supervision,
 runtime acquisition and model inventory/download operations. Its scheduling library
@@ -181,6 +181,20 @@ same pool. CLI calibration and sweeps reuse the existing owner, or claim a
 temporary loopback host for that explicit operation. They release only their own
 temporary host; an interrupted command requests cancellation of its admitted job.
 An event-feed disconnection alone does not cancel durable host work.
+
+`bench` accepts comma-separated model selections, task/depth/concurrency controls
+and explicit repository or curated-repository inputs. Model runs use the same
+exclusive pool lease and record the profile, fit, calibration and launch arguments
+that actually ran. Their bounded job reports retain scorecards and measured depth
+rates; full task details remain in the owner's archive. Multiple model runs execute
+serially and produce the existing comparison table. Explicit `--endpoint` runs use
+an already-serving HTTP endpoint without creating a separate model supervisor.
+The legacy `--port` option reports that resident ports are now host-managed.
+
+The `--no-execute` switch controls generated Python execution. Repository tasks
+still build their owned checkout and execute its oracle tests. Repository cleanup
+waits for the suite and its children; a cleanup failure preserves an earlier suite
+error as the primary cause. Saving or formatting a report does not load a model.
 
 Calibration and sweeps require a `ModelOperationProcess` lease from the owning
 process pool. They never create an independent supervisor. Every temporary launch

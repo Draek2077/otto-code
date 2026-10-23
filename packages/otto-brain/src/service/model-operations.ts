@@ -3,7 +3,11 @@ import type { Model, GpuInfo } from "../types.js";
 import type { Profile } from "../config/schema.js";
 import { calibrate } from "../ops/calibrate.js";
 import { sweep } from "../ops/sweep.js";
-import { runSuite } from "../bench/index.js";
+import type { runSuite } from "../bench/index.js";
+import type { loadRepoTasks } from "../bench/repo-task.js";
+import { runOwnedBenchmark, publicBenchmarkReport } from "./benchmark-run.js";
+import type { BenchmarkOptions } from "./benchmark-options.js";
+import { completeOwnedOperation } from "./owned-operation.js";
 import * as archive from "../ops/archive.js";
 import * as results from "../ops/results.js";
 import type { ManagedModelProcess } from "./process-pool.js";
@@ -28,6 +32,7 @@ export interface ModelOperationPorts {
   calibrate?: typeof calibrate;
   sweep?: typeof sweep;
   runSuite?: typeof runSuite;
+  loadRepoTasks?: typeof loadRepoTasks;
   save?: typeof results.save;
 }
 
@@ -78,7 +83,12 @@ export class ModelOperations {
                 context,
                 options?.operation === "sweep" ? options.budgets : undefined,
               );
-            return this.benchmark(model, lease, context);
+            return this.benchmark(
+              model,
+              lease,
+              context,
+              options?.operation === "benchmark" ? options.options : undefined,
+            );
           },
           context.signal,
         ),
@@ -159,45 +169,66 @@ export class ModelOperations {
     model: Model,
     lease: ManagedModelProcess<EngineProcess>,
     context: BrainJobContext,
+    options: BenchmarkOptions = {},
   ): Promise<JobValue> {
-    try {
-      await lease.start();
-      const actual = lease.supervisor.profile;
-      if (!actual) throw new Error("Brain benchmark has no loaded profile");
-      const archiveId = archive.runId(model);
-      const report = await (this.ports.runSuite ?? runSuite)({
-        env: this.ports.env,
-        host: lease.supervisor.host,
-        port: lease.supervisor.internalPort,
-        signal: context.signal,
-        archiveId,
-        reasoningBudget: actual.reasoningBudget,
-        contextWindow: actual.contextSize,
-        onProgress: (event) => progress(context, event),
-      });
-      context.signal.throwIfAborted();
-      const saved = (this.ports.save ?? results.save)(
-        {
-          model,
-          profile: actual,
-          report,
+    return completeOwnedOperation(
+      async () => {
+        await lease.start();
+        const actual = lease.supervisor.profile;
+        if (!actual) throw new Error("Brain benchmark has no loaded profile");
+        const archiveId = archive.runId(model);
+        const report = await runOwnedBenchmark(
+          options,
+          {
+            env: this.ports.env,
+            host: lease.supervisor.host,
+            port: lease.supervisor.internalPort,
+            signal: context.signal,
+            archiveId,
+            reasoningBudget: actual.reasoningBudget,
+            contextWindow: actual.contextSize,
+            onProgress: (event) => progress(context, event),
+          },
+          this.ports,
+        );
+        context.signal.throwIfAborted();
+        const saved = (this.ports.save ?? results.save)(
+          {
+            model,
+            profile: actual,
+            report,
+            archiveId,
+            runtime: lease.supervisor.runtime?.label ?? null,
+            args: lease.supervisor.args,
+            calibration: this.ports.profiles.measurement(model, actual),
+            fit: lease.supervisor.fit,
+            gpu: lease.supervisor.gpu,
+            suite: {
+              execute: options.execute ?? true,
+              concurrency: options.concurrency ?? 3,
+              depths: options.depths ?? null,
+              only: options.only ?? null,
+              mined: Boolean(options.repository),
+            },
+          },
+          this.ports.env,
+        );
+        return {
+          overall: saved.record.overall,
+          grade: saved.record.grade,
+          ranAt: saved.record.ranAt,
           archiveId,
-          runtime: lease.supervisor.runtime?.label ?? null,
-          args: lease.supervisor.args,
-          calibration: this.ports.profiles.measurement(model, actual),
-          fit: lease.supervisor.fit,
-          gpu: lease.supervisor.gpu,
-        },
-        this.ports.env,
-      );
-      return {
-        overall: saved.record.overall,
-        grade: saved.record.grade,
-        ranAt: saved.record.ranAt,
-        archiveId,
-      };
-    } finally {
-      await lease.stop();
-    }
+          report: publicBenchmarkReport(report),
+          profile: {
+            contextSize: actual.contextSize,
+            cacheTypeK: actual.cacheTypeK,
+            cacheTypeV: actual.cacheTypeV,
+            reasoningBudget: actual.reasoningBudget,
+            vision: actual.vision,
+          },
+        };
+      },
+      () => lease.stop(),
+    );
   }
 }

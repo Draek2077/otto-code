@@ -4,6 +4,8 @@ import { readRunningService, readPidFile } from "../service/pid-lock.js";
 import { startService, type StartServiceOptions } from "../service/serve.js";
 import { createHostRuntime } from "../service/engine.js";
 import type { LocalBrainClientOptions } from "../service/local-client.js";
+import { completeOwnedOperation } from "../service/owned-operation.js";
+export { completeOwnedOperation } from "../service/owned-operation.js";
 
 export interface OperationHostOptions {
   env?: NodeJS.ProcessEnv;
@@ -39,31 +41,4 @@ export async function withOperationHost<T>(
     },
     () => service.stop(),
   );
-}
-
-async function attempt<T>(
-  run: () => Promise<T>,
-): Promise<{ ok: true; value: T } | { ok: false; error: unknown }> {
-  try {
-    return { ok: true, value: await run() };
-  } catch (error) {
-    return { ok: false, error };
-  }
-}
-
-export async function completeOwnedOperation<T>(
-  run: () => Promise<T>,
-  stop: () => Promise<void>,
-): Promise<T> {
-  const operation = await attempt(run);
-  const cleanup = await attempt(stop);
-  if (!operation.ok && !cleanup.ok)
-    throw new AggregateError(
-      [operation.error, cleanup.error],
-      "Brain command and host shutdown failed",
-      { cause: operation.error },
-    );
-  if (!operation.ok) throw operation.error;
-  if (!cleanup.ok) throw cleanup.error;
-  return operation.value;
 }

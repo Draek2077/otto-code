@@ -167,6 +167,7 @@ export class EngineManagement {
     else if (request.method === "POST") {
       this.ports.requireWrite(request);
       const body = await readObject(request, signal);
+      // COMPAT(brainBenchJobName): added in v0.10.0; remove after 2027-04-23.
       const parsed = ModelJobRequestSchema.safeParse({
         ...body,
         operation: body.operation === "bench" ? "benchmark" : body.operation,
