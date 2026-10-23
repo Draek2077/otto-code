@@ -88,3 +88,15 @@ it("reads old score identity and unknown metadata without rewriting or discardin
   });
   expect(fs.readFileSync(file, "utf8")).toBe(original);
 });
+
+it("exports a private report without changing an existing user folder's permissions", () => {
+  const { root, env, options } = fixture();
+  save(options, env);
+  const folder = path.join(root, "shared-export-folder");
+  fs.mkdirSync(folder, { mode: 0o755 });
+  const before = fs.statSync(folder).mode;
+  const report = write(path.join(folder, "scores.html"), env);
+  expect(fs.statSync(folder).mode).toBe(before);
+  expect(fs.existsSync(report.file)).toBe(true);
+  if (process.platform !== "win32") expect(fs.statSync(report.file).mode & 0o777).toBe(0o600);
+});

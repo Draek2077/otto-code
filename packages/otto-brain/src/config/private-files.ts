@@ -19,8 +19,14 @@ export function ensurePrivateDirectory(dir: string): void {
   }
 }
 
-export function writePrivateFileAtomicSync(filePath: string, contents: string): void {
-  ensurePrivateDirectory(path.dirname(filePath));
+export function writePrivateFileAtomicSync(
+  filePath: string,
+  contents: string,
+  options: { preserveParentPermissions?: boolean } = {},
+): void {
+  if (options.preserveParentPermissions)
+    mkdirSync(path.dirname(filePath), { recursive: true, mode: DIR_MODE });
+  else ensurePrivateDirectory(path.dirname(filePath));
   const tmp = `${filePath}.${process.pid}.tmp`;
   writeFileSync(tmp, contents, { mode: FILE_MODE });
   renameSync(tmp, filePath);

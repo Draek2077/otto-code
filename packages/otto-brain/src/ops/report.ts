@@ -750,7 +750,8 @@ function write(
   const records = results.latestPerConfig(allRuns);
   const html = `${STYLE}\n${build(records, allRuns)}`;
   const target = outFile || path.join(results.resolveResultsDir(env), "report.html");
-  writePrivateFileAtomicSync(target, html);
+  // A custom export folder belongs to the user, unlike the private host store.
+  writePrivateFileAtomicSync(target, html, { preserveParentPermissions: Boolean(outFile) });
   return { file: target, count: records.length };
 }
 
