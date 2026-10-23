@@ -12,7 +12,7 @@ const InventorySchema = z.object({
       id: z.string(),
       repo: z.string().nullable(),
       catalogId: z.string().nullable(),
-      quant: z.string(),
+      quant: z.string().nullable(),
       hasProjector: z.boolean(),
     }),
   ),
@@ -84,7 +84,7 @@ export class AcquisitionHost {
     const models = installed.filter((model) => model.repo?.toLowerCase() === repo.toLowerCase());
     return listing.quants.map((choice) => {
       const matched = models.find(
-        (model) => model.quant.toUpperCase() === choice.quant.toUpperCase(),
+        (model) => model.quant?.toUpperCase() === choice.quant.toUpperCase(),
       );
       return {
         quant: choice.quant,

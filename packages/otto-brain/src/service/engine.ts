@@ -127,7 +127,7 @@ export class HostEngine implements BrainRuntime {
     this.profiles = ports.profiles ?? (() => loadProfilesStore(context.paths));
     this.runtime = ports.runtime ?? (() => resolveRuntime(context.config, context.env));
     this.ranking = ports.ranking ?? (() => rankModels(loadAll(context.env)));
-    this.gpu = ports.gpu ?? (async (signal) => query(this.runtime(), signal));
+    this.gpu = ports.gpu ?? (async (signal) => query(this.availableRuntime(), signal));
     const create =
       ports.createSupervisor ??
       (async () => {
@@ -180,7 +180,7 @@ export class HostEngine implements BrainRuntime {
     this.modelProfiles = new ModelProfiles(context.config, {
       read: this.profiles,
       write: ports.saveProfiles ?? ((store) => saveProfilesStore(store, context.paths)),
-      runtimeBuild: () => runtimeBuild(this.runtime()),
+      runtimeBuild: () => runtimeBuild(this.availableRuntime()),
     });
     this.modelOperations = new ModelOperations(this.jobs, {
       env: context.env,
@@ -256,13 +256,22 @@ export class HostEngine implements BrainRuntime {
       );
   }
 
+  /** Discovery and settings remain usable while an explicit saved executable needs repair. */
+  private availableRuntime(): Runtime | null {
+    try {
+      return this.runtime();
+    } catch {
+      return null;
+    }
+  }
+
   async inventory(signal: AbortSignal) {
     const gpu = await this.gpu(signal);
     signal.throwIfAborted();
     const catalog = this.models();
     const store = this.profiles();
     const ranking = this.ranking();
-    const build = runtimeBuild(this.runtime());
+    const build = runtimeBuild(this.availableRuntime());
     const models = catalog.map((model) => ({
       ...buildInventoryRow({
         model,

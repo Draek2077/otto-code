@@ -52,6 +52,10 @@ An explicit model load drains inference before applying changed profile or runti
 selection. Loading an unloaded model starts it once. Calibration and temporary
 operation profiles retain their separate launch settings.
 
+A missing saved runtime executable does not block inventory or profile editing.
+The owner can repair its runtime selection without starting a model; an actual
+model load still requires a usable executable.
+
 Brain owns transport authentication and TLS. Non-loopback binding requires an
 actual token unless the owner explicitly allows an insecure bind. Private tokens
 are masked in configuration responses; engine exceptions are not reflected into

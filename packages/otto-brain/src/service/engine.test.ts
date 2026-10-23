@@ -11,7 +11,12 @@ afterEach(async () => {
   for (const dispose of cleanup.splice(0).toReversed()) await dispose();
 });
 
-async function host(maxLoadedModels = 2, lockModel = false, runtimeInstalled = false) {
+async function host(
+  maxLoadedModels = 2,
+  lockModel = false,
+  runtimeInstalled = false,
+  unavailableRuntime = false,
+) {
   const fixtures = [await createEngineFixture(), await createEngineFixture()];
   const models = fixtures.map((fixture, index) => ({
     ...fixture.model,
@@ -42,7 +47,10 @@ async function host(maxLoadedModels = 2, lockModel = false, runtimeInstalled = f
           profiles = structuredClone(next);
         },
         gpu: async () => null,
-        runtime: () => (runtimeInstalled ? fixtures[0]!.supervisor.runtime : null),
+        runtime: () => {
+          if (unavailableRuntime) throw new Error("Fixture saved executable is missing");
+          return runtimeInstalled ? fixtures[0]!.supervisor.runtime : null;
+        },
         runtimeList: () => [],
         createSupervisor: async () => fixtures[creations++]!.supervisor,
       });
@@ -143,6 +151,20 @@ it("exposes catalog acquisition without loading a model and rejects an unsafe pl
     }),
   });
   expect(invalidBenchmark.status).toBe(400);
+  expect(fixture.creations()).toBe(0);
+});
+it("keeps inventory and profile correction available when a saved executable is missing", async () => {
+  const fixture = await host(2, false, false, true);
+  expect((await fetch(`${fixture.base}/__host/models`)).status).toBe(200);
+  const route = `${fixture.base}/__host/model/profile?id=${encodeURIComponent(fixture.models[0]!.id)}`;
+  const current = z.object({ revision: z.string() }).parse(await (await fetch(route)).json());
+  const saved = await fetch(route, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ expectedRevision: current.revision, patch: { temperature: 0.4 } }),
+  });
+  expect(saved.status).toBe(200);
+  expect(await saved.json()).toMatchObject({ profile: { temperature: 0.4 } });
   expect(fixture.creations()).toBe(0);
 });
 

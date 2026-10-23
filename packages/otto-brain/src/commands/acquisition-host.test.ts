@@ -28,6 +28,13 @@ function fixture(supported = true) {
               quant: "Q8_0",
               hasProjector: true,
             },
+            {
+              id: "host/unclassified",
+              repo: "fixture/other",
+              catalogId: null,
+              quant: null,
+              hasProjector: false,
+            },
           ],
         };
       if (route.startsWith("/__host/hf/quants?"))
@@ -88,7 +95,7 @@ it("joins search results against the owner's inventory rather than scanning a cl
   const host = await AcquisitionHost.connect(value.port, new AbortController().signal);
   expect(await host.search("fixture model", 25)).toMatchObject([
     { repo: "fixture/repo", installed: true, gated: "" },
-    { repo: "fixture/other", installed: false, gated: "yes" },
+    { repo: "fixture/other", installed: true, gated: "yes" },
   ]);
   expect(
     value.requests.some((request) => request.route.includes("query=fixture+model&limit=25")),
