@@ -1,7 +1,7 @@
 import { fixtureRoot } from "../../test-fixtures.js";
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   loadRenameMap,
@@ -32,6 +32,25 @@ test("loadRenameMap returns empty object for invalid JSON", () => {
     writeFileSync(paths.renameMapFile, "invalid json", "utf8");
     const result = loadRenameMap(paths);
     assert.deepStrictEqual(result, {});
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("rename writes preserve malformed original metadata instead of resetting it", () => {
+  const dir = createTempDir();
+  try {
+    const paths = { renameMapFile: path.join(dir, "rename-map.json") };
+    for (const original of [
+      "invalid json",
+      JSON.stringify({ existingModel: { futureShape: true } }),
+    ]) {
+      writeFileSync(paths.renameMapFile, original, "utf8");
+      assert.throws(() => updateDisplayName("newModel", "New name", paths));
+      assert.throws(() => deleteDisplayName("existingModel", paths));
+      assert.throws(() => saveRenameMap({}, paths));
+      assert.equal(readFileSync(paths.renameMapFile, "utf8"), original);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

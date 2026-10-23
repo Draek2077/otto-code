@@ -34,7 +34,15 @@ export function saveRenameMap(
   map: Record<string, string>,
   paths: RenameMapPaths = resolveBrainPaths(),
 ): void {
-  writePrivateFileAtomicSync(paths.renameMapFile, `${JSON.stringify(map, null, 2)}\n`);
+  // Tolerant discovery must never turn a damaged original into an empty writable store.
+  readRenameMapForWrite(paths);
+  const validated = RenameMapSchema.parse(map);
+  writePrivateFileAtomicSync(paths.renameMapFile, `${JSON.stringify(validated, null, 2)}\n`);
+}
+
+function readRenameMapForWrite(paths: RenameMapPaths): Record<string, string> {
+  if (!existsSync(paths.renameMapFile)) return {};
+  return RenameMapSchema.parse(JSON.parse(readFileSync(paths.renameMapFile, "utf8")));
 }
 
 export function updateDisplayName(
@@ -42,7 +50,7 @@ export function updateDisplayName(
   displayName: string,
   paths: RenameMapPaths = resolveBrainPaths(),
 ): Record<string, string> {
-  const map = loadRenameMap(paths);
+  const map = readRenameMapForWrite(paths);
   map[modelId] = displayName;
   saveRenameMap(map, paths);
   return map;
@@ -52,7 +60,7 @@ export function deleteDisplayName(
   modelId: string,
   paths: RenameMapPaths = resolveBrainPaths(),
 ): Record<string, string> {
-  const map = loadRenameMap(paths);
+  const map = readRenameMapForWrite(paths);
   delete map[modelId];
   saveRenameMap(map, paths);
   return map;
