@@ -1,7 +1,7 @@
 {
   "name": "@getpaseo/brain",
   "version": "0.9.35",
-  "description": "Otto Brain standalone host foundation",
+  "description": "Otto Brain standalone runtime and host",
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
@@ -43,6 +43,18 @@
       "node": "./dist/service/serve.js",
       "import": "./src/service/serve.ts",
       "default": "./src/service/serve.ts"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "node": "./dist/runtime/index.js",
+      "import": "./src/runtime/index.ts",
+      "default": "./src/runtime/index.ts"
+    },
+    "./models": {
+      "types": "./dist/models/index.d.ts",
+      "node": "./dist/models/index.js",
+      "import": "./src/models/index.ts",
+      "default": "./src/models/index.ts"
     }
   },
   "publishConfig": {

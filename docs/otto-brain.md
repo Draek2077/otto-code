@@ -7,9 +7,11 @@ maps it to the existing public package `@otto-code/brain`. Its executable remain
 
 The restored foundation currently provides `otto-brain serve`, `status` and help,
 configuration persistence, home ownership, HTTP/HTTPS, credential masking and host
-shutdown. Model engines, acquisition, scheduling, operations, full CLI coverage,
-Remote Brain integration and the existing Brain renderer remain restoration work
-tracked in Otto Knowledge. This package is not yet the complete Brain product.
+shutdown. The library also provides concrete llama.cpp process supervision,
+runtime acquisition and model inventory/download operations. Scheduling, quality
+operations, full CLI coverage, Remote Brain integration and the existing Brain
+renderer remain restoration work tracked in Otto Knowledge. This package is not
+yet the complete Brain product. `serve` still starts an unloaded host.
 
 ## Ownership and continuity
 
@@ -47,7 +49,56 @@ A model engine implements `BrainRuntime` behind this listener. It owns its model
 processes and requests; the listener owns sockets and service lifetime. Stop closes
 active sockets and calls engine teardown once, with an abort signal and a six-second
 deadline. Engines must honor cancellation and terminate their owned processes.
-Future adapters must prove that contract using fixture processes before real models.
+The concrete `Supervisor` implements this contract for one llama.cpp child. Its
+internal listener is always loopback, separate from the public host listener.
+Construction never loads a model. Explicit `start(model, profile, signal)` resolves
+the host's stored hosting profile, materializes its template and builds native
+arguments/environment through the llama.cpp driver. It waits for `/health`, bounds
+each readiness probe, supports cancellation during loading, and reports launch
+errors, early exits and resident crashes. `properties()` reads `/props` only when
+ready. Shutdown requests termination, escalates after two seconds and waits for
+the child to close before returning. Owned children must stop before a replacement
+starts. Logs and incomplete log lines are bounded.
+
+Attach the supervisor as `startService({config, env, runtime: supervisor})` and
+claim the host before calling `supervisor.start`. It contributes the ready model
+to `/v1/models` and `/api/v0/models`; inference routing/admission belongs to the
+scheduler restoration. No HTTP load/delete/job capability is advertised yet.
+
+## Runtime and model libraries
+
+The package root and `runtime`/`models` exports are inert on import. Discovery,
+installation, downloads and removal are explicit calls. Runtime selection keeps
+the existing explicit-path, managed and LM Studio choices. Managed installations
+live in the existing Brain runtimes directory. The historical default remains
+llama.cpp `b10265`; its release asset names and native argument spellings are
+verified against that tag, rather than assuming the latest naming convention.
+
+`installManagedRuntime` streams archives into a generated hidden stage, inspects
+archive paths/links before extraction and verifies the executable before making
+it discoverable. Existing installations are never overwritten. Failed stages
+belong only to that operation. Native helpers have a fifteen-second deadline;
+Windows uses the system `tar.exe` because Git's GNU tar treats drive letters as
+remote hosts. ZIP extraction on Windows uses PowerShell's existing extractor.
+The existing Linux missing-libgomp repair remains local to the runtime directory;
+it does not install an OS package or alter global configuration.
+
+Model discovery combines configured managed and LM Studio sources, with managed
+files owning identical artifact IDs. Callers can supply explicit sources for
+isolated inventories. GGUF metadata is read without loading tensor data. Shards,
+projectors, manifest-declared bundles, curated enrichment and saved display names
+retain their existing identities. Hugging Face search, quant/shard discovery and
+token resolution are library operations, not new daemon RPCs.
+
+Downloads share one path validator, reject traversal and filesystem links, and
+hold an operation claim per destination. Interrupted claims are recoverable only
+when their recorded owner is proven dead. Partial files resume only against a
+strong ETag, matching byte range and complete size; changed or unidentified files
+restart. Cancellation never publishes a partial model. Existing complete files
+count toward bundle progress. Storage plans keep shared projectors while another
+quant remains and conservatively retain cross-repository companions. Callers must
+resolve trusted model IDs and reject resident/shared optional components before
+executing removal; the later host adapter owns those checks.
 
 ## Verification
 
@@ -56,3 +107,7 @@ existing Linux and Windows server CI jobs. The package also participates in root
 typechecking, server-stack builds and release packing. Run individual changed test
 files locally, with one worker; keep broad coverage on CI. Tests use isolated homes
 and ephemeral ports and never inspect the installed Brain store or load real models.
+Synthetic GGUF headers, download responses, real OS archive extraction and small
+Node HTTP child processes cover the runtime/model boundary. These fixtures do not
+establish native llama.cpp loading, GPU/backend availability, real model quality,
+or signed iOS/device acceptance.

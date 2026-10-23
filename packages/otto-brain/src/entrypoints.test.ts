@@ -19,9 +19,15 @@ afterEach(() => {
 
 it("imports public built entry points without touching a home or starting a host", () => {
   const { home, env } = environment();
-  const urls = ["index", "config/index", "service/serve", "cli"].map(
-    (name) => pathToFileURL(path.join(packageRoot, `dist/${name}.js`)).href,
-  );
+  const urls = [
+    "index",
+    "config/index",
+    "runtime/index",
+    "models/index",
+    "service/serve",
+    "service/supervisor",
+    "cli",
+  ].map((name) => pathToFileURL(path.join(packageRoot, `dist/${name}.js`)).href);
   const child = spawnSync(
     process.execPath,
     ["--input-type=module", "-e", `for (const url of ${JSON.stringify(urls)}) await import(url);`],

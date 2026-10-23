@@ -1,0 +1,290 @@
+import { test } from "vitest";
+import assert from "node:assert/strict";
+
+import {
+  enrichWithCatalog,
+  excludeCatalogComponentArtifacts,
+  familyFromGgufMetadata,
+  matchCatalogEntry,
+} from "./enrich.js";
+import { CatalogSchema, type Catalog } from "../config/schema.js";
+import { hostingFamily } from "../config/hosting-profiles.js";
+import type { Model } from "../types.js";
+
+/** A minimal scanned model; id is the modelsDir-relative path scan.ts builds. */
+function model(id: string, extra: Partial<Model> = {}): Model {
+  return {
+    id,
+    displayName: id.split("/").pop() ?? id,
+    modelPath: `/models/${id}`,
+    mmprojPath: null,
+    mmprojBytes: 0,
+    quant: null,
+    sizeBytes: 0,
+    features: { mtp: false, imatrix: false, distilled: false },
+    metadata: null,
+    ...extra,
+  };
+}
+
+function catalog(models: Catalog["models"]): Catalog {
+  return CatalogSchema.parse({ models });
+}
+
+const CODER = {
+  id: "qwen3-coder-30b",
+  name: "Qwen3 Coder 30B",
+  family: "qwen",
+  hfRepo: "unsloth/Qwen3-Coder-30B-GGUF",
+  quant: "Q4_K_M",
+  quantFile: "Qwen3-Coder-30B-Q4_K_M.gguf",
+  useCases: ["coding", "agentic"],
+  tier: "A",
+  thinking: false,
+  contextMax: 262144,
+};
+
+test("attaches catalog coding metadata when a scanned path matches hfRepo", () => {
+  const scanned = model("unsloth/Qwen3-Coder-30B-GGUF/Qwen3-Coder-30B-Q4_K_M.gguf");
+  const [enriched] = enrichWithCatalog([scanned], catalog([CODER]));
+  assert.deepEqual(enriched.useCases, ["coding", "agentic"]);
+  assert.equal(enriched.tier, "A");
+  assert.equal(enriched.thinking, false);
+  assert.equal(enriched.contextMax, 262144);
+  assert.equal(enriched.catalogId, "qwen3-coder-30b");
+  assert.equal(enriched.catalogHfRepo, "unsloth/Qwen3-Coder-30B-GGUF");
+  assert.equal(enriched.family, "qwen");
+});
+
+test("catalog family wins over conflicting GGUF metadata", () => {
+  const scanned = model("unsloth/Qwen3-Coder-30B-GGUF/Qwen3-Coder-30B-Q4_K_M.gguf", {
+    metadata: { arch: "llama" },
+  });
+  const [enriched] = enrichWithCatalog([scanned], catalog([CODER]));
+
+  assert.equal(enriched.family, "qwen");
+});
+
+test("normalizes a GGUF architecture into the existing hosting-profile family", () => {
+  const scanned = model("someone/Qwen3-GGUF/qwen3-Q4_K_M.gguf", {
+    metadata: { arch: "qwen3" },
+  });
+  const [enriched] = enrichWithCatalog([scanned], catalog([]));
+
+  assert.equal(familyFromGgufMetadata(scanned), "qwen");
+  assert.equal(enriched.family, "qwen");
+});
+
+test("an unclassified model remains in the generic hosting-profile bucket", () => {
+  const [enriched] = enrichWithCatalog(
+    [model("someone/random-GGUF/random-Q4_K_M.gguf")],
+    catalog([]),
+  );
+
+  assert.equal(enriched.family, undefined);
+  assert.equal(hostingFamily(enriched.family), "generic");
+});
+
+test("carries catalog reasoning efforts onto a scanned model", () => {
+  const scanned = model("openai/gpt-oss-20b-GGUF/gpt-oss-20b-MXFP4.gguf");
+  const [enriched] = enrichWithCatalog(
+    [scanned],
+    catalog([
+      {
+        ...CODER,
+        id: "gpt-oss-20b",
+        hfRepo: "openai/gpt-oss-20b-GGUF",
+        reasoningEfforts: ["low", "medium", "high"],
+        reasoningEffortDefault: "medium",
+        reasoningTemplate: {
+          enableThinkingArgument: "enable_thinking",
+          effortArgument: "reasoning_effort",
+        },
+        reasoningPreservation: { templateArgument: "preserve_thinking", default: true },
+      },
+    ]),
+  );
+  assert.deepEqual(enriched.reasoningEfforts, ["low", "medium", "high"]);
+  assert.equal(enriched.reasoningEffortDefault, "medium");
+  assert.equal(enriched.reasoningPreservation?.templateArgument, "preserve_thinking");
+});
+
+test("discovers either preservation spelling from an uncatalogued GGUF template", () => {
+  const [enriched] = enrichWithCatalog(
+    [
+      model("someone/reasoner/model.gguf", {
+        metadata: { reasoningPreservationArgument: "preserve_reasoning" },
+      }),
+    ],
+    catalog([]),
+  );
+  assert.deepEqual(enriched.reasoningPreservation, { templateArgument: "preserve_reasoning" });
+});
+
+test("an uncatalogued thinking template earns a binary effort contract", () => {
+  const [enriched] = enrichWithCatalog(
+    [
+      model("someone/Qwen3.8-27B-Uncensored-GGUF/model.gguf", {
+        metadata: { reasoning: true, reasoningToggleArgument: "enable_thinking" },
+      }),
+    ],
+    catalog([]),
+  );
+  assert.deepEqual(enriched.reasoningEfforts, ["on"]);
+  assert.deepEqual(enriched.reasoningTemplate, {
+    enableThinkingArgument: "enable_thinking",
+    effortArgument: "reasoning_effort",
+  });
+});
+
+test("an uncatalogued template that names its levels earns the full ladder", () => {
+  const [enriched] = enrichWithCatalog(
+    [
+      model("someone/Qwen3.8-27B-Uncensored-GGUF/model.gguf", {
+        metadata: {
+          reasoning: true,
+          reasoningToggleArgument: "enable_thinking",
+          reasoningEffortArgument: "reasoning_effort",
+          reasoningEffortValues: ["low", "medium", "xhigh"],
+        },
+      }),
+    ],
+    catalog([]),
+  );
+  assert.deepEqual(enriched.reasoningEfforts, ["low", "medium", "xhigh"]);
+});
+
+test("a template with no control argument earns no effort contract", () => {
+  const [enriched] = enrichWithCatalog(
+    [model("someone/reasoner/model.gguf", { metadata: { reasoning: true } })],
+    catalog([]),
+  );
+  assert.equal(enriched.reasoningEfforts, undefined);
+  assert.equal(enriched.reasoningTemplate, undefined);
+});
+
+test("a catalog entry without a declared contract falls back to the template's", () => {
+  const scanned = model("unsloth/gemma-4-E4B-it-GGUF/gemma-4-E4B-it-Q4_K_M.gguf", {
+    metadata: { reasoning: true, reasoningToggleArgument: "enable_thinking" },
+  });
+  const [enriched] = enrichWithCatalog(
+    [scanned],
+    catalog([
+      { ...CODER, id: "gemma-4-e4b", hfRepo: "unsloth/gemma-4-E4B-it-GGUF", thinking: true },
+    ]),
+  );
+  assert.deepEqual(enriched.reasoningEfforts, ["on"]);
+  assert.equal(enriched.reasoningTemplate?.enableThinkingArgument, "enable_thinking");
+});
+
+test("a catalog declaration outranks the template detection", () => {
+  const scanned = model("unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", {
+    metadata: { reasoning: true, reasoningToggleArgument: "enable_thinking" },
+  });
+  const [enriched] = enrichWithCatalog(
+    [scanned],
+    catalog([
+      {
+        ...CODER,
+        id: "qwen3.8-27b",
+        hfRepo: "unsloth/Qwen3.8-27B-GGUF",
+        reasoningEfforts: ["low", "medium", "xhigh"],
+        reasoningEffortDefault: "xhigh",
+        reasoningTemplate: {
+          enableThinkingArgument: "enable_thinking",
+          effortArgument: "reasoning_effort",
+        },
+      },
+    ]),
+  );
+  assert.deepEqual(enriched.reasoningEfforts, ["low", "medium", "xhigh"]);
+  assert.equal(enriched.reasoningEffortDefault, "xhigh");
+});
+
+test("matching is case-insensitive on the repo path", () => {
+  const scanned = model("UNSLOTH/qwen3-coder-30b-gguf/Qwen3-Coder-30B-Q4_K_M.gguf");
+  assert.equal(matchCatalogEntry(scanned, catalog([CODER]))?.id, "qwen3-coder-30b");
+});
+
+test("no match leaves coding fields undefined", () => {
+  const scanned = model("someone/random-model-GGUF/random-Q4_K_M.gguf");
+  const [enriched] = enrichWithCatalog([scanned], catalog([CODER]));
+  assert.equal(matchCatalogEntry(scanned, catalog([CODER])), null);
+  assert.equal(enriched.useCases, undefined);
+  assert.equal(enriched.tier, undefined);
+  assert.equal(enriched.catalogId, undefined);
+});
+
+test("empty catalog is safe and passes models through untouched", () => {
+  const scanned = model("unsloth/Qwen3-Coder-30B-GGUF/Qwen3-Coder-30B-Q4_K_M.gguf");
+  const [enriched] = enrichWithCatalog([scanned], catalog([]));
+  assert.equal(enriched, scanned);
+  assert.equal(enriched.useCases, undefined);
+});
+
+test("promotes a discovered projector to a removable managed component", () => {
+  const scanned = model("someone/vision-GGUF/vision-Q4_K_M.gguf", {
+    mmprojPath: "/models/someone/vision-GGUF/mmproj-F16.gguf",
+    mmprojBytes: 512_000_000,
+  });
+  const [enriched] = enrichWithCatalog([scanned], catalog([]));
+  assert.deepEqual(enriched.components, [
+    {
+      id: "vision-projector",
+      label: "Vision projector",
+      description: "Adds image understanding",
+      role: "vision_projector",
+      path: "/models/someone/vision-GGUF/mmproj-F16.gguf",
+      bytes: 512_000_000,
+      required: false,
+      defaultDownload: false,
+      defaultLoad: true,
+      available: true,
+    },
+  ]);
+});
+
+test("a partial repo-segment prefix does not match", () => {
+  // "unsloth/Qwen3-Coder-30B-GGUF" must not match a sibling repo whose name
+  // merely starts with the same characters.
+  const scanned = model("unsloth/Qwen3-Coder-30B-GGUF-Extra/file-Q4_K_M.gguf");
+  assert.equal(matchCatalogEntry(scanned, catalog([CODER])), null);
+});
+
+test("a repo with several quants is disambiguated by file name", () => {
+  const q4 = { ...CODER, id: "coder-q4", quant: "Q4_K_M", quantFile: "coder-Q4_K_M.gguf" };
+  const q8 = { ...CODER, id: "coder-q8", quant: "Q8_0", quantFile: "coder-Q8_0.gguf" };
+  const scanned = model("unsloth/Qwen3-Coder-30B-GGUF/coder-Q8_0.gguf", { quant: "Q8_0" });
+  assert.equal(matchCatalogEntry(scanned, catalog([q4, q8]))?.id, "coder-q8");
+});
+
+test("falls back to quant match when no exact file name is given", () => {
+  const q4 = { ...CODER, id: "coder-q4", quant: "Q4_K_M", quantFile: undefined };
+  const q8 = { ...CODER, id: "coder-q8", quant: "Q8_0", quantFile: undefined };
+  const scanned = model("unsloth/Qwen3-Coder-30B-GGUF/coder-Q8_0.gguf", { quant: "Q8_0" });
+  assert.equal(matchCatalogEntry(scanned, catalog([q4, q8]))?.id, "coder-q8");
+});
+
+test("excludes declared bundle components while retaining their primary model", () => {
+  const muse = {
+    ...CODER,
+    id: "muse-glimmer-30b",
+    hfRepo: "unsloth/Muse-Glimmer-30B-GGUF",
+    quantFile: "Muse-Glimmer-30B-UD-Q4_K_XL.gguf",
+    components: [
+      {
+        id: "drafter",
+        label: "DFlash drafter",
+        description: "Speeds up generation",
+        role: "speculative_drafter" as const,
+        file: "dflash-kquant.gguf",
+      },
+    ],
+  };
+  const primary = model("UNSLOTH/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-UD-Q4_K_XL.gguf");
+  const component = model("unsloth\\Muse-Glimmer-30B-GGUF\\dflash-kquant.gguf");
+
+  assert.deepEqual(excludeCatalogComponentArtifacts([primary, component], catalog([muse])), [
+    primary,
+  ]);
+});

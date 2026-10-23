@@ -8,7 +8,9 @@ help must not resolve a home, modify files, open sockets or launch processes. On
 explicit operations may resolve `$OTTO_HOME/otto-brain/`. Never exercise a real user
 home or model in tests. Use isolated `.tmp/` fixtures and ephemeral loopback ports.
 
-The current foundation provides configuration continuity and the host transport and
-lifecycle. Model engines, acquisition, scheduling, operations, full CLI, plugins and
-the Brain renderer are subsequent restoration checkpoints. Do not advertise an
-unimplemented management capability. See `docs/otto-brain.md`.
+The package provides configuration continuity, host transport, explicit llama.cpp
+process ownership, runtime acquisition and model inventory/download libraries.
+Scheduling, operations, full CLI, plugins and the Brain renderer remain later
+checkpoints. Do not advertise an unimplemented management capability. Native
+helpers and model processes must have bounded readiness/probe and shutdown paths.
+See `docs/otto-brain.md`.

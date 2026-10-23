@@ -10,4 +10,5 @@ export {
   loadCatalog,
 } from "./store.js";
 export { applyEnvOverrides } from "./env.js";
+export { defaultProfile, forModel } from "./profiles.js";
 export * from "./schema.js";
