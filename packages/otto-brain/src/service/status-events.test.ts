@@ -282,3 +282,38 @@ describe("BrainStatusPublisher sampling cadence", () => {
     }
   });
 });
+
+it("publishes queued model identity changes even when their display names match", () => {
+  const a = { scheduler: { waiting: { Shared: 1 }, waitingModelIds: { a: 1 } } };
+  const b = { scheduler: { waiting: { Shared: 1 }, waitingModelIds: { b: 1 } } };
+  expect(statusChangeKey(a)).not.toBe(statusChangeKey(b));
+});
+
+it("publishes a change in the exclusive model operation", () => {
+  const a = { scheduler: { active: { modelId: "a", kind: "calibrate" } } };
+  const b = { scheduler: { active: { modelId: "a", kind: "sweep" } } };
+  expect(statusChangeKey(a)).not.toBe(statusChangeKey(b));
+});
+
+it("does not resample or replay an in-flight result after the final subscriber leaves", async () => {
+  const publisher = new BrainStatusPublisher();
+  let finish = () => {};
+  let samples = 0;
+  const result = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  publisher.setSource(async () => {
+    samples += 1;
+    await result;
+    return { state: "ready" };
+  });
+  const snapshots: unknown[] = [];
+  const unsubscribe = publisher.subscribe((snapshot) => snapshots.push(snapshot));
+  publisher.notify();
+  unsubscribe();
+  finish();
+  await flush();
+  expect(samples).toBe(1);
+  expect(snapshots).toEqual([]);
+  publisher.close();
+});

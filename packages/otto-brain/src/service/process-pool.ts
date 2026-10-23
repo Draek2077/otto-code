@@ -1,7 +1,11 @@
 import type { Profile } from "../config/schema.js";
 import type { Model } from "../types.js";
 import type { ModelScheduler, SchedulerStats, SchedulerSubmitOptions } from "./scheduler.js";
-import { Scheduler } from "./scheduler.js";
+import {
+  isSchedulerRequestAbandoned,
+  Scheduler,
+  type SchedulerOperationOptions,
+} from "./scheduler.js";
 import type { SchedulerSupervisor } from "./scheduler.js";
 
 export interface PoolSupervisor extends SchedulerSupervisor {
@@ -40,7 +44,8 @@ export interface ModelProcessPoolOptions<TSupervisor extends PoolSupervisor> {
     supervisor: TSupervisor,
     model: Model,
     reservedElsewhereBytes: number,
-    profile?: Profile,
+    profile: Profile | undefined,
+    signal: AbortSignal,
   ) => Promise<number>;
   onChange?: (() => void) | null;
   logger?: ((message: string) => void) | null;
@@ -86,8 +91,10 @@ export class ModelProcessPool<
   #clock = 0;
   #releasing = new Map<PoolSlot<TSupervisor>, Promise<void>>();
   #closed = false;
+  #lifetime = new AbortController();
   #stopping: Promise<void> | null = null;
   #loading: Promise<void> = Promise.resolve();
+  #maintenance: Promise<void> = Promise.resolve();
 
   constructor(options: ModelProcessPoolOptions<TSupervisor>) {
     this.#createSupervisor = options.createSupervisor;
@@ -145,7 +152,7 @@ export class ModelProcessPool<
   submitOperation(
     model: Model,
     run: (process: ManagedModelProcess<TSupervisor>) => Promise<unknown>,
-    options: SchedulerSubmitOptions,
+    options: SchedulerOperationOptions,
   ): Promise<unknown> {
     return this.submit(
       model,
@@ -155,7 +162,7 @@ export class ModelProcessPool<
         return run({
           supervisor,
           start: async (profile) => {
-            await this.#loadSlot(slot, model, profile);
+            await this.#loadSlot(slot, model, profile, options.signal);
           },
           stop: async () => {
             await supervisor.stop();
@@ -166,31 +173,25 @@ export class ModelProcessPool<
           },
         });
       },
-      options,
+      { ...options, exclusive: true },
     );
   }
 
   /** Load a model and leave it resident without consuming an inference slot. */
-  async preload(model: Model): Promise<void> {
-    await this.submit(model, async () => undefined);
+  async preload(model: Model, signal?: AbortSignal): Promise<void> {
+    await this.submit(model, async () => undefined, { signal });
   }
 
   /** Apply the host-owned process limit and retire excess idle processes. */
   async configure(maxModels: number): Promise<void> {
     this.#maxModels = normalizeModelLimit(maxModels);
-    await this.#trimIdleSlots();
+    await this.#maintain(() => this.#trimIdleSlots());
     this.#announce();
     void this.#dispatch();
   }
 
   supervisorFor(modelId: string): TSupervisor | null {
-    return (
-      this.#slots.find(
-        (slot) =>
-          slot.assignedModelId === modelId ||
-          (slot.supervisor.model?.id === modelId && slot.supervisor.state !== "stopped"),
-      )?.supervisor ?? null
-    );
+    return this.#slots.find((slot) => slot.assignedModelId === modelId)?.supervisor ?? null;
   }
 
   supervisors(): TSupervisor[] {
@@ -209,18 +210,21 @@ export class ModelProcessPool<
   }
 
   async unload(modelId?: string | null): Promise<void> {
-    const targets = modelId
-      ? this.#slots.filter((slot) => slot.assignedModelId === modelId)
-      : [...this.#slots];
-    for (const slot of targets) {
-      if (!slot.scheduler.isIdle || slot.pending > 0) {
-        throw new Error(
-          modelId ? "the model is still serving requests" : "a model is still serving requests",
-        );
+    await this.#maintain(async () => {
+      const targets = modelId
+        ? this.#slots.filter((slot) => slot.assignedModelId === modelId)
+        : [...this.#slots];
+      for (const slot of targets) {
+        if (!slot.scheduler.isIdle || slot.pending > 0) {
+          throw new Error(
+            modelId ? "the model is still serving requests" : "a model is still serving requests",
+          );
+        }
       }
-    }
-    await Promise.all(targets.map((slot) => this.#releaseSlot(slot)));
-    await this.#trimIdleSlots();
+      await Promise.all(targets.map((slot) => this.#releaseSlot(slot)));
+      await this.#trimIdleSlots();
+      return;
+    });
     this.#announce();
     void this.#dispatch();
   }
@@ -229,10 +233,12 @@ export class ModelProcessPool<
     if (this.#stopping) return this.#stopping;
     this.#closed = true;
     const error = new Error("Brain process pool stopped");
+    this.#lifetime.abort(error);
     for (const job of this.#queue.splice(0)) job.reject(error);
     for (const slot of this.#slots) slot.scheduler.stop(error);
     this.#stopping = Promise.all(this.#slots.map((slot) => slot.supervisor.stop())).then(
       async () => {
+        await this.#maintenance;
         await this.#loading;
         for (const slot of this.#slots) {
           slot.assignedModelId = null;
@@ -296,7 +302,12 @@ export class ModelProcessPool<
     return slot;
   }
 
-  async #loadSlot(slot: PoolSlot<TSupervisor>, model: Model, profile?: Profile): Promise<void> {
+  async #loadSlot(
+    slot: PoolSlot<TSupervisor>,
+    model: Model,
+    profile?: Profile,
+    signal?: AbortSignal,
+  ): Promise<void> {
     // Loading processes must see reservations committed by previous loads.
     const load = this.#loading.then(async () => {
       if (this.#closed) throw new Error("Brain process pool stopped");
@@ -309,6 +320,7 @@ export class ModelProcessPool<
         model,
         reservedElsewhereBytes,
         profile,
+        signal ? AbortSignal.any([signal, this.#lifetime.signal]) : this.#lifetime.signal,
       );
       if (this.#closed) {
         await slot.supervisor.stop();
@@ -353,24 +365,27 @@ export class ModelProcessPool<
 
   async #pass(): Promise<void> {
     if (this.#closed) return;
-    await this.#trimIdleSlots();
+    await this.#maintain(() => this.#trimIdleSlots());
     for (;;) {
       if (this.#closed) return;
+      let dropped = false;
       for (const job of this.#queue.slice()) {
-        if (job.options.signal?.aborted || job.options.abandoned?.()) {
+        if (job.options.signal?.aborted || isSchedulerRequestAbandoned(job.options)) {
+          dropped = true;
           this.#queue.splice(this.#queue.indexOf(job), 1);
           if (job.options.signal?.aborted) job.reject(job.options.signal.reason);
           else job.resolve(undefined);
         }
       }
+      if (dropped) this.#announce();
       let selectedIndex = -1;
       let selectedSlot: PoolSlot<TSupervisor> | null = null;
       for (let index = 0; index < this.#queue.length; index += 1) {
         const candidate = this.#queue[index]!;
         const slot = await this.#slotFor(candidate.model);
         if (this.#closed) return;
-        if (!slot || !this.#queue.includes(candidate)) continue;
-        selectedIndex = index;
+        if (!slot || !this.#claimable(slot, candidate)) continue;
+        selectedIndex = this.#queue.indexOf(candidate);
         selectedSlot = slot;
         break;
       }
@@ -398,6 +413,21 @@ export class ModelProcessPool<
           void this.#dispatch();
         });
     }
+  }
+
+  #maintain(action: () => Promise<void>): Promise<void> {
+    const operation = this.#maintenance.then(action);
+    this.#maintenance = operation.catch(() => undefined);
+    return operation;
+  }
+
+  #claimable(slot: PoolSlot<TSupervisor>, job: PendingJob<TSupervisor>): boolean {
+    return (
+      this.#queue.includes(job) &&
+      this.#slots.includes(slot) &&
+      !this.#releasing.has(slot) &&
+      slot.assignedModelId === job.model.id
+    );
   }
 
   async #slotFor(model: Model): Promise<PoolSlot<TSupervisor> | null> {

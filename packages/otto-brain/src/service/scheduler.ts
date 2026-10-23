@@ -190,6 +190,13 @@ export interface SchedulerOptions<TSupervisor extends SchedulerSupervisor = Sche
 /** Work kinds sharing the single resident model. Operations own a full turn. */
 export type SchedulerJobKind = "completion" | "calibrate" | "sweep" | "benchmark";
 
+export interface SchedulerOperationOptions extends Omit<
+  SchedulerSubmitOptions,
+  "kind" | "exclusive"
+> {
+  kind: Exclude<SchedulerJobKind, "completion">;
+}
+
 export interface SchedulerSubmitOptions {
   signal?: AbortSignal;
   kind?: SchedulerJobKind;
@@ -463,20 +470,12 @@ export class Scheduler<
    */
   #purgeAbandoned(): void {
     const dropped: QueuedJob<TSupervisor>[] = [];
-    const isAbandoned = (job: QueuedJob<TSupervisor>): boolean => {
-      try {
-        return job.abandoned?.() === true;
-      } catch {
-        // A predicate that throws is not permission to drop the job.
-        return false;
-      }
-    };
     this.#batch = this.#batch.filter((job) => {
-      if (!isAbandoned(job)) return true;
+      if (!isSchedulerRequestAbandoned(job)) return true;
       dropped.push(job);
       return false;
     });
-    for (const job of this.#take(isAbandoned)) dropped.push(job);
+    for (const job of this.#take(isSchedulerRequestAbandoned)) dropped.push(job);
     if (dropped.length === 0) return;
     this.logger?.(`dropping ${dropped.length} queued job(s) whose caller went away`);
     // Resolved, not rejected: the caller asked for this by leaving, and a
@@ -861,5 +860,15 @@ export class Scheduler<
       lastTurn: this.lastTurnId,
       active,
     };
+  }
+}
+
+export function isSchedulerRequestAbandoned(
+  options: Pick<SchedulerSubmitOptions, "abandoned">,
+): boolean {
+  try {
+    return options.abandoned?.() === true;
+  } catch {
+    return false;
   }
 }

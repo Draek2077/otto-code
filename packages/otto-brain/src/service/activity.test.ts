@@ -434,3 +434,17 @@ it("an older operation cannot clear a newer operation in the same process", () =
   newer.end();
   expect(readActivity(env)).toBeNull();
 });
+
+it("an older progress writer cannot replace a newer operation in the same process", () => {
+  vi.useFakeTimers();
+  try {
+    const older = beginActivity("scan", { env });
+    const newer = beginActivity("download", { env });
+    vi.advanceTimersByTime(1100);
+    older.update(0.5);
+    expect(readActivity(env)?.kind).toBe("download");
+    newer.end();
+  } finally {
+    vi.useRealTimers();
+  }
+});

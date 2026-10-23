@@ -117,7 +117,8 @@ and measured free slots are combined with the process ceiling without subtractin
 running requests twice. Session affinity preserves useful caches; slot handoffs
 await the supplied runtime eraser before posting a completion. Queued aborts
 settle immediately. Shutdown closes both queue levels and prevents work that was
-waiting on a load from starting afterwards.
+waiting on a load from starting afterwards. The injected loader receives a pool-lifetime
+abort signal; it must honor that signal during probes and before launching a child.
 
 `decideModelGate` enforces the host's selected model lock before admission. The
 activity tracker distinguishes processing, thinking and generating from actual

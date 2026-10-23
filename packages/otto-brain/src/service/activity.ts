@@ -83,6 +83,9 @@ export function beginActivity(
       if (ended) return;
       const now = Date.now();
       if (now - lastWriteMs < PROGRESS_WRITE_INTERVAL_MS) return;
+      const current = readActivityFile(env);
+      if (!current || current.pid !== record.pid || current.instanceId !== record.instanceId)
+        return;
       lastWriteMs = now;
       record.progress = clampProgress(progress);
       writeActivity(record, env);

@@ -117,6 +117,8 @@ export function statusChangeKey(snapshot: BrainStatusSnapshot): string {
       "queued",
     ]),
     schedulerWaiting: scheduler.waiting ?? null,
+    schedulerWaitingModelIds: scheduler.waitingModelIds ?? null,
+    schedulerActive: scheduler.active ?? null,
     schedulerLastTurn: scheduler.lastTurn ?? null,
     warning: telemetry.warning ?? null,
     slots,
@@ -273,7 +275,7 @@ export class BrainStatusPublisher {
 
   async #sample(): Promise<void> {
     const source = this.#source;
-    if (!source || this.#closed) return;
+    if (!source || this.#closed || this.#listeners.size === 0) return;
     if (this.#sampling) {
       this.#resample = true;
       return;
@@ -281,7 +283,7 @@ export class BrainStatusPublisher {
     this.#sampling = true;
     try {
       const snapshot = await source();
-      if (this.#closed) return;
+      if (this.#closed || this.#listeners.size === 0) return;
       const key = statusChangeKey(snapshot);
       // Always keep the newest body for replay, even when nothing significant
       // changed: a late subscriber should not get last minute's counters.

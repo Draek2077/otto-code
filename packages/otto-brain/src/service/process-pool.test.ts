@@ -42,7 +42,7 @@ class FakeSupervisor {
 function createPool(
   maxModels: number,
   parallelSlots = 1,
-  beforeLoad?: (reserved: number) => Promise<void>,
+  beforeLoad?: (reserved: number, signal: AbortSignal) => Promise<void>,
 ) {
   const supervisors: FakeSupervisor[] = [];
   const loads: { supervisor: FakeSupervisor; model: Model; profile: Profile | undefined }[] = [];
@@ -57,8 +57,8 @@ function createPool(
     createSupervisor: makeSupervisor,
     createScheduler: (supervisor, loadModel, onChange) =>
       new Scheduler<FakeSupervisor>({ supervisor, loadModel, onChange }),
-    loadModel: async (supervisor, target, _reservedElsewhereBytes, profile) => {
-      await beforeLoad?.(_reservedElsewhereBytes);
+    loadModel: async (supervisor, target, _reservedElsewhereBytes, profile, signal) => {
+      await beforeLoad?.(_reservedElsewhereBytes, signal);
       const fake = supervisor;
       loads.push({ supervisor: fake, model: target, profile });
       fake.state = "starting";
@@ -339,4 +339,38 @@ it("runs two real fixture children, protects a busy model and reaps the evicted 
       fs.rmSync(child.root, { recursive: true, force: true });
     }
   }
+});
+
+it("serializes overlapping reductions of the process limit", async () => {
+  const { pool } = createPool(3);
+  await Promise.all([pool.preload(model("a")), pool.preload(model("b")), pool.preload(model("c"))]);
+  await Promise.all([pool.configure(1), pool.configure(1), pool.configure(1)]);
+  expect(pool.supervisors()).toHaveLength(1);
+  await pool.preload(model("d"));
+  expect(pool.residentSupervisors()).toHaveLength(1);
+  await pool.stop();
+});
+
+it("passes lifetime cancellation to an in-flight loader before shutdown waits for it", async () => {
+  let entered = false;
+  let aborted = false;
+  const { pool } = createPool(1, 1, async (_reserved, signal) => {
+    entered = true;
+    await new Promise<void>((_resolve, reject) =>
+      signal.addEventListener(
+        "abort",
+        () => {
+          aborted = true;
+          reject(signal.reason);
+        },
+        { once: true },
+      ),
+    );
+  });
+  const loading = pool.preload(model("a"));
+  const rejected = expect(loading).rejects.toThrow("stopped");
+  await waitFor(() => entered);
+  await pool.stop();
+  await rejected;
+  expect(aborted).toBe(true);
 });
