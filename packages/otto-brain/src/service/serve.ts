@@ -5,7 +5,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { BrainConfig } from "../config/schema.js";
 import { resolveBrainPaths, type BrainPaths } from "../config/paths.js";
 import { acquireServiceOwnership } from "./ownership.js";
-import { writePidFile } from "./pid-lock.js";
+import { readPidFile, writePidFile, type PidRecord } from "./pid-lock.js";
 import { CertManager, resolveTlsOptions } from "./tls.js";
 import { ipv4 } from "./tailscale.js";
 import { readObject, sendJson, RequestError } from "./http-body.js";
@@ -91,7 +91,10 @@ function handler(
       json(response, isStopping() ? 503 : 200, { status: isStopping() ? "stopping" : "ok" });
       return;
     }
-    if (!authorized(request, token)) {
+    // Local stop has its own loopback + no-Origin + private lifetime proof.
+    // A saved replacement key must not lock its owner out of an explicit restart.
+    const localControl = route === "/__host/local/stop" && request.method === "POST";
+    if (!localControl && !authorized(request, token)) {
       json(response, 401, { error: "unauthorized" });
       return;
     }
@@ -241,6 +244,8 @@ export async function startService({
   let runtime = attachedRuntime;
   let server: http.Server | undefined;
   let certManager: CertManager | undefined;
+  let activeCertificate: string | undefined;
+  let pidRecord: PidRecord | undefined;
   let stopping = false;
   let stopped: Promise<void> | undefined;
   const stop = (): Promise<void> =>
@@ -278,8 +283,17 @@ export async function startService({
     if (tls) {
       certManager = new CertManager(tls);
       const pair = await certManager.load();
+      activeCertificate = pair.cert.toString("utf8");
       const secureServer = https.createServer(pair, listener);
-      certManager.on("renewed", (next) => secureServer.setSecureContext(next));
+      certManager.on("renewed", (next) => {
+        if (stopping) return;
+        secureServer.setSecureContext(next);
+        activeCertificate = next.cert.toString("utf8");
+        if (pidRecord && readPidFile(env)?.instanceId === ownership.instanceId) {
+          pidRecord = { ...pidRecord, certificate: activeCertificate };
+          writePidFile(pidRecord, env);
+        }
+      });
       server = secureServer;
     } else server = http.createServer(listener);
     const boundServer = server;
@@ -295,18 +309,17 @@ export async function startService({
       throw new Error("Brain did not bind a TCP listener");
     const port = address.port;
     const displayHost = tls?.hostname ?? host;
-    writePidFile(
-      {
-        pid: process.pid,
-        host,
-        port,
-        startedAt: new Date().toISOString(),
-        instanceId: ownership.instanceId,
-        secure: Boolean(tls),
-        displayHost,
-      },
-      env,
-    );
+    pidRecord = {
+      pid: process.pid,
+      host,
+      port,
+      startedAt: new Date().toISOString(),
+      instanceId: ownership.instanceId,
+      secure: Boolean(tls),
+      displayHost,
+      certificate: activeCertificate,
+    };
+    writePidFile(pidRecord, env);
     certManager?.start();
     return { server, host, port, secure: Boolean(tls), displayHost, stop };
   } catch (error) {

@@ -83,6 +83,33 @@ it("refuses browser-origin stop attempts even with a current lifetime proof", as
   expect(options.host.server.listening).toBe(true);
 });
 
+it("retains exact local stop control after staging a different access key and TLS location", async () => {
+  const options = await fixture(true);
+  const staged = structuredClone(options.config);
+  staged.auth = { mode: "token", token: "new-staged-owner-key" };
+  staged.tls = {
+    ...staged.tls,
+    mode: "files",
+    certFile: "/not-the-active-owner/certificate.crt",
+    hostname: "future-owner.invalid",
+  };
+  expect(options.record.certificate).toContain("BEGIN CERTIFICATE");
+  expect(options.record.certificate).not.toContain("PRIVATE KEY");
+  await expect(
+    localBrainRequest({ ...options, config: staged }, "/__host/local/stop", {
+      instanceId: "old-lifetime",
+    }),
+  ).rejects.toThrow("409");
+  expect(options.host.server.listening).toBe(true);
+  expect(
+    await localBrainRequest({ ...options, config: staged }, "/__host/local/stop", {
+      instanceId: options.record.instanceId,
+    }),
+  ).toMatchObject({ accepted: true });
+  await options.host.stop();
+  expect(readPidFile(options.env)).toBeNull();
+});
+
 it("consumes the owning host event feed and releases demand on client cancellation", async () => {
   const options = await fixture(false, true);
   const controller = new AbortController();

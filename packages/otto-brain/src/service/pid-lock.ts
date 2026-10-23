@@ -20,6 +20,8 @@ export interface PidRecord {
   displayHost?: string;
   /** Identifies the owning host lifetime, independently of PID reuse. */
   instanceId?: string;
+  /** Public trust material for this active listener, independent of staged TLS settings. */
+  certificate?: string;
 }
 
 export function writePidFile(record: PidRecord, env: NodeJS.ProcessEnv = process.env): void {
@@ -39,6 +41,11 @@ export function readPidFile(env: NodeJS.ProcessEnv = process.env): PidRecord | n
       typeof record.host !== "string" ||
       !Number.isInteger(record.port) ||
       typeof record.startedAt !== "string"
+    )
+      return null;
+    if (
+      record.certificate !== undefined &&
+      (typeof record.certificate !== "string" || record.certificate.length > 131072)
     )
       return null;
     return record;

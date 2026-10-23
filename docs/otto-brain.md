@@ -43,6 +43,10 @@ can be cleared with `null`; model locks use a JSON array. `share` saves network,
 TLS and access intent without starting or restarting a host. A newly generated
 key is returned once by that command; later reads report only whether a key exists.
 Saved transport changes take effect on an explicit host restart.
+The private running-host record retains the active listener's public certificate.
+Exact local stop uses that trust material and its private lifetime proof, so a
+staged certificate location or replacement access key cannot lock its owner out
+of restarting. Browser Origins and mismatched lifetimes are rejected.
 
 The host claims its home before binding a listener. It records a per-lifetime
 instance ID as well as the PID, refuses another live owner, and releases only its

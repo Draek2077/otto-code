@@ -132,7 +132,9 @@ it("masks credentials and does not advertise unimplemented model operations", as
   const headers = { Authorization: "Bearer host-fixture-key" };
   expect((await fetch(`${base}/health`)).status).toBe(200);
   expect((await fetch(`${base}/__host/config`)).status).toBe(401);
-  const config = await (await fetch(`${base}/__host/config`, { headers })).json();
+  const config = BrainConfigSchema.parse(
+    await (await fetch(`${base}/__host/config`, { headers })).json(),
+  );
   expect(config.auth.token).toBe("********");
   expect(config.hfToken).toBe("********");
   const capabilities = await (await fetch(`${base}/__host/capabilities`, { headers })).json();

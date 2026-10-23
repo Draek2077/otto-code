@@ -16,6 +16,9 @@ export interface LocalBrainClientOptions {
 }
 
 function certificate(options: LocalBrainClientOptions): Buffer | undefined {
+  if (options.record.secure && options.record.certificate)
+    return Buffer.from(options.record.certificate);
+  // COMPAT(brainActiveCertificate): added in v0.10.0, remove after 2027-04-23.
   if (!options.record.secure || options.config.tls.mode === "tailscale") return undefined;
   if (options.config.tls.mode === "files") {
     if (!options.config.tls.certFile) throw new Error("Brain TLS certificate is not configured");
@@ -42,7 +45,8 @@ function localRequestOptions(
   if (host === "0.0.0.0") host = "127.0.0.1";
   else if (host === "::") host = "::1";
   const headers: http.OutgoingHttpHeaders = {};
-  if (config.auth.mode === "token" && config.auth.token)
+  // Exact private lifetime proof authorizes local stop, independently of a staged key rotation.
+  if (route !== "/__host/local/stop" && config.auth.mode === "token" && config.auth.token)
     headers.authorization = `Bearer ${config.auth.token}`;
   if (payload) {
     headers["content-type"] = "application/json";
@@ -58,6 +62,7 @@ function localRequestOptions(
     ...(record.secure
       ? {
           ca: certificate(options),
+          allowPartialTrustChain: Boolean(record.certificate),
           servername: record.displayHost ?? config.tls.hostname ?? "localhost",
         }
       : {}),
