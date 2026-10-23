@@ -26,6 +26,7 @@ it("imports public built entry points without touching a home or starting a host
     "models/index",
     "service/serve",
     "service/supervisor",
+    "ops/index",
     "cli",
   ].map((name) => pathToFileURL(path.join(packageRoot, `dist/${name}.js`)).href);
   const child = spawnSync(

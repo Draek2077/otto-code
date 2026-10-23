@@ -50,6 +50,12 @@
       "import": "./src/runtime/index.ts",
       "default": "./src/runtime/index.ts"
     },
+    "./operations": {
+      "types": "./dist/ops/index.d.ts",
+      "node": "./dist/ops/index.js",
+      "import": "./src/ops/index.ts",
+      "default": "./src/ops/index.ts"
+    },
     "./models": {
       "types": "./dist/models/index.d.ts",
       "node": "./dist/models/index.js",

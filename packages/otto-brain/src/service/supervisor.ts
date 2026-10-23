@@ -9,6 +9,7 @@ import type { Profile, ProfilesStore } from "../config/schema.js";
 import { getCalibrationForBudget } from "../config/profiles.js";
 import { resolveHostingProfileForLaunch } from "../config/hosting-profiles.js";
 import type { Model, Runtime } from "../types.js";
+import { formatBrainLog, type BrainLogArea } from "./log-format.js";
 import {
   llamaCppRuntimeDriver,
   type ModelServerLaunch,
@@ -25,6 +26,7 @@ export interface SupervisorOptions {
   internalPort?: number;
   readyTimeoutMs?: number;
   logVerbosity?: number;
+  readUsedBytes?(signal?: AbortSignal): Promise<number | null>;
 }
 
 interface OwnedChild {
@@ -41,6 +43,15 @@ export class Supervisor extends EventEmitter {
   lastError: string | null = null;
   launch: ModelServerLaunch | null = null;
   logLines: string[] = [];
+  allocationLogLines: string[] = [];
+  startedAt: Date | null = null;
+  loadSeconds: number | null = null;
+  vramAtReadyBytes: number | null = null;
+  vramBaselineBytes: number | null = null;
+  args: string[] | null = null;
+  command: string | null = null;
+  readonly host = "127.0.0.1";
+  logVerbosity: number;
   private owned: OwnedChild | null = null;
   private stopping: Promise<void> | null = null;
   private loading: AbortController | null = null;
@@ -51,12 +62,41 @@ export class Supervisor extends EventEmitter {
     super();
     this.driver = options.driver ?? llamaCppRuntimeDriver;
     this.internalPort = options.internalPort ?? DEFAULT_INTERNAL_PORT;
+    this.logVerbosity = options.logVerbosity ?? 3;
     if (!Number.isInteger(this.internalPort) || this.internalPort < 1 || this.internalPort > 65535)
       throw new Error("Brain internal port must be between 1 and 65535");
   }
 
   get upstream(): string {
     return `http://127.0.0.1:${this.internalPort}`;
+  }
+
+  get runtime(): Runtime {
+    return this.options.runtime;
+  }
+
+  private setState(state: SupervisorState): void {
+    this.state = state;
+    this.emit("state", { state });
+  }
+
+  private appendLog(line: string): void {
+    if (!line) return;
+    this.logLines.push(line);
+    if (this.logLines.length > 10000) this.logLines.splice(0, this.logLines.length - 10000);
+    if (
+      /buffer size|memory breakdown|\|\s*-\s*(?:MTL\d+|Metal|Host|CPU)\b|KV .*split|offloading \d+ layers? to cpu/iu.test(
+        line,
+      )
+    ) {
+      this.allocationLogLines.push(line);
+      if (this.allocationLogLines.length > 512) this.allocationLogLines.shift();
+    }
+    this.emit("log", line);
+  }
+
+  recordLog(line: string, area: BrainLogArea = "model"): void {
+    this.appendLog(formatBrainLog(area, line));
   }
 
   status() {
@@ -68,6 +108,9 @@ export class Supervisor extends EventEmitter {
       lastError: this.lastError,
       upstream: this.upstream,
       runtime: this.options.runtime.label,
+      startedAt: this.startedAt?.toISOString() ?? null,
+      loadSeconds: this.loadSeconds,
+      vramBytes: this.vramAtReadyBytes,
     };
   }
 
@@ -79,7 +122,12 @@ export class Supervisor extends EventEmitter {
     const loading = new AbortController();
     this.loading = loading;
     const cancellation = signal ? AbortSignal.any([loading.signal, signal]) : loading.signal;
-    this.state = "starting";
+    this.model = model;
+    this.profile = profile;
+    this.lastError = null;
+    this.startedAt = null;
+    this.loadSeconds = null;
+    this.setState("starting");
     try {
       // A healthy process already on this port must never satisfy this child's readiness.
       await assertPortAvailable(this.internalPort);
@@ -87,8 +135,8 @@ export class Supervisor extends EventEmitter {
       await this.launchModel(model, profile, cancellation);
     } catch (error) {
       if (!this.owned && this.state === "starting") {
-        this.state = cancellation.aborted ? "stopped" : "failed";
         this.lastError = cancellation.aborted ? null : String(error);
+        this.setState(cancellation.aborted ? "stopped" : "failed");
       }
       throw error;
     } finally {
@@ -112,14 +160,22 @@ export class Supervisor extends EventEmitter {
       paths: this.options.paths,
       host: "127.0.0.1",
       port: this.internalPort,
-      logVerbosity: this.options.logVerbosity ?? 3,
+      logVerbosity: this.logVerbosity,
     });
     this.model = model;
     this.profile = resolved;
     this.launch = launch;
+    this.args = launch.args;
+    this.command = launch.command;
     this.lastError = null;
     this.logLines = [];
-    this.state = "starting";
+    this.allocationLogLines = [];
+    this.loadSeconds = null;
+    this.vramAtReadyBytes = null;
+    this.vramBaselineBytes = (await this.options.readUsedBytes?.(signal)) ?? null;
+    signal.throwIfAborted();
+    this.startedAt = new Date();
+    this.recordLog(`launching: ${this.driver.processName} (${model.displayName})`);
     const child = spawn(launch.executable, launch.args, {
       cwd: launch.cwd,
       env: launch.env,
@@ -133,14 +189,17 @@ export class Supervisor extends EventEmitter {
     if (signal?.aborted) abort();
     try {
       await this.waitReady(owned, launch.readinessPath);
-      this.state = "ready";
+      this.loadSeconds = (Date.now() - this.startedAt.getTime()) / 1000;
+      this.vramAtReadyBytes = (await this.options.readUsedBytes?.(signal)) ?? null;
+      signal.throwIfAborted();
+      this.setState("ready");
       this.emit("ready", this.status());
     } catch (error) {
       const cancelled = (owned.controller.signal.aborted && !owned.failure) || signal?.aborted;
       await this.stop();
       if (!cancelled) {
-        this.state = "failed";
         this.lastError = error instanceof Error ? error.message : String(error);
+        this.setState("failed");
       }
       throw error;
     } finally {
@@ -165,7 +224,7 @@ export class Supervisor extends EventEmitter {
       owned.failure = new Error(this.driver.describeProcessExit({ code, signal }));
       this.lastError = owned.failure.message;
       const wasReady = this.state === "ready";
-      this.state = "failed";
+      this.setState("failed");
       owned.controller.abort(owned.failure);
       if (wasReady) this.emit("crashed", this.status());
     });
@@ -176,8 +235,11 @@ export class Supervisor extends EventEmitter {
         pending = (pending + chunk.toString()).slice(-65536);
         const lines = pending.split(/\r?\n/u);
         pending = lines.pop() ?? "";
-        for (const line of lines) this.logLines.push(launch.formatLogLine(line));
-        if (this.logLines.length > 10000) this.logLines.splice(0, this.logLines.length - 10000);
+        for (const line of lines) this.appendLog(launch.formatLogLine(line));
+      });
+      stream?.on("end", () => {
+        this.appendLog(launch.formatLogLine(pending));
+        pending = "";
       });
     }
     return owned;
@@ -238,10 +300,10 @@ export class Supervisor extends EventEmitter {
     if (this.stopping) return this.stopping;
     const owned = this.owned;
     if (!owned) {
-      this.state = "stopped";
+      this.setState("stopped");
       return Promise.resolve();
     }
-    this.state = "stopping";
+    this.setState("stopping");
     owned.controller.abort(new Error("Brain model stopped"));
     const kill = () => {
       owned.process.kill("SIGKILL");
@@ -254,7 +316,7 @@ export class Supervisor extends EventEmitter {
       clearTimeout(timer);
       signal?.removeEventListener("abort", kill);
       if (this.owned === owned) this.owned = null;
-      this.state = "stopped";
+      this.setState("stopped");
       this.stopping = null;
     });
     return this.stopping;

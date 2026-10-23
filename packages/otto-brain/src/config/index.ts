@@ -10,5 +10,7 @@ export {
   loadCatalog,
 } from "./store.js";
 export { applyEnvOverrides } from "./env.js";
-export { defaultProfile, forModel } from "./profiles.js";
+export * from "./profiles.js";
+export * from "./profile-edit.js";
+export * from "./hosting-profiles.js";
 export * from "./schema.js";

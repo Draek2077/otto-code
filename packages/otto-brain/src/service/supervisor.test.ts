@@ -158,3 +158,43 @@ it("stopping before child creation cancels the launch transaction", async () => 
   expect(supervisor.state).toBe("stopped");
   expect(supervisor.status().pid).toBeNull();
 });
+
+it("retains closing allocation lines and emits measured readiness to operation consumers", async () => {
+  const samples = [100, 800];
+  const created = await createSupervisorFixture("logs", 5000, {
+    readUsedBytes: async () => samples.shift() ?? null,
+  });
+  fixtures.push(created);
+  const { supervisor, model, profile } = created;
+  const states: string[] = [];
+  const logs: string[] = [];
+  supervisor.on("state", ({ state }: { state: string }) => states.push(state));
+  supervisor.on("log", (line: string) => logs.push(line));
+  await supervisor.start(model, profile);
+  expect(supervisor.vramBaselineBytes).toBe(100);
+  expect(supervisor.vramAtReadyBytes).toBe(800);
+  expect(supervisor.loadSeconds).toBeGreaterThanOrEqual(0);
+  expect(supervisor.args).toContain(model.modelPath);
+  await supervisor.stop();
+  expect(states).toEqual(["starting", "ready", "stopping", "stopped"]);
+  expect(supervisor.allocationLogLines).toHaveLength(1);
+  expect(supervisor.allocationLogLines[0]).toContain("Metal KV buffer size = 1.00 MiB");
+  expect(logs).toEqual(supervisor.logLines);
+  expect(logs[0]).not.toContain(model.modelPath);
+});
+
+it("does not launch a child after cancellation during the baseline memory probe", async () => {
+  const controller = new AbortController();
+  const created = await createSupervisorFixture("ready", 5000, {
+    readUsedBytes: async () => {
+      controller.abort(new Error("probe cancelled"));
+      return 0;
+    },
+  });
+  fixtures.push(created);
+  await expect(
+    created.supervisor.start(created.model, created.profile, controller.signal),
+  ).rejects.toThrow("probe cancelled");
+  expect(created.supervisor.status().pid).toBeNull();
+  expect(created.supervisor.state).toBe("stopped");
+});

@@ -3,14 +3,18 @@ import path from "node:path";
 import net from "node:net";
 import { once } from "node:events";
 import { fixtureRoot } from "./test-fixtures.js";
-import { Supervisor } from "./src/service/supervisor.js";
+import { Supervisor, type SupervisorOptions } from "./src/service/supervisor.js";
 import { resolveBrainPaths } from "./src/config/paths.js";
 import { ProfilesStoreSchema } from "./src/config/schema.js";
 import { defaultProfile } from "./src/config/profiles.js";
 import { llamaCppRuntimeDriver } from "./src/runtime/model-server-driver.js";
 import type { Model, Runtime } from "./src/types.js";
 
-export async function createSupervisorFixture(mode = "ready", timeout = 5000) {
+export async function createSupervisorFixture(
+  mode = "ready",
+  timeout = 5000,
+  probes: Pick<SupervisorOptions, "readUsedBytes"> = {},
+) {
   const root = fs.mkdtempSync(path.join(fixtureRoot(), "brain-model-child-"));
   const paths = resolveBrainPaths({ OTTO_HOME: root });
   const script = path.join(root, "fixture.mjs");
@@ -21,6 +25,7 @@ export async function createSupervisorFixture(mode = "ready", timeout = 5000) {
     const args = process.argv.slice(2);
     const mode = ${JSON.stringify(mode)};
     if (mode === 'exit') process.exit(23);
+    if (mode === 'logs') process.stdout.write('Metal KV buffer size = 1.00 MiB');
     const port = Number(args[args.indexOf('--port') + 1]);
     const server = http.createServer((req, res) => {
       if (req.url === '/health') { res.writeHead(mode === 'loading' ? 503 : 200); res.end('{}'); }
@@ -56,6 +61,7 @@ export async function createSupervisorFixture(mode = "ready", timeout = 5000) {
     source: "managed",
   };
   const supervisor = new Supervisor({
+    ...probes,
     runtime,
     paths,
     internalPort: address.port,

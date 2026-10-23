@@ -10,7 +10,8 @@ configuration persistence, home ownership, HTTP/HTTPS, credential masking and ho
 shutdown. The library also provides concrete llama.cpp process supervision,
 runtime acquisition and model inventory/download operations. Its scheduling library
 provides per-model admission, shared exclusive operations and a bounded process pool.
-Quality operations, full CLI coverage, Remote Brain integration and the existing Brain
+Capacity/quality operation libraries are also available. Their public management
+composition, full CLI coverage, Remote Brain integration and the existing Brain
 renderer remain restoration work tracked in Otto Knowledge. This package is not
 yet the complete Brain product. `serve` still starts an unloaded host.
 
@@ -126,6 +127,57 @@ stream signals, including concurrent requests. The demand-owned status publisher
 coalesces complete snapshots and stops sampling when its last listener leaves.
 These library components are not yet wired to `serve` or Otto's app; no new host
 management or UI capability is advertised by this checkpoint.
+
+## Capacity and quality libraries
+
+The `operations` export supplies calibration, reasoning sweeps, benchmarks,
+transcript replay, history/report generation and diagnostic samplers. Importing
+these APIs does not resolve a home, probe hardware, create a process or start an
+operation. They are library APIs; the current host does not advertise new HTTP
+management capabilities merely because these functions exist.
+
+Calibration and sweeps require a `ModelOperationProcess` lease from the owning
+process pool. They never create an independent supervisor. Every temporary launch
+uses that lease, and teardown restores the process's logging verbosity and releases
+the allocation. Cancellation reaches probes, private completion requests and child
+commands. The host must pass the operation signal into the lease's loader too.
+Calibration measures allocation at two or more validated context sizes, rejects
+missing measurements and CPU KV spill, and accounts for enabled bundle components.
+Metal allocation logs remain available after shutdown. A failed calibration does
+not manufacture a measurement or replace the last stored result.
+
+Profile editing keeps stable calibration/group identities, clamps supported
+settings against model/runtime capabilities and marks changed allocation inputs
+for recalibration. An unrelated settings edit does not invalidate a measurement.
+The existing hosting-profile/template materialization remains host-owned.
+
+Benchmark tasks retain their existing tool, repair-loop, long-horizon, context and
+concurrency scoring. The suite accepts an injected chat port and explicit Python
+interpreter, including `null` to disable discovery. A process-credit score without
+executed tests is labeled accordingly. Native timing/usage fields are retained
+when supplied, rather than inventing token rates from character counts.
+
+Repository benchmarks clone an explicit local source into a generated disposable
+checkout. Reset, oracle checkout, installation, build and tests refuse ordinary
+source directories or mismatched ownership. Tests require explicit oracle file
+filters and one worker. The owning job must call the returned `dispose()` after
+all tasks/children settle. Windows npm/npx commands invoke their JavaScript entry
+points with literal argument arrays and no command shell. Running a repository
+benchmark can install dependencies and execute project code inside that owned
+copy; importing or preparing the package does neither.
+
+Scores/transcripts/reports accept an explicit host environment and retain the
+existing results paths. Writes are private and atomic; same-instant runs receive
+distinct identities. Historical score/config keys and unknown metadata are not
+rewritten. Malformed score presentation fields and transcript records are skipped
+without deleting their originals. Transcript replay uses stored exchanges and
+does not contact a model; execution/interpreter/cancellation options still apply.
+
+One append-only run log retains child and operation sources across model switches.
+Rapid service restarts create distinct files. Tail reads are bounded, and retention
+only considers expired Brain session logs. Per-resident slot trackers prevent rate
+history from crossing model processes. Benchmark health sampling has at most one
+probe in flight and aborts its probe when stopped.
 
 ## Verification
 

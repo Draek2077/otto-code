@@ -2,6 +2,7 @@
 export * from "./config/index.js";
 export * from "./runtime/index.js";
 export * from "./models/index.js";
+export * from "./ops/index.js";
 export { Supervisor, type SupervisorOptions, type SupervisorState } from "./service/supervisor.js";
 export type {
   Model,
