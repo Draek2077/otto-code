@@ -7,7 +7,7 @@ maps it to the existing public package `@otto-code/brain`. Its executable remain
 
 The standalone CLI provides `serve`, detached `start`/`stop`/`restart`, `status`,
 `scan`, `catalog`, `search`, `pull`, `add`, `config show`/`set`, `runtime list`/`install`/`select`/`remove`,
-`calibrate`, `sweep`, `bench` and help,
+`calibrate`, `sweep`, `bench`, `share` and help,
 configuration persistence, home ownership, HTTP/HTTPS, credential masking and host
 shutdown. The library also provides concrete llama.cpp process supervision,
 runtime acquisition and model inventory/download operations. Its scheduling library
@@ -27,6 +27,22 @@ runtimes, templates and results retain their historical paths. Configuration
 validation errors leave the original file intact. Profile/catalog stores preserve
 unknown user fields; curated catalog entries retain the existing refresh behavior.
 Loading a configuration never launches a runtime or applies autostart intent.
+
+Configuration writers use a private exclusive claim and an originating byte
+revision. The CLI, runtime selector and revisioned update API share this path;
+a peer edit is rejected rather than rebased. Reads through the revisioned API
+do not create a missing configuration. Unsupported or malformed files remain
+intact. An interrupted writer's `config.json.lock` fails closed and requires
+owner inspection; another writer never removes it on an elapsed-time guess.
+The final compare detects external editor changes before replacement, while an
+editor racing that final compare and rename remains outside the cooperative lock.
+
+`config set` accepts known root or dotted setting leaves, validates the complete
+configuration, and requires literal `true` or `false` for booleans. Nullable paths
+can be cleared with `null`; model locks use a JSON array. `share` saves network,
+TLS and access intent without starting or restarting a host. A newly generated
+key is returned once by that command; later reads report only whether a key exists.
+Saved transport changes take effect on an explicit host restart.
 
 The host claims its home before binding a listener. It records a per-lifetime
 instance ID as well as the PID, refuses another live owner, and releases only its

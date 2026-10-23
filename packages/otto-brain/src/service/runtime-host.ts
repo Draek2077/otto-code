@@ -1,6 +1,6 @@
 /** Runtime management effects stay on the owning Brain host. */
 import { createHash } from "node:crypto";
-import { loadPersistedConfig, saveBrainConfig } from "../config/store.js";
+import { readBrainConfigRevision, updateBrainConfig } from "../config/revision-store.js";
 import { applyEnvOverrides } from "../config/env.js";
 import { queryNvidia } from "../gpu.js";
 import {
@@ -45,9 +45,10 @@ export function createRuntimeManagement(
         return null;
       }
     },
-    selectionRevision: () => revision(loadPersistedConfig(context.paths).runtime),
+    selectionRevision: () => revision(readBrainConfigRevision(context.paths).config.runtime),
     select: (runtime, expectedRevision) => {
-      const persisted = loadPersistedConfig(context.paths);
+      const origin = readBrainConfigRevision(context.paths);
+      const persisted = origin.config;
       if (expectedRevision !== undefined && revision(persisted.runtime) !== expectedRevision)
         return false;
       const selection = {
@@ -61,7 +62,7 @@ export function createRuntimeManagement(
         effective.runtime.source !== selection.source
       )
         throw new RequestError(409, "Runtime selection is controlled by the host environment");
-      saveBrainConfig(next, context.paths);
+      updateBrainConfig(origin.revision, () => next, context.paths);
       context.config.runtime = effective.runtime;
       return true;
     },

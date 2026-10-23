@@ -67,8 +67,8 @@ export class CommandError extends Error implements CommandErrorShape {
   code: string;
   details?: unknown;
 
-  constructor(shape: CommandErrorShape) {
-    super(shape.message);
+  constructor(shape: CommandErrorShape, options?: ErrorOptions) {
+    super(shape.message, options);
     this.name = "CommandError";
     this.code = shape.code;
     this.details = shape.details;

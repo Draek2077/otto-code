@@ -9,7 +9,7 @@
 import { randomBytes } from "node:crypto";
 import type { Command } from "commander";
 
-import { loadPersistedConfig, saveBrainConfig } from "../config/index.js";
+import { readBrainConfigRevision, updateBrainConfig } from "../config/index.js";
 import type { BrainConfig } from "../config/schema.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { CommandError } from "../output/types.js";
@@ -108,7 +108,8 @@ export async function runShareCommand(
   options: ShareOptions,
   _command: Command,
 ): Promise<AnyCommandResult<ShareStatus>> {
-  const config = loadPersistedConfig();
+  const origin = readBrainConfigRevision();
+  const config = origin.config;
 
   const anyChange = hasShareChange(options);
   if (!anyChange) {
@@ -120,7 +121,7 @@ export async function runShareCommand(
     config.auth.mode = "none";
     config.allowInsecureBind = false;
     config.allowRemoteConfig = false;
-    saveBrainConfig(config);
+    updateBrainConfig(origin.revision, () => config);
     return { type: "single", data: toStatus(config, null), schema: shareSchema };
   }
 
@@ -165,7 +166,7 @@ export async function runShareCommand(
     config.allowRemoteConfig = options.allowConfig;
   }
 
-  saveBrainConfig(config);
+  updateBrainConfig(origin.revision, () => config);
   return { type: "single", data: toStatus(config, generatedKey), schema: shareSchema };
 }
 

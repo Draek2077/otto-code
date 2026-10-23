@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { fixtureRoot } from "../../test-fixtures.js";
 import path from "node:path";
 import type { Command } from "commander";
@@ -51,4 +51,52 @@ it("redacts credentials from command results while retaining the saved configura
   const saved = loadPersistedConfig(resolveBrainPaths({ OTTO_HOME: dir }));
   expect(saved.hfToken).toBe("fixture-private-hf-key");
   expect(saved.auth.token).toBe("fixture-private-host-key");
+});
+
+it.each(["yes", "0", "", "false-ish"])(
+  "rejects ambiguous booleans without creating configuration: %s",
+  async (value) => {
+    const home = makeTmpHome();
+    const paths = resolveBrainPaths({ OTTO_HOME: home });
+    await expect(runConfigSetCommand("enabled", value, {}, cmd)).rejects.toMatchObject({
+      code: "INVALID_VALUE",
+    });
+    expect(existsSync(paths.configFile)).toBe(false);
+  },
+);
+
+it("sets supported defaults, runtime, residency and nullable owner paths without changing peers", async () => {
+  const home = makeTmpHome();
+  await runConfigSetCommand("autoStart", "true", {}, cmd);
+  await runConfigSetCommand("defaults.parallelSlots", "3", {}, cmd);
+  await runConfigSetCommand("runtime.path", "/owner/llama-server", {}, cmd);
+  await runConfigSetCommand("runtime.path", "null", {}, cmd);
+  await runConfigSetCommand("modelsDir", "/owner/models", {}, cmd);
+  await runConfigSetCommand("modelsDir", "null", {}, cmd);
+  await runConfigSetCommand("lockedModels", '["model-a","model-b"]', {}, cmd);
+  const config = loadPersistedConfig(resolveBrainPaths({ OTTO_HOME: home }));
+  expect(config).toMatchObject({
+    enabled: false,
+    autoStart: true,
+    defaults: { parallelSlots: 3 },
+    runtime: { path: null },
+    modelsDir: null,
+    lockedModels: ["model-a", "model-b"],
+  });
+});
+
+it.each([
+  ["version", "2"],
+  ["auth.__proto__", "no"],
+  ["runtime.source.extra", "auto"],
+  ["runtime.source", "invalid"],
+  ["maxLoadedModels", "30"],
+  ["lockedModels", "[4]"],
+])("preserves the original config after an invalid edit to %s", async (key, value) => {
+  const home = makeTmpHome();
+  await runConfigSetCommand("enabled", "false", {}, cmd);
+  const paths = resolveBrainPaths({ OTTO_HOME: home });
+  const bytes = readFileSync(paths.configFile, "utf8");
+  await expect(runConfigSetCommand(key, value, {}, cmd)).rejects.toThrow();
+  expect(readFileSync(paths.configFile, "utf8")).toBe(bytes);
 });

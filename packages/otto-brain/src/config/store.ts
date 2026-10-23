@@ -21,6 +21,7 @@ import {
 } from "./schema.js";
 import { applyEnvOverrides } from "./env.js";
 import { seedBuiltinHostingProfiles } from "./builtin-hosting-profiles.js";
+import { readBrainConfigRevision, updateBrainConfig } from "./revision-store.js";
 
 function readJson<S extends z.ZodTypeAny>(file: string, schema: S): z.infer<S> | null {
   if (!existsSync(file)) return null;
@@ -119,8 +120,7 @@ export function loadPersistedConfig(paths: BrainPaths = resolveBrainPaths()): Br
   const current = readJson(paths.configFile, BrainConfigSchema);
   if (current) return current;
   const seeded = BrainConfigSchema.parse({});
-  writeJson(paths.configFile, seeded);
-  return seeded;
+  return updateBrainConfig(readBrainConfigRevision(paths).revision, () => seeded, paths).config;
 }
 
 /** Effective config: persisted file with env overrides layered on top. */
@@ -136,5 +136,5 @@ export function saveBrainConfig(
   paths: BrainPaths = resolveBrainPaths(),
 ): void {
   const validated = BrainConfigSchema.parse(config);
-  writeJson(paths.configFile, validated);
+  updateBrainConfig(readBrainConfigRevision(paths).revision, () => validated, paths);
 }

@@ -10,6 +10,12 @@ export {
   loadCatalog,
 } from "./store.js";
 export { applyEnvOverrides } from "./env.js";
+export {
+  readBrainConfigRevision,
+  updateBrainConfig,
+  BrainConfigWriteError,
+  type BrainConfigRevision,
+} from "./revision-store.js";
 export * from "./profiles.js";
 export * from "./profile-edit.js";
 export * from "./hosting-profiles.js";
