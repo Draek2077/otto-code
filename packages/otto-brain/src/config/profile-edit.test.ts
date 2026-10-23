@@ -527,16 +527,27 @@ describe("profileWarnings", () => {
     }
   });
 
-  it("still shows the estimate for a sane profile, at the engine's default size", () => {
-    const model = makeModel();
-    const warnings = profileWarnings(makeProfile(model), model);
-    expect(warnings.filter((w) => w.field === "cachedChats")).toHaveLength(1);
-    const estimate = warnings.find((w) => w.field === "cachedChats")!;
-    expect(estimate.blocksStart).toBe(false);
-    expect(estimate.severity).toBe("info");
-    // 8 GiB is below half of any machine this code runs on, so the Default is
-    // muted rather than loud.
-    expect(estimate.message).toMatch(/^llama\.cpp's own limit applies: about 8\.0G of \d+\.\dG\.$/);
+  it.each([
+    { ramGiB: 8, severity: "error" },
+    { ramGiB: 16, severity: "warn" },
+    { ramGiB: 64, severity: "info" },
+  ])("prices the default cache against $ramGiB GiB of installed RAM", ({ ramGiB, severity }) => {
+    const totalmem = vi.spyOn(os, "totalmem").mockReturnValue(ramGiB * GIB);
+    try {
+      const model = makeModel();
+      const warnings = profileWarnings(makeProfile(model), model);
+      expect(warnings.filter((w) => w.field === "cachedChats")).toHaveLength(1);
+      const estimate = warnings.find((w) => w.field === "cachedChats")!;
+      expect(estimate.blocksStart).toBe(false);
+      expect(estimate.severity).toBe(severity);
+      // A CI runner can have 16 GiB or less. The warning follows the host,
+      // rather than assuming every machine has the developer's RAM capacity.
+      expect(estimate.message).toMatch(
+        /^llama\.cpp's own limit applies: about 8\.0G of \d+\.\dG\.$/,
+      );
+    } finally {
+      totalmem.mockRestore();
+    }
   });
 });
 
