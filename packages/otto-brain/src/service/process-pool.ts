@@ -183,6 +183,26 @@ export class ModelProcessPool<
     await this.submit(model, async () => undefined, { signal });
   }
 
+  /** Explicit reloads drain inference and retain pool reservation/slot ownership. */
+  async reload(
+    model: Model,
+    needsReload: (supervisor: TSupervisor) => boolean,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.submit(
+      model,
+      async (supervisor) => {
+        // The scheduler may just have loaded an unloaded model. Avoid a second launch.
+        if (!needsReload(supervisor)) return;
+        const slot = this.#slots.find((candidate) => candidate.supervisor === supervisor);
+        if (!slot) throw new Error("The model process is no longer in the pool");
+        await this.#loadSlot(slot, model, undefined, signal);
+        slot.scheduler.forgetSlots();
+      },
+      { exclusive: true, signal },
+    );
+  }
+
   /** Apply the host-owned process limit and retire excess idle processes. */
   async configure(maxModels: number): Promise<void> {
     this.#maxModels = normalizeModelLimit(maxModels);

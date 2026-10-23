@@ -19,6 +19,16 @@ import { addScanOptions, runScanCommand } from "./commands/scan.js";
 import { addCatalogOptions, runCatalogCommand } from "./commands/catalog.js";
 import { addSearchOptions, runSearchCommand } from "./commands/search.js";
 import {
+  addRuntimeListOptions,
+  addRuntimeInstallOptions,
+  addRuntimeRemoveOptions,
+  addRuntimeSelectOptions,
+  runRuntimeListCommand,
+  runRuntimeInstallCommand,
+  runRuntimeRemoveCommand,
+  runRuntimeSelectCommand,
+} from "./commands/runtime.js";
+import {
   addConfigShowOptions,
   addConfigSetOptions,
   runConfigShowCommand,
@@ -46,6 +56,13 @@ export function registerBrainCommands(program: Command): void {
   const config = program.command("config").description("Inspect and edit Brain configuration");
   addConfigShowOptions(config.command("show")).action(withOutput(runConfigShowCommand));
   addConfigSetOptions(config.command("set")).action(withOutput(runConfigSetCommand));
+  const runtime = program
+    .command("runtime")
+    .description("Manage the Brain host's llama.cpp runtimes");
+  addRuntimeListOptions(runtime.command("list")).action(withOutput(runRuntimeListCommand));
+  addRuntimeInstallOptions(runtime.command("install")).action(withOutput(runRuntimeInstallCommand));
+  addRuntimeRemoveOptions(runtime.command("remove")).action(withOutput(runRuntimeRemoveCommand));
+  addRuntimeSelectOptions(runtime.command("select")).action(withOutput(runRuntimeSelectCommand));
 }
 export function createBrainCommand(): Command {
   const program = new Command("brain").description("Manage Otto Brain");

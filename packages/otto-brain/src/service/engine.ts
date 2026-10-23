@@ -35,6 +35,8 @@ import { EngineManagement } from "./engine-management.js";
 import { buildInventoryRow, type InventoryState } from "./inventory.js";
 import { loadAll, rankModels, type RankedModel } from "../ops/results.js";
 import { ModelLibrary } from "./model-library.js";
+import { createRuntimeManagement } from "./runtime-host.js";
+import type { RuntimeManagement } from "./runtime-management.js";
 
 interface ResidentSignals {
   reasoning: ReasoningTracker;
@@ -48,6 +50,7 @@ export interface HostEnginePorts {
   gpu?(signal: AbortSignal): Promise<GpuInfo | null>;
   readUsedBytes?(signal?: AbortSignal): Promise<number | null>;
   runtime?(): Runtime | null;
+  runtimeList?(): Runtime[];
   ranking?(): RankedModel[];
 }
 const COMPLETIONS = new Set([
@@ -71,6 +74,7 @@ export class HostEngine implements BrainRuntime {
   readonly modelOperations: ModelOperations;
   private readonly management: EngineManagement;
   private readonly library: ModelLibrary;
+  private readonly runtimeManagement: RuntimeManagement;
   get capabilities() {
     return {
       apiVersion: 3,
@@ -82,11 +86,13 @@ export class HostEngine implements BrainRuntime {
       logEvents: true,
       processPool: true,
       profiles: true,
+      profileRevisions: true,
       budget: true,
       jobs: true,
       delete: true,
       rename: true,
       reset: true,
+      runtimes: true,
     };
   }
   private readonly lifetime = new AbortController();
@@ -184,6 +190,7 @@ export class HostEngine implements BrainRuntime {
       requireWrite: (request) => this.requireWrite(request),
       changed: () => this.events.notify(),
       inventory: (signal) => this.inventory(signal),
+      requiresRestart: (modelId, revision) => this.requiresRestart(modelId, revision),
     });
     this.library = new ModelLibrary({
       paths: context.paths,
@@ -193,6 +200,35 @@ export class HostEngine implements BrainRuntime {
       changed: () => this.events.notify(),
       requireWrite: (request) => this.requireWrite(request),
     });
+    this.runtimeManagement = createRuntimeManagement(context, {
+      jobs: this.jobs,
+      list: ports.runtimeList,
+      selected: this.runtime,
+      isRuntimeInUse: (runtime) => this.runtimeInUse(runtime),
+      changed: () => this.events.notify(),
+      requireWrite: (request) => this.requireWrite(request),
+    });
+  }
+
+  private runtimeInUse(runtime: Runtime): boolean {
+    if (this.pool.stats().queued > 0) return true;
+    if (
+      this.jobs
+        .summaries()
+        .some(
+          (job) =>
+            (job.state === "queued" || job.state === "running") && job.subject.modelId !== null,
+        )
+    )
+      return true;
+    return this.pool
+      .supervisors()
+      .some(
+        (process) =>
+          process.state === "starting" ||
+          process.state === "stopping" ||
+          (process.runtime?.exe === runtime.exe && process.state !== "stopped"),
+      );
   }
 
   async inventory(signal: AbortSignal) {
@@ -246,6 +282,9 @@ export class HostEngine implements BrainRuntime {
   ): Promise<number> {
     const store = this.profiles();
     const profile = temporary ?? forModel(store, model, this.context.config.defaults);
+    const revision = temporary ? null : this.modelProfiles.revision(model, store);
+    if (!temporary) process.logVerbosity = this.context.config.runtime.logVerbosity;
+    process.profileRevision = null;
     const calibration = getCalibrationForBudget(store, model, profile);
     const gpu = await this.gpu(signal);
     signal.throwIfAborted();
@@ -282,6 +321,7 @@ export class HostEngine implements BrainRuntime {
     this.signals.get(process)!.reasoning.onChange(() => this.events.notify());
     signal.throwIfAborted();
     await process.start(model, selected, signal);
+    process.profileRevision = revision;
     return reservation;
   }
 
@@ -372,6 +412,7 @@ export class HostEngine implements BrainRuntime {
     }
     const lifetime = requestLifetime(response, this.lifetime.signal);
     try {
+      if (await this.runtimeManagement.handle(request, response, lifetime.signal)) return true;
       if (await this.library.handle(request, response, lifetime.signal)) return true;
       if (await this.management.handle(request, response, lifetime.signal)) return true;
       if (request.method === "GET" && MODEL_LISTS.has(route)) {
@@ -417,8 +458,24 @@ export class HostEngine implements BrainRuntime {
     const modelId = new URL(request.url!, "http://brain.local").searchParams.get("id") ?? undefined;
     if (route === "/__host/model/load") {
       if (!modelId) throw new RequestError(400, "A model id is required");
-      await this.pool.preload(pickModel(this.models(), modelId), signal);
+      const model = pickModel(this.models(), modelId);
+      await this.pool.reload(
+        model,
+        () => this.requiresRestart(model.id, this.modelProfiles.revision(model)),
+        signal,
+      );
     } else await this.pool.unload(modelId);
+  }
+
+  private requiresRestart(modelId: string, revision: string): boolean {
+    const resident = this.pool.supervisorFor(modelId);
+    if (!resident || resident.state !== "ready") return false;
+    if (resident.profileRevision !== revision) return true;
+    try {
+      return resident.runtime?.exe !== this.runtime()?.exe;
+    } catch {
+      return true;
+    }
   }
 
   private async complete(

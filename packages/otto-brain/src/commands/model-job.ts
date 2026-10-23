@@ -4,14 +4,8 @@ import { pickModel } from "../models/pick.js";
 import { CommandError } from "../output/types.js";
 import type { ModelOperation } from "../service/model-operations.js";
 import { ModelJobRequestSchema } from "../service/model-job-options.js";
-import {
-  followBrainJob,
-  localJobTransport,
-  type BrainJobStatus,
-  type BrainJobTransport,
-} from "../service/job-client.js";
-import { localBrainRequest } from "../service/local-client.js";
-import { withOperationHost } from "./operation-host.js";
+import type { BrainJobStatus } from "../service/job-client.js";
+import { withCommandHost, waitForCommandJob, type HostCommandPort } from "./host-command.js";
 
 const capabilitiesSchema = z.object({
   jobs: z.boolean(),
@@ -23,9 +17,7 @@ const inventorySchema = z.object({
   lastModelId: z.string().nullable(),
 });
 const admittedSchema = z.object({ job: z.object({ id: z.string().min(1) }) });
-export interface ModelJobPort extends BrainJobTransport {
-  request(route: string, signal: AbortSignal, body?: unknown): Promise<unknown>;
-}
+export type ModelJobPort = HostCommandPort;
 export interface ModelJobOptions {
   operation: ModelOperation;
   model?: string;
@@ -60,46 +52,10 @@ export async function runHostedModelJob(
   });
   signal.throwIfAborted();
   const admitted = admittedSchema.parse(await port.request("/__host/jobs", signal, request));
-  let job: BrainJobStatus;
-  try {
-    job = await followBrainJob(port, admitted.job.id, signal);
-  } catch (error) {
-    // Only an explicit command interruption cancels this command's admitted job.
-    // A dropped feed must not cancel durable host work or another client's job.
-    if (!signal.aborted) throw error;
-    await port.request("/__host/jobs/cancel", AbortSignal.timeout(5000), { id: admitted.job.id });
-    throw new CommandError({
-      code: "CANCELED",
-      message: "Brain operation cancellation requested.",
-    });
-  }
-  if (job.state !== "completed")
-    throw new CommandError({
-      code: job.state === "canceled" ? "CANCELED" : "OPERATION_FAILED",
-      message:
-        job.state === "canceled"
-          ? "Brain operation was canceled."
-          : "Brain operation failed. Check the host logs.",
-    });
+  const job = await waitForCommandJob(port, admitted.job.id, signal);
   return { model, job };
 }
 
 export async function runModelJob(options: ModelJobOptions) {
-  const controller = new AbortController();
-  const interrupt = () => controller.abort(new Error("Brain command interrupted"));
-  process.once("SIGINT", interrupt);
-  try {
-    return await withOperationHost((client) =>
-      runHostedModelJob(
-        {
-          ...localJobTransport(client),
-          request: (route, signal, body) => localBrainRequest(client, route, body, signal),
-        },
-        options,
-        controller.signal,
-      ),
-    );
-  } finally {
-    process.off("SIGINT", interrupt);
-  }
+  return withCommandHost((port, signal) => runHostedModelJob(port, options, signal));
 }

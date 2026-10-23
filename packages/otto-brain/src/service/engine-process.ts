@@ -11,6 +11,7 @@ export class EngineProcess extends EventEmitter {
   residentId = randomUUID();
   model: Model | null = null;
   profile: Profile | null = null;
+  profileRevision: string | null = null;
   fit: FitResult | null = null;
   gpu: GpuInfo | null = null;
   private child: Supervisor | null = null;

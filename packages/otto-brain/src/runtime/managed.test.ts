@@ -10,6 +10,7 @@ import {
   describeLoaderFailure,
   installManagedRuntime,
   latestRuntimeBuild,
+  listRuntimeReleases,
   listManagedRuntimes,
   MissingAssetError,
   missingLibraryFrom,
@@ -26,6 +27,24 @@ import type { Runtime } from "../types.js";
 // rather than derived, because the naming scheme changed between tags: b4600
 // shipped `win-cuda-cu12.4-x64`, b10265 ships `win-cuda-12.4-x64`.
 const BASE = `https://github.com/ggml-org/llama.cpp/releases/download/${DEFAULT_LLAMA_BUILD}`;
+
+test("release lookup forwards caller cancellation and adds a bounded request lifetime", async () => {
+  const controller = new AbortController();
+  const received: AbortSignal[] = [];
+  vi.stubGlobal("fetch", async (_url: string, options: RequestInit) => {
+    if (options.signal) received.push(options.signal);
+    return new Response(JSON.stringify([{ tag_name: "b99999" }]), { status: 200 });
+  });
+  try {
+    assert.deepEqual(await listRuntimeReleases(10, controller.signal), [
+      { build: "b99999", publishedAt: null },
+    ]);
+    controller.abort();
+    assert.equal(received[0]?.aborted, true);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
 
 test("windows x64 with an NVIDIA GPU installs CUDA plus the cudart companion", () => {
   const spec = defaultRuntimeSpec(null, { platform: "win32", arch: "x64", hasNvidiaGpu: true });

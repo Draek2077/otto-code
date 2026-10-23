@@ -1,41 +1,28 @@
-/**
- * `otto brain runtime install|list` - manage the self-contained llama.cpp runtime.
- * `install` downloads a pinned build into $OTTO_HOME/otto-brain/runtimes so the
- * tool needs no other software; `list` shows every runtime found (managed first,
- * then LM Studio).
- */
+/** Runtime commands use host-issued identities and the host's ownership guards. */
 import type { Command } from "commander";
-
-import { loadBrainConfig } from "../config/index.js";
-import { resolveBrainPaths } from "../config/paths.js";
+import { z } from "zod/v3";
+import { DEFAULT_LLAMA_BUILD } from "../runtime/managed.js";
+import { pickModel } from "../models/pick.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { CommandError } from "../output/types.js";
-import {
-  DEFAULT_LLAMA_BUILD,
-  defaultRuntimeSpec,
-  installManagedRuntime,
-  MissingAssetError,
-  removeManagedRuntime,
-  resolveLatestBuildOrPin,
-  listAllRuntimes,
-  listRuntimeDevices,
-  probeNvidiaGpu,
-  supportedVariants,
-  type InstallProgress,
-  type RuntimeSpec,
-  type RuntimeTarget,
-  type RuntimeVariant,
-} from "../runtime/index.js";
-import type { Runtime } from "../types.js";
+import { withCommandHost, waitForCommandJob, type HostCommandPort } from "./host-command.js";
 
-export interface RuntimeRow {
-  label: string;
-  displayName: string;
-  version: string;
-  source: string;
-  dir: string;
-}
-
+const RuntimeRowSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  displayName: z.string(),
+  version: z.string(),
+  source: z.string(),
+  dir: z.string(),
+});
+export type RuntimeRow = z.infer<typeof RuntimeRowSchema>;
+const InventorySchema = z.object({ runtimes: z.array(RuntimeRowSchema) });
+const CapabilitiesSchema = z.object({
+  runtimes: z.literal(true),
+  jobs: z.literal(true),
+  events: z.literal(true),
+});
+const VariantSchema = z.enum(["auto", "cuda", "metal", "vulkan", "cpu"]);
 const runtimeSchema: OutputSchema<RuntimeRow> = {
   idField: "dir",
   columns: [
@@ -45,159 +32,118 @@ const runtimeSchema: OutputSchema<RuntimeRow> = {
       header: "SOURCE",
       field: "source",
       width: 10,
-      color: (v) => (v === "managed" ? "green" : undefined),
+      color: (value) => (value === "managed" ? "green" : undefined),
     },
     { header: "DIR", field: "dir", width: 50 },
   ],
 };
-
-function toRows(): RuntimeRow[] {
-  return listAllRuntimes().map((r) => ({
-    label: r.label,
-    displayName: r.displayName ?? `${r.label} · ${r.version}`,
-    version: r.version,
-    source: r.source,
-    dir: r.dir,
+async function inventory(port: HostCommandPort, signal: AbortSignal): Promise<RuntimeRow[]> {
+  const capabilities = CapabilitiesSchema.safeParse(
+    await port.request("/__host/capabilities", signal),
+  );
+  if (!capabilities.success)
+    throw new CommandError({
+      code: "UPDATE_HOST",
+      message: "Update the Brain host to manage runtimes.",
+    });
+  return InventorySchema.parse(await port.request("/__host/runtimes", signal)).runtimes;
+}
+function selectedRuntime(rows: RuntimeRow[], name: string): RuntimeRow {
+  return rows.find((row) => row.id === name || row.label === name) ?? pickModel(rows, name);
+}
+export function addRuntimeListOptions(command: Command): Command {
+  return command.description("List runtimes on the Brain host");
+}
+export function addRuntimeInstallOptions(command: Command): Command {
+  return command
+    .description("Download a self-contained llama.cpp runtime on the Brain host")
+    .option("--build <tag>", "official build tag, or latest", DEFAULT_LLAMA_BUILD)
+    .option("--variant <name>", "auto, cuda, metal, vulkan or cpu", "auto");
+}
+export function addRuntimeRemoveOptions(command: Command): Command {
+  return command
+    .description("Remove an unused Otto-managed runtime")
+    .argument("<name>", "host runtime id or runtime name");
+}
+export function addRuntimeSelectOptions(command: Command): Command {
+  return command
+    .description("Select an installed runtime without restarting a resident model")
+    .argument("<name>", "host runtime id, name or auto");
+}
+export async function runRuntimeListCommand(): Promise<AnyCommandResult<RuntimeRow>> {
+  return withCommandHost(async (port, signal) => ({
+    type: "list",
+    data: await inventory(port, signal),
+    schema: runtimeSchema,
   }));
 }
-
-export function addRuntimeListOptions(cmd: Command): Command {
-  return cmd.description("List available llama.cpp runtimes");
-}
-
-export async function runRuntimeListCommand(
-  _options: unknown,
-  _command: Command,
-): Promise<AnyCommandResult<RuntimeRow>> {
-  return { type: "list", data: toRows(), schema: runtimeSchema };
-}
-
-export function addRuntimeInstallOptions(cmd: Command): Command {
-  return cmd
-    .description("Download a self-contained llama.cpp runtime")
-    .option("--build <tag>", "llama.cpp release build tag (for example b10355)")
-    .option(
-      "--variant <name>",
-      `accelerator to install (${supportedVariants().join("|")}); defaults to the best one this machine can use`,
-    );
-}
-
-export function addRuntimeRemoveOptions(cmd: Command): Command {
-  return cmd.description("Remove one Otto-managed runtime").argument("<name>");
-}
-
-export async function runRuntimeRemoveCommand(
-  name: string,
-  _options: unknown,
-  _command: Command,
-): Promise<AnyCommandResult<RuntimeRow>> {
-  loadBrainConfig();
-  removeManagedRuntime(resolveBrainPaths().runtimesDir, name);
-  return { type: "list", data: toRows(), schema: runtimeSchema };
-}
-
-/**
- * Every warning this command emits is one line on purpose. The daemon's
- * BrainOpsManager keeps the *last* stderr line as the job's message, so a
- * multi-line warning would surface in the UI as a dangling fragment. As one line
- * it survives intact on both the CLI and the GUI.
- */
-function warn(message: string): void {
-  process.stderr.write(`  warning: ${message.replace(/\s+/gu, " ").trim()}\n`);
-}
-
-/** Download + extract a spec, reporting percentage and phase on stderr. */
-async function install(spec: RuntimeSpec, runtimesDir: string): Promise<Runtime> {
-  process.stderr.write(`  installing ${spec.label} (${spec.version})…\n`);
-  const runtime = await installManagedRuntime(spec, runtimesDir, (p: InstallProgress) => {
-    if (p.phase === "downloading" && p.totalBytes) {
-      const pct = Math.floor(((p.receivedBytes ?? 0) / p.totalBytes) * 100);
-      process.stderr.write(`  ${pct}%\r`);
-    }
-    if (p.phase === "extracting") process.stderr.write("\n  extracting…\n");
-  });
-  process.stderr.write("\n");
-  return runtime;
-}
-
-export async function runRuntimeInstallCommand(
+export async function runHostedRuntimeInstall(
+  port: HostCommandPort,
   options: { build?: string; variant?: string },
-  _command: Command,
-): Promise<AnyCommandResult<RuntimeRow>> {
-  loadBrainConfig();
-  const { runtimesDir } = resolveBrainPaths();
-
-  const available = supportedVariants();
-  if (options.variant && !available.includes(options.variant as RuntimeVariant)) {
+  signal: AbortSignal,
+): Promise<RuntimeRow> {
+  const build = options.build ?? DEFAULT_LLAMA_BUILD;
+  const variant = VariantSchema.safeParse(options.variant ?? "auto");
+  if (!variant.success || (build !== "latest" && !/^b[1-9]\d{0,8}$/.test(build)))
     throw new CommandError({
-      code: "UNSUPPORTED_VARIANT",
-      message:
-        `llama.cpp publishes no "${options.variant}" build for ${process.platform}/${process.arch}` +
-        ` - available: ${available.join(", ") || "(none)"}`,
+      code: "INVALID_RUNTIME",
+      message: "Choose an official build tag or latest and a supported runtime variant.",
     });
-  }
-
-  // Only "auto" needs the GPU probe, and only to choose between CUDA and Vulkan
-  // on the platforms that have both.
-  const target: RuntimeTarget = {
-    variant: (options.variant as RuntimeVariant | undefined) ?? "auto",
-    hasNvidiaGpu: options.variant ? undefined : await probeNvidiaGpu(),
-  };
-
-  // "latest" is a request to update, not a promise upstream can always keep: the
-  // lookup is unauthenticated and rate limited, so it falls back to the pin.
-  const resolvedLatest = options.build === "latest" ? await resolveLatestBuildOrPin() : null;
-  if (resolvedLatest?.warning) warn(resolvedLatest.warning);
-
-  let spec = defaultRuntimeSpec(resolvedLatest ? resolvedLatest.build : options.build, target);
-  let runtime: Runtime;
-  try {
-    runtime = await install(spec, runtimesDir);
-  } catch (error) {
-    // Asset names are not derivable from the build tag, and the scheme has
-    // already changed once (b4600 shipped `win-cuda-cu12.4-x64`, b10265 ships
-    // `win-cuda-12.4-x64`), so a tag resolved at run time can name assets that
-    // do not exist under it. The pin's names are the ones managed.test.ts holds,
-    // which makes it the only build this can fall back to. An explicit --build
-    // still fails loudly: the user named that tag on purpose.
-    if (
-      !(error instanceof MissingAssetError) ||
-      !resolvedLatest ||
-      spec.version === DEFAULT_LLAMA_BUILD
-    ) {
-      throw error;
-    }
-    warn(
-      `llama.cpp build ${spec.version} does not publish the asset this platform needs,` +
-        ` so Otto installed the pinned build ${DEFAULT_LLAMA_BUILD} instead.`,
+  await inventory(port, signal);
+  const choice = z
+    .object({ id: z.string() })
+    .parse(
+      await port.request("/__host/runtime/candidate", signal, { build, variant: variant.data }),
     );
-    spec = defaultRuntimeSpec(DEFAULT_LLAMA_BUILD, target);
-    runtime = await install(spec, runtimesDir);
-  }
-
-  // A GPU variant that finds no device still runs - on the CPU, at roughly a
-  // fortieth of the prefill throughput, and says nothing about it. Measured on
-  // WSL2, which carries no NVIDIA Vulkan ICD. Warn rather than fail: the runtime
-  // is genuinely installed and usable, just not accelerated.
-  if (spec.variant !== "cpu") {
-    const devices = await listRuntimeDevices(runtime);
-    if (devices.length === 0) {
-      warn(
-        `this ${spec.variant} runtime reports no GPU device, so inference will run` +
-          ` on the CPU until a working ${spec.variant} driver for this GPU is installed.`,
-      );
-    }
-  }
-
-  return {
+  const admitted = z
+    .object({ job: z.object({ id: z.string() }) })
+    .parse(await port.request("/__host/jobs/runtime-install", signal, { runtimeId: choice.id }));
+  const job = await waitForCommandJob(port, admitted.job.id, signal);
+  const result = z
+    .object({ runtimeId: z.string(), warning: z.string().nullable().optional() })
+    .parse(job.result);
+  const installed = (await inventory(port, signal)).find(
+    (runtime) => runtime.id === result.runtimeId,
+  );
+  if (!installed)
+    throw new CommandError({
+      code: "RUNTIME_CHANGED",
+      message: "Runtime inventory changed after installation. Refresh the host runtime list.",
+    });
+  if (result.warning) process.stderr.write(`  warning: ${result.warning}\n`);
+  return installed;
+}
+export async function runRuntimeInstallCommand(options: {
+  build?: string;
+  variant?: string;
+}): Promise<AnyCommandResult<RuntimeRow>> {
+  return withCommandHost(async (port, signal) => ({
     type: "single",
-    data: {
-      label: runtime.label,
-      displayName: runtime.displayName ?? `${runtime.label} · ${runtime.version}`,
-      version: runtime.version,
-      source: runtime.source,
-      dir: runtime.dir,
-    },
+    data: await runHostedRuntimeInstall(port, options, signal),
     schema: runtimeSchema,
-  };
+  }));
+}
+export async function runHostedRuntimeRemove(
+  port: HostCommandPort,
+  name: string,
+  signal: AbortSignal,
+): Promise<RuntimeRow[]> {
+  const runtime = selectedRuntime(await inventory(port, signal), name);
+  await port.request("/__host/runtime/remove", signal, { runtimeId: runtime.id });
+  return inventory(port, signal);
+}
+export async function runRuntimeRemoveCommand(name: string): Promise<AnyCommandResult<RuntimeRow>> {
+  return withCommandHost(async (port, signal) => ({
+    type: "list",
+    data: await runHostedRuntimeRemove(port, name, signal),
+    schema: runtimeSchema,
+  }));
+}
+export async function runRuntimeSelectCommand(name: string): Promise<AnyCommandResult<RuntimeRow>> {
+  return withCommandHost(async (port, signal) => {
+    const rows = await inventory(port, signal);
+    const runtimeId = name === "auto" ? null : selectedRuntime(rows, name).id;
+    await port.request("/__host/runtime/select", signal, { runtimeId });
+    return { type: "list", data: await inventory(port, signal), schema: runtimeSchema };
+  });
 }

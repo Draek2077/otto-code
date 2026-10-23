@@ -11,6 +11,7 @@
  * asks, so the download layer stays free of process spawning.
  */
 import { queryNvidia } from "../gpu.js";
+import path from "node:path";
 import { resolveBrainPaths } from "../config/paths.js";
 import type { BrainConfig } from "../config/schema.js";
 import type { Runtime } from "../types.js";
@@ -76,7 +77,13 @@ export function resolveRuntime(
   env: NodeJS.ProcessEnv = process.env,
 ): Runtime | null {
   const rc = config.runtime;
-  if (rc.path) return resolveOverride(rc.path);
+  if (rc.path) {
+    const explicit = resolveOverride(rc.path);
+    const sameExecutable = (candidate: Runtime) =>
+      path.resolve(candidate.exe) === path.resolve(explicit.exe);
+    const managed = listManagedRuntimes(resolveBrainPaths(env).runtimesDir).find(sameExecutable);
+    return managed ?? listLmStudioRuntimes().find(sameExecutable) ?? explicit;
+  }
 
   const paths = resolveBrainPaths(env);
   const managed = listManagedRuntimes(paths.runtimesDir);

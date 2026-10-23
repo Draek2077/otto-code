@@ -6,7 +6,8 @@ maps it to the existing public package `@otto-code/brain`. Its executable remain
 `otto-brain`. No app or daemon is required to import or run the package.
 
 The standalone CLI provides `serve`, detached `start`/`stop`/`restart`, `status`,
-`scan`, `catalog`, `search`, `config show`/`set`, `calibrate`, `sweep` and help,
+`scan`, `catalog`, `search`, `config show`/`set`, `runtime list`/`install`/`select`/`remove`,
+`calibrate`, `sweep` and help,
 configuration persistence, home ownership, HTTP/HTTPS, credential masking and host
 shutdown. The library also provides concrete llama.cpp process supervision,
 runtime acquisition and model inventory/download operations. Its scheduling library
@@ -44,6 +45,12 @@ only implemented operations. Host composition supplies inference, model inventor
 load/unload, revisioned profiles, budget preview, rename/reset, guarded deletion,
 jobs and demand-owned events. Empty model listings remain valid, and completion requests
 without an engine return an actionable 503.
+
+Profile reads and saves carry an opaque edit revision. A saved profile reports
+whether an existing resident needs reloading; saving never restarts that resident.
+An explicit model load drains inference before applying changed profile or runtime
+selection. Loading an unloaded model starts it once. Calibration and temporary
+operation profiles retain their separate launch settings.
 
 Brain owns transport authentication and TLS. Non-loopback binding requires an
 actual token unless the owner explicitly allows an insecure bind. Private tokens
@@ -90,6 +97,21 @@ Windows uses the system `tar.exe` because Git's GNU tar treats drive letters as
 remote hosts. ZIP extraction on Windows uses PowerShell's existing extractor.
 The existing Linux missing-libgomp repair remains local to the runtime directory;
 it does not install an OS package or alter global configuration.
+
+Runtime management uses host-issued installed and candidate identities. Clients
+submit a build/variant choice to the host and install its candidate as a tracked
+job; they never submit a runtime deletion path. Removal refuses external, selected,
+resident or queued runtimes. Runtime selection preserves unrelated host settings
+and takes effect on the next explicit load or restart. A missing saved executable
+does not hide installation and repair controls.
+
+An explicit `latest` installation resolves the current compatible upstream release
+when the job runs. A failed lookup does not fall back to the packaged build. A
+successful latest update restores automatic selection only if no peer changed the
+runtime selection while it installed. Named builds remain deliberate pins. GPU
+diagnostics run only as part of an explicit installation; their warnings do not
+claim that a model has loaded successfully. CLI progress uses the host event feed
+and prints measured phases without raw native exception text.
 
 Model discovery combines configured managed and LM Studio sources, with managed
 files owning identical artifact IDs. Callers can supply explicit sources for

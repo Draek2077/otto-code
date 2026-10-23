@@ -114,11 +114,17 @@ export interface RuntimeRelease {
 }
 
 /** Official llama.cpp builds, newest first. Only numbered build releases are actionable. */
-export async function listRuntimeReleases(limit = 100): Promise<RuntimeRelease[]> {
+export async function listRuntimeReleases(
+  limit = 100,
+  signal?: AbortSignal,
+): Promise<RuntimeRelease[]> {
   const response = await fetch(
     `${LLAMA_RELEASE_API}?per_page=${Math.min(Math.max(limit, 1), 100)}`,
     {
       headers: { Accept: "application/vnd.github+json" },
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
+        : AbortSignal.timeout(15000),
     },
   );
   if (!response.ok) throw new Error(`could not fetch llama.cpp releases (${response.status})`);
@@ -135,8 +141,8 @@ export async function listRuntimeReleases(limit = 100): Promise<RuntimeRelease[]
 }
 
 /** Resolve the latest official build at the last responsible moment. */
-export async function latestRuntimeBuild(): Promise<string> {
-  const [latest] = await listRuntimeReleases(LATEST_BUILD_SCAN_PAGE);
+export async function latestRuntimeBuild(signal?: AbortSignal): Promise<string> {
+  const [latest] = await listRuntimeReleases(LATEST_BUILD_SCAN_PAGE, signal);
   if (!latest) throw new Error("llama.cpp published no release builds");
   return latest.build;
 }

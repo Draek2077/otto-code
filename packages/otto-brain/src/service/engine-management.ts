@@ -23,6 +23,7 @@ interface ManagementPorts {
   jobs: BrainJobs;
   requireWrite(request: IncomingMessage): void;
   changed(): void;
+  requiresRestart(modelId: string, revision: string): boolean;
   inventory(
     signal: AbortSignal,
   ): Promise<{ models: InventoryRow[]; disk: (DiskUsage & { modelBytes: number }) | null }>;
@@ -123,14 +124,36 @@ export class EngineManagement {
   ): Promise<boolean> {
     if (request.method !== "GET" && request.method !== "POST") return false;
     const model = this.model(url);
-    if (request.method === "GET") sendJson(response, 200, this.ports.profiles.read(model));
-    else {
+    if (request.method === "GET") {
+      const metadata = this.ports.profiles.read(model);
+      sendJson(response, 200, {
+        ...metadata,
+        requiresRestart: this.ports.requiresRestart(model.id, metadata.revision),
+      });
+    } else {
       this.ports.requireWrite(request);
       const body = await readObject(request, signal);
       if (typeof body.expectedRevision !== "string")
         throw new RequestError(400, "A profile revision is required");
-      sendJson(response, 200, this.ports.profiles.save(model, body.patch, body.expectedRevision));
+      const saved = this.ports.profiles.save(model, body.patch, body.expectedRevision);
       this.ports.changed();
+      const gpu = await this.ports.gpu(signal);
+      const calibration = getCalibrationForBudget(this.ports.readProfiles(), model, saved.profile);
+      const options = gpu
+        ? {
+            model,
+            profile: saved.profile,
+            calibration,
+            totalVramBytes: gpu.totalBytes,
+            reserveBytes: reserveBytesForGpu(gpu),
+          }
+        : null;
+      sendJson(response, 200, {
+        ...saved,
+        requiresRestart: this.ports.requiresRestart(model.id, saved.revision),
+        budget: options ? budget(options) : null,
+        maxContextThatFits: options ? maxContextThatFits(options) : null,
+      });
     }
     return true;
   }

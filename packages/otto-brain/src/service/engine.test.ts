@@ -11,7 +11,7 @@ afterEach(async () => {
   for (const dispose of cleanup.splice(0).toReversed()) await dispose();
 });
 
-async function host(maxLoadedModels = 2, lockModel = false) {
+async function host(maxLoadedModels = 2, lockModel = false, runtimeInstalled = false) {
   const fixtures = [await createEngineFixture(), await createEngineFixture()];
   const models = fixtures.map((fixture, index) => ({
     ...fixture.model,
@@ -42,7 +42,8 @@ async function host(maxLoadedModels = 2, lockModel = false) {
           profiles = structuredClone(next);
         },
         gpu: async () => null,
-        runtime: () => null,
+        runtime: () => (runtimeInstalled ? fixtures[0]!.supervisor.runtime : null),
+        runtimeList: () => [],
         createSupervisor: async () => fixtures[creations++]!.supervisor,
       });
       return engine;
@@ -101,9 +102,15 @@ it("keeps an empty host inert and reports only implemented management capabiliti
     profiles: true,
     jobs: true,
     inventory: true,
+    runtimes: true,
     writable: false,
   });
   expect(fixture.creations()).toBe(0);
+  const runtimeInventory = z
+    .object({ runtimes: z.array(z.unknown()) })
+    .parse(await (await fetch(`${fixture.base}/__host/runtimes`)).json());
+  expect(runtimeInventory.runtimes).toEqual([]);
+  expect(fixture.scans()).toBe(0);
 });
 
 it("updates profiles by revision and refuses stale writes, browser writes and unsupported jobs", async () => {
@@ -160,6 +167,37 @@ it("rejects malformed or misplaced sweep budgets before creating a host job", as
   }
   expect(fixture.engine.jobs.list()).toEqual([]);
   expect(fixture.creations()).toBe(0);
+});
+
+it("reports unapplied saved settings and applies them through an exclusive explicit reload", async () => {
+  const fixture = await host(1, false, true);
+  const id = fixture.models[0]!.id;
+  const route = `${fixture.base}/__host/model/profile?id=${encodeURIComponent(id)}`;
+  const profileSchema = z.object({ revision: z.string(), requiresRestart: z.boolean() });
+  const original = profileSchema.parse(await (await fetch(route)).json());
+  expect(original.requiresRestart).toBe(false);
+  const load = () =>
+    fetch(`${fixture.base}/__host/model/load?id=${encodeURIComponent(id)}`, { method: "POST" });
+  expect((await load()).status).toBe(200);
+  expect(fixture.creations()).toBe(1);
+  expect((await load()).status).toBe(200);
+  expect(fixture.creations()).toBe(1);
+  const saved = await fetch(route, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ expectedRevision: original.revision, patch: { temperature: 0.4 } }),
+  });
+  expect(saved.status).toBe(200);
+  expect(await saved.json()).toMatchObject({
+    requiresRestart: true,
+    budget: null,
+    maxContextThatFits: null,
+    profile: { temperature: 0.4 },
+  });
+  expect((await load()).status).toBe(200);
+  expect(fixture.creations()).toBe(2);
+  expect(fixture.engine.pool.supervisorFor(id)?.profile?.temperature).toBe(0.4);
+  expect(profileSchema.parse(await (await fetch(route)).json()).requiresRestart).toBe(false);
 });
 
 it("serves a host-owned inventory with model identities and revisions without launching a runtime", async () => {

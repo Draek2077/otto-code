@@ -43,6 +43,7 @@ function createPool(
   maxModels: number,
   parallelSlots = 1,
   beforeLoad?: (reserved: number, signal: AbortSignal) => Promise<void>,
+  currentProfile?: () => Profile,
 ) {
   const supervisors: FakeSupervisor[] = [];
   const loads: { supervisor: FakeSupervisor; model: Model; profile: Profile | undefined }[] = [];
@@ -63,7 +64,8 @@ function createPool(
       loads.push({ supervisor: fake, model: target, profile });
       fake.state = "starting";
       fake.model = target;
-      fake.profile = profile ?? ProfileSchema.parse({ contextSize: 2048, parallelSlots });
+      fake.profile =
+        profile ?? currentProfile?.() ?? ProfileSchema.parse({ contextSize: 2048, parallelSlots });
       fake.state = "ready";
       return 1;
     },
@@ -88,6 +90,33 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 describe("ModelProcessPool", () => {
+  it("reloads changed settings exclusively after inference drains, without double-loading a cold model", async () => {
+    let saved = ProfileSchema.parse({ contextSize: 2048 });
+    const { pool, loads } = createPool(1, 1, undefined, () => saved);
+    const target = model("a");
+    const needsReload = (supervisor: FakeSupervisor) =>
+      supervisor.profile?.contextSize !== saved.contextSize;
+    await pool.reload(target, needsReload);
+    expect(loads).toHaveLength(1);
+    const release = deferred();
+    let running = false;
+    const inference = pool.submit(target, async () => {
+      running = true;
+      await release.promise;
+    });
+    await waitFor(() => running);
+    saved = ProfileSchema.parse({ contextSize: 4096 });
+    const reload = pool.reload(target, needsReload);
+    await waitFor(() => pool.stats().queued > 0);
+    expect(pool.supervisorFor(target.id)?.profile?.contextSize).toBe(2048);
+    release.resolve();
+    await inference;
+    await reload;
+    expect(pool.supervisorFor(target.id)?.profile?.contextSize).toBe(4096);
+    expect(loads).toHaveLength(2);
+    await pool.stop();
+  });
+
   it("protects queued and loading model files before a supervisor becomes ready", async () => {
     const release = deferred();
     const { pool } = createPool(1, 1, () => release.promise);

@@ -161,6 +161,11 @@ it("benchmarks the pool resident endpoint, saves with the owning environment, an
     runSuite: async (options) => {
       suiteHost = options!.host;
       expect(options!.port).toBe(1);
+      options!.onProgress?.({
+        phase: "failed",
+        summary: "private fixture benchmark failure",
+        detail: new Error("private fixture exception"),
+      });
       return {
         overall: 1,
         grade: "A",
@@ -189,10 +194,13 @@ it("benchmarks the pool resident endpoint, saves with the owning environment, an
     stops++;
   };
   const job = value.operations.start(model, "benchmark");
-  expect(await value.jobs.wait(job.id)).toMatchObject({
+  const completed = await value.jobs.wait(job.id);
+  expect(completed).toMatchObject({
     state: "completed",
     result: { overall: 1 },
+    progress: { phase: "failed", summary: "Brain benchmark task failed" },
   });
+  expect(JSON.stringify(completed)).not.toContain("private fixture");
   expect(suiteHost).toBe("127.0.0.1");
   expect(savedEnv).toEqual({ OTTO_HOME: "/isolated-fixture" });
   expect([starts, stops]).toEqual([1, 1]);
