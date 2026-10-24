@@ -1,5 +1,5 @@
 /** Shared synthetic HTTP engine source; writing this string does not launch it. */
-export function engineFixtureSource() {
+export function engineFixtureSource({ holdJsonCompletions = false } = {}) {
   return `
     import http from 'node:http';
     const args = process.argv.slice(2);
@@ -25,6 +25,14 @@ export function engineFixtureSource() {
           res.on('close', () => { pending.delete(res); });
           res.writeHead(200, { 'content-type': 'text/event-stream' });
           res.write('data: '+JSON.stringify({choices:[{delta:{reasoning_content:'fixture reasoning'}}]})+'\\n\\n'); return;
+        }${
+          holdJsonCompletions
+            ? `
+        pending.add(res);
+        res.on('close', () => { pending.delete(res); });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.flushHeaders(); return;`
+            : ""
         }
         res.setHeader('content-type', 'application/json');
         res.end(JSON.stringify({ choices:[{message:{content:JSON.stringify({body,headers:req.headers})}}] }));

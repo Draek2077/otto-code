@@ -54,7 +54,7 @@ async function createOwnerEngineFixture(brain: Awaited<ReturnType<typeof loadBra
     NODE_ENV: "test",
   });
   const script = path.join(root, "fixture.mjs");
-  fs.writeFileSync(script, engineFixtureSource());
+  fs.writeFileSync(script, engineFixtureSource({ holdJsonCompletions: true }));
   const socket = net.createServer();
   socket.listen(0, "127.0.0.1");
   await once(socket, "listening");

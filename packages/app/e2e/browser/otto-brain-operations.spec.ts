@@ -55,6 +55,9 @@ for (const compact of [false, true]) {
     await page.getByTestId(`brain-model-${brainOwner.modelId}`).click();
     await page.getByTestId("brain-model-unload").click();
     await expect(page.getByTestId("brain-model-load")).toBeEnabled({ timeout: 30000 });
+    await expect(
+      page.getByText("No GPU detected, so there is no VRAM budget to check.", { exact: true }),
+    ).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("brain-model-operations.png") });
     await page.reload();
     await openBrainSettings(page, compact);
@@ -68,3 +71,39 @@ for (const compact of [false, true]) {
     expect(await brainOwner.profileContext()).toBe(8192);
   });
 }
+
+test("canceling a running benchmark releases the actual owner job and permits loading again", async ({
+  page,
+  brainOwner,
+}) => {
+  await openBrainSettings(page, false);
+  await page.getByRole("button", { name: "Open Brain", exact: true }).click();
+  await page.getByRole("button", { name: "Models", exact: true }).click();
+  await page.getByTestId(`brain-model-${brainOwner.modelId}`).click();
+  await page.getByTestId("brain-model-load").click();
+  await expect(page.getByTestId("brain-model-unload")).toBeEnabled({ timeout: 30000 });
+  await page.getByRole("button", { name: "Benchmark", exact: true }).click();
+  await page.getByTestId("brain-bench-run").click();
+  await expect(page.getByTestId("brain-bench-cancel")).toBeVisible({ timeout: 30000 });
+  await expect
+    .poll(async () =>
+      (await brainOwner.jobs()).jobs.map(({ operation, state, subject }) => ({
+        operation,
+        state,
+        modelId: subject.modelId,
+      })),
+    )
+    .toEqual([{ operation: "benchmark", state: "running", modelId: brainOwner.modelId }]);
+  await page.getByTestId("brain-bench-cancel").click();
+  await expect
+    .poll(async () => (await brainOwner.jobs()).jobs.map((row) => row.state))
+    .toEqual(["canceled"]);
+  await expect(page.getByTestId("brain-bench-cancel")).toBeHidden();
+  await expect(page.getByTestId("brain-bench-run")).toBeEnabled();
+  await page.getByRole("button", { name: "Models", exact: true }).click();
+  await page.getByTestId(`brain-model-${brainOwner.modelId}`).click();
+  await page.getByTestId("brain-model-load").click();
+  await expect(page.getByTestId("brain-model-unload")).toBeEnabled({ timeout: 30000 });
+  await page.getByTestId("brain-model-unload").click();
+  await expect(page.getByTestId("brain-model-load")).toBeEnabled({ timeout: 30000 });
+});
