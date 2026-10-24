@@ -1,5 +1,5 @@
 /** App-owned graphics and operational surfaces behind the narrow built-in plugin bridge. */
-import { lazy, useEffect, type ReactNode } from "react";
+import { lazy, useCallback, useEffect, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useReducedMotion } from "react-native-reanimated";
@@ -144,16 +144,19 @@ export function createBrainUiComponents({
     return <BrainHostIcon bridge={screen.ui} palette={palette} size={size} />;
   }
   const ThemedIcon = withUnistyles(Icon, iconProps);
-  function SidebarContent(props: PluginSidebarItemProps) {
+  function SidebarContent({ openScreen, currentScreen }: PluginSidebarItemProps) {
     const presentation = sidebarPresentation(useBrainUiSnapshot(screen.ui));
+    // Use the surface-owned navigation so compact sidebar dismissal and host
+    // selection follow the same path as every Paseo plugin row.
+    const openBrain = useCallback(() => openScreen({ screenId: "brain" }), [openScreen]);
     if (!presentation.visible) return null;
     return (
       <SidebarHeaderRow
         icon={ThemedIcon}
         label={presentation.label}
         accessibilityLabel={presentation.label}
-        onPress={navigation.openBrain}
-        isActive={props.currentScreen?.screenId === "brain"}
+        onPress={openBrain}
+        isActive={currentScreen?.screenId === "brain"}
         variant="inline"
         testID="otto-brain-sidebar"
       />

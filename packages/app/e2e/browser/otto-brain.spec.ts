@@ -29,7 +29,12 @@ for (const compact of [false, true]) {
       await expect(control).toHaveAttribute("aria-selected", "true");
     }
     if (compact) await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
-    await expect(page.locator('[data-testid="otto-brain-sidebar"]:visible').first()).toBeVisible();
+    const icon = page.locator('[data-testid="otto-brain-sidebar"]:visible').first();
+    await expect(icon).toBeVisible();
+    await icon.click();
+    await expect(page.getByRole("button", { name: "Logs", exact: true })).toBeVisible();
+    if (compact)
+      await expect(page.getByRole("button", { name: "Close menu", exact: true })).toBeHidden();
     expect(await brain.localRunning()).toBe(false);
     await page.screenshot({ path: testInfo.outputPath("brain-reachable.png") });
   });

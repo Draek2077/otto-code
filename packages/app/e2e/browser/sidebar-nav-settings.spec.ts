@@ -50,6 +50,7 @@ test("fixed footer line keeps its five icons, Help and Settings at the end", asy
   await page.keyboard.press("Escape");
   await expect(addProjectFlow(page)).toBeHidden();
   await openSidebarNavSettings(page);
+  // OTTO(brain-ui): the registered Brain row is configurable even when this host disables its rendering.
   await expectFooterSettingsKeys(page, ["usage", "plugin:otto-brain:brain"]);
   await setFooterItemVisible(page, "usage", false);
   await leaveSettings(page);
