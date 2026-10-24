@@ -6,6 +6,8 @@ import {
   mutateKnowledge,
   readKnowledgePage,
   readKnowledgeCatalog,
+  readKnowledgeRoot,
+  readKnowledgeLinkHealth,
   type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import { test, expect } from "../support/fixtures";
@@ -86,6 +88,50 @@ async function callKnowledgeMcp(name: string, args: Record<string, unknown>) {
     .object({ result: z.object({ structuredContent: z.unknown() }) })
     .parse(JSON.parse(event ? event.slice(5).trim() : text));
   return envelope.result.structuredContent;
+}
+
+async function proveLinkHealth(
+  surface: Locator,
+  client: Pick<DaemonClient, "invokePluginRpc">,
+  scope: KnowledgeScope,
+  workspaceId: string,
+) {
+  const root = readKnowledgeRoot.output.parse(
+    await client.invokePluginRpc("otto-project-knowledge", readKnowledgeRoot.name, {
+      scope,
+      slug: "background",
+    }),
+  );
+  if (!root.ok || !root.value) throw new Error("Initialized fixture root is unavailable");
+  const changed = mutateKnowledge.output.parse(
+    await client.invokePluginRpc("otto-project-knowledge", mutateKnowledge.name, {
+      scope,
+      command: {
+        action: "root",
+        slug: "background",
+        expectedRevision: root.value.revision,
+        body: "# Background\n\nLink-health source fixture.\n\n[[missing-link-proof|Unresolved fixture]]",
+      },
+    }),
+  );
+  expect(changed.ok).toBe(true);
+  const health = surface.getByTestId("knowledge-link-health");
+  await health.getByRole("button", { name: "Check links", exact: true }).click();
+  await expect(
+    health.getByText("Missing or inactive target: [[missing-link-proof]]", { exact: true }),
+  ).toBeVisible();
+  const mcp = readKnowledgeLinkHealth.output.parse(
+    await callKnowledgeMcp("lint_project_knowledge_links", { workspaceId, limit: 50 }),
+  );
+  expect(mcp).toMatchObject({
+    ok: true,
+    value: {
+      issues: [{ source: { type: "root", slug: "background" }, target: "missing-link-proof" }],
+    },
+  });
+  await health.getByRole("button", { name: "Open source", exact: true }).click();
+  await expect(surface.getByRole("button", { name: "Edit root", exact: true })).toBeVisible();
+  await expect(surface.getByText("Link-health source fixture.", { exact: true })).toBeVisible();
 }
 
 for (const compact of [false, true]) {
@@ -258,6 +304,7 @@ for (const compact of [false, true]) {
       );
       await expect(surface.getByRole("button", { name: "New entry", exact: true })).toBeVisible();
       expect(await readFile(sourcePath)).toEqual(original);
+      await proveLinkHealth(surface, client, scope, project.workspaceId);
     } finally {
       try {
         await client.close();

@@ -6,6 +6,7 @@ import {
   readKnowledgeCatalog,
   readKnowledgePage,
   readKnowledgeRoot,
+  readKnowledgeLinkHealth,
   mutateKnowledge,
   setKnowledgeLocation,
   waitKnowledgeChanges,
@@ -268,6 +269,21 @@ export class KnowledgeDaemonService {
 
   invoke(method: string, value: unknown, clientId = ""): Promise<unknown> | undefined {
     switch (method) {
+      case readKnowledgeLinkHealth.name:
+        return this.guard(async () => {
+          const input = readKnowledgeLinkHealth.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          const issues = await this.service.linkHealth(project.projectId);
+          const end = input.offset + input.limit;
+          return readKnowledgeLinkHealth.output.parse({
+            ok: true,
+            value: {
+              issues: issues.slice(input.offset, end),
+              total: issues.length,
+              nextOffset: end < issues.length ? end : null,
+            },
+          });
+        });
       case waitKnowledgeChanges.name:
         return this.guard(async () => {
           const input = waitKnowledgeChanges.input.parse(value);

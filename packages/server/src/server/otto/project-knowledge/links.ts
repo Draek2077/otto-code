@@ -1,3 +1,10 @@
+/** Frozen 0.9 wiki syntax, including aliases and heading suffixes. */
+export function wikiLinks(markdown: string): string[] {
+  return [...markdown.matchAll(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g)].map((match) =>
+    match[1].trim(),
+  );
+}
+
 /** Frozen 0.9 removal semantics: repair only lines that lost this exact wiki-link.
  * Other targets, ordinary text, and historical timelines are not inputs here. */
 export function removeWikiLinksTo(markdown: string, id: string): string {

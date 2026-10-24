@@ -14,6 +14,7 @@ import {
   mutateKnowledge,
   readKnowledgeCatalog,
   readKnowledgePage,
+  readKnowledgeLinkHealth,
   setKnowledgeLocation,
 } from "@getpaseo/plugin/otto/project-knowledge";
 
@@ -286,4 +287,51 @@ it("discovers custom host-owned Knowledge guidance without injecting its body an
     value: { body: policy, custom: true },
   });
   expect(await readFile(path.join(f.repo, ".otto/KNOWLEDGE.md"), "utf8")).toBe(policy);
+});
+
+it("shares bounded link-health RPC and MCP results through the canonical workspace binding", async () => {
+  const f = await fixture();
+  await f.create();
+  const target = { projectId: "project-a", kind: "requirement", id: "fixture-page" } as const;
+  const draft = await f.host.service.read(target);
+  const changed = await f.host.service.updateTruth({
+    ...target,
+    expectedRevision: draft.revision,
+    statement: "[[missing-b]] [[missing-a]]",
+    reason: "Link fixture",
+  });
+  await f.host.records.review({
+    ...target,
+    expectedRevision: changed.revision,
+    status: "confirmed",
+    reason: "Explicit fixture agreement",
+  });
+  const input = { scope: f.scope, offset: 0, limit: 1 };
+  const first = readKnowledgeLinkHealth.output.parse(
+    await f.host.invoke(readKnowledgeLinkHealth.name, input),
+  );
+  expect(first).toMatchObject({
+    ok: true,
+    value: {
+      total: 2,
+      nextOffset: 1,
+      issues: [{ target: "missing-a", source: { type: "page", id: target.id } }],
+    },
+  });
+  expect(JSON.stringify(first)).not.toContain(f.repo);
+  expect(
+    await f.host.invoke(readKnowledgeLinkHealth.name, {
+      ...input,
+      scope: { ...f.scope, hostId: "other" },
+    }),
+  ).toMatchObject({ ok: false, error: { code: "wrong_host" } });
+  const tool = createKnowledgeTools(f.host, async () => f.scope).find(
+    (entry) => entry.name === "lint_project_knowledge_links",
+  );
+  if (!tool) throw new Error("Missing shared link tool");
+  expect((await tool.handler({ limit: 1 }, {})).structuredContent).toEqual(first);
+  expect(await f.host.invoke(readKnowledgeLinkHealth.name, { ...input, offset: 1 })).toMatchObject({
+    ok: true,
+    value: { nextOffset: null, issues: [{ target: "missing-b" }] },
+  });
 });

@@ -47,7 +47,7 @@ existing indexes remain unchanged. Reading a chat's catalog never initializes a 
 
 ## MCP and UI
 
-All providers receive the same five tools through the existing Paseo tool catalog:
+All providers receive the same six tools through the existing Paseo tool catalog:
 
 | Tool                            | Contract                                                                                                                           |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -55,6 +55,7 @@ All providers receive the same five tools through the existing Paseo tool catalo
 | `read_project_knowledge`        | One on-demand article and its complete retained history                                                                            |
 | `read_project_knowledge_root`   | One of the six on-demand root bodies                                                                                               |
 | `read_project_knowledge_policy` | Optional custom Knowledge guidance from the canonical owning-host store, read only on demand                                       |
+| `lint_project_knowledge_links`  | Read-only bounded link health for current confirmed pages and roots, with source identities and revisions                          |
 | `manage_project_knowledge`      | Draft creation, reason-bearing changes, evidence, review, delivery, references, roots, explicit initialization and confirmed purge |
 
 Tools resolve the chat workspace by default. Outside a chat, callers supply a
@@ -84,6 +85,12 @@ or fallback to another directory. No files are created or migrated during reads.
 The workspace UI uses the same RPC/service operations, the current Markdown
 renderer and Paseo form/settings primitives. Search has an explicit clear action.
 Article bodies are fetched on demand rather than included in catalog responses.
+Link health uses the same service and MCP operation. It inspects confirmed current
+truth and the six roots against confirmed page identities, including aliases and
+heading links; Draft and History targets are inactive. Repeated references from
+one source are reported once. Historical timeline references are excluded. Results
+are paginated, and Open source reads the latest page or root before an explicit
+revision-pinned edit. Checking never repairs, confirms, initializes or deletes data.
 Editing captures the opened revision; peer conflicts retain the draft and block
 another save. Cancel/discard is explicit. Hide/unmount invalidates pending review
 confirmations and late write acknowledgments, without claiming host cancellation.

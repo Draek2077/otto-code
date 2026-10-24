@@ -23,7 +23,7 @@ import {
   type KnowledgeStore,
   type KnowledgeStoreResolver,
 } from "./store-resolver.js";
-import { removeWikiLinksTo } from "./links.js";
+import { removeWikiLinksTo, wikiLinks } from "./links.js";
 
 export const knowledgeRoots = [
   "background",
@@ -65,6 +65,12 @@ export interface RecordTarget {
 export interface RecordEdit extends RecordTarget {
   expectedRevision: string;
 }
+export interface KnowledgeLinkIssue {
+  source:
+    | { type: "page"; kind: KnowledgeKind; id: string; revision: string }
+    | { type: "root"; slug: KnowledgeRoot; revision: string };
+  target: string;
+}
 export class KnowledgeNotFoundError extends Error {
   constructor() {
     super("This Knowledge page was removed. Choose another page.");
@@ -82,6 +88,38 @@ export class KnowledgePurgeIncompleteError extends Error {
 /** Canonical daemon library; adapters own caller scope and human review authority. */
 export class KnowledgeService {
   constructor(private readonly ports: KnowledgeServicePorts) {}
+
+  /** Current confirmed truth and roots only. Historical evidence is not repaired
+   * or reported as live links; Draft/History targets are not active conclusions. */
+  async linkHealth(projectId: string): Promise<KnowledgeLinkIssue[]> {
+    const store = await this.ports.resolver.resolve(projectId);
+    const pages = (await this.documents(store)).filter(
+      (page) => page.metadata.status === "confirmed",
+    );
+    const known = new Set(pages.map((page) => page.metadata.id));
+    const issues: KnowledgeLinkIssue[] = [];
+    const inspect = (source: KnowledgeLinkIssue["source"], body: string) => {
+      for (const target of new Set(wikiLinks(body))) {
+        if (target.length > 512)
+          throw new Error("Knowledge link target exceeds the inspection limit");
+        if (!known.has(target)) issues.push({ source, target });
+      }
+    };
+    for (const page of pages)
+      inspect(
+        { type: "page", kind: page.metadata.kind, id: page.metadata.id, revision: page.revision },
+        page.statement,
+      );
+    for (const slug of knowledgeRoots) {
+      const body = await readKnowledgeFile(store, path.join(store.base, "knowledge", `${slug}.md`));
+      if (body !== null) inspect({ type: "root", slug, revision: digest(body) }, body);
+    }
+    const name = (source: KnowledgeLinkIssue["source"]) =>
+      source.type === "page" ? source.id : source.slug;
+    return issues.sort(
+      (a, b) => name(a.source).localeCompare(name(b.source)) || a.target.localeCompare(b.target),
+    );
+  }
 
   async catalog(projectId: string, includeInactive = false): Promise<KnowledgeSummary[]> {
     const store = await this.ports.resolver.resolve(projectId);

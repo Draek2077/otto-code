@@ -171,6 +171,31 @@ export const readKnowledgeRoot = defineRpc({
   input: z.object({ scope: KnowledgeScopeSchema, slug: KnowledgeRootSchema }).strict(),
   output: result(z.object({ body: z.string(), revision }).nullable()),
 });
+export const readKnowledgeLinkHealth = defineRpc({
+  name: "knowledge.project.links.request",
+  input: z
+    .object({
+      scope: KnowledgeScopeSchema,
+      offset: z.number().int().nonnegative(),
+      limit: z.number().int().min(1).max(200),
+    })
+    .strict(),
+  output: result(
+    z.object({
+      issues: z.array(
+        z.object({
+          source: z.discriminatedUnion("type", [
+            z.object({ type: z.literal("page"), kind: KnowledgeKindSchema, id, revision }),
+            z.object({ type: z.literal("root"), slug: KnowledgeRootSchema, revision }),
+          ]),
+          target: z.string().max(512),
+        }),
+      ),
+      total: z.number().int().nonnegative(),
+      nextOffset: z.number().int().nonnegative().nullable(),
+    }),
+  ),
+});
 export const mutateKnowledge = defineRpc({
   name: "knowledge.project.mutate",
   input: z.object({ scope: KnowledgeScopeSchema, command: KnowledgeCommandSchema }).strict(),

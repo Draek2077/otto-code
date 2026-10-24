@@ -26,6 +26,7 @@ import type { EditorSeed } from "./editor-model";
 import { KnowledgeStorage } from "./storage";
 import { styles } from "./styles";
 import { useKnowledgeChanges } from "./use-knowledge-changes";
+import { KnowledgeLinkHealth } from "./link-health";
 
 function KnowledgeBody({
   scope,
@@ -166,6 +167,7 @@ function KnowledgeBody({
           onSelect={setSelection}
         />
       )}
+      <KnowledgeLinkHealth scope={scope} active={active} onSelect={setSelection} />
       <KnowledgeStorage scope={scope} settings={catalog.data.settings} onChanged={refresh} />
     </>
   );

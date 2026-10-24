@@ -6,6 +6,7 @@ import {
   readKnowledgeCatalog,
   readKnowledgePage,
   readKnowledgeRoot,
+  readKnowledgeLinkHealth,
   type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import type { PaseoToolDefinition } from "../../agent/tools/types.js";
@@ -51,6 +52,23 @@ export function createKnowledgeTools(
     },
   });
   return [
+    tool(
+      "lint_project_knowledge_links",
+      "Check wiki-links in current confirmed truth and project roots against active confirmed pages. Draft/History targets are reported as inactive; historical timeline links are ignored. Returns bounded metadata with originating revisions, never bodies. Read the source before an explicit revision-pinned repair; this tool never rewrites or confirms data.",
+      z
+        .object({
+          workspaceId,
+          offset: z.number().int().nonnegative().optional(),
+          limit: z.number().int().min(1).max(200).optional(),
+        })
+        .strict(),
+      async (input) =>
+        host.invoke(readKnowledgeLinkHealth.name, {
+          scope: await scopeForWorkspace(input.workspaceId),
+          offset: input.offset ?? 0,
+          limit: input.limit ?? 50,
+        }),
+    ),
     tool(
       "list_project_knowledge",
       "Discover confirmed project pages and six roots. Returns bounded metadata, never article bodies. Include inactive pages only for explicit review.",
