@@ -67,6 +67,8 @@ it("standalone help succeeds without reading or creating user configuration", ()
     "runtime",
     "bench",
     "share",
+    "report",
+    "rescore",
     "config",
   ])
     expect(child.stdout).toContain(command);
@@ -90,7 +92,15 @@ it("calibration and sweep help are inert even without a runtime or saved configu
 
 it("acquisition help does not create a host, resolve credentials or inspect an installed runtime", () => {
   const { home, env } = environment();
-  for (const args of [["pull"], ["add"], ["runtime", "install"], ["bench"], ["share"]]) {
+  for (const args of [
+    ["pull"],
+    ["add"],
+    ["runtime", "install"],
+    ["bench"],
+    ["share"],
+    ["report"],
+    ["rescore"],
+  ]) {
     const child = spawnSync(
       process.execPath,
       [path.join(packageRoot, "bin/otto-brain"), ...args, "--help"],

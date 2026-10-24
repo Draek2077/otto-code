@@ -1,68 +1,111 @@
-/**
- * `otto brain rescore` - re-grade archived benchmark transcripts with the current
- * scorer, no GPU used. Surfaces scorer changes against what was recorded live.
- */
+/** Explicit offline re-grading; saved measurements and transcripts are never rewritten. */
 import type { Command } from "commander";
-
-import { CommandError } from "../output/types.js";
-import { rescoreRun } from "../bench/rescore.js";
+import {
+  CommandError,
+  type AnyCommandResult,
+  type OutputSchema,
+  type OutputOptions,
+} from "../output/types.js";
+import { rescoreRun, type RescoreRunResult } from "../bench/rescore.js";
 import * as archive from "../ops/archive.js";
 import * as results from "../ops/results.js";
+import { withCommandSignal } from "./host-command.js";
 
-export function addRescoreOptions(cmd: Command): Command {
-  return cmd
+interface RescoreTask {
+  taskId: string;
+  before: number | null;
+  score: number | null;
+  changed: boolean;
+  summary: string;
+}
+interface RescoreRow {
+  archiveId: string;
+  changed: number;
+  tasks: RescoreTask[];
+}
+function row(result: RescoreRunResult, stored: results.RunRecord[]): RescoreRow {
+  const record =
+    stored.find((entry) => entry.archiveId === result.archiveId) ??
+    stored.find((entry) => result.archiveId.includes(results.slugify(entry.model.displayName)));
+  const tasks = result.tasks.map((task) => {
+    const before = record?.tasks.find((entry) => entry.id === task.taskId)?.score ?? null;
+    return {
+      taskId: task.taskId,
+      before,
+      score: task.score,
+      changed: before !== null && task.score !== null && Math.abs(before - task.score) > 0.005,
+      summary: task.summary,
+    };
+  });
+  return {
+    archiveId: result.archiveId,
+    changed: tasks.filter((task) => task.changed).length,
+    tasks,
+  };
+}
+function renderRescore(data: RescoreRow | RescoreRow[], options: OutputOptions): string {
+  const rows = Array.isArray(data) ? data : [data];
+  const lines: string[] = options.noHeaders
+    ? []
+    : [`${rows.length} archived run(s), re-graded from stored transcripts`, ""];
+  for (const run of rows) {
+    lines.push(run.archiveId);
+    for (const task of run.tasks) {
+      if (task.score === null) {
+        lines.push(`  ${task.taskId.padEnd(16)} ${task.summary}`);
+        continue;
+      }
+      const before = task.before === null ? "-" : `${(task.before * 100).toFixed(0)}%`;
+      lines.push(
+        `  ${task.taskId.padEnd(16)} was ${before.padStart(5)}  now ${`${(task.score * 100).toFixed(0)}%`.padStart(5)}${task.changed ? "   <- CHANGED" : ""}   ${task.summary}`,
+      );
+    }
+  }
+  lines.push(
+    "",
+    `${rows.reduce((count, run) => count + run.changed, 0)} task result(s) changed, no GPU used`,
+  );
+  return lines.join("\n");
+}
+const schema: OutputSchema<RescoreRow> = {
+  idField: "archiveId",
+  columns: [
+    { header: "ARCHIVE", field: "archiveId" },
+    { header: "CHANGED", field: "changed" },
+  ],
+  renderHuman: renderRescore,
+};
+export function addRescoreOptions(command: Command): Command {
+  return command
     .description("Re-grade archived runs with the current scorer (no GPU)")
     .option("--run <id>", "rescore a single archived run")
     .option("--no-execute", "syntax-check generated code but do not run it");
 }
-
 export async function runRescoreCommand(
   options: { run?: string; execute?: boolean },
   _command: Command,
-): Promise<void> {
+): Promise<AnyCommandResult<RescoreRow>> {
   const runs = archive.list();
-  if (!runs.length) {
+  if (!runs.length)
     throw new CommandError({
       code: "NO_ARCHIVE",
       message: "no archived transcripts yet",
-      details: "benchmark runs are archived automatically from now on",
+      details: "run `otto brain bench --model <name>` first",
     });
-  }
-
-  process.stdout.write(
-    `\n${runs.length} archived run(s), ${(archive.size() / 1024 ** 2).toFixed(1)} MB\n\n`,
-  );
-  const execute = options.execute !== false;
-  const stored = results.loadAll();
+  if (options.run && !runs.includes(options.run))
+    throw new CommandError({
+      code: "UNKNOWN_RUN",
+      message: "The archived run was not found in this Brain home",
+    });
   const targets = options.run ? [options.run] : runs;
-
-  let changed = 0;
-  for (const id of targets) {
-    const result = await rescoreRun(id, { execute });
-    const record =
-      stored.find((r) => r.archiveId === id) ||
-      stored.find((r) => id.includes(results.slugify(r.model.displayName)));
-
-    process.stdout.write(`  ${id}\n`);
-    for (const task of result.tasks) {
-      if (task.score === null) {
-        process.stdout.write(`    ${task.taskId.padEnd(16)} ${task.summary}\n`);
-        continue;
-      }
-      const before = record?.tasks.find((t) => t.id === task.taskId);
-      const now = `${(task.score * 100).toFixed(0)}%`;
-      const then = before ? `${(before.score * 100).toFixed(0)}%` : "-";
-      const moved = before && Math.abs(before.score - task.score) > 0.005;
-      if (moved) changed += 1;
-      process.stdout.write(
-        `    ${task.taskId.padEnd(16)} was ${then.padStart(5)}  now ${now.padStart(5)}` +
-          `${moved ? "   <- CHANGED" : ""}   ${task.summary}\n`,
-      );
+  const stored = results.loadAll();
+  const data = await withCommandSignal(async (signal) => {
+    const rows: RescoreRow[] = [];
+    for (const id of targets) {
+      signal.throwIfAborted();
+      rows.push(row(await rescoreRun(id, { execute: options.execute !== false, signal }), stored));
     }
-    process.stdout.write("\n");
-  }
-
-  process.stdout.write(
-    `  re-graded from stored transcripts, ${changed} task result(s) changed, no GPU used\n\n`,
-  );
+    return rows;
+  });
+  return { type: "list", data, schema };
 }

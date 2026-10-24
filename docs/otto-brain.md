@@ -7,7 +7,7 @@ maps it to the existing public package `@otto-code/brain`. Its executable remain
 
 The standalone CLI provides `serve`, detached `start`/`stop`/`restart`, `status`,
 `scan`, `catalog`, `search`, `pull`, `add`, `config show`/`set`, `runtime list`/`install`/`select`/`remove`,
-`calibrate`, `sweep`, `bench`, `share` and help,
+`calibrate`, `sweep`, `bench`, `share`, `report`, `rescore` and help,
 configuration persistence, home ownership, HTTP/HTTPS, credential masking and host
 shutdown. The library also provides concrete llama.cpp process supervision,
 runtime acquisition and model inventory/download operations. Its scheduling library
@@ -64,6 +64,14 @@ listener, alter its active key, load/unload a model or apply autostart. Explicit
 `POST /__host/settings/access-key` generates and persists a replacement against the
 same owner revision; only that direct response contains the new key. Subsequent
 reads and canonical settings projections contain status only.
+
+`report` explicitly exports the owning home's saved benchmark history as HTML,
+using the latest run per model and configuration for its comparison table.
+`rescore` re-grades archived exchanges with the current scorer and compares them
+with historical scores. It does not rewrite saved measurements or transcripts;
+timing-dependent tasks remain unscored by replay. `--no-execute` skips generated
+code execution. Both commands use the normal table/JSON/YAML/quiet output layer,
+and neither starts a Brain host or loads a model.
 
 The host claims its home before binding a listener. It records a per-lifetime
 instance ID as well as the PID, refuses another live owner, and releases only its

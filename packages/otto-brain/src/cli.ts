@@ -26,6 +26,8 @@ import {
 import { addPullOptions, runPullCommand } from "./commands/pull.js";
 import { addBenchOptions, runBenchCommand } from "./commands/bench.js";
 import { addShareOptions, runShareCommand } from "./commands/share.js";
+import { addReportOptions, runReportCommand } from "./commands/report.js";
+import { addRescoreOptions, runRescoreCommand } from "./commands/rescore.js";
 import {
   addRuntimeListOptions,
   addRuntimeInstallOptions,
@@ -65,6 +67,8 @@ export function registerBrainCommands(program: Command): void {
   addAddOptions(program.command("add")).action(withOutput(runAddCommand));
   addBenchOptions(program.command("bench")).action(withOutput(runBenchCommand));
   addShareOptions(program.command("share")).action(withOutput(runShareCommand));
+  addReportOptions(program.command("report")).action(withOutput(runReportCommand));
+  addRescoreOptions(program.command("rescore")).action(withOutput(runRescoreCommand));
   const config = program.command("config").description("Inspect and edit Brain configuration");
   addConfigShowOptions(config.command("show")).action(withOutput(runConfigShowCommand));
   addConfigSetOptions(config.command("set")).action(withOutput(runConfigSetCommand));
