@@ -17,7 +17,8 @@ function fixture() {
       path.join(root, `${name}-cli.js`),
       "process.stdout.write(JSON.stringify(process.argv.slice(2)))",
     );
-  return { root, env: { ...process.env, npm_execpath: path.join(root, "npm-cli.js") } };
+  const env: NodeJS.ProcessEnv = { ...process.env, npm_execpath: path.join(root, "npm-cli.js") };
+  return { root, env };
 }
 
 it("keeps Windows npm/npx arguments literal without a command shell", async () => {

@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.server.typecheck.json",
+  "compilerOptions": { "rootDir": ".", "noEmit": true, "types": ["node"] },
+  "include": ["src/server/otto/project-knowledge/**/*.test.ts"],
+  "exclude": ["node_modules", "dist"]
+}

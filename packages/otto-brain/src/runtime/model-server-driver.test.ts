@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { test } from "vitest";
 
 import { llamaCppRuntimeDriver } from "./model-server-driver.js";
-import type { Profile } from "../config/schema.js";
+import { ProfileSchema } from "../config/schema.js";
 import type { Model, Runtime } from "../types.js";
 
 test("llama.cpp driver owns its native launch, probe, and log adapter", () => {
@@ -30,7 +30,7 @@ test("llama.cpp driver owns its native launch, probe, and log adapter", () => {
       features: { mtp: false, imatrix: false, distilled: false },
       metadata: null,
     } satisfies Model;
-    const profile = {
+    const profile = ProfileSchema.parse({
       contextSize: 8192,
       cacheTypeK: "q8_0",
       cacheTypeV: "q8_0",
@@ -40,7 +40,7 @@ test("llama.cpp driver owns its native launch, probe, and log adapter", () => {
       reasoningBudget: 0,
       parallelSlots: 1,
       extraArgs: [],
-    } as Profile;
+    });
 
     const launch = llamaCppRuntimeDriver.createLaunch({
       runtime,

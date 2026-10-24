@@ -14,6 +14,33 @@ const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
 const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
 const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
 
+// OTTO(fixture-contracts): keep restored API fixtures in normal CI, not local-only tooling.
+test("Otto fixture declarations and bounded Brain runtime tests stay in CI", () => {
+  const source = readFileSync(ciWorkflowPath, "utf8");
+  const jobs = jobBlocks(source);
+  const declarations = jobs.get("typecheck").join("\n");
+  for (const command of [
+    "npm run typecheck --workspace=@getpaseo/brain -- -p tsconfig.tests.json",
+    "npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-knowledge-tests.json",
+    "npm run typecheck --workspace=@getpaseo/builtin-plugins -- -p otto-kanban/tsconfig.tests.json",
+  ])
+    assert.ok(declarations.includes(command), `Missing fixture typecheck: ${command}`);
+  const linux = jobs.get("server-tests-ubuntu").join("\n");
+  const windows = jobs.get("server-tests-windows").join("\n");
+  assert.match(linux, /&server_brain_tests/);
+  assert.match(linux, /run: npm run test --workspace=@getpaseo\/brain -- --maxWorkers=2/);
+  assert.match(windows, /- \*server_brain_tests/);
+  for (const config of [
+    "packages/otto-brain/tsconfig.tests.json",
+    "packages/server/tsconfig.otto-knowledge-tests.json",
+    "plugins/otto-kanban/tsconfig.tests.json",
+  ]) {
+    const parsed = JSON.parse(readFileSync(new URL(config, repoRoot), "utf8"));
+    assert.ok(parsed.include.some((pattern) => pattern.includes(".test.ts")));
+    assert.ok(!parsed.exclude.includes("**/*.test.ts"));
+  }
+});
+
 // OTTO(release): these are the fork's required build outcomes on the clean base.
 test("unsigned macOS artifacts remain independent of Apple signing", () => {
   const source = readFileSync(new URL(".github/workflows/desktop-release.yml", repoRoot), "utf8");

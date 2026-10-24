@@ -693,7 +693,7 @@ function ownershipHarness(erase: (slotId: number) => Promise<void> | void): {
   order: string[];
   run: (session: string | null) => Promise<unknown>;
 } {
-  const supervisor = {
+  const supervisor: SchedulerSupervisor = {
     state: "ready",
     model: A,
     profile: ProfileSchema.parse({ contextSize: 2048, parallelSlots: 1 }),

@@ -1,5 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import type { z } from "zod/v3";
 
 import {
   enrichWithCatalog,
@@ -27,7 +28,7 @@ function model(id: string, extra: Partial<Model> = {}): Model {
   };
 }
 
-function catalog(models: Catalog["models"]): Catalog {
+function catalog(models: z.input<typeof CatalogSchema>["models"]): Catalog {
   return CatalogSchema.parse({ models });
 }
 

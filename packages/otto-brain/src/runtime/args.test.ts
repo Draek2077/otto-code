@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import { buildArgs } from "./args.js";
-import type { Profile } from "../config/schema.js";
+import { ProfileSchema, type Profile } from "../config/schema.js";
 import type { Model } from "../types.js";
 
 test("emits only enabled component paths for llama.cpp", () => {
-  const profile = {
+  const profile = ProfileSchema.parse({
+    reasoningBudgetMessage: "",
     modelPath: "/models/main.gguf",
     mmprojPath: "/models/mmproj.gguf",
     componentPaths: { speculative_drafter: "/models/draft.gguf" },
@@ -19,9 +20,10 @@ test("emits only enabled component paths for llama.cpp", () => {
     reasoningBudget: 1536,
     parallelSlots: 1,
     extraArgs: [],
-  } as Profile;
+  });
   const args = buildArgs(profile, { port: 20800 });
-  assert.deepEqual(args.slice(-4), ["--reasoning-budget", "1536", "--parallel", "1"]);
+  assert.equal(flagValue(args, "--reasoning-budget"), "1536");
+  assert.equal(flagValue(args, "--parallel"), "1");
   assert.ok(args.includes("--no-ui"));
   assert.ok(!args.includes("--no-webui"));
   assert.deepEqual(args.slice(args.indexOf("-lv"), args.indexOf("-lv") + 2), ["-lv", "3"]);
@@ -30,9 +32,10 @@ test("emits only enabled component paths for llama.cpp", () => {
   assert.equal(args[args.indexOf("--model-draft") + 1], "/models/draft.gguf");
 });
 
-/** A profile carrying only what buildArgs needs, plus whatever a test varies. */
+/** A complete profile with explicit values for the launch behavior under test. */
 function samplingProfile(overrides: Partial<Profile> = {}): Profile {
-  return {
+  return ProfileSchema.parse({
+    reasoningBudgetMessage: "",
     modelPath: "/models/main.gguf",
     contextSize: 8192,
     cacheTypeK: "q8_0",
@@ -44,7 +47,7 @@ function samplingProfile(overrides: Partial<Profile> = {}): Profile {
     parallelSlots: 1,
     extraArgs: [],
     ...overrides,
-  } as Profile;
+  });
 }
 
 /** The value llama-server would receive for a flag, or undefined if unset. */
@@ -77,7 +80,11 @@ test("emits every sampler llama-server takes on the command line", () => {
 // fields existed. Emitting nothing leaves llama.cpp's own default in charge,
 // which is exactly what that older profile ran on.
 test("omits a sampler the profile does not carry", () => {
-  const args = buildArgs(samplingProfile(), { port: 20800 });
+  const legacy = samplingProfile();
+  // Deliberately model an older caller's object without weakening the production type.
+  for (const key of ["temperature", "topP", "topK", "minP", "presencePenalty", "repeatPenalty"])
+    assert.equal(Reflect.deleteProperty(legacy, key), true);
+  const args = buildArgs(legacy, { port: 20800 });
   for (const flag of ["--temp", "--top-p", "--top-k", "--min-p", "--presence-penalty"]) {
     assert.equal(args.includes(flag), false, `${flag} should not be emitted`);
   }
@@ -99,7 +106,8 @@ test("emits reasoning preservation only on an explicit choice", () => {
 });
 
 test("passes the configured llama.cpp log verbosity", () => {
-  const profile = {
+  const profile = ProfileSchema.parse({
+    reasoningBudgetMessage: "",
     modelPath: "/models/main.gguf",
     contextSize: 8192,
     cacheTypeK: "q8_0",
@@ -110,7 +118,7 @@ test("passes the configured llama.cpp log verbosity", () => {
     reasoningBudget: 1536,
     parallelSlots: 1,
     extraArgs: [],
-  } as Profile;
+  });
 
   const args = buildArgs(profile, { port: 20800, logVerbosity: 5 });
 
@@ -118,7 +126,8 @@ test("passes the configured llama.cpp log verbosity", () => {
 });
 
 test("passes a supported model's preserve reasoning setting through its native template argument", () => {
-  const profile = {
+  const profile = ProfileSchema.parse({
+    reasoningBudgetMessage: "",
     modelPath: "/models/qwen.gguf",
     contextSize: 8192,
     cacheTypeK: "q8_0",
@@ -130,7 +139,7 @@ test("passes a supported model's preserve reasoning setting through its native t
     preserveReasoning: false,
     parallelSlots: 1,
     extraArgs: [],
-  } as Profile;
+  });
   const model = {
     id: "qwen3.8",
     displayName: "Qwen3.8",
@@ -241,7 +250,8 @@ test("does not size the cache from an unmeasured model", () => {
 // --- Slot save/erase path -----------------------------------------------------
 
 test("emits --slot-save-path only when a slot-save directory is given", () => {
-  const profile = {
+  const profile = ProfileSchema.parse({
+    reasoningBudgetMessage: "",
     modelPath: "/models/main.gguf",
     contextSize: 8192,
     cacheTypeK: "q8_0",
@@ -252,7 +262,7 @@ test("emits --slot-save-path only when a slot-save directory is given", () => {
     reasoningBudget: 1536,
     parallelSlots: 2,
     extraArgs: [],
-  } as Profile;
+  });
 
   const withPath = buildArgs(profile, { port: 20800, slotSavePath: "/tmp/slot-saves" });
   const i = withPath.indexOf("--slot-save-path");

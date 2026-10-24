@@ -333,3 +333,9 @@ Synthetic GGUF headers, download responses, real OS archive extraction and small
 Node HTTP child processes cover the runtime/model boundary. These fixtures do not
 establish native llama.cpp loading, GPU/backend availability, real model quality,
 or signed iOS/device acceptance.
+
+`npm run typecheck --workspace=@getpaseo/brain -- -p tsconfig.tests.json` checks
+all Brain fixture declarations and package-root helpers without emitting them.
+CI runs this beside the focused Knowledge and Kanban fixture typechecks after
+building the owning workspace declarations. Production builds continue to exclude
+test files. The app's normal typecheck already includes its Brain fixture sources.

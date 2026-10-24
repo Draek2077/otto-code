@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
+import type { SpawnOptions } from "node:child_process";
 import { afterEach, expect, it, vi } from "vitest";
 import { fixtureRoot } from "../../test-fixtures.js";
 import {
@@ -16,16 +17,16 @@ vi.mock("node:child_process", async (original) => {
   const actual = await original<typeof import("node:child_process")>();
   return {
     ...actual,
-    spawn: ((command, args, options) => {
+    spawn: (command: string, args: readonly string[] = [], options: SpawnOptions = {}) => {
       if (!String(command).endsWith(serverExeName())) return actual.spawn(command, args, options);
-      native.calls.push(args);
+      native.calls.push([...args]);
       // Exercise a real short-lived child, without installing/executing a native model binary.
       return actual.spawn(
         process.execPath,
         ["-e", `process.exit(${native.fail ? 1 : 0})`],
         options,
       );
-    }) as typeof actual.spawn,
+    },
   };
 });
 

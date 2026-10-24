@@ -7,7 +7,7 @@ import http from "node:http";
 import { spawnSync } from "node:child_process";
 
 import { bundleDownloadPlan, downloadRepoFiles, pullModel } from "./download.js";
-import type { CatalogModel } from "../config/schema.js";
+import { CatalogModelSchema, type CatalogModel } from "../config/schema.js";
 
 const root = fs.mkdtempSync(path.join(fixtureRoot(), "otto-brain-download-"));
 
@@ -18,16 +18,17 @@ afterEach(() => {
 });
 
 function model(): CatalogModel {
-  return {
+  return CatalogModelSchema.parse({
     id: "author/repo/model.gguf",
     name: "Test model",
     hfRepo: "author/repo",
+    quant: "Q4_K_M",
     quantFile: "model.gguf",
     sizeBytes: 10,
     params: "test",
     tier: "test",
     useCases: [],
-  } as CatalogModel;
+  });
 }
 
 test("resumes an ETag-verified partial with an exact byte range", async () => {
