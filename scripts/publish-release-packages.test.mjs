@@ -16,6 +16,20 @@ test("stable versions publish to latest and prereleases to beta", () => {
   assert.equal(distTagFor("0.10.1-beta.2"), "beta");
 });
 
+test("SDK owner declarations are built before ordinary, clean and release checks", async () => {
+  const root = JSON.parse(await read("package.json"));
+  const plugin = JSON.parse(await read("packages/plugin/package.json"));
+  assert.equal(plugin.dependencies["@getpaseo/brain"], root.version);
+  for (const script of ["build:plugin", "build:plugin:clean"]) {
+    assert.match(root.scripts[script], /^npm run build:brain && /);
+  }
+  const release = root.scripts["release:check:local"];
+  assert.ok(
+    release.indexOf("npm run build:brain") <
+      release.indexOf("npm run typecheck --workspace=@getpaseo/plugin"),
+  );
+});
+
 test("Otto publishes its packages including standalone Brain under its npm scope", () => {
   assert.deepEqual(RELEASE_PACKAGES, [
     "@otto-code/highlight",

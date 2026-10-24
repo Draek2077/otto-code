@@ -1,5 +1,5 @@
 /** App-owned graphics and operational surfaces behind the narrow built-in plugin bridge. */
-import { useEffect, type ReactNode } from "react";
+import { lazy, useEffect, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useReducedMotion } from "react-native-reanimated";
@@ -8,7 +8,6 @@ import type {
   PluginSurfaceProps,
   PluginSidebarItemProps,
 } from "@getpaseo/plugin/client";
-import type { InstalledPlugin } from "@/plugins/types";
 import type { Theme } from "@/styles/theme";
 import { useAppVisible } from "@/hooks/use-app-visible";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -21,13 +20,15 @@ import { BrainLifecycleProvider } from "../lifecycle";
 import { BrainHostIcon } from "../host-icon";
 import { useBrainUiSnapshot } from "../use-brain-ui";
 import { presentBrainSnapshot } from "../bridge";
-import { BrainScreen as OperationalScreen } from "../screens/brain-screen";
-import { BrainSettings as SettingsScreen } from "../settings/settings";
 import type { BrainScreenTheme } from "../screens/theme";
-import { BrainRpc } from "./rpc";
-import { BrainConnectionState } from "./connection-state";
-import { BrainSettingsFacade } from "./settings-port";
-import { BrainScreenFacade } from "./screen-port";
+import type { BrainUiContext } from "./client-bridge";
+
+const OperationalScreen = lazy(async () => ({
+  default: (await import("../screens/brain-screen")).BrainScreen,
+}));
+const SettingsScreen = lazy(async () => ({
+  default: (await import("../settings/settings")).BrainSettings,
+}));
 
 function projectTheme(theme: Theme): BrainScreenTheme {
   return Object.assign({}, theme, {
@@ -77,23 +78,11 @@ function Available({
   return children;
 }
 
-export function createBrainPluginUi(
-  installation: InstalledPlugin,
-  navigation: { openBrain(): void; openSettings(): void },
-): typeof import("@getpaseo/plugin/client/otto-brain") {
-  const host = { serverId: installation.serverId, label: installation.serverId };
-  const core = new BrainConnectionState(new BrainRpc(installation.invoke));
-  const screen = new BrainScreenFacade(core, host, navigation);
-  const settings = new BrainSettingsFacade(core, host, navigation.openBrain);
-  installation.lifetime.signal.addEventListener(
-    "abort",
-    () => {
-      screen.close();
-      settings.close();
-      core.close();
-    },
-    { once: true },
-  );
+export function createBrainUiComponents({
+  screen,
+  settings,
+  navigation,
+}: BrainUiContext): typeof import("@getpaseo/plugin/client/otto-brain") {
   function Operational(props: PluginScreenProps & { brainTheme: BrainScreenTheme }) {
     const snapshot = useBrainUiSnapshot(screen.ui);
     if (snapshot.enabled === false)

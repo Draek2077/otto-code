@@ -51,7 +51,7 @@
     "build:highlight": "npm run build --workspace=@getpaseo/highlight",
     "build:highlight:clean": "npm run build:clean --workspace=@getpaseo/highlight",
     "build:plugin": "npm run build:brain && npm run build --workspace=@getpaseo/plugin",
-    "build:plugin:clean": "npm run build:clean --workspace=@getpaseo/plugin",
+    "build:plugin:clean": "npm run build:brain && npm run build:clean --workspace=@getpaseo/plugin",
     "build:relay": "npm run build --workspace=@getpaseo/relay",
     "build:relay:clean": "npm run build:clean --workspace=@getpaseo/relay",
     "build:protocol": "npm run build --workspace=@getpaseo/protocol",
@@ -123,7 +123,7 @@
     "release:patch": "npm run release:check && npm run version:all:patch && npm run release:push",
     "release:minor": "npm run release:check && npm run version:all:minor && npm run release:push",
     "release:major": "npm run release:check && npm run version:all:major && npm run release:push",
-    "release:check:local": "npm run release:prepare && npm run typecheck --workspace=@getpaseo/highlight && npm run typecheck --workspace=@getpaseo/relay && npm run typecheck --workspace=@getpaseo/protocol && npm run build:client:clean && npm run typecheck --workspace=@getpaseo/client && npm run typecheck --workspace=@getpaseo/plugin && npm run build:server:clean && npm run typecheck --workspace=@getpaseo/server && npm run typecheck --workspace=@getpaseo/cli && npm pack --dry-run --workspace=@getpaseo/highlight && npm pack --dry-run --workspace=@getpaseo/relay && npm pack --dry-run --workspace=@getpaseo/protocol && npm pack --dry-run --workspace=@getpaseo/client && npm pack --dry-run --workspace=@getpaseo/plugin && npm pack --dry-run --workspace=@getpaseo/server && npm pack --dry-run --workspace=@getpaseo/brain && npm pack --dry-run --workspace=@getpaseo/cli",
+    "release:check:local": "npm run release:prepare && npm run typecheck --workspace=@getpaseo/highlight && npm run typecheck --workspace=@getpaseo/relay && npm run typecheck --workspace=@getpaseo/protocol && npm run build:client:clean && npm run typecheck --workspace=@getpaseo/client && npm run build:brain && npm run typecheck --workspace=@getpaseo/plugin && npm run build:server:clean && npm run typecheck --workspace=@getpaseo/server && npm run typecheck --workspace=@getpaseo/cli && npm pack --dry-run --workspace=@getpaseo/highlight && npm pack --dry-run --workspace=@getpaseo/relay && npm pack --dry-run --workspace=@getpaseo/protocol && npm pack --dry-run --workspace=@getpaseo/client && npm pack --dry-run --workspace=@getpaseo/plugin && npm pack --dry-run --workspace=@getpaseo/server && npm pack --dry-run --workspace=@getpaseo/brain && npm pack --dry-run --workspace=@getpaseo/cli",
     "build:brain": "npm run build --workspace=@getpaseo/brain",
     "build:brain:clean": "npm run build:clean --workspace=@getpaseo/brain"
   },

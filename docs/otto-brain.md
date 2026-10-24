@@ -16,6 +16,9 @@ Capacity/quality jobs and host inference share the resident process pool. The
 bundled `otto-brain` plugin registers the original animated sidebar icon,
 Overview/Library/Models/Benchmark/Logs screen, host settings and Open Brain command.
 The renderer remains in Otto-owned app files behind a typed built-in bridge.
+Registration creates only passive controllers. Native graphics load on first
+render; the operational and settings screens load separately when opened, so
+unrelated app/runtime modules do not evaluate Brain's native animation controls.
 Daemon-owned connection and owner settings use the same local/Remote transport
 and private home. The same plugin registers the `otto-brain` agent provider,
 sharing the complete OpenAI harness. Full CLI/TUI host composition and

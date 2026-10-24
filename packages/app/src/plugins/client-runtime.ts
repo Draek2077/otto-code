@@ -12,7 +12,7 @@ import type { PluginClientRuntime } from "./evaluate";
 import { createPluginNavigation } from "./navigation";
 import { pluginButtonStore } from "./buttons";
 import type { InstalledPlugin } from "./types";
-import { createBrainPluginUi } from "@/otto/brain/integration/plugin-ui";
+import { createBrainPluginUi } from "@/otto/brain/integration/client-bridge";
 
 export function createPluginClientRuntime(
   installation: InstalledPlugin,

@@ -67,7 +67,10 @@ it("advertises resources but never samples hardware for cheap status", async () 
   expect(await (await fetch(`${f.base}/__host/status`)).json()).toMatchObject({ state: "stopped" });
   await f.engine.snapshot();
   expect(samples).toBe(0);
-  expect(await (await fetch(`${f.base}/__host/resources`)).json()).toEqual(sample);
+  expect(await (await fetch(`${f.base}/__host/resources`)).json()).toEqual({
+    ...sample,
+    telemetry: { requests: 0, ok: 0, failed: 0, reasoningOnly: 0, truncated: 0, warning: null },
+  });
   expect(samples).toBe(1);
   expect(f.hardwareCalls()).toBe(0);
   expect(f.childCreations()).toBe(0);
