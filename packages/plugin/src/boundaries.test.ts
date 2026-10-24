@@ -19,6 +19,7 @@ const entries = {
   "./server/otto-kanban": "server", // OTTO(kanban): concrete host library stays Node-only.
   "./otto/kanban": "shared", // OTTO(kanban): structural RPC/model definitions only.
   "./otto/openai-settings": "shared",
+  "./otto/atlassian-settings": "shared", // OTTO(integration): structural contracts, never credentials or native binding.
   "./client": "client",
   "./client/host": "client",
   "./client/react-native": "client",
