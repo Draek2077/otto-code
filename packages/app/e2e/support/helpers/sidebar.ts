@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page, type Locator } from "@playwright/test";
 import { getServerId } from "./server-id";
 
 interface ContextMenuAnchor {
@@ -30,7 +30,19 @@ async function expectContextMenuAtPointer(
   menuTestID: string,
   anchor: ContextMenuAnchor,
 ): Promise<void> {
-  const bounds = await page.getByTestId(menuTestID).boundingBox();
+  // OTTO(knowledge): portal replacement can briefly remove the measured node
+  // after visibility succeeds. Wait for measurable geometry, not an arbitrary delay.
+  const measured: { value: Awaited<ReturnType<Locator["boundingBox"]>> } = { value: null };
+  await expect
+    .poll(
+      async () => {
+        measured.value = await page.getByTestId(menuTestID).boundingBox();
+        return measured.value !== null;
+      },
+      { timeout: 10000 },
+    )
+    .toBe(true);
+  const bounds = measured.value;
   if (!bounds) throw new Error(`Could not measure ${menuTestID}`);
   expect(Math.abs(bounds.x - anchor.x)).toBeLessThanOrEqual(2);
   expect(Math.abs(bounds.y - (anchor.y + 4))).toBeLessThanOrEqual(2);

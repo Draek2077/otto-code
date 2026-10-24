@@ -141,6 +141,7 @@ test.describe("Sidebar items in Appearance settings", () => {
         { key: "search", visible: true },
         // OTTO(kanban): the built-in contribution participates in persisted navigation preferences.
         { key: "plugin:otto-kanban:kanban", visible: true },
+        { key: "plugin:otto-project-knowledge:knowledge", visible: true }, // OTTO(knowledge): persisted built-in navigation row.
       ]);
 
       await leaveSettings(page);

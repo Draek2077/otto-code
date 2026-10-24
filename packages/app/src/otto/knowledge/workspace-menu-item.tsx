@@ -6,6 +6,8 @@ import { ContextMenuItem } from "@/components/ui/context-menu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useInstalledPlugin } from "@/plugins/registry";
 import { createPluginNavigation } from "@/plugins/navigation";
+import { usePanelStore } from "@/stores/panel-store";
+import { useIsCompactFormFactor } from "@/constants/layout";
 const ThemedBook = withUnistyles(BookOpen);
 const color = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const leading = <ThemedBook size={14} uniProps={color} />;
@@ -20,14 +22,15 @@ export function KnowledgeWorkspaceMenuItem({
   surface: "context" | "dropdown";
 }) {
   const plugin = useInstalledPlugin(serverId ?? "", "otto-project-knowledge");
+  const compact = useIsCompactFormFactor();
   const navigation = useMemo(
     () => createPluginNavigation({ serverId: serverId ?? "", workspaceId: workspaceId ?? null }),
     [serverId, workspaceId],
   );
-  const open = useCallback(
-    () => navigation.openWorkspacePanel("otto-project-knowledge", "knowledge", "workspace"),
-    [navigation],
-  );
+  const open = useCallback(() => {
+    if (compact) usePanelStore.getState().showMobileAgent();
+    navigation.openWorkspacePanel("otto-project-knowledge", "knowledge", "workspace");
+  }, [navigation, compact]);
   if (
     !serverId ||
     !workspaceId ||

@@ -192,10 +192,13 @@ test.describe("explorer pane tab placement", () => {
       await chip.click({ position: { x: 12, y: 13 }, timeout: 5_000 });
       await expect(chip).toHaveAttribute("aria-selected", "true", { timeout: 5_000 });
 
-      // Clicking inside the New tab pane (focuses it) must not lock anything. Aim
-      // above the vertically centred launcher, which would open a tab instead.
+      // OTTO(knowledge): plugin launcher rows change the rail height. Focus the
+      // content gutter rather than a fixed point that can now hit Agent.
       const emptyPane = newTabPaneChild(page);
-      await emptyPane.click({ position: { x: 40, y: 120 }, timeout: 5_000 });
+      await page
+        .getByTestId("workspace-new-tab-panel")
+        .click({ position: { x: 8, y: 8 }, timeout: 5_000 });
+      await expect(emptyPane).toBeVisible();
 
       // A second drag must work: center-drop the agent tab back into the New pane.
       const target = await emptyPaneBox(page);
