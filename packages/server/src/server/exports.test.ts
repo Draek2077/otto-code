@@ -74,6 +74,7 @@ async function runtimeDependencies(entry: string): Promise<string[]> {
   return inputs;
 }
 
+// OTTO(test): account for lazy Brain commands while retaining eager Paseo import checks.
 /** A deferred import is present in bundle metadata but is not evaluated by
  * registration. Static imports/re-exports remain counted without tree shaking. */
 function eagerRuntimeInputs(metafile: Metafile): string[] {
