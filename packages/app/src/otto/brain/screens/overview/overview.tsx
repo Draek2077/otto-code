@@ -274,7 +274,8 @@ function LifecycleControls({
   const handleRestart = useCallback(() => {
     void confirmDialog({
       title: "Restart the brain?",
-      message: "The host stops and starts again, reloading the selected model.",
+      message:
+        "Active requests and jobs stop. The host starts again using saved settings and the selected model, or its saved default.",
       confirmLabel: "Restart",
       cancelLabel: "Cancel",
       destructive: true,
@@ -864,7 +865,7 @@ function RuntimePanel({
 interface BrainOverviewProps {
   serverId: string;
   isConnected: boolean;
-  /** False for a remote brain: it is started on the machine that hosts it. */
+  /** Local lifecycle or an explicitly advertised owner restart capability. */
   canControlLifecycle: boolean;
   /** The connected daemon implements host-owned runtime reads. */
   showRuntime: boolean;

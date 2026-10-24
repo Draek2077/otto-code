@@ -70,7 +70,8 @@ function lifecyclePermissions(state: BrainConnectionStateSnapshot, write: boolea
   return {
     start: write && local && state.connection?.config.enabled === true && !state.localRunning,
     stop: write && local && state.localRunning,
-    restart: write && local && state.localRunning,
+    restart:
+      write && (local ? state.localRunning : state.feed?.status?.capabilities.restart === true),
   };
 }
 function capabilities(state: BrainConnectionStateSnapshot): BrainSettingsSnapshot["capabilities"] {

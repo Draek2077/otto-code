@@ -181,6 +181,33 @@ test("a disabled connection cannot start a hidden host but may explicitly stop i
   await f.controller.performLocalAction("stop");
   expect(f.ports.stop).toHaveBeenCalledOnce();
 });
+
+test("an explicit Remote restart uses only that owner and serializes connection changes until admission", async () => {
+  const f = fixture();
+  f.save({ enabled: true, mode: "remote", remote: { host: "actual-owner.example" } });
+  let acknowledge!: (value: unknown) => void;
+  f.transport.request = vi.fn(async (route) => {
+    if (route === "/__host/capabilities") return { restart: true, writable: true };
+    if (route === "/__host/status") return { instanceId: "remote-lifetime" };
+    return new Promise((resolve) => {
+      acknowledge = resolve;
+    });
+  });
+  const restart = f.controller.performLifecycleAction("restart", "host/model");
+  await tick();
+  expect(() => f.save({ mode: "local" })).toThrow("current Brain lifecycle");
+  await expect(f.controller.performLifecycleAction("restart")).rejects.toThrow("still running");
+  acknowledge({ accepted: true, instanceId: "remote-lifetime" });
+  await restart;
+  expect(f.ports.localClient).not.toHaveBeenCalled();
+  expect(f.ports.start).not.toHaveBeenCalled();
+  expect(f.ports.stop).not.toHaveBeenCalled();
+  expect(f.transport.request).toHaveBeenLastCalledWith(
+    "/__host/restart",
+    { instanceId: "remote-lifetime", modelId: "host/model" },
+    expect.any(AbortSignal),
+  );
+});
 test("closing the controller aborts pending client reads without invoking host shutdown", async () => {
   const f = fixture();
   f.transport.request = async (_route, _body, signal) =>

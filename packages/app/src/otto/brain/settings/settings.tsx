@@ -42,7 +42,7 @@ function LifecycleAction({ action }: { action: "start" | "stop" | "restart" }) {
     void model.perform(action, () =>
       confirmDialog({
         title: `${ACTIONS[action]} Brain?`,
-        message: `${ACTIONS[action]} Brain on ${owner?.label ?? "the selected owner"} using its saved settings?`,
+        message: `${ACTIONS[action]} Brain on ${owner?.label ?? "the selected owner"} using its saved settings?${action === "restart" ? " Active requests and jobs stop. If the endpoint, certificate or access key changed, update this connection after restart." : ""}`,
         confirmLabel: ACTIONS[action],
       }),
     );

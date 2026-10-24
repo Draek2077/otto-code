@@ -63,6 +63,7 @@ export const BrainStatusSchema = z.object({
     hfSearch: z.boolean(),
     modelAcquisition: z.boolean(),
     ownerSettings: z.boolean(),
+    restart: z.boolean().optional(),
   }),
   residents: z
     .array(

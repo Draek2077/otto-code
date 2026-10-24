@@ -35,7 +35,7 @@ function capabilities(state: BrainConnectionStateSnapshot): BrainHostStatus["cap
       state.feed?.connection === "connected" &&
       (state.connection?.config.mode === "local" || Boolean(flags?.writable)),
     jobs: Boolean(flags?.jobs),
-    restart: state.connection?.config.mode === "local",
+    restart: state.connection?.config.mode === "local" || flags?.restart === true,
   };
 }
 function hostIdentity(state: BrainConnectionStateSnapshot) {

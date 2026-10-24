@@ -6,6 +6,7 @@ import { BrainConfigSchema } from "../config/schema.js";
 import { resolveBrainPaths } from "../config/paths.js";
 import { readPidFile } from "./pid-lock.js";
 import { startService, type ServiceHandle, type BrainRuntime } from "./serve.js";
+import { BrainServiceSession } from "./session.js";
 
 const hosts: ServiceHandle[] = [];
 const roots: string[] = [];
@@ -24,6 +25,114 @@ afterEach(async () => {
   vi.useRealTimers();
   for (const host of hosts.splice(0)) await host.stop();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+it("acknowledges explicit owner restart with a lifetime proof and rejects another admission", async () => {
+  const options = fixture();
+  options.config.allowRemoteConfig = true;
+  let complete!: () => void;
+  const requestRestart = vi.fn(
+    (_model: string | null) =>
+      new Promise<void>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const host = await start({ ...options, requestRestart });
+  const base = `http://127.0.0.1:${host.port}`;
+  const instanceId = readPidFile(options.env)!.instanceId;
+  const post = (body: unknown) =>
+    fetch(`${base}/__host/restart`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  expect((await post({ instanceId: "other-owner" })).status).toBe(409);
+  expect(requestRestart).not.toHaveBeenCalled();
+  const response = await post({ instanceId, modelId: "explicit/model" });
+  expect(response.status).toBe(202);
+  expect(await response.json()).toEqual({ accepted: true, instanceId });
+  await vi.waitFor(() => expect(requestRestart).toHaveBeenCalledExactlyOnceWith("explicit/model"));
+  expect((await post({ instanceId })).status).toBe(409);
+  complete();
+});
+
+it("does not advertise or invoke an absent owner restart implementation", async () => {
+  const options = fixture();
+  options.config.allowRemoteConfig = true;
+  const host = await start(options);
+  const base = `http://127.0.0.1:${host.port}`;
+  expect(await (await fetch(`${base}/__host/capabilities`)).json()).toMatchObject({
+    restart: false,
+  });
+  expect((await fetch(`${base}/__host/restart`, { method: "POST" })).status).toBe(404);
+});
+
+it.each([
+  { writable: false, origin: undefined },
+  { writable: true, origin: "https://unrelated.example" },
+])("rejects restart outside the owning host's write policy", async ({ writable, origin }) => {
+  const options = fixture();
+  options.config.allowRemoteConfig = writable;
+  const requestRestart = vi.fn(async () => {});
+  const host = await start({ ...options, requestRestart });
+  const response = await fetch(`http://127.0.0.1:${host.port}/__host/restart`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(origin ? { origin } : {}) },
+    body: JSON.stringify({ instanceId: readPidFile(options.env)?.instanceId }),
+  });
+  expect(response.status).toBe(403);
+  expect(requestRestart).not.toHaveBeenCalled();
+});
+
+it("replaces an isolated unloaded owner after acknowledgment and reads its staged configuration once", async () => {
+  const options = fixture();
+  options.config.allowRemoteConfig = true;
+  let config = options.config;
+  const replacements: ServiceHandle[] = [];
+  const readConfig = vi.fn(() => config);
+  const session = new BrainServiceSession({
+    readConfig,
+    start: async (current, requestRestart) => {
+      const host = await start({
+        ...options,
+        config: current,
+        requestRestart,
+        createRuntime: (context) => ({
+          status: () => ({ state: "stopped", model: null, modelId: null }),
+          snapshot: async () => ({
+            instanceId: context.instanceId,
+            state: "stopped",
+            residents: [],
+          }),
+          capabilities: { writable: true },
+          handleRequest: () => false,
+          stop: async () => {},
+        }),
+      });
+      replacements.push(host);
+      return host;
+    },
+  });
+  try {
+    await session.start();
+    const first = readPidFile(options.env)!;
+    config = { ...config, runtime: { ...config.runtime, logVerbosity: 2 } };
+    const response = await fetch(`http://127.0.0.1:${first.port}/__host/restart`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ instanceId: first.instanceId }),
+    });
+    expect(await response.json()).toEqual({ accepted: true, instanceId: first.instanceId });
+    await vi.waitFor(() => expect(replacements).toHaveLength(2));
+    const second = readPidFile(options.env)!;
+    expect(second.instanceId).not.toBe(first.instanceId);
+    expect(second.pid).toBe(first.pid);
+    expect(replacements[0].server.listening).toBe(false);
+    expect((await fetch(`http://127.0.0.1:${second.port}/health`)).status).toBe(200);
+    expect(readConfig).toHaveBeenCalledTimes(2);
+  } finally {
+    await session.stop();
+  }
 });
 
 it("serves management while unloaded and releases its exact listener and ownership", async () => {

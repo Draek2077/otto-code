@@ -139,6 +139,7 @@ export class HostEngine implements BrainRuntime {
       ownerSettingsChoices: true,
       networkDiscovery: true,
       resources: true,
+      restart: this.context.restartSupported === true,
     };
   }
   private readonly lifetime = new AbortController();

@@ -9,6 +9,7 @@ import { remoteBrainClient } from "../service/remote-client.js";
 import { startLocalBrain, stopLocalBrain } from "../service/lifecycle.js";
 import { readPidFile, isProcessAlive } from "../service/pid-lock.js";
 import { readBrainConfig } from "../config/store.js";
+import { restartRemoteBrain } from "./remote-restart.js";
 
 export interface BrainControllerTransport {
   request(route: string, body?: unknown, signal?: AbortSignal): Promise<unknown>;
@@ -99,6 +100,45 @@ export class BrainController<Status extends { instanceId: string }> {
   private invalidateRequests(): void {
     this.transportLifetime.abort();
     this.transportLifetime = new AbortController();
+  }
+  performLifecycleAction(
+    action: "start" | "stop" | "restart",
+    modelId: string | null = null,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    this.assertOpen();
+    if (this.connection.resolve().mode === "local")
+      return this.performLocalAction(action, modelId, signal);
+    if (action !== "restart")
+      return Promise.reject(
+        new BrainConnectionError(
+          "validation",
+          "Start or stop the Remote Brain service on its owning host",
+        ),
+      );
+    if (!this.connection.resolve().enabled)
+      return Promise.reject(
+        new BrainConnectionError(
+          "validation",
+          "Enable Brain in Otto's host settings before restarting it",
+        ),
+      );
+    if (this.lifecycle)
+      return Promise.reject(
+        new BrainConnectionError(
+          "unavailable",
+          "Another Brain lifecycle operation is still running",
+        ),
+      );
+    const signals = [this.lifetime.signal, this.transportLifetime.signal];
+    if (signal) signals.push(signal);
+    this.lifecycle = restartRemoteBrain(this.client(), modelId, AbortSignal.any(signals)).finally(
+      () => {
+        this.lifecycle = null;
+        if (!this.closed) this.status.invalidate();
+      },
+    );
+    return this.lifecycle;
   }
   performLocalAction(
     action: "start" | "stop" | "restart",

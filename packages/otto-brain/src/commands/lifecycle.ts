@@ -5,6 +5,7 @@ import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { readRunningService } from "../service/pid-lock.js";
 import { startLocalBrain, stopLocalBrain } from "../service/lifecycle.js";
 import { localBrainRequest } from "../service/local-client.js";
+import { BrainServiceSession } from "../service/session.js";
 
 interface LifecycleRow {
   status: string;
@@ -64,37 +65,48 @@ export async function runServeCommand(options: { model?: string }): Promise<void
     import("../service/serve.js"),
     import("../service/engine.js"),
   ]);
-  const config = loadBrainConfig();
-  let runtime!: ReturnType<typeof createHostRuntime>;
-  const host = await startService({
-    config,
-    createRuntime: (context) => {
-      runtime = createHostRuntime(context);
-      return runtime;
+  const session = new BrainServiceSession({
+    readConfig: () => loadBrainConfig(),
+    start: async (config, requestRestart, activation) => {
+      let runtime!: ReturnType<typeof createHostRuntime>;
+      const host = await startService({
+        config,
+        requestRestart,
+        createRuntime: (context) => {
+          runtime = createHostRuntime(context);
+          return runtime;
+        },
+      });
+      process.stdout.write(
+        `Otto Brain listening on ${host.secure ? "https" : "http"}://${host.displayHost}:${host.port}\n`,
+      );
+      // Initial serve remains unloaded unless --model was explicit. An explicit
+      // owner restart uses its requested model or the owner's saved default.
+      const model =
+        activation.kind === "initial" ? options.model : (activation.modelId ?? config.defaultModel);
+      if (model) {
+        void (async () => runtime.pool.preload(pickModel(scanModels(config), model)))().catch(
+          () => {
+            process.stderr.write(
+              "Brain could not load the selected model; the host remains available for management.\n",
+            );
+          },
+        );
+      }
+      return host;
     },
   });
-  process.stdout.write(
-    `Otto Brain listening on ${host.secure ? "https" : "http"}://${host.displayHost}:${host.port}\n`,
-  );
   const shutdown = () => {
     process.off("SIGINT", shutdown);
     process.off("SIGTERM", shutdown);
-    void host.stop().catch(() => {
+    void session.stop().catch(() => {
       process.stderr.write("Otto Brain could not shut down cleanly.\n");
       process.exitCode = 1;
     });
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
-  if (options.model) {
-    try {
-      await runtime.pool.preload(pickModel(scanModels(config), options.model));
-    } catch {
-      process.stderr.write(
-        "Brain could not load the selected model; the host remains available for management.\n",
-      );
-    }
-  }
+  await session.start();
 }
 export async function runStartCommand(options: {
   model?: string;

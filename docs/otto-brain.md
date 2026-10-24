@@ -87,6 +87,20 @@ can be cleared with `null`; model locks use a JSON array. `share` saves network,
 TLS and access intent without starting or restarting a host. A newly generated
 key is returned once by that command; later reads report only whether a key exists.
 Saved transport changes take effect on an explicit host restart.
+Standalone `serve` supports explicit owner restart without depending on an Otto
+daemon to respawn it. A permitted restart acknowledges its current lifetime before
+closing the listener and replacing the engine, then rereads saved configuration
+once. The replacement receives a new lifetime ID. Active model work and jobs stop
+as part of that explicit restart. It loads an explicitly selected model, or the
+owner's saved default, while the initial `serve` remains unloaded without `--model`.
+Startup or shutdown failures do not trigger an automatic restart loop.
+
+Otto's app and CLI expose Remote restart only when the actual owner advertises it
+and allows remote configuration. They bind the request to its observed lifetime.
+Remote service start and stop remain operations of the machine that owns that
+service. If staged settings change its endpoint, TLS identity or access key,
+restart through the current connection first, then explicitly save the matching
+new connection. Otto never guesses a replacement key or trusts a new certificate.
 The private running-host record retains the active listener's public certificate.
 Exact local stop uses that trust material and its private lifetime proof, so a
 staged certificate location or replacement access key cannot lock its owner out

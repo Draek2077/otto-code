@@ -141,7 +141,7 @@ export class BrainDaemonService {
       }
       case "brain.lifecycle": {
         const request = BrainLifecycleSchema.parse(input);
-        await this.controller.performLocalAction(request.action, request.modelId);
+        await this.controller.performLifecycleAction(request.action, request.modelId);
         return { accepted: true };
       }
       case "brain.query":

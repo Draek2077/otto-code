@@ -29,12 +29,15 @@ export interface StartServiceOptions {
   runtime?: BrainRuntime;
   /** Called only after exclusive home ownership and transport policy validation. */
   createRuntime?(context: BrainRuntimeContext): BrainRuntime | Promise<BrainRuntime>;
+  /** Explicit owner composition only; invoked after the restart acknowledgment is flushed. */
+  requestRestart?(modelId: string | null): Promise<void>;
 }
 export interface BrainRuntimeContext {
   instanceId: string;
   paths: BrainPaths;
   env: NodeJS.ProcessEnv;
   config: BrainConfig;
+  restartSupported?: boolean;
 }
 export interface ServiceHandle {
   server: http.Server;
@@ -80,7 +83,7 @@ function handler(
   config: BrainConfig,
   runtime: BrainRuntime | undefined,
   isStopping: () => boolean,
-  control: { instanceId: string; stop(): Promise<void> },
+  control: ServiceControl,
 ): http.RequestListener {
   const token = config.auth.mode === "token" ? config.auth.token : null;
   return (request, response) => {
@@ -116,10 +119,14 @@ async function dispatch(
   route: string | undefined,
   config: BrainConfig,
   runtime: BrainRuntime | undefined,
-  control: { instanceId: string; stop(): Promise<void> },
+  control: ServiceControl,
 ): Promise<void> {
   if (route === "/__host/local/stop" && request.method === "POST") {
     await localStop(request, response, control);
+    return;
+  }
+  if (route === "/__host/restart" && request.method === "POST") {
+    await remoteRestart(request, response, config, control);
     return;
   }
   if (request.method === "GET") {
@@ -143,17 +150,14 @@ async function dispatch(
         liveInference: false,
         logEvents: false,
         jobs: false,
-        restart: false,
         processPool: false,
         ...runtime?.capabilities,
+        restart: Boolean(control.restart),
       });
       return;
     }
     if (route === "/__host/status") {
-      const status = runtime?.snapshot
-        ? await runtime.snapshot()
-        : (runtime?.status() ?? { state: "stopped", model: null, modelId: null });
-      json(response, 200, status);
+      json(response, 200, await managementStatus(runtime, control));
       return;
     }
     if (!runtime && (route === "/v1/models" || route === "/api/v0/models")) {
@@ -167,6 +171,74 @@ async function dispatch(
     return;
   }
   json(response, 404, { error: "not found" });
+}
+
+async function managementStatus(runtime: BrainRuntime | undefined, control: ServiceControl) {
+  if (runtime?.snapshot)
+    return {
+      ...(await runtime.snapshot()),
+      capabilities: { ...runtime.capabilities, restart: Boolean(control.restart) },
+    };
+  return runtime?.status() ?? { state: "stopped", model: null, modelId: null };
+}
+
+interface ServiceControl {
+  instanceId: string;
+  stop(): Promise<void>;
+  restart?: (modelId: string | null) => Promise<void>;
+  restarting: boolean;
+}
+
+async function remoteRestart(
+  request: http.IncomingMessage,
+  response: http.ServerResponse,
+  config: BrainConfig,
+  control: ServiceControl,
+): Promise<void> {
+  if (!control.restart) {
+    sendJson(response, 404, { error: "Brain owner restart is not supported" });
+    return;
+  }
+  if (!config.allowRemoteConfig || request.headers.origin !== undefined) {
+    sendJson(response, 403, { error: "Brain owner restart is not permitted" });
+    return;
+  }
+  try {
+    const body = await readObject(request, AbortSignal.timeout(3000), 4096);
+    if (body.instanceId !== control.instanceId || control.restarting) {
+      sendJson(response, 409, { error: "Brain host lifetime changed or is restarting" });
+      return;
+    }
+    const modelId = body.modelId ?? null;
+    if (modelId !== null && (typeof modelId !== "string" || !modelId || modelId.length > 1024)) {
+      sendJson(response, 400, { error: "Invalid Brain restart model identity" });
+      return;
+    }
+    control.restarting = true;
+    const restart = control.restart;
+    response.once("close", () => {
+      if (!response.writableFinished) control.restarting = false;
+    });
+    response.once("finish", () => {
+      setImmediate(() => {
+        void restart(modelId)
+          .catch(() => {
+            process.stderr.write(
+              "Otto Brain could not apply the explicit owner restart. Inspect its host log.\n",
+            );
+            process.exitCode = 1;
+          })
+          .finally(() => {
+            control.restarting = false;
+          });
+      });
+    });
+    sendJson(response, 202, { accepted: true, instanceId: control.instanceId });
+  } catch (error) {
+    sendJson(response, error instanceof RequestError ? error.status : 400, {
+      error: "Invalid Brain restart request",
+    });
+  }
 }
 
 /** Private ownership proof replaces signalling whichever process reused a recorded PID. */
@@ -238,6 +310,7 @@ export async function startService({
   env = process.env,
   runtime: attachedRuntime,
   createRuntime,
+  requestRestart,
 }: StartServiceOptions): Promise<ServiceHandle> {
   if (attachedRuntime && createRuntime) throw new Error("Provide one Brain runtime owner");
   const ownership = acquireServiceOwnership(env);
@@ -275,10 +348,18 @@ export async function startService({
     const paths = resolveBrainPaths(env);
     const tls = await resolveTlsOptions(config, paths);
     if (createRuntime)
-      runtime = await createRuntime({ instanceId: ownership.instanceId, paths, env, config });
+      runtime = await createRuntime({
+        instanceId: ownership.instanceId,
+        paths,
+        env,
+        config,
+        restartSupported: Boolean(requestRestart),
+      });
     const listener = handler(config, runtime, () => stopping, {
       instanceId: ownership.instanceId,
       stop,
+      restart: requestRestart,
+      restarting: false,
     });
     if (tls) {
       certManager = new CertManager(tls);

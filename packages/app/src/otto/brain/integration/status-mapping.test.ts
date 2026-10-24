@@ -154,3 +154,13 @@ test("read-only Remote Brain keeps its management readouts without gaining write
   expect(screenAccess(state)).toMatchObject({ manage: true, hfSearch: true });
   expect(statusToView(state, null).capabilities.writable).toBe(false);
 });
+
+test("Remote restart presentation follows the actual owner's advertised capability", () => {
+  const state = fixture();
+  if (!state.connection || !state.feed?.status) throw new Error("Fixture status missing");
+  state.connection.config.mode = "remote";
+  delete state.feed.status.capabilities.restart;
+  expect(statusToView(state, null).capabilities.restart).toBe(false);
+  state.feed.status.capabilities.restart = true;
+  expect(statusToView(state, null).capabilities.restart).toBe(true);
+});
