@@ -2,6 +2,24 @@ import { describe, expect, it } from "vitest";
 import { createCli } from "./cli.js";
 
 describe("canonical CLI surface", () => {
+  // OTTO(brain-cli): the root must recognize Brain before project-path classification.
+  it("registers Brain management with nested target and output selection", async () => {
+    const cli = createCli();
+    const brain = cli.commands.find((command) => command.name() === "brain")!;
+    const model = brain.commands.find((command) => command.name() === "model")!;
+    const load = model.commands.find((command) => command.name() === "load")!;
+    let called = false;
+    load.action(() => {
+      called = true;
+    });
+    await cli.parseAsync(
+      ["--host", "selected:6788", "brain", "model", "load", "resident/model", "--json"],
+      { from: "user" },
+    );
+    expect(called).toBe(true);
+    expect(load.optsWithGlobals()).toMatchObject({ host: "selected:6788", json: true });
+    expect(cli.helpInformation()).toContain("brain");
+  });
   it.each(["send", "agent send"])("%s accepts an explicit behavior override", async (path) => {
     const cli = createCli();
     const owner =

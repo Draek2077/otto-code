@@ -41,6 +41,8 @@ import {
 } from "./utils/command-options.js";
 import { resolveCliVersion } from "./version.js";
 import { OTTO_CLI_COMMAND, OTTO_PRODUCT_NAME } from "@getpaseo/protocol/otto/identity";
+// OTTO(brain-cli): effects stay behind the selected daemon's existing plugin RPC channel.
+import { createOttoBrainCommand } from "./otto/brain/commands.js";
 
 const VERSION = resolveCliVersion();
 
@@ -153,6 +155,8 @@ export function createCli(): Command {
   program.addCommand(createProviderCommand());
   program.addCommand(createUsageCommand());
   program.addCommand(createPluginCommand());
+  // OTTO(brain-cli)
+  program.addCommand(createOttoBrainCommand());
 
   // Speech model commands
   program.addCommand(createSpeechCommand());

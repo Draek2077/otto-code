@@ -37,6 +37,32 @@ product acceptance remain restoration work tracked in Otto Knowledge. This
 package is not yet the complete Brain product. `serve`
 starts unloaded unless its caller explicitly passes `--model`.
 
+### Otto CLI management
+
+`otto brain` manages the Brain selected by the target Otto daemon. Normal `--home`
+and `--host` selection applies, including paired relay and SSH connections. It
+uses the same encrypted plugin RPC and daemon-owned local/Remote connection as
+the app. It never interprets a remote selection as permission to use local model
+files. Help is passive; commands require the host's Brain capability.
+
+`status` reports saved connection/owner settings even while the local runtime is
+stopped. `live-status`, `resources`, `model ls`/`scan`/`load`/`unload`/`rename`/
+`reset-name`/`delete-plan`/`delete`/`delete-component`, `model profile show`/`save`/
+`budget`, `catalog`, `search`, `quants`, `pull`, `add`, `runtime list`/`candidate`/
+`install`/`select`/`auto`/`remove`, `calibrate`, `sweep`, `benchmark`, `job ls`/
+`cancel` and `evals` use host-issued identities. Job submission returns admission;
+closing the CLI does not cancel that durable job. Inspect it with `job ls` and
+cancel it explicitly with `job cancel`.
+
+`connection show` and `owner show <owner-id>` return revisioned sanitized settings.
+Their `save --input <file|->` commands take explicit JSON write documents with the
+originating revision, partial patch and write-only credential intents. `-` reads
+stdin, keeping secrets out of command-line history. Profile saves also require
+`--revision`. Input is bounded to 128 KiB. Blank keys never mean removal, conflicts
+never rebase, and uncertain writes never retry. Read current state before another
+explicit submission. Reads strip unknown output fields; stored keys and raw host
+errors are not printed.
+
 ## Ownership and continuity
 
 Only explicit operations resolve `OTTO_HOME`, defaulting to `~/.otto`, and use its
