@@ -311,6 +311,7 @@ it("reports environment ownership and prevents ineffective credential, runtime o
     OTTO_BRAIN_MODELS_DIR: "/env/models",
   });
   expect(f.settings.read().capabilities).toEqual({
+    sharing: true,
     networkDiscovery: true,
     runtimeSelection: false,
     storage: false,
