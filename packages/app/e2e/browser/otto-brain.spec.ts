@@ -1,4 +1,5 @@
 import { test, expect, openBrainSettings } from "../support/helpers/otto-brain";
+import { gotoAppShell } from "../support/helpers/app";
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
 
@@ -29,14 +30,22 @@ for (const compact of [false, true]) {
       await control.click();
       await expect(control).toHaveAttribute("aria-selected", "true");
     }
+    // Start the sidebar journey from its actual app-shell owner. Compact plugin
+    // screens deliberately use Paseo's Back header, not a second menu button.
+    await gotoAppShell(page);
     if (compact) await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
     const icon = page.locator('[data-testid="otto-brain-sidebar"]:visible').first();
     await expect(icon).toBeVisible();
     await icon.click();
     await expect(page.getByRole("button", { name: "Logs", exact: true })).toBeVisible();
-    if (compact)
-      await expect(page.getByRole("button", { name: "Close menu", exact: true })).toBeHidden();
-    expect(await brain.localRunning()).toBe(false);
     await page.screenshot({ path: testInfo.outputPath("brain-reachable.png") });
+    if (compact) {
+      await expect(page.getByRole("button", { name: "Close menu", exact: true })).toBeHidden();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await expect(
+        page.getByRole("button", { name: "Open menu", exact: true }).first(),
+      ).toBeVisible();
+    }
+    expect(await brain.localRunning()).toBe(false);
   });
 }
