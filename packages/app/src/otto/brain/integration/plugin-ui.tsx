@@ -1,6 +1,6 @@
 /** App-owned graphics and operational surfaces behind the narrow built-in plugin bridge. */
 import { lazy, useCallback, useEffect, type ReactNode } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useReducedMotion } from "react-native-reanimated";
 import type {
@@ -53,7 +53,6 @@ function projectTheme(theme: Theme): BrainScreenTheme {
 const themeProps = (theme: Theme) => ({ brainTheme: projectTheme(theme) });
 const iconProps = (theme: Theme) => ({ palette: projectTheme(theme).colors });
 const styles = StyleSheet.create((theme) => ({
-  settings: { padding: theme.spacing[4], gap: theme.spacing[4] },
   intro: { padding: theme.spacing[4], gap: theme.spacing[4], alignItems: "center" },
   navigationIcon: {
     width: density.iconButton,
@@ -139,9 +138,8 @@ export function createBrainUiComponents({
     useEffect(() => settings.setHostLabel(props.host.label), [props.host.label]);
     return (
       <Available serverId={props.host.id}>
-        <ScrollView contentContainerStyle={styles.settings}>
-          <SettingsScreen port={settings} active={visible && retained} />
-        </ScrollView>
+        {/* Canonical Settings PageLayout owns the scroll, 720px frame and gutters. */}
+        <SettingsScreen port={settings} active={visible && retained} />
       </Available>
     );
   }

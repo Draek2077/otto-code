@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { View } from "react-native";
 import { useRpc } from "@getpaseo/plugin/client";
 import { SettingsButton, SettingsCard, SettingsRow } from "@getpaseo/plugin/client/ui";
 import { getCapabilities } from "../shared/rpc.js";
@@ -6,7 +7,17 @@ import { useRead } from "./use-read.js";
 import { ProjectScreen, type KanbanScreenProps } from "./project-screen.js";
 // PluginSurfaceScreen already owns HostFilter and the selected host. Never add
 // another host inventory, client, fallback host, or global board selection here.
+// Match Paseo PageLayout's content rails. The board can use the available work
+// area; forms inside it keep the same readable 720px page frame as Settings.
+const pageStyle = { flex: 1, minHeight: 0, paddingHorizontal: 16, paddingTop: 24 } as const;
 export function KanbanScreen(props: KanbanScreenProps) {
+  return (
+    <View style={pageStyle} testID="kanban-page-content">
+      <KanbanContent {...props} />
+    </View>
+  );
+}
+function KanbanContent(props: KanbanScreenProps) {
   // COMPAT(ottoKanban): added in v0.10.0; remove gate after 2027-04-24 when the host floor is v0.10.0.
   const read = useRpc(getCapabilities);
   const [retry, setRetry] = useState(0);

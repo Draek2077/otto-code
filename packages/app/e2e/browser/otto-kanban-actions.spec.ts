@@ -32,6 +32,20 @@ for (const compact of [false, true]) {
     test.setTimeout(180_000);
     await openWorkspace(page, kanban.project.workspaceId, compact);
     await page.getByRole("button", { name: "Create card", exact: true }).click();
+    const content = await page.getByTestId("kanban-page-content").boundingBox();
+    const form = await page.getByTestId("kanban-action-form").boundingBox();
+    const action = await page.getByRole("button", { name: /^Action:/ }).boundingBox();
+    expect(content).not.toBeNull();
+    expect(form).not.toBeNull();
+    expect(action).not.toBeNull();
+    // Use the same content rails as the existing Paseo settings pages in both
+    // layouts: inset from page chrome and a bounded, centered form on desktop.
+    expect(action!.x - content!.x).toBeGreaterThanOrEqual(16);
+    expect(content!.x + content!.width - action!.x - action!.width).toBeGreaterThanOrEqual(16);
+    expect(form!.y - content!.y).toBeGreaterThanOrEqual(24);
+    if (!compact) {
+      expect(action!.x - content!.x).toBeGreaterThan(100);
+    }
     await page.getByRole("textbox", { name: "Title", exact: true }).fill("New from Otto");
     await page
       .getByRole("textbox", { name: "Description", exact: true })

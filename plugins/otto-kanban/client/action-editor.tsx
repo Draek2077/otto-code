@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { View } from "react-native";
+import { ScrollView, View } from "react-native";
 import {
   SettingsButton,
   SettingsCard,
@@ -17,7 +17,16 @@ import {
 import type { BoardActionDrafts } from "./action-drafts.js";
 import { ActionValue } from "./action-value.js";
 
-const panelStyle = { flex: 1, gap: 12 } as const;
+const scrollStyle = { flex: 1, minHeight: 0 } as const;
+// PageLayout's 720px frame includes two 16px gutters, already owned by this
+// feature's page boundary. Do not add a second gutter inside the form.
+const panelStyle = {
+  width: "100%",
+  maxWidth: 688,
+  alignSelf: "center",
+  gap: 12,
+  paddingBottom: 24,
+} as const;
 const buttonsStyle = { flexDirection: "row", flexWrap: "wrap", gap: 8 } as const;
 function ReadOnlyFields({ model }: { model: BoardActionModel }) {
   const rows = model.origin.snapshot.cardFields[model.origin.cardId ?? ""] ?? [];
@@ -132,7 +141,7 @@ export function ActionEditor({
   const definition = model.origin.snapshot.fields.find((field) => field.id === state.fieldId);
   const card = model.origin.snapshot.board.cards.find((row) => row.id === model.origin.cardId);
   return (
-    <View style={panelStyle}>
+    <ScrollView style={scrollStyle} contentContainerStyle={panelStyle} testID="kanban-action-form">
       <SettingsRow label={card?.title ?? "Board action"} />
       {card?.description ? <SettingsRow label="Description" hint={card.description} /> : null}
       <SettingsCard>
@@ -181,7 +190,7 @@ export function ActionEditor({
           </SettingsButton>
         </SettingsCard>
       ) : null}
-    </View>
+    </ScrollView>
   );
 }
 function ActionInputs({
