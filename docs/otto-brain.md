@@ -21,7 +21,8 @@ the registered host settings screen; built-ins do not appear in the installed-pl
 Registration creates only passive controllers. Native graphics load on first
 render; the operational and settings screens load separately when opened, so
 unrelated app/runtime modules do not evaluate Brain's native animation controls.
-The animated icon sits with the main sidebar navigation. Its state sentence is
+The animated icon sits beside Usage in the sidebar's existing bottom icon line,
+without a separate footer panel. Its state sentence is
 the tooltip and accessible name; no permanent state label appears beside it.
 The sidebar waits for the host's saved enablement before adding the icon. Disabled
 hosts have no provisional icon; enabled hosts retain their unreachable state.

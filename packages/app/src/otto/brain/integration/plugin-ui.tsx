@@ -56,13 +56,11 @@ const styles = StyleSheet.create((theme) => ({
   settings: { padding: theme.spacing[4], gap: theme.spacing[4] },
   intro: { padding: theme.spacing[4], gap: theme.spacing[4], alignItems: "center" },
   navigationIcon: {
-    alignSelf: "flex-start",
-    marginHorizontal: theme.spacing[2],
     width: density.iconButton,
     height: density.iconButton,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: theme.borderRadius.full,
   },
   navigationHighlight: { backgroundColor: theme.colors.interactionHighlight },
   tooltip: { color: theme.colors.foreground, fontSize: theme.fontSize.base },
@@ -182,7 +180,7 @@ export function createBrainUiComponents({
             <DensityIcon icon={ThemedIcon} size="md" color="foregroundMuted" />
           </PressHighlight>
         </TooltipTrigger>
-        <TooltipContent side="right" align="center" testID="otto-brain-state-tooltip">
+        <TooltipContent side="top" align="center" testID="otto-brain-state-tooltip">
           <Text style={styles.tooltip}>{presentation.label}</Text>
         </TooltipContent>
       </Tooltip>

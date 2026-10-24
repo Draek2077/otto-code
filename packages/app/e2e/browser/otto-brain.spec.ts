@@ -36,9 +36,13 @@ for (const compact of [false, true]) {
     if (compact) await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
     const icon = page.locator('[data-testid="otto-brain-sidebar"]:visible').first();
     await expect(icon).toBeVisible();
-    await expect(page.getByTestId("sidebar-footer").getByTestId("otto-brain-sidebar")).toHaveCount(
-      0,
-    );
+    const bottomLine = page.locator('[data-testid="sidebar-footer-bottom-line"]:visible');
+    await expect(bottomLine.getByTestId("otto-brain-sidebar")).toHaveCount(1);
+    await expect(bottomLine.getByTestId("sidebar-usage-icon")).toBeVisible();
+    const brainBox = await icon.boundingBox();
+    const usageBox = await bottomLine.getByTestId("sidebar-usage-icon").boundingBox();
+    expect(brainBox!.y).toBeCloseTo(usageBox!.y, 0);
+    await expect(page.getByTestId("sidebar-footer-separator")).toHaveCount(0);
     await expect(icon).toHaveText("");
     const state = await icon.getAttribute("aria-label");
     expect(state).toMatch(/^Brain/);

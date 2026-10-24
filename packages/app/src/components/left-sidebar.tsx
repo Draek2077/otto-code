@@ -65,6 +65,8 @@ import { builtinSidebarNavLabelKey } from "@/sidebar-nav/model";
 import { useSidebarNavItems } from "@/sidebar-nav/use-sidebar-nav-items";
 // OTTO(sidebar-content): collapse padding/divider when plugin components render no rows.
 import { OttoSidebarFooterContent } from "@/otto/sidebar/footer-content";
+// OTTO(brain-ui): use the existing icon line instead of a separate Brain footer row.
+import { isOttoFooterIcon, OttoSidebarFooterIcons } from "@/otto/sidebar/footer-icons";
 import { usePanelStore } from "@/stores/panel-store";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
@@ -454,6 +456,7 @@ function SidebarFooter({
             shortcutKeys={newAgentKeys}
           />
           <SidebarUsageIcon label={labels.usage} />
+          <OttoSidebarFooterIcons onBeforeNavigate={onBeforeNavigate} />
           <SidebarHostPicker
             label={labels.hosts}
             onAddHost={handleAddHost}
@@ -495,7 +498,8 @@ function SidebarFooterRows({ onBeforeNavigate }: { onBeforeNavigate?: () => void
   const hasUsageSummary = useHasUsageSummary();
   const rowsRef = useRef<View | null>(null);
   const visibleItems = items.filter(
-    (item) => item.visible && (item.kind === "plugin" || hasUsageSummary),
+    (item) =>
+      item.visible && !isOttoFooterIcon(item) && (item.kind === "plugin" || hasUsageSummary),
   );
   if (visibleItems.length === 0) return null;
   return (
