@@ -10,6 +10,7 @@ decisions, and measured findings live in Otto Knowledge.
 | [otto-continuity.md](otto-continuity.md)               | Existing data, app storage, and relay migration                |
 | [otto-openai-compatible.md](otto-openai-compatible.md) | Bundled provider, host settings, tools and current limits      |
 | [otto-brain.md](otto-brain.md)                         | Standalone Brain host, llama.cpp process and model acquisition |
+| [otto-project-knowledge.md](otto-project-knowledge.md) | Knowledge store library, ownership and current proof boundary  |
 | [architecture.md](architecture.md)                     | Paseo base architecture                                        |
 | [development.md](development.md)                       | Development commands and isolation                             |
 | [release.md](release.md)                               | Release procedure                                              |
