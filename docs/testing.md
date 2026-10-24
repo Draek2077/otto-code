@@ -214,6 +214,14 @@ Agent providers handle their own auth. Do not add auth checks, environment varia
 
 <!-- OTTO(provider-tests): coverage for the independently owned provider plugin. -->
 
+`Otto App Acceptance` builds the owning server stack and app dependency, then runs
+every `e2e/browser/otto-*.spec.ts` with one browser worker and no retries. It runs on
+the restoration branch and relevant pull requests; manual dispatch can pin an exact
+source commit. These journeys use isolated test daemons and synthetic endpoints,
+with no provider API keys, model launches or publishing. Screenshots and traces are
+retained on both success and failure. The full CI and product build matrix remain
+separate required gates.
+
 Repository instruction coverage in `plugins/otto-openai-compatible-provider/server/instructions.test.ts`
 uses real files and an HTTP endpoint to verify fixed/scoped rules, imports, budgets and
 write deferral when current rules have not reached the model. `server/usage.test.ts` in

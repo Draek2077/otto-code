@@ -63,7 +63,7 @@ jobs:
         run: node scripts/otto/seams.mjs --check
 
       - name: Test Otto release and dev adapters
-        run: node --test scripts/otto/dev-environment.test.mjs scripts/otto/npm-rename.test.mjs scripts/otto/verify-android-signing.test.mjs scripts/publish-release-packages.test.mjs scripts/ensure-github-release.test.mjs
+        run: node --test scripts/otto/dev-environment.test.mjs scripts/otto/npm-rename.test.mjs scripts/otto/verify-android-signing.test.mjs scripts/otto/app-acceptance.test.mjs scripts/publish-release-packages.test.mjs scripts/ensure-github-release.test.mjs
 
   quality:
     name: quality

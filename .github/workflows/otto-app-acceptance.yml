@@ -1,0 +1,86 @@
+name: Otto App Acceptance
+
+# OTTO(app-acceptance): app-visible Otto journeys complement the full Paseo CI matrix.
+on:
+  push:
+    branches: [otto-0.10/phase-0]
+    paths:
+      - .github/workflows/otto-app-acceptance.yml
+      - scripts/otto/app-acceptance.test.mjs
+      - packages/app/**
+      - packages/client/**
+      - packages/plugin/**
+      - packages/protocol/**
+      - packages/server/**
+      - packages/otto-brain/**
+      - plugins/**
+      - package.json
+      - package-lock.json
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/otto-app-acceptance.yml
+      - scripts/otto/app-acceptance.test.mjs
+      - packages/app/**
+      - packages/client/**
+      - packages/plugin/**
+      - packages/protocol/**
+      - packages/server/**
+      - packages/otto-brain/**
+      - plugins/**
+      - package.json
+      - package-lock.json
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: Exact source commit to verify; defaults to the selected workflow ref
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: otto-app-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ONNXRUNTIME_NODE_INSTALL: skip
+  GOMAXPROCS: "2"
+  RAYON_NUM_THREADS: "2"
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install existing workspace dependencies
+        run: node scripts/npm-retry.mjs ci
+      - name: Install browser
+        timeout-minutes: 10
+        run: npx playwright install chromium
+      - name: Build server stack
+        run: npm run build:server
+      - name: Build app audio dependency
+        run: npm run build --workspace=@getpaseo/expo-two-way-audio
+      - name: Verify Otto app journeys
+        run: npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1
+        env:
+          E2E_WORKERS: "1"
+      - name: Retain screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: otto-app-acceptance
+          path: |
+            packages/app/test-results/
+            packages/app/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7

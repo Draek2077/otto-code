@@ -22,6 +22,7 @@ for (const compact of [false, true]) {
     await expect(enable).toBeChecked();
     expect(await brain.localRunning()).toBe(false);
     await page.getByRole("button", { name: "Open Brain", exact: true }).click();
+    await expect(page.getByTestId("brain-overview-start")).toBeEnabled();
     for (const tab of ["Overview", "Library", "Models", "Benchmark", "Logs"]) {
       const control = page.getByRole("button", { name: tab, exact: true });
       await expect(control).toBeVisible();
