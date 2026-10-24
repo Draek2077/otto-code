@@ -33,6 +33,16 @@
       "source": "./src/server/otto-brain.ts",
       "default": "./dist/server/otto-brain.js"
     },
+    "./server/otto-kanban": {
+      "types": "./dist/server/otto-kanban.d.ts",
+      "source": "./src/server/otto-kanban.ts",
+      "default": "./dist/server/otto-kanban.js"
+    },
+    "./otto/kanban": {
+      "types": "./dist/otto/kanban.d.ts",
+      "source": "./src/otto/kanban.ts",
+      "default": "./dist/otto/kanban.js"
+    },
     "./otto/openai-settings": {
       "types": "./dist/otto/openai-settings.d.ts",
       "source": "./src/otto/openai-settings.ts",

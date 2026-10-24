@@ -15,12 +15,14 @@ const PLUGIN_SERVER_ONLY_SDK_SPECIFIERS = [
   // OTTO(provider-harness): full shared host-side agent/tool loop, never in client bundles.
   "@getpaseo/plugin/server/otto-openai",
   "@getpaseo/plugin/server/otto-brain",
+  "@getpaseo/plugin/server/otto-kanban", // OTTO(kanban): injected host library, never client transport.
 ] as const;
 
 export const PLUGIN_SDK_SPECIFIERS = [
   "@getpaseo/plugin",
   // OTTO(provider-harness): client-safe connection definitions, without Node imports.
   "@getpaseo/plugin/otto/openai-settings",
+  "@getpaseo/plugin/otto/kanban", // OTTO(kanban): shared structural contracts only.
   ...PLUGIN_SERVER_ONLY_SDK_SPECIFIERS,
   ...PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS,
 ] as const;

@@ -1,4 +1,4 @@
-import type { PluginServerContribution } from "@getpaseo/plugin/server";
+import type { PluginServerContribution } from "../../../server/contracts.js";
 import {
   failure,
   ProjectBindingSchema,

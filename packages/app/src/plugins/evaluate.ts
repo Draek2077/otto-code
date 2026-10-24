@@ -5,6 +5,7 @@ import { useSettings } from "./settings/use-settings";
 import * as pluginSharedRuntime from "@getpaseo/plugin";
 // OTTO(provider-harness): connection definitions are the only client-safe harness export.
 import * as ottoOpenAiSettings from "@getpaseo/plugin/otto/openai-settings";
+import * as ottoKanbanShared from "@getpaseo/plugin/otto/kanban"; // OTTO(kanban): client-safe contracts.
 import * as pluginClientRuntime from "@getpaseo/plugin/client";
 import * as React from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
@@ -453,6 +454,7 @@ export function runPluginClientBundle(
     if (name === "@getpaseo/plugin") return pluginSharedRuntime;
     // OTTO(provider-harness): no Node-side provider code enters the client runtime.
     if (name === "@getpaseo/plugin/otto/openai-settings") return ottoOpenAiSettings;
+    if (name === "@getpaseo/plugin/otto/kanban") return ottoKanbanShared; // OTTO(kanban)
     if (name === "@getpaseo/plugin/client")
       return {
         ...pluginClientRuntime,

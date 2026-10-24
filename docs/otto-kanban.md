@@ -1,8 +1,10 @@
 # Kanban host library
 
-Kanban's restoration source lives under `plugins/otto-kanban/`. It contains an
-injected project/GitHub read library, typed plugin RPC contracts and unregistered
-client/server contribution factories. It has no plugin entry, manifest, built-in
+Kanban's injected project/GitHub read library and typed plugin RPC contracts live
+under `packages/plugin/src/otto/kanban/`. The client-safe contract export is
+`@getpaseo/plugin/otto/kanban`; daemon composition uses the separate node-only
+`@getpaseo/plugin/server/otto-kanban` export. `plugins/otto-kanban/` holds the
+unregistered client contribution and reexports those canonical contracts. It has no plugin entry, manifest, built-in
 registration or credential store. Constructing a service or contribution does not
 start a process, contact GitHub or subscribe to anything. These surfaces are not
 reachable in the app yet.
@@ -35,7 +37,9 @@ The existing plugin surface owns host selection; Kanban creates no parallel host
 inventory. An explicit project or workspace hint is used only with a matching host
 identity. Missing context never selects the first project automatically.
 
-Project metadata CAS, a reusable forge query/auth bridge, active/last navigation
+The daemon's internal `OttoProjectMetadata` adapter supplies revisioned preserved
+records under the ordinary registry mutation queue. Its binding into Kanban, a
+reusable forge query/auth bridge, active/last navigation
 context, canonical Project Settings navigation and an outer before-leave guard
 remain integration boundaries. The source includes an unregistered board/settings
 editor, but its local project-picker lock does not cover outer host switches or

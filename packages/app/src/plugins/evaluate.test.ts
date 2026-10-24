@@ -29,6 +29,21 @@ function bundle(body: string): string {
 }
 
 describe("evaluatePluginClientBundle", () => {
+  // OTTO(kanban): shared contracts are supplied by the host; Node effects remain separate.
+  it("supplies canonical Kanban contracts without exposing the host implementation", () => {
+    const plugin = evaluatePluginClientBundle(
+      "otto-kanban",
+      bundle(`
+      const kanban = require("@getpaseo/plugin/otto/kanban");
+      if ("createKanbanHandlers" in kanban) throw new Error("Host implementation leaked");
+      kanban.getBoard.input.parse({hostId:"host-a",projectId:"project-a"});
+      plugin.addScreen({id:"board",title:kanban.getBoard.name,Component:function Board(){return null;}});
+    `),
+    );
+    expect(plugin.surfaces.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: "board", title: "kanban.board.get" },
+    ]);
+  });
   it("releases button registrations when client setup throws", () => {
     let active = 0;
     function addButton() {
