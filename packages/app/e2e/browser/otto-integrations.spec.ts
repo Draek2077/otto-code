@@ -41,7 +41,10 @@ for (const compact of [false, true]) {
       // This fixture never supplies an API key or requests a native vault write.
       expect((await read()).credential.stored).toBe(false);
       await openAccount(page, compact);
-      if (!compact) await expect(page.getByTestId("page-title")).toHaveText("Atlassian account");
+      if (!compact)
+        await expect(
+          page.getByTestId("page-title").filter({ hasText: /^Atlassian account$/ }),
+        ).toBeVisible();
       await page
         .getByRole("textbox", { name: "Account email", exact: true })
         .fill("fixture@example.test");
