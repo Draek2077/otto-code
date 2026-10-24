@@ -111,5 +111,6 @@ export async function initializeKnowledgeRoots(input: {
     });
     created.push(slug);
   }
+  await input.service.initializeIndex(input.projectId);
   return { created };
 }

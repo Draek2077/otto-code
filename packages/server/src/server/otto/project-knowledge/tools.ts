@@ -107,6 +107,15 @@ export function createKnowledgeTools(
         }),
     ),
     tool(
+      "read_project_knowledge_policy",
+      "Read optional project-specific Knowledge guidance on its owning host, only when relevant. This never loads a client-local path or injects policy into other requests.",
+      z.object({ workspaceId }).strict(),
+      async (input) => ({
+        ok: true,
+        value: await host.policy(await scopeForWorkspace(input.workspaceId)),
+      }),
+    ),
+    tool(
       "manage_project_knowledge",
       "Create Draft records/charters/references, update truth with a reason, append evidence, track delivery, evaluate references or edit roots. Use read revisions; never retry or rebase a conflict automatically. Reconcile only verified durable outcomes at effort end. Never confirm or supersede without explicit user agreement; set userApprovedReview only after that agreement. Initialization is explicit and preserves authored roots. Purge permanently deletes a page and its history and repairs incoming current wiki-links; it requires explicit human approval and userApprovedDeletion.",
       z

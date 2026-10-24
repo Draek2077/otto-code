@@ -30,6 +30,8 @@ import { initializeKnowledgeRoots } from "./bootstrap.js";
 import { copyKnowledgeStore } from "./migration.js";
 import { assertSafeSegment, type KnowledgeStore } from "./store-resolver.js";
 import { KnowledgeObservations } from "./observation.js";
+import { knowledgeCatalogPrompt } from "./catalog-prompt.js";
+import { readKnowledgePolicy } from "./policy.js";
 type KnowledgeObservationPort = Pick<
   KnowledgeObservations,
   "notify" | "wait" | "release" | "releaseClient" | "close"
@@ -129,6 +131,15 @@ export class KnowledgeDaemonService {
 
   workspaceScope(workspaceId: string): KnowledgeScope {
     return { hostId: this.ports.hostId, target: { kind: "workspace", id: workspaceId } };
+  }
+
+  async sessionPrompt(workspaceId: string): Promise<string> {
+    const project = await this.resolveProject(this.workspaceScope(workspaceId));
+    return knowledgeCatalogPrompt(this.service, await this.resolver.resolve(project.projectId));
+  }
+  async policy(scope: KnowledgeScope) {
+    const project = await this.resolveProject(scope);
+    return readKnowledgePolicy(await this.resolver.resolve(project.projectId));
   }
 
   async setLocation(input: z.infer<typeof setKnowledgeLocation.input>) {

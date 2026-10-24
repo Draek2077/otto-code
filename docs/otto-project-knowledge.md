@@ -41,18 +41,21 @@ Initialize roots creates only missing Background, Architecture, Flow, Mindmap,
 Stack and Roadmap pages. Draft content cites inspected README/manifest/docs
 sources, repository structure, declared commands and confirmed charters. Existing
 authored roots, including empty files, are never overwritten. Root editing uses
-a separate whole-file digest and has no fabricated record review status.
+a separate whole-file digest and has no fabricated record review status. Explicit
+initialization creates a missing `knowledge/index.md` marker with root links;
+existing indexes remain unchanged. Reading a chat's catalog never initializes a store.
 
 ## MCP and UI
 
-All providers receive the same four tools through the existing Paseo tool catalog:
+All providers receive the same five tools through the existing Paseo tool catalog:
 
-| Tool                          | Contract                                                                                                            |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `list_project_knowledge`      | Confirmed metadata and root discovery by default; explicit inactive review, title/tag search and bounded pagination |
-| `read_project_knowledge`      | One on-demand article and its complete retained history                                                             |
-| `read_project_knowledge_root` | One of the six on-demand root bodies                                                                                |
-| `manage_project_knowledge`    | Draft creation, reason-bearing changes, evidence, review, delivery, references, roots and explicit initialization   |
+| Tool                            | Contract                                                                                                                           |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `list_project_knowledge`        | Confirmed metadata and root discovery by default; explicit inactive review, title/tag search and bounded pagination                |
+| `read_project_knowledge`        | One on-demand article and its complete retained history                                                                            |
+| `read_project_knowledge_root`   | One of the six on-demand root bodies                                                                                               |
+| `read_project_knowledge_policy` | Optional custom Knowledge guidance from the canonical owning-host store, read only on demand                                       |
+| `manage_project_knowledge`      | Draft creation, reason-bearing changes, evidence, review, delivery, references, roots, explicit initialization and confirmed purge |
 
 Tools resolve the chat workspace by default. Outside a chat, callers supply a
 workspace ID. A restricted chat cannot redirect Knowledge to another workspace.
@@ -60,6 +63,23 @@ The owning project/root is always resolved by the daemon. Tools honor the existi
 provider tool policy and are omitted from voice-only catalogs. Review operations
 additionally require declared explicit user agreement. Existing secrets and raw
 project configuration are not returned in Knowledge responses.
+
+Interactive session creation, resume, import and refresh append a fresh compact
+catalog to the provider's existing runtime instruction field. The daemon resolves
+the stored workspace identity to the canonical project. It never infers the store
+from a branch working directory, changes the user's system prompt, or persists
+catalog text into the conversation configuration. The index contains confirmed
+metadata and six-root discovery, capped at 200 rows and 24,000 characters, with an
+explicit omitted count and search/pagination instructions. Article, root, policy
+and timeline bodies are excluded. Internal metadata/voice jobs, history-only
+loads, disabled tool policies and disabled Knowledge reads do not pay this cost.
+
+An existing `index.md` identifies initialization. Older stores with only a
+`KNOWLEDGE.md` entry point remain readable without a rewrite. Exact generated 0.9
+policy signatures are recognized with CRLF normalization; custom additions remain
+custom guidance. Only a pointer to the policy tool is appended automatically.
+Store failures produce a fixed unavailable notice, without private exception text
+or fallback to another directory. No files are created or migrated during reads.
 
 The workspace UI uses the same RPC/service operations, the current Markdown
 renderer and Paseo form/settings primitives. Search has an explicit clear action.
@@ -136,8 +156,7 @@ Focused fixtures cover canonical host/workspace binding, record operations,
 copy/switch and local form models. Browser acceptance exercises real wide/compact
 app controls against isolated daemon data; it never uses an installed Otto home.
 
-Abandoned-lock recovery, older
-noncanonical format conversion, host-wide default editing, automatic per-chat
-catalog injection and broader historical management/review features remain
+Abandoned-lock recovery, older noncanonical format conversion, host-wide default
+editing and broader historical management/review features remain
 separate integration boundaries. The implementation does not claim those
 remaining behaviors or full F04 completion from focused service or form tests.

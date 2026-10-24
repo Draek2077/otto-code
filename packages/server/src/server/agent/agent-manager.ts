@@ -3,6 +3,10 @@ import type { PluginLifecycle } from "../plugins/lifecycle/index.js";
 import { describeHookAgent, publishAgentStream } from "../plugins/lifecycle/index.js";
 import type { PluginSessionOpenRequest } from "@getpaseo/plugin/server";
 import { randomUUID } from "node:crypto";
+import {
+  appendKnowledgeSessionPrompt,
+  type KnowledgeSessionPrompt,
+} from "../otto/project-knowledge/session-prompt.js"; // OTTO(knowledge): runtime-only project catalog.
 import { basename, resolve } from "node:path";
 import { stat } from "node:fs/promises";
 import {
@@ -334,6 +338,7 @@ export interface AgentManagerOptions {
   paseoToolCatalogFactory?: PaseoToolCatalogFactory;
   resolvePaseoToolPolicy?: (provider: AgentProvider) => ProviderPaseoToolsPolicy | undefined;
   appendSystemPrompt?: string;
+  ottoKnowledgePrompt?: KnowledgeSessionPrompt; // OTTO(knowledge): canonical workspace-bound metadata only.
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
   beforeSteerUnavailableFallback?: (input: {
@@ -768,6 +773,7 @@ export class AgentManager {
     provider: AgentProvider,
   ) => ProviderPaseoToolsPolicy | undefined;
   private appendSystemPrompt: string;
+  private readonly ottoKnowledgePrompt?: KnowledgeSessionPrompt; // OTTO(knowledge)
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
@@ -788,6 +794,7 @@ export class AgentManager {
     this.configurePaseoTools(options);
     this.resolvePaseoToolPolicy = options.resolvePaseoToolPolicy ?? (() => undefined);
     this.appendSystemPrompt = options.appendSystemPrompt ?? "";
+    this.ottoKnowledgePrompt = options.ottoKnowledgePrompt; // OTTO(knowledge)
     this.logger = options.logger.child({ module: "agent", component: "agent-manager" });
     this.rescueTimeouts = {
       reloadSessionCloseMs:
@@ -1293,7 +1300,7 @@ export class AgentManager {
     const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
       config,
       resolvedAgentId,
-      { env: options?.env },
+      { env: options?.env, workspaceId: options.workspaceId }, // OTTO(knowledge)
     );
     this.requireEnabledProvider(storedConfig.provider);
     const client = await this.requireAvailableClient({
@@ -1408,7 +1415,7 @@ export class AgentManager {
     const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
       mergedConfig,
       resolvedAgentId,
-      { purpose },
+      { purpose, workspaceId: options?.workspaceId }, // OTTO(knowledge): use the authoritative session binding, never infer another workspace.
     );
     const client = this.requireClient(handle.provider);
     const available = await client.isAvailable();
@@ -1477,6 +1484,7 @@ export class AgentManager {
         cwd: input.cwd,
       },
       resolvedAgentId,
+      { workspaceId: input.workspaceId }, // OTTO(knowledge)
     );
     this.paseoToolPolicies.set(resolvedAgentId, paseoToolPolicy);
     const launchContext = await this.buildLaunchContext(
@@ -1571,6 +1579,7 @@ export class AgentManager {
     const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
       refreshConfig,
       agentId,
+      { workspaceId: existing.workspaceId }, // OTTO(knowledge)
     );
     const hadPreviousPaseoToolPolicy = this.paseoToolPolicies.has(agentId);
     const previousPaseoToolPolicy = this.paseoToolPolicies.get(agentId);
@@ -5223,6 +5232,7 @@ export class AgentManager {
     options: NormalizeConfigOptions = {},
   ): Promise<AgentSessionConfig> {
     const normalized: AgentSessionConfig = { ...config };
+    delete normalized.daemonAppendSystemPrompt; // OTTO(knowledge): runtime instructions must not reenter stored/imported config.
 
     // Always resolve cwd to absolute path for consistent history file lookup
     if (normalized.cwd) {
@@ -5297,7 +5307,11 @@ export class AgentManager {
   private async prepareSessionConfig(
     config: AgentSessionConfig,
     agentId: string,
-    options: { env?: Record<string, string>; purpose?: AgentResumePurpose } = {},
+    options: {
+      env?: Record<string, string>;
+      purpose?: AgentResumePurpose;
+      workspaceId?: string;
+    } = {}, // OTTO(knowledge)
   ): Promise<PreparedSessionConfig> {
     const storedConfig = await this.normalizeConfig(stripInternalPaseoMcpServer(config), {
       env: options.env,
@@ -5306,7 +5320,7 @@ export class AgentManager {
     const paseoToolPolicy = this.paseoToolsEnabled
       ? this.resolvePaseoToolPolicy(storedConfig.provider)
       : { enabled: false };
-    const launchConfig = this.applyDaemonAppendSystemPrompt(
+    const baseLaunchConfig = this.applyDaemonAppendSystemPrompt(
       withRuntimePaseoMcpServer({
         config: storedConfig,
         agentId,
@@ -5317,6 +5331,21 @@ export class AgentManager {
         mcpAuthToken: this.mcpAuthToken,
       }),
     );
+    // OTTO(knowledge): compose fresh metadata for create/resume/import/refresh;
+    // never persist the index or mutate the provider-neutral stored config.
+    const launchConfig = await appendKnowledgeSessionPrompt({
+      config: baseLaunchConfig,
+      source: this.ottoKnowledgePrompt,
+      workspaceId: options.workspaceId,
+      purpose: options.purpose,
+      toolsEnabled: this.paseoToolsEnabled && isPaseoToolPolicyEnabled(paseoToolPolicy),
+      disabledTools: paseoToolPolicy?.disabledTools,
+      unavailable: () =>
+        this.logger.warn(
+          { agentId, workspaceId: options.workspaceId },
+          "Project Knowledge catalog is unavailable",
+        ),
+    });
     return { storedConfig, launchConfig, paseoToolPolicy };
   }
 

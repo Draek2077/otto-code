@@ -261,7 +261,7 @@ selection: `all`, `knowledge`, or `brain-cancellation`. The cancellation diagnos
 repeats that exact journey three times, serially, without retries. A diagnostic
 subset does not replace the full acceptance gate. Failure evidence is retained;
 diagnostics use a separate concurrency group so they cannot cancel that gate.
-the Brain cancellation journey captures sanitized live owner state before its
+The Brain cancellation journey captures sanitized live owner state before its
 fixture restores the daemon's connection.
 
 ## Debugging with tests

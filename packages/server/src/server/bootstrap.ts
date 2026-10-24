@@ -1011,6 +1011,7 @@ export async function createPaseoDaemon(
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
     appendSystemPrompt: config.appendSystemPrompt,
+    ottoKnowledgePrompt: ottoKnowledge.sessionPrompt.bind(ottoKnowledge), // OTTO(knowledge): registry-bound, inert until an interactive session opens.
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },

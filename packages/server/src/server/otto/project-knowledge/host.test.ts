@@ -268,3 +268,22 @@ it("requires explicit human deletion agreement in the shared MCP tool", async ()
     f.host.service.read({ projectId: "project-a", kind: "requirement", id: "fixture-page" }),
   ).rejects.toThrow("removed");
 });
+
+it("discovers custom host-owned Knowledge guidance without injecting its body and exposes it only on demand", async () => {
+  const f = await fixture();
+  await f.create();
+  const policy = "Specific project Knowledge guidance, not automatic system instructions.";
+  await writeFile(path.join(f.repo, ".otto/KNOWLEDGE.md"), policy);
+  const prompt = await f.host.sessionPrompt("workspace-a");
+  expect(prompt).toContain("read_project_knowledge_policy");
+  expect(prompt).not.toContain(policy);
+  const readPolicy = createKnowledgeTools(f.host, async () => f.scope).find(
+    (tool) => tool.name === "read_project_knowledge_policy",
+  );
+  if (!readPolicy) throw new Error("Missing policy tool");
+  expect((await readPolicy.handler({}, {})).structuredContent).toMatchObject({
+    ok: true,
+    value: { body: policy, custom: true },
+  });
+  expect(await readFile(path.join(f.repo, ".otto/KNOWLEDGE.md"), "utf8")).toBe(policy);
+});
