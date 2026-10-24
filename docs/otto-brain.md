@@ -16,6 +16,8 @@ Capacity/quality jobs and host inference share the resident process pool. The
 bundled `otto-brain` plugin registers the original animated sidebar icon,
 Overview/Library/Models/Benchmark/Logs screen, host settings and Open Brain command.
 The renderer remains in Otto-owned app files behind a typed built-in bridge.
+Host > Plugins contains Configure Brain even while Brain is disabled. This opens
+the registered host settings screen; built-ins do not appear in the installed-plugin list.
 Registration creates only passive controllers. Native graphics load on first
 render; the operational and settings screens load separately when opened, so
 unrelated app/runtime modules do not evaluate Brain's native animation controls.

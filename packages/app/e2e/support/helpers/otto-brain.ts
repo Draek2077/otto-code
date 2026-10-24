@@ -57,7 +57,6 @@ export async function openBrainSettings(page: Page, compact: boolean) {
     await page.locator('[data-testid="sidebar-settings"]:visible').first().click();
   } else await openSettings(page);
   await page.getByTestId("settings-host-section-plugins").click();
-  await page.getByRole("button", { name: "Actions for otto-brain", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Brain", exact: true }).click();
+  await page.getByRole("button", { name: "Configure Brain", exact: true }).click();
   await expect(page.getByRole("switch", { name: "Enable Brain", exact: true })).toBeVisible();
 }
