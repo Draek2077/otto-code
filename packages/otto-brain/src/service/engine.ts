@@ -58,6 +58,8 @@ import { BrainResourceReader, type BrainHostResources } from "./resource-reader.
 import { BrainReports } from "./reports.js";
 import { CompletionTelemetry } from "./completion-telemetry.js";
 import { projectScanRows } from "../commands/scan-contract.js";
+import { EndpointBenchmarks } from "./endpoint-benchmarks.js";
+import type { BenchmarkRunPorts } from "./benchmark-run.js";
 import { BrainTuiReadService } from "./tui-projection.js";
 import { loadRenameMap } from "../models/rename-map.js";
 
@@ -77,6 +79,7 @@ export interface HostEnginePorts {
   ranking?(): RankedModel[];
   results?(): RunRecord[];
   resourceSample?(signal: AbortSignal): Promise<BrainHostResources>;
+  endpointBenchmark?: Omit<BenchmarkRunPorts, "env">;
 }
 const COMPLETIONS = new Set([
   "/v1/chat/completions",
@@ -101,7 +104,9 @@ export class HostEngine implements BrainRuntime {
       .summaries()
       .filter(
         (job) =>
-          job.benchmarkMode !== "rescore" && job.state !== "queued" && job.state !== "running",
+          (job.operation !== "benchmark" || job.subject.modelId !== null) &&
+          job.state !== "queued" &&
+          job.state !== "running",
       )
       .map((job) => `${job.id}:${job.state}`)
       .join(",");
@@ -122,6 +127,7 @@ export class HostEngine implements BrainRuntime {
   private readonly telemetry = new CompletionTelemetry();
   private readonly tui: BrainTuiReadService;
   private readonly reports: BrainReports;
+  private readonly endpointBenchmarks: EndpointBenchmarks;
   get capabilities() {
     return {
       apiVersion: 3,
@@ -129,6 +135,7 @@ export class HostEngine implements BrainRuntime {
       reports: true,
       rescore: true,
       scan: true,
+      endpointBenchmark: true,
       load: true,
       inventory: true,
       events: true,
@@ -343,6 +350,12 @@ export class HostEngine implements BrainRuntime {
       context.env,
       (request) => this.requireWrite(request),
       this.jobs,
+    );
+    this.endpointBenchmarks = new EndpointBenchmarks(
+      context,
+      this.jobs,
+      (request) => this.requireWrite(request),
+      ports.endpointBenchmark,
     );
   }
 
@@ -647,6 +660,7 @@ export class HostEngine implements BrainRuntime {
       return true;
     for (const handler of [
       this.reports,
+      this.endpointBenchmarks,
       this.tui,
       this.runtimeManagement,
       this.acquisition,

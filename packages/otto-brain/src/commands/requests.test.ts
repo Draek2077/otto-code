@@ -14,6 +14,26 @@ it("preserves explicit full and quick scan choices without accepting ambiguous m
   for (const query of ["metadata=0", "metadata=false&metadata=true", "metadata=true&extra=1"])
     expect(() => encodeBrainCommandRequest(`/__host/models/discover?${query}`)).toThrow();
 });
+it("forwards bounded external benchmark controls without a generic URL or environment override", () => {
+  const body = {
+    endpoint: "owner-endpoint:1234",
+    options: {
+      execute: false,
+      repository: {
+        directory: "/owner/source",
+        workspace: "fixture",
+        workspaceDirectory: "packages/fixture",
+        ref: "main",
+        maxTasks: 2,
+      },
+    },
+  };
+  const route = "/__host/jobs/benchmark-endpoint";
+  expect(brainCommandHttpRequest(encodeBrainCommandRequest(route, body))).toEqual({ route, body });
+  expect(() =>
+    encodeBrainCommandRequest(route, { ...body, env: { OTTO_HOME: "/untrusted" } }),
+  ).toThrow();
+});
 
 it("preserves an explicit benchmark plan and bundle selection through the fixed operation contract", () => {
   const plan = {

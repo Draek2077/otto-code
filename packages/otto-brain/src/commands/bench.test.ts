@@ -48,6 +48,19 @@ it("keeps curated presets explicit and requires a source repository", () => {
     maxTasks: 3,
   });
 });
+it("preserves selected-owner source paths without applying client path rules or a guessed cwd", () => {
+  for (const directory of ["/owner/source", "D:\\Owner\\source", "explicit-owner-source"]) {
+    expect(
+      parseBenchOptions(
+        { repoDir: directory, repoWorkspace: "fixture", repoWorkspaceDir: "packages/fixture" },
+        null,
+      ).repository?.directory,
+    ).toBe(directory);
+  }
+  expect(() =>
+    parseBenchOptions({ repoWorkspace: "fixture", repoWorkspaceDir: "packages/fixture" }, null),
+  ).toThrow("--repo-dir");
+});
 it.each([
   { depths: "1000," },
   { depths: "" },

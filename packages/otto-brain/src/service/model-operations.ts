@@ -16,6 +16,7 @@ import { BrainJobs, type BrainJobContext, type JobValue } from "./jobs.js";
 import type { ModelProfiles } from "./model-profiles.js";
 import { maxContextThatFits, reserveBytesForGpu } from "../vram.js";
 import type { ModelJobRequest } from "./model-job-options.js";
+import { publishJobProgress as progress } from "./job-progress.js";
 
 export type ModelOperation = "calibrate" | "sweep" | "benchmark";
 export interface ModelOperationPorts {
@@ -34,26 +35,6 @@ export interface ModelOperationPorts {
   runSuite?: typeof runSuite;
   loadRepoTasks?: typeof loadRepoTasks;
   save?: typeof results.save;
-}
-
-/** Public progress carries measured fields, never a nested native exception. */
-function progress(context: BrainJobContext, event: object): void {
-  const safe: { [key: string]: JobValue } = {};
-  const failed = "phase" in event && event.phase === "failed";
-  for (const [key, value] of Object.entries(event)) {
-    if (key === "error" || key === "reason" || key === "detail") continue;
-    if (typeof value === "string") {
-      safe[key] = failed && key === "summary" ? "Brain benchmark task failed" : value.slice(0, 256);
-      continue;
-    }
-    if (
-      value === null ||
-      typeof value === "boolean" ||
-      (typeof value === "number" && Number.isFinite(value))
-    )
-      safe[key] = value;
-  }
-  context.progress(safe);
 }
 
 export class ModelOperations {

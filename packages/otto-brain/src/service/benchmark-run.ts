@@ -75,6 +75,11 @@ export const BenchmarkReportSchema = z.object({
     )
     .max(128),
 });
+export const EndpointBenchmarkResultSchema = z.object({
+  modelName: z.string().min(1).max(2048),
+  report: BenchmarkReportSchema,
+  profile: z.null(),
+});
 function depthPoint(value: unknown) {
   const point = DepthSchema.partial().parse(value);
   return {

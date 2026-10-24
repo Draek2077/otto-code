@@ -73,6 +73,19 @@ explicit mode within the existing benchmark job category, so older readers can
 still parse its status. Current screens and terminal progress identify it as
 rescoring rather than a new inference measurement.
 
+`bench --model <fragments>` runs the same rich benchmark controls on resident
+models through the owner's exclusive scheduler. `bench --endpoint <host:port>`
+runs on the selected owner against that explicit endpoint as a durable benchmark
+job. Endpoint hostnames, port defaults, repository access and any generated-code
+checks belong to that owner. Closing the request does not stop the job; explicit
+interruption requests cancellation. Endpoint benchmarks do not load a local
+resident or pretend to measure one in the animated icon. Their report retains a
+null resident profile instead of inventing model metadata.
+For selected-owner repository benchmarks, `--repo-dir` is required and forwarded
+unchanged, including when the client and owner use different path conventions.
+Use a source path on that owner. The benchmark creates its disposable checkout
+there; it never mines the client's current directory.
+
 `scan` discovers the selected owner's files and calibration state without loading
 a runtime or probing GPU resources. `--no-metadata` skips GGUF header reads and
 does not replace the full metadata used by resident operations. Full discovery

@@ -7,6 +7,13 @@ vi.mock("../../utils/client.js", () => ({ connectToDaemon: transport.connect }))
 import { Command } from "commander";
 import { createOttoBrainCommand } from "./commands.js";
 import { BrainStatusSchema } from "@getpaseo/protocol/otto/brain";
+import { BrainCommandRequestSchema } from "@getpaseo/brain/cli-target";
+
+function commandRequest(input: unknown) {
+  if (!input || typeof input !== "object" || !("request" in input))
+    throw new Error("Missing test command request");
+  return BrainCommandRequestSchema.parse(input.request);
+}
 
 function cli() {
   return new Command("otto")
@@ -149,16 +156,8 @@ describe("Brain CLI command composition", () => {
           },
         };
       if (method === "brain.query") return { ok: true, value: status };
-      if (
-        method !== "brain.cli.request" ||
-        !input ||
-        typeof input !== "object" ||
-        !("request" in input)
-      )
-        throw new Error("Unexpected test request");
-      const request = input.request;
-      if (!request || typeof request !== "object" || !("operation" in request))
-        throw new Error("Missing operation");
+      if (method !== "brain.cli.request") throw new Error("Unexpected test request");
+      const request = commandRequest(input);
       if (request.operation === "capabilities")
         return {
           ok: true,
@@ -172,6 +171,7 @@ describe("Brain CLI command composition", () => {
             reports: true,
             rescore: true,
             scan: true,
+            endpointBenchmark: true,
           },
         };
       if (request.operation === "inventory") return { ok: true, value: { models: [] } };
@@ -231,6 +231,34 @@ describe("Brain CLI command composition", () => {
         };
       if (request.operation === "rescore")
         return { ok: true, value: { ok: true, job: { id: "rescore-job" } } };
+      if (request.operation === "job-endpoint-benchmark")
+        return { ok: true, value: { job: { id: "endpoint-job" } } };
+      if (request.operation === "job-read" && request.id === "endpoint-job")
+        return {
+          ok: true,
+          value: {
+            job: {
+              id: "endpoint-job",
+              state: "completed",
+              progress: null,
+              error: null,
+              result: {
+                modelName: "owner-endpoint:1234",
+                profile: null,
+                report: {
+                  overall: 0,
+                  grade: "F",
+                  seconds: 0,
+                  executedCode: false,
+                  pythonVersion: null,
+                  archiveId: null,
+                  ranAt: "fixture",
+                  results: [],
+                },
+              },
+            },
+          },
+        };
       if (request.operation === "job-read")
         return {
           ok: true,
@@ -350,6 +378,54 @@ describe("Brain CLI command composition", () => {
       expect.objectContaining({ request: { operation: "scan", metadata: false } }),
     );
     expect(transport.close).toHaveBeenCalledTimes(4);
+    lines.length = 0;
+    await cli().parseAsync(
+      [
+        "brain",
+        "bench",
+        "--host",
+        "selected.example:6788",
+        "--endpoint",
+        "owner-endpoint:1234",
+        "--repo-dir",
+        "/owner/source",
+        "--repo-workspace",
+        "fixture",
+        "--repo-workspace-dir",
+        "packages/fixture",
+        "--only",
+        "tool-calling",
+        "--no-execute",
+        "--quiet",
+      ],
+      { from: "user" },
+    );
+    expect(lines.join("")).toBe("owner-endpoint:1234\n");
+    expect(transport.invoke).toHaveBeenCalledWith(
+      "otto-brain",
+      "brain.cli.request",
+      expect.objectContaining({
+        request: {
+          operation: "job-endpoint-benchmark",
+          body: {
+            endpoint: "owner-endpoint:1234",
+            options: {
+              execute: false,
+              only: ["tool-calling"],
+              concurrency: 3,
+              repository: {
+                directory: "/owner/source",
+                workspace: "fixture",
+                workspaceDirectory: "packages/fixture",
+                ref: "origin/main",
+                maxTasks: 5,
+              },
+            },
+          },
+        },
+      }),
+    );
+    expect(transport.close).toHaveBeenCalledTimes(5);
     expect(existsSync(clientHome)).toBe(false);
   });
 });

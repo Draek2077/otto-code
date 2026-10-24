@@ -9,11 +9,18 @@ import {
 import { CommandError } from "../output/types.js";
 import { ReportExportOptionsSchema } from "./report-contract.js";
 import { RescoreOptionsSchema } from "./rescore-contract.js";
+import { EndpointBenchmarkRequestSchema } from "../service/benchmark-options.js";
 
 const Id = z.string().min(1).max(1024);
 const Runtime = z.object({ runtimeId: Id }).strict();
 export const BrainCommandRequestSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("rescore"), body: RescoreOptionsSchema }).strict(),
+  z
+    .object({
+      operation: z.literal("job-endpoint-benchmark"),
+      body: EndpointBenchmarkRequestSchema,
+    })
+    .strict(),
   z.object({ operation: z.literal("report-export"), body: ReportExportOptionsSchema }).strict(),
   z.object({ operation: z.literal("capabilities") }).strict(),
   z.object({ operation: z.literal("inventory") }).strict(),
@@ -62,6 +69,7 @@ const GET = {
   runtimes: "/__host/runtimes",
 } as const;
 const POST = {
+  "job-endpoint-benchmark": "/__host/jobs/benchmark-endpoint",
   rescore: "/__host/jobs/rescore",
   "report-export": "/__host/reports/export",
   "job-cancel": "/__host/jobs/cancel",

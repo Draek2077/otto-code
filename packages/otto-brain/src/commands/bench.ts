@@ -4,16 +4,28 @@ import { z } from "zod/v3";
 import { loadBrainConfig } from "../config/store.js";
 import { formatReport, formatComparison } from "../bench/index.js";
 import { findCuratedRepo, describeCuratedRepos } from "../bench/curated-repos.js";
-import { BenchmarkOptionsSchema, type BenchmarkOptions } from "../service/benchmark-options.js";
+import {
+  BenchmarkOptionsSchema,
+  parseBenchmarkEndpoint,
+  type BenchmarkOptions,
+} from "../service/benchmark-options.js";
 import {
   BenchmarkReportSchema,
   publicBenchmarkReport,
   runOwnedBenchmark,
+  EndpointBenchmarkResultSchema,
 } from "../service/benchmark-run.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { CommandError } from "../output/types.js";
-import { withCommandHost, withCommandSignal, type HostCommandPort } from "./host-command.js";
+import {
+  withCommandHost,
+  withCommandSignal,
+  waitForCommandJob,
+  type HostCommandPort,
+} from "./host-command.js";
 import { runHostedModelJob } from "./model-job.js";
+import { selectedBrainCommandHost } from "./target.js";
+export { parseBenchmarkEndpoint } from "../service/benchmark-options.js";
 
 export interface BenchOptions {
   model?: string;
@@ -62,7 +74,18 @@ const schema: OutputSchema<BenchEntry> = {
   renderHuman: render,
 };
 
-function repository(options: BenchOptions, cwd: string): BenchmarkOptions["repository"] {
+function repositoryDirectory(options: BenchOptions, cwd: string | null): string {
+  if (cwd === null) {
+    if (!options.repoDir)
+      throw new CommandError({
+        code: "NO_REPO_DIR",
+        message: "Supply --repo-dir as a source path on the selected Brain owner.",
+      });
+    return options.repoDir;
+  }
+  return path.resolve(cwd, options.repoDir ?? ".");
+}
+function repository(options: BenchOptions, cwd: string | null): BenchmarkOptions["repository"] {
   if (options.curated) {
     const preset = findCuratedRepo(options.curated);
     if (!preset)
@@ -77,7 +100,7 @@ function repository(options: BenchOptions, cwd: string): BenchmarkOptions["repos
           "Supply --repo-dir as the source for the Brain-owned disposable benchmark checkout.",
       });
     return {
-      directory: path.resolve(cwd, options.repoDir),
+      directory: repositoryDirectory(options, cwd),
       workspace: preset.workspace,
       workspaceDirectory: preset.workspaceDir,
       ref: preset.ref,
@@ -91,14 +114,14 @@ function repository(options: BenchOptions, cwd: string): BenchmarkOptions["repos
       message: "Supply both --repo-workspace and --repo-workspace-dir to mine repository tasks.",
     });
   return {
-    directory: path.resolve(cwd, options.repoDir ?? "."),
+    directory: repositoryDirectory(options, cwd),
     workspace: options.repoWorkspace,
     workspaceDirectory: options.repoWorkspaceDir,
     ref: options.repoRef ?? "origin/main",
     maxTasks: Number(options.repoMax ?? 5),
   };
 }
-export function parseBenchOptions(options: BenchOptions, cwd: string): BenchmarkOptions {
+export function parseBenchOptions(options: BenchOptions, cwd: string | null): BenchmarkOptions {
   const parsed = BenchmarkOptionsSchema.safeParse({
     execute: options.execute !== false,
     depths: options.depths?.split(",").map((part) => (part.trim() ? Number(part) : NaN)),
@@ -113,34 +136,6 @@ export function parseBenchOptions(options: BenchOptions, cwd: string): Benchmark
         "Choose valid benchmark task ids, positive depths, concurrency (1–64), and at most 100 repository tasks.",
     });
   return parsed.data;
-}
-export function parseBenchmarkEndpoint(raw: string, defaultPort: number) {
-  try {
-    const source = raw.includes("://") ? raw : `http://${raw}`;
-    const url = new URL(source);
-    const authority = source.slice(source.indexOf("://") + 3).split(/[/?#]/, 1)[0]!;
-    const explicitPort = /:(\d+)$/.exec(authority)?.[1];
-    const port = Number(url.port || explicitPort || defaultPort);
-    if (
-      url.protocol !== "http:" ||
-      !url.hostname ||
-      url.username ||
-      url.password ||
-      url.pathname !== "/" ||
-      url.search ||
-      url.hash ||
-      !Number.isInteger(port) ||
-      port < 1 ||
-      port > 65535
-    )
-      throw new Error("Invalid endpoint");
-    return { host: url.hostname.replace(/^\[|\]$/g, ""), port };
-  } catch {
-    throw new CommandError({
-      code: "INVALID_ENDPOINT",
-      message: "Supply an HTTP benchmark endpoint as host:port (IPv6 addresses use brackets).",
-    });
-  }
 }
 export async function runHostedBenchmarks(
   port: HostCommandPort,
@@ -164,7 +159,8 @@ export async function runHostedBenchmarks(
 export async function runBenchCommand(
   options: BenchOptions,
 ): Promise<AnyCommandResult<BenchEntry>> {
-  const controls = parseBenchOptions(options, process.cwd());
+  const selected = selectedBrainCommandHost();
+  const controls = parseBenchOptions(options, selected ? null : process.cwd());
   if (options.model && options.endpoint)
     throw new CommandError({
       code: "INVALID_BENCHMARK",
@@ -179,25 +175,49 @@ export async function runBenchCommand(
   // COMPAT(brainBenchmarkPort): added in v0.10.0; remove after 2027-04-23.
   if (options.port !== undefined)
     process.stderr.write("Brain owns resident ports; the legacy --port option has no effect.\n");
-  const data = options.endpoint
-    ? await withCommandSignal(async (signal) => {
-        const endpoint = parseBenchmarkEndpoint(options.endpoint!, loadBrainConfig().listen.port);
-        const report = await runOwnedBenchmark(
-          controls,
-          { ...endpoint, signal },
-          { env: process.env },
-        );
-        return [
-          {
-            modelName: `${endpoint.host}:${endpoint.port}`,
-            report: publicBenchmarkReport(report),
-            profile: null,
-          },
-        ];
-      })
-    : await withCommandHost((port, signal) =>
-        runHostedBenchmarks(port, controls, fragments, signal),
+  let data: BenchEntry[];
+  if (options.endpoint && selected) {
+    data = await withCommandHost(async (port, signal) => {
+      // COMPAT(brainEndpointBenchmark): added in v0.10.0; remove after 2027-04-24 when floor >= v0.10.0.
+      if (
+        !z
+          .object({ endpointBenchmark: z.literal(true) })
+          .safeParse(await port.request("/__host/capabilities", signal)).success
+      )
+        throw new CommandError({
+          code: "UPDATE_HOST",
+          message: "Update the Brain owner to benchmark external endpoints.",
+        });
+      const admitted = z.object({ job: z.object({ id: z.string() }) }).parse(
+        await port.request("/__host/jobs/benchmark-endpoint", signal, {
+          endpoint: options.endpoint,
+          options: controls,
+        }),
       );
+      const job = await waitForCommandJob(port, admitted.job.id, signal);
+      return [EndpointBenchmarkResultSchema.parse(job.result)];
+    });
+  } else if (options.endpoint) {
+    data = await withCommandSignal(async (signal) => {
+      const endpoint = parseBenchmarkEndpoint(options.endpoint!, loadBrainConfig().listen.port);
+      const report = await runOwnedBenchmark(
+        controls,
+        { ...endpoint, signal },
+        { env: process.env },
+      );
+      return [
+        {
+          modelName: `${endpoint.host}:${endpoint.port}`,
+          report: publicBenchmarkReport(report),
+          profile: null,
+        },
+      ];
+    });
+  } else {
+    data = await withCommandHost((port, signal) =>
+      runHostedBenchmarks(port, controls, fragments, signal),
+    );
+  }
   return { type: "list", data, schema };
 }
 

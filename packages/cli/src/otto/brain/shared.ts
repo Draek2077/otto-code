@@ -46,6 +46,7 @@ export function adoptSharedBrainCommands(brain: Command): void {
   const shared = createBrainCommand({ execute: executeOnOwner });
   const groups = new Set([
     "scan",
+    "bench",
     "catalog",
     "search",
     "pull",

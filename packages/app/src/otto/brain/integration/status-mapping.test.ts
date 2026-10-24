@@ -131,37 +131,40 @@ test("an unloaded reachable Brain host is idle rather than being reported off", 
   expect(deriveBrainState(statusToView(state, null))).toBe("idle");
 });
 
-test("CPU replay does not pretend a model is benchmarking or hide a real model job", () => {
-  const state = fixture();
-  if (!state.feed?.status) throw new Error("Fixture status missing");
-  const replay = {
-    id: "replay",
-    operation: "benchmark" as const,
-    benchmarkMode: "rescore" as const,
-    state: "running" as const,
-    createdAt: "created",
-    startedAt: "started",
-    finishedAt: null,
-    error: null,
-    subject: { modelId: null, catalogModelId: null, repo: null, quant: null },
-  };
-  state.feed.status = {
-    ...state.feed.status,
-    state: "stopped",
-    model: null,
-    modelId: null,
-    residents: [],
-    jobs: [replay],
-  };
-  expect(deriveBrainState(statusToView(state, null))).toBe("idle");
-  state.feed.status.jobs.push({
-    ...replay,
-    id: "live-benchmark",
-    benchmarkMode: undefined,
-    subject: { ...replay.subject, modelId: "resident-model" },
-  });
-  expect(deriveBrainState(statusToView(state, null))).toBe("benchmarking");
-});
+test.each(["rescore", undefined] as const)(
+  "owner-only benchmark %s does not animate an unloaded model or hide a resident job",
+  (benchmarkMode) => {
+    const state = fixture();
+    if (!state.feed?.status) throw new Error("Fixture status missing");
+    const replay = {
+      id: "replay",
+      operation: "benchmark" as const,
+      benchmarkMode,
+      state: "running" as const,
+      createdAt: "created",
+      startedAt: "started",
+      finishedAt: null,
+      error: null,
+      subject: { modelId: null, catalogModelId: null, repo: null, quant: null },
+    };
+    state.feed.status = {
+      ...state.feed.status,
+      state: "stopped",
+      model: null,
+      modelId: null,
+      residents: [],
+      jobs: [replay],
+    };
+    expect(deriveBrainState(statusToView(state, null))).toBe("idle");
+    state.feed.status.jobs.push({
+      ...replay,
+      id: "live-benchmark",
+      benchmarkMode: undefined,
+      subject: { ...replay.subject, modelId: "resident-model" },
+    });
+    expect(deriveBrainState(statusToView(state, null))).toBe("benchmarking");
+  },
+);
 test("disconnect invalidates old resident activity and remote write permission", () => {
   const state = fixture();
   if (!state.feed || !state.connection) throw new Error("Fixture connection missing");
