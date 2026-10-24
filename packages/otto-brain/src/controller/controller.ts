@@ -8,7 +8,7 @@ import { localBrainClient } from "../service/local-client.js";
 import { remoteBrainClient } from "../service/remote-client.js";
 import { startLocalBrain, stopLocalBrain } from "../service/lifecycle.js";
 import { readPidFile, isProcessAlive } from "../service/pid-lock.js";
-import { loadBrainConfig } from "../config/store.js";
+import { readBrainConfig } from "../config/store.js";
 
 export interface BrainControllerTransport {
   request(route: string, body?: unknown, signal?: AbortSignal): Promise<unknown>;
@@ -17,6 +17,7 @@ export interface BrainControllerTransport {
 export interface BrainControllerPorts {
   localClient(): BrainControllerTransport;
   remoteClient(options: Parameters<typeof remoteBrainClient>[0]): BrainControllerTransport;
+  defaultModel(): string | null;
   start(modelId: string | null, signal?: AbortSignal): Promise<void>;
   stop(signal?: AbortSignal): Promise<void>;
 }
@@ -133,7 +134,8 @@ export class BrainController<Status extends { instanceId: string }> {
       operationSignal.throwIfAborted();
       if (action !== "start") await this.ports.stop(operationSignal);
       operationSignal.throwIfAborted();
-      if (action !== "stop") await this.ports.start(modelId, operationSignal);
+      if (action !== "stop")
+        await this.ports.start(modelId ?? this.ports.defaultModel(), operationSignal);
     };
     this.lifecycle = run().finally(() => {
       this.lifecycle = null;
@@ -167,9 +169,10 @@ export function createBrainController<Status extends { instanceId: string }>(inp
             "unavailable",
             "Start the local Brain host to use its runtime and models",
           );
-        return localBrainClient({ record, env, config: loadBrainConfig(env) });
+        return localBrainClient({ record, env, config: readBrainConfig(env) });
       },
       remoteClient: remoteBrainClient,
+      defaultModel: () => readBrainConfig(env).defaultModel,
       start: async (model, signal) => {
         await startLocalBrain({ env, signal, ...(model ? { model } : {}) });
       },

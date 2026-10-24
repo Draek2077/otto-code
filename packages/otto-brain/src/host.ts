@@ -1,5 +1,10 @@
 /** Inert public host/controller entry; only explicit calls resolve a home or launch work. */
 export {
+  BrainStartup,
+  type BrainStartupPorts,
+  type BrainStartupResult,
+} from "./controller/startup.js";
+export {
   BrainController,
   createBrainController,
   type BrainControllerPorts,

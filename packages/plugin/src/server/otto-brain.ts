@@ -7,7 +7,7 @@ import {
   remoteBrainClient,
   readPidFile,
   isProcessAlive,
-  loadBrainConfig,
+  readBrainConfig,
 } from "@getpaseo/brain/client";
 import { createOpenAiProvider } from "../otto/openai/server/provider.js";
 import { providerSettings } from "../otto/openai/shared/settings.js";
@@ -42,7 +42,7 @@ export function createBrainProvider(
     const record = readPidFile(env);
     if (!record || !isProcessAlive(record.pid))
       throw new Error("Start Brain on this host before selecting its models");
-    return localBrainClient({ record, env, config: loadBrainConfig(env) });
+    return localBrainClient({ record, env, config: readBrainConfig(env) });
   }
   const transport: typeof fetch = async (input, init) => {
     // A virtual endpoint is only a stable saved-chat identity. It is never resolved

@@ -3,6 +3,7 @@ export { resolveBrainPaths, packageRoot, type BrainPaths } from "./paths.js";
 export { resolveOttoHome } from "./otto-home.js";
 export {
   loadBrainConfig,
+  readBrainConfig,
   loadPersistedConfig,
   saveBrainConfig,
   loadProfilesStore,

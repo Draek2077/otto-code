@@ -21,6 +21,13 @@ render; the operational and settings screens load separately when opened, so
 unrelated app/runtime modules do not evaluate Brain's native animation controls.
 The sidebar waits for the host's saved enablement before adding its row. Disabled
 hosts have no provisional icon; enabled hosts retain their unreachable state.
+With the built-in enabled, Otto daemon startup applies saved local enablement and
+Start with host together, once per daemon lifetime. It leaves an existing owner
+alone and never starts a Remote Brain. Failed startup is not retried automatically.
+Settings reads and saves do not apply this intent. Automatic model selection on
+an explicit start/restart uses the owning host's saved default; a selected model
+overrides it without rewriting that default. Passive settings projections apply
+environment overrides in memory without seeding a missing configuration file.
 Daemon-owned connection and owner settings use the same local/Remote transport
 and private home. The same plugin registers the `otto-brain` agent provider,
 sharing the complete OpenAI harness. Full CLI/TUI host composition and

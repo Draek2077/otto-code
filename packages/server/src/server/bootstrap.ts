@@ -629,7 +629,7 @@ export async function createPaseoDaemon(
   const browserToolsBroker = new BrowserToolsBroker({});
   // OTTO(paseo-version): plugins target the Paseo API, so the plugin host reports
   // the Paseo base release instead of Otto's version.
-  const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until explicit demand/action.
+  const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until demand/action or saved startup intent.
   const pluginRuntime: PluginService = new PluginService(
     logger,
     daemonConfigStore,
@@ -1774,6 +1774,15 @@ export async function createPaseoDaemon(
             );
             pluginRuntime.bindPaseoSessionHost(wsServer);
             await pluginRuntime.start();
+            // OTTO(brain-startup): saved enable+autostart applies once at daemon startup,
+            // only for a running built-in. Reads/saves and Remote mode never start a host.
+            if (pluginRuntime.catalog().some((plugin) => plugin.id === "otto-brain")) {
+              void ottoBrain.applyStartupIntent().catch(() => {
+                logger.warn(
+                  "Saved Brain startup failed; open Brain settings to start it explicitly",
+                );
+              });
+            }
             providerSnapshotManager.settlePluginProviders();
             wsServer.beginAcceptingConnections();
             relayRuntime = createRelayRuntime({

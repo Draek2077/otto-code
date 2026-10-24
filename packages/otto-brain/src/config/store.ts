@@ -124,6 +124,14 @@ export function loadPersistedConfig(paths: BrainPaths = resolveBrainPaths()): Br
 }
 
 /** Effective config: persisted file with env overrides layered on top. */
+export function readBrainConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  paths: BrainPaths = resolveBrainPaths(env),
+): BrainConfig {
+  return applyEnvOverrides(readBrainConfigRevision(paths).config, env);
+}
+
+/** Explicit runtime/CLI initialization can seed a missing persisted configuration. */
 export function loadBrainConfig(
   env: NodeJS.ProcessEnv = process.env,
   paths: BrainPaths = resolveBrainPaths(env),

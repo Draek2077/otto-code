@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { loadCatalog } from "./store.js";
+import { loadCatalog, readBrainConfig } from "./store.js";
 import type { BrainPaths } from "./paths.js";
 
 function scratch(): string {
@@ -151,4 +151,23 @@ describe("loadCatalog", () => {
       ["gpt-oss 20B", "MXFP4"],
     ]);
   });
+});
+
+it("passive effective settings reads apply environment values without seeding or rewriting configuration", () => {
+  const paths = testPaths();
+  expect(readBrainConfig({ OTTO_BRAIN_PORT: "2345" }, paths).listen.port).toBe(2345);
+  expect(readdirSync(paths.root)).toEqual([]);
+  const original = JSON.stringify({
+    defaultModel: "saved/model.gguf",
+  });
+  writeFileSync(paths.configFile, original);
+  expect(readBrainConfig({ OTTO_BRAIN_MODEL: "environment/model.gguf" }, paths).defaultModel).toBe(
+    "environment/model.gguf",
+  );
+  expect(readBrainConfig({}, paths).defaultModel).toBe("saved/model.gguf");
+  expect(readFileSync(paths.configFile, "utf8")).toBe(original);
+  const future = JSON.stringify({ defaultModel: "saved/model.gguf", futureOption: { keep: true } });
+  writeFileSync(paths.configFile, future);
+  expect(() => readBrainConfig({}, paths)).toThrow("Unrecognized key");
+  expect(readFileSync(paths.configFile, "utf8")).toBe(future);
 });

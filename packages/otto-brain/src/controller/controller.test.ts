@@ -34,6 +34,7 @@ function fixture() {
   const ports = {
     localClient: vi.fn(() => transport),
     remoteClient: vi.fn(() => transport),
+    defaultModel: vi.fn((): string | null => null),
     start: vi.fn(async (_model: string | null, _signal?: AbortSignal) => {}),
     stop: vi.fn(async (_signal?: AbortSignal) => {}),
   };
@@ -107,6 +108,18 @@ test("changing to a remote owner aborts the old feed and clears stale status", a
   expect(f.controller.status.getSnapshot().status).toBeNull();
   release();
 });
+test("Automatic uses the owning saved default and an explicit model overrides it without changing config", async () => {
+  const f = fixture();
+  f.save({ enabled: true });
+  f.ports.defaultModel.mockReturnValue("owner/default.gguf");
+  await f.controller.performLocalAction("start");
+  expect(f.ports.start).toHaveBeenLastCalledWith("owner/default.gguf", expect.any(AbortSignal));
+  f.ports.defaultModel.mockClear();
+  await f.controller.performLocalAction("restart", "owner/override.gguf");
+  expect(f.ports.start).toHaveBeenLastCalledWith("owner/override.gguf", expect.any(AbortSignal));
+  expect(f.ports.defaultModel).not.toHaveBeenCalled();
+});
+
 test("Remote mode refuses local lifecycle actions without invoking either host", async () => {
   const f = fixture();
   f.save({ mode: "remote", remote: { host: "remote.example" } });

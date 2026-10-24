@@ -2,6 +2,7 @@
 import path from "node:path";
 import {
   createBrainController,
+  BrainStartup,
   BrainConnectionError,
   BrainOwnerSettings,
   OwnerSettingsError,
@@ -10,7 +11,7 @@ import {
   readPidFile,
   isProcessAlive,
 } from "@getpaseo/brain/host";
-import { resolveBrainPaths, loadBrainConfig } from "@getpaseo/brain/config";
+import { resolveBrainPaths, readBrainConfig } from "@getpaseo/brain/config";
 import { listAllRuntimes, resolveRuntime } from "@getpaseo/brain/runtime";
 import { scanModels } from "@getpaseo/brain/models";
 import {
@@ -64,6 +65,7 @@ export class BrainDaemonService {
   private readonly leases: BrainStatusLeases<BrainStatus>;
   private readonly env: NodeJS.ProcessEnv;
   private readonly reads = new BrainRequestLeases();
+  private readonly startup: BrainStartup;
   constructor(home: string, env: NodeJS.ProcessEnv = process.env) {
     this.env = { ...env, OTTO_HOME: home, PASEO_HOME: home };
     this.controller = createBrainController({
@@ -72,6 +74,14 @@ export class BrainDaemonService {
       decodeStatus: (value) => BrainStatusSchema.parse(value),
     });
     this.leases = new BrainStatusLeases(this.controller.status);
+    this.startup = new BrainStartup({
+      connection: () => this.controller.readConnection().config,
+      isRunning: () => this.localRunning(),
+      start: (signal) => this.controller.performLocalAction("start", null, signal),
+    });
+  }
+  applyStartupIntent() {
+    return this.startup.apply();
   }
   invoke(method: string, input: unknown, clientId: string): Promise<unknown> | undefined {
     if (!METHODS.has(method)) return undefined;
@@ -164,7 +174,7 @@ export class BrainDaemonService {
     return decodeBrainAction(action, await this.controller.request(request.route, request.body));
   }
   private localOwner() {
-    const config = loadBrainConfig(this.env);
+    const config = readBrainConfig(this.env);
     return new BrainOwnerSettings(
       { config, paths: resolveBrainPaths(this.env), env: this.env, instanceId: "offline-metadata" },
       {
