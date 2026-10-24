@@ -1,5 +1,6 @@
 /** Node-only ports shared by the Otto CLI adapter and its owning daemon. Importing is inert. */
 export { withBrainCommandHost } from "./commands/target.js";
+export { withBrainLocalEnvironment, selectedBrainLocalEnvironment } from "./commands/target.js";
 export type { HostCommandPort } from "./commands/host-command.js";
 export {
   BrainCommandRequestSchema,

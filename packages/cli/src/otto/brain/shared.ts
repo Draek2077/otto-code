@@ -3,14 +3,37 @@ import type { Command } from "commander";
 import { createBrainCommand, withBrainCommandHost, CommandError } from "@getpaseo/brain/cli";
 import { TuiActionError } from "@getpaseo/brain/tui";
 import { connectToDaemon } from "../../utils/client.js";
-import { addDaemonHostOption, withGlobalOptions } from "../../utils/command-options.js";
+import {
+  addDaemonHostOption,
+  addLocalDaemonOptions,
+  withGlobalOptions,
+} from "../../utils/command-options.js";
 import type { CommandOptions } from "../../output/index.js";
 import { BrainCliError } from "./rpc.js";
 import { openBrainCommandHost } from "./command-host.js";
 
-async function executeOnOwner<T>(command: Command, execute: () => Promise<T>): Promise<T> {
+export async function executeBrainCommand<T>(
+  command: Command,
+  execute: () => Promise<T>,
+): Promise<T> {
   try {
     return await withGlobalOptions(async (options: CommandOptions, _command: Command) => {
+      if (command.name() === "serve") {
+        if (options.daemonTarget.kind !== "instance")
+          throw new BrainCliError(
+            "LOCAL_OPERATION",
+            "Foreground Brain is local. Use --home; remote hosts use start/restart.",
+          );
+        const { withBrainLocalEnvironment } = await import("@getpaseo/brain/cli-target");
+        return withBrainLocalEnvironment(
+          {
+            ...process.env,
+            OTTO_HOME: options.daemonTarget.home,
+            PASEO_HOME: options.daemonTarget.home,
+          },
+          execute,
+        );
+      }
       const client = await connectToDaemon({ target: options.daemonTarget }).catch(
         (cause: unknown) => {
           throw new BrainCliError("BRAIN_UNAVAILABLE", "The selected Otto daemon is unavailable.", {
@@ -48,12 +71,13 @@ function addSelectors(command: Command): void {
 /** Keep the current low-level management commands until each remaining domain
  * has its reviewed portable owner port. The adopted groups have one definition. */
 export function adoptSharedBrainCommands(brain: Command): void {
-  const shared = createBrainCommand({ execute: executeOnOwner });
+  const shared = createBrainCommand({ execute: executeBrainCommand });
   const groups = new Set([
     "scan",
     "bench",
     "config",
     "share",
+    "serve",
     "catalog",
     "search",
     "pull",
@@ -71,7 +95,8 @@ export function adoptSharedBrainCommands(brain: Command): void {
     if (!groups.has(command.name())) continue;
     if (brain.commands.some((current) => current.name() === command.name()))
       throw new Error(`Brain command is already registered: ${command.name()}`);
-    addSelectors(command);
+    if (command.name() === "serve") addLocalDaemonOptions(command);
+    else addSelectors(command);
     brain.addCommand(command);
   }
 }

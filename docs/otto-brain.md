@@ -111,6 +111,15 @@ remain status-only, and environment-owned credentials cannot be rotated. Sharing
 output reports staged settings that require restart. Saving never starts or
 restarts a host or changes the selected daemon's Remote connection credentials.
 
+`serve --home <path>` is an explicit local foreground owner, using the same
+implementation as `otto-brain serve`. It does not connect to an Otto daemon and
+rejects `--host`; use the selected host's `start/restart` commands for remote
+management. The captured local home is passed to configuration, discovery and
+runtime construction without changing process environment. A saved default model
+does not load on initial serve unless `--model` is explicit. Failed startup
+removes its own signal handlers; successful shutdown retains normal ownership
+and process cleanup rules.
+
 The shared handlers borrow one target-scoped transport. A disconnected Remote
 owner never falls back to a local home. Each command request carries the captured
 connection revision and owner lifetime, and crosses encrypted RPC as a fixed

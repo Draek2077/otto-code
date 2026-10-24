@@ -5,6 +5,7 @@ import { readRunningService } from "../service/pid-lock.js";
 import { startLocalBrain, stopLocalBrain } from "../service/lifecycle.js";
 import { localBrainRequest } from "../service/local-client.js";
 import { BrainServiceSession } from "../service/session.js";
+import { selectedBrainLocalEnvironment } from "./target.js";
 
 interface LifecycleRow {
   status: string;
@@ -38,16 +39,18 @@ function result(
 }
 
 export async function runServeCommand(options: { model?: string }): Promise<void> {
+  const env = { ...(selectedBrainLocalEnvironment() ?? process.env) };
   const [{ startService }, { createHostRuntime }] = await Promise.all([
     import("../service/serve.js"),
     import("../service/engine.js"),
   ]);
   const session = new BrainServiceSession({
-    readConfig: () => loadBrainConfig(),
+    readConfig: () => loadBrainConfig(env),
     start: async (config, requestRestart, activation) => {
       let runtime!: ReturnType<typeof createHostRuntime>;
       const host = await startService({
         config,
+        env,
         requestRestart,
         createRuntime: (context) => {
           runtime = createHostRuntime(context);
@@ -62,7 +65,7 @@ export async function runServeCommand(options: { model?: string }): Promise<void
       const model =
         activation.kind === "initial" ? options.model : (activation.modelId ?? config.defaultModel);
       if (model) {
-        void (async () => runtime.pool.preload(pickModel(scanModels(config), model)))().catch(
+        void (async () => runtime.pool.preload(pickModel(scanModels(config, env), model)))().catch(
           () => {
             process.stderr.write(
               "Brain could not load the selected model; the host remains available for management.\n",
@@ -83,7 +86,13 @@ export async function runServeCommand(options: { model?: string }): Promise<void
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
-  await session.start();
+  try {
+    await session.start();
+  } catch (error) {
+    process.off("SIGINT", shutdown);
+    process.off("SIGTERM", shutdown);
+    throw error;
+  }
 }
 export async function runStartCommand(options: {
   model?: string;
