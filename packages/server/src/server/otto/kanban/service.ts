@@ -2,6 +2,7 @@
 import {
   createKanbanHandlers,
   prepareTargetUpdate,
+  readProjectTarget,
   type ProjectSnapshot,
   type ProjectBoardPort,
 } from "@getpaseo/plugin/server/otto-kanban";
@@ -24,8 +25,10 @@ import {
 import type { GitHubProjectReads } from "../../../services/otto/github-projects.js";
 import type { GitHubProjectWrites } from "../../../services/otto/github-project-commands.js";
 import { KanbanEditingHost } from "./mutations/host.js";
+import { JiraBoardHost } from "./jira/host.js";
+import type { AtlassianAccountService } from "../../../services/otto/atlassian/account.js";
 
-function projectFailure(error: unknown): Result<never> {
+function projectFailure(error: unknown): ReturnType<typeof failure> {
   if (error instanceof OttoProjectMetadataError) {
     if (error.kind === "not_found")
       return failure("project_not_found", "Select an active project on this host.");
@@ -41,6 +44,7 @@ function projectFailure(error: unknown): Result<never> {
 export class KanbanDaemonService {
   private readonly handlers: ReturnType<typeof createKanbanHandlers>;
   private readonly editing: KanbanEditingHost;
+  private readonly jira: JiraBoardHost | null;
   constructor(
     private readonly ports: {
       hostId: string;
@@ -48,8 +52,16 @@ export class KanbanDaemonService {
       github: GitHubProjectReads;
       writes: GitHubProjectWrites;
       operationDirectory: string;
+      atlassian?: AtlassianAccountService;
     },
   ) {
+    this.jira = ports.atlassian
+      ? new JiraBoardHost({
+          hostId: ports.hostId,
+          metadata: ports.metadata,
+          account: ports.atlassian,
+        })
+      : null;
     const projects: ProjectBoardPort = {
       hostId: ports.hostId,
       read: (binding) => this.readProject(binding),
@@ -105,8 +117,27 @@ export class KanbanDaemonService {
       reads: ports.github,
       writes: ports.writes,
       operationDirectory: ports.operationDirectory,
-      readBoard: this.handlers.readBoard,
+      readBoard: (binding) => this.readBoard(binding),
+      jira: this.jira ?? undefined,
     });
+  }
+  private async readBoard(binding: ProjectBinding) {
+    if (binding.hostId !== this.ports.hostId)
+      return {
+        status: "error" as const,
+        binding,
+        error: { code: "wrong_host" as const, message: "Select this project's owning host." },
+      };
+    try {
+      const project = await this.ports.metadata.read(binding.projectId);
+      const target = readProjectTarget(project.record);
+      if (!target.ok) return { status: "error" as const, binding, error: target.error };
+      if (target.value?.adapter === "jira" && this.jira) return this.jira.readBoard(binding);
+      return this.handlers.readBoard(binding);
+    } catch (error) {
+      const result = projectFailure(error);
+      return { status: "error" as const, binding, error: result.error };
+    }
   }
   private snapshot(
     binding: ProjectBinding,
@@ -148,7 +179,9 @@ export class KanbanDaemonService {
     const result = this.handlers.capabilities(getCapabilities.input.parse(input));
     if (result.ok)
       result.value.providers = result.value.providers.map((provider) =>
-        provider.id === "github" ? { ...provider, mutate: true } : provider,
+        provider.id === "github" || (provider.id === "jira" && this.jira)
+          ? { ...provider, read: true, mutate: true }
+          : provider,
       );
     return getCapabilities.output.parse(result);
   }
@@ -163,6 +196,6 @@ export class KanbanDaemonService {
     );
   }
   private async board(input: unknown) {
-    return getBoard.output.parse(await this.handlers.readBoard(getBoard.input.parse(input)));
+    return getBoard.output.parse(await this.readBoard(getBoard.input.parse(input)));
   }
 }

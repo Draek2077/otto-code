@@ -86,6 +86,11 @@ export function openBoardAction(input: {
     if (!state.fieldId) return null;
     const definition = origin.snapshot.fields.find((row) => row.id === state.fieldId);
     let value = state.value;
+    if (
+      definition?.required &&
+      (value.kind === "clear" || (value.kind === "text" && !value.value.trim()))
+    )
+      return null;
     if (definition?.kind === "number" && value.kind !== "clear") {
       if (!state.numberText.trim() || !Number.isFinite(Number(state.numberText))) return null;
       value = { kind: "number", value: Number(state.numberText) };

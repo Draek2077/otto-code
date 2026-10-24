@@ -23,6 +23,7 @@ export const PLUGIN_SDK_SPECIFIERS = [
   // OTTO(provider-harness): client-safe connection definitions, without Node imports.
   "@getpaseo/plugin/otto/openai-settings",
   "@getpaseo/plugin/otto/kanban", // OTTO(kanban): shared structural contracts only.
+  "@getpaseo/plugin/otto/atlassian-settings", // OTTO(integration): account status/explicit write intents only.
   ...PLUGIN_SERVER_ONLY_SDK_SPECIFIERS,
   ...PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS,
 ] as const;

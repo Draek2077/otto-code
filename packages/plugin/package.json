@@ -43,6 +43,11 @@
       "source": "./src/otto/kanban.ts",
       "default": "./dist/otto/kanban.js"
     },
+    "./otto/atlassian-settings": {
+      "types": "./dist/otto/atlassian-settings.d.ts",
+      "source": "./src/otto/atlassian-settings.ts",
+      "default": "./dist/otto/atlassian-settings.js"
+    },
     "./otto/openai-settings": {
       "types": "./dist/otto/openai-settings.d.ts",
       "source": "./src/otto/openai-settings.ts",

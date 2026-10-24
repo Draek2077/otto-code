@@ -3,4 +3,5 @@ export const ottoBuiltinPlugins = [
   "otto-openai-compatible-provider",
   "otto-brain",
   "otto-kanban",
+  "otto-integrations",
 ] as const;

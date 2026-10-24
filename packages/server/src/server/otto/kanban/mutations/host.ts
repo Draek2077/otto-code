@@ -13,6 +13,11 @@ import { readGitHubEditing, type GitHubMutationContext } from "./github-details.
 import { executeGitHubMutation } from "./github-execute.js";
 import { BoardMutationService } from "./service.js";
 import { FileMutationStore } from "./store.js";
+import { JiraBoardHost, type JiraHostContext } from "../jira/host.js";
+
+type EditingContext =
+  | { provider: "github"; value: GitHubMutationContext }
+  | { provider: "jira"; value: JiraHostContext };
 
 interface Ports {
   hostId: string;
@@ -21,11 +26,12 @@ interface Ports {
   writes: GitHubProjectWrites;
   readBoard(binding: ProjectBinding): Promise<BoardRead>;
   operationDirectory: string;
+  jira?: JiraBoardHost;
 }
 export class KanbanEditingHost {
-  private readonly mutations: BoardMutationService<GitHubMutationContext>;
+  private readonly mutations: BoardMutationService<EditingContext>;
   constructor(private readonly ports: Ports) {
-    this.mutations = new BoardMutationService({
+    this.mutations = new BoardMutationService<EditingContext>({
       hostId: ports.hostId,
       store: new FileMutationStore(ports.operationDirectory),
       read: (binding, cardId) => this.read(binding, cardId),
@@ -36,10 +42,18 @@ export class KanbanEditingHost {
             status: "rejected",
             error: { code: "unavailable", message: "Refresh the board before applying an action." },
           };
+        if (context.provider === "jira") {
+          if (!ports.jira)
+            return {
+              status: "rejected",
+              error: { code: "unsupported", message: "Update this host's Jira integration." },
+            };
+          return ports.jira.execute(intent, context.value);
+        }
         return executeGitHubMutation({
           intent,
           snapshot,
-          context,
+          context: context.value,
           reads: ports.reads,
           writes: ports.writes,
         });
@@ -58,6 +72,23 @@ export class KanbanEditingHost {
     board: Extract<BoardRead, { status: "ready" }>,
     cardId?: string,
   ) {
+    if (board.board.provider === "jira" && this.ports.jira) {
+      const read = await this.ports.jira.editable(
+        binding,
+        board.board,
+        board.settingsRevision,
+        cardId,
+      );
+      return read.ok
+        ? {
+            ok: true as const,
+            value: {
+              ...read.value,
+              context: { provider: "jira" as const, value: read.value.context },
+            },
+          }
+        : read;
+    }
     if (board.board.provider !== "github")
       return failure("unsupported", "Editing is not supported by this board provider.");
     const project = await this.ports.metadata.read(binding.projectId);
@@ -72,7 +103,14 @@ export class KanbanEditingHost {
       remote,
     });
     return result.ok
-      ? { ok: true as const, value: { settingsRevision: board.settingsRevision, ...result.value } }
+      ? {
+          ok: true as const,
+          value: {
+            settingsRevision: board.settingsRevision,
+            snapshot: result.value.snapshot,
+            context: { provider: "github" as const, value: result.value.context },
+          },
+        }
       : result;
   }
   private async checkSettings(binding: ProjectBinding, revision: string): Promise<Result<true>> {

@@ -44,7 +44,10 @@ export const KanbanErrorSchema = z.object({
 export type KanbanError = z.infer<typeof KanbanErrorSchema>;
 export type Result<T> = { ok: true; value: T } | { ok: false; error: KanbanError };
 
-export function failure(code: KanbanError["code"], message: string): Result<never> {
+export function failure(
+  code: KanbanError["code"],
+  message: string,
+): { ok: false; error: KanbanError } {
   return { ok: false, error: { code, message } };
 }
 

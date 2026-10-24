@@ -91,6 +91,21 @@ it("submits explicit creation once with its originating host, project and revisi
   ]);
   expect(f.model.getSnapshot()).toMatchObject({ saved: true, dirty: false, busy: false });
 });
+it("refuses clear and whitespace values for a required provider field", async () => {
+  const f = fixture("edit");
+  const title = f.origin.snapshot.fields.find((field) => field.id === "title");
+  if (!title) throw new Error("Expected title fixture");
+  title.required = true;
+  f.model.setField("title");
+  f.model.setValue({ kind: "clear" });
+  expect(f.model.canSubmit()).toBe(false);
+  f.model.setValue({ kind: "text", value: " " });
+  expect(f.model.canSubmit()).toBe(false);
+  await f.model.submit();
+  expect(f.calls).toEqual([]);
+  f.model.setValue({ kind: "text", value: "Required title" });
+  expect(f.model.canSubmit()).toBe(true);
+});
 it("serializes a pending action and preserves its exact intent across repeated clicks", async () => {
   const f = fixture();
   let release: ((value: BoardMutationOutcome) => void) | undefined;

@@ -12,6 +12,7 @@ decisions, and measured findings live in Otto Knowledge.
 | [otto-brain.md](otto-brain.md)                         | Standalone Brain host, llama.cpp process and model acquisition   |
 | [otto-project-knowledge.md](otto-project-knowledge.md) | Knowledge store library, ownership and current proof boundary    |
 | [otto-kanban.md](otto-kanban.md)                       | Project-bound Kanban UI, host operations and provider boundaries |
+| [otto-integrations.md](otto-integrations.md)           | Shared host accounts, OS-keyring credentials and explicit saves  |
 | [architecture.md](architecture.md)                     | Paseo base architecture                                          |
 | [development.md](development.md)                       | Development commands and isolation                               |
 | [release.md](release.md)                               | Release procedure                                                |

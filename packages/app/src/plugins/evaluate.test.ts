@@ -29,6 +29,20 @@ function bundle(body: string): string {
 }
 
 describe("evaluatePluginClientBundle", () => {
+  it("supplies shared Atlassian settings contracts without exposing credential storage", () => {
+    const plugin = evaluatePluginClientBundle(
+      "otto-integrations",
+      bundle(`
+      const account = require("@getpaseo/plugin/otto/atlassian-settings");
+      if ("KeyringCredentialVault" in account) throw new Error("Vault leaked");
+      account.readAtlassianAccount.input.parse({hostId:"host"});
+      plugin.addSettingsScreen({id:"atlassian",title:account.readAtlassianAccount.name,icon:"Plug",Component:function Settings(){return null;}});
+    `),
+    );
+    expect(plugin.settingsScreens.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: "atlassian", title: "integrations.atlassian.read" },
+    ]);
+  });
   // OTTO(kanban): shared contracts are supplied by the host; Node effects remain separate.
   it("supplies canonical Kanban contracts without exposing the host implementation", () => {
     const plugin = evaluatePluginClientBundle(

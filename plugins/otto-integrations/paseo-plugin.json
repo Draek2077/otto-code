@@ -1,0 +1,5 @@
+{
+  "id": "otto-integrations",
+  "name": "Otto Managed Integrations",
+  "requirements": { "paseo": ">=0.12.0" }
+}

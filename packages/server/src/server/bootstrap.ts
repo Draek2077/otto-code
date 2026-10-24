@@ -240,6 +240,7 @@ import { DaemonExecutions } from "./hub/daemon-executions.js";
 import { PluginService } from "./plugins/index.js";
 import { BrainDaemonService } from "./otto/brain/service.js"; // OTTO(brain-host): one controller for all app consumers.
 import { KanbanDaemonService } from "./otto/kanban/service.js"; // OTTO(kanban): host-owned projects and forge transport.
+import { createHostIntegrations } from "../services/otto/integrations/host.js"; // OTTO(integration): shared daemon-owned credentials.
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
 
@@ -632,6 +633,7 @@ export async function createPaseoDaemon(
   // the Paseo base release instead of Otto's version.
   const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until demand/action or saved startup intent.
   let ottoKanban: KanbanDaemonService | null = null; // OTTO(kanban): bound after registry/server identity creation, before plugins start.
+  let ottoIntegrations: ReturnType<typeof createHostIntegrations> | null = null; // OTTO(integration)
   const pluginRuntime: PluginService = new PluginService(
     logger,
     daemonConfigStore,
@@ -650,10 +652,13 @@ export async function createPaseoDaemon(
       // OTTO(feature-host): existing authenticated plugin RPC, unchanged relay framing.
       ottoRpc: {
         has: (pluginId) =>
-          pluginId === "otto-brain" || (pluginId === "otto-kanban" && ottoKanban !== null),
+          pluginId === "otto-brain" ||
+          (pluginId === "otto-kanban" && ottoKanban !== null) ||
+          (pluginId === "otto-integrations" && ottoIntegrations !== null),
         invoke: (pluginId, method, input, clientId) => {
           if (pluginId === "otto-brain") return ottoBrain.invoke(method, input, clientId);
           if (pluginId === "otto-kanban") return ottoKanban?.invoke(method, input); // OTTO(kanban)
+          if (pluginId === "otto-integrations") return ottoIntegrations?.rpc.invoke(method, input); // OTTO(integration)
           return undefined;
         },
         releaseClient: (clientId) => ottoBrain.releaseClient(clientId),
@@ -662,6 +667,7 @@ export async function createPaseoDaemon(
   );
 
   const serverId = getOrCreateServerId(config.paseoHome, { logger });
+  ottoIntegrations = createHostIntegrations(config.paseoHome, serverId); // OTTO(integration): no keyring access or migration at startup.
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);
   const managedProcesses = createBootstrapManagedProcessRegistry(config, logger);
   // Reconcile the helper-process ledger in the background so it never blocks the
@@ -930,6 +936,7 @@ export async function createPaseoDaemon(
     metadata: projectRegistry.ottoMetadata,
     github: github.projectBoards,
     writes: github.projectBoardWrites, // OTTO(kanban): provider effects share the normal CLI policy.
+    atlassian: ottoIntegrations.atlassian, // OTTO(kanban): reuse shared host authorization.
     operationDirectory: path.join(config.paseoHome, "kanban", "operations"), // OTTO(kanban): durable write admission belongs to this isolated daemon home.
   }); // OTTO(kanban)
   const workspaceGitService = new WorkspaceGitServiceImpl({

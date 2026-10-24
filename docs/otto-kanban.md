@@ -8,7 +8,7 @@ client contribution and reexports those canonical contracts. The `otto-kanban`
 built-in registers a top-level sidebar entry and a project-settings contribution;
 it has no credential store. Constructing a service or contribution does not
 start a process, contact GitHub or subscribe to anything. Registration does not
-complete the feature: Jira and complete provider/product acceptance remain open.
+complete the feature: Jira creation/linking and complete provider/product acceptance remain open.
 
 ## Ownership and integration boundary
 
@@ -64,8 +64,9 @@ boards can serve multiple Otto projects.
 A configured GitHub target without an ID discovers boards linked to that project's
 repository. A single result is usable; multiple results require an explicit target
 in Project Settings. An absent project target returns an unconfigured state without
-calling the provider. Jira pointers survive configuration reads and updates, but
-Jira board reads return `unsupported` in this slice.
+calling the provider. Jira pointers use the selected daemon's shared Atlassian
+account, configured under host Plugins settings. An absent account or Jira site
+produces an actionable error; no project credential store is introduced.
 
 The normalized board preserves item IDs, issue/PR/draft kinds, titles, descriptions,
 URLs, assignees and archive state. Columns come from one single-select Status field,
@@ -111,6 +112,26 @@ serializes submission and blocks repeats after uncertainty or conflicts. Card
 detail selection performs a fresh permission/field read. Compact column selection
 survives refresh and provider errors when the column remains valid. No optimistic
 canonical board cache or second tracker transport is introduced.
+
+## Jira reads and issue edits
+
+Jira uses real board configuration/status mappings and the current enhanced
+Software issue endpoint with token pagination. Quick filters do not define
+columns. Incomplete/repeated pages and configuration changes are refused.
+Editing metadata comes from the issue's actual edit screen; native workflow
+transitions determine allowed moves. Ambiguous transitions or required transition
+screen fields are not guessed. Denied edit/transition permissions preserve the
+readable issue and remove the corresponding actions.
+
+Field writes contain only the selected known field. Description writes use ADF
+only after an explicit description edit; other edits do not flatten rich content.
+People use account IDs, options use native IDs, and required fields cannot be
+cleared. Unrecognized types remain read-only. Jira does not provide a generic
+detach-from-filtered-board operation, so Otto does not substitute issue deletion.
+Create/link workflows remain unavailable until their metadata and membership
+semantics are implemented. Account/site revision is part of board identity and
+is checked again before effects. Jira shares the same durable write admission
+and reconciliation path as GitHub.
 
 Field and item connections paginate independently. Reads refuse partial data,
 repeated cursors, mismatched IDs and detected board revisions changing mid-read.

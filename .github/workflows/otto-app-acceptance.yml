@@ -68,6 +68,8 @@ jobs:
         run: npx playwright install chromium
       - name: Build server stack
         run: npm run build:server
+      - name: Verify OS credential binding without accessing entries
+        run: node --input-type=module -e 'const binding = await import("@napi-rs/keyring"); if (typeof binding.Entry !== "function") throw new Error("OS credential binding is unavailable");'
       - name: Build app audio dependency
         run: npm run build --workspace=@getpaseo/expo-two-way-audio
       - name: Verify Otto app journeys

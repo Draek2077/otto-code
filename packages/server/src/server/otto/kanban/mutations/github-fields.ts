@@ -53,7 +53,13 @@ export function fieldDefinition(
     default:
       break;
   }
-  return { id: field.id, name: field.name, kind, choices: options };
+  return {
+    id: field.id,
+    name: field.name,
+    kind,
+    choices: options,
+    required: field.dataType === "TITLE",
+  };
 }
 export function fieldRoute(field: GitHubField): FieldRoute {
   switch (field.dataType) {

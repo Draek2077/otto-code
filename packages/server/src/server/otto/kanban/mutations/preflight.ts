@@ -9,7 +9,8 @@ import {
 function validValue(snapshot: EditableBoard, fieldId: string, value: BoardFieldValue): boolean {
   const field = snapshot.fields.find((row) => row.id === fieldId);
   if (!field) return false;
-  if (value.kind === "clear") return true;
+  if (value.kind === "clear") return !field.required;
+  if (field.required && value.kind === "text" && !value.value.trim()) return false;
   if (field.kind !== value.kind) return false;
   const choices = new Set(field.choices.map((choice) => choice.id));
   if (value.kind === "choice") return choices.has(value.id);

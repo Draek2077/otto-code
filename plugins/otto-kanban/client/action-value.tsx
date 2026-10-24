@@ -40,10 +40,10 @@ export function ActionValue({
   const textInput = useRef<SettingsInputHandle>(null);
   const options = useMemo(
     () => [
-      { value: "", label: "Not set" },
+      ...(field.required ? [] : [{ value: "", label: "Not set" }]),
       ...field.choices.map((choice) => ({ value: choice.id, label: choice.label })),
     ],
-    [field.choices],
+    [field.choices, field.required],
   );
   const changeText = useCallback(
     (value: string) => {
@@ -98,9 +98,11 @@ export function ActionValue({
         placeholder={field.kind === "date" ? "YYYY-MM-DD" : undefined}
       />
       {state.value.kind === "clear" ? <SettingsRow label="This field will be cleared." /> : null}
-      <SettingsButton variant="outline" onPress={clear} disabled={state.busy || state.blocked}>
-        Clear field
-      </SettingsButton>
+      {!field.required ? (
+        <SettingsButton variant="outline" onPress={clear} disabled={state.busy || state.blocked}>
+          Clear field
+        </SettingsButton>
+      ) : null}
     </>
   );
 }

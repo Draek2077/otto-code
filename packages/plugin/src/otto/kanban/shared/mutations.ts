@@ -57,6 +57,7 @@ export const EditableBoardSchema = z.object({
       id,
       name: z.string(),
       kind: z.string(),
+      required: z.boolean().optional(),
       choices: z.array(z.object({ id, label: z.string() })),
     }),
   ),
