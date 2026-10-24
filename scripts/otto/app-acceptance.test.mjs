@@ -35,3 +35,23 @@ test("Otto acceptance remains read-only CI over an exact source with retained su
   assert.match(source, /if: always\(\)/);
   assert.ok(source.includes("packages/app/test-results/"));
 });
+
+test("manual diagnostics stay bounded while every push and pull request retains the full gate", () => {
+  assert.ok(source.includes("options: [all, knowledge, brain-cancellation]"));
+  assert.ok(source.includes("github.event_name == 'workflow_dispatch' && inputs.journey || 'all'"));
+  assert.ok(
+    source.includes("e2e/browser/otto-knowledge.spec.ts --workers=1 --retries=0 --max-failures=1"),
+  );
+  assert.ok(
+    source.includes(
+      "--grep='canceling a running benchmark' --repeat-each=3 --workers=1 --retries=0 --max-failures=1",
+    ),
+  );
+  assert.ok(source.includes('case "$OTTO_ACCEPTANCE_JOURNEY" in'));
+  assert.ok(
+    source.includes(
+      "group: otto-app-acceptance-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.journey || 'all' }}",
+    ),
+  );
+  assert.doesNotMatch(source, /continue-on-error|--pass-with-no-tests|--retries=[1-9]/);
+});

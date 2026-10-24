@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it } from "vitest";
 import pino from "pino";
 import {
   FileBackedProjectRegistry,
@@ -63,12 +63,22 @@ async function fixture() {
     createdAt: now,
     updatedAt: now,
   });
+  const notifications: string[] = [];
   const host = new KnowledgeDaemonService({
     hostId: "host-a",
     home,
     metadata: registry.ottoMetadata,
     workspaces: { get: async (id) => (id === workspace.workspaceId ? workspace : null) },
     now: () => new Date(now),
+    observations: {
+      notify: (id) => {
+        notifications.push(id);
+      },
+      wait: async () => ({ cursor: "fixture", error: null }),
+      release: async () => {},
+      releaseClient: async () => {},
+      close: async () => {},
+    },
   });
   const scope = host.workspaceScope(workspace.workspaceId);
   const catalogInput = { scope, includeInactive: true, query: "", offset: 0, limit: 50 };
@@ -84,7 +94,7 @@ async function fixture() {
         tags: ["fixture"],
       },
     });
-  return { root, home, repo, worktree, registry, host, scope, catalogInput, create };
+  return { root, home, repo, worktree, registry, host, scope, catalogInput, create, notifications };
 }
 
 it("binds worktrees to the canonical project and keeps catalog metadata separate from bodies", async () => {
@@ -145,9 +155,8 @@ it("rejects foreign hosts, missing workspaces and client paths before touching s
 
 it("publishes successful own writes and classifies a deleted selected page without stale data", async () => {
   const f = await fixture();
-  const notify = vi.spyOn(f.host.observations, "notify");
   expect(await f.create()).toMatchObject({ ok: true });
-  expect(notify).toHaveBeenCalledExactlyOnceWith("project-a");
+  expect(f.notifications).toEqual(["project-a"]);
   const file = path.join(f.repo, ".otto/knowledge/requirements/fixture-page.md");
   await rm(file);
   expect(

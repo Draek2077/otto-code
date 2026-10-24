@@ -30,6 +30,10 @@ import { initializeKnowledgeRoots } from "./bootstrap.js";
 import { copyKnowledgeStore } from "./migration.js";
 import { assertSafeSegment, type KnowledgeStore } from "./store-resolver.js";
 import { KnowledgeObservations } from "./observation.js";
+type KnowledgeObservationPort = Pick<
+  KnowledgeObservations,
+  "notify" | "wait" | "release" | "releaseClient" | "close"
+>;
 
 const location = z.enum(["repository", "host"]);
 const projectFields = z.object({
@@ -69,7 +73,7 @@ export class KnowledgeDaemonService {
   readonly service: KnowledgeService;
   readonly records: KnowledgeRecordOperations;
   readonly resolver: KnowledgeStoreResolver;
-  readonly observations: KnowledgeObservations;
+  readonly observations: KnowledgeObservationPort;
   constructor(
     private readonly ports: {
       hostId: string;
@@ -77,6 +81,7 @@ export class KnowledgeDaemonService {
       metadata: Pick<OttoProjectMetadata, "read" | "update">;
       workspaces: Pick<WorkspaceRegistry, "get">;
       now?: () => Date;
+      observations?: KnowledgeObservationPort;
     },
   ) {
     this.resolver = new KnowledgeStoreResolver({
@@ -102,9 +107,11 @@ export class KnowledgeDaemonService {
       now: ports.now ?? (() => new Date()),
     });
     this.records = new KnowledgeRecordOperations(this.service);
-    this.observations = new KnowledgeObservations({
-      resolve: (projectId) => this.resolver.resolve(projectId),
-    });
+    this.observations =
+      ports.observations ??
+      new KnowledgeObservations({
+        resolve: (projectId) => this.resolver.resolve(projectId),
+      });
   }
 
   async resolveProject(scope: KnowledgeScope) {

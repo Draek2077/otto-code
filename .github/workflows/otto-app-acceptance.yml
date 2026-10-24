@@ -36,12 +36,17 @@ on:
         description: Exact source commit to verify; defaults to the selected workflow ref
         type: string
         required: false
+      journey:
+        description: Manual diagnostic scope; pushes and pull requests always run all journeys
+        type: choice
+        default: all
+        options: [all, knowledge, brain-cancellation]
 
 permissions:
   contents: read
 
 concurrency:
-  group: otto-app-acceptance-${{ github.ref }}
+  group: otto-app-acceptance-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.journey || 'all' }}
   cancel-in-progress: true
 
 env:
@@ -73,9 +78,22 @@ jobs:
       - name: Build app audio dependency
         run: npm run build --workspace=@getpaseo/expo-two-way-audio
       - name: Verify Otto app journeys
-        run: npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1
+        run: |
+          case "$OTTO_ACCEPTANCE_JOURNEY" in
+            all)
+              npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1
+              ;;
+            knowledge)
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-knowledge.spec.ts --workers=1 --retries=0 --max-failures=1
+              ;;
+            brain-cancellation)
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-brain-operations.spec.ts --grep='canceling a running benchmark' --repeat-each=3 --workers=1 --retries=0 --max-failures=1
+              ;;
+            *) echo "Unknown diagnostic journey" >&2; exit 1 ;;
+          esac
         env:
           E2E_WORKERS: "1"
+          OTTO_ACCEPTANCE_JOURNEY: ${{ github.event_name == 'workflow_dispatch' && inputs.journey || 'all' }}
       - name: Retain screenshots and traces
         if: always()
         uses: actions/upload-artifact@v4
