@@ -45,6 +45,7 @@ export class EndpointCatalog {
     private readonly resolveApiKey?: ResolveApiKey,
     private readonly transport?: typeof fetch,
     private readonly revision?: () => Promise<string>,
+    private readonly requireModelMetadata = false,
   ) {}
 
   private async revisionKey(bindings: EndpointDiscovery[]): Promise<string> {
@@ -96,14 +97,20 @@ export class EndpointCatalog {
       bindings.map(async ({ profile, key: apiKey, error: credentialError }) => {
         if (credentialError) return [unavailable(profile, credentialError)];
         try {
-          return (await discoverModels(profile.settings, signal, apiKey, this.transport)).map(
-            (model) => {
-              model.id = qualifyModel(profile.id, model.id);
-              if (profile.id !== "primary") model.label = `${profile.label} / ${model.label}`;
-              model.metadata = Object.assign({}, model.metadata, { endpointProfileId: profile.id });
-              return model;
-            },
-          );
+          return (
+            await discoverModels(
+              profile.settings,
+              signal,
+              apiKey,
+              this.transport,
+              this.requireModelMetadata,
+            )
+          ).map((model) => {
+            model.id = qualifyModel(profile.id, model.id);
+            if (profile.id !== "primary") model.label = `${profile.label} / ${model.label}`;
+            model.metadata = Object.assign({}, model.metadata, { endpointProfileId: profile.id });
+            return model;
+          });
         } catch (error) {
           signal.throwIfAborted();
           return [

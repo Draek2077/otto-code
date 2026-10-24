@@ -355,63 +355,129 @@ test.each(["otto-brain", "local-ai"])(
   },
 );
 
-test("legacy Brain reasoning Off remains explicit through import, resume and actual inference", async () => {
-  const root = home();
-  const state = await owner(root);
-  state.reasoning = true;
-  const original = readFileSync(path.join(root, "otto-config.json"), "utf8");
-  writeFileSync(path.join(root, "config.json.otto-0.9.bak"), original);
-  const provider = createBrainProvider(root);
-  const first = await connect(provider);
-  await first.connection.send({
-    type: "session.open",
-    requestId: "legacy-off",
-    sessionId: "legacy-off",
-    history: "replay",
-    config: { ...config(root), settings: { auto_compact: "off", reasoning_effort: "off" } },
-    persistence: {
-      version: 1,
-      data: {
-        format: "otto-openai-0.9-handle-v1",
-        handle: {
-          provider: "otto-brain",
-          sessionId: "old-off",
-          metadata: {
-            model: "model",
-            messages: [
-              { role: "user", content: "Previous request" },
-              { role: "assistant", content: "Previous response" },
-            ],
+test.each(["otto-brain", "local-ai"])(
+  "legacy %s reasoning Off retains real model metadata through import, resume and inference",
+  async (id) => {
+    const root = home();
+    const state = await owner(root);
+    state.reasoning = true;
+    const filename = path.join(root, "otto-config.json");
+    const preserved = JSON.parse(readFileSync(filename, "utf8"));
+    preserved.agents = {
+      providers: { "local-ai": { extends: "otto-brain", model: "model" } },
+    };
+    const original = JSON.stringify(preserved);
+    writeFileSync(filename, original);
+    writeFileSync(path.join(root, "config.json.otto-0.9.bak"), original);
+    const provider = createBrainProvider(root, { id });
+    const first = await connect(provider);
+    await first.connection.send({ type: "catalog", requestId: "actual-metadata" });
+    await expect
+      .poll(() => first.events.find((event) => event.type === "catalog"))
+      .toMatchObject({
+        catalog: {
+          models: [
+            {
+              id: "model",
+              contextWindowMaxTokens: 32768,
+              thinkingOptions: [{ id: "default" }, { id: "off" }, { id: "on" }],
+            },
+          ],
+        },
+      });
+    await first.connection.send({
+      type: "session.open",
+      requestId: "legacy-off",
+      sessionId: "legacy-off",
+      history: "replay",
+      config: { ...config(root), settings: { auto_compact: "off", reasoning_effort: "off" } },
+      persistence: {
+        version: 1,
+        data: {
+          format: "otto-openai-0.9-handle-v1",
+          handle: {
+            provider: id,
+            sessionId: "old-off",
+            metadata: {
+              model: "model",
+              messages: [
+                { role: "user", content: "Previous request" },
+                { role: "assistant", content: "Previous response" },
+              ],
+            },
           },
         },
       },
-    },
-  });
-  await expect.poll(() => first.events.some((event) => event.type === "session.ready")).toBe(true);
-  expect(archived(root, first.events)).toMatchObject({
-    data: { preferences: { thinkingOption: "off" } },
-  });
-  const saved = first.events.findLast((event) => event.type === "session.persistence");
-  if (!saved || saved.type !== "session.persistence") throw new Error("Archive missing");
-  await first.connection.close();
-  const resumed = await connect(provider);
-  await resumed.connection.send({
+    });
+    await expect
+      .poll(() => first.events.some((event) => event.type === "session.ready"))
+      .toBe(true);
+    expect(archived(root, first.events)).toMatchObject({
+      data: { preferences: { thinkingOption: "off" } },
+    });
+    const saved = first.events.findLast((event) => event.type === "session.persistence");
+    if (!saved || saved.type !== "session.persistence") throw new Error("Archive missing");
+    await first.connection.close();
+    const resumed = await connect(provider);
+    await resumed.connection.send({
+      type: "session.open",
+      requestId: "resume-off",
+      sessionId: "resume-off",
+      history: "replay",
+      config: { ...config(root), settings: { auto_compact: "off", reasoning_effort: "off" } },
+      persistence: saved.persistence,
+    });
+    await expect
+      .poll(() => resumed.events.some((event) => event.type === "session.ready"))
+      .toBe(true);
+    expect(archived(root, resumed.events)).toMatchObject({
+      data: { preferences: { thinkingOption: "off" } },
+    });
+    await prompt(resumed.connection, "resume-off", "Keep reasoning disabled");
+    await expect.poll(() => state.requestedEfforts).toEqual(["off"]);
+    expect(readFileSync(path.join(root, "otto-config.json"), "utf8")).toBe(original);
+  },
+);
+
+test("an unavailable pinned Brain model cannot acquire invented capabilities or start inference", async () => {
+  const root = home();
+  const state = await owner(root);
+  const filename = path.join(root, "otto-config.json");
+  const preserved = JSON.parse(readFileSync(filename, "utf8"));
+  preserved.agents = {
+    providers: { "local-ai": { extends: "otto-brain", model: "missing-model" } },
+  };
+  const original = JSON.stringify(preserved);
+  writeFileSync(filename, original);
+  const live = await connect(createBrainProvider(root, { id: "local-ai" }));
+  await live.connection.send({ type: "catalog", requestId: "missing" });
+  await expect
+    .poll(() =>
+      live.events.find((event) => event.type === "request.failed" && event.requestId === "missing"),
+    )
+    .toMatchObject({
+      error: {
+        message: "Primary endpoint: The configured model is unavailable on its owning Brain host.",
+      },
+    });
+  await live.connection.send({
     type: "session.open",
-    requestId: "resume-off",
-    sessionId: "resume-off",
-    history: "replay",
-    config: { ...config(root), settings: { auto_compact: "off", reasoning_effort: "off" } },
-    persistence: saved.persistence,
+    requestId: "missing-open",
+    sessionId: "missing",
+    history: "skip",
+    config: { ...config(root), model: "missing-model" },
   });
   await expect
-    .poll(() => resumed.events.some((event) => event.type === "session.ready"))
-    .toBe(true);
-  expect(archived(root, resumed.events)).toMatchObject({
-    data: { preferences: { thinkingOption: "off" } },
-  });
-  await prompt(resumed.connection, "resume-off", "Keep reasoning disabled");
-  await expect.poll(() => state.requestedEfforts).toEqual(["off"]);
-  expect(readFileSync(path.join(root, "otto-config.json"), "utf8")).toBe(original);
+    .poll(() =>
+      live.events.find(
+        (event) => event.type === "request.failed" && event.requestId === "missing-open",
+      ),
+    )
+    .toMatchObject({
+      error: { message: "The selected model is unavailable on its owning Brain host." },
+    });
+  expect(state.prompts).toBe(0);
+  expect(readFileSync(filename, "utf8")).toBe(original);
 });
 
 test("interrupting a Brain turn cancels its actual owner stream without stopping the host", async () => {

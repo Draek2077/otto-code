@@ -50,7 +50,7 @@ test("fixed footer line keeps its five icons, Help and Settings at the end", asy
   await page.keyboard.press("Escape");
   await expect(addProjectFlow(page)).toBeHidden();
   await openSidebarNavSettings(page);
-  await expectFooterSettingsKeys(page, ["usage"]);
+  await expectFooterSettingsKeys(page, ["usage", "plugin:otto-brain:brain"]);
   await setFooterItemVisible(page, "usage", false);
   await leaveSettings(page);
   await expectFooterSeparator(page, false);
@@ -203,7 +203,12 @@ test.describe("Sidebar footer rows in Appearance settings", () => {
       await expect(page.getByTestId("sidebar-nav-section-footer-info")).toHaveAccessibleName(
         "About Footer",
       );
-      await expectFooterSettingsKeys(page, ["usage", syncKey, brokenKey]);
+      await expectFooterSettingsKeys(page, [
+        "usage",
+        "plugin:otto-brain:brain",
+        syncKey,
+        brokenKey,
+      ]);
       await leaveSettings(page);
       await expectFooterOrder(page, ["usage", syncKey]);
       await expectFooterIconRow(page);
@@ -213,8 +218,14 @@ test.describe("Sidebar footer rows in Appearance settings", () => {
     await test.step("moving Sync up and hiding the Usage item changes the rows", async () => {
       await openSidebarNavSettings(page);
       await moveFooterItemUp(page, syncKey);
+      await moveFooterItemUp(page, syncKey);
       await setFooterItemVisible(page, "usage", false);
-      await expectFooterSettingsKeys(page, [syncKey, "usage", brokenKey]);
+      await expectFooterSettingsKeys(page, [
+        syncKey,
+        "usage",
+        "plugin:otto-brain:brain",
+        brokenKey,
+      ]);
       await leaveSettings(page);
       await expectFooterItemHidden(page, "usage");
       await expect(
@@ -233,7 +244,12 @@ test.describe("Sidebar footer rows in Appearance settings", () => {
       await expectFooterIconRow(page);
       await expectFooterSeparator(page, true);
       await openSidebarNavSettings(page);
-      await expectFooterSettingsKeys(page, [syncKey, "usage", brokenKey]);
+      await expectFooterSettingsKeys(page, [
+        syncKey,
+        "usage",
+        "plugin:otto-brain:brain",
+        brokenKey,
+      ]);
     });
   });
 });

@@ -81,6 +81,7 @@ export function createBrainProvider(
     transport,
     compaction: { keepRecentTokens: 6000, summaryMaxTokens: 4000 },
     preserveLegacyThinkingOff: true,
+    requireModelMetadata: true,
     resolveLegacyEndpoint(providerId) {
       if (providerId !== id || !legacy.originalBrainIdentity(providerId))
         throw new Error(

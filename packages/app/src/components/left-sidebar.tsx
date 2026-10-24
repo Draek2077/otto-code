@@ -36,7 +36,6 @@ import {
 } from "@/components/sidebar-resize-handle-layout";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
-import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
 import { SidebarNavRows } from "@/components/sidebar/sidebar-nav-rows";
 import { SidebarFooterIconHighlight } from "@/components/sidebar/sidebar-footer-icon-highlight";
 import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
@@ -64,6 +63,8 @@ import { useHosts } from "@/runtime/host-runtime";
 import { PluginSidebarItem } from "@/plugins/sidebar-items";
 import { builtinSidebarNavLabelKey } from "@/sidebar-nav/model";
 import { useSidebarNavItems } from "@/sidebar-nav/use-sidebar-nav-items";
+// OTTO(sidebar-content): collapse padding/divider when plugin components render no rows.
+import { OttoSidebarFooterContent } from "@/otto/sidebar/footer-content";
 import { usePanelStore } from "@/stores/panel-store";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
@@ -498,24 +499,24 @@ function SidebarFooterRows({ onBeforeNavigate }: { onBeforeNavigate?: () => void
   );
   if (visibleItems.length === 0) return null;
   return (
-    <>
-      <View ref={rowsRef} collapsable={false} style={styles.footerRows}>
-        {visibleItems.map((item) =>
-          item.kind === "plugin" ? (
-            <PluginSidebarItem
-              key={item.key}
-              group={item.group}
-              section="footer"
-              fallbackAnchorRef={rowsRef}
-              onBeforeNavigate={onBeforeNavigate}
-            />
-          ) : (
-            <UsageSidebarItem key={item.key} />
-          ),
-        )}
-      </View>
-      <SidebarSeparator testID="sidebar-footer-separator" />
-    </>
+    <OttoSidebarFooterContent
+      rowsRef={rowsRef}
+      knownContent={visibleItems.some((item) => item.kind !== "plugin")}
+    >
+      {visibleItems.map((item) =>
+        item.kind === "plugin" ? (
+          <PluginSidebarItem
+            key={item.key}
+            group={item.group}
+            section="footer"
+            fallbackAnchorRef={rowsRef}
+            onBeforeNavigate={onBeforeNavigate}
+          />
+        ) : (
+          <UsageSidebarItem key={item.key} />
+        ),
+      )}
+    </OttoSidebarFooterContent>
   );
 }
 
@@ -931,12 +932,6 @@ const styles = StyleSheet.create((theme) => ({
   // Pushes Help and Settings to the end of the icon line.
   footerSpacer: {
     flex: 1,
-  },
-  // Usage and plugin rows sit above the footer's icon line, spaced like the header nav rows.
-  footerRows: {
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1.5],
-    gap: 2,
   },
   footerIconButton: {
     width: density.iconButton,

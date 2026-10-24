@@ -41,6 +41,8 @@ export function createOpenAiProvider(
     transport?: typeof fetch;
     /** Owner-published model/config revision invalidates discovery without changing chat identity. */
     catalogRevision?(): Promise<string>;
+    /** Owning Brain hosts advertise authoritative capabilities even for a pinned model. */
+    requireModelMetadata?: boolean;
     compaction?: CompactionPolicy;
     resolveLegacyEndpoint?(provider: string): string;
     /** The original Brain toggle sent explicit off; ordinary endpoints omitted it. */
@@ -53,6 +55,7 @@ export function createOpenAiProvider(
     options.resolveApiKey,
     options.transport,
     options.catalogRevision,
+    options.requireModelMetadata,
   );
   const connections = new Set<ManagedConnection>();
   return {
@@ -96,6 +99,7 @@ export function createOpenAiProvider(
         compaction: options.compaction,
         resolveLegacyEndpoint: options.resolveLegacyEndpoint,
         preserveLegacyThinkingOff: options.preserveLegacyThinkingOff,
+        requireModelMetadata: options.requireModelMetadata,
         onClosed: () => connections.delete(value),
       });
       connections.add(value);
@@ -108,6 +112,7 @@ interface ConnectionServices {
   compaction?: CompactionPolicy;
   resolveLegacyEndpoint?(provider: string): string;
   preserveLegacyThinkingOff?: boolean;
+  requireModelMetadata?: boolean;
   transport?: typeof fetch;
   readSettings(): Promise<ConnectionSettings>;
   supported: readonly string[];
@@ -131,6 +136,7 @@ function connection({
   compaction,
   resolveLegacyEndpoint,
   preserveLegacyThinkingOff,
+  requireModelMetadata,
   onClosed,
 }: ConnectionServices): ManagedConnection {
   const listeners = new Set<(event: ProviderEvent) => void>();
@@ -186,6 +192,11 @@ function connection({
       config.model ?? savedModel ?? models.find((entry) => entry.isSelectable !== false)?.id;
     if (!model)
       throw new Error("No endpoint model is available. Check the host's connection settings.");
+    if (
+      requireModelMetadata &&
+      !models.some((entry) => entry.id === model && entry.isSelectable !== false)
+    )
+      throw new Error("The selected model is unavailable on its owning Brain host.");
     const reference = modelReference(model);
     const profile = endpointProfiles(root, Boolean(input.persistence)).find(
       (entry) => entry.id === reference.profileId,

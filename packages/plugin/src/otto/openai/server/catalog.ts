@@ -73,9 +73,11 @@ export async function discoverModels(
   signal: AbortSignal,
   apiKey = process.env[settings.apiKeyEnv],
   transport: typeof fetch = fetch,
+  requireModelMetadata = false,
 ): Promise<ProviderModel[]> {
   if (!settings.baseUrl) throw new Error("Configure an OpenAI-compatible endpoint first.");
-  if (settings.model) return parseModels({ data: [{ id: settings.model }] });
+  if (settings.model && !requireModelMetadata)
+    return parseModels({ data: [{ id: settings.model }] });
   const response = await transport(endpoint(settings.baseUrl, "models"), {
     headers: authorization(apiKey),
     redirect: "error",
@@ -83,6 +85,12 @@ export async function discoverModels(
   });
   await requireOk(response, "Model discovery", apiKey);
   const models = parseModels(JSON.parse(await readBody(response)));
+  if (settings.model && requireModelMetadata) {
+    const configured = models.find((model) => model.id === settings.model);
+    if (!configured)
+      throw new Error("The configured model is unavailable on its owning Brain host.");
+    return [configured];
+  }
   if (!models.length)
     throw new Error(
       "The endpoint has no available models. Load a model on that host or configure its model ID.",

@@ -298,6 +298,8 @@ in the selected daemon's private archive, outside client/provider settings.
 Detected reasoning controls include explicit Off alongside their model-specific
 levels. Imported and resumed Brain conversations retain that template switch;
 ordinary OpenAI-compatible providers retain their original omission semantics.
+Pinned Brain aliases still discover their selected model's real host metadata.
+An unavailable pinned model reports an error instead of receiving guessed capabilities.
 
 The SDK's node-only Brain composition depends on the standalone Brain package's
 lightweight `client` entry. Build and publish Brain before the SDK. The SDK root
