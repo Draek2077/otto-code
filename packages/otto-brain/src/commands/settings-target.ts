@@ -1,6 +1,7 @@
 /** Passive command settings are separate from runtime/model-operation ownership. */
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { BrainConfig } from "../config/schema.js";
+import type { ShareOptions, ShareStatus } from "./share-contract.js";
 
 export interface BrainConnectionCommandResult {
   connection: {
@@ -12,6 +13,7 @@ export type BrainConfigCommandResult = BrainConfig | BrainConnectionCommandResul
 export interface BrainSettingsCommandTarget {
   readConfig(): Promise<BrainConfig>;
   setConfig(key: string, raw: string): Promise<BrainConfigCommandResult>;
+  share(options: ShareOptions): Promise<ShareStatus>;
 }
 const settings = new AsyncLocalStorage<BrainSettingsCommandTarget>();
 export function selectedBrainSettingsTarget(): BrainSettingsCommandTarget | undefined {

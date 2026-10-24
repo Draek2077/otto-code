@@ -24,6 +24,9 @@ import {
   type OwnerSettingsSave,
   type OwnerCredentialIntent,
 } from "./owner-settings-contract.js";
+import { OwnerShareRequestSchema } from "../commands/share-contract.js";
+import { prepareSharing } from "../commands/share-policy.js";
+import { CommandError } from "../output/types.js";
 
 interface OwnerSettingsPorts {
   runtimes(): Runtime[];
@@ -119,6 +122,7 @@ export class BrainOwnerSettings {
       },
       requiresRestart: JSON.stringify(effective) !== JSON.stringify(this.context.config),
       capabilities: {
+        sharing: true,
         networkDiscovery: true,
         runtimeSelection: !this.context.env.OTTO_BRAIN_LLAMA_SERVER,
         storage: !this.context.env.OTTO_BRAIN_MODELS_DIR,
@@ -172,6 +176,50 @@ export class BrainOwnerSettings {
       credentials: { access: { action: "replace", value: secret } },
     });
     return { owner, secret };
+  }
+
+  /** One CAS save, including newly generated credentials; existing secrets never leave this owner. */
+  async share(input: unknown, signal: AbortSignal) {
+    const parsed = OwnerShareRequestSchema.safeParse(input);
+    if (!parsed.success)
+      throw new OwnerSettingsError("validation", "Check the sharing options and owner revision");
+    const request = parsed.data;
+    this.assertOwner(request.ownerId);
+    const origin = readBrainConfigRevision(this.context.paths);
+    if (origin.revision !== request.expectedRevision)
+      throw new OwnerSettingsError("conflict", "Brain settings changed; reload before saving");
+    let prepared;
+    try {
+      prepared = await prepareSharing(origin.config, request.options, {
+        tailnetAvailable: async () =>
+          (await this.discoverNetwork({ ownerId: this.ownerId }, signal)).tailscale.available,
+        generateKey: () => randomBytes(24).toString("base64url"),
+        hasAccessKey: Boolean(origin.config.auth.token || this.context.env.OTTO_BRAIN_TOKEN),
+      });
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      throw new OwnerSettingsError("validation", error.message, { cause: error });
+    }
+    signal.throwIfAborted();
+    if (!prepared.changed) return { owner: this.read(), secret: null };
+    const config = prepared.config;
+    const access =
+      config.auth.token === origin.config.auth.token
+        ? { action: "keep" }
+        : { action: "replace", value: config.auth.token };
+    const owner = this.save({
+      ownerId: this.ownerId,
+      expectedRevision: request.expectedRevision,
+      patch: {
+        listen: { host: config.listen.host },
+        auth: { mode: config.auth.mode },
+        allowInsecureBind: config.allowInsecureBind,
+        allowRemoteConfig: config.allowRemoteConfig,
+        tls: { mode: config.tls.mode },
+      },
+      credentials: { access },
+    });
+    return { owner, secret: prepared.key };
   }
 
   discoverNetwork(input: unknown, signal: AbortSignal) {

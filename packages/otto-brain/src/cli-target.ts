@@ -19,3 +19,5 @@ export {
   parseConfigBoolean,
 } from "./commands/config-values.js";
 export { OwnerSettingsSaveSchema } from "./service/owner-settings-contract.js";
+export { OwnerShareRequestSchema } from "./commands/share-contract.js";
+export { sharingStatus, hasShareChange } from "./commands/share-policy.js";

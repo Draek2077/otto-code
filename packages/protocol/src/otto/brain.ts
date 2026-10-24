@@ -286,6 +286,7 @@ export const BrainOwnerReadSchema = z.object({
   requiresRestart: z.boolean(),
   capabilities: z.object({
     networkDiscovery: z.boolean(),
+    sharing: z.boolean().optional(),
     runtimeSelection: z.boolean(),
     storage: z.boolean(),
     accessCredential: z.boolean(),

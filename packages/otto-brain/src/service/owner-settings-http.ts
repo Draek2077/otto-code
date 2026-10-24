@@ -8,6 +8,7 @@ const ROUTES = new Set([
   "GET /__host/settings",
   "POST /__host/settings",
   "POST /__host/settings/access-key",
+  "POST /__host/settings/share",
   "POST /__host/settings/discover-network",
 ]);
 export async function handleOwnerSettings(
@@ -28,6 +29,10 @@ export async function handleOwnerSettings(
   try {
     if (route === "/__host/settings/discover-network") {
       sendJson(response, 200, await settings.discoverNetwork(body, signal));
+      return true;
+    }
+    if (route === "/__host/settings/share") {
+      sendJson(response, 200, await settings.share(body, signal));
       return true;
     }
     const result =

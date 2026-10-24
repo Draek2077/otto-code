@@ -103,6 +103,14 @@ credential replacement/removal intents; masked output is never a saved key.
 Conflicts require a new explicit invocation after reading the current settings.
 Runtime source changes clear a previously pinned executable/installed selection.
 
+`share` uses the same sharing policy as `otto-brain`. On Otto it reads the selected
+local/Remote owner; mutations require both daemon and owner sharing capabilities.
+Discovery, key generation and the single revisioned settings write happen there.
+Only a newly generated key is returned directly to that invocation. Existing keys
+remain status-only, and environment-owned credentials cannot be rotated. Sharing
+output reports staged settings that require restart. Saving never starts or
+restarts a host or changes the selected daemon's Remote connection credentials.
+
 The shared handlers borrow one target-scoped transport. A disconnected Remote
 owner never falls back to a local home. Each command request carries the captured
 connection revision and owner lifetime, and crosses encrypted RPC as a fixed

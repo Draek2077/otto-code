@@ -1815,6 +1815,7 @@ export class VoiceAssistantWebSocketServer {
         ottoBrain: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
         ottoBrainTui: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
         ottoBrainCommands: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
+        ottoBrainSharing: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
         usageSources: true,
         ownedSubscriptions: true,
         agentRequestReceipts: true,

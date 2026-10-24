@@ -2,8 +2,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
+import { z } from "zod";
 import { startService, HostEngine } from "@getpaseo/brain/host";
-import { BrainConfigSchema, ProfilesStoreSchema } from "@getpaseo/brain/config";
+import {
+  BrainConfigSchema,
+  ProfilesStoreSchema,
+  readBrainConfigRevision,
+  resolveBrainPaths,
+} from "@getpaseo/brain/config";
 import {
   BrainBootstrapSchema,
   BrainOperationResultSchema,
@@ -166,6 +172,32 @@ test("the actual daemon bridge reaches a remote unloaded host without starting a
     );
     expect(saved.config.runtime.logVerbosity).toBe(4);
     expect(saved.requiresRestart).toBe(true);
+    const shared = z.object({ owner: BrainOwnerReadSchema, secret: z.string() }).parse(
+      value(
+        await bridge.invoke(
+          "brain.owner.share",
+          {
+            ownerId: saved.ownerId,
+            expectedRevision: saved.revision,
+            options: { bind: "all", generate: true, allowConfig: true },
+          },
+          "fixture-session",
+        ),
+      ),
+    );
+    expect(shared.owner.config.listen.host).toBe("0.0.0.0");
+    expect(shared.owner.config.runtime.logVerbosity).toBe(4);
+    expect(shared.owner.requiresRestart).toBe(true);
+    expect(JSON.stringify(shared.owner)).not.toContain(shared.secret);
+    expect(
+      readBrainConfigRevision(resolveBrainPaths({ OTTO_HOME: path.join(root, "owner") })).config
+        .auth.token,
+    ).toBe(shared.secret);
+    const afterSharing = BrainBootstrapSchema.parse(
+      value(await bridge.invoke("brain.bootstrap", {}, "fixture-session")),
+    );
+    expect(JSON.stringify(afterSharing)).not.toContain(shared.secret);
+    expect(afterSharing.connection.revision).toBe(bootstrap.connection.revision);
     expect(constructions).toBe(0);
     bridge.releaseClient("fixture-session");
   } finally {

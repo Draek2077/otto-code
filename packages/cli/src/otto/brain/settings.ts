@@ -13,7 +13,11 @@ import {
   parseConfigBoolean,
   OwnerSettingsSaveSchema,
   type BrainSettingsCommandTarget,
+  OwnerShareRequestSchema,
+  hasShareChange,
+  sharingStatus,
 } from "@getpaseo/brain/cli-target";
+import { z } from "zod";
 import { BrainCliError, decodeBrainEnvelope } from "./rpc.js";
 import type { BrainRpcClient } from "./owner-rpc.js";
 
@@ -125,6 +129,48 @@ export function daemonBrainSettings(client: BrainRpcClient): BrainSettingsComman
           "The Brain owner changed. Read its settings before saving again.",
         );
       return configProjection(origin.connection, saved);
+    },
+    async share(options) {
+      const origin = await read();
+      const owner = requiredOwner(origin);
+      if (!hasShareChange(options))
+        return {
+          ...sharingStatus(configProjection(origin.connection, owner), null),
+          requiresRestart: owner.requiresRestart,
+        };
+      // COMPAT(ottoBrainSharing): added in v0.10.0; remove after 2027-04-24 when floor >= v0.10.0.
+      if (
+        client.getLastServerInfoMessage()?.features?.ottoBrainSharing !== true ||
+        owner.capabilities.sharing !== true
+      )
+        throw new BrainCliError(
+          "DAEMON_UPDATE_REQUIRED",
+          "Update the Otto daemon and Brain owner to save sharing settings.",
+        );
+      const current = await invoke("brain.connection.read", {}, BrainConnectionReadSchema);
+      if (current.revision !== origin.connection.revision)
+        throw new BrainCliError(
+          "BRAIN_CONFLICT",
+          "The Brain connection changed. Read its settings before saving again.",
+        );
+      const saved = await invoke(
+        "brain.owner.share",
+        OwnerShareRequestSchema.parse({
+          ownerId: owner.ownerId,
+          expectedRevision: owner.revision,
+          options,
+        }),
+        z.object({ owner: BrainOwnerReadSchema, secret: z.string().min(1).max(16384).nullable() }),
+      );
+      if (saved.owner.ownerId !== owner.ownerId)
+        throw new BrainCliError(
+          "BRAIN_UNCONFIRMED",
+          "The Brain owner changed. Read its settings before saving again.",
+        );
+      return {
+        ...sharingStatus(configProjection(origin.connection, saved.owner), saved.secret),
+        requiresRestart: saved.owner.requiresRestart,
+      };
     },
   };
 }

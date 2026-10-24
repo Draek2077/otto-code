@@ -114,14 +114,23 @@ it("borrows a selected passive settings target without creating an invoker confi
       config: { enabled: false, autoStart: true, mode: "remote" as const },
     },
   }));
-  await withBrainSettingsTarget({ readConfig, setConfig }, async () => {
-    expect((await runConfigShowCommand({}, cmd)).data).toMatchObject({
-      modelsDir: "/owner/models",
-    });
-    expect((await runConfigSetCommand("enabled", "false", {}, cmd)).data).toMatchObject({
-      connection: { revision: "accepted" },
-    });
-  });
+  await withBrainSettingsTarget(
+    {
+      readConfig,
+      setConfig,
+      share: async () => {
+        throw new Error("Unexpected share");
+      },
+    },
+    async () => {
+      expect((await runConfigShowCommand({}, cmd)).data).toMatchObject({
+        modelsDir: "/owner/models",
+      });
+      expect((await runConfigSetCommand("enabled", "false", {}, cmd)).data).toMatchObject({
+        connection: { revision: "accepted" },
+      });
+    },
+  );
   expect(setConfig).toHaveBeenCalledExactlyOnceWith("enabled", "false");
   expect(existsSync(resolveBrainPaths({ OTTO_HOME: dir }).configFile)).toBe(false);
 });

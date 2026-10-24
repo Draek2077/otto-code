@@ -10,6 +10,100 @@ import { BrainOwnerSettings } from "./owner-settings.js";
 import { runtimeIdentity } from "./runtime-management.js";
 
 const roots: string[] = [];
+
+it("saves sharing and a freshly generated key in one owner revision without touching other settings", async () => {
+  const f = fixture();
+  const origin = f.settings.read();
+  const result = await f.settings.share(
+    {
+      ownerId: origin.ownerId,
+      expectedRevision: origin.revision,
+      options: { bind: "all", generate: true, allowConfig: true, https: "self-signed" },
+    },
+    AbortSignal.timeout(3000),
+  );
+  expect(result.secret).toMatch(/^[A-Za-z0-9_-]{32}$/u);
+  expect(result.owner).toMatchObject({
+    requiresRestart: true,
+    config: {
+      listen: { host: "0.0.0.0" },
+      auth: { mode: "token" },
+      allowInsecureBind: false,
+      allowRemoteConfig: true,
+      tls: { mode: "self-signed" },
+    },
+  });
+  expect(JSON.stringify(result.owner)).not.toContain(result.secret);
+  const saved = readBrainConfigRevision(f.paths).config;
+  expect(saved.auth.token).toBe(result.secret);
+  expect(saved.hfToken).toBe("fixture-stored-hf");
+  expect(saved.enabled).toBe(false);
+  expect(f.notifications()).toBe(1);
+  expect(fs.existsSync(f.paths.pidFile)).toBe(false);
+});
+
+it("rejects a peer sharing write after planning instead of rebasing the original revision", async () => {
+  const f = fixture();
+  const origin = f.settings.read();
+  const pending = f.settings.share(
+    { ownerId: origin.ownerId, expectedRevision: origin.revision, options: { off: true } },
+    AbortSignal.timeout(3000),
+  );
+  const rejected = expect(pending).rejects.toMatchObject({ kind: "conflict" });
+  updateBrainConfig(origin.revision, (config) => ({ ...config, maxLoadedModels: 4 }), f.paths);
+  await rejected;
+  expect(readBrainConfigRevision(f.paths).config).toMatchObject({
+    maxLoadedModels: 4,
+    auth: { mode: "token", token: "fixture-stored-access" },
+  });
+  expect(f.notifications()).toBe(0);
+});
+
+it("preserves environment-owned sharing credentials and refuses explicit rotation without modifying stored bytes", async () => {
+  const f = fixture({ OTTO_BRAIN_TOKEN: "fixture-environment-access" });
+  const origin = f.settings.read();
+  const result = await f.settings.share(
+    {
+      ownerId: origin.ownerId,
+      expectedRevision: origin.revision,
+      options: { bind: "all", access: "key" },
+    },
+    AbortSignal.timeout(3000),
+  );
+  expect(result.secret).toBe(null);
+  expect(result.owner.credentials.access.effectiveSource).toBe("environment");
+  const before = fs.readFileSync(f.paths.configFile, "utf8");
+  await expect(
+    f.settings.share(
+      {
+        ownerId: result.owner.ownerId,
+        expectedRevision: result.owner.revision,
+        options: { generate: true },
+      },
+      AbortSignal.timeout(3000),
+    ),
+  ).rejects.toMatchObject({ kind: "validation" });
+  expect(fs.readFileSync(f.paths.configFile, "utf8")).toBe(before);
+});
+
+it("reads sharing without writes and rejects redacted replacement keys", async () => {
+  const f = fixture();
+  const origin = f.settings.read();
+  const before = fs.readFileSync(f.paths.configFile, "utf8");
+  const result = await f.settings.share(
+    { ownerId: origin.ownerId, expectedRevision: origin.revision, options: {} },
+    AbortSignal.timeout(3000),
+  );
+  expect(result.secret).toBe(null);
+  expect(result.owner.revision).toBe(origin.revision);
+  await expect(
+    f.settings.share(
+      { ownerId: origin.ownerId, expectedRevision: origin.revision, options: { key: "********" } },
+      AbortSignal.timeout(3000),
+    ),
+  ).rejects.toMatchObject({ kind: "validation" });
+  expect(fs.readFileSync(f.paths.configFile, "utf8")).toBe(before);
+});
 afterEach(() => {
   for (const root of roots.splice(0)) {
     const relative = path.relative(fixtureRoot(), root);

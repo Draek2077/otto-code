@@ -65,6 +65,7 @@ const METHODS = new Set([
   "brain.owner.read",
   "brain.owner.save",
   "brain.owner.generate_key",
+  "brain.owner.share",
   "brain.owner.discover_network",
   "brain.lifecycle",
   "brain.status.wait",
@@ -267,11 +268,15 @@ export class BrainDaemonService {
     return parsed.data;
   }
   private decodeOwnerWrite(method: string, raw: unknown) {
-    if (method !== "brain.owner.generate_key") return this.decodeOwner(raw);
+    if (method !== "brain.owner.generate_key" && method !== "brain.owner.share")
+      return this.decodeOwner(raw);
     const generated = z
-      .object({ owner: z.unknown(), secret: z.string().min(1).max(16384) })
+      .object({ owner: z.unknown(), secret: z.string().min(1).max(16384).nullable() })
       .safeParse(raw);
-    if (!generated.success)
+    if (
+      !generated.success ||
+      (method === "brain.owner.generate_key" && generated.data.secret === null)
+    )
       throw new BrainConnectionError(
         "unknown",
         "Reload the Brain owner's settings to check whether key generation completed.",
@@ -282,7 +287,9 @@ export class BrainDaemonService {
     if (method === "brain.owner.discover_network") return this.discoverNetwork(input);
     if (this.controller.connection.resolve().mode === "remote" || this.localRunning()) {
       const route =
-        method === "brain.owner.generate_key" ? "/__host/settings/access-key" : "/__host/settings";
+        method === "brain.owner.generate_key"
+          ? "/__host/settings/access-key"
+          : ownerSettingsRoute(method);
       if (method === "brain.owner.read") {
         const ownerId = OwnerRead.parse(input).ownerId;
         const result = await this.controller.request(route);
@@ -302,8 +309,11 @@ export class BrainDaemonService {
         throw new BrainConnectionError("conflict", "The Brain owner changed; reload its settings");
       return this.decodeOwner(owner.read());
     }
-    const result =
-      method === "brain.owner.generate_key" ? owner.generateAccessKey(input) : owner.save(input);
+    let result;
+    if (method === "brain.owner.generate_key") result = owner.generateAccessKey(input);
+    else if (method === "brain.owner.share")
+      result = await owner.share(input, AbortSignal.timeout(10000));
+    else result = owner.save(input);
     return this.decodeOwnerWrite(method, result);
   }
   private async discoverNetwork(input: unknown) {
@@ -329,4 +339,8 @@ export class BrainDaemonService {
     this.reads.close();
     await this.controller.close();
   }
+}
+
+function ownerSettingsRoute(method: string): string {
+  return method === "brain.owner.share" ? "/__host/settings/share" : "/__host/settings";
 }

@@ -41,6 +41,7 @@ function fixture() {
     requiresRestart: false,
     capabilities: {
       networkDiscovery: true,
+      sharing: true,
       runtimeSelection: true,
       storage: true,
       accessCredential: true,
@@ -70,11 +71,19 @@ function fixture() {
         return { ok: true, value: { ...connection, revision: "connection-saved" } };
       if (method === "brain.owner.save")
         return { ok: true, value: { ...owner, revision: "owner-saved" } };
+      if (method === "brain.owner.share")
+        return {
+          ok: true,
+          value: {
+            owner: { ...owner, revision: "owner-saved", requiresRestart: true },
+            secret: "new-owner-generated-key",
+          },
+        };
       throw new Error(`Unexpected settings fixture method ${method}: ${JSON.stringify(input)}`);
     },
   );
   const client = {
-    getLastServerInfoMessage: () => ({ features: { ottoBrain: true } }),
+    getLastServerInfoMessage: () => ({ features: { ottoBrain: true, ottoBrainSharing: true } }),
     invokePluginRpc: invoke,
     close: transport.close.mockResolvedValue(undefined),
   };
@@ -100,6 +109,38 @@ it("keeps connection edits independent of an unreachable owner and never admits 
     patch: { enabled: false },
     credential: { action: "keep" },
   });
+});
+
+it("runs shared CLI sharing through owner CAS and returns only a newly generated direct-result key", async () => {
+  const f = fixture();
+  transport.connect.mockResolvedValue(f.client);
+  const output = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  const cli = new Command("otto").option("--host <host>").addCommand(createOttoBrainCommand());
+  await cli.parseAsync(
+    ["brain", "share", "--host", "selected.example:6788", "--bind", "all", "--generate", "--json"],
+    { from: "user" },
+  );
+  expect(f.invoke).toHaveBeenLastCalledWith("otto-brain", "brain.owner.share", {
+    ownerId: "actual-owner",
+    expectedRevision: "owner-origin",
+    options: { bind: "all", generate: true },
+  });
+  expect(output).toHaveBeenCalledWith(expect.stringContaining("new-owner-generated-key"));
+  expect(output).toHaveBeenCalledWith(expect.stringContaining('"requiresRestart": true'));
+  expect(transport.close).toHaveBeenCalledOnce();
+  expect(JSON.stringify(await f.target.readConfig())).not.toContain("new-owner-generated-key");
+});
+
+it("keeps sharing reads passive and requires the actual owner capability before mutations", async () => {
+  const f = fixture();
+  expect(await f.target.share({})).toMatchObject({ key: null, hasKey: true });
+  expect(f.invoke.mock.calls.map((call) => call[1])).toEqual(["brain.bootstrap"]);
+  f.owner.capabilities.sharing = false;
+  f.invoke.mockClear();
+  await expect(f.target.share({ generate: true })).rejects.toMatchObject({
+    code: "DAEMON_UPDATE_REQUIRED",
+  });
+  expect(f.invoke.mock.calls.map((call) => call[1])).toEqual(["brain.bootstrap"]);
 });
 
 it("uses owner CAS and only the edited leaf, never redacted credentials from its projection", async () => {

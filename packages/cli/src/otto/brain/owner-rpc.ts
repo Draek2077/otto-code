@@ -25,7 +25,12 @@ function emitFrame(
 }
 export interface BrainRpcClient {
   getLastServerInfoMessage(): {
-    features?: { ottoBrain?: boolean; ottoBrainTui?: boolean; ottoBrainCommands?: boolean };
+    features?: {
+      ottoBrain?: boolean;
+      ottoBrainTui?: boolean;
+      ottoBrainCommands?: boolean;
+      ottoBrainSharing?: boolean;
+    };
   } | null;
   invokePluginRpc: DaemonClient["invokePluginRpc"];
 }
