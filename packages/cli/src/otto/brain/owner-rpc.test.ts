@@ -34,6 +34,7 @@ it("keeps one status lease through connecting frames and releases it once on can
   expect(receive).not.toHaveBeenCalled();
   expect(invoke).toHaveBeenCalledTimes(3);
   const first: unknown = invoke.mock.calls[0][2];
+  expect(first).toEqual(expect.objectContaining({ includeLogs: false }));
   expect(invoke.mock.calls[1][2]).toEqual(
     expect.objectContaining({ cursor: "cursor-1", afterLogIndex: 10, instanceId: null }),
   );
@@ -44,6 +45,22 @@ it("keeps one status lease through connecting frames and releases it once on can
     "brain.status.release",
     { leaseId: first.leaseId },
   ]);
+});
+
+it("retains log demand for the interactive terminal rather than ordinary progress readers", async () => {
+  const controller = new AbortController();
+  const invoke = vi.fn<BrainRpcClient["invokePluginRpc"]>(async (_plugin, method) => {
+    if (method === "brain.status.release") return { ok: true, value: { released: true } };
+    controller.abort();
+    return frame("terminal");
+  });
+  const rpc = new BrainOwnerRpc(client(invoke), "origin");
+  await rpc
+    .statusSource({ parse: (value: unknown) => value })
+    .open({ status: vi.fn(), log: vi.fn() }, controller.signal);
+  expect(invoke.mock.calls[0][2]).toEqual(expect.objectContaining({ includeLogs: true }));
+  expect(invoke.mock.calls[1][1]).toBe("brain.status.release");
+  expect(invoke).toHaveBeenCalledTimes(2);
 });
 
 it("does not follow a connection changed by a peer and still releases its exact lease", async () => {

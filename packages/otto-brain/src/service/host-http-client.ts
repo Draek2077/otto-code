@@ -87,9 +87,11 @@ export class BrainHttpClient {
     const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
     if (payload && payload.length > 128 * 1024)
       throw new Error("Brain management request exceeded its byte limit");
-    const lifetime = signal
-      ? AbortSignal.any([signal, AbortSignal.timeout(5000)])
-      : AbortSignal.timeout(5000);
+    // Explicit discovery may read headers across the entire owning-host library.
+    // Keep ordinary control requests short and preserve caller cancellation.
+    const timeout = route.startsWith("/__host/models/discover?") ? 30000 : 5000;
+    const deadline = AbortSignal.timeout(timeout);
+    const lifetime = signal ? AbortSignal.any([signal, deadline]) : deadline;
     return new Promise((resolve, reject) => {
       const request = this.dispatch(
         route,

@@ -5,6 +5,16 @@ import {
   BrainCommandRequestSchema,
 } from "./requests.js";
 
+it("preserves explicit full and quick scan choices without accepting ambiguous metadata", () => {
+  for (const metadata of [true, false]) {
+    const route = `/__host/models/discover?metadata=${metadata}`;
+    expect(brainCommandHttpRequest(encodeBrainCommandRequest(route))).toEqual({ route });
+    expect(encodeBrainCommandRequest(route)).toEqual({ operation: "scan", metadata });
+  }
+  for (const query of ["metadata=0", "metadata=false&metadata=true", "metadata=true&extra=1"])
+    expect(() => encodeBrainCommandRequest(`/__host/models/discover?${query}`)).toThrow();
+});
+
 it("preserves an explicit benchmark plan and bundle selection through the fixed operation contract", () => {
   const plan = {
     operation: "benchmark",

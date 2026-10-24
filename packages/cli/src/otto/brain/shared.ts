@@ -45,6 +45,7 @@ function addSelectors(command: Command): void {
 export function adoptSharedBrainCommands(brain: Command): void {
   const shared = createBrainCommand({ execute: executeOnOwner });
   const groups = new Set([
+    "scan",
     "catalog",
     "search",
     "pull",

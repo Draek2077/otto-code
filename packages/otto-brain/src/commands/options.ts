@@ -43,7 +43,7 @@ export function addSweepOptions(command: Command): Command {
 
 export function addScanOptions(cmd: Command): Command {
   return cmd
-    .description("List detected local models")
+    .description("List detected models on the Brain owner")
     .option("--no-metadata", "skip reading GGUF headers (faster)");
 }
 

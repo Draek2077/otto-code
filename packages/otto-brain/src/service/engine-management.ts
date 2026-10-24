@@ -12,10 +12,23 @@ import type { BrainJobs } from "./jobs.js";
 import type { InventoryRow } from "./inventory.js";
 import type { DiskUsage } from "../models/manage.js";
 import { readObject, RequestError, sendJson } from "./http-body.js";
+import { ScanReplySchema, type ScanRow } from "../commands/scan-contract.js";
+
+function discoveryMetadata(url: URL): boolean {
+  const metadata = url.searchParams.getAll("metadata");
+  if (
+    metadata.length !== 1 ||
+    (metadata[0] !== "true" && metadata[0] !== "false") ||
+    [...url.searchParams.keys()].some((key) => key !== "metadata")
+  )
+    throw new RequestError(400, "An explicit metadata selection is required");
+  return metadata[0] === "true";
+}
 
 interface ManagementPorts {
   config: BrainConfig;
   models(refresh?: boolean): Model[];
+  discover(withMetadata: boolean): ScanRow[];
   profiles: ModelProfiles;
   readProfiles(): ProfilesStore;
   gpu(signal: AbortSignal): Promise<GpuInfo | null>;
@@ -38,6 +51,16 @@ export class EngineManagement {
     signal: AbortSignal,
   ): Promise<boolean> {
     const url = new URL(request.url!, "http://brain.local");
+    if (url.pathname === "/__host/models/discover" && request.method === "GET") {
+      sendJson(
+        response,
+        200,
+        ScanReplySchema.parse({
+          models: this.ports.discover(discoveryMetadata(url)),
+        }),
+      );
+      return true;
+    }
     if (url.pathname === "/__host/models" && request.method === "GET") {
       sendJson(response, 200, await this.ports.inventory(signal));
       return true;

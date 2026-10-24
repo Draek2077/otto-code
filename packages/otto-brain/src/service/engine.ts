@@ -15,6 +15,7 @@ import {
   listRepoQuants,
   searchModels,
   resolveHfToken,
+  type ScanModelsOptions,
 } from "../models/index.js";
 import { listAllRuntimes, resolveRuntime, runtimeBuild } from "../runtime/index.js";
 import { query, usedBytes } from "../gpu.js";
@@ -56,6 +57,7 @@ import { handleOwnerSettings } from "./owner-settings-http.js";
 import { BrainResourceReader, type BrainHostResources } from "./resource-reader.js";
 import { BrainReports } from "./reports.js";
 import { CompletionTelemetry } from "./completion-telemetry.js";
+import { projectScanRows } from "../commands/scan-contract.js";
 import { BrainTuiReadService } from "./tui-projection.js";
 import { loadRenameMap } from "../models/rename-map.js";
 
@@ -64,7 +66,7 @@ interface ResidentSignals {
   slots: SlotActivityTracker;
 }
 export interface HostEnginePorts {
-  scan?(): Model[];
+  scan?(options?: ScanModelsOptions): Model[];
   profiles?(): ProfilesStore;
   saveProfiles?(store: ProfilesStore): void;
   createSupervisor?(): Promise<Supervisor>;
@@ -126,6 +128,7 @@ export class HostEngine implements BrainRuntime {
       writable: this.context.config.allowRemoteConfig,
       reports: true,
       rescore: true,
+      scan: true,
       load: true,
       inventory: true,
       events: true,
@@ -155,7 +158,7 @@ export class HostEngine implements BrainRuntime {
   }
   private readonly lifetime = new AbortController();
   private signals = new WeakMap<EngineProcess, ResidentSignals>();
-  private readonly scan: () => Model[];
+  private readonly scan: (options?: ScanModelsOptions) => Model[];
   private catalogCache: Model[] | null = null;
   private readonly profiles: () => ProfilesStore;
   private readonly gpu: NonNullable<HostEnginePorts["gpu"]>;
@@ -172,7 +175,7 @@ export class HostEngine implements BrainRuntime {
     readonly context: BrainRuntimeContext,
     ports: HostEnginePorts = {},
   ) {
-    this.scan = ports.scan ?? (() => scanModels(context.config, context.env));
+    this.scan = ports.scan ?? ((options) => scanModels(context.config, context.env, options));
     this.profiles = ports.profiles ?? (() => loadProfilesStore(context.paths));
     this.runtime = ports.runtime ?? (() => resolveRuntime(context.config, context.env));
     this.results = ports.results ?? (() => loadAll(context.env));
@@ -270,6 +273,15 @@ export class HostEngine implements BrainRuntime {
     this.management = new EngineManagement({
       config: context.config,
       models: (refresh) => this.models(refresh),
+      discover: (withMetadata) => {
+        const models = this.scan({ withMetadata });
+        // A quick listing must not replace metadata needed by resident operations.
+        if (withMetadata) {
+          this.catalogCache = models;
+          this.libraryChanged();
+        }
+        return projectScanRows(models, this.profiles(), context.config);
+      },
       profiles: this.modelProfiles,
       readProfiles: this.profiles,
       gpu: this.gpu,

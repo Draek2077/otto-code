@@ -89,7 +89,11 @@ export class BrainOwnerRpc {
   command(request: BrainCommandRequest, instanceId: string, signal: AbortSignal): Promise<unknown> {
     return this.abortable("brain.cli.request", { request, instanceId }, signal, z.unknown());
   }
-  async events(receive: (event: BrainHostEvent) => void, signal: AbortSignal): Promise<void> {
+  async events(
+    receive: (event: BrainHostEvent) => void,
+    signal: AbortSignal,
+    includeLogs = false,
+  ): Promise<void> {
     signal.throwIfAborted();
     const leaseId = randomUUID();
     let released: Promise<unknown> | null = null;
@@ -111,7 +115,7 @@ export class BrainOwnerRpc {
           {
             leaseId,
             cursor: previous?.cursor ?? null,
-            includeLogs: true,
+            includeLogs,
             afterLogIndex: previous?.nextLogIndex ?? null,
             instanceId: previous?.status?.instanceId ?? null,
           },
@@ -136,15 +140,19 @@ export class BrainOwnerRpc {
   statusSource<T>(schema: Decoder<T>): BrainStatusSource<T> {
     return {
       open: (receive, signal) =>
-        this.events((event) => {
-          if (event.event === "status") receive.status(schema.parse(event.data));
-          else
-            receive.log(
-              z
-                .object({ instanceId: z.string(), index: z.number(), line: z.string() })
-                .parse(event.data),
-            );
-        }, signal),
+        this.events(
+          (event) => {
+            if (event.event === "status") receive.status(schema.parse(event.data));
+            else
+              receive.log(
+                z
+                  .object({ instanceId: z.string(), index: z.number(), line: z.string() })
+                  .parse(event.data),
+              );
+          },
+          signal,
+          true,
+        ),
     };
   }
 }

@@ -54,7 +54,7 @@ stopped. `live-status`, `resources`, `model ls`/`scan`/`load`/`unload`/`rename`/
 job admission; closing that command does not cancel its durable work. Inspect it
 with `job ls` and cancel it explicitly with `job cancel`.
 
-Catalog, search, pull/add, calibration, sweeps, runtime, report and replay commands share their
+Scan, catalog, search, pull/add, calibration, sweeps, runtime, report and replay commands share their
 option definitions, handlers and table/JSON/YAML/quiet formatters with
 `otto-brain`. Calibration and sweeps use `--model <fragment>`; sweeps also accept
 `--budgets`. Runtime installation accepts `--build` and `--variant`; destinations
@@ -72,6 +72,14 @@ operation loads a model or rewrites saved scores/transcripts. Replay has an
 explicit mode within the existing benchmark job category, so older readers can
 still parse its status. Current screens and terminal progress identify it as
 rescoring rather than a new inference measurement.
+
+`scan` discovers the selected owner's files and calibration state without loading
+a runtime or probing GPU resources. `--no-metadata` skips GGUF header reads and
+does not replace the full metadata used by resident operations. Full discovery
+refreshes the owner's inventory cache. Both listings work on read-only owners;
+they do not change saved settings or grant model-management permissions.
+Ordinary CLI job progress requests status only; the interactive terminal also
+requests logs while its viewer is retained.
 
 The shared handlers borrow one target-scoped transport. A disconnected Remote
 owner never falls back to a local home. Each command request carries the captured

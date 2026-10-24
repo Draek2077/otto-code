@@ -5,22 +5,15 @@
  */
 import type { Command } from "commander";
 
-import { getCalibration, forModel, loadBrainConfig, loadProfilesStore } from "../config/index.js";
-import { formatBytes, scanModels } from "../models/index.js";
-import type { AnyCommandResult, OutputSchema } from "../output/index.js";
+import { loadBrainConfig, loadProfilesStore } from "../config/index.js";
+import { scanModels } from "../models/index.js";
+import { CommandError, type AnyCommandResult, type OutputSchema } from "../output/index.js";
 import { withActivity } from "../service/activity.js";
-
-export interface ScanRow {
-  model: string;
-  arch: string;
-  quant: string;
-  size: string;
-  ctx: string;
-  vision: string;
-  calibrated: string;
-  features: string;
-  source: string;
-}
+import { z } from "zod/v3";
+import { selectedBrainCommandHost } from "./target.js";
+import { withCommandHost } from "./host-command.js";
+import { projectScanRows, ScanReplySchema, type ScanRow } from "./scan-contract.js";
+export type { ScanRow } from "./scan-contract.js";
 
 export const scanSchema: OutputSchema<ScanRow> = {
   idField: "model",
@@ -46,6 +39,27 @@ export async function runScanCommand(
   options: { metadata?: boolean },
   _command: Command,
 ): Promise<AnyCommandResult<ScanRow>> {
+  const rows = selectedBrainCommandHost()
+    ? await withCommandHost(async (port, signal) => {
+        // COMPAT(brainScan): added in v0.10.0; remove after 2027-04-24 when floor >= v0.10.0.
+        if (
+          !z
+            .object({ scan: z.literal(true) })
+            .safeParse(await port.request("/__host/capabilities", signal)).success
+        )
+          throw new CommandError({
+            code: "UPDATE_HOST",
+            message: "Update the Brain owner to scan its model library.",
+          });
+        const query = new URLSearchParams({ metadata: String(options.metadata !== false) });
+        return ScanReplySchema.parse(await port.request(`/__host/models/discover?${query}`, signal))
+          .models;
+      })
+    : await scanLocal(options);
+  return { type: "list", data: rows, schema: scanSchema };
+}
+
+async function scanLocal(options: { metadata?: boolean }): Promise<ScanRow[]> {
   const config = loadBrainConfig();
   const store = loadProfilesStore();
   // Announced because a metadata scan opens and reads the GGUF header of every
@@ -56,30 +70,7 @@ export async function runScanCommand(
     scanModels(config, process.env, { withMetadata: options.metadata !== false }),
   );
 
-  const rows: ScanRow[] = catalog.map((model) => {
-    const profile = forModel(store, model, config.defaults);
-    const md = model.metadata ?? {};
-    const feat = [
-      model.features.mtp ? "MTP" : null,
-      md.reasoning || model.thinking ? "think" : null,
-      model.features.distilled ? "distill" : null,
-    ]
-      .filter(Boolean)
-      .join(",");
-    return {
-      model: model.displayName.slice(0, 45),
-      arch: String(md.arch ?? "-"),
-      quant: model.quant ?? "-",
-      size: formatBytes(model.sizeBytes),
-      ctx: md.contextLength ? String(md.contextLength) : "-",
-      vision: model.mmprojPath ? "yes" : "",
-      calibrated: getCalibration(store, model, profile) ? "yes" : "",
-      features: feat,
-      source: model.origin ?? "-",
-    };
-  });
-
-  return { type: "list", data: rows, schema: scanSchema };
+  return projectScanRows(catalog, store, config);
 }
 
 export { addScanOptions } from "./options.js";

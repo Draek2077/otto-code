@@ -80,7 +80,7 @@ describe("Brain CLI command composition", () => {
     expect(transport.close).toHaveBeenCalledTimes(1);
   });
 
-  it("runs shared catalog, report and replay handlers on the selected Remote owner", async () => {
+  it("runs shared catalog, scan, report and replay handlers on the selected Remote owner", async () => {
     const clientHome = fileURLToPath(
       new URL(`../../../../../.tmp/brain-cli-client-${randomUUID()}`, import.meta.url),
     );
@@ -171,9 +171,29 @@ describe("Brain CLI command composition", () => {
             events: true,
             reports: true,
             rescore: true,
+            scan: true,
           },
         };
       if (request.operation === "inventory") return { ok: true, value: { models: [] } };
+      if (request.operation === "scan")
+        return {
+          ok: true,
+          value: {
+            models: [
+              {
+                model: "Owner scan",
+                arch: "-",
+                quant: "Q8",
+                size: "1 GiB",
+                ctx: "-",
+                vision: "",
+                calibrated: "",
+                features: "",
+                source: "managed",
+              },
+            ],
+          },
+        };
       if (request.operation === "catalog")
         return {
           ok: true,
@@ -318,6 +338,18 @@ describe("Brain CLI command composition", () => {
       transport.invoke.mock.calls.filter((call) => call[1] === "brain.status.release"),
     ).toHaveLength(1);
     expect(transport.close).toHaveBeenCalledTimes(3);
+    lines.length = 0;
+    await cli().parseAsync(
+      ["brain", "scan", "--host", "selected.example:6788", "--no-metadata", "--quiet"],
+      { from: "user" },
+    );
+    expect(lines.join("")).toBe("Owner scan\n");
+    expect(transport.invoke).toHaveBeenCalledWith(
+      "otto-brain",
+      "brain.cli.request",
+      expect.objectContaining({ request: { operation: "scan", metadata: false } }),
+    );
+    expect(transport.close).toHaveBeenCalledTimes(4);
     expect(existsSync(clientHome)).toBe(false);
   });
 });

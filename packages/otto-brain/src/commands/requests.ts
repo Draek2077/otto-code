@@ -17,6 +17,7 @@ export const BrainCommandRequestSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("report-export"), body: ReportExportOptionsSchema }).strict(),
   z.object({ operation: z.literal("capabilities") }).strict(),
   z.object({ operation: z.literal("inventory") }).strict(),
+  z.object({ operation: z.literal("scan"), metadata: z.boolean() }).strict(),
   z.object({ operation: z.literal("catalog") }).strict(),
   z.object({ operation: z.literal("runtimes") }).strict(),
   z
@@ -87,6 +88,10 @@ export function brainCommandHttpRequest(input: BrainCommandRequest): {
       return {
         route: `/__host/hf/search?${new URLSearchParams({ query: request.query, limit: String(request.limit) })}`,
       };
+    case "scan":
+      return {
+        route: `/__host/models/discover?${new URLSearchParams({ metadata: String(request.metadata) })}`,
+      };
     case "quants":
       return { route: `/__host/hf/quants?${new URLSearchParams({ repo: request.repo })}` };
     case "job-read":
@@ -108,6 +113,12 @@ function query(url: URL, keys: string[]): void {
 }
 function readRequest(url: URL): BrainCommandRequest {
   switch (url.pathname) {
+    case "/__host/models/discover": {
+      query(url, ["metadata"]);
+      const metadata = url.searchParams.get("metadata");
+      if (metadata !== "true" && metadata !== "false") invalid();
+      return { operation: "scan", metadata: metadata === "true" };
+    }
     case "/__host/hf/search":
       query(url, ["query", "limit"]);
       return BrainCommandRequestSchema.parse({
