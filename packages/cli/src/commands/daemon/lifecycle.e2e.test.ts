@@ -14,13 +14,21 @@ import { connectToDaemon } from "../../utils/client.js";
 const repo = fileURLToPath(new URL("../../../../..", import.meta.url));
 const cli = path.join(repo, "packages/cli/dist/index.js");
 
+// OTTO(test-allocation): pending homes must not receive the same released port.
+// An actual contested daemon launch still fails; only fixture allocation is repeated.
+const allocatedPorts = new Set<number>();
 async function port() {
-  const server = net.createServer();
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const value = (server.address() as net.AddressInfo).port;
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-  if (value === 6767 || value === 6768) throw new Error("Unsafe test port");
-  return value;
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const server = net.createServer();
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const value = (server.address() as net.AddressInfo).port;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (value === 6767 || value === 6768) throw new Error("Unsafe test port");
+    if (allocatedPorts.has(value)) continue;
+    allocatedPorts.add(value);
+    return value;
+  }
+  throw new Error("Could not allocate distinct lifecycle fixture ports");
 }
 
 async function fixture() {
