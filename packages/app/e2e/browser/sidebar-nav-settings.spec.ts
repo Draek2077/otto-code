@@ -139,6 +139,8 @@ test.describe("Sidebar items in Appearance settings", () => {
         { key: "schedules", visible: true },
         { key: "history", visible: false },
         { key: "search", visible: true },
+        // OTTO(kanban): the built-in contribution participates in persisted navigation preferences.
+        { key: "plugin:otto-kanban:kanban", visible: true },
       ]);
 
       await leaveSettings(page);
