@@ -18,6 +18,8 @@ import {
   inspectKnowledgeFormat,
   applyKnowledgeFormat,
   setKnowledgeLocation,
+  readKnowledgeHostDefaults,
+  saveKnowledgeHostDefaults,
 } from "@getpaseo/plugin/otto/project-knowledge";
 
 const parent = fileURLToPath(new URL("../../../../../../.tmp/knowledge-host/", import.meta.url));
@@ -29,6 +31,95 @@ afterEach(async () => {
       throw new Error("Fixture escaped");
     await rm(root, { recursive: true, force: true });
   }
+});
+
+it("publishes host defaults without redirecting initialized inherited stores or rewriting retained settings", async () => {
+  const f = await fixture();
+  const legacy = JSON.stringify({
+    projectKnowledge: { defaultStoreLocation: "host" },
+    future: "retained",
+    providers: { key: "private-fixture" },
+  });
+  await writeFile(path.join(f.home, "otto-config.json"), legacy);
+  const origin = await f.registry.ottoMetadata.read("project-a");
+  await f.registry.ottoMetadata.update({
+    projectId: "project-a",
+    expectedRevision: origin.revision,
+    patch: { knowledgeDirectoryName: "retained-name" },
+  });
+  expect(await f.create()).toMatchObject({ ok: true });
+  const store = await f.host.resolver.resolve("project-a");
+  const file = path.join(store.base, "knowledge/requirements/fixture-page.md");
+  const bytes = await readFile(file, "utf8");
+  const defaults = readKnowledgeHostDefaults.output.parse(
+    await f.host.invoke(readKnowledgeHostDefaults.name, { hostId: "host-a" }),
+  );
+  if (!defaults.ok) throw new Error("Expected host defaults");
+  expect(JSON.stringify(defaults)).not.toContain("private-fixture");
+  expect(
+    await f.host.invoke(saveKnowledgeHostDefaults.name, {
+      hostId: "host-a",
+      expectedRevision: defaults.value.revision,
+      defaultStoreLocation: "repository",
+    }),
+  ).toMatchObject({ ok: true, value: { defaultStoreLocation: "repository" } });
+  expect((await f.registry.ottoMetadata.read("project-a")).record).toMatchObject({
+    knowledgeLocation: "host",
+    knowledgeDirectoryName: "retained-name",
+    future: { retained: true },
+    kanban: { adapter: "github", boardId: "7" },
+  });
+  expect((await f.host.resolver.resolve("project-a")).base).toBe(store.base);
+  expect(await readFile(file, "utf8")).toBe(bytes);
+  expect(await readFile(path.join(f.home, "otto-config.json"), "utf8")).toBe(legacy);
+  expect(
+    await f.host.invoke(saveKnowledgeHostDefaults.name, {
+      hostId: "host-a",
+      expectedRevision: defaults.value.revision,
+      defaultStoreLocation: "host",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "conflict" } });
+  expect(f.notifications).toContain("all");
+});
+
+it("leaves dormant host copies unbound when the old default was repository and refuses foreign settings owners", async () => {
+  const f = await fixture();
+  const origin = await f.registry.ottoMetadata.read("project-a");
+  await f.registry.ottoMetadata.update({
+    projectId: "project-a",
+    expectedRevision: origin.revision,
+    patch: { knowledgeDirectoryName: "dormant-copy" },
+  });
+  await mkdir(path.join(f.home, "project-knowledge/dormant-copy"), { recursive: true });
+  const defaults = readKnowledgeHostDefaults.output.parse(
+    await f.host.invoke(readKnowledgeHostDefaults.name, { hostId: "host-a" }),
+  );
+  if (!defaults.ok) throw new Error("Expected host defaults");
+  for (const method of [readKnowledgeHostDefaults.name, saveKnowledgeHostDefaults.name]) {
+    const input =
+      method === readKnowledgeHostDefaults.name
+        ? { hostId: "other" }
+        : {
+            hostId: "other",
+            expectedRevision: defaults.value.revision,
+            defaultStoreLocation: "host",
+          };
+    expect(await f.host.invoke(method, input)).toMatchObject({
+      ok: false,
+      error: { code: "wrong_host" },
+    });
+  }
+  expect(await readdir(path.join(f.home, "project-knowledge"))).toEqual(["dormant-copy"]);
+  expect(
+    await f.host.invoke(saveKnowledgeHostDefaults.name, {
+      hostId: "host-a",
+      expectedRevision: defaults.value.revision,
+      defaultStoreLocation: "host",
+    }),
+  ).toMatchObject({ ok: true });
+  expect(
+    (await f.registry.ottoMetadata.read("project-a")).record.knowledgeLocation,
+  ).toBeUndefined();
 });
 async function fixture() {
   await mkdir(parent, { recursive: true });
@@ -74,6 +165,7 @@ async function fixture() {
     workspaces: { get: async (id) => (id === workspace.workspaceId ? workspace : null) },
     now: () => new Date(now),
     observations: {
+      notifyAll: () => notifications.push("all"),
       notify: (id) => {
         notifications.push(id);
       },

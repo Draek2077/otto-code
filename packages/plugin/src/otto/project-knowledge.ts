@@ -94,6 +94,27 @@ function result<T extends z.ZodType>(value: T) {
     }),
   ]);
 }
+const KnowledgeHostDefaultsSchema = z.object({
+  revision,
+  defaultStoreLocation: z.enum(["repository", "host"]),
+});
+export const readKnowledgeHostDefaults = defineRpc({
+  name: "knowledge.host.defaults.read.request",
+  input: z.object({ hostId: z.string().min(1) }).strict(),
+  output: result(KnowledgeHostDefaultsSchema),
+});
+export const saveKnowledgeHostDefaults = defineRpc({
+  name: "knowledge.host.defaults.save.request",
+  input: z
+    .object({
+      hostId: z.string().min(1),
+      expectedRevision: revision,
+      defaultStoreLocation: z.enum(["repository", "host"]),
+    })
+    .strict(),
+  output: result(KnowledgeHostDefaultsSchema),
+});
+export type KnowledgeHostDefaults = z.infer<typeof KnowledgeHostDefaultsSchema>;
 const pageTarget = { kind: KnowledgeKindSchema, id };
 const editTarget = { ...pageTarget, expectedRevision: revision };
 export const KnowledgeCommandSchema = z.discriminatedUnion("action", [

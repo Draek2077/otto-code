@@ -28,6 +28,7 @@ import { styles } from "./styles";
 import { useKnowledgeChanges } from "./use-knowledge-changes";
 import { KnowledgeLinkHealth } from "./link-health";
 import { KnowledgeFormat } from "./format";
+import { KnowledgeHostDefaults } from "./host-defaults";
 
 function KnowledgeBody({
   scope,
@@ -247,6 +248,7 @@ function ProjectPicker({
   );
   const body = (
     <>
+      {settingsOnly ? <KnowledgeHostDefaults hostId={hostId} active={active} /> : null}
       <SettingsSelect
         label="Project"
         value={projectId}

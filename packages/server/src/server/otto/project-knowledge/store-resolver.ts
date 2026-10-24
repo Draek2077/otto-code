@@ -63,7 +63,7 @@ export class KnowledgeStoreResolver {
   }
 }
 
-async function repositoryStoreExists(base: string): Promise<boolean> {
+export async function repositoryStoreExists(base: string): Promise<boolean> {
   // Even an incomplete or corrupt checked-in tree is an existing store. Never
   // redirect it to a new, apparently empty host store because index.md is absent.
   for (const target of [path.join(base, "knowledge"), path.join(base, "KNOWLEDGE.md")]) {

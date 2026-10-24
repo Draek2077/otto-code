@@ -9,17 +9,97 @@ import {
   readKnowledgeRoot,
   readKnowledgeLinkHealth,
   inspectKnowledgeFormat,
+  readKnowledgeHostDefaults,
+  saveKnowledgeHostDefaults,
   type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import { test, expect } from "../support/fixtures";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
-import { gotoAppShell } from "../support/helpers/app";
+import { gotoAppShell, openSettings } from "../support/helpers/app";
 import { openWorkspaceContextMenu } from "../support/helpers/sidebar";
 import { getServerId } from "../support/helpers/server-id";
 import { getE2EDaemonPort } from "../support/helpers/daemon-port";
 import { z } from "zod";
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
+
+async function proveHostDefaults(input: {
+  page: Page;
+  client: Pick<DaemonClient, "invokePluginRpc">;
+  scope: KnowledgeScope;
+  compact: boolean;
+}) {
+  const { page, client, scope, compact } = input;
+  const read = async () => {
+    const result = readKnowledgeHostDefaults.output.parse(
+      await client.invokePluginRpc("otto-project-knowledge", readKnowledgeHostDefaults.name, {
+        hostId: scope.hostId,
+      }),
+    );
+    if (!result.ok) throw new Error(result.error.message);
+    return result.value;
+  };
+  const origin = await read();
+  const originalLabel = origin.defaultStoreLocation === "repository" ? "Repository" : "Host";
+  const nextLabel = originalLabel === "Repository" ? "Host" : "Repository";
+  try {
+    if (compact) {
+      await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
+    }
+    await openSettings(page);
+    await page.getByTestId("settings-host-section-plugins").click();
+    await page.getByRole("button", { name: "Configure Project Knowledge", exact: true }).click();
+    const form = page.getByTestId("knowledge-host-defaults");
+    // Host defaults must be usable without guessing or first selecting a project.
+    await expect(form).toBeVisible();
+    await form
+      .getByRole("button", { name: `New store location: ${originalLabel}`, exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: nextLabel, exact: true }).click();
+    page.once("dialog", (dialog) => void dialog.dismiss());
+    await form.getByRole("button", { name: "Save default", exact: true }).click();
+    expect(await read()).toEqual(origin);
+    await expect(
+      form.getByRole("button", { name: `New store location: ${nextLabel}`, exact: true }),
+    ).toBeVisible();
+    page.once("dialog", (dialog) => void dialog.accept());
+    await form.getByRole("button", { name: "Save default", exact: true }).click();
+    await expect(
+      form.getByText("Host default saved. Existing stores remain in place.", { exact: true }),
+    ).toBeVisible();
+    expect((await read()).defaultStoreLocation).toBe(nextLabel === "Host" ? "host" : "repository");
+    const catalog = readKnowledgeCatalog.output.parse(
+      await client.invokePluginRpc("otto-project-knowledge", readKnowledgeCatalog.name, {
+        scope,
+        includeInactive: true,
+        query: "",
+        offset: 0,
+        limit: 50,
+      }),
+    );
+    expect(catalog).toMatchObject({ ok: true, value: { settings: { location: "host" } } });
+    await form
+      .getByRole("button", { name: `New store location: ${nextLabel}`, exact: true })
+      .click();
+    await page.getByRole("menuitem", { name: originalLabel, exact: true }).click();
+    page.once("dialog", (dialog) => void dialog.accept());
+    await form.getByRole("button", { name: "Save default", exact: true }).click();
+    await expect(form.getByRole("button", { name: "Save default", exact: true })).toBeDisabled();
+    expect((await read()).defaultStoreLocation).toBe(origin.defaultStoreLocation);
+  } finally {
+    const current = await read();
+    if (current.defaultStoreLocation !== origin.defaultStoreLocation) {
+      const restored = saveKnowledgeHostDefaults.output.parse(
+        await client.invokePluginRpc("otto-project-knowledge", saveKnowledgeHostDefaults.name, {
+          hostId: scope.hostId,
+          expectedRevision: current.revision,
+          defaultStoreLocation: origin.defaultStoreLocation,
+        }),
+      );
+      expect(restored.ok).toBe(true);
+    }
+  }
+}
 
 async function proveConfirmedPurge(
   page: Page,
@@ -238,6 +318,16 @@ async function proveFormatConversion(
       timeline: expect.stringContaining("Retained older evidence."),
     },
   });
+  const health = surface.getByTestId("knowledge-link-health");
+  await health.getByRole("button", { name: "Check links", exact: true }).click();
+  await expect(
+    health.getByText("Missing or inactive target: [[missing-link-proof]]", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    health.getByText("The owning host could not complete this Knowledge operation.", {
+      exact: false,
+    }),
+  ).toHaveCount(0);
 }
 
 for (const compact of [false, true]) {
@@ -413,6 +503,8 @@ for (const compact of [false, true]) {
       await proveLinkHealth(surface, client, scope, project.workspaceId);
       await proveFormatConversion(page, surface, client, scope, project, id);
       await page.screenshot({ path: testInfo.outputPath("knowledge-format-conversion.png") });
+      await proveHostDefaults({ page, client, scope, compact });
+      await page.screenshot({ path: testInfo.outputPath("knowledge-host-defaults.png") });
     } finally {
       try {
         await client.close();

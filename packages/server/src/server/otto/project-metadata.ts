@@ -77,11 +77,86 @@ export class OttoProjectMetadata {
     });
   }
 
-  private async load(projectId: string) {
-    const bytes = await readFile(this.ports.file, "utf8");
+  /** A host-default change must not redirect already initialized inherited
+   * stores. Keep the canonical registry queue through default publication, so
+   * a first writer cannot initialize an unpinned store in the publication gap.
+   * Archived records are retained too; revival must not appear to erase data. */
+  retainKnowledgeHostStores<T>(input: {
+    initialized(project: OttoProjectSnapshot): Promise<boolean>;
+    publish(): Promise<T>;
+  }): Promise<T> {
+    return this.ports.exclusive(async () => {
+      const current = await this.loadAll({ allowMissing: true });
+      const records: Record<string, unknown>[] = [];
+      let changed = false;
+      for (const row of current.records) {
+        const record = object(row);
+        const identity = this.ports.parse(record);
+        const inherited =
+          record.knowledgeLocation === undefined || record.knowledgeLocation === null;
+        const keep =
+          inherited &&
+          (await input.initialized({
+            projectId: identity.projectId,
+            rootPath: identity.rootPath,
+            record,
+            revision: revision(record),
+          }));
+        if (keep) {
+          const next = { ...record, knowledgeLocation: "host" };
+          this.ports.parse(next);
+          records.push(next);
+          changed = true;
+        } else records.push(record);
+      }
+      let bytes: string;
+      let missing = false;
+      try {
+        bytes = await readFile(this.ports.file, "utf8");
+      } catch (error) {
+        if (
+          current.missing &&
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "ENOENT"
+        ) {
+          bytes = "";
+          missing = true;
+        } else throw error;
+      }
+      if (bytes !== current.bytes || missing !== current.missing)
+        throw new OttoProjectMetadataError(
+          "conflict",
+          "Project Settings changed while preserving existing Knowledge stores. Reload before saving.",
+        );
+      if (changed) await writeJsonFileAtomic(this.ports.file, records);
+      // A failed publication retains these protective bindings. Never roll back
+      // over newer registry values or implicitly move/delete a store.
+      return input.publish();
+    });
+  }
+
+  private async loadAll({ allowMissing = false }: { allowMissing?: boolean } = {}) {
+    let bytes: string;
+    let missing = false;
+    try {
+      bytes = await readFile(this.ports.file, "utf8");
+    } catch (error) {
+      if (
+        allowMissing &&
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        bytes = "";
+        missing = true;
+      } else throw error;
+    }
     let decoded: unknown;
     try {
-      decoded = JSON.parse(bytes);
+      decoded = missing ? [] : JSON.parse(bytes);
       if (!Array.isArray(decoded)) throw new Error("Expected project records");
       const seen = new Set<string>();
       for (const row of decoded) {
@@ -95,6 +170,11 @@ export class OttoProjectMetadata {
       });
     }
     const records: unknown[] = decoded;
+    return { bytes, records, missing };
+  }
+
+  private async load(projectId: string) {
+    const { bytes, records } = await this.loadAll();
     const record = records.find((row) => this.ports.parse(row).projectId === projectId);
     if (record === undefined || this.ports.parse(record).archivedAt !== null)
       throw new OttoProjectMetadataError("not_found", "Select an active project on this host");

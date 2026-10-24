@@ -83,6 +83,18 @@ export async function readKnowledgeFile(
   }
 }
 
+/** Presence includes partially initialized/corrupt stores. It never creates a
+ * directory or follows a link while deciding whether existing intent is kept. */
+export async function knowledgePathExists(store: KnowledgeStore, file: string): Promise<boolean> {
+  try {
+    await checkPath(store, file, false);
+    return true;
+  } catch (error) {
+    if (hasCode(error, "ENOENT")) return false;
+    throw error;
+  }
+}
+
 /** Byte-preserving migration reads share the same no-symlink boundary as Markdown reads. */
 export async function readKnowledgeBytes(
   store: KnowledgeStore,

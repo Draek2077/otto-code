@@ -162,6 +162,9 @@ export class KnowledgeObservations {
     this.bump(feed);
     this.queueReconcile(feed);
   }
+  notifyAll(): void {
+    for (const projectId of this.feeds.keys()) this.notify(projectId);
+  }
   private bump(feed: Feed): void {
     feed.cursor = randomUUID();
     for (const wake of feed.wake) wake();

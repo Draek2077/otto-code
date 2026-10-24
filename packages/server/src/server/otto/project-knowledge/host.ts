@@ -1,5 +1,4 @@
 import path from "node:path";
-import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
@@ -26,7 +25,9 @@ import {
   knowledgeRoots,
   type KnowledgeDocument,
 } from "./knowledge-service.js";
-import { KnowledgeStoreResolver, hasCode } from "./store-resolver.js";
+import { KnowledgeStoreResolver } from "./store-resolver.js";
+import { KnowledgeHostSettings } from "./host-settings.js";
+import { KnowledgeHostDefaultsError } from "./host-defaults.js";
 import { KnowledgeBusyError, KnowledgeConflictError } from "./knowledge-files.js";
 import { KnowledgeRecordOperations, recordDetails } from "./record-operations.js";
 import { initializeKnowledgeRoots } from "./bootstrap.js";
@@ -42,16 +43,13 @@ import {
 } from "./format-migration.js";
 type KnowledgeObservationPort = Pick<
   KnowledgeObservations,
-  "notify" | "wait" | "release" | "releaseClient" | "close"
+  "notify" | "notifyAll" | "wait" | "release" | "releaseClient" | "close"
 >;
 
 const location = z.enum(["repository", "host"]);
 const projectFields = z.object({
   knowledgeLocation: location.nullish(),
   knowledgeDirectoryName: z.string().nullable().optional(),
-});
-const preservedConfig = z.object({
-  projectKnowledge: z.object({ defaultStoreLocation: location.optional() }).optional(),
 });
 class KnowledgeHostError extends Error {
   constructor(
@@ -84,33 +82,30 @@ export class KnowledgeDaemonService {
   readonly records: KnowledgeRecordOperations;
   readonly resolver: KnowledgeStoreResolver;
   readonly observations: KnowledgeObservationPort;
+  private readonly hostSettings: KnowledgeHostSettings;
   constructor(
     private readonly ports: {
       hostId: string;
       home: string;
-      metadata: Pick<OttoProjectMetadata, "read" | "update">;
+      metadata: Pick<OttoProjectMetadata, "read" | "update" | "retainKnowledgeHostStores">;
       workspaces: Pick<WorkspaceRegistry, "get">;
       now?: () => Date;
       observations?: KnowledgeObservationPort;
     },
   ) {
+    this.hostSettings = new KnowledgeHostSettings({
+      hostId: ports.hostId,
+      home: ports.home,
+      metadata: ports.metadata,
+      changed: () => this.observations.notifyAll(),
+    });
     this.resolver = new KnowledgeStoreResolver({
       ottoHome: ports.home,
       resolveProject: async (projectId) => {
         const project = await ports.metadata.read(projectId);
         return { projectId, rootPath: project.rootPath, ...projectFields.parse(project.record) };
       },
-      defaultLocation: async () => {
-        try {
-          const config = preservedConfig.parse(
-            JSON.parse(await readFile(path.join(ports.home, "otto-config.json"), "utf8")),
-          );
-          return config.projectKnowledge?.defaultStoreLocation ?? "repository";
-        } catch (error) {
-          if (hasCode(error, "ENOENT")) return "repository";
-          throw error;
-        }
-      },
+      defaultLocation: async () => (await this.hostSettings.defaults.read()).defaultStoreLocation,
     });
     this.service = new KnowledgeService({
       resolver: this.resolver,
@@ -275,6 +270,8 @@ export class KnowledgeDaemonService {
   }
 
   invoke(method: string, value: unknown, clientId = ""): Promise<unknown> | undefined {
+    const hostOperation = this.hostSettings.invoke(method, value);
+    if (hostOperation) return this.guard(() => hostOperation);
     switch (method) {
       case inspectKnowledgeFormat.name:
         return this.guard(async () => {
@@ -401,6 +398,8 @@ export class KnowledgeDaemonService {
     try {
       return await run();
     } catch (error) {
+      if (error instanceof KnowledgeHostDefaultsError)
+        return { ok: false, error: { code: error.kind, message: error.message } };
       if (
         error instanceof KnowledgePurgeIncompleteError ||
         error instanceof KnowledgeFormatIncompleteError

@@ -63,7 +63,10 @@ export function KnowledgeLinkHealth({
     else setChecked(true);
   }, [active, checked, refetch]);
   const previous = useCallback(() => setOffset(Math.max(0, offset - 50)), [offset]);
-  const data = report.error ? undefined : report.data;
+  // This inspection is demand-owned. A remounted, unopened card must not show
+  // a cached failure from the temporary older-format state before conversion.
+  const error = checked ? report.error : null;
+  const data = checked && !error ? report.data : undefined;
   const nextOffset = data?.nextOffset;
   const next = useCallback(() => {
     if (nextOffset != null) setOffset(nextOffset);
@@ -97,7 +100,7 @@ export function KnowledgeLinkHealth({
             {report.isFetching ? "Checking..." : "Check links"}
           </Button>
         </SettingsRow>
-        {report.error ? <Alert variant="error" description={report.error.message} /> : null}
+        {error ? <Alert variant="error" description={error.message} /> : null}
         {data ? (
           <SettingsRow
             label={data.total ? `${data.total} unresolved links` : "No unresolved links."}

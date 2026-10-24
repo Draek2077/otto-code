@@ -41,6 +41,120 @@ async function fixture() {
   return { file, record, registry, metadata: registry.ottoMetadata, bytes };
 }
 
+it("keeps initialized inherited stores, including archived projects, under the project queue through default publication", async () => {
+  const f = await fixture();
+  const inherited = { ...f.record, knowledgeLocation: null };
+  const archived = {
+    ...inherited,
+    projectId: "archived-project",
+    archivedAt: "2026-01-01T00:00:00Z",
+  };
+  const explicit = { ...inherited, projectId: "explicit-project", knowledgeLocation: "repository" };
+  await writeFile(f.file, JSON.stringify([inherited, archived, explicit]));
+  let signal = () => {};
+  let release = () => {};
+  const entered = new Promise<void>((resolve) => {
+    signal = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let published = false;
+  const keep = f.metadata.retainKnowledgeHostStores({
+    initialized: async () => {
+      signal();
+      await gate;
+      return true;
+    },
+    publish: async () => {
+      expect(JSON.parse(await f.bytes())).toEqual([
+        { ...inherited, knowledgeLocation: "host" },
+        { ...archived, knowledgeLocation: "host" },
+        explicit,
+      ]);
+      published = true;
+      return "saved";
+    },
+  });
+  await entered;
+  const rename = f.registry.update("project-1", (project) => ({
+    ...project,
+    displayName: "Queued rename",
+  }));
+  release();
+  expect(await keep).toBe("saved");
+  await rename;
+  expect(published).toBe(true);
+  expect((await f.metadata.read("project-1")).record).toEqual({
+    ...inherited,
+    knowledgeLocation: "host",
+    displayName: "Queued rename",
+  });
+});
+
+it("retains protective bindings when default publication fails and never rolls back unrelated values", async () => {
+  const f = await fixture();
+  const original = { ...f.record, knowledgeLocation: null };
+  await writeFile(f.file, JSON.stringify([original]));
+  await expect(
+    f.metadata.retainKnowledgeHostStores({
+      initialized: async () => true,
+      publish: async () => {
+        throw new Error("Default publication denied");
+      },
+    }),
+  ).rejects.toThrow("publication denied");
+  expect(JSON.parse(await f.bytes())).toEqual([{ ...original, knowledgeLocation: "host" }]);
+});
+
+it("preserves an external registry edit observed during store-retention preparation", async () => {
+  const f = await fixture();
+  const original = { ...f.record, knowledgeLocation: null };
+  await writeFile(f.file, JSON.stringify([original]));
+  const peer = JSON.stringify([{ ...original, futureField: { peer: true } }]);
+  let published = false;
+  await expect(
+    f.metadata.retainKnowledgeHostStores({
+      initialized: async () => {
+        await writeFile(f.file, peer);
+        return true;
+      },
+      publish: async () => {
+        published = true;
+      },
+    }),
+  ).rejects.toMatchObject({ kind: "conflict" });
+  expect(published).toBe(false);
+  expect(await f.bytes()).toBe(peer);
+});
+
+it("allows defaults for a genuinely new host but refuses an existing empty or corrupt project registry", async () => {
+  await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(path.join(parent, "project-defaults-empty-"));
+  roots.push(root);
+  const file = path.join(root, "projects.json");
+  const registry = new FileBackedProjectRegistry(file, pino({ level: "silent" }));
+  expect(
+    await registry.ottoMetadata.retainKnowledgeHostStores({
+      initialized: async () => false,
+      publish: async () => "new-host",
+    }),
+  ).toBe("new-host");
+  await expect(readFile(file)).rejects.toMatchObject({ code: "ENOENT" });
+  await writeFile(file, "");
+  let published = false;
+  await expect(
+    registry.ottoMetadata.retainKnowledgeHostStores({
+      initialized: async () => true,
+      publish: async () => {
+        published = true;
+      },
+    }),
+  ).rejects.toThrow();
+  expect(published).toBe(false);
+  expect(await readFile(file, "utf8")).toBe("");
+});
+
 it("reads preserved metadata without exposing it in Paseo runtime records or changing bytes", async () => {
   const f = await fixture();
   const before = await f.bytes();

@@ -22,6 +22,20 @@ Repository stores retain `<project>/.otto/knowledge/`. Host stores retain
 current directory are not inputs. Existing directory identities are preserved;
 a host store without its persisted identity is refused rather than guessed.
 
+Host settings expose a host-wide new-store default before project selection.
+Reading it is inert. An explicit confirmed save uses its captured revision and
+stores only the nonsecret preference in
+`<OTTO_HOME>/project-knowledge/settings.json`; retained `otto-config.json` remains
+read-only and supplies the default until that explicit replacement exists.
+Unknown preference fields survive writes. Before replacing a Host default, the
+same canonical project registry queue pins initialized inherited host stores,
+including archived projects, to their existing directory. Repository precedence
+and explicit project overrides remain unchanged. A failed publication retains
+protective bindings and requires a fresh read; it never rolls back peer data,
+moves stores or deletes recovery copies. External editors do not join the
+daemon's queues, so the final compare/rename interval remains a filesystem limit.
+Changing a default does not allocate a missing host directory identity.
+
 ## Records and roots
 
 Catalog reads return metadata and full-file digests, with confirmed records only
