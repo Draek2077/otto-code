@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import type { Metafile } from "esbuild";
 
 test("keeps daemon-client APIs out of the server public entry", async () => {
   const serverExports = await import("./exports.js");
@@ -68,7 +69,56 @@ async function runtimeDependencies(entry: string): Promise<string[]> {
       },
     ],
   });
-  const inputs = Object.keys(result.metafile.inputs);
+  const inputs = eagerRuntimeInputs(result.metafile);
   expect(inputs.length).toBeGreaterThan(1);
   return inputs;
 }
+
+/** A deferred import is present in bundle metadata but is not evaluated by
+ * registration. Static imports/re-exports remain counted without tree shaking. */
+function eagerRuntimeInputs(metafile: Metafile): string[] {
+  const pending = Object.values(metafile.outputs).flatMap((output) =>
+    output.entryPoint ? [output.entryPoint] : [],
+  );
+  const loaded = new Set<string>();
+  while (pending.length) {
+    const file = pending.pop();
+    if (!file || loaded.has(file)) continue;
+    loaded.add(file);
+    for (const entry of metafile.inputs[file]?.imports ?? []) {
+      if (!entry.external && entry.kind !== "dynamic-import") pending.push(entry.path);
+    }
+  }
+  return [...loaded];
+}
+
+test("the import-cost check retains unused re-exports while excluding explicit deferred operations", async () => {
+  const { build } = await import("esbuild");
+  const result = await build({
+    stdin: { contents: 'export * from "eager"; export const run = () => import("deferred");' },
+    bundle: true,
+    write: false,
+    metafile: true,
+    treeShaking: false,
+    format: "esm",
+    plugins: [
+      {
+        name: "import-cost-fixture",
+        setup(builder) {
+          builder.onResolve({ filter: /^(eager|deferred)$/ }, ({ path }) => ({
+            path,
+            namespace: "import-cost-fixture",
+          }));
+          builder.onLoad({ filter: /.*/, namespace: "import-cost-fixture" }, () => ({
+            contents: "export const value = 1;",
+            loader: "js",
+          }));
+        },
+      },
+    ],
+  });
+  expect(Object.keys(result.metafile.inputs)).toContain("import-cost-fixture:deferred");
+  const eager = eagerRuntimeInputs(result.metafile);
+  expect(eager).toContain("import-cost-fixture:eager");
+  expect(eager).not.toContain("import-cost-fixture:deferred");
+});
