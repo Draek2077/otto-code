@@ -3,6 +3,7 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
   BrainBootstrapSchema,
   BrainConnectionReadSchema,
+  BrainConnectionSaveSchema,
   BrainOperationResultSchema,
 } from "@getpaseo/protocol/otto/brain";
 import { test as base, expect, type Page } from "../fixtures";
@@ -18,7 +19,14 @@ async function request(client: Client, method: string, input: unknown) {
   return response.value;
 }
 
-export const test = base.extend<{ brain: { localRunning(): Promise<boolean> } }>({
+interface BrainFixture {
+  localRunning(): Promise<boolean>;
+  readConnection(): Promise<ReturnType<typeof BrainConnectionReadSchema.parse>>;
+  updateConnection(
+    patch: ReturnType<typeof BrainConnectionSaveSchema.parse>["patch"],
+  ): Promise<void>;
+}
+export const test = base.extend<{ brain: BrainFixture }>({
   brain: async ({ e2eWorker }, provide) => {
     void e2eWorker;
     const client = await connectDaemonClient<Client>({ clientIdPrefix: "otto-brain-ui" });
@@ -32,6 +40,14 @@ export const test = base.extend<{ brain: { localRunning(): Promise<boolean> } }>
         credential: { action: "keep" },
       });
       await provide({
+        readConnection: read,
+        updateConnection: async (patch) => {
+          await request(client, "brain.connection.save", {
+            expectedRevision: (await read()).revision,
+            patch,
+            credential: { action: "keep" },
+          });
+        },
         localRunning: async () =>
           BrainBootstrapSchema.parse(await request(client, "brain.bootstrap", {})).localRunning,
       });
