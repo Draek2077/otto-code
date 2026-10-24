@@ -80,6 +80,7 @@ export function createBrainProvider(
     sessionDirectory: path.join(home, "otto-brain", "agent-sessions"),
     transport,
     compaction: { keepRecentTokens: 6000, summaryMaxTokens: 4000 },
+    preserveLegacyThinkingOff: true,
     resolveLegacyEndpoint(providerId) {
       if (providerId !== id || !legacy.originalBrainIdentity(providerId))
         throw new Error(

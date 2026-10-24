@@ -1,8 +1,22 @@
 import { expect, test } from "vitest";
 import { BrainStatusSchema } from "@getpaseo/protocol/otto/brain";
 import type { BrainConnectionStateSnapshot } from "./connection-state";
-import { statusToView, screenAccess } from "./status-mapping";
+import { statusToView, screenAccess, sidebarPresentation } from "./status-mapping";
 import { deriveBrainActivity, deriveBrainState } from "../state";
+
+test("sidebar bootstrap never inserts a provisional disabled-host row but keeps enabled host failure visible", () => {
+  const initial = {
+    serverId: "host",
+    enabled: undefined,
+    connection: "connecting" as const,
+    status: null,
+  };
+  expect(sidebarPresentation(initial)).toMatchObject({ visible: false });
+  expect(sidebarPresentation({ ...initial, enabled: false })).toMatchObject({ visible: false });
+  expect(
+    sidebarPresentation({ ...initial, enabled: true, connection: "disconnected" }),
+  ).toMatchObject({ visible: true, state: "unreachable", label: "Brain - unreachable" });
+});
 
 function fixture(): BrainConnectionStateSnapshot {
   const capabilities = Object.fromEntries(

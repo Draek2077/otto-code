@@ -258,6 +258,7 @@ class HistoryImport {
 
 interface ImportInput {
   resolveLegacyEndpoint?(provider: string): string;
+  preserveLegacyThinkingOff?: boolean;
   persistence?: ProviderPersistence;
   provider: string;
   home?: string;
@@ -273,6 +274,7 @@ interface ImportInput {
 export function restoredLegacyConfig(input: {
   config: ProviderSessionConfig;
   persistence?: ProviderPersistence;
+  preserveLegacyThinkingOff?: boolean;
 }): ProviderSessionConfig {
   const data = input.persistence?.data;
   if (
@@ -293,9 +295,14 @@ export function restoredLegacyConfig(input: {
     ...input.config,
     settings,
     ...(thinking !== undefined
-      ? { thinkingOption: thinking === "off" ? "default" : thinking }
+      ? { thinkingOption: legacyThinking(thinking, input.preserveLegacyThinkingOff) }
       : {}),
   };
+}
+function legacyThinking(value: string, preserveOff = false): string {
+  // Brain's original toggle sent "off" to its template router; ordinary
+  // OpenAI-compatible profiles omitted the field. Preserve each owner's contract.
+  return value === "off" && !preserveOff ? "default" : value;
 }
 function legacyEnvelope(persistence: ProviderPersistence | undefined) {
   const data = persistence?.data;
@@ -350,7 +357,7 @@ export async function importLegacyConversation(
     mode: input.config.mode ?? handle.metadata.modeId,
     settings,
     ...(typeof thinking === "string"
-      ? { thinkingOption: thinking === "off" ? "default" : thinking }
+      ? { thinkingOption: legacyThinking(thinking, input.preserveLegacyThinkingOff) }
       : {}),
   };
   preserveImport({

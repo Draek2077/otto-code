@@ -2,8 +2,29 @@ import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
-import { importLegacyConversation } from "./legacy-history.js";
+import { importLegacyConversation, restoredLegacyConfig } from "./legacy-history.js";
 import { providerSettings } from "../shared/settings.js";
+
+test("ordinary endpoint legacy Off still restores omission rather than Brain's explicit toggle", () => {
+  expect(
+    restoredLegacyConfig({
+      config: {
+        cwd: "/fixture",
+        env: {},
+        mcpServers: {},
+        settings: { reasoning_effort: "off", auto_compact: "80" },
+        persist: true,
+      },
+      persistence: {
+        version: 1,
+        data: {
+          format: "otto-openai-compatible-v1",
+          legacyOrigin: { provider: "openai-compatible", sessionId: "old" },
+        },
+      },
+    }),
+  ).toMatchObject({ thinkingOption: "default", settings: { auto_compact: "80" } });
+});
 
 test("unverified endpoints and unsupported legacy history fail without overwriting source data", async () => {
   const scratch = fileURLToPath(new URL("../../../.tmp/", import.meta.url));

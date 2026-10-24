@@ -2,6 +2,14 @@ import type { BrainConnectionStateSnapshot } from "./connection-state";
 import type { BrainHostStatus, BrainResources, BrainTelemetry } from "../screens/contracts/host";
 import type { BrainStatus } from "@getpaseo/protocol/otto/brain";
 import type { BrainScreenHost } from "../screens/contracts/port";
+import { presentBrainSnapshot, type BrainUiSnapshot } from "../bridge";
+
+export function sidebarPresentation(snapshot: BrainUiSnapshot) {
+  const presentation = presentBrainSnapshot(snapshot);
+  // Initial settings are unknown, not enabled. Rendering a provisional row here
+  // makes a disabled host briefly move the entire sidebar when bootstrap resolves.
+  return { ...presentation, visible: snapshot.enabled === true && presentation.visible };
+}
 
 export function screenAccess(state: BrainConnectionStateSnapshot): BrainScreenHost["access"] {
   const flags = state.feed?.status?.capabilities;

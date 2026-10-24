@@ -43,6 +43,8 @@ export function createOpenAiProvider(
     catalogRevision?(): Promise<string>;
     compaction?: CompactionPolicy;
     resolveLegacyEndpoint?(provider: string): string;
+    /** The original Brain toggle sent explicit off; ordinary endpoints omitted it. */
+    preserveLegacyThinkingOff?: boolean;
     id?: string;
     label?: string;
   } = {},
@@ -93,6 +95,7 @@ export function createOpenAiProvider(
         transport: options.transport,
         compaction: options.compaction,
         resolveLegacyEndpoint: options.resolveLegacyEndpoint,
+        preserveLegacyThinkingOff: options.preserveLegacyThinkingOff,
         onClosed: () => connections.delete(value),
       });
       connections.add(value);
@@ -104,6 +107,7 @@ export function createOpenAiProvider(
 interface ConnectionServices {
   compaction?: CompactionPolicy;
   resolveLegacyEndpoint?(provider: string): string;
+  preserveLegacyThinkingOff?: boolean;
   transport?: typeof fetch;
   readSettings(): Promise<ConnectionSettings>;
   supported: readonly string[];
@@ -126,6 +130,7 @@ function connection({
   transport,
   compaction,
   resolveLegacyEndpoint,
+  preserveLegacyThinkingOff,
   onClosed,
 }: ConnectionServices): ManagedConnection {
   const listeners = new Set<(event: ProviderEvent) => void>();
@@ -149,6 +154,7 @@ function connection({
       persistence: input.persistence,
       provider: providerId,
       resolveLegacyEndpoint,
+      preserveLegacyThinkingOff,
       home,
       settings: root,
       config: input.config,
@@ -158,7 +164,11 @@ function connection({
       ? new SessionArchive(sessionDirectory, imported.persistence)
       : undefined;
     const persistence = archive?.restored ?? imported.persistence;
-    const config = restoredLegacyConfig({ config: imported.config, persistence });
+    const config = restoredLegacyConfig({
+      config: imported.config,
+      persistence,
+      preserveLegacyThinkingOff,
+    });
     const models = await catalog.models(root, lifecycle.signal);
     const data = persistence?.data;
     let savedModel: string | undefined;

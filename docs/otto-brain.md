@@ -19,6 +19,8 @@ The renderer remains in Otto-owned app files behind a typed built-in bridge.
 Registration creates only passive controllers. Native graphics load on first
 render; the operational and settings screens load separately when opened, so
 unrelated app/runtime modules do not evaluate Brain's native animation controls.
+The sidebar waits for the host's saved enablement before adding its row. Disabled
+hosts have no provisional icon; enabled hosts retain their unreachable state.
 Daemon-owned connection and owner settings use the same local/Remote transport
 and private home. The same plugin registers the `otto-brain` agent provider,
 sharing the complete OpenAI harness. Full CLI/TUI host composition and
@@ -293,6 +295,9 @@ unsupported legacy options remain intact and report a diagnostic. Native 0.9 Bra
 history is copied through the existing guarded importer before conversion, and
 aliases must match their original preserved Brain inheritance. Transcripts remain
 in the selected daemon's private archive, outside client/provider settings.
+Detected reasoning controls include explicit Off alongside their model-specific
+levels. Imported and resumed Brain conversations retain that template switch;
+ordinary OpenAI-compatible providers retain their original omission semantics.
 
 The SDK's node-only Brain composition depends on the standalone Brain package's
 lightweight `client` entry. Build and publish Brain before the SDK. The SDK root

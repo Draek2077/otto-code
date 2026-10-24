@@ -19,7 +19,7 @@ import { useHostFeature } from "@/runtime/host-features";
 import { BrainLifecycleProvider } from "../lifecycle";
 import { BrainHostIcon } from "../host-icon";
 import { useBrainUiSnapshot } from "../use-brain-ui";
-import { presentBrainSnapshot } from "../bridge";
+import { sidebarPresentation } from "./status-mapping";
 import type { BrainScreenTheme } from "../screens/theme";
 import type { BrainUiContext } from "./client-bridge";
 
@@ -145,7 +145,7 @@ export function createBrainUiComponents({
   }
   const ThemedIcon = withUnistyles(Icon, iconProps);
   function SidebarContent(props: PluginSidebarItemProps) {
-    const presentation = presentBrainSnapshot(useBrainUiSnapshot(screen.ui));
+    const presentation = sidebarPresentation(useBrainUiSnapshot(screen.ui));
     if (!presentation.visible) return null;
     return (
       <SidebarHeaderRow

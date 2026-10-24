@@ -3,7 +3,12 @@ import type { Model } from "../types.js";
 import type { Profile } from "../config/schema.js";
 
 export function providerModel(model: Model, profile: Profile, state: string) {
-  const efforts = model.reasoningTemplate ? (model.reasoningEfforts ?? []) : [];
+  // Brain's template router always supports explicitly disabling a detected
+  // reasoning control. Catalog levels alone omit that switch on many models.
+  const efforts =
+    model.reasoningTemplate && model.reasoningEfforts
+      ? [...new Set(["off", ...model.reasoningEfforts])]
+      : [];
   return {
     id: model.id,
     object: "model",

@@ -49,3 +49,15 @@ test("vision and effort choices follow the owning hosting profile and actual tem
   });
   expect(result.supported_parameters).toContain("reasoning_effort");
 });
+
+test("detected reasoning controls retain explicit Off when their level list omits it", () => {
+  const fixture = {
+    ...model(),
+    reasoningTemplate: { enableThinkingArgument: "enable_thinking", effortArgument: "effort" },
+    reasoningEfforts: ["on"],
+  };
+  expect(providerModel(fixture, defaultProfile(fixture), "ready").reasoning).toEqual({
+    supported_efforts: ["off", "on"],
+    default_effort: null,
+  });
+});

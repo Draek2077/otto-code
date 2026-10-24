@@ -41,6 +41,8 @@ async function owner(root: string) {
     disconnected: false,
     prompts: 0,
     summaryLimits,
+    reasoning: false,
+    requestedEfforts: [] as string[],
   };
   const server = createServer(async (request, response) => {
     state.requests++;
@@ -66,7 +68,7 @@ async function owner(root: string) {
               id: "model",
               name: "Owner model",
               context_length: 32768,
-              reasoning: { supported_efforts: [] },
+              reasoning: { supported_efforts: state.reasoning ? ["off", "on"] : [] },
               architecture: { input_modalities: ["text"] },
             },
           ],
@@ -80,8 +82,10 @@ async function owner(root: string) {
       .object({
         messages: z.array(z.object({ role: z.string(), content: z.unknown().optional() })),
         max_tokens: z.number().optional(),
+        reasoning_effort: z.string().optional(),
       })
       .parse(JSON.parse(body));
+    if (input.reasoning_effort !== undefined) state.requestedEfforts.push(input.reasoning_effort);
     state.prompts++;
     response.writeHead(200, { "content-type": "text/event-stream" });
     if (
@@ -350,6 +354,65 @@ test.each(["otto-brain", "local-ai"])(
     expect(readFileSync(path.join(root, "config.json.otto-0.9.bak"), "utf8")).toBe(preserved);
   },
 );
+
+test("legacy Brain reasoning Off remains explicit through import, resume and actual inference", async () => {
+  const root = home();
+  const state = await owner(root);
+  state.reasoning = true;
+  const original = readFileSync(path.join(root, "otto-config.json"), "utf8");
+  writeFileSync(path.join(root, "config.json.otto-0.9.bak"), original);
+  const provider = createBrainProvider(root);
+  const first = await connect(provider);
+  await first.connection.send({
+    type: "session.open",
+    requestId: "legacy-off",
+    sessionId: "legacy-off",
+    history: "replay",
+    config: { ...config(root), settings: { auto_compact: "off", reasoning_effort: "off" } },
+    persistence: {
+      version: 1,
+      data: {
+        format: "otto-openai-0.9-handle-v1",
+        handle: {
+          provider: "otto-brain",
+          sessionId: "old-off",
+          metadata: {
+            model: "model",
+            messages: [
+              { role: "user", content: "Previous request" },
+              { role: "assistant", content: "Previous response" },
+            ],
+          },
+        },
+      },
+    },
+  });
+  await expect.poll(() => first.events.some((event) => event.type === "session.ready")).toBe(true);
+  expect(archived(root, first.events)).toMatchObject({
+    data: { preferences: { thinkingOption: "off" } },
+  });
+  const saved = first.events.findLast((event) => event.type === "session.persistence");
+  if (!saved || saved.type !== "session.persistence") throw new Error("Archive missing");
+  await first.connection.close();
+  const resumed = await connect(provider);
+  await resumed.connection.send({
+    type: "session.open",
+    requestId: "resume-off",
+    sessionId: "resume-off",
+    history: "replay",
+    config: { ...config(root), settings: { auto_compact: "off", reasoning_effort: "off" } },
+    persistence: saved.persistence,
+  });
+  await expect
+    .poll(() => resumed.events.some((event) => event.type === "session.ready"))
+    .toBe(true);
+  expect(archived(root, resumed.events)).toMatchObject({
+    data: { preferences: { thinkingOption: "off" } },
+  });
+  await prompt(resumed.connection, "resume-off", "Keep reasoning disabled");
+  await expect.poll(() => state.requestedEfforts).toEqual(["off"]);
+  expect(readFileSync(path.join(root, "otto-config.json"), "utf8")).toBe(original);
+});
 
 test("interrupting a Brain turn cancels its actual owner stream without stopping the host", async () => {
   const root = home();
