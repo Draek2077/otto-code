@@ -103,4 +103,56 @@ describe("project board settings form", () => {
       error: "Project Settings could not be saved. Your changes are still here.",
     });
   });
+
+  it("uses only its own acknowledged revision for the next explicit save", async () => {
+    const save = vi.fn(async (_input: { expectedRevision: string }) => ({
+      ok: true as const,
+      value: { ...snapshot, settingsRevision: "r2" },
+    }));
+    const form = openTargetForm({ snapshot, save });
+    form.setBoardId("8");
+    await form.save();
+    form.setBoardId("9");
+    await form.save();
+    expect(save.mock.calls.map(([input]) => input.expectedRevision)).toEqual(["r1", "r2"]);
+  });
+
+  it("does not erase conflicts or retry after editing the retained draft", async () => {
+    const save = vi.fn(async () => ({
+      ok: false as const,
+      error: { code: "revision_conflict" as const, message: "Reload before saving." },
+    }));
+    const form = openTargetForm({ snapshot, save });
+    form.setBoardId("8");
+    await form.save();
+    form.setBoardId("9");
+    expect(await form.save()).toBeNull();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(form.getSnapshot()).toMatchObject({
+      boardId: "9",
+      dirty: true,
+      reloadRequired: true,
+      error: "Reload before saving.",
+    });
+  });
+
+  it("keeps edits when an explicit reload fails and adopts a revision only after a valid read", async () => {
+    const form = openTargetForm({ snapshot, save: async () => ({ ok: true, value: snapshot }) });
+    form.setBoardId("unsaved");
+    expect(
+      await form.reload(async () => {
+        throw new Error("private transport detail");
+      }),
+    ).toBe(false);
+    expect(form.getSnapshot()).toMatchObject({ boardId: "unsaved", dirty: true, busy: false });
+    expect(form.getRevision()).toBe("r1");
+    expect(
+      await form.reload(async () => ({
+        ok: true,
+        value: { ...snapshot, settingsRevision: "r3", target: null },
+      })),
+    ).toBe(true);
+    expect(form.getSnapshot()).toMatchObject({ boardId: "", dirty: false, generation: 1 });
+    expect(form.getRevision()).toBe("r3");
+  });
 });

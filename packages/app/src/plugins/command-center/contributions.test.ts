@@ -134,6 +134,54 @@ function stateSource() {
 }
 
 describe("plugin Command Center contributions", () => {
+  // OTTO(kanban): verify real workspace command context, not an unscoped project hint.
+  it("binds the Kanban workspace command to its actual installation host and project", async () => {
+    const installed = plugin(() => undefined);
+    installed.id = "otto-kanban";
+    installed.surfaces = [{ id: "board", title: "Kanban", Component: () => null }];
+    installed.commandCenterItems = [
+      {
+        id: "board",
+        title: "Open project Kanban",
+        icon: "Kanban",
+        context: "workspace",
+        onSelect: ({ workspace: selected, openScreen }) => {
+          openScreen({ screenId: "board", params: { workspaceId: selected.id } });
+        },
+      },
+    ];
+    const opened: unknown[] = [];
+    const actions = buildPluginCommandCenterContributions({
+      plugins: [installed],
+      state: stateSource(),
+      workspaceId: workspace.id,
+      agentId: null,
+      navigation: {
+        openSettings() {},
+        openWorkspacePanel() {},
+        openAgentPanel() {},
+        openSurface(pluginId, screenId, params) {
+          opened.push({ pluginId, screenId, params });
+        },
+      },
+      reportError(error) {
+        throw error;
+      },
+    });
+    expect(actions).toHaveLength(1);
+    await actions[0]!.run();
+    expect(opened).toEqual([
+      {
+        pluginId: "otto-kanban",
+        screenId: "board",
+        params: {
+          workspaceId: "workspace-1",
+          projectHostId: "host-1",
+          projectId: "project-1",
+        },
+      },
+    ]);
+  });
   it("shows only contributions whose synchronous context exists", () => {
     const installed = plugin(() => undefined);
     const common = {

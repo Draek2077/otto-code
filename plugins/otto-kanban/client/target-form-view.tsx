@@ -1,6 +1,5 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
 import { View } from "react-native";
-import { useRpc } from "@getpaseo/plugin/client";
 import {
   SettingsButton,
   SettingsCard,
@@ -12,8 +11,8 @@ import {
   SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
 import type { ProjectConfiguration } from "../shared/model.js";
-import { setProjectTarget } from "../shared/rpc.js";
-import { openTargetForm } from "./target-form.js";
+import type { Result } from "../shared/model.js";
+import type { TargetFormModel } from "./target-form.js";
 
 const actionsStyle = { flexDirection: "row", flexWrap: "wrap", gap: 8 } as const;
 const providerOptions = [
@@ -22,25 +21,25 @@ const providerOptions = [
 ];
 
 export function TargetForm({
-  snapshot,
-  onSaved,
-  onCancel,
-  onReload,
+  model,
+  read,
 }: {
-  snapshot: ProjectConfiguration;
-  onSaved(configuration: ProjectConfiguration): void;
-  onCancel(): void;
-  onReload(): void;
+  model: TargetFormModel;
+  read(binding: ProjectConfiguration["binding"]): Promise<Result<ProjectConfiguration>>;
 }) {
-  const write = useRpc(setProjectTarget);
-  const [model] = useState(() => openTargetForm({ snapshot, save: write }));
+  const [confirmReload, setConfirmReload] = useState(false);
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   const save = useCallback(async () => {
-    const result = await model.save();
-    if (result) onSaved(result);
-  }, [model, onSaved]);
+    await model.save();
+  }, [model]);
+  const requestReload = useCallback(() => setConfirmReload(true), []);
+  const keepEditing = useCallback(() => setConfirmReload(false), []);
+  const reload = useCallback(async () => {
+    setConfirmReload(false);
+    await model.reload(read);
+  }, [model, read]);
   return (
-    <SettingsSection title="Project board settings">
+    <SettingsSection title="Project board settings" testID="kanban-project-settings">
       <SettingsCard>
         <SettingsSwitch
           label="Configure a board for this project"
@@ -58,7 +57,7 @@ export function TargetForm({
               disabled={state.busy}
             />
             <SettingsInput
-              key={state.adapter}
+              key={`${state.adapter}/${state.generation}`}
               label="Board number or URL"
               initialValue={state.boardId}
               onChangeText={model.setBoardId}
@@ -73,6 +72,7 @@ export function TargetForm({
               <SettingsExpander label="Advanced">
                 {!state.boardId.startsWith("https://") ? (
                   <SettingsInput
+                    key={state.generation}
                     label="Board owner"
                     initialValue={state.boardOwner}
                     onChangeText={model.setBoardOwner}
@@ -94,19 +94,32 @@ export function TargetForm({
           </>
         ) : null}
         {state.error ? <SettingsRow label="Settings were not saved" error={state.error} /> : null}
+        {state.saved ? <SettingsRow label="Board settings saved" /> : null}
+        {state.dirty ? (
+          <SettingsRow label="Your unsaved changes will be here when you return." />
+        ) : null}
         <View style={actionsStyle}>
-          <SettingsButton onPress={save} disabled={state.busy || !state.dirty}>
+          <SettingsButton
+            onPress={save}
+            disabled={state.busy || !state.dirty || state.reloadRequired}
+          >
             {state.busy ? "Saving..." : "Save"}
           </SettingsButton>
-          <SettingsButton variant="outline" onPress={onCancel} disabled={state.busy}>
-            Cancel
+          <SettingsButton variant="outline" onPress={requestReload} disabled={state.busy}>
+            Reload saved settings
           </SettingsButton>
-          {state.errorCode === "revision_conflict" ? (
-            <SettingsButton variant="outline" onPress={onReload} disabled={state.busy}>
-              Discard changes and reload
-            </SettingsButton>
-          ) : null}
         </View>
+        {confirmReload ? (
+          <View>
+            <SettingsRow label="Discard unsaved board settings and reload?" />
+            <View style={actionsStyle}>
+              <SettingsButton onPress={keepEditing}>Keep editing</SettingsButton>
+              <SettingsButton variant="outline" onPress={reload}>
+                Discard and reload
+              </SettingsButton>
+            </View>
+          </View>
+        ) : null}
       </SettingsCard>
     </SettingsSection>
   );

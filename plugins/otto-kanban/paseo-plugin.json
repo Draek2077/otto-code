@@ -1,0 +1,5 @@
+{
+  "id": "otto-kanban",
+  "name": "Otto Kanban",
+  "requirements": { "paseo": ">=0.12.0" }
+}

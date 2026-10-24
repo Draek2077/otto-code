@@ -128,7 +128,6 @@ export function ProjectScreen(props: KanbanScreenProps) {
   const directory = useProjectDirectory(props.host.id);
   const workspace = useWorkspaceHint(props);
   const [explicit, setExplicit] = useState<ProjectSelection | null>(null);
-  const [editing, setEditing] = useState<ProjectSelection | null>(null);
   const projects = knownProjects(directory.state);
   const selectedId = resolveProjectSelection({
     hostId: props.host.id,
@@ -145,22 +144,10 @@ export function ProjectScreen(props: KanbanScreenProps) {
     },
     [host.id, onProjectSelection],
   );
-  const onEditingChange = useCallback(
-    (isEditing: boolean) => {
-      setEditing(isEditing && selectedId ? { hostId: props.host.id, projectId: selectedId } : null);
-    },
-    [props.host.id, selectedId],
-  );
-  const pickerLocked = editing?.hostId === props.host.id && editing.projectId === selectedId;
   return (
     <ProjectDirectoryBoundary state={directory.state} retry={directory.retry}>
       <View style={panelStyle}>
-        <ProjectPicker
-          projects={projects}
-          selectedId={selectedId}
-          locked={pickerLocked}
-          select={select}
-        />
+        <ProjectPicker projects={projects} selectedId={selectedId} locked={false} select={select} />
         {directory.state.status === "error" ? (
           <SettingsCard>
             <SettingsRow label="Project refresh failed" error={directory.state.message} />
@@ -175,7 +162,7 @@ export function ProjectScreen(props: KanbanScreenProps) {
             host={props.host}
             layout={props.layout}
             theme={props.theme}
-            onEditingChange={onEditingChange}
+            navigation={props.navigation}
           />
         ) : (
           <SettingsRow label="Choose a project to view its board." />

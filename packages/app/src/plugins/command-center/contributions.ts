@@ -4,7 +4,12 @@ import { getCommandCenterIcon } from "@/command-center/icon";
 import { resolvePluginIcon } from "../icons";
 import { resolvePluginPanelOpenLocation } from "../workspace-panels/locations";
 import type { InstalledPlugin } from "../types";
-import { createPluginCapabilities, type PluginNavigation } from "../actions";
+// OTTO(kanban): commands share the canonical, host-bound workspace context.
+import {
+  createPluginCapabilities,
+  createPluginWorkspaceActionContext,
+  type PluginNavigation,
+} from "../actions";
 
 export interface PluginCommandCenterSource {
   plugins: readonly InstalledPlugin[];
@@ -35,19 +40,13 @@ export function buildPluginCommandCenterContributions(
             : null;
           if (!workspace) return;
           if (item.context === "workspace") {
-            await item.onSelect({
-              context: "workspace",
-              ...common,
-              workspace,
-              openPanel(panelId, options) {
-                const panel = plugin.workspacePanels.find(
-                  (candidate) => candidate.id === panelId && candidate.context === "workspace",
-                );
-                if (!panel) throw new Error(`Workspace panel is unavailable: ${panelId}`);
-                const location = resolvePluginPanelOpenLocation(panel, options?.location);
-                source.navigation.openWorkspacePanel(plugin.id, panelId, location);
-              },
+            const context = createPluginWorkspaceActionContext({
+              plugin,
+              navigation: source.navigation,
+              state: source.state,
+              workspaceId: workspace.id,
             });
+            if (context) await item.onSelect(context);
             return;
           }
           const agent = source.agentId ? source.state.getAgent(source.agentId) : null;

@@ -58,6 +58,8 @@ export const Home = StubIcon;
 export const Image = StubIcon;
 export const Import = StubIcon;
 export const Inbox = StubIcon;
+// OTTO(kanban): mirrors the installed Lucide package's actual Kanban export.
+export const Kanban = StubIcon;
 export const Info = StubIcon;
 export const Layers = StubIcon;
 export const Link = StubIcon;

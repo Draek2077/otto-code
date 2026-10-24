@@ -89,6 +89,7 @@ describe("plugin host navigation", () => {
     expect(browsers).toEqual([]);
   });
 
+  // OTTO(kanban): project settings use the installation host unless explicitly selected.
   it("opens canonical Project Settings on the selected or explicit host without creating tabs", () => {
     const { navigation, destinations, browsers } = setup(false);
     navigation.openProjectSettings!({ projectId: "project-a" });

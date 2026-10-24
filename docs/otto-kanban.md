@@ -4,10 +4,11 @@ Kanban's injected project/GitHub read library and typed plugin RPC contracts liv
 under `packages/plugin/src/otto/kanban/`. The client-safe contract export is
 `@getpaseo/plugin/otto/kanban`; daemon composition uses the separate node-only
 `@getpaseo/plugin/server/otto-kanban` export. `plugins/otto-kanban/` holds the
-unregistered client contribution and reexports those canonical contracts. It has no plugin entry, manifest, built-in
-registration or credential store. Constructing a service or contribution does not
-start a process, contact GitHub or subscribe to anything. These surfaces are not
-reachable in the app yet.
+client contribution and reexports those canonical contracts. The `otto-kanban`
+built-in registers a top-level sidebar entry and a project-settings contribution;
+it has no credential store. Constructing a service or contribution does not
+start a process, contact GitHub or subscribe to anything. Registration does not
+complete the feature: Jira, tracker mutations and provider acceptance remain open.
 
 ## Ownership and integration boundary
 
@@ -40,11 +41,17 @@ inventory. An explicit project or workspace hint is used only with a matching ho
 identity. Missing context never selects the first project automatically.
 
 The daemon's internal `OttoProjectMetadata` adapter supplies revisioned preserved
-records under the ordinary registry mutation queue. Active/last navigation
-context, canonical Project Settings navigation and an outer before-leave guard
-remain integration boundaries. The source includes an unregistered board/settings
-editor, but its local project-picker lock does not cover outer host switches or
-closing the surface. It must not be registered before those boundaries are resolved.
+records under the ordinary registry mutation queue. The app supplies active/last
+workspace context only after resolving the workspace on the selected host; it
+never selects an arbitrary project. A workspace command uses its bound workspace.
+Board configuration opens canonical Project Settings through app-owned navigation.
+The settings section renders under the same plugin installation and host client.
+An installation-owned registry retains only local dirty or pending edit drafts
+across route departure and host/project selection. It releases closed clean forms
+and disposes all drafts with the plugin installation. It is not a host-data cache.
+Drafts retain their originating revision; a conflict or uncertain save outcome
+blocks another save until an explicit reload. Confirmed reload preserves edits
+when its host read fails. Accepted own saves advance only that draft's revision.
 External-resource plugins must not import private daemon services to bypass them.
 
 ## Read behavior
@@ -95,7 +102,11 @@ fixture or implement a second authentication mechanism.
 Collocated tests exercise config continuity, stale revisions, host/project scope,
 normalized reads, pagination and safe failures through injected ports. They do not
 validate documents against a full official schema or prove a live board journey.
-Pure project-selection, target-form and RPC fixtures cover the unregistered
-contribution boundary. They do not render the client. Desktop/Mobile interaction,
-native/device behavior, real app/daemon acceptance, Jira and mutations remain outside
-this source's proof.
+Pure project-selection, target-form, retained-draft and RPC fixtures cover the
+contribution boundary. They do not render the client. The app journey in
+`packages/app/e2e/browser/otto-kanban.spec.ts` covers wide/compact navigation,
+canonical target settings, retained drafts, revision-conflict recovery and
+clearing through the real isolated daemon. Its fixture deliberately avoids
+tracker requests; it is not configured-board or live-provider proof. Native/device
+behavior, Jira and mutations require separate acceptance. Source registration
+and a passing fixture alone do not establish a complete Kanban feature.

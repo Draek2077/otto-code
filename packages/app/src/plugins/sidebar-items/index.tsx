@@ -39,6 +39,8 @@ import type { PluginSidebarSection } from "../types";
 import { SidebarItemFrameContext, type SidebarItemFrame } from "./frame";
 import { LegacyPluginSidebarRow } from "./legacy";
 import { resolvePluginPlatform } from "../platform";
+// OTTO(kanban): reuse active/last workspace context without a second navigation store.
+import { withKanbanProjectContext } from "@/otto/kanban/navigation-owner";
 
 export { SidebarRow, SidebarSeparator } from "./kit";
 
@@ -165,6 +167,7 @@ function SidebarItemContent({
   const { anchorTo, offerAnchor, releaseAnchor, anchorToFallback } =
     useSidebarPopoverAnchor("PluginSidebarItem");
   const hosts = useHosts();
+  const pathname = usePathname();
   const compact = useIsCompactFormFactor();
   const hostLabel =
     hosts.find((host) => host.serverId === plugin.serverId)?.label ?? plugin.serverId;
@@ -179,7 +182,8 @@ function SidebarItemContent({
   );
   const openScreen = useCallback(
     (input: PluginOpenScreenInput) => {
-      const { screenId, params } = parsePluginOpenScreenInput(plugin, input);
+      const parsed = parsePluginOpenScreenInput(plugin, input);
+      const { screenId, params } = withKanbanProjectContext(plugin, parsed, pathname);
       rememberPluginContributionHost(pluginScreensHostKey(plugin.id), plugin.serverId);
       showPopover(null);
       onBeforeNavigate?.();
@@ -192,7 +196,7 @@ function SidebarItemContent({
         ),
       );
     },
-    [onBeforeNavigate, plugin, showPopover],
+    [onBeforeNavigate, pathname, plugin, showPopover],
   );
   const openPopover = useCallback(
     (Content: PopoverContent) => {

@@ -37,6 +37,8 @@ import { useProjectIcons } from "@/projects/icons";
 import { createProjectIconTarget } from "@/projects/icon-target";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
+// OTTO(kanban): feature-owned section inside canonical Project Settings.
+import { OttoKanbanProjectSettings } from "@/otto/kanban/project-settings";
 import { useToast } from "@/contexts/toast-context";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
@@ -319,6 +321,10 @@ function ProjectSettingsBody({
         onBackToProjects,
         showBackToProjects,
       })}
+      <OttoKanbanProjectSettings
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+      />
     </View>
   );
 }
