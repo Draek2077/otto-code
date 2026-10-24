@@ -10,7 +10,7 @@ export default function contribute(client: PluginClientContext) {
       icon: "Brain",
       Component: BrainSettings,
     }),
-    client.addSidebarFooterItem({ id: "brain", title: "Brain", Component: BrainSidebar }),
+    client.addSidebarHeaderItem({ id: "brain", title: "Brain", Component: BrainSidebar }),
     client.addCommandCenterItem({
       id: "open-brain",
       context: "global",

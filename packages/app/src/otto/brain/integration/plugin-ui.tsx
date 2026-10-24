@@ -1,6 +1,6 @@
 /** App-owned graphics and operational surfaces behind the narrow built-in plugin bridge. */
 import { lazy, useCallback, useEffect, type ReactNode } from "react";
-import { ScrollView, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useReducedMotion } from "react-native-reanimated";
 import type {
@@ -12,7 +12,10 @@ import type { Theme } from "@/styles/theme";
 import { useAppVisible } from "@/hooks/use-app-visible";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppSettings, resolveContentMaxWidth } from "@/hooks/use-settings";
-import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
+import { DensityIcon } from "@/components/ui/density-icon";
+import { PressHighlight } from "@/components/ui/press-highlight";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { density } from "@/styles/density";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useHostFeature } from "@/runtime/host-features";
@@ -52,6 +55,17 @@ const iconProps = (theme: Theme) => ({ palette: projectTheme(theme).colors });
 const styles = StyleSheet.create((theme) => ({
   settings: { padding: theme.spacing[4], gap: theme.spacing[4] },
   intro: { padding: theme.spacing[4], gap: theme.spacing[4], alignItems: "center" },
+  navigationIcon: {
+    alignSelf: "flex-start",
+    marginHorizontal: theme.spacing[2],
+    width: density.iconButton,
+    height: density.iconButton,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.lg,
+  },
+  navigationHighlight: { backgroundColor: theme.colors.interactionHighlight },
+  tooltip: { color: theme.colors.foreground, fontSize: theme.fontSize.base },
 }));
 function Lifecycle({ children }: { children: ReactNode }) {
   const visible = useAppVisible();
@@ -151,15 +165,27 @@ export function createBrainUiComponents({
     const openBrain = useCallback(() => openScreen({ screenId: "brain" }), [openScreen]);
     if (!presentation.visible) return null;
     return (
-      <SidebarHeaderRow
-        icon={ThemedIcon}
-        label={presentation.label}
-        accessibilityLabel={presentation.label}
-        onPress={openBrain}
-        isActive={currentScreen?.screenId === "brain"}
-        variant="inline"
-        testID="otto-brain-sidebar"
-      />
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <PressHighlight
+            accessibilityRole="button"
+            accessibilityLabel={presentation.label}
+            aria-selected={currentScreen?.screenId === "brain"}
+            onPress={openBrain}
+            style={[
+              styles.navigationIcon,
+              currentScreen?.screenId === "brain" && styles.navigationHighlight,
+            ]}
+            highlightStyle={styles.navigationHighlight}
+            testID="otto-brain-sidebar"
+          >
+            <DensityIcon icon={ThemedIcon} size="md" color="foregroundMuted" />
+          </PressHighlight>
+        </TooltipTrigger>
+        <TooltipContent side="right" align="center" testID="otto-brain-state-tooltip">
+          <Text style={styles.tooltip}>{presentation.label}</Text>
+        </TooltipContent>
+      </Tooltip>
     );
   }
   function Sidebar(props: PluginSidebarItemProps) {
