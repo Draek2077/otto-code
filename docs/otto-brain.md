@@ -91,6 +91,22 @@ load/unload, revisioned profiles, budget preview, rename/reset, guarded deletion
 jobs and demand-owned events. Empty model listings remain valid, and completion requests
 without an engine return an actionable 503.
 
+The host's SSE feed carries complete status snapshots and bounded retained log
+history. Log records carry the host lifetime and absolute index; reconnecting
+readers can deduplicate replay without collapsing repeated identical messages.
+The host advertises `logCursors` for this identity contract. Both host history
+and consumer buffers have line and byte limits, and truncated UTF-8 lines retain
+complete characters.
+
+The public `host` entry provides a transport-injected `BrainStatusStore` and
+validated local event source. All consumers of one owner retain the same store;
+passive subscriptions and bounded cursor waits create no connection. The final
+release aborts the sole feed and reconnect timer. A new host lifetime resets log
+identity, stale callbacks are ignored, and uncertain transport failures expose
+fixed display text. The owner supplies the complete status DTO validator; no
+browser socket or parallel feature cache is created by this library. This is a
+composition boundary, not registration of the app's Brain surfaces.
+
 Profile reads and saves carry an opaque edit revision. A saved profile reports
 whether an existing resident needs reloading; saving never restarts that resident.
 An explicit model load drains inference before applying changed profile or runtime

@@ -6,6 +6,7 @@ export function serveEngineEvents(
   response: ServerResponse,
   status: BrainStatusPublisher,
   logs: BrainLogPublisher,
+  instanceId: string,
 ): void {
   response.writeHead(200, {
     "content-type": "text/event-stream",
@@ -47,7 +48,7 @@ export function serveEngineEvents(
       response.end();
     },
   );
-  unsubscribeLogs = logs.subscribe((line) => write("log", { line }));
+  unsubscribeLogs = logs.subscribe((line, index) => write("log", { line, index, instanceId }));
   // subscribe can synchronously replay a snapshot and discover a closed reader.
   if (closed) {
     unsubscribeStatus();

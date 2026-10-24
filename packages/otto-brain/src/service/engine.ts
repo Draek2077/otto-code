@@ -93,6 +93,7 @@ export class HostEngine implements BrainRuntime {
       events: true,
       liveInference: true,
       logEvents: true,
+      logCursors: true,
       processPool: true,
       profiles: true,
       profileRevisions: true,
@@ -453,7 +454,7 @@ export class HostEngine implements BrainRuntime {
   async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     const route = request.url?.split("?")[0] ?? "";
     if (request.method === "GET" && route === "/__host/events") {
-      serveEngineEvents(response, this.events, this.logs);
+      serveEngineEvents(response, this.events, this.logs, this.context.instanceId);
       return true;
     }
     const lifetime = requestLifetime(response, this.lifetime.signal);

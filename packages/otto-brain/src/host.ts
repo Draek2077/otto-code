@@ -8,6 +8,17 @@ export {
   type LocalBrainClientOptions,
 } from "./service/local-client.js";
 export type { BrainHostEvent } from "./service/event-decoder.js";
+export {
+  BrainStatusStore,
+  type BrainStatusSource,
+  type BrainStatusSnapshot,
+  type BrainStatusLog,
+} from "./client/status-store.js";
+export {
+  brainStatusSource,
+  localBrainStatusSource,
+  type BrainStatusTransport,
+} from "./client/status-source.js";
 export { BrainOwnerSettings, type BrainOwnerSettingsRead } from "./service/owner-settings.js";
 export {
   OwnerSettingsSaveSchema,

@@ -28,7 +28,7 @@
 export type BrainStatusSnapshot = Record<string, unknown>;
 
 export type BrainStatusListener = (snapshot: BrainStatusSnapshot) => void;
-export type BrainLogListener = (line: string) => void;
+export type BrainLogListener = (line: string, index: number) => void;
 
 /**
  * How often the publisher resamples while work is actually in flight.
@@ -349,16 +349,38 @@ export class BrainStatusPublisher {
  */
 export class BrainLogPublisher {
   readonly #listeners = new Set<BrainLogListener>();
+  readonly #history: Array<{ line: string; index: number; bytes: number }> = [];
+  #bytes = 0;
+  #nextIndex = 0;
 
   subscribe(listener: BrainLogListener): () => void {
     this.#listeners.add(listener);
+    try {
+      for (const entry of this.#history) listener(entry.line, entry.index);
+    } catch (error) {
+      this.#listeners.delete(listener);
+      throw error;
+    }
     return () => this.#listeners.delete(listener);
   }
 
   publish(line: string): void {
+    const encoded = new TextEncoder().encode(line);
+    const bounded = new TextDecoder().decode(encoded.subarray(0, 8192), { stream: true });
+    const entry = {
+      line: bounded,
+      index: this.#nextIndex++,
+      bytes: new TextEncoder().encode(bounded).length,
+    };
+    this.#history.push(entry);
+    this.#bytes += entry.bytes;
+    while (this.#history.length > 500 || this.#bytes > 512 * 1024) {
+      const removed = this.#history.shift();
+      if (removed) this.#bytes -= removed.bytes;
+    }
     for (const listener of this.#listeners) {
       try {
-        listener(line);
+        listener(entry.line, entry.index);
       } catch {
         // One dead client must not interrupt the service log.
       }
