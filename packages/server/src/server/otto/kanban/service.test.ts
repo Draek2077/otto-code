@@ -15,9 +15,22 @@ import {
   FileBackedProjectRegistry,
 } from "../../workspace-registry.js";
 import { KanbanDaemonService } from "./service.js";
+import { compilePlugin } from "../../plugins/compiler.js";
+import { evaluateBundle } from "../../plugins/bundle-evaluator.js";
 
 const parent = fileURLToPath(new URL("../../../../../../.tmp/", import.meta.url));
 const roots: string[] = [];
+it("keeps the actual Kanban setup callable after eager bundle interop", async () => {
+  const directory = fileURLToPath(
+    new URL("../../../../../../plugins/otto-kanban/", import.meta.url),
+  );
+  const bundles = await compilePlugin({
+    server: path.join(directory, "index.server.ts"),
+    client: path.join(directory, "index.client.tsx"),
+  });
+  if (!bundles.serverBundle) throw new Error("Kanban server entry did not compile");
+  expect(typeof evaluateBundle(bundles.serverBundle)).toBe("function");
+});
 afterEach(async () => {
   for (const root of roots.splice(0)) {
     const relative = path.relative(parent, root);
