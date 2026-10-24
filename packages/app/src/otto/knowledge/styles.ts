@@ -16,6 +16,4 @@ export const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     marginTop: theme.spacing[2],
   },
-  editor: { minHeight: 200, textAlignVertical: "top", fontFamily: theme.fontFamily.mono },
-  title: { color: theme.colors.foreground, fontSize: theme.fontSize.base },
 }));

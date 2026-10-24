@@ -19,6 +19,7 @@ export const ArrowUp = StubIcon;
 export const ArrowUpRight = StubIcon;
 export const AudioLines = StubIcon;
 export const Blocks = StubIcon;
+export const BookOpen = StubIcon; // OTTO(knowledge): mirrors the actual installed Lucide export.
 export const Bot = StubIcon;
 export const Brain = StubIcon;
 export const Check = StubIcon;

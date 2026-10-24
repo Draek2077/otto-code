@@ -8,7 +8,7 @@ import * as ottoOpenAiSettings from "@getpaseo/plugin/otto/openai-settings";
 import * as ottoKanbanShared from "@getpaseo/plugin/otto/kanban"; // OTTO(kanban): client-safe contracts.
 import * as ottoAtlassianSettings from "@getpaseo/plugin/otto/atlassian-settings"; // OTTO(integration): safe account contracts, no vault code.
 import * as ottoKnowledge from "@getpaseo/plugin/otto/project-knowledge"; // OTTO(knowledge): no filesystem implementation.
-import * as ottoKnowledgeUi from "@/otto/knowledge/plugin-ui"; // OTTO(knowledge): only trusted built-in presentation.
+import * as ottoKnowledgeUi from "@/otto/knowledge/bridge"; // OTTO(knowledge): lazy, trusted built-in presentation.
 import * as pluginClientRuntime from "@getpaseo/plugin/client";
 import * as React from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";

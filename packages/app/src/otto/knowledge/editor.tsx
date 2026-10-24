@@ -18,6 +18,7 @@ import { KnowledgeEditorModel, type EditorFields, type EditorSeed } from "./edit
 import { styles } from "./styles";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
+import { useIsCompactFormFactor } from "@/constants/layout";
 
 type TextField =
   | "id"
@@ -44,6 +45,14 @@ const referenceOptions = KnowledgeDispositionSchema.options.map((value) => ({
   value,
   label: display(value),
 }));
+// FormTextInput splits a plain style into input/chrome styles; keep layout
+// values plain rather than passing a web Unistyles class through that split.
+const bodyStyle = { minHeight: 220, textAlignVertical: "top" } as const;
+const reasonStyle = { minHeight: 80, textAlignVertical: "top" } as const;
+function textStyle(field: TextField, multiline: boolean) {
+  if (!multiline) return undefined;
+  return field === "body" ? bodyStyle : reasonStyle;
+}
 
 function TextField({
   model,
@@ -57,6 +66,7 @@ function TextField({
   multiline?: boolean;
 }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
+  const compact = useIsCompactFormFactor();
   const change = useCallback((value: string) => model.set(field, value), [model, field]);
   return (
     <Field label={label}>
@@ -65,8 +75,9 @@ function TextField({
         onChangeText={change}
         accessibilityLabel={label}
         multiline={multiline}
-        style={multiline ? styles.editor : undefined}
+        style={textStyle(field, multiline)}
         editable={!state.busy}
+        size={compact ? "md" : "sm"}
       />
     </Field>
   );
@@ -225,6 +236,7 @@ export function KnowledgeEditor({
   }, [model, onSaved, state.fields.action, state.fields.status]);
   const cancel = useCallback(async () => {
     if (state.busy) return;
+    const authority = model.getAuthority();
     if (
       await confirmDialog({
         title: "Discard this draft?",
@@ -233,8 +245,8 @@ export function KnowledgeEditor({
         destructive: true,
       })
     )
-      onCancel();
-  }, [state.busy, onCancel]);
+      if (model.getAuthority() === authority) onCancel();
+  }, [state.busy, onCancel, model]);
   return (
     <SettingsSection
       title={seed.page?.title ?? (seed.root ? `Edit ${seed.root.slug}` : "New entry")}

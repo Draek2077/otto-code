@@ -75,6 +75,10 @@ for (const compact of [false, true]) {
       await editor
         .getByRole("textbox", { name: "Markdown", exact: true })
         .fill("Original source-backed draft.");
+      const bodyBox = await editor
+        .getByRole("textbox", { name: "Markdown", exact: true })
+        .boundingBox();
+      expect(bodyBox!.height).toBeGreaterThanOrEqual(180);
       const box = await editor.boundingBox();
       expect(box!.width).toBeLessThanOrEqual(720);
       expect(box!.x).toBeGreaterThanOrEqual(16);
@@ -142,8 +146,11 @@ for (const compact of [false, true]) {
         }),
       ).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath("knowledge-draft-conflict.png") });
+      page.once("dialog", (dialog) => void dialog.dismiss());
       await editor.getByRole("button", { name: "Cancel", exact: true }).click();
-      await page.getByRole("button", { name: "Discard", exact: true }).click();
+      await expect(markdown).toHaveValue("Local draft survives a peer write.");
+      page.once("dialog", (dialog) => void dialog.accept());
+      await editor.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(surface.getByText("Peer conclusion.", { exact: true })).toBeVisible();
       const sourcePath = path.join(project.repoPath, ".otto/knowledge/requirements", `${id}.md`);
       const original = await readFile(sourcePath);
@@ -152,8 +159,8 @@ for (const compact of [false, true]) {
         .getByRole("button", { name: "Store location: Repository", exact: true })
         .click();
       await page.getByRole("menuitem", { name: "Host", exact: true }).click();
+      page.once("dialog", (dialog) => void dialog.accept());
       await surface.getByRole("button", { name: "Save storage", exact: true }).click();
-      await page.getByRole("button", { name: "Copy and switch", exact: true }).click();
       await expect
         .poll(async () => {
           const result = readKnowledgeCatalog.output.parse(
@@ -171,8 +178,11 @@ for (const compact of [false, true]) {
       expect(await readFile(sourcePath)).toEqual(original);
       await page.screenshot({ path: testInfo.outputPath("knowledge-host-settings.png") });
     } finally {
-      await client.close();
-      await project.cleanup();
+      try {
+        await client.close();
+      } finally {
+        await project.cleanup();
+      }
     }
   });
 }
