@@ -5,6 +5,7 @@ import {
   digest,
   knowledgeKinds,
   parseKnowledgePage,
+  repairPurgedPageLinks,
   type KnowledgeKind,
   type KnowledgePage,
 } from "./markdown-page.js";
@@ -13,6 +14,7 @@ import {
   listKnowledgeFiles,
   readKnowledgeFile,
   replaceKnowledgeFile,
+  removeKnowledgeFile,
   withKnowledgeWrite,
   type KnowledgeReplacementPorts,
 } from "./knowledge-files.js";
@@ -21,6 +23,7 @@ import {
   type KnowledgeStore,
   type KnowledgeStoreResolver,
 } from "./store-resolver.js";
+import { removeWikiLinksTo } from "./links.js";
 
 export const knowledgeRoots = [
   "background",
@@ -65,6 +68,14 @@ export interface RecordEdit extends RecordTarget {
 export class KnowledgeNotFoundError extends Error {
   constructor() {
     super("This Knowledge page was removed. Choose another page.");
+  }
+}
+export class KnowledgePurgeIncompleteError extends Error {
+  constructor(cause: unknown) {
+    super(
+      "Purge did not finish cleanly. Link repairs or deletion may have been applied. Reload the catalog and inspect the selected page before another explicit attempt.",
+      { cause },
+    );
   }
 }
 
@@ -211,6 +222,42 @@ export class KnowledgeService {
         replacement: this.ports.replacement,
       }),
     );
+  }
+
+  async purge(input: RecordEdit & { reason: string }): Promise<void> {
+    const reason = requiredText(input.reason);
+    const store = await this.ports.resolver.resolve(input.projectId);
+    await withKnowledgeWrite(store, async () => {
+      const target = await this.readFromStore(store, input);
+      if (target.revision !== input.expectedRevision) throw new KnowledgeConflictError();
+      // Plan and validate ALL current articles/roots before the first write.
+      const repairs: { file: string; expectedRevision: string; body: string }[] = [];
+      const now = this.ports.now().toISOString();
+      for (const page of await this.documents(store)) {
+        if (page.metadata.id === input.id) continue;
+        const raw = await readKnowledgeFile(store, page.absolutePath);
+        if (raw === null || digest(raw) !== page.revision) throw new KnowledgeConflictError();
+        const body = repairPurgedPageLinks({ raw, id: input.id, reason, now });
+        if (body !== raw)
+          repairs.push({ file: page.absolutePath, expectedRevision: page.revision, body });
+      }
+      for (const slug of [...knowledgeRoots, "index"]) {
+        const file = path.join(store.base, "knowledge", `${slug}.md`);
+        const raw = await readKnowledgeFile(store, file);
+        if (raw === null) continue;
+        const body = removeWikiLinksTo(raw, input.id);
+        if (body !== raw) repairs.push({ file, expectedRevision: digest(raw), body });
+      }
+      try {
+        for (const repair of repairs)
+          await replaceKnowledgeFile({ store, ...repair, replacement: this.ports.replacement });
+        // Delete last. A failed repair retains the canonical target and its
+        // history. Partial repairs are not rolled back over newer editor writes.
+        await removeKnowledgeFile(store, target.absolutePath, input.expectedRevision);
+      } catch (error) {
+        throw new KnowledgePurgeIncompleteError(error);
+      }
+    });
   }
 
   private async readFromStore(

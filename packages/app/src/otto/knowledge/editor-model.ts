@@ -206,6 +206,9 @@ export class KnowledgeEditorModel {
           reason: fields.reason,
         };
         break;
+      case "purge":
+        command = { ...target, action: "purge", reason: fields.reason };
+        break;
       case "initialize":
         throw new Error("Initialization is not an editor action");
     }

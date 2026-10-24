@@ -221,6 +221,18 @@ export function KnowledgeEditor({
   useEffect(() => model.setActive(retained && visible), [model, retained, visible]);
   const save = useCallback(async () => {
     const authority = model.getAuthority();
+    if (state.fields.action === "purge") {
+      if (
+        !(await confirmDialog({
+          title: "Permanently delete this page?",
+          message:
+            "This removes the canonical page and its entire history, and repairs links in current pages and roots. Historical references in other pages and recovery copies from earlier storage changes remain unchanged.",
+          confirmLabel: "Delete permanently",
+          destructive: true,
+        }))
+      )
+        return;
+    }
     if (state.fields.action === "review" && state.fields.status !== "proposed") {
       if (
         !(await confirmDialog({
@@ -247,6 +259,8 @@ export function KnowledgeEditor({
     )
       if (model.getAuthority() === authority) onCancel();
   }, [state.busy, onCancel, model]);
+  const destructive = state.fields.action === "purge";
+  const saveLabel = destructive ? "Delete permanently" : "Save";
   return (
     <SettingsSection
       title={seed.page?.title ?? (seed.root ? `Edit ${seed.root.slug}` : "New entry")}
@@ -258,8 +272,12 @@ export function KnowledgeEditor({
         <Button onPress={cancel} disabled={state.busy} variant="outline">
           Cancel
         </Button>
-        <Button onPress={save} disabled={state.busy || state.blocked}>
-          {state.busy ? "Saving..." : "Save"}
+        <Button
+          onPress={save}
+          disabled={state.busy || state.blocked}
+          variant={destructive ? "destructive" : "secondary"}
+        >
+          {state.busy ? "Saving..." : saveLabel}
         </Button>
       </View>
     </SettingsSection>

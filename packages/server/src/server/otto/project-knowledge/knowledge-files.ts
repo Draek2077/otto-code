@@ -196,6 +196,19 @@ export async function replaceKnowledgeFile(input: {
   });
 }
 
+/** Explicit canonical-page purge only, under withKnowledgeWrite. No recursive
+ * deletion, archive, retry or lock recovery. External editors still do not
+ * participate in the final compare/unlink interval. */
+export async function removeKnowledgeFile(
+  store: KnowledgeStore,
+  file: string,
+  expectedRevision: string,
+): Promise<void> {
+  const current = await readKnowledgeBytes(store, file);
+  assertRevision(current, expectedRevision);
+  await unlink(file);
+}
+
 /** Keep both failures available, with the operation failure as the primary cause. */
 export async function runWithKnowledgeCleanup<T>(input: {
   operation: () => Promise<T>;

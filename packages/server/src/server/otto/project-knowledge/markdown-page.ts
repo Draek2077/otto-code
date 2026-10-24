@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { parseDocument } from "yaml";
 import { z } from "zod";
+import { removeWikiLinksTo } from "./links.js";
 
 export const knowledgeKinds = {
   decision: "decisions",
@@ -194,6 +195,30 @@ export function createDraftPage(input: {
     .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
     .join("\n");
   return `---\n${frontmatter}\n---\n# ${input.title}\n\n<!-- compiled_truth -->\n\n${input.statement}\n\n## Timeline\n\n${renderEvent({ kind: "decision", text: "Knowledge draft created.", recordedAt: input.now })}\n`;
+}
+
+/** Deterministic reference repair is authorized by the selected page's purge.
+ * It does not submit a new conclusion for review. Existing timeline bytes (with
+ * the parser's established LF normalization) remain an unchanged prefix. */
+export function repairPurgedPageLinks(input: {
+  raw: string;
+  id: string;
+  reason: string;
+  now: string;
+}): string {
+  parseKnowledgePage(input.raw);
+  const parts = splitPage(input.raw);
+  const statement = removeWikiLinksTo(parts.statement, input.id);
+  if (statement === parts.statement) return input.raw;
+  const metadata = parseDocument(parts.frontmatter);
+  metadata.set("updated_at", input.now);
+  const previousTimeline = parts.timeline.endsWith("\n") ? parts.timeline : `${parts.timeline}\n`;
+  const event = renderEvent({
+    kind: "note",
+    recordedAt: input.now,
+    text: `Removed current wiki-links to purged page ${input.id}. ${input.reason}`,
+  });
+  return `---\n${metadata.toString()}---\n${parts.heading}\n\n<!-- compiled_truth -->\n\n${statement}\n\n## Timeline\n\n${previousTimeline}${event}\n`;
 }
 
 function renderEvent(event: KnowledgeEvent): string {

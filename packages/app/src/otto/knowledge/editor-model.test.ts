@@ -183,3 +183,33 @@ it("does not publish late migration success or a confirmation captured while hid
   expect(await save).toBe(false);
   expect(model.getSnapshot().blocked).toBe(true);
 });
+
+it("pins purge revision/reason, retains failed drafts and rejects stale destructive confirmations", async () => {
+  const calls: KnowledgeCommand[] = [];
+  const model = new KnowledgeEditorModel({ page: page(), action: "purge" }, async (command) => {
+    calls.push(command);
+    return { ok: false, message: "Purge requires reconciliation" };
+  });
+  model.set("reason", "Explicitly approved deletion");
+  const authority = model.getAuthority();
+  model.setActive(false);
+  model.setActive(true);
+  expect(await model.save(authority)).toBe(false);
+  expect(calls).toEqual([]);
+  expect(await model.save()).toBe(false);
+  expect(calls).toEqual([
+    {
+      action: "purge",
+      kind: "requirement",
+      id: "requirement",
+      expectedRevision: revision,
+      reason: "Explicitly approved deletion",
+    },
+  ]);
+  expect(model.getSnapshot()).toMatchObject({
+    blocked: true,
+    fields: { reason: "Explicitly approved deletion" },
+  });
+  expect(await model.save()).toBe(false);
+  expect(calls).toHaveLength(1);
+});

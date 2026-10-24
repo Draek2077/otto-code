@@ -1,10 +1,12 @@
 import { readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { Page, Locator } from "@playwright/test";
 import {
   mutateKnowledge,
   readKnowledgePage,
   readKnowledgeCatalog,
+  type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import { test, expect } from "../support/fixtures";
 import { seedWorkspace } from "../support/helpers/seed-client";
@@ -15,6 +17,56 @@ import { getServerId } from "../support/helpers/server-id";
 import { getE2EDaemonPort } from "../support/helpers/daemon-port";
 import { z } from "zod";
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
+
+async function proveConfirmedPurge(
+  page: Page,
+  surface: Locator,
+  client: Pick<DaemonClient, "invokePluginRpc">,
+  scope: KnowledgeScope,
+  id: string,
+) {
+  const result = mutateKnowledge.output.parse(
+    await client.invokePluginRpc("otto-project-knowledge", mutateKnowledge.name, {
+      scope,
+      command: {
+        action: "create",
+        kind: "finding",
+        id,
+        title: "Accidental fixture",
+        statement: "This selected fixture will be purged.",
+        tags: [],
+      },
+    }),
+  );
+  expect(result.ok).toBe(true);
+  await surface.getByRole("button", { name: "Back to pages", exact: true }).click();
+  await surface
+    .getByTestId(`knowledge-record-${id}`)
+    .getByRole("button", { name: "Open", exact: true })
+    .click();
+  await surface.getByRole("button", { name: "Permanently delete", exact: true }).click();
+  const editor = surface.getByTestId("knowledge-editor");
+  await editor
+    .getByRole("textbox", { name: "Reason", exact: true })
+    .fill("Human confirmed removing this accidental fixture.");
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await editor.getByRole("button", { name: "Delete permanently", exact: true }).click();
+  await expect(editor.getByRole("textbox", { name: "Reason", exact: true })).toHaveValue(
+    "Human confirmed removing this accidental fixture.",
+  );
+  page.once("dialog", (dialog) => void dialog.accept());
+  await editor.getByRole("button", { name: "Delete permanently", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(surface.getByRole("button", { name: "Back to pages", exact: true })).toHaveCount(0);
+  const removed = readKnowledgePage.output.parse(
+    await client.invokePluginRpc("otto-project-knowledge", readKnowledgePage.name, {
+      scope,
+      kind: "finding",
+      id,
+    }),
+  );
+  expect(removed).toMatchObject({ ok: false, error: { code: "not_found" } });
+}
 
 async function callKnowledgeMcp(name: string, args: Record<string, unknown>) {
   const response = await fetch(`http://127.0.0.1:${getE2EDaemonPort()}/mcp/agents`, {
@@ -183,6 +235,11 @@ for (const compact of [false, true]) {
         .toBe("host");
       expect(await readFile(sourcePath)).toEqual(original);
       await page.screenshot({ path: testInfo.outputPath("knowledge-host-settings.png") });
+      await proveConfirmedPurge(page, surface, client, scope, `${id}-purge`);
+      await surface
+        .getByTestId(`knowledge-record-${id}`)
+        .getByRole("button", { name: "Open", exact: true })
+        .click();
       const hosted = readKnowledgeCatalog.output.parse(
         await client.invokePluginRpc("otto-project-knowledge", readKnowledgeCatalog.name, {
           scope,

@@ -108,15 +108,24 @@ export function createKnowledgeTools(
     ),
     tool(
       "manage_project_knowledge",
-      "Create Draft records/charters/references, update truth with a reason, append evidence, track delivery, evaluate references or edit roots. Use read revisions; never retry or rebase a conflict automatically. Reconcile only verified durable outcomes at effort end. Never confirm or supersede without explicit user agreement; set userApprovedReview only after that agreement. Initialization is explicit and preserves authored roots.",
+      "Create Draft records/charters/references, update truth with a reason, append evidence, track delivery, evaluate references or edit roots. Use read revisions; never retry or rebase a conflict automatically. Reconcile only verified durable outcomes at effort end. Never confirm or supersede without explicit user agreement; set userApprovedReview only after that agreement. Initialization is explicit and preserves authored roots. Purge permanently deletes a page and its history and repairs incoming current wiki-links; it requires explicit human approval and userApprovedDeletion.",
       z
         .object({
           workspaceId,
           command: KnowledgeCommandSchema,
           userApprovedReview: z.boolean().optional(),
+          userApprovedDeletion: z.boolean().optional(),
         })
         .strict(),
       async (input) => {
+        if (input.command.action === "purge" && !input.userApprovedDeletion)
+          return {
+            ok: false,
+            error: {
+              code: "invalid",
+              message: "Explicit human approval is required before permanently deleting Knowledge.",
+            },
+          };
         if (input.command.action === "review" && !input.userApprovedReview)
           return {
             ok: false,

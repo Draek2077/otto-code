@@ -26,6 +26,7 @@ function PageActions({ page, onEdit }: { page: KnowledgeRecord; onEdit(seed: Edi
   const review = useCallback(() => onEdit({ page, action: "review" }), [page, onEdit]);
   const delivery = useCallback(() => onEdit({ page, action: "delivery" }), [page, onEdit]);
   const reference = useCallback(() => onEdit({ page, action: "reference" }), [page, onEdit]);
+  const purge = useCallback(() => onEdit({ page, action: "purge" }), [page, onEdit]);
   return (
     <View style={styles.actions}>
       <Button onPress={truth} variant="outline" size="sm">
@@ -50,6 +51,9 @@ function PageActions({ page, onEdit }: { page: KnowledgeRecord; onEdit(seed: Edi
           Evaluate reference
         </Button>
       ) : null}
+      <Button onPress={purge} variant="destructive" size="sm">
+        Permanently delete
+      </Button>
     </View>
   );
 }

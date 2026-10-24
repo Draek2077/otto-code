@@ -68,6 +68,17 @@ Editing captures the opened revision; peer conflicts retain the draft and block
 another save. Cancel/discard is explicit. Hide/unmount invalidates pending review
 confirmations and late write acknowledgments, without claiming host cancellation.
 
+Permanently delete requires a reason and a destructive human confirmation. It
+removes the canonical page and its full history, repairs incoming wiki-links in
+other current articles, roots and an existing index, and preserves prior peer
+timeline entries. The MCP operation also requires declared human deletion
+approval. Purge validates every input before writing, pins each repaired file's
+digest and deletes the selected page last after another revision check. A partial
+repair failure retains the selected file when deletion has not happened and
+requires explicit reconciliation; it does not roll repairs back over newer
+external edits. Recovery copies from earlier explicit storage switches are
+separate stores and remain untouched. This is not a multi-file transaction.
+
 Active views share one change feed per canonical host/project. The daemon uses
 Paseo's file-observer service, prunes unrelated subtrees and debounces filesystem
 bursts. It observes the nearest existing store ancestor so an external first
@@ -115,7 +126,8 @@ An abandoned lock remains in place and stops mutations. Inspect the writer befor
 manual recovery; automatic lock stealing can permit two live writers. Editors and
 Git do not observe the Otto lock. Digest checks detect earlier external edits,
 but a filesystem has no portable conditional rename to exclude an external edit
-in the final check-to-rename interval. The implementation does not claim
+in the final check-to-rename interval, or conditional unlink to exclude a final
+external race during confirmed purge. The implementation does not claim
 cross-file transactional snapshots or power-loss durability of directory entries.
 
 ## Integration boundary

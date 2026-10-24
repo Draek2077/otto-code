@@ -19,6 +19,7 @@ import type { WorkspaceRegistry } from "../../workspace-registry.js";
 import {
   KnowledgeService,
   KnowledgeNotFoundError,
+  KnowledgePurgeIncompleteError,
   knowledgeRoots,
   type KnowledgeDocument,
 } from "./knowledge-service.js";
@@ -235,6 +236,13 @@ export class KnowledgeDaemonService {
           projectRoot: project.rootPath,
         });
         break;
+      case "purge":
+        try {
+          await this.service.purge(input);
+        } finally {
+          this.observations.notify(project.projectId);
+        }
+        return { changed: true as const };
     }
     this.observations.notify(project.projectId);
     return { changed: true as const };
@@ -318,6 +326,8 @@ export class KnowledgeDaemonService {
     try {
       return await run();
     } catch (error) {
+      if (error instanceof KnowledgePurgeIncompleteError)
+        return { ok: false, error: { code: "conflict", message: error.message } };
       if (error instanceof KnowledgeNotFoundError)
         return { ok: false, error: { code: "not_found", message: error.message } };
       if (error instanceof KnowledgeHostError)
@@ -361,7 +371,7 @@ export class KnowledgeDaemonService {
         error: {
           code: "unavailable",
           message:
-            "The owning host could not complete this Knowledge operation. Reload to check its outcome; existing data was not discarded.",
+            "The owning host could not complete this Knowledge operation. Its outcome is unknown; reload before another explicit attempt. No automatic retry was performed.",
         },
       };
     }

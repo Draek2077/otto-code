@@ -138,6 +138,7 @@ export const KnowledgeCommandSchema = z.discriminatedUnion("action", [
     })
     .strict(),
   z.object({ action: z.literal("initialize") }).strict(),
+  z.object({ action: z.literal("purge"), ...editTarget, reason }).strict(),
 ]);
 export const readKnowledgeCatalog = defineRpc({
   name: "knowledge.project.catalog",

@@ -224,3 +224,38 @@ it("exposes provider-neutral tools with bounded discovery and explicit review ag
   });
   expect(JSON.stringify(visible.structuredContent)).not.toContain("Verified fixture");
 });
+
+it("requires explicit human deletion agreement in the shared MCP tool", async () => {
+  const f = await fixture();
+  await f.create();
+  const page = await f.host.service.read({
+    projectId: "project-a",
+    kind: "requirement",
+    id: "fixture-page",
+  });
+  const manage = createKnowledgeTools(f.host, async () => f.scope).find(
+    (tool) => tool.name === "manage_project_knowledge",
+  );
+  if (!manage) throw new Error("Missing shared tool");
+  const command = {
+    action: "purge",
+    kind: "requirement",
+    id: page.metadata.id,
+    expectedRevision: page.revision,
+    reason: "Explicit human approval",
+  };
+  expect((await manage.handler({ command }, {})).structuredContent).toMatchObject({
+    ok: false,
+    error: { code: "invalid" },
+  });
+  expect(
+    (await f.host.service.read({ projectId: "project-a", kind: "requirement", id: "fixture-page" }))
+      .revision,
+  ).toBe(page.revision);
+  expect(
+    (await manage.handler({ command, userApprovedDeletion: true }, {})).structuredContent,
+  ).toMatchObject({ ok: true });
+  await expect(
+    f.host.service.read({ projectId: "project-a", kind: "requirement", id: "fixture-page" }),
+  ).rejects.toThrow("removed");
+});
