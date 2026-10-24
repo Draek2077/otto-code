@@ -49,6 +49,7 @@ export const test = base.extend<{ brain: { localRunning(): Promise<boolean> } }>
   },
 });
 export { expect };
+export { request as requestBrain };
 
 export async function openBrainSettings(page: Page, compact: boolean) {
   await gotoAppShell(page);

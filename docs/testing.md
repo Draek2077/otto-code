@@ -218,7 +218,11 @@ Agent providers handle their own auth. Do not add auth checks, environment varia
 every `e2e/browser/otto-*.spec.ts` with one browser worker and no retries. It runs on
 the restoration branch and relevant pull requests; manual dispatch can pin an exact
 source commit. These journeys use isolated test daemons and synthetic endpoints,
-with no provider API keys, model launches or publishing. Screenshots and traces are
+with no provider API keys, native model launches or publishing. Operational Brain
+journeys reuse the isolated synthetic Node engine from the host contract tests;
+the browser, daemon channel, owner service, profile files and process lifecycle
+remain real. These fixtures do not prove native llama.cpp/GPU or device behavior.
+Screenshots and traces are
 retained on both success and failure. The full CI and product build matrix remain
 separate required gates.
 
@@ -243,6 +247,7 @@ packaging remains a build gate.
 | Compact settings           | Same spec: two-field setup with collapsed advanced options, settings/key conflicts retain drafts, explicit review/retry and adoption of untouched peer changes                                                                                              |
 | Connection removal         | `plugins/otto-openai-compatible-provider/server/provider-removal.test.ts` and `server/credentials.test.ts`: cancel only affected sessions, retain transcript persistence, delete the key and persist retirement across restart                              |
 | Brain app entrypoints      | `packages/app/e2e/browser/otto-brain.spec.ts`: real host settings, independent enable/autostart, persistence, animated icon entry and all five tab controls on wide/compact screens without starting a runtime; this does not prove loaded-model operations |
+| Brain model operations     | `packages/app/e2e/browser/otto-brain-operations.spec.ts`: wide/compact profile autosave and rename persistence, synthetic resident load/unload, real owner log copy, and an actionable unloaded benchmark error through the selected daemon's Remote route  |
 
 ## Debugging with tests
 

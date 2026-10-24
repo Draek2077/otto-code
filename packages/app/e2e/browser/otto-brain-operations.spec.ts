@@ -1,0 +1,67 @@
+import { test, expect } from "../support/helpers/otto-brain-owner";
+import { openBrainSettings } from "../support/helpers/otto-brain";
+
+test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
+test.setTimeout(90000);
+for (const compact of [false, true]) {
+  test(`Brain model, profile and log operations reach the actual owner (${compact ? "compact" : "wide"})`, async ({
+    page,
+    brainOwner,
+  }, testInfo) => {
+    if (compact) await page.setViewportSize({ width: 390, height: 844 });
+    await openBrainSettings(page, compact);
+    await expect(page.getByRole("switch", { name: "Enable Brain", exact: true })).toBeChecked();
+    await page.getByRole("button", { name: "Open Brain", exact: true }).click();
+    await page.getByRole("button", { name: "Benchmark", exact: true }).click();
+    await page.getByTestId("brain-bench-run").click();
+    await expect(
+      page.getByText("Load a model before starting a benchmark", { exact: true }),
+    ).toBeVisible();
+    expect((await brainOwner.jobs()).jobs).toEqual([]);
+
+    await page.getByRole("button", { name: "Library", exact: true }).click();
+    await expect(page.getByText(brainOwner.modelName, { exact: true }).first()).toBeVisible();
+    await page.getByRole("button", { name: "Models", exact: true }).click();
+    await page.getByTestId(`brain-model-${brainOwner.modelId}`).click();
+    await page.getByTestId("brain-field-contextSize-down").click();
+    await expect.poll(() => brainOwner.profileContext()).toBe(8192);
+    await page.getByTestId("brain-model-rename").click();
+    await page.getByTestId("brain-model-rename-modal-input").fill("UI fixture model");
+    await page.getByTestId("brain-model-rename-modal-submit").click();
+    await expect
+      .poll(
+        async () =>
+          (await brainOwner.inventory()).models.find((row) => row.id === brainOwner.modelId)
+            ?.displayName,
+      )
+      .toBe("UI fixture model");
+    await page.getByTestId("brain-model-load").click();
+    await expect(page.getByTestId("brain-model-unload")).toBeEnabled({ timeout: 30000 });
+    await expect
+      .poll(async () => (await brainOwner.status()).residents.map((row) => row.modelId))
+      .toEqual([brainOwner.modelId]);
+
+    await page.getByRole("button", { name: "Logs", exact: true }).click();
+    await expect(page.getByText(/brain-e2e-ready/).first()).toBeVisible();
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.getByTestId("brain-logs-copy").click();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toContain("brain-e2e-ready");
+    await page.getByRole("button", { name: "Models", exact: true }).click();
+    await page.getByTestId(`brain-model-${brainOwner.modelId}`).click();
+    await page.getByTestId("brain-model-unload").click();
+    await expect(page.getByTestId("brain-model-load")).toBeEnabled({ timeout: 30000 });
+    await page.screenshot({ path: testInfo.outputPath("brain-model-operations.png") });
+    await page.reload();
+    await openBrainSettings(page, compact);
+    await page.getByRole("button", { name: "Open Brain", exact: true }).click();
+    await page.getByRole("button", { name: "Models", exact: true }).click();
+    await expect(page.getByTestId(`brain-model-${brainOwner.modelId}`)).toHaveAttribute(
+      "aria-label",
+      "UI fixture model",
+    );
+    await page.getByTestId(`brain-model-${brainOwner.modelId}`).click();
+    expect(await brainOwner.profileContext()).toBe(8192);
+  });
+}
