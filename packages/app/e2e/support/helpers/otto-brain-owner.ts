@@ -3,35 +3,49 @@ import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
 import { once } from "node:events";
+import { pathToFileURL } from "node:url";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import {
-  BrainConfigSchema,
-  readBrainConfigRevision,
-  updateBrainConfig,
-  resolveBrainPaths,
-  loadProfilesStore,
-} from "@getpaseo/brain/config";
-import { HostEngine, startService, type ServiceHandle } from "@getpaseo/brain/host";
-import { Supervisor } from "@getpaseo/brain";
-import { llamaCppRuntimeDriver } from "@getpaseo/brain/runtime";
-import { scanModels } from "@getpaseo/brain/models";
+import type { HostEngine, ServiceHandle } from "@getpaseo/brain/host";
 import { BrainConnectionReadSchema, BrainStatusSchema } from "@getpaseo/protocol/otto/brain";
 import {
   BrainInventorySchema,
   BrainProfileReadSchema,
   BrainJobListSchema,
 } from "@getpaseo/protocol/otto/brain-library";
-import { engineFixtureSource } from "../../../../otto-brain/test-engine-script.mjs";
 import { test as base, expect, requestBrain } from "./otto-brain";
 import { connectDaemonClient } from "./daemon-client-loader";
 
 type Client = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">;
+// Like daemon-client-loader, use file URLs to keep the built ESM graph outside
+// Playwright's CommonJS TypeScript transform. All classes share one module graph.
+async function loadBrainModules() {
+  const root = path.resolve(__dirname, "../../../../otto-brain");
+  const url = (file: string) => pathToFileURL(path.join(root, file)).href;
+  const config: typeof import("@getpaseo/brain/config") = await import(url("dist/config/index.js"));
+  const host: typeof import("@getpaseo/brain/host") = await import(url("dist/host.js"));
+  const core: typeof import("@getpaseo/brain") = await import(url("dist/index.js"));
+  const runtime: typeof import("@getpaseo/brain/runtime") = await import(
+    url("dist/runtime/index.js")
+  );
+  const models: typeof import("@getpaseo/brain/models") = await import(url("dist/models/index.js"));
+  const script: typeof import("../../../../otto-brain/test-engine-script.mjs") = await import(
+    url("test-engine-script.mjs")
+  );
+  return { ...config, ...host, Supervisor: core.Supervisor, ...runtime, ...models, ...script };
+}
 function fixtureRoot(): string {
   const parent = path.resolve(__dirname, "../../../../../.tmp");
   fs.mkdirSync(parent, { recursive: true });
   return parent;
 }
-async function createOwnerEngineFixture() {
+async function createOwnerEngineFixture(brain: Awaited<ReturnType<typeof loadBrainModules>>) {
+  const {
+    resolveBrainPaths,
+    engineFixtureSource,
+    Supervisor,
+    loadProfilesStore,
+    llamaCppRuntimeDriver,
+  } = brain;
   const root = fs.mkdtempSync(path.join(fixtureRoot(), "brain-ui-owner-"));
   const paths = resolveBrainPaths({
     ...process.env,
@@ -90,7 +104,16 @@ interface BrainOwnerFixture {
 export const test = base.extend<{ brainOwner: BrainOwnerFixture }>({
   brainOwner: async ({ brain }, provide) => {
     void brain;
-    const fixture = await createOwnerEngineFixture();
+    const modules = await loadBrainModules();
+    const {
+      BrainConfigSchema,
+      updateBrainConfig,
+      readBrainConfigRevision,
+      startService,
+      HostEngine,
+      scanModels,
+    } = modules;
+    const fixture = await createOwnerEngineFixture(modules);
     let service: ServiceHandle | null = null;
     let client: Client | null = null;
     let original: ReturnType<typeof BrainConnectionReadSchema.parse> | null = null;
