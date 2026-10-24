@@ -54,7 +54,7 @@ stopped. `live-status`, `resources`, `model ls`/`scan`/`load`/`unload`/`rename`/
 job admission; closing that command does not cancel its durable work. Inspect it
 with `job ls` and cancel it explicitly with `job cancel`.
 
-Catalog, search, pull/add, calibration, sweeps and runtime commands share their
+Catalog, search, pull/add, calibration, sweeps, runtime, report and replay commands share their
 option definitions, handlers and table/JSON/YAML/quiet formatters with
 `otto-brain`. Calibration and sweeps use `--model <fragment>`; sweeps also accept
 `--budgets`. Runtime installation accepts `--build` and `--variant`; destinations
@@ -63,6 +63,15 @@ and bundle selections. These commands wait on the existing event feed for their
 admitted job. An explicit Ctrl-C requests cancellation of that job; a dropped
 feed alone does not. An uncertain admission must be checked in the host's jobs
 before another submission.
+
+`report --out <path>` writes on the selected Brain owner, including a Remote
+owner. It does not create a client-local export. `rescore --run <archive-id>`
+replays that owner's saved transcripts as a cancellable CPU benchmark job;
+`--no-execute` retains the existing syntax-check-only Python policy. Neither
+operation loads a model or rewrites saved scores/transcripts. Replay has an
+explicit mode within the existing benchmark job category, so older readers can
+still parse its status. Current screens and terminal progress identify it as
+rescoring rather than a new inference measurement.
 
 The shared handlers borrow one target-scoped transport. A disconnected Remote
 owner never falls back to a local home. Each command request carries the captured

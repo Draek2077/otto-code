@@ -7,10 +7,14 @@ import {
   DirectSchema,
 } from "../service/model-acquisition-contract.js";
 import { CommandError } from "../output/types.js";
+import { ReportExportOptionsSchema } from "./report-contract.js";
+import { RescoreOptionsSchema } from "./rescore-contract.js";
 
 const Id = z.string().min(1).max(1024);
 const Runtime = z.object({ runtimeId: Id }).strict();
 export const BrainCommandRequestSchema = z.discriminatedUnion("operation", [
+  z.object({ operation: z.literal("rescore"), body: RescoreOptionsSchema }).strict(),
+  z.object({ operation: z.literal("report-export"), body: ReportExportOptionsSchema }).strict(),
   z.object({ operation: z.literal("capabilities") }).strict(),
   z.object({ operation: z.literal("inventory") }).strict(),
   z.object({ operation: z.literal("catalog") }).strict(),
@@ -57,6 +61,8 @@ const GET = {
   runtimes: "/__host/runtimes",
 } as const;
 const POST = {
+  rescore: "/__host/jobs/rescore",
+  "report-export": "/__host/reports/export",
   "job-cancel": "/__host/jobs/cancel",
   "job-model": "/__host/jobs",
   "job-pull": "/__host/jobs/pull",

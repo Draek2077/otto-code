@@ -66,6 +66,8 @@ export const BrainStatusSchema = z.object({
     ownerSettings: z.boolean(),
     restart: z.boolean().optional(),
     tui: z.boolean().optional(),
+    reports: z.boolean().optional(),
+    rescore: z.boolean().optional(),
   }),
   residents: z
     .array(

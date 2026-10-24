@@ -9,20 +9,16 @@ import {
 import { rescoreRun, type RescoreRunResult } from "../bench/rescore.js";
 import * as archive from "../ops/archive.js";
 import * as results from "../ops/results.js";
-import { withCommandSignal } from "./host-command.js";
+import { withCommandSignal, withCommandHost, waitForCommandJob } from "./host-command.js";
+import { selectedBrainCommandHost } from "./target.js";
+import {
+  RescoreOptionsSchema,
+  RescoreRowsSchema,
+  RescoreAdmissionSchema,
+  type RescoreRow,
+} from "./rescore-contract.js";
+import { z } from "zod/v3";
 
-interface RescoreTask {
-  taskId: string;
-  before: number | null;
-  score: number | null;
-  changed: boolean;
-  summary: string;
-}
-interface RescoreRow {
-  archiveId: string;
-  changed: number;
-  tasks: RescoreTask[];
-}
 function row(result: RescoreRunResult, stored: results.RunRecord[]): RescoreRow {
   const record =
     stored.find((entry) => entry.archiveId === result.archiveId) ??
@@ -80,29 +76,60 @@ export async function runRescoreCommand(
   options: { run?: string; execute?: boolean },
   _command: Command,
 ): Promise<AnyCommandResult<RescoreRow>> {
-  const runs = archive.list();
-  if (!runs.length)
-    throw new CommandError({
-      code: "NO_ARCHIVE",
-      message: "no archived transcripts yet",
-      details: "run `otto brain bench --model <name>` first",
-    });
-  if (options.run && !runs.includes(options.run))
-    throw new CommandError({
-      code: "UNKNOWN_RUN",
-      message: "The archived run was not found in this Brain home",
-    });
+  const controls = RescoreOptionsSchema.parse({ run: options.run, execute: options.execute });
+  const data = selectedBrainCommandHost()
+    ? await withCommandHost(async (port, signal) => {
+        // COMPAT(brainRescore): added in v0.10.0; remove after 2027-04-24 when floor >= v0.10.0.
+        if (
+          !z
+            .object({ rescore: z.literal(true) })
+            .safeParse(await port.request("/__host/capabilities", signal)).success
+        )
+          throw new CommandError({
+            code: "UPDATE_HOST",
+            message: "Update the Brain owner to rescore saved benchmarks.",
+          });
+        const admitted = RescoreAdmissionSchema.parse(
+          await port.request("/__host/jobs/rescore", signal, controls),
+        );
+        if (!admitted.ok) throw rescoreError(admitted.code);
+        const job = await waitForCommandJob(port, admitted.job.id, signal);
+        return RescoreRowsSchema.parse(job.result);
+      })
+    : await withCommandSignal(prepareOwnerRescore(controls, process.env));
+  return { type: "list", data, schema };
+}
+
+function rescoreError(code: "NO_ARCHIVE" | "UNKNOWN_RUN"): CommandError {
+  if (code === "UNKNOWN_RUN")
+    return new CommandError({ code, message: "The archived run was not found in this Brain home" });
+  return new CommandError({
+    code,
+    message: "no archived transcripts yet",
+    details: "run `otto brain bench --model <name>` first",
+  });
+}
+
+/** Preflight captures the owning home's target list; replay remains cancellable and read-only. */
+export function prepareOwnerRescore(
+  options: { run?: string; execute?: boolean },
+  env: NodeJS.ProcessEnv,
+) {
+  const runs = archive.list(env);
+  if (!runs.length) throw rescoreError("NO_ARCHIVE");
+  if (options.run && !runs.includes(options.run)) throw rescoreError("UNKNOWN_RUN");
   const targets = options.run ? [options.run] : runs;
-  const stored = results.loadAll();
-  const data = await withCommandSignal(async (signal) => {
+  const stored = results.loadAll(env);
+  return async (signal: AbortSignal): Promise<RescoreRow[]> => {
     const rows: RescoreRow[] = [];
     for (const id of targets) {
       signal.throwIfAborted();
-      rows.push(row(await rescoreRun(id, { execute: options.execute !== false, signal }), stored));
+      rows.push(
+        row(await rescoreRun(id, { execute: options.execute !== false, signal, env }), stored),
+      );
     }
-    return rows;
-  });
-  return { type: "list", data, schema };
+    return RescoreRowsSchema.parse(rows);
+  };
 }
 
 export { addRescoreOptions } from "./options.js";

@@ -88,3 +88,25 @@ test("quant choices keep actual installed model ids and owner-resolved projector
     projector: { file: "projector.gguf", installed: false },
   });
 });
+
+test("saved replay stays in the compatible benchmark category and shows its actual operation", () => {
+  const wire = {
+    id: "rescore",
+    operation: "benchmark",
+    benchmarkMode: "rescore",
+    state: "running",
+    subject: { modelId: null, catalogModelId: null, repo: null, quant: null },
+    createdAt: "created",
+    startedAt: "started",
+    finishedAt: null,
+    error: null,
+    progress: { summary: "Rescoring saved benchmark transcripts" },
+  };
+  expect(BrainJobSchema.omit({ benchmarkMode: true }).parse(wire).operation).toBe("benchmark");
+  expect(jobToView(BrainJobSchema.parse(wire))).toMatchObject({
+    label: "Rescore saved benchmark",
+    kind: "bench",
+    modelId: null,
+    message: "Rescoring saved benchmark transcripts",
+  });
+});

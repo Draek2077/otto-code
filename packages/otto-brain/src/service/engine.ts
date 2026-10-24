@@ -54,6 +54,7 @@ import { ModelAcquisition } from "./model-acquisition.js";
 import { BrainOwnerSettings } from "./owner-settings.js";
 import { handleOwnerSettings } from "./owner-settings-http.js";
 import { BrainResourceReader, type BrainHostResources } from "./resource-reader.js";
+import { BrainReports } from "./reports.js";
 import { CompletionTelemetry } from "./completion-telemetry.js";
 import { BrainTuiReadService } from "./tui-projection.js";
 import { loadRenameMap } from "../models/rename-map.js";
@@ -96,7 +97,10 @@ export class HostEngine implements BrainRuntime {
     this.jobRevision++;
     const terminal = this.jobs
       .summaries()
-      .filter((job) => job.state !== "queued" && job.state !== "running")
+      .filter(
+        (job) =>
+          job.benchmarkMode !== "rescore" && job.state !== "queued" && job.state !== "running",
+      )
       .map((job) => `${job.id}:${job.state}`)
       .join(",");
     if (terminal !== this.terminalJobs) {
@@ -115,10 +119,13 @@ export class HostEngine implements BrainRuntime {
   private readonly resources: BrainResourceReader<BrainHostResources>;
   private readonly telemetry = new CompletionTelemetry();
   private readonly tui: BrainTuiReadService;
+  private readonly reports: BrainReports;
   get capabilities() {
     return {
       apiVersion: 3,
       writable: this.context.config.allowRemoteConfig,
+      reports: true,
+      rescore: true,
       load: true,
       inventory: true,
       events: true,
@@ -320,6 +327,11 @@ export class HostEngine implements BrainRuntime {
       deletion: (id) => this.library.deletionState(id),
       requireWrite: (request) => this.requireWrite(request),
     });
+    this.reports = new BrainReports(
+      context.env,
+      (request) => this.requireWrite(request),
+      this.jobs,
+    );
   }
 
   private libraryChanged(): void {
@@ -622,6 +634,7 @@ export class HostEngine implements BrainRuntime {
     )
       return true;
     for (const handler of [
+      this.reports,
       this.tui,
       this.runtimeManagement,
       this.acquisition,

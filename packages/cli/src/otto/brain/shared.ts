@@ -44,7 +44,17 @@ function addSelectors(command: Command): void {
  * has its reviewed portable owner port. The adopted groups have one definition. */
 export function adoptSharedBrainCommands(brain: Command): void {
   const shared = createBrainCommand({ execute: executeOnOwner });
-  const groups = new Set(["catalog", "search", "pull", "add", "calibrate", "sweep", "runtime"]);
+  const groups = new Set([
+    "catalog",
+    "search",
+    "pull",
+    "add",
+    "calibrate",
+    "sweep",
+    "runtime",
+    "report",
+    "rescore",
+  ]);
   for (const option of shared.options) {
     if (!brain.options.some((current) => current.long === option.long)) brain.addOption(option);
   }

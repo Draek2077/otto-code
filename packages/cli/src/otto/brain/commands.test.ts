@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 const transport = vi.hoisted(() => ({ connect: vi.fn(), invoke: vi.fn(), close: vi.fn() }));
 vi.mock("../../utils/client.js", () => ({ connectToDaemon: transport.connect }));
 import { Command } from "commander";
@@ -13,8 +16,16 @@ function cli() {
     .option("--format <format>", "Output format", "cli")
     .addCommand(createOttoBrainCommand());
 }
+function feedGate() {
+  let finish!: (value: unknown) => void;
+  const promise = new Promise<unknown>((resolve) => {
+    finish = resolve;
+  });
+  return { promise, finish: (value: unknown) => finish(value) };
+}
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   transport.connect.mockReset();
   transport.invoke.mockReset();
   transport.close.mockReset();
@@ -69,7 +80,11 @@ describe("Brain CLI command composition", () => {
     expect(transport.close).toHaveBeenCalledTimes(1);
   });
 
-  it("runs the shared catalog handler against the selected Remote owner with nested YAML output", async () => {
+  it("runs shared catalog, report and replay handlers on the selected Remote owner", async () => {
+    const clientHome = fileURLToPath(
+      new URL(`../../../../../.tmp/brain-cli-client-${randomUUID()}`, import.meta.url),
+    );
+    vi.stubEnv("OTTO_HOME", clientHome);
     const status = {
       instanceId: "selected-owner",
       running: true,
@@ -93,7 +108,25 @@ describe("Brain CLI command composition", () => {
         ]),
       ),
     };
+    const feed = feedGate();
     transport.invoke.mockImplementation(async (_plugin: string, method: string, input: unknown) => {
+      if (method === "brain.status.wait") return feed.promise;
+      if (method === "brain.status.release") {
+        feed.finish({
+          ok: true,
+          value: {
+            controlRevision: "selected-revision",
+            cursor: "released",
+            connection: "connecting",
+            status: null,
+            logs: [],
+            firstLogIndex: 0,
+            nextLogIndex: 0,
+            error: null,
+          },
+        });
+        return { ok: true, value: { released: true } };
+      }
       if (method === "brain.bootstrap")
         return {
           ok: true,
@@ -136,6 +169,8 @@ describe("Brain CLI command composition", () => {
             inventory: true,
             jobs: true,
             events: true,
+            reports: true,
+            rescore: true,
           },
         };
       if (request.operation === "inventory") return { ok: true, value: { models: [] } };
@@ -152,6 +187,55 @@ describe("Brain CLI command composition", () => {
                 favorite: true,
               },
             ],
+          },
+        };
+      if (request.operation === "report-export")
+        return {
+          ok: true,
+          value: {
+            ok: true,
+            report: {
+              file: "owner-issued-report.html",
+              count: 1,
+              columns: [{ id: "task", category: "tools" }],
+              models: [
+                {
+                  id: "host/model",
+                  displayName: "Owner model",
+                  overall: 0.5,
+                  tasks: [{ id: "task", category: "tools", score: 0.5 }],
+                },
+              ],
+            },
+          },
+        };
+      if (request.operation === "rescore")
+        return { ok: true, value: { ok: true, job: { id: "rescore-job" } } };
+      if (request.operation === "job-read")
+        return {
+          ok: true,
+          value: {
+            job: {
+              id: "rescore-job",
+              state: "completed",
+              progress: null,
+              error: null,
+              result: [
+                {
+                  archiveId: "owner-run",
+                  changed: 1,
+                  tasks: [
+                    {
+                      taskId: "tools",
+                      before: 0.5,
+                      score: 1,
+                      changed: true,
+                      summary: "Stored exchange verified",
+                    },
+                  ],
+                },
+              ],
+            },
           },
         };
       throw new Error("Unexpected test command");
@@ -186,5 +270,54 @@ describe("Brain CLI command composition", () => {
       }),
     );
     expect(transport.close).toHaveBeenCalledOnce();
+    lines.length = 0;
+    await cli().parseAsync(
+      [
+        "brain",
+        "report",
+        "--host",
+        "selected.example:6788",
+        "--quiet",
+        "--out",
+        "owner-report.html",
+      ],
+      { from: "user" },
+    );
+    expect(lines.join("")).toBe("owner-issued-report.html\n");
+    expect(transport.invoke).toHaveBeenCalledWith(
+      "otto-brain",
+      "brain.cli.request",
+      expect.objectContaining({
+        request: { operation: "report-export", body: { out: "owner-report.html" } },
+      }),
+    );
+    expect(transport.close).toHaveBeenCalledTimes(2);
+    lines.length = 0;
+    await cli().parseAsync(
+      [
+        "brain",
+        "rescore",
+        "--host",
+        "selected.example:6788",
+        "--quiet",
+        "--run",
+        "owner-run",
+        "--no-execute",
+      ],
+      { from: "user" },
+    );
+    expect(lines.join("")).toBe("owner-run\n");
+    expect(transport.invoke).toHaveBeenCalledWith(
+      "otto-brain",
+      "brain.cli.request",
+      expect.objectContaining({
+        request: { operation: "rescore", body: { run: "owner-run", execute: false } },
+      }),
+    );
+    expect(
+      transport.invoke.mock.calls.filter((call) => call[1] === "brain.status.release"),
+    ).toHaveLength(1);
+    expect(transport.close).toHaveBeenCalledTimes(3);
+    expect(existsSync(clientHome)).toBe(false);
   });
 });

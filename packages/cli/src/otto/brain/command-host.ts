@@ -10,7 +10,7 @@ export async function openBrainCommandHost(client: BrainRpcClient): Promise<Host
   if (client.getLastServerInfoMessage()?.features?.ottoBrainCommands !== true)
     throw new BrainCliError(
       "DAEMON_UPDATE_REQUIRED",
-      "Update the host to use the complete Brain commands.",
+      "Update the host to use these Brain commands.",
     );
   let bootstrap = BrainBootstrapSchema.parse(
     decodeBrainEnvelope(await client.invokePluginRpc("otto-brain", "brain.bootstrap", {})),

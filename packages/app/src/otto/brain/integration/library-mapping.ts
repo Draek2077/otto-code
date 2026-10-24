@@ -94,7 +94,7 @@ export function jobToView(job: z.infer<typeof BrainJobSchema>): BrainJob {
   return {
     id: job.id,
     kind: job.operation === "benchmark" ? "bench" : job.operation,
-    label: JOB_LABELS[job.operation],
+    label: job.benchmarkMode === "rescore" ? "Rescore saved benchmark" : JOB_LABELS[job.operation],
     ...job.subject,
     status: jobStatus(job.state),
     percent: percent === null ? null : Math.max(0, Math.min(100, percent)),

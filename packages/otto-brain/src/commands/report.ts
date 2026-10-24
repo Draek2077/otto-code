@@ -8,18 +8,15 @@ import {
 } from "../output/types.js";
 import * as report from "../ops/report.js";
 import * as results from "../ops/results.js";
-
-interface ReportOutput {
-  file: string;
-  count: number;
-  columns: results.TaskColumn[];
-  models: Array<{
-    id: string | null;
-    displayName: string;
-    overall: number;
-    tasks: Array<{ id: string; category: string; score: number }>;
-  }>;
-}
+import { z } from "zod/v3";
+import { selectedBrainCommandHost } from "./target.js";
+import { withCommandHost } from "./host-command.js";
+import {
+  ReportExportReplySchema,
+  ReportOutputSchema,
+  ReportExportOptionsSchema,
+  type ReportOutput,
+} from "./report-contract.js";
 function renderReport(data: ReportOutput | ReportOutput[], options: OutputOptions): string {
   const value = Array.isArray(data) ? data[0] : data;
   if (!value) return "";
@@ -54,28 +51,55 @@ export async function runReportCommand(
   options: { out?: string },
   _command: Command,
 ): Promise<AnyCommandResult<ReportOutput>> {
-  const records = results.latestPerConfig();
-  if (!records.length)
-    throw new CommandError({
-      code: "NO_RESULTS",
-      message: "no results yet",
-      details: "run `otto brain bench --model <name>` first",
-    });
-  const written = report.write(options.out);
-  return {
-    type: "single",
-    schema,
-    data: {
-      ...written,
-      columns: results.taskColumns(records),
-      models: records.map((record) => ({
-        id: record.model.id,
-        displayName: record.model.displayName,
-        overall: record.overall,
-        tasks: record.tasks.map(({ id, category, score }) => ({ id, category, score })),
-      })),
-    },
-  };
+  const data = selectedBrainCommandHost()
+    ? await withCommandHost(async (port, signal) => {
+        // COMPAT(brainReports): added in v0.10.0; remove after 2027-04-24 when floor >= v0.10.0.
+        if (
+          !z
+            .object({ reports: z.literal(true) })
+            .safeParse(await port.request("/__host/capabilities", signal)).success
+        )
+          throw new CommandError({
+            code: "UPDATE_HOST",
+            message: "Update the Brain owner to export its reports.",
+          });
+        const reply = ReportExportReplySchema.parse(
+          await port.request(
+            "/__host/reports/export",
+            signal,
+            ReportExportOptionsSchema.parse({ out: options.out }),
+          ),
+        );
+        if (!reply.ok) throw noResults();
+        return reply.report;
+      })
+    : writeOwnerReport(options, process.env);
+  return { type: "single", schema, data };
+}
+function noResults(): CommandError {
+  return new CommandError({
+    code: "NO_RESULTS",
+    message: "no results yet",
+    details: "run `otto brain bench --model <name>` first",
+  });
+}
+
+/** The explicit owner operation receives its environment; it never consults a client's scope. */
+export function writeOwnerReport(options: { out?: string }, env: NodeJS.ProcessEnv): ReportOutput {
+  const records = results.latestPerConfig(results.loadAll(env));
+  if (!records.length) throw noResults();
+  const projection = ReportOutputSchema.omit({ file: true }).parse({
+    count: records.length,
+    columns: results.taskColumns(records),
+    models: records.map((record) => ({
+      id: record.model.id ?? null,
+      displayName: record.model.displayName,
+      overall: record.overall,
+      tasks: record.tasks.map(({ id, category, score }) => ({ id, category, score })),
+    })),
+  });
+  const written = report.write(options.out, env);
+  return { ...projection, ...written };
 }
 
 export { addReportOptions } from "./options.js";

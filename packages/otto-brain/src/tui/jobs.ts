@@ -3,6 +3,7 @@ import { z } from "zod/v3";
 import type { TuiJob } from "./host.js";
 export const TuiJobInputSchema = z.object({
   id: z.string(),
+  benchmarkMode: z.literal("rescore").optional(),
   operation: z.enum([
     "calibrate",
     "sweep",
@@ -31,6 +32,7 @@ export function tuiJob(job: z.infer<typeof TuiJobInputSchema>): TuiJob {
         .filter((line): line is string => Boolean(line))
         .slice(-3)
     : [];
+  if (job.benchmarkMode === "rescore") progress.unshift("Rescore saved benchmark");
   let fraction: number | null = null;
   if (value.success) {
     const { receivedBytes, totalBytes, percent } = value.data;

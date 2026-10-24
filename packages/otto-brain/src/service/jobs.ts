@@ -19,6 +19,8 @@ export interface BrainJobSubject {
 export interface BrainJob {
   id: string;
   operation: BrainJobOperation;
+  /** CPU replay of an existing benchmark, distinct from a fresh inference run. */
+  benchmarkMode?: "rescore";
   subject: BrainJobSubject;
   state: BrainJobState;
   cancelRequested: boolean;
@@ -89,8 +91,11 @@ export class BrainJobs {
     operation: BrainJobOperation,
     subject: BrainJobSubject,
     run: (context: BrainJobContext) => Promise<JobValue>,
+    metadata?: { benchmarkMode: "rescore" },
   ): BrainJob {
     if (this.closed) throw new Error("Brain jobs are closed");
+    if (metadata && operation !== "benchmark")
+      throw new Error("Replay metadata requires a benchmark job");
     if (
       [...this.jobs.values()].filter((job) => ACTIVE.has(job.snapshot.state)).length >=
       this.limits.active
@@ -100,6 +105,7 @@ export class BrainJobs {
     const snapshot: BrainJob = {
       id: randomUUID(),
       operation,
+      ...(metadata ? { benchmarkMode: metadata.benchmarkMode } : {}),
       subject: { ...subject },
       state: "queued",
       cancelRequested: false,

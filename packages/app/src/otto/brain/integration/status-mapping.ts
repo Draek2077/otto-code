@@ -75,7 +75,11 @@ function residentActivity(residents: BrainStatus["residents"]) {
   };
 }
 function activity(status: BrainStatus | null) {
-  const job = status?.jobs.find((row) => row.state === "running" || row.state === "queued");
+  // Replaying stored scores is CPU work, not a live model benchmark. It must
+  // not hide another resident's activity or animate an unloaded model as busy.
+  const job = status?.jobs.find(
+    (row) => row.benchmarkMode !== "rescore" && (row.state === "running" || row.state === "queued"),
+  );
   const operation = job?.operation ?? null;
   return { kind: operation === "pull" || operation === "runtime-install" ? "download" : operation };
 }

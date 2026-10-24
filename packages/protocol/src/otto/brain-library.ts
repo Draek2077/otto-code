@@ -243,6 +243,7 @@ export const BrainRuntimeListSchema = z.object({
 });
 export const BrainJobSchema = z.object({
   id: Text,
+  benchmarkMode: z.literal("rescore").optional(),
   operation: z.enum([
     "calibrate",
     "sweep",
