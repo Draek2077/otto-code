@@ -3577,6 +3577,7 @@ export const ServerInfoStatusPayloadSchema = z
         ottoBrainTui: z.boolean().optional(),
         ottoBrainCommands: z.boolean().optional(),
         ottoBrainSharing: z.boolean().optional(),
+        ottoKanban: z.boolean().optional(), // OTTO(kanban): additive built-in host bridge capability.
         // COMPAT(agentRequestReceipts): added in v0.8.0; remove gate after 2027-03-05.
         agentRequestReceipts: z.boolean().optional(),
         // COMPAT(workspaceRequestReceipts): added in v0.8.0; remove gate after 2027-03-07.

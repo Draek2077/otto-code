@@ -7,6 +7,7 @@ import { ProjectScreen, type KanbanScreenProps } from "./project-screen.js";
 // PluginSurfaceScreen already owns HostFilter and the selected host. Never add
 // another host inventory, client, fallback host, or global board selection here.
 export function KanbanScreen(props: KanbanScreenProps) {
+  // COMPAT(ottoKanban): added in v0.10.0; remove gate after 2027-04-24 when the host floor is v0.10.0.
   const read = useRpc(getCapabilities);
   const [retry, setRetry] = useState(0);
   const retryCapability = useCallback(() => setRetry((value) => value + 1), []);

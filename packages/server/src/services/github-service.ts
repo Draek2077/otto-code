@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createGitHubProjectReads, type GitHubProjectReads } from "./otto/github-projects.js"; // OTTO(kanban): reuse host/account policy.
 import {
   isGitHubHost,
   parseGitHubRemoteUrl,
@@ -992,6 +993,7 @@ export interface SearchGitHubRepositoriesOptions {
 }
 
 export interface GitHubService extends ForgeService {
+  readonly projectBoards: GitHubProjectReads; // OTTO(kanban): read-only typed host bridge.
   searchRepositories(options: SearchGitHubRepositoriesOptions): Promise<GitHubRepositorySummary[]>;
 }
 
@@ -2023,6 +2025,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
 
   api = {
     authProbeCanThrow: true,
+    projectBoards: createGitHubProjectReads({ run, resolveRepository: resolveRepoSlugCached }), // OTTO(kanban)
 
     listPullRequests(input) {
       return cached({

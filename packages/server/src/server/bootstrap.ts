@@ -239,6 +239,7 @@ import {
 import { DaemonExecutions } from "./hub/daemon-executions.js";
 import { PluginService } from "./plugins/index.js";
 import { BrainDaemonService } from "./otto/brain/service.js"; // OTTO(brain-host): one controller for all app consumers.
+import { KanbanDaemonService } from "./otto/kanban/service.js"; // OTTO(kanban): host-owned projects and forge transport.
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
 
@@ -630,6 +631,7 @@ export async function createPaseoDaemon(
   // OTTO(paseo-version): plugins target the Paseo API, so the plugin host reports
   // the Paseo base release instead of Otto's version.
   const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until demand/action or saved startup intent.
+  let ottoKanban: KanbanDaemonService | null = null; // OTTO(kanban): bound after registry/server identity creation, before plugins start.
   const pluginRuntime: PluginService = new PluginService(
     logger,
     daemonConfigStore,
@@ -647,9 +649,13 @@ export async function createPaseoDaemon(
       settingsDirectory: path.join(config.paseoHome, "plugin-settings"),
       // OTTO(feature-host): existing authenticated plugin RPC, unchanged relay framing.
       ottoRpc: {
-        has: (pluginId) => pluginId === "otto-brain",
-        invoke: (pluginId, method, input, clientId) =>
-          pluginId === "otto-brain" ? ottoBrain.invoke(method, input, clientId) : undefined,
+        has: (pluginId) =>
+          pluginId === "otto-brain" || (pluginId === "otto-kanban" && ottoKanban !== null),
+        invoke: (pluginId, method, input, clientId) => {
+          if (pluginId === "otto-brain") return ottoBrain.invoke(method, input, clientId);
+          if (pluginId === "otto-kanban") return ottoKanban?.invoke(method, input); // OTTO(kanban)
+          return undefined;
+        },
         releaseClient: (clientId) => ottoBrain.releaseClient(clientId),
       },
     },
@@ -919,6 +925,11 @@ export async function createPaseoDaemon(
     workspaceRegistry,
   });
   const github = createGitHubService();
+  ottoKanban = new KanbanDaemonService({
+    hostId: serverId,
+    metadata: projectRegistry.ottoMetadata,
+    github: github.projectBoards,
+  }); // OTTO(kanban)
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger,
     paseoHome: config.paseoHome,

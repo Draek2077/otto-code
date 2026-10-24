@@ -9,3 +9,9 @@ export type {
   ProjectBoardPort,
   GitHubReadPort,
 } from "../otto/kanban/server/ports.js";
+export {
+  discoverRepositoryDocument,
+  resolveNumberDocument,
+  readFieldsDocument,
+  readItemsDocument,
+} from "../otto/kanban/server/github-documents.js";

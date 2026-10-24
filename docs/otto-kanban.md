@@ -17,19 +17,21 @@ owning host's existing project record under `kanban`, using the preserved
 `adapter`, `boardId` and optional `boardOwner` fields. They do not belong in
 plugin-global settings or client storage.
 
-`ProjectBoardPort` must resolve project IDs on the owning host and authorize each
-operation. Its `setTarget` implementation must acquire the existing project-record
-lock, read the latest record, compare `expectedRevision`, call
-`prepareTargetUpdate`, and persist atomically. Comparing revisions before acquiring
-the lock is insufficient. The helper preserves unrelated record fields and unknown
+`KanbanDaemonService` composes the canonical library with the selected daemon's
+project registry and GitHub service. It resolves project IDs on the owning host.
+Target preparation uses the opened revision; `OttoProjectMetadata` performs the
+final comparison and atomic write inside the ordinary registry mutation queue.
+Comparing revisions only before acquiring the queue is insufficient. The helper preserves unrelated record fields and unknown
 target fields; it refuses corrupt or unsupported settings. Explicitly clearing a
 target sets only `kanban` to null. No store migration is performed.
 
-`GitHubReadPort` must reuse the daemon's GitHub CLI account and host policy. It
-receives a read-only document, variables and project binding, and returns the
-GraphQL envelope or a safe typed error. It must never return credentials or echo
-raw command output. Transport deadlines, cancellation, response-size limits and
-auth/scope classification belong to that bridge. The library never resolves
+`GitHubReadPort` uses the daemon's existing GitHub CLI account and host policy.
+Only the four canonical Projects read documents are allowed. String variables
+use `gh api -f`; integer/null variables use `-F`, following the
+[GitHub CLI API contract](https://cli.github.com/manual/gh_api). The existing runner
+supplies host routing, timeout and output-size bounds. Typed GraphQL failures
+are classified by the canonical reader; raw CLI error text never reaches the UI.
+The library never resolves
 tokens or runs `gh auth login`, `refresh` or `switch`.
 
 The client factory uses public project listing and the installation's bound host.
@@ -38,8 +40,7 @@ inventory. An explicit project or workspace hint is used only with a matching ho
 identity. Missing context never selects the first project automatically.
 
 The daemon's internal `OttoProjectMetadata` adapter supplies revisioned preserved
-records under the ordinary registry mutation queue. Its binding into Kanban, a
-reusable forge query/auth bridge, active/last navigation
+records under the ordinary registry mutation queue. Active/last navigation
 context, canonical Project Settings navigation and an outer before-leave guard
 remain integration boundaries. The source includes an unregistered board/settings
 editor, but its local project-picker lock does not cover outer host switches or
@@ -96,5 +97,5 @@ normalized reads, pagination and safe failures through injected ports. They do n
 validate documents against a full official schema or prove a live board journey.
 Pure project-selection, target-form and RPC fixtures cover the unregistered
 contribution boundary. They do not render the client. Desktop/Mobile interaction,
-native/device behavior, daemon bridge acceptance, Jira and mutations remain outside
+native/device behavior, real app/daemon acceptance, Jira and mutations remain outside
 this source's proof.
