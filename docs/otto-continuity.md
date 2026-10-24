@@ -21,6 +21,14 @@ values retain these fields too. They stay outside Paseo's runtime records and wi
 projections. Paseo still owns edits and removal of its recognized fields, and
 deleting a record does not resurrect it.
 
+The daemon's `OttoProjectMetadata` adapter reads preserved project fields and
+updates only Kanban and Knowledge fields under the same queue as project
+rename/archive/removal. It checks the opened record revision inside that queue,
+refuses inactive or corrupt records, and preserves unrelated values. The adapter
+is internal: raw records and storage paths are not a plugin or client RPC.
+External editors do not share the daemon's queue, so this is not a cross-process
+transaction lock.
+
 Old workspace ownership and hidden-state fields map to Paseo's current ownership
 and background fields. Existing worktrees keep their `.git/otto/worktree.json`
 metadata, and the daemon, CLI, and desktop continue sharing `otto.pid`.

@@ -5,6 +5,7 @@ import { z } from "zod";
 
 // OTTO(store-continuity): preserve Otto-only fields on disk, outside Paseo's runtime records.
 import { normalizeOttoWorkspaceRecord, writeOttoRegistry } from "./otto/store-continuity.js";
+import { OttoProjectMetadata } from "./otto/project-metadata.js"; // OTTO(feature-host): preserve owned project fields under the registry queue.
 import { areEquivalentPaths } from "../utils/path.js";
 import {
   generateProjectId,
@@ -381,6 +382,7 @@ export class FileBackedProjectRegistry
   extends FileBackedRegistry<PersistedProjectRecord>
   implements ProjectRegistry
 {
+  readonly ottoMetadata: OttoProjectMetadata; // OTTO(feature-host): daemon-only, never part of Paseo's project wire record.
   private allocationQueue: Promise<void> = Promise.resolve();
   private readonly projectIdFactory: () => string;
   private readonly mutationListeners = new Set<
@@ -411,6 +413,23 @@ export class FileBackedProjectRegistry
       writeRecords: options?.writeRecords,
     });
     this.projectIdFactory = options?.projectIdFactory ?? generateProjectId;
+    // OTTO(feature-host): feature writes serialize with project rename/archive/delete.
+    this.ottoMetadata = new OttoProjectMetadata({
+      file: filePath,
+      parse: (value) => PersistedProjectRecordSchema.parse(value),
+      exclusive: (run) => this.withOttoMetadata(run),
+    });
+  }
+
+  private async withOttoMetadata<T>(run: () => Promise<T>): Promise<T> {
+    let result!: T;
+    await this.mutateCache(() => undefined, {
+      forcePersist: () => true,
+      afterWrite: async () => {
+        result = await run();
+      },
+    });
+    return result;
   }
 
   async getOrCreateActiveByRoot(input: {
