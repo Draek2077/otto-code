@@ -27,7 +27,7 @@ a host store without its persisted identity is refused rather than guessed.
 Catalog reads return metadata and full-file digests, with confirmed records only
 unless inactive records are explicitly requested. Full statements, timelines and
 the six fixed roots are separate reads. Every read consults the filesystem;
-there is no daemon watcher/subscription yet.
+active consumers receive invalidation from the demand-owned observation feed.
 
 Explicit operations support Draft, Confirmed and History review, charter delivery
 and structured progress, reference disposition/source, title/tags, reason-bearing
