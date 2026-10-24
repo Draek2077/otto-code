@@ -19,6 +19,11 @@ async function executeOnOwner<T>(command: Command, execute: () => Promise<T>): P
         },
       );
       try {
+        if (command.parent?.name() === "config") {
+          const { withBrainSettingsTarget } = await import("@getpaseo/brain/cli-target");
+          const { daemonBrainSettings } = await import("./settings.js");
+          return await withBrainSettingsTarget(daemonBrainSettings(client), execute);
+        }
         return await withBrainCommandHost(await openBrainCommandHost(client), execute);
       } finally {
         await client.close().catch(() => undefined);
@@ -47,6 +52,7 @@ export function adoptSharedBrainCommands(brain: Command): void {
   const groups = new Set([
     "scan",
     "bench",
+    "config",
     "catalog",
     "search",
     "pull",

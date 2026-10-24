@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveBrainPaths } from "../config/paths.js";
 import { loadPersistedConfig } from "../config/index.js";
 import { runConfigSetCommand, runConfigShowCommand } from "./config.js";
+import { withBrainSettingsTarget } from "./settings-target.js";
+import { BrainConfigSchema } from "../config/schema.js";
 
 const tmpDirs: string[] = [];
 function makeTmpHome(): string {
@@ -92,6 +94,8 @@ it.each([
   ["runtime.source", "invalid"],
   ["maxLoadedModels", "30"],
   ["lockedModels", "[4]"],
+  ["auth.token", "********"],
+  ["hfToken", ""],
 ])("preserves the original config after an invalid edit to %s", async (key, value) => {
   const home = makeTmpHome();
   await runConfigSetCommand("enabled", "false", {}, cmd);
@@ -99,4 +103,35 @@ it.each([
   const bytes = readFileSync(paths.configFile, "utf8");
   await expect(runConfigSetCommand(key, value, {}, cmd)).rejects.toThrow();
   expect(readFileSync(paths.configFile, "utf8")).toBe(bytes);
+});
+
+it("borrows a selected passive settings target without creating an invoker configuration", async () => {
+  const dir = makeTmpHome();
+  const readConfig = vi.fn(async () => BrainConfigSchema.parse({ modelsDir: "/owner/models" }));
+  const setConfig = vi.fn(async (_key: string, _raw: string) => ({
+    connection: {
+      revision: "accepted",
+      config: { enabled: false, autoStart: true, mode: "remote" as const },
+    },
+  }));
+  await withBrainSettingsTarget({ readConfig, setConfig }, async () => {
+    expect((await runConfigShowCommand({}, cmd)).data).toMatchObject({
+      modelsDir: "/owner/models",
+    });
+    expect((await runConfigSetCommand("enabled", "false", {}, cmd)).data).toMatchObject({
+      connection: { revision: "accepted" },
+    });
+  });
+  expect(setConfig).toHaveBeenCalledExactlyOnceWith("enabled", "false");
+  expect(existsSync(resolveBrainPaths({ OTTO_HOME: dir }).configFile)).toBe(false);
+});
+
+it("clears an explicit runtime pin when choosing a source policy", async () => {
+  const home = makeTmpHome();
+  await runConfigSetCommand("runtime.path", "/owner/pinned-server", {}, cmd);
+  await runConfigSetCommand("runtime.source", "lmstudio", {}, cmd);
+  expect(loadPersistedConfig(resolveBrainPaths({ OTTO_HOME: home })).runtime).toMatchObject({
+    source: "lmstudio",
+    path: null,
+  });
 });

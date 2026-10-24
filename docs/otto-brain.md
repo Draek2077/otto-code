@@ -94,6 +94,15 @@ they do not change saved settings or grant model-management permissions.
 Ordinary CLI job progress requests status only; the interactive terminal also
 requests logs while its viewer is retained.
 
+`config show/set` shares standalone key validation and formatting while adapting
+to Otto's two settings owners. Enable/autostart edits use the selected daemon's
+connection revision and work even while its Remote Brain is unreachable. Other
+keys use the actual local/Remote owner's revision. Reads and writes never start
+a host or load a model. The command sends only the edited leaf and explicit
+credential replacement/removal intents; masked output is never a saved key.
+Conflicts require a new explicit invocation after reading the current settings.
+Runtime source changes clear a previously pinned executable/installed selection.
+
 The shared handlers borrow one target-scoped transport. A disconnected Remote
 owner never falls back to a local home. Each command request carries the captured
 connection revision and owner lifetime, and crosses encrypted RPC as a fixed
