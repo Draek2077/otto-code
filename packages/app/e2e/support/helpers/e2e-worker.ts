@@ -73,6 +73,8 @@ const origin = spawnSync("git", ["config", "--get", "remote.origin.url"], {
 }).stdout?.trim();
 
 if (origin === fixtureRemote) {
+  // OTTO(kanban): isolated provider responses; this branch never delegates to a real vendor CLI.
+  if (require(${JSON.stringify(path.resolve(__dirname, "otto-kanban-gh.cjs"))})(args)) process.exit(0);
   const command = args.slice(0, 2).join(" ");
   if (command === "auth status") process.exit(0);
   if (command === "repo view") {

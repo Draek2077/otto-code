@@ -250,6 +250,7 @@ packaging remains a build gate.
 | Brain model operations     | `packages/app/e2e/browser/otto-brain-operations.spec.ts`: wide/compact profile autosave and rename persistence, typed budget preview, synthetic resident load/unload, real owner log copy, actionable unloaded benchmark error, and durable running benchmark cancellation/reload through the selected daemon's Remote route                            |
 | Brain settings recovery    | `packages/app/e2e/browser/otto-brain-settings.spec.ts`: real daemon revision conflicts preserve local intent, block stale saves, and replace drafts only after confirmed reload on wide/compact screens; saved enable/autostart intent does not launch a host                                                                                           |
 | Kanban project settings    | `packages/app/e2e/browser/otto-kanban.spec.ts`: real registered menu and canonical Project Settings on wide/compact layouts, retained drafts across route departure, stale-save recovery, target persistence and clearing; no tracker traffic or configured-board acceptance                                                                            |
+| Kanban configured board    | `packages/app/e2e/browser/otto-kanban-board.spec.ts`: actual UI and daemon through the isolated local-fixture GitHub CLI adapter, paginated cards/fields, compact column selection, provider links, scope failure and refresh recovery. Synthetic provider responses do not establish live GitHub acceptance.                                           |
 
 ## Debugging with tests
 
