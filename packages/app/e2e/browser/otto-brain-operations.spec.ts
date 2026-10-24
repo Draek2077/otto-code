@@ -1,7 +1,7 @@
 import { test, expect } from "../support/helpers/otto-brain-owner";
 import { openBrainSettings } from "../support/helpers/otto-brain";
 
-test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
+test.use({ e2eDaemonConfig: { pluginsEnabled: true }, trace: "retain-on-failure" });
 test.setTimeout(90000);
 for (const compact of [false, true]) {
   test(`Brain model, profile and log operations reach the actual owner (${compact ? "compact" : "wide"})`, async ({
@@ -75,7 +75,7 @@ for (const compact of [false, true]) {
 test("canceling a running benchmark releases the actual owner job and permits loading again", async ({
   page,
   brainOwner,
-}) => {
+}, testInfo) => {
   await openBrainSettings(page, false);
   await page.getByRole("button", { name: "Open Brain", exact: true }).click();
   await page.getByRole("button", { name: "Models", exact: true }).click();
@@ -95,15 +95,31 @@ test("canceling a running benchmark releases the actual owner job and permits lo
     )
     .toEqual([{ operation: "benchmark", state: "running", modelId: brainOwner.modelId }]);
   await page.getByTestId("brain-bench-cancel").click();
-  await expect
-    .poll(async () => (await brainOwner.jobs()).jobs.map((row) => row.state))
-    .toEqual(["canceled"]);
-  await expect(page.getByTestId("brain-bench-cancel")).toBeHidden();
-  await expect(page.getByTestId("brain-bench-run")).toBeEnabled();
-  await page.getByRole("button", { name: "Models", exact: true }).click();
-  await page.getByTestId(`brain-model-${brainOwner.modelId}`).click();
-  await page.getByTestId("brain-model-load").click();
-  await expect(page.getByTestId("brain-model-unload")).toBeEnabled({ timeout: 30000 });
-  await page.getByTestId("brain-model-unload").click();
-  await expect(page.getByTestId("brain-model-load")).toBeEnabled({ timeout: 30000 });
+  try {
+    await expect
+      .poll(async () => (await brainOwner.jobs()).jobs.map((row) => row.state))
+      .toEqual(["canceled"]);
+    await expect(page.getByTestId("brain-bench-cancel")).toBeHidden();
+    await expect(page.getByTestId("brain-bench-run")).toBeEnabled();
+    await page.getByRole("button", { name: "Models", exact: true }).click();
+    await page.getByTestId(`brain-model-${brainOwner.modelId}`).click();
+    await page.getByTestId("brain-model-load").click();
+    await expect(page.getByTestId("brain-model-unload")).toBeEnabled({ timeout: 30000 });
+    await page.getByTestId("brain-model-unload").click();
+    await expect(page.getByTestId("brain-model-load")).toBeEnabled({ timeout: 30000 });
+  } catch (error) {
+    // Capture the live owner BEFORE the fixture restores the daemon connection.
+    // The later default failure screenshot can otherwise show teardown state.
+    const evidence = await brainOwner.jobDiagnostics().catch(() => null);
+    await testInfo
+      .attach("brain-cancel-owner-state", {
+        body: JSON.stringify(evidence),
+        contentType: "application/json",
+      })
+      .catch(() => {});
+    await page
+      .screenshot({ path: testInfo.outputPath("brain-cancel-before-teardown.png") })
+      .catch(() => {});
+    throw error;
+  }
 });

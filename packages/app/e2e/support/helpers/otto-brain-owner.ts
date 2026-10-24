@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
 import { once } from "node:events";
+import { z } from "zod";
 import { pathToFileURL } from "node:url";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { HostEngine, ServiceHandle } from "@getpaseo/brain/host";
@@ -100,6 +101,7 @@ interface BrainOwnerFixture {
   inventory(): Promise<ReturnType<typeof BrainInventorySchema.parse>>;
   status(): Promise<ReturnType<typeof BrainStatusSchema.parse>>;
   jobs(): Promise<ReturnType<typeof BrainJobListSchema.parse>>;
+  jobDiagnostics(): Promise<{ jobs: { id: string; state: string; cancelRequested: boolean }[] }>;
 }
 export const test = base.extend<{ brainOwner: BrainOwnerFixture }>({
   brainOwner: async ({ brain }, provide) => {
@@ -203,6 +205,19 @@ export const test = base.extend<{ brainOwner: BrainOwnerFixture }>({
           BrainJobListSchema.parse(
             await requestBrain(boundClient, "brain.query", { resource: "jobs" }),
           ),
+        jobDiagnostics: async () => {
+          const response = await fetch(`http://127.0.0.1:${service!.port}/__host/jobs`, {
+            signal: AbortSignal.timeout(3000),
+          });
+          if (!response.ok) throw new Error("Fixture owner job diagnostics unavailable");
+          return z
+            .object({
+              jobs: z.array(
+                z.object({ id: z.string(), state: z.string(), cancelRequested: z.boolean() }),
+              ),
+            })
+            .parse(await response.json());
+        },
       });
     } finally {
       try {
