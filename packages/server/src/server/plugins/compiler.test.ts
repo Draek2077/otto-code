@@ -189,6 +189,7 @@ describe("plugin runtime entries", () => {
     "react-native",
     "@getpaseo/plugin/client",
     "@getpaseo/plugin/client/ui",
+    "@getpaseo/plugin/client/otto-brain", // OTTO(brain-ui): keep the renderer out of server bundles.
   ])("rejects %s from server code", async (specifier) => {
     const entries = await createSplitPlugin();
     await writeFile(

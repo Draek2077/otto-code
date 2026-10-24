@@ -53,6 +53,8 @@ app:
   - "packages/expo-two-way-audio/**"
 
 sdk:
+  # The SDK's Brain provider proves the owning transport and model contract.
+  - "packages/otto-brain/**"
   - "packages/plugin/**"
   - "plugin-examples/**"
   - "public-docs/plugins/**"

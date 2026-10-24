@@ -68,7 +68,8 @@ it("retains vision capability while explaining unavailable optional runtime comp
     components: [{ available: false, unavailableReason: expect.stringContaining("b100") }],
   });
   row.runtimeBuild = 100;
-  expect(buildInventoryRow(row).components![0]).toEqual(row.model.components[0]);
+  expect(buildInventoryRow(row).components![0]).toMatchObject({ id: "vision", available: false });
+  expect(buildInventoryRow(row).components![0]).not.toHaveProperty("path");
 });
 
 it("does not borrow a different identified model's score just because names match", () => {

@@ -13,10 +13,15 @@ const entries = {
   "./server/provider": "server",
   "./server/usage": "server",
   "./server/acp": "server",
+  // OTTO(provider-harness): every owned export retains the SDK's runtime boundary proof.
+  "./server/otto-openai": "server",
+  "./server/otto-brain": "server",
+  "./otto/openai-settings": "shared",
   "./client": "client",
   "./client/host": "client",
   "./client/react-native": "client",
   "./client/ui": "client",
+  "./client/otto-brain": "client",
 } as const;
 const uiDependency = /^(react(?:-dom|-native)?|use-sync-external-store)(\/|$)/;
 const serverModule = /^server\//;

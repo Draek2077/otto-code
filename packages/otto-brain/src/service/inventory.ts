@@ -92,14 +92,27 @@ function modelCapabilities(model: Model) {
 function inventoryComponents(model: Model, runtimeBuild: number | null) {
   return (
     model.components?.map((component) => {
+      const presentation = {
+        id: component.id,
+        label: component.label,
+        description: component.description,
+        role: component.role,
+        bytes: component.bytes,
+        required: component.required,
+        defaultDownload: component.defaultDownload,
+        defaultLoad: component.defaultLoad,
+        available: component.available,
+        unavailableReason: component.unavailableReason,
+        minRuntimeBuild: component.minRuntimeBuild,
+      };
       if (
         component.minRuntimeBuild === undefined ||
         (runtimeBuild !== null && runtimeBuild >= component.minRuntimeBuild)
       )
-        return component;
+        return presentation;
       const active = runtimeBuild === null ? "unknown" : `b${runtimeBuild}`;
       return {
-        ...component,
+        ...presentation,
         available: false,
         unavailableReason: `Requires llama.cpp build b${component.minRuntimeBuild} or newer (active build: ${active})`,
       };

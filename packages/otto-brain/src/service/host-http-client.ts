@@ -23,6 +23,60 @@ export class BrainHttpResponseError extends Error {
 export class BrainHttpClient {
   constructor(private readonly dispatch: BrainHttpDispatch) {}
 
+  /** Inference reuses the authenticated socket, including pre-header TLS pinning.
+   * The harness owns its response limit and request deadline, not the short
+   * management timeout. Canceling the returned body releases that exact request. */
+  async completionRequest(route: string, body?: string, signal?: AbortSignal): Promise<Response> {
+    const payload = body === undefined ? undefined : Buffer.from(body);
+    if (payload && payload.length > 64 * 1024 * 1024)
+      throw new Error("Brain completion exceeded its byte limit");
+    const lifetime = signal ?? AbortSignal.timeout(30000);
+    lifetime.throwIfAborted();
+    return new Promise((resolve, reject) => {
+      const request = this.dispatch(route, lifetime, payload, (response) => {
+        const headers = new Headers();
+        for (const [key, value] of Object.entries(response.headers)) {
+          if (value !== undefined)
+            headers.set(key, Array.isArray(value) ? value.join(", ") : value);
+        }
+        const iterator = response[Symbol.asyncIterator]();
+        const stream = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const next = await iterator.next();
+              if (next.done) controller.close();
+              else controller.enqueue(next.value);
+            } catch (error) {
+              controller.error(error);
+            }
+          },
+          async cancel() {
+            response.destroy();
+            request.destroy();
+            await iterator.return?.();
+          },
+        });
+        const status = response.statusCode ?? 502;
+        if (status === 204 || status === 304) response.resume();
+        let result: Response;
+        try {
+          result = new Response(status === 204 || status === 304 ? null : stream, {
+            status,
+            headers,
+          });
+        } catch (error) {
+          response.destroy();
+          request.destroy();
+          reject(error);
+          return;
+        }
+        resolve(result);
+      });
+      request.once("error", reject);
+      request.end(payload);
+    });
+  }
+
   async request(route: string, body?: unknown, signal?: AbortSignal): Promise<unknown> {
     const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
     if (payload && payload.length > 128 * 1024)

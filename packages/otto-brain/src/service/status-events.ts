@@ -116,6 +116,8 @@ export function statusChangeKey(snapshot: BrainStatusSnapshot): string {
       "inference",
       "queued",
       "jobRevision",
+      "libraryRevision",
+      "ownerSettingsRevision",
     ]),
     schedulerWaiting: scheduler.waiting ?? null,
     schedulerWaitingModelIds: scheduler.waitingModelIds ?? null,

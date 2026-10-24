@@ -69,7 +69,7 @@ function BrainHostPanel({
   const canRestartRemotely = capabilities?.restart === true && capabilities.writable === true;
   const canWriteRemotely = capabilities?.writable === true;
   const canRunRemoteModelJobs = capabilities?.jobs === true && canWriteRemotely;
-  const canRunRemoteBench = capabilities?.jobs === true;
+  const canRunRemoteBench = capabilities?.jobs === true && canWriteRemotely;
   // A remote host that has not explicitly granted configuration access must not
   // advertise a Library it cannot act on. More importantly, this is derived
   // from the selected brain's live capability, never from the local daemon.
@@ -235,11 +235,13 @@ export interface BrainHostOption {
   label: string;
 }
 export interface BrainScreenProps {
+  /** Paseo's contributed surface already owns its header and host picker. */
+  embedded?: boolean;
   port: BrainScreenPort | null;
   theme: BrainScreenTheme;
-  hosts: BrainHostOption[];
+  hosts?: BrainHostOption[];
   selectedHostId: string | null;
-  onSelectHost: (serverId: string) => void;
+  onSelectHost?: (serverId: string) => void;
 }
 export function BrainScreen(props: BrainScreenProps) {
   return (
@@ -248,11 +250,17 @@ export function BrainScreen(props: BrainScreenProps) {
     </BrainScreenThemeProvider>
   );
 }
-function BrainScreenBody({ port, hosts, selectedHostId, onSelectHost }: BrainScreenProps) {
+function BrainScreenBody({
+  port,
+  hosts,
+  selectedHostId,
+  onSelectHost,
+  embedded,
+}: BrainScreenProps) {
   const styles = useStyles();
   return (
     <View style={styles.container}>
-      <MenuHeader title="Brain" />
+      {!embedded ? <MenuHeader title="Brain" /> : null}
       <View style={styles.body}>
         {port === null || selectedHostId === null ? (
           <View style={styles.centered}>

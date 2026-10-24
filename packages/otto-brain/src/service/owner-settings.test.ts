@@ -49,6 +49,7 @@ function fixture(env: NodeJS.ProcessEnv = {}) {
       notifications++;
     },
     label: "Fixture owner",
+    models: () => [{ id: "model/opaque-id", label: "My model" }],
   };
   const settings = new BrainOwnerSettings(context, ports);
   const request = (patch: object = {}, credentials?: object) => {
@@ -84,6 +85,21 @@ it("returns sanitized owner settings and a stable owner independent of process l
   );
   expect(other.ownerId).toBe(read.ownerId);
   expect(fs.existsSync(f.paths.pidFile)).toBe(false);
+  expect(read.resolved.modelsDirectory).toBe(f.paths.modelsDir);
+  expect(read.resolved.certificateDirectory).toBeNull();
+  expect(read.choices.models).toEqual([{ id: "model/opaque-id", label: "My model" }]);
+  expect(read.choices.runtimes[0]!.id).toBe(runtimeIdentity(f.runtimes[0]!));
+  expect(read.choices.runtimes[0]!.id).not.toContain(f.root);
+});
+it("reads a cheap peer revision without scanning models and leaves malformed peer settings intact", () => {
+  const f = fixture();
+  f.ports.models = () => {
+    throw new Error("Revision checks must not scan models");
+  };
+  expect(f.settings.revision()).toBe(readBrainConfigRevision(f.paths).revision);
+  fs.writeFileSync(f.paths.configFile, "{ damaged peer edit");
+  expect(f.settings.revision()).toBeNull();
+  expect(fs.readFileSync(f.paths.configFile, "utf8")).toBe("{ damaged peer edit");
 });
 
 it("saves partial owner fields against the origin without mutating active host configuration", () => {
@@ -201,6 +217,7 @@ it("reports environment ownership and prevents ineffective credential, runtime o
     OTTO_BRAIN_MODELS_DIR: "/env/models",
   });
   expect(f.settings.read().capabilities).toEqual({
+    networkDiscovery: true,
     runtimeSelection: false,
     storage: false,
     accessCredential: false,

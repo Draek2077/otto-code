@@ -191,6 +191,26 @@ it("removes only an unselected unused managed runtime and rejects client paths",
   expect(() => value.manager.remove("/fixture/first")).toThrow("not found");
   expect(value.removals).toEqual([]);
 });
+it("publishes runtime removal as a real host job and rechecks selection before deleting", async () => {
+  const f = fixture();
+  const id = runtimeIdentity(runtimes[1]!);
+  const admitted = f.manager.remove(id);
+  expect(f.removals).toEqual([]);
+  f.manager.select(id);
+  expect(await f.jobs.wait(admitted.job.id)).toMatchObject({
+    operation: "runtime-remove",
+    state: "failed",
+  });
+  expect(f.removals).toEqual([]);
+  f.manager.select(runtimeIdentity(runtimes[0]!));
+  const accepted = f.manager.remove(id);
+  expect(await f.jobs.wait(accepted.job.id)).toMatchObject({
+    operation: "runtime-remove",
+    state: "completed",
+    result: { runtimeId: id },
+  });
+  expect(f.removals).toEqual([runtimes[1]!.exe]);
+});
 it("accepts only supported host install choices and bounds their retained catalog", () => {
   const value = fixture();
   expect(() => value.manager.offer("https://untrusted.invalid/archive")).toThrow("build tag");

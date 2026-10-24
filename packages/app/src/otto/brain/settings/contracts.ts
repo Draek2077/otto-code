@@ -16,8 +16,9 @@ export class BrainSettingsOperationError extends Error {
   constructor(
     readonly kind: BrainSettingsErrorKind,
     sanitizedMessage: string,
+    options?: ErrorOptions,
   ) {
-    super(sanitizedMessage);
+    super(sanitizedMessage, options);
     this.name = "BrainSettingsOperationError";
   }
 }

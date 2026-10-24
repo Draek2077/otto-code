@@ -513,7 +513,14 @@ export interface SessionOptions {
     subscribe(listener: (pluginId: string) => void): () => void;
     subscribeSettings?(listener: (pluginId: string, settingsId: string) => void): () => void;
     catalog(): Array<{ id: string; clientBundle: string }>;
-    invokePluginRpc(pluginId: string, method: string, input: unknown): Promise<unknown>;
+    invokePluginRpc(
+      pluginId: string,
+      method: string,
+      input: unknown,
+      clientId?: string,
+    ): Promise<unknown>; // OTTO(feature-host)
+    releaseClient?(clientId: string): void; // OTTO(feature-host): authenticated subscription ownership.
+    supportsBuiltinRpc?(pluginId: string): boolean; // OTTO(feature-host): concrete built-in capability.
     listUsageReports(options?: {
       forceRefresh?: boolean;
       reportIds?: string[];
@@ -2483,7 +2490,7 @@ export class Session {
     if (msg.type === "plugin.rpc.invoke.request") {
       if (!this.pluginRuntime) throw new Error("Plugin service is unavailable");
       return this.pluginRuntime
-        .invokePluginRpc(msg.pluginId, msg.method, msg.input)
+        .invokePluginRpc(msg.pluginId, msg.method, msg.input, this.sessionId) // OTTO(feature-host): connection lifetime, not reusable app ID.
         .then((output) => {
           this.emit({
             type: "plugin.rpc.invoke.response",
@@ -8554,6 +8561,7 @@ export class Session {
   public async cleanup(): Promise<void> {
     this.sessionLogger.trace({}, "agent.session.lifecycle.cleanup");
     this.isCleanedUp = true;
+    this.pluginRuntime?.releaseClient?.(this.sessionId); // OTTO(feature-host): no feed survives its client session.
     await this.delivery.close();
 
     if (this.unsubscribeAgentEvents) {

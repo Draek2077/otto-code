@@ -1,0 +1,376 @@
+import {
+  negotiateProviderCapabilities,
+  requireProviderCapabilities,
+  type ProviderConnection,
+  type ProviderEvent,
+  type ProviderInput,
+  type ProviderRegistration,
+} from "../../../server/provider.js";
+import type { ConnectionSettings } from "../shared/settings.js";
+import { OpenAiSession } from "./session.js";
+import { modes } from "./session-config.js";
+import { EndpointCatalog, type ResolveApiKey } from "./endpoint-catalog.js";
+import { endpointProfiles, modelReference } from "./endpoints.js";
+import { SessionArchive } from "./session-store.js";
+import { importLegacyConversation, restoredLegacyConfig } from "./legacy-history.js";
+import { InstructionSource } from "./instructions.js";
+import type { CompactionPolicy } from "./compaction.js";
+
+const capabilities = [
+  "prompt.message",
+  "prompt.command",
+  "prompt.image",
+  "session.persistence",
+  "session.configure",
+  "session.revert.conversation",
+  "permission",
+  "permission.tool_policy",
+] as const;
+
+type ManagedConnection = ProviderConnection & { retireProfile(profileId: string): Promise<void> };
+type OttoProvider = ProviderRegistration & { retireProfile(profileId: string): Promise<void> };
+
+export function createOpenAiProvider(
+  readSettings: () => Promise<ConnectionSettings>,
+  options: {
+    imageDirectory?: string;
+    sessionDirectory?: string;
+    home?: string;
+    resolveApiKey?: ResolveApiKey;
+    /** Only inference/catalog HTTP uses this owner transport. MCP keeps its own transport. */
+    transport?: typeof fetch;
+    /** Owner-published model/config revision invalidates discovery without changing chat identity. */
+    catalogRevision?(): Promise<string>;
+    compaction?: CompactionPolicy;
+    resolveLegacyEndpoint?(provider: string): string;
+    id?: string;
+    label?: string;
+  } = {},
+): OttoProvider {
+  const catalog = new EndpointCatalog(
+    options.resolveApiKey,
+    options.transport,
+    options.catalogRevision,
+  );
+  const connections = new Set<ManagedConnection>();
+  return {
+    id: options.id ?? "openai-compatible",
+    label: options.label ?? "OpenAI Compatible API",
+    description: "Use a local or hosted OpenAI-compatible Chat Completions endpoint with Otto.",
+    async retireProfile(profileId) {
+      await Promise.all([...connections].map((value) => value.retireProfile(profileId)));
+    },
+    async getCatalogCacheKey() {
+      const settings = await readSettings();
+      return catalog.key(settings);
+    },
+    async status() {
+      const settings = await readSettings();
+      return endpointProfiles(settings).length
+        ? { available: true }
+        : {
+            available: false,
+            diagnostic:
+              "Open Settings > Host > Plugins > Configure Otto provider to configure an endpoint.",
+          };
+    },
+    async connect(request) {
+      if (!request.versions.includes(1))
+        throw new Error("Provider protocol version 1 is required.");
+      const value: ManagedConnection = connection({
+        readSettings,
+        supported: negotiateProviderCapabilities(
+          request.capabilities,
+          options.imageDirectory
+            ? capabilities
+            : capabilities.filter((capability) => capability !== "prompt.image"),
+        ),
+        imageDirectory: options.imageDirectory,
+        sessionDirectory: options.sessionDirectory,
+        home: options.home,
+        providerId: options.id ?? "openai-compatible",
+        catalog,
+        transport: options.transport,
+        compaction: options.compaction,
+        resolveLegacyEndpoint: options.resolveLegacyEndpoint,
+        onClosed: () => connections.delete(value),
+      });
+      connections.add(value);
+      return value;
+    },
+  };
+}
+
+interface ConnectionServices {
+  compaction?: CompactionPolicy;
+  resolveLegacyEndpoint?(provider: string): string;
+  transport?: typeof fetch;
+  readSettings(): Promise<ConnectionSettings>;
+  supported: readonly string[];
+  imageDirectory?: string;
+  sessionDirectory?: string;
+  home?: string;
+  providerId: string;
+  catalog: EndpointCatalog;
+  onClosed(): void;
+}
+
+function connection({
+  readSettings,
+  supported,
+  imageDirectory,
+  sessionDirectory,
+  home,
+  providerId,
+  catalog,
+  transport,
+  compaction,
+  resolveLegacyEndpoint,
+  onClosed,
+}: ConnectionServices): ManagedConnection {
+  const listeners = new Set<(event: ProviderEvent) => void>();
+  const sessions = new Map<string, OpenAiSession>();
+  const profiles = new Map<string, string>();
+  const opening = new Set<string>();
+  const lifecycle = new AbortController();
+  let closed = false;
+  let closing: Promise<void> | null = null;
+  const emit = (event: ProviderEvent) => {
+    if (!closed) for (const listener of listeners) listener(event);
+  };
+  const session = (id: string) => {
+    const value = sessions.get(id);
+    if (!value) throw new Error(`Unknown provider session: ${id}`);
+    return value;
+  };
+  async function createSession(input: Extract<ProviderInput, { type: "session.open" }>) {
+    const root = await readSettings();
+    const imported = await importLegacyConversation({
+      persistence: input.persistence,
+      provider: providerId,
+      resolveLegacyEndpoint,
+      home,
+      settings: root,
+      config: input.config,
+      signal: lifecycle.signal,
+    });
+    const archive = sessionDirectory
+      ? new SessionArchive(sessionDirectory, imported.persistence)
+      : undefined;
+    const persistence = archive?.restored ?? imported.persistence;
+    const config = restoredLegacyConfig({ config: imported.config, persistence });
+    const models = await catalog.models(root, lifecycle.signal);
+    const data = persistence?.data;
+    let savedModel: string | undefined;
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      const preferences = data.preferences;
+      if (
+        preferences &&
+        typeof preferences === "object" &&
+        !Array.isArray(preferences) &&
+        typeof preferences.model === "string"
+      )
+        savedModel = preferences.model;
+    }
+    const model =
+      config.model ?? savedModel ?? models.find((entry) => entry.isSelectable !== false)?.id;
+    if (!model)
+      throw new Error("No endpoint model is available. Check the host's connection settings.");
+    const reference = modelReference(model);
+    const profile = endpointProfiles(root, Boolean(input.persistence)).find(
+      (entry) => entry.id === reference.profileId,
+    );
+    if (!profile)
+      throw new Error(
+        "This endpoint profile was removed. Restore it before resuming this conversation.",
+      );
+    profiles.set(input.sessionId, profile.id);
+    return new OpenAiSession({
+      compaction,
+      transport,
+      id: input.sessionId,
+      config: { ...config, model },
+      settings: profile.settings,
+      emit,
+      persistence,
+      archive,
+      instructions: home ? await InstructionSource.create({ cwd: config.cwd, home }) : undefined,
+      supportsPermissions: supported.includes("permission"),
+      imageDirectory,
+      models: models.filter((entry) => entry.metadata?.endpointProfileId === profile.id),
+      profileId: profile.id,
+      resolveApiKey: async () => {
+        if (!endpointProfiles(await readSettings(), true).some((entry) => entry.id === profile.id))
+          throw new Error("This connection was removed. Chat history is retained.");
+        return catalog.credential(profile, input.config.env);
+      },
+    });
+  }
+  async function dispatch(input: ProviderInput): Promise<void> {
+    switch (input.type) {
+      case "catalog": {
+        const settings = await readSettings();
+        const models = await catalog.models(settings, lifecycle.signal, true);
+        const defaultModel = models.find((model) => model.isSelectable !== false);
+        if (!defaultModel)
+          throw new Error(
+            models
+              .map((model) => model.description)
+              .join("\n")
+              .slice(0, 4000),
+          );
+        emit({
+          type: "catalog",
+          requestId: input.requestId,
+          catalog: {
+            models,
+            modes,
+            defaultModel: defaultModel.id,
+            defaultMode: "default",
+          },
+        });
+        return;
+      }
+      case "session.open": {
+        const value = await createSession(input);
+        try {
+          await value.prepare(lifecycle.signal);
+          value.checkpoint();
+        } catch (error) {
+          await value.close();
+          throw error;
+        }
+        if (closed || closing) {
+          await value.close();
+          return;
+        }
+        sessions.set(input.sessionId, value);
+        emit({
+          type: "session.opened",
+          requestId: input.requestId,
+          sessionId: input.sessionId,
+          capabilities: supported,
+          restoration: "core",
+          cwd: input.config.cwd,
+          ...(input.config.title ? { title: input.config.title } : {}),
+        });
+        if (input.history === "replay")
+          for (const item of value.timeline.values())
+            emit({
+              type: "timeline.item",
+              sessionId: input.sessionId,
+              item,
+              timestamp: value.timestamp(item.id),
+            });
+        emit({
+          type: "session.config",
+          sessionId: input.sessionId,
+          config: value.configState(),
+        });
+        if (supported.includes("prompt.command"))
+          emit({
+            type: "session.commands",
+            sessionId: input.sessionId,
+            commands: [
+              {
+                name: "compact",
+                description: "Summarize older context while retaining the transcript",
+                argumentHint: "[summary focus]",
+              },
+            ],
+          });
+        emit({ type: "session.ready", requestId: input.requestId, sessionId: input.sessionId });
+        opening.delete(input.sessionId);
+        return;
+      }
+      case "session.prompt":
+        session(input.sessionId).start(input.prompt);
+        return;
+      case "session.permission":
+        session(input.sessionId).respond(input.permissionId, input.response);
+        return;
+      case "session.configure":
+        session(input.sessionId).configure(input.changes);
+        emit({ type: "request.completed", requestId: input.requestId });
+        return;
+      case "session.revert":
+        if (input.scope !== "conversation")
+          throw new Error("This provider rewinds conversations only; file changes are retained.");
+        session(input.sessionId).revert(input.token);
+        emit({ type: "request.completed", requestId: input.requestId });
+        return;
+      case "session.interrupt":
+        await session(input.sessionId).interrupt();
+        emit({ type: "request.completed", requestId: input.requestId });
+        return;
+      case "session.close":
+        await session(input.sessionId).close();
+        sessions.delete(input.sessionId);
+        profiles.delete(input.sessionId);
+        emit({ type: "session.closed", sessionId: input.sessionId });
+        emit({ type: "request.completed", requestId: input.requestId });
+        return;
+      default:
+        throw new Error(`Provider operation ${input.type} is not supported by this slice.`);
+    }
+  }
+  return {
+    async retireProfile(profileId) {
+      for (const [sessionId, value] of sessions) {
+        if (profiles.get(sessionId) !== profileId) continue;
+        await value.close();
+        sessions.delete(sessionId);
+        profiles.delete(sessionId);
+        emit({
+          type: "session.closed",
+          sessionId,
+          error: {
+            code: "connection_removed",
+            message: "This connection was removed. Chat history is retained.",
+          },
+        });
+      }
+    },
+    version: 1,
+    capabilities: supported,
+    async send(input) {
+      if (closed || closing) throw new Error("The provider connection is closed.");
+      requireProviderCapabilities(supported, input);
+      if (input.type === "session.open") {
+        if (sessions.has(input.sessionId) || opening.has(input.sessionId))
+          throw new Error("This provider session is already open.");
+        opening.add(input.sessionId);
+      } else if ("sessionId" in input) session(input.sessionId);
+      void dispatch(input).catch((error: unknown) => {
+        if (input.type === "session.open") opening.delete(input.sessionId);
+        const failure = { message: error instanceof Error ? error.message : String(error) };
+        if ("requestId" in input)
+          emit({ type: "request.failed", requestId: input.requestId, error: failure });
+        else if (input.type === "session.prompt")
+          emit({
+            type: "session.prompt_result",
+            sessionId: input.sessionId,
+            clientMessageId: input.prompt.clientMessageId,
+            result: { type: "failed", error: failure },
+          });
+      });
+    },
+    onEvent(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    async close() {
+      if (closing) return closing;
+      closing = (async () => {
+        lifecycle.abort();
+        await Promise.all([...sessions.values()].map((value) => value.close()));
+        closed = true;
+        sessions.clear();
+        profiles.clear();
+        listeners.clear();
+        onClosed();
+      })();
+      return closing;
+    },
+  };
+}

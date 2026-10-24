@@ -1,8 +1,13 @@
 # Otto OpenAI-compatible provider
 
 The bundled `otto-openai-compatible-provider` plugin registers provider
-`openai-compatible` through Paseo 0.12's public provider API. Its implementation lives
-in `plugins/otto-openai-compatible-provider/`. The Otto-owned built-in list is the only
+`openai-compatible` through Paseo 0.12's public provider API. Its connection UI and
+credential handlers live in `plugins/otto-openai-compatible-provider/`. The full
+agent/tool harness lives in `packages/plugin/src/otto/openai/`, exposed through
+the node-only `@getpaseo/plugin/server/otto-openai` SDK entry. The provider plugin
+re-exports that implementation, and Brain composes the same factory. Connection
+definitions have a separate client-safe `@getpaseo/plugin/otto/openai-settings`
+entry. The Otto-owned built-in list is the only
 integration with the daemon registry. Relay, Hub, client protocol, agent storage and
 chat rendering use the existing Paseo implementations.
 

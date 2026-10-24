@@ -37,6 +37,7 @@ const ENCODER = new TextEncoder();
 
 export class BrainStatusStore<Status extends { instanceId: string }> {
   private snapshot: BrainStatusSnapshot<Status>;
+  private statusSnapshot: BrainStatusSnapshot<Status>;
   private listeners = new Set<() => void>();
   private waiters = new Set<(error?: Error) => void>();
   private session: Session | null = null;
@@ -75,6 +76,7 @@ export class BrainStatusStore<Status extends { instanceId: string }> {
       nextLogIndex: 0,
       error: null,
     });
+    this.statusSnapshot = this.snapshot;
   }
   getSnapshot = (): BrainStatusSnapshot<Status> => this.snapshot;
   subscribe = (listener: () => void): (() => void) => {
@@ -101,30 +103,56 @@ export class BrainStatusStore<Status extends { instanceId: string }> {
     };
   }
 
+  /** An explicit owner/connection change invalidates stale data before reconnecting. */
+  invalidate(): void {
+    if (this.closed) throw new Error("Brain status store is closed");
+    this.cancelRetry();
+    this.epoch++;
+    this.failures = 0;
+    this.logBytes = 0;
+    this.session?.abort.abort();
+    this.publish({
+      ...this.snapshot,
+      connection: this.demands > 0 ? "connecting" : "disconnected",
+      status: null,
+      logs: [],
+      firstLogIndex: 0,
+      nextLogIndex: 0,
+      error: null,
+    });
+    // runStream waits for the old source to settle before opening its replacement.
+    this.ensureStream();
+  }
+
   /** Bounded waits over an existing feed; waiting itself never creates host demand. */
   async wait(
     cursor: string | null,
     signal: AbortSignal,
     timeoutMs = 20000,
+    includeLogs = true,
   ): Promise<BrainStatusSnapshot<Status>> {
     if (this.closed) throw new Error("Brain status store is closed");
     signal.throwIfAborted();
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 20000)
       throw new Error("Invalid Brain wait deadline");
-    if (cursor !== this.snapshot.cursor) return this.snapshot;
+    const selected = () => (includeLogs ? this.snapshot : this.statusSnapshot);
+    if (cursor !== selected().cursor) return selected();
     if (this.waiters.size >= 64) throw new Error("Too many Brain status waiters");
     return new Promise((resolve, reject) => {
       const finish = (error?: Error) => {
         clearTimeout(timer);
         signal.removeEventListener("abort", aborted);
-        this.waiters.delete(finish);
+        this.waiters.delete(changed);
         if (error) reject(error);
-        else resolve(this.snapshot);
+        else resolve(selected());
+      };
+      const changed = (error?: Error) => {
+        if (error || cursor !== selected().cursor) finish(error);
       };
       const aborted = () =>
         finish(new Error("Brain status wait canceled", { cause: signal.reason }));
       const timer = setTimeout(finish, timeoutMs);
-      this.waiters.add(finish);
+      this.waiters.add(changed);
       signal.addEventListener("abort", aborted, { once: true });
       if (signal.aborted) aborted();
     });
@@ -150,9 +178,10 @@ export class BrainStatusStore<Status extends { instanceId: string }> {
   private cursor(): string {
     return JSON.stringify([this.options.streamId, this.epoch, this.revision]);
   }
-  private publish(next: BrainStatusSnapshot<Status>): void {
+  private publish(next: BrainStatusSnapshot<Status>, logsOnly = false): void {
     this.revision++;
     this.snapshot = Object.freeze({ ...next, cursor: this.cursor() });
+    if (!logsOnly) this.statusSnapshot = Object.freeze({ ...this.snapshot, logs: [] });
     for (const finish of this.waiters) finish();
     for (const listener of this.listeners) listener();
   }
@@ -262,11 +291,14 @@ export class BrainStatusStore<Status extends { instanceId: string }> {
       const removed = logs.shift();
       if (removed) this.logBytes -= ENCODER.encode(removed.line).length;
     }
-    this.publish({
-      ...this.snapshot,
-      logs: Object.freeze(logs),
-      nextLogIndex: record.index + 1,
-      firstLogIndex: logs[0]?.index ?? record.index + 1,
-    });
+    this.publish(
+      {
+        ...this.snapshot,
+        logs: Object.freeze(logs),
+        nextLogIndex: record.index + 1,
+        firstLogIndex: logs[0]?.index ?? record.index + 1,
+      },
+      true,
+    );
   }
 }

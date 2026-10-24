@@ -12,6 +12,7 @@ import type { PluginClientRuntime } from "./evaluate";
 import { createPluginNavigation } from "./navigation";
 import { pluginButtonStore } from "./buttons";
 import type { InstalledPlugin } from "./types";
+import { createBrainPluginUi } from "@/otto/brain/integration/plugin-ui";
 
 export function createPluginClientRuntime(
   installation: InstalledPlugin,
@@ -24,6 +25,14 @@ export function createPluginClientRuntime(
   );
   return {
     ...capabilities,
+    // OTTO(brain-ui): all built-in Brain surfaces share this installation's one controller.
+    ottoBrain:
+      installation.id === "otto-brain"
+        ? createBrainPluginUi(installation, {
+            openBrain: () => capabilities.openScreen({ screenId: "brain" }),
+            openSettings: () => capabilities.openSettings("brain"),
+          })
+        : undefined,
     playAudio: createPlayAudio(audio, installation.lifetime.signal),
     hosts: createPluginHosts(getHostRuntimeStore(), installation.lifetime.signal),
     addComposerPill(contribution) {

@@ -120,6 +120,12 @@ it("keeps an empty host inert and reports only implemented management capabiliti
     .object({ runtimes: z.array(z.unknown()) })
     .parse(await (await fetch(`${fixture.base}/__host/runtimes`)).json());
   expect(runtimeInventory.runtimes).toEqual([]);
+  expect(await (await fetch(`${fixture.base}/__host/evals`)).json()).toEqual({
+    rankings: [],
+    latest: [],
+    variance: [],
+    runCount: 0,
+  });
   expect(fixture.scans()).toBe(0);
 });
 

@@ -238,6 +238,7 @@ import {
 } from "./hub/relationship-remote.js";
 import { DaemonExecutions } from "./hub/daemon-executions.js";
 import { PluginService } from "./plugins/index.js";
+import { BrainDaemonService } from "./otto/brain/service.js"; // OTTO(brain-host): one controller for all app consumers.
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
 
@@ -628,6 +629,7 @@ export async function createPaseoDaemon(
   const browserToolsBroker = new BrowserToolsBroker({});
   // OTTO(paseo-version): plugins target the Paseo API, so the plugin host reports
   // the Paseo base release instead of Otto's version.
+  const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until explicit demand/action.
   const pluginRuntime: PluginService = new PluginService(
     logger,
     daemonConfigStore,
@@ -643,6 +645,13 @@ export async function createPaseoDaemon(
       }),
       builtinPlugins: resolveBuiltinPluginLoader(dependencies),
       settingsDirectory: path.join(config.paseoHome, "plugin-settings"),
+      // OTTO(feature-host): existing authenticated plugin RPC, unchanged relay framing.
+      ottoRpc: {
+        has: (pluginId) => pluginId === "otto-brain",
+        invoke: (pluginId, method, input, clientId) =>
+          pluginId === "otto-brain" ? ottoBrain.invoke(method, input, clientId) : undefined,
+        releaseClient: (clientId) => ottoBrain.releaseClient(clientId),
+      },
     },
   );
 
@@ -1813,6 +1822,7 @@ export async function createPaseoDaemon(
       await deleteLocalCredential(config.paseoHome);
       unsubscribePluginProviders();
       await pluginRuntime.stopAllPlugins().catch(() => undefined);
+      await ottoBrain.close(); // OTTO(brain-host): release waits/feed; never stop independent host jobs.
       await serviceProxy.stopStandalone().catch(() => undefined);
       await agentProviderRuntime.shutdown().catch(() => undefined);
       if (mainStarted) {
@@ -1848,6 +1858,7 @@ export async function createPaseoDaemon(
     await agentStorage.flush().catch(() => undefined);
     await agentProviderRuntime.shutdown();
     await pluginRuntime.stopAllPlugins();
+    await ottoBrain.close(); // OTTO(brain-host)
     terminalManager.killAll();
     await speechService.stop();
     await scheduleService.stop().catch(() => undefined);

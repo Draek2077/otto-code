@@ -8,6 +8,7 @@ const ROUTES = new Set([
   "GET /__host/settings",
   "POST /__host/settings",
   "POST /__host/settings/access-key",
+  "POST /__host/settings/discover-network",
 ]);
 export async function handleOwnerSettings(
   settings: BrainOwnerSettings,
@@ -25,6 +26,10 @@ export async function handleOwnerSettings(
   requireWrite(request);
   const body = await readObject(request, signal, 128 * 1024);
   try {
+    if (route === "/__host/settings/discover-network") {
+      sendJson(response, 200, await settings.discoverNetwork(body, signal));
+      return true;
+    }
     const result =
       route === "/__host/settings/access-key"
         ? settings.generateAccessKey(body)

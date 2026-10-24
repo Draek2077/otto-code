@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "rootDir": "." },
+  "include": ["src/server/otto-brain.test.ts"],
+  "exclude": ["node_modules", "dist"]
+}

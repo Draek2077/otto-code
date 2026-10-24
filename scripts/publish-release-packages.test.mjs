@@ -22,9 +22,9 @@ test("Otto publishes its packages including standalone Brain under its npm scope
     "@otto-code/relay",
     "@otto-code/protocol",
     "@otto-code/client",
+    "@otto-code/brain",
     "@otto-code/plugin",
     "@otto-code/server",
-    "@otto-code/brain",
     "@otto-code/cli",
   ]);
 });
@@ -51,6 +51,11 @@ test("every published workspace exists, is public, and depends only on published
     for (const dependency of Object.keys({ ...pkg.dependencies, ...pkg.peerDependencies })) {
       if (dependency.startsWith("@getpaseo/")) {
         assert.ok(published.has(dependency), `${workspace} depends on unpublished ${dependency}`);
+        assert.ok(
+          RELEASE_WORKSPACES.findIndex((entry) => entry.workspace === dependency) <
+            RELEASE_WORKSPACES.findIndex((entry) => entry.workspace === workspace),
+          `${dependency} must publish before ${workspace}`,
+        );
       }
     }
   }

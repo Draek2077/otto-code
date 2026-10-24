@@ -3,6 +3,8 @@ import { openExternalUrl } from "@/utils/open-external-url";
 import * as pluginUiRuntime from "./react-native/ui";
 import { useSettings } from "./settings/use-settings";
 import * as pluginSharedRuntime from "@getpaseo/plugin";
+// OTTO(provider-harness): connection definitions are the only client-safe harness export.
+import * as ottoOpenAiSettings from "@getpaseo/plugin/otto/openai-settings";
 import * as pluginClientRuntime from "@getpaseo/plugin/client";
 import * as React from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
@@ -100,7 +102,11 @@ export type PluginClientRuntime = Pick<
   | "openPanel"
   | "addComposerPill"
   | "addHeaderButton"
-> & { hosts: ReturnType<typeof createPluginHosts> };
+> & {
+  hosts: ReturnType<typeof createPluginHosts>;
+  // OTTO(brain-ui): app-owned components supplied only to the trusted built-in.
+  ottoBrain?: typeof import("@getpaseo/plugin/client/otto-brain");
+};
 
 export function runPluginClientBundle(
   id: string,
@@ -437,11 +443,16 @@ export function runPluginClientBundle(
     },
   };
   const runtimeRequire = (name: string): unknown => {
+    // OTTO(brain-ui): arbitrary plugins cannot borrow the built-in's daemon controller.
+    if (name === "@getpaseo/plugin/client/otto-brain" && id === "otto-brain" && runtime.ottoBrain)
+      return runtime.ottoBrain;
     if (name === "@getpaseo/plugin/client/ui") return pluginUiRuntime;
     if (name === "react") return React;
     if (name === "react/jsx-runtime") return ReactJsxRuntime;
     if (name === "react-native") return ReactNative;
     if (name === "@getpaseo/plugin") return pluginSharedRuntime;
+    // OTTO(provider-harness): no Node-side provider code enters the client runtime.
+    if (name === "@getpaseo/plugin/otto/openai-settings") return ottoOpenAiSettings;
     if (name === "@getpaseo/plugin/client")
       return {
         ...pluginClientRuntime,

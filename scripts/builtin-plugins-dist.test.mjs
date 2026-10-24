@@ -75,6 +75,17 @@ test("built output compiles and starts every listed built-in", async () => {
       assert.ok(bundles.serverBundle, `${id} must compile a server bundle`);
       await runtime.startBuiltinPlugin({ id, directory });
       assert.ok(runtime.catalog().some((plugin) => plugin.id === id));
+      // OTTO(brain-provider): a compiled screen bundle alone is not a registered chat provider.
+      if (id === "otto-brain") {
+        const provider = runtime
+          .getProviderRegistrations(id)
+          .find((entry) => entry.id === "otto-brain");
+        assert.ok(provider, "The packaged Brain plugin must register its stable provider ID");
+        assert.equal(provider.label, "Otto Brain");
+        assert.equal(provider.iconPath, "brain.svg");
+        assert.equal(provider.hasStatus, true);
+        assert.equal(provider.hasCatalogCacheKey, true);
+      }
       if (id.endsWith("-usage-source")) {
         const sourceId = id.slice(0, -"-usage-source".length);
         assert.ok(

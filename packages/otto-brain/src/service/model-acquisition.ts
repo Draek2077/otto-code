@@ -2,6 +2,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod/v3";
 import type { CatalogModel } from "../config/schema.js";
+import type { Model } from "../types.js";
+import { repoOfModel } from "../models/hf.js";
 import {
   bundleDownloadPlan,
   destinationFor,
@@ -41,6 +43,8 @@ interface DownloadPlan {
 export interface ModelAcquisitionPorts {
   jobs: BrainJobs;
   catalog(): CatalogModel[];
+  /** Canonical owning-host inventory. Clients never infer installation from paths. */
+  models(): Model[];
   destination(): string;
   token(): string | null;
   quants(repo: string, token: string | null, signal: AbortSignal): Promise<RepoQuants>;
@@ -111,7 +115,12 @@ export class ModelAcquisition {
   constructor(private readonly ports: ModelAcquisitionPorts) {}
 
   catalog() {
-    return { models: this.ports.catalog() };
+    const installed = new Set(this.ports.models().map((model) => model.catalogId));
+    return {
+      models: this.ports
+        .catalog()
+        .map((model) => Object.assign({}, model, { installed: installed.has(model.id) })),
+    };
   }
   async search(query: string, limit: number, signal: AbortSignal) {
     if (
@@ -122,12 +131,46 @@ export class ModelAcquisition {
       limit > 100
     )
       throw new RequestError(400, "Supply a model search and a limit from 1 to 100");
-    return { models: await this.ports.search(query.trim(), limit, this.ports.token(), signal) };
+    const results = await this.ports.search(query.trim(), limit, this.ports.token(), signal);
+    const installed = new Set(
+      this.ports.models().map((model) => repoOfModel(model)?.toLowerCase()),
+    );
+    return {
+      models: results.map((model) =>
+        Object.assign({}, model, {
+          installed: installed.has(model.repo.toLowerCase()),
+        }),
+      ),
+    };
   }
   async quants(repo: string, signal: AbortSignal) {
     if (!RepoSchema.safeParse(repo).success)
       throw new RequestError(400, "Supply a Hugging Face repository id");
-    return this.ports.quants(repo, this.ports.token(), signal);
+    const listing = await this.ports.quants(repo, this.ports.token(), signal);
+    const models = this.ports
+      .models()
+      .filter((model) => repoOfModel(model)?.toLowerCase() === repo.toLowerCase());
+    return {
+      ...listing,
+      quants: listing.quants.map((quant) => {
+        const installed = models.find(
+          (model) => model.quant?.toLowerCase() === quant.quant.toLowerCase(),
+        );
+        return { ...quant, installed: Boolean(installed), modelId: installed?.id ?? null };
+      }),
+      mmproj: listing.mmproj
+        ? {
+            ...listing.mmproj,
+            installed: models.some(
+              (model) =>
+                Boolean(model.mmprojPath) ||
+                model.components?.some(
+                  (component) => component.role === "vision_projector" && component.available,
+                ),
+            ),
+          }
+        : null,
+    };
   }
   pull(input: unknown) {
     const parsed = SelectionSchema.safeParse(input);

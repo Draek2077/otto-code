@@ -16,7 +16,7 @@ export function ottoProviderRegistration(input: {
   settingsDirectory?: string;
 }): ProviderRegistration {
   if (
-    input.pluginId === "otto-openai-compatible-provider" &&
+    (input.pluginId === "otto-openai-compatible-provider" || input.pluginId === "otto-brain") &&
     input.settingsDirectory &&
     path.isAbsolute(input.settingsDirectory) &&
     path.basename(input.settingsDirectory) === "plugin-settings"

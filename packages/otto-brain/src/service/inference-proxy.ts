@@ -4,6 +4,7 @@ import { pipeline } from "node:stream/promises";
 import type { Model } from "../types.js";
 import type { Profile } from "../config/schema.js";
 import type { ReasoningTracker } from "./activity.js";
+import { CompletionEvidence, type CompletionTelemetry } from "./completion-telemetry.js";
 
 interface PrivateEngine {
   host: string;
@@ -101,12 +102,15 @@ export async function proxyCompletion(options: {
   response: http.ServerResponse;
   tracker: ReasoningTracker;
   signal: AbortSignal;
+  telemetry?: CompletionTelemetry;
 }): Promise<void> {
   const { engine, model, body, slot, route, response, tracker, signal } = options;
   const payload = prepareCompletion(body, model, engine.profile, slot, route);
   const lease = tracker.begin();
   if (slot !== null) lease.setSlot(slot);
   let upstream: http.ClientRequest | undefined;
+  const evidence = new CompletionEvidence(body.stream === true);
+  let failed = true;
   try {
     const incoming = await new Promise<http.IncomingMessage>((resolve, reject) => {
       upstream = http.request(
@@ -128,10 +132,18 @@ export async function proxyCompletion(options: {
       upstream.end(payload);
     });
     response.writeHead(incoming.statusCode ?? 502, responseHeaders(incoming.headers));
-    incoming.on("data", (chunk: Buffer) => lease.observe(chunk.toString("utf8")));
+    failed = (incoming.statusCode ?? 502) >= 400;
+    incoming.on("data", (chunk: Buffer) => {
+      lease.observe(chunk.toString("utf8"));
+      evidence.observe(chunk);
+    });
     await pipeline(incoming, response, { signal });
+  } catch (error) {
+    failed = true;
+    throw error;
   } finally {
     upstream?.destroy();
+    options.telemetry?.record(model.id, evidence.finish(failed));
     lease.end();
   }
 }

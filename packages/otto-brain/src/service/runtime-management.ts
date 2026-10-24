@@ -105,15 +105,31 @@ export class RuntimeManagement {
   }
 
   remove(id: string) {
+    const runtime = this.removable(id);
+    const job = this.ports.jobs.start(
+      "runtime-remove",
+      { modelId: null, catalogModelId: null, repo: null, quant: null },
+      async (context) => {
+        context.signal.throwIfAborted();
+        // Selection and resident use may change after admission; validate again before deletion.
+        this.removable(id);
+        context.started();
+        this.ports.remove(runtime);
+        this.ports.changed();
+        return { runtimeId: id };
+      },
+    );
+    return { job };
+  }
+
+  private removable(id: string): Runtime {
     const runtime = this.installed(id);
     if (runtime.source !== "managed")
       throw new RequestError(409, "Only Otto-managed runtimes can be removed");
     if (this.ports.selected()?.exe === runtime.exe)
       throw new RequestError(409, "Select another runtime before removing this one");
     this.ports.assertUnused(runtime);
-    this.ports.remove(runtime);
-    this.ports.changed();
-    return { ok: true };
+    return runtime;
   }
 
   install(id: string) {

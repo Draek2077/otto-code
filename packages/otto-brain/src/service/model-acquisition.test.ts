@@ -2,6 +2,7 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { CatalogModelSchema } from "../config/schema.js";
 import type { DownloadFilesOptions } from "../models/download.js";
+import type { Model } from "../types.js";
 import { BrainJobs } from "./jobs.js";
 import { ModelAcquisition, type ModelAcquisitionPorts } from "./model-acquisition.js";
 
@@ -22,6 +23,7 @@ function fixture(overrides: Partial<ModelAcquisitionPorts> = {}) {
   const service = new ModelAcquisition({
     jobs,
     catalog: () => catalog,
+    models: () => [],
     destination: () => path.resolve(".tmp/model-acquisition-fixture"),
     token: () => "private fixture credential",
     quants: async (repo, token, signal) => {
@@ -56,6 +58,58 @@ function fixture(overrides: Partial<ModelAcquisitionPorts> = {}) {
   });
   return { service, jobs, calls, catalog, changes: () => changes };
 }
+it("joins discovery to the owning inventory by catalog, repository and exact quant identity", async () => {
+  const installed: Model = {
+    id: "actual/repo/Q8.gguf",
+    displayName: "A renamed model",
+    modelPath: "/owner/private/model.gguf",
+    mmprojPath: "/owner/private/projector.gguf",
+    mmprojBytes: 5,
+    sizeBytes: 20,
+    quant: "Q8_0",
+    metadata: null,
+    features: { mtp: false, distilled: false, imatrix: false },
+    catalogId: "fixture/catalog",
+    catalogHfRepo: "fixture/repo",
+  };
+  const f = fixture({
+    models: () => [installed],
+    search: async () => [
+      {
+        repo: "Fixture/Repo",
+        author: "fixture",
+        downloads: 1,
+        likes: 1,
+        updatedAt: null,
+        gated: false,
+        summary: null,
+      },
+      {
+        repo: "other/repo",
+        author: "other",
+        downloads: 1,
+        likes: 0,
+        updatedAt: null,
+        gated: false,
+        summary: null,
+      },
+    ],
+  });
+  expect(f.service.catalog().models[0]?.installed).toBe(true);
+  expect(
+    (await f.service.search("fixture", 2, new AbortController().signal)).models.map(
+      (row) => row.installed,
+    ),
+  ).toEqual([true, false]);
+  const listing = await f.service.quants("fixture/repo", new AbortController().signal);
+  expect(listing.quants[0]).toMatchObject({ installed: true, modelId: installed.id });
+  expect(listing.mmproj?.installed).toBe(true);
+  const unrelated = await f.service.quants("other/repo", new AbortController().signal);
+  expect(unrelated.quants[0]).toMatchObject({ installed: false, modelId: null });
+  expect(unrelated.mmproj?.installed).toBe(false);
+  expect(JSON.stringify(listing)).not.toContain("/owner/private");
+  await f.jobs.close();
+});
 it("plans catalog downloads on the owner and reports progress without its credential or file path", async () => {
   const value = fixture();
   const { job } = value.service.pull({ modelId: "fixture/catalog" });

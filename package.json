@@ -24,6 +24,7 @@
     "plugins",
     "packages/expo-two-way-audio",
     "packages/highlight",
+    "packages/otto-brain",
     "packages/plugin",
     "packages/protocol",
     "packages/client",
@@ -32,7 +33,6 @@
     "packages/relay",
     "packages/website",
     "packages/desktop",
-    "packages/otto-brain",
     "packages/cli"
   ],
   "scripts": {
@@ -50,7 +50,7 @@
     "build": "npm run build --workspaces --if-present",
     "build:highlight": "npm run build --workspace=@getpaseo/highlight",
     "build:highlight:clean": "npm run build:clean --workspace=@getpaseo/highlight",
-    "build:plugin": "npm run build --workspace=@getpaseo/plugin",
+    "build:plugin": "npm run build:brain && npm run build --workspace=@getpaseo/plugin",
     "build:plugin:clean": "npm run build:clean --workspace=@getpaseo/plugin",
     "build:relay": "npm run build --workspace=@getpaseo/relay",
     "build:relay:clean": "npm run build:clean --workspace=@getpaseo/relay",

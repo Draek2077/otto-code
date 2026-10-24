@@ -1,4 +1,5 @@
 import type { PluginLifecycle } from "./lifecycle/index.js";
+import type { OttoBuiltinRpc } from "../otto/plugin-rpc.js"; // OTTO(feature-host): daemon-owned built-in effects.
 import { ottoProviderRegistration } from "../otto/plugin-provider-compat.js"; // OTTO(provider-history)
 import path from "node:path";
 import { stat, rm } from "node:fs/promises";
@@ -62,6 +63,7 @@ interface PluginRuntimePort {
 }
 
 interface PluginServiceDependencies {
+  ottoRpc?: OttoBuiltinRpc; // OTTO(feature-host)
   usageAgents?: AgentUsageLookup;
   settingsDirectory?: string;
   runtime?: PluginRuntimePort;
@@ -474,8 +476,27 @@ export class PluginService {
     });
   }
 
-  invokePluginRpc(pluginId: string, method: string, input: unknown): Promise<unknown> {
+  // OTTO(feature-host): advertise only an installed built-in's concrete daemon bridge.
+  supportsBuiltinRpc(pluginId: string): boolean {
+    return this.builtinPluginIds.has(pluginId) && this.dependencies.ottoRpc?.has(pluginId) === true;
+  }
+
+  invokePluginRpc(
+    pluginId: string,
+    method: string,
+    input: unknown,
+    clientId = "",
+  ): Promise<unknown> {
+    // OTTO(feature-host): only registered built-ins may use daemon-owned services.
+    if (this.builtinPluginIds.has(pluginId)) {
+      const handled = this.dependencies.ottoRpc?.invoke(pluginId, method, input, clientId);
+      if (handled) return handled;
+    }
     return this.runtime.invoke(pluginId, method, input);
+  }
+
+  releaseClient(clientId: string): void {
+    this.dependencies.ottoRpc?.releaseClient(clientId); // OTTO(feature-host): drop stream demand on disconnect.
   }
 
   async stopAllPlugins(): Promise<void> {

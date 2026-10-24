@@ -36,6 +36,59 @@ const tick = async () => {
   await Promise.resolve();
   await Promise.resolve();
 };
+it("keeps status-only consumers asleep through log bursts and never returns retained logs to them", async () => {
+  const f = fixture();
+  const release = f.store.retain();
+  await tick();
+  f.sessions[0]!.receive.status({ instanceId: "owner-a", state: "ready" });
+  const first = await f.store.wait(null, new AbortController().signal, 20000, false);
+  let settled = false;
+  const waiting = f.store
+    .wait(first.cursor, new AbortController().signal, 20000, false)
+    .then((value) => {
+      settled = true;
+      return value;
+    });
+  for (let index = 0; index < 20; index++)
+    f.sessions[0]!.receive.log(record(index, `line ${index}`));
+  await tick();
+  expect(settled).toBe(false);
+  f.sessions[0]!.receive.status({ instanceId: "owner-a", state: "stopped" });
+  expect(await waiting).toMatchObject({ status: { state: "stopped" }, logs: [] });
+  expect(f.store.getSnapshot().logs).toHaveLength(20);
+  release();
+});
+
+it("invalidates an explicitly changed connection without accepting old owner callbacks", async () => {
+  const f = fixture();
+  const release = f.store.retain();
+  await tick();
+  const old = f.sessions[0]!;
+  old.receive.status({ instanceId: "owner-a", state: "ready" });
+  old.receive.log(record(0, "old log"));
+  const cursor = f.store.getSnapshot().cursor;
+  f.store.invalidate();
+  expect(old.signal.aborted).toBe(true);
+  expect(f.store.getSnapshot()).toMatchObject({ status: null, logs: [], connection: "connecting" });
+  expect(f.store.getSnapshot().cursor).not.toBe(cursor);
+  old.receive.status({ instanceId: "owner-a", state: "stale" });
+  old.receive.log(record(1, "late old log"));
+  expect(f.store.getSnapshot().status).toBeNull();
+  await tick();
+  expect(f.sessions).toHaveLength(2);
+  f.sessions[1]!.receive.status({ instanceId: "owner-b", state: "stopped" });
+  expect(f.store.getSnapshot().status?.instanceId).toBe("owner-b");
+  expect(f.store.getSnapshot().logs).toEqual([]);
+  release();
+});
+
+it("invalidating a passive store creates no feed demand", async () => {
+  const f = fixture();
+  f.store.invalidate();
+  await tick();
+  expect(f.sessions).toHaveLength(0);
+  expect(f.store.getSnapshot().connection).toBe("disconnected");
+});
 
 it("keeps passive reads, subscriptions and immediate waits free of host demand", async () => {
   const f = fixture();

@@ -12,7 +12,7 @@ export function ottoPluginEnvironment({
   pluginId,
   settingsDirectory,
 }: PluginHostInput): Record<string, string> {
-  if (pluginId !== "otto-openai-compatible-provider") return {};
+  if (pluginId !== "otto-openai-compatible-provider" && pluginId !== "otto-brain") return {};
   if (
     !settingsDirectory ||
     !path.isAbsolute(settingsDirectory) ||

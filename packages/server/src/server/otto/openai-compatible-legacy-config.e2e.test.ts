@@ -128,7 +128,7 @@ test("Otto 0.9 provider settings and aliases work unchanged without activating B
       authorization: "Bearer synthetic-studio-key",
     });
     expect(await client.listProviderModels("otto-brain", { cwd: root })).toMatchObject({
-      error: "Unknown provider: otto-brain",
+      error: expect.stringContaining("Brain"),
     });
     expect(
       await client.invokePluginRpc("otto-openai-compatible-provider", rpc.write.name, {

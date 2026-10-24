@@ -8,6 +8,13 @@ function flush(): Promise<void> {
 }
 
 describe("statusChangeKey", () => {
+  it("publishes owner-setting and library revisions even when the resident is otherwise unchanged", () => {
+    const base = { state: "ready", ownerSettingsRevision: "origin", libraryRevision: 1 };
+    expect(statusChangeKey({ ...base, ownerSettingsRevision: "peer" })).not.toBe(
+      statusChangeKey(base),
+    );
+    expect(statusChangeKey({ ...base, libraryRevision: 2 })).not.toBe(statusChangeKey(base));
+  });
   it("ignores traffic counters, the log length, and slot context capacity", () => {
     const base = {
       state: "ready",

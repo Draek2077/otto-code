@@ -1811,6 +1811,8 @@ export class VoiceAssistantWebSocketServer {
       desktopManaged: this.daemonRuntimeConfig?.desktopManaged === true,
       ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
       features: {
+        // OTTO(brain-host): no feature claim when this daemon lacks the shared controller.
+        ottoBrain: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
         usageSources: true,
         ownedSubscriptions: true,
         agentRequestReceipts: true,

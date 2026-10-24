@@ -20,8 +20,10 @@ test("Otto fixture declarations and bounded Brain runtime tests stay in CI", () 
   const jobs = jobBlocks(source);
   const declarations = jobs.get("typecheck").join("\n");
   for (const command of [
+    "npm run typecheck:otto-fixtures --workspace=@getpaseo/plugin",
     "npm run typecheck --workspace=@getpaseo/brain -- -p tsconfig.tests.json",
     "npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-knowledge-tests.json",
+    "npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-brain-tests.json",
     "npm run typecheck --workspace=@getpaseo/builtin-plugins -- -p otto-kanban/tsconfig.tests.json",
   ])
     assert.ok(declarations.includes(command), `Missing fixture typecheck: ${command}`);
@@ -31,8 +33,10 @@ test("Otto fixture declarations and bounded Brain runtime tests stay in CI", () 
   assert.match(linux, /run: npm run test --workspace=@getpaseo\/brain -- --maxWorkers=2/);
   assert.match(windows, /- \*server_brain_tests/);
   for (const config of [
+    "packages/plugin/tsconfig.otto-tests.json",
     "packages/otto-brain/tsconfig.tests.json",
     "packages/server/tsconfig.otto-knowledge-tests.json",
+    "packages/server/tsconfig.otto-brain-tests.json",
     "plugins/otto-kanban/tsconfig.tests.json",
   ]) {
     const parsed = JSON.parse(readFileSync(new URL(config, repoRoot), "utf8"));
@@ -259,6 +263,7 @@ test("PR routing declares stable behavior ownership", () => {
     ],
     app: ["packages/app/**", "packages/expo-two-way-audio/**"],
     sdk: [
+      "packages/otto-brain/**",
       "packages/plugin/**",
       "plugin-examples/**",
       "public-docs/plugins/**",

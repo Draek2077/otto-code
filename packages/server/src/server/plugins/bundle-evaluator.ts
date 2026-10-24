@@ -4,6 +4,10 @@ import * as pluginProviderRuntime from "@getpaseo/plugin/server/provider";
 import * as pluginAcpRuntime from "@getpaseo/plugin/server/acp";
 import * as pluginUsageRuntime from "@getpaseo/plugin/server/usage";
 import * as pluginServerRuntime from "@getpaseo/plugin/server";
+// OTTO(provider-harness): explicit packaged SDK module shared by Otto providers.
+import * as ottoOpenAiRuntime from "@getpaseo/plugin/server/otto-openai";
+import * as ottoBrainRuntime from "@getpaseo/plugin/server/otto-brain";
+import * as ottoOpenAiSettings from "@getpaseo/plugin/otto/openai-settings";
 import type { PluginServerContribution } from "@getpaseo/plugin/server";
 import * as zod from "zod";
 import { isPluginClientOnlySdkSpecifier } from "./plugin-sdk-specifiers.js";
@@ -15,6 +19,10 @@ function runtimeRequire(name: string): unknown {
     throw new Error(`${name} is available only in plugin client code`);
   }
   if (name === "@getpaseo/plugin") return pluginSharedRuntime;
+  // OTTO(provider-harness): keep the full harness on the node-only SDK boundary.
+  if (name === "@getpaseo/plugin/server/otto-openai") return ottoOpenAiRuntime;
+  if (name === "@getpaseo/plugin/server/otto-brain") return ottoBrainRuntime;
+  if (name === "@getpaseo/plugin/otto/openai-settings") return ottoOpenAiSettings;
   if (name === "@getpaseo/plugin/server") return pluginServerRuntime;
   if (name === "@getpaseo/plugin/server/provider") return pluginProviderRuntime;
   if (name === "@getpaseo/plugin/server/acp") return pluginAcpRuntime;

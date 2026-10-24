@@ -98,6 +98,35 @@ it("rejects a mismatched pin before releasing a socket to the HTTP credential wr
   expect(f.requests()).toBe(0);
 });
 
+it("completion responses use pinned trust before headers and preserve the streamed response contract", async () => {
+  const f = await fixture();
+  const wrong = remoteBrainClient({ ...f.options, certFingerprint: "00".repeat(32) });
+  await expect(wrong.completionRequest("/health")).rejects.toThrow("does not match");
+  expect(f.requests()).toBe(0);
+  const response = await remoteBrainClient(f.options).completionRequest("/health");
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ status: "ok" });
+});
+
+it("canceling a streamed completion body releases its owning HTTP request", async () => {
+  let closed = false;
+  const client = await httpFixture((_request, response) => {
+    response.once("close", () => {
+      closed = true;
+    });
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write("data: waiting\n\n");
+  });
+  const response = await client.completionRequest(
+    "/v1/chat/completions",
+    "{}",
+    AbortSignal.timeout(3000),
+  );
+  expect(response.headers.get("content-type")).toBe("text/event-stream");
+  await response.body?.cancel();
+  await expect.poll(() => closed).toBe(true);
+});
+
 it("uses the same pinned TLS and token policy for management reads and the shared event feed", async () => {
   const f = await fixture();
   // Normalized colon/case variations describe exactly the same certificate.

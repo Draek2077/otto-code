@@ -30,9 +30,9 @@ export const RELEASE_WORKSPACES = [
   { workspace: "@getpaseo/relay", directory: "packages/relay" },
   { workspace: "@getpaseo/protocol", directory: "packages/protocol" },
   { workspace: "@getpaseo/client", directory: "packages/client" },
+  { workspace: "@getpaseo/brain", directory: "packages/otto-brain" },
   { workspace: "@getpaseo/plugin", directory: "packages/plugin" },
   { workspace: "@getpaseo/server", directory: "packages/server" },
-  { workspace: "@getpaseo/brain", directory: "packages/otto-brain" },
   { workspace: "@getpaseo/cli", directory: "packages/cli" },
 ];
 

@@ -23,6 +23,21 @@
       "source": "./src/server/provider.ts",
       "default": "./dist/server/provider.js"
     },
+    "./server/otto-openai": {
+      "types": "./dist/server/otto-openai.d.ts",
+      "source": "./src/server/otto-openai.ts",
+      "default": "./dist/server/otto-openai.js"
+    },
+    "./server/otto-brain": {
+      "types": "./dist/server/otto-brain.d.ts",
+      "source": "./src/server/otto-brain.ts",
+      "default": "./dist/server/otto-brain.js"
+    },
+    "./otto/openai-settings": {
+      "types": "./dist/otto/openai-settings.d.ts",
+      "source": "./src/otto/openai-settings.ts",
+      "default": "./dist/otto/openai-settings.js"
+    },
     "./server/usage": {
       "types": "./dist/server/usage.d.ts",
       "source": "./src/server/usage.ts",
@@ -48,6 +63,11 @@
       "source": "./src/client/ui.ts",
       "default": "./dist/client/ui.js"
     },
+    "./client/otto-brain": {
+      "types": "./dist/client/otto-brain.d.ts",
+      "source": "./src/client/otto-brain.ts",
+      "default": "./dist/client/otto-brain.js"
+    },
     "./client": {
       "types": "./dist/client/index.d.ts",
       "source": "./src/client/index.ts",
@@ -63,10 +83,12 @@
     "build:clean": "npm run clean && npm run build",
     "prepack": "npm run build:clean",
     "typecheck": "tsgo --noEmit && tsgo -p tsconfig.examples.json --noEmit",
+    "typecheck:otto-fixtures": "tsgo -p tsconfig.otto-tests.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",
+    "@getpaseo/brain": "0.9.35",
     "use-sync-external-store": "^1.6.0"
   },
   "devDependencies": {

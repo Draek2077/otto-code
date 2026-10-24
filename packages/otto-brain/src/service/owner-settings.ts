@@ -13,6 +13,10 @@ import {
 import type { Runtime } from "../types.js";
 import type { BrainRuntimeContext } from "./serve.js";
 import { runtimeIdentity } from "./runtime-management.js";
+import { managedModelsDir } from "../models/dirs.js";
+import { CACHE_TYPE_CYCLE } from "../config/profile-edit.js";
+import path from "node:path";
+import { discoverBrainNetwork } from "./network-discovery.js";
 import {
   OwnerSettingsError,
   OwnerSettingsGenerateSchema,
@@ -23,6 +27,7 @@ import {
 
 interface OwnerSettingsPorts {
   runtimes(): Runtime[];
+  models?(): { id: string; label: string }[];
   resolve(config: BrainConfig): Runtime | null;
   changed(): void;
   label?: string;
@@ -45,6 +50,14 @@ function changesCredential(intent: OwnerCredentialIntent | undefined): boolean {
 }
 
 export class BrainOwnerSettings {
+  /** A cheap config identity read, independent of model/runtime discovery. */
+  revision(): string | null {
+    try {
+      return readBrainConfigRevision(this.context.paths).revision;
+    } catch {
+      return null;
+    } // Malformed peer settings must not interrupt healthy inference.
+  }
   readonly ownerId: string;
   constructor(
     readonly context: BrainRuntimeContext,
@@ -66,8 +79,9 @@ export class BrainOwnerSettings {
     } catch {
       runtime = null;
     }
+    const runtimes = this.ports.runtimes();
     const selected = config.runtime.path
-      ? this.ports.runtimes().find((entry) => entry.exe === config.runtime.path)
+      ? runtimes.find((entry) => entry.exe === config.runtime.path)
       : null;
     return {
       version: 1 as const,
@@ -89,9 +103,23 @@ export class BrainOwnerSettings {
       resolved: {
         runtimeLabel: runtime?.displayName ?? runtime?.label ?? null,
         executablePath: runtime?.exe ?? null,
+        modelsDirectory: managedModelsDir(effective, this.context.env),
+        certificateDirectory:
+          effective.tls.mode === "off"
+            ? null
+            : (effective.tls.certDir ?? path.join(this.context.paths.root, "certs")),
+      },
+      choices: {
+        models: this.ports.models?.() ?? [],
+        runtimes: runtimes.map((entry) => ({
+          id: runtimeIdentity(entry),
+          label: entry.displayName ?? `${entry.label} ${entry.version}`,
+        })),
+        cacheTypes: CACHE_TYPE_CYCLE.map((value) => ({ id: value, label: value.toUpperCase() })),
       },
       requiresRestart: JSON.stringify(effective) !== JSON.stringify(this.context.config),
       capabilities: {
+        networkDiscovery: true,
         runtimeSelection: !this.context.env.OTTO_BRAIN_LLAMA_SERVER,
         storage: !this.context.env.OTTO_BRAIN_MODELS_DIR,
         accessCredential: !this.context.env.OTTO_BRAIN_TOKEN,
@@ -144,6 +172,18 @@ export class BrainOwnerSettings {
       credentials: { access: { action: "replace", value: secret } },
     });
     return { owner, secret };
+  }
+
+  discoverNetwork(input: unknown, signal: AbortSignal) {
+    const parsed = OwnerSettingsGenerateSchema.pick({ ownerId: true }).safeParse(input);
+    if (!parsed.success)
+      throw new OwnerSettingsError("validation", "A Brain owner is required for discovery");
+    this.assertOwner(parsed.data.ownerId);
+    const config = applyEnvOverrides(
+      readBrainConfigRevision(this.context.paths).config,
+      this.context.env,
+    );
+    return discoverBrainNetwork(this.ownerId, config, this.context.paths, signal);
   }
 
   private assertOwner(ownerId: string): void {
@@ -207,7 +247,7 @@ export class BrainOwnerSettings {
         runtime.path = selected.exe;
       }
     }
-    const next = BrainConfigSchema.parse({
+    const parsed = BrainConfigSchema.safeParse({
       ...current,
       ...patch,
       runtime: { ...current.runtime, ...runtime },
@@ -221,6 +261,11 @@ export class BrainOwnerSettings {
       },
       hfToken: credential(current.hfToken, request.credentials?.huggingFace),
     });
+    if (!parsed.success)
+      throw new OwnerSettingsError("validation", "Check the Brain owner's setting values", {
+        cause: parsed.error,
+      });
+    const next = parsed.data;
     validateOwnerPolicy(
       applyEnvOverrides(current, this.context.env),
       applyEnvOverrides(next, this.context.env),

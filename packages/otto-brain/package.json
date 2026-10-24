@@ -38,6 +38,12 @@
       "import": "./src/config/index.ts",
       "default": "./src/config/index.ts"
     },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "node": "./dist/client.js",
+      "import": "./src/client.ts",
+      "default": "./src/client.ts"
+    },
     "./host": {
       "types": "./dist/host.d.ts",
       "node": "./dist/host.js",

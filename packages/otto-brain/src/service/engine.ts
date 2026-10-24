@@ -38,7 +38,15 @@ import { ModelProfiles } from "./model-profiles.js";
 import { ModelOperations } from "./model-operations.js";
 import { EngineManagement } from "./engine-management.js";
 import { buildInventoryRow, type InventoryState } from "./inventory.js";
-import { loadAll, rankModels, type RankedModel } from "../ops/results.js";
+import { providerModel } from "./provider-catalog.js";
+import {
+  loadAll,
+  rankModels,
+  latestPerConfig,
+  variance,
+  type RankedModel,
+  type RunRecord,
+} from "../ops/results.js";
 import { ModelLibrary } from "./model-library.js";
 import { createRuntimeManagement } from "./runtime-host.js";
 import type { RuntimeManagement } from "./runtime-management.js";
@@ -46,6 +54,7 @@ import { ModelAcquisition } from "./model-acquisition.js";
 import { BrainOwnerSettings } from "./owner-settings.js";
 import { handleOwnerSettings } from "./owner-settings-http.js";
 import { BrainResourceReader, type BrainHostResources } from "./resource-reader.js";
+import { CompletionTelemetry } from "./completion-telemetry.js";
 
 interface ResidentSignals {
   reasoning: ReasoningTracker;
@@ -61,6 +70,7 @@ export interface HostEnginePorts {
   runtime?(): Runtime | null;
   runtimeList?(): Runtime[];
   ranking?(): RankedModel[];
+  results?(): RunRecord[];
   resourceSample?(signal: AbortSignal): Promise<BrainHostResources>;
 }
 const COMPLETIONS = new Set([
@@ -76,8 +86,21 @@ export class HostEngine implements BrainRuntime {
   readonly events = new BrainStatusPublisher();
   readonly logs = new BrainLogPublisher();
   private jobRevision = 0;
+  private libraryRevision = 0;
+  private terminalJobs = "";
+  private settingsRevision: string | null = null;
+  private settingsCheckedAt = 0;
   readonly jobs = new BrainJobs(() => {
     this.jobRevision++;
+    const terminal = this.jobs
+      .summaries()
+      .filter((job) => job.state !== "queued" && job.state !== "running")
+      .map((job) => `${job.id}:${job.state}`)
+      .join(",");
+    if (terminal !== this.terminalJobs) {
+      this.terminalJobs = terminal;
+      this.libraryRevision++;
+    }
     this.events.notify();
   });
   readonly modelProfiles: ModelProfiles;
@@ -88,6 +111,7 @@ export class HostEngine implements BrainRuntime {
   private readonly acquisition: ModelAcquisition;
   private readonly settings: BrainOwnerSettings;
   private readonly resources: BrainResourceReader<BrainHostResources>;
+  private readonly telemetry = new CompletionTelemetry();
   get capabilities() {
     return {
       apiVersion: 3,
@@ -112,6 +136,8 @@ export class HostEngine implements BrainRuntime {
       modelAcquisition: true,
       benchmarkOptions: true,
       ownerSettings: true,
+      ownerSettingsChoices: true,
+      networkDiscovery: true,
       resources: true,
     };
   }
@@ -123,6 +149,7 @@ export class HostEngine implements BrainRuntime {
   private readonly gpu: NonNullable<HostEnginePorts["gpu"]>;
   private readonly runtime: () => Runtime | null;
   private readonly ranking: () => RankedModel[];
+  private readonly results: () => RunRecord[];
 
   models(refresh = false): Model[] {
     if (refresh || !this.catalogCache) this.catalogCache = this.scan();
@@ -136,14 +163,19 @@ export class HostEngine implements BrainRuntime {
     this.scan = ports.scan ?? (() => scanModels(context.config, context.env));
     this.profiles = ports.profiles ?? (() => loadProfilesStore(context.paths));
     this.runtime = ports.runtime ?? (() => resolveRuntime(context.config, context.env));
-    this.ranking = ports.ranking ?? (() => rankModels(loadAll(context.env)));
+    this.results = ports.results ?? (() => loadAll(context.env));
+    this.ranking = ports.ranking ?? (() => rankModels(this.results()));
     const ownedRuntime = ports.runtime;
     this.settings = new BrainOwnerSettings(context, {
       runtimes: ports.runtimeList ?? (() => listAllRuntimes(context.env)),
       resolve: ownedRuntime
         ? () => ownedRuntime()
         : (config) => resolveRuntime(config, context.env),
-      changed: () => this.events.notify(),
+      changed: () => {
+        this.settingsCheckedAt = 0;
+        this.events.notify();
+      },
+      models: () => this.models().map((model) => ({ id: model.id, label: model.displayName })),
     });
     this.gpu = ports.gpu ?? (async (signal) => query(this.availableRuntime(), signal));
     const cpu = createCpuSampler();
@@ -232,7 +264,7 @@ export class HostEngine implements BrainRuntime {
       operations: this.modelOperations,
       jobs: this.jobs,
       requireWrite: (request) => this.requireWrite(request),
-      changed: () => this.events.notify(),
+      changed: () => this.libraryChanged(),
       inventory: (signal) => this.inventory(signal),
       requiresRestart: (modelId, revision) => this.requiresRestart(modelId, revision),
     });
@@ -241,7 +273,7 @@ export class HostEngine implements BrainRuntime {
       models: (refresh) => this.models(refresh),
       isModelInUse: (id) => this.pool.isModelInUse(id),
       jobs: this.jobs,
-      changed: () => this.events.notify(),
+      changed: () => this.libraryChanged(),
       requireWrite: (request) => this.requireWrite(request),
     });
     this.runtimeManagement = createRuntimeManagement(context, {
@@ -249,11 +281,12 @@ export class HostEngine implements BrainRuntime {
       list: ports.runtimeList,
       selected: this.runtime,
       isRuntimeInUse: (runtime) => this.runtimeInUse(runtime),
-      changed: () => this.events.notify(),
+      changed: () => this.libraryChanged(),
       requireWrite: (request) => this.requireWrite(request),
     });
     this.acquisition = new ModelAcquisition({
       jobs: this.jobs,
+      models: () => this.models(),
       catalog: () => loadCatalog(context.paths).models,
       destination: () => managedModelsDir(context.config, context.env),
       token: () => resolveHfToken(context.config, context.env),
@@ -263,10 +296,23 @@ export class HostEngine implements BrainRuntime {
       download: downloadRepoFiles,
       changed: () => {
         this.models(true);
-        this.events.notify();
+        this.libraryChanged();
       },
       requireWrite: (request) => this.requireWrite(request),
     });
+  }
+
+  private libraryChanged(): void {
+    this.libraryRevision++;
+    this.events.notify();
+  }
+  private ownerRevision(): string | null {
+    const now = Date.now();
+    if (now - this.settingsCheckedAt >= 1000) {
+      this.settingsCheckedAt = now;
+      this.settingsRevision = this.settings.revision();
+    }
+    return this.settingsRevision;
   }
 
   private runtimeInUse(runtime: Runtime): boolean {
@@ -389,6 +435,7 @@ export class HostEngine implements BrainRuntime {
     this.signals.get(process)!.reasoning.onChange(() => this.events.notify());
     signal.throwIfAborted();
     await process.start(model, selected, signal);
+    this.telemetry.resetModel(model.id);
     process.profileRevision = revision;
     return reservation;
   }
@@ -443,6 +490,9 @@ export class HostEngine implements BrainRuntime {
       queued: stats.queued,
       jobs: this.jobs.summaries(),
       jobRevision: this.jobRevision,
+      libraryRevision: this.libraryRevision,
+      ownerSettingsRevision: this.ownerRevision(),
+      telemetry: this.telemetry.snapshot(),
       capabilities: this.capabilities,
     };
   }
@@ -482,15 +532,22 @@ export class HostEngine implements BrainRuntime {
     try {
       if (await this.handleManagement(request, response, route, lifetime.signal)) return true;
       if (request.method === "GET" && MODEL_LISTS.has(route)) {
+        const profiles = this.profiles();
+        const models = [...this.models()].sort(
+          (left, right) =>
+            Number(right.id === this.context.config.defaultModel) -
+            Number(left.id === this.context.config.defaultModel),
+        );
         sendJson(response, 200, {
           object: "list",
-          data: this.models().map((model) => ({
-            id: model.id,
-            object: "model",
-            owned_by: "otto-brain",
-            displayName: model.displayName,
-            state: this.pool.supervisorFor(model.id)?.state ?? "not-loaded",
-          })),
+          data: models.map((model) => {
+            const resident = this.pool.supervisorFor(model.id);
+            return providerModel(
+              model,
+              resident?.profile ?? forModel(profiles, model, this.context.config.defaults),
+              resident?.state ?? "not-loaded",
+            );
+          }),
         });
         return true;
       }
@@ -521,8 +578,21 @@ export class HostEngine implements BrainRuntime {
     route: string,
     signal: AbortSignal,
   ): Promise<boolean> {
+    if (request.method === "GET" && route === "/__host/evals") {
+      const records = this.results();
+      sendJson(response, 200, {
+        rankings: rankModels(records),
+        latest: latestPerConfig(records),
+        variance: variance(records),
+        runCount: records.length,
+      });
+      return true;
+    }
     if (request.method === "GET" && route === "/__host/resources") {
-      sendJson(response, 200, await this.resources.read(signal));
+      sendJson(response, 200, {
+        ...(await this.resources.read(signal)),
+        telemetry: this.telemetry.snapshot(),
+      });
       return true;
     }
     if (
@@ -598,6 +668,7 @@ export class HostEngine implements BrainRuntime {
           route,
           response,
           tracker: this.signals.get(process)!.reasoning,
+          telemetry: this.telemetry,
           signal,
         }),
       {

@@ -175,8 +175,10 @@ jobs:
       # OTTO(fixture-contracts): fixture APIs must typecheck without scratch configs.
       - name: Typecheck Otto fixture contracts
         run: |
+          npm run typecheck:otto-fixtures --workspace=@getpaseo/plugin
           npm run typecheck --workspace=@getpaseo/brain -- -p tsconfig.tests.json
           npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-knowledge-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-brain-tests.json
           npm run typecheck --workspace=@getpaseo/builtin-plugins -- -p otto-kanban/tsconfig.tests.json
 
       - name: Run website tests

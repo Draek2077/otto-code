@@ -1,7 +1,13 @@
 /** Host-owned jobs outlive request sockets, but never their owning host. */
 import { randomUUID } from "node:crypto";
 
-export type BrainJobOperation = "calibrate" | "sweep" | "benchmark" | "pull" | "runtime-install";
+export type BrainJobOperation =
+  | "calibrate"
+  | "sweep"
+  | "benchmark"
+  | "pull"
+  | "runtime-install"
+  | "runtime-remove";
 export type BrainJobState = "queued" | "running" | "completed" | "failed" | "canceled";
 export type JobValue = null | boolean | number | string | JobValue[] | { [key: string]: JobValue };
 export interface BrainJobSubject {

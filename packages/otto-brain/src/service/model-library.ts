@@ -41,6 +41,7 @@ export class ModelLibrary {
       "DELETE /__host/model",
       "POST /__host/model/delete",
       "DELETE /__host/model/component",
+      "POST /__host/model/component/delete",
     ]);
     if (!handlers.has(action)) return false;
     const id = url.searchParams.get("id");
@@ -62,9 +63,12 @@ export class ModelLibrary {
       case "POST /__host/model/rename/reset":
         result = this.resetName(id);
         break;
-      case "DELETE /__host/model/component": {
-        const component = url.searchParams.get("component");
-        if (!component) throw new RequestError(400, "A component id is required");
+      case "DELETE /__host/model/component":
+      case "POST /__host/model/component/delete": {
+        const body = request.method === "POST" ? await readObject(request, signal, 4096) : null;
+        const component = body ? body.componentId : url.searchParams.get("component");
+        if (typeof component !== "string" || !component)
+          throw new RequestError(400, "A component id is required");
         result = this.deleteComponent(id, component);
         break;
       }

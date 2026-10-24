@@ -7,6 +7,8 @@ import { scan } from "../models/scan.js";
 import { loadRenameMap } from "../models/rename-map.js";
 import { BrainJobs } from "./jobs.js";
 import { ModelLibrary } from "./model-library.js";
+import http from "node:http";
+import { promisify } from "node:util";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -22,6 +24,7 @@ function fixture(quants = 1) {
   const projector = path.join(directory, "mmproj-F16.gguf");
   fs.writeFileSync(projector, Buffer.alloc(10));
   let busy = false;
+  let writeChecks = 0;
   const rescan = () => {
     const overrides = loadRenameMap(paths);
     const discovered = scan({ modelsDir: paths.modelsDir, withMetadata: false });
@@ -46,7 +49,9 @@ function fixture(quants = 1) {
     },
     isModelInUse: () => busy,
     changed: () => {},
-    requireWrite: () => {},
+    requireWrite: () => {
+      writeChecks++;
+    },
   });
   return {
     paths,
@@ -54,11 +59,62 @@ function fixture(quants = 1) {
     library,
     jobs,
     projector,
+    writeChecks: () => writeChecks,
     setBusy: (value: boolean) => {
       busy = value;
     },
   };
 }
+
+it("the daemon's POST component removal uses the existing write and shared-artifact guards", async () => {
+  const value = fixture();
+  value.models[0]!.components = [
+    {
+      id: "projector",
+      label: "Projector",
+      description: "Fixture",
+      role: "vision_projector",
+      path: value.projector,
+      bytes: 10,
+      required: false,
+      defaultDownload: true,
+      defaultLoad: false,
+      available: true,
+    },
+  ];
+  const server = http.createServer((request, response) => {
+    void value.library.handle(request, response, new AbortController().signal).then(
+      (handled) => {
+        if (!handled) {
+          response.writeHead(404);
+          response.end();
+        }
+        return undefined;
+      },
+      () => {
+        response.writeHead(400);
+        response.end();
+      },
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  cleanup.push(async () => {
+    server.closeAllConnections();
+    await promisify(server.close.bind(server))();
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Fixture listener unavailable");
+  const url = `http://127.0.0.1:${address.port}/__host/model/component/delete?id=${encodeURIComponent(value.models[0]!.id)}`;
+  expect((await fetch(url, { method: "POST", body: "{}" })).status).toBe(400);
+  expect(fs.existsSync(value.projector)).toBe(true);
+  expect(
+    (await fetch(url, { method: "POST", body: JSON.stringify({ componentId: "projector" }) }))
+      .status,
+  ).toBe(200);
+  expect(value.writeChecks()).toBe(2);
+  expect(fs.existsSync(value.projector)).toBe(false);
+  expect(fs.existsSync(value.models[0]!.modelPath)).toBe(true);
+});
 
 it("renames and resets only the host name store, preserving profiles and calibration bytes", () => {
   const value = fixture();

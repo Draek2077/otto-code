@@ -12,11 +12,15 @@ configuration persistence, home ownership, HTTP/HTTPS, credential masking and ho
 shutdown. The library also provides concrete llama.cpp process supervision,
 runtime acquisition and model inventory/download operations. Its scheduling library
 provides per-model admission, shared exclusive operations and a bounded process pool.
-Capacity/quality jobs and host inference share the resident process pool. Full CLI
-coverage, TUI host composition, Remote Brain, provider/settings registration and
-app availability remain restoration work tracked in Otto Knowledge. The original
-Brain renderer and five operational screens exist in Otto-owned app files but
-are not registered. This package is not yet the complete Brain product. `serve`
+Capacity/quality jobs and host inference share the resident process pool. The
+bundled `otto-brain` plugin registers the original animated sidebar icon,
+Overview/Library/Models/Benchmark/Logs screen, host settings and Open Brain command.
+The renderer remains in Otto-owned app files behind a typed built-in bridge.
+Daemon-owned connection and owner settings use the same local/Remote transport
+and private home. The same plugin registers the `otto-brain` agent provider,
+sharing the complete OpenAI harness. Full CLI/TUI host composition and
+product acceptance remain restoration work tracked in Otto Knowledge. This
+package is not yet the complete Brain product. `serve`
 starts unloaded unless its caller explicitly passes `--model`.
 
 ## Ownership and continuity
@@ -105,7 +109,15 @@ release aborts the sole feed and reconnect timer. A new host lifetime resets log
 identity, stale callbacks are ignored, and uncertain transport failures expose
 fixed display text. The owner supplies the complete status DTO validator; no
 browser socket or parallel feature cache is created by this library. This is a
-composition boundary, not registration of the app's Brain surfaces.
+composition boundary; the bundled app contributes its own surfaces.
+
+The daemon gives every installation's visible Brain consumers one shared feed.
+The sidebar and settings request status without log payloads. The Logs tab adds
+bounded log demand, receives batched absolute-index deltas and releases that demand
+when hidden. Resource probes run only while the Overview requests them. Library
+revisions invalidate retained views after profile, runtime, inventory or job changes;
+owner-setting revisions signal peer edits without rebasing local form drafts.
+Closing a client aborts its waits and reads, leaving admitted host jobs running.
 
 `GET /__host/resources` is an explicit, separately advertised hardware read.
 It samples the owning host's CPU, RAM and available GPU, while cheap status and
@@ -252,7 +264,36 @@ abort signal; it must honor that signal during probes and before launching a chi
 activity tracker distinguishes processing, thinking and generating from actual
 stream signals, including concurrent requests. The demand-owned status publisher
 coalesces complete snapshots and stops sampling when its last listener leaves.
-These components are wired to `serve`; Otto app registration remains unfinished.
+These components are wired to `serve` and the daemon's built-in Brain bridge.
+
+## Agent provider
+
+The `otto-brain` plugin registers **Otto Brain** through the normal Paseo provider
+contract. Its node-only SDK composition uses the same agent sessions, native tools,
+permissions, MCP transports, history/rewind, images and compaction implementation
+as the OpenAI Compatible Provider. Brain retains a 6,000-token recent context budget
+and caps summary requests at 4,000 tokens. Other OpenAI connections retain their
+existing policy.
+
+The selected daemon resolves its private Brain connection intent on each request.
+Local requests use the verified private lifetime record; Remote Brain requests use
+the configured hostname, key and TLS policy. Certificate pins are verified before
+headers are sent. A virtual endpoint gives saved Brain chats a stable identity and
+is never used for DNS or a browser connection. Registration, discovery and reads
+never start a host or load a model. Disabled/unavailable Brain reports its status
+through the provider contract.
+
+The host advertises actual model names, per-slot context, profile-enabled vision
+and implemented template effort choices. Owner instance, library and settings
+revisions invalidate discovery. Supported preserved Brain aliases retain their IDs;
+unsupported legacy options remain intact and report a diagnostic. Native 0.9 Brain
+history is copied through the existing guarded importer before conversion, and
+aliases must match their original preserved Brain inheritance. Transcripts remain
+in the selected daemon's private archive, outside client/provider settings.
+
+The SDK's node-only Brain composition depends on the standalone Brain package's
+lightweight `client` entry. Build and publish Brain before the SDK. The SDK root
+and client-safe connection definitions do not import host engines or transports.
 
 ## Capacity and quality libraries
 
@@ -339,3 +380,5 @@ all Brain fixture declarations and package-root helpers without emitting them.
 CI runs this beside the focused Knowledge and Kanban fixture typechecks after
 building the owning workspace declarations. Production builds continue to exclude
 test files. The app's normal typecheck already includes its Brain fixture sources.
+`npm run typecheck:otto-fixtures --workspace=@getpaseo/plugin` checks the provider
+composition fixture against the packaged SDK and owner transport declarations.

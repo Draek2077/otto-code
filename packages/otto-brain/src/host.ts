@@ -1,7 +1,20 @@
 /** Inert public host/controller entry; only explicit calls resolve a home or launch work. */
+export {
+  BrainController,
+  createBrainController,
+  type BrainControllerPorts,
+  type BrainControllerTransport,
+} from "./controller/controller.js";
+export {
+  BrainConnectionStore,
+  BrainConnectionError,
+  type BrainConnectionSave,
+  type BrainConnectionIntent,
+} from "./controller/connection-store.js";
 export * from "./service/serve.js";
 export { HostEngine, createHostRuntime, type HostEnginePorts } from "./service/engine.js";
 export { startLocalBrain, stopLocalBrain, type LocalBrainState } from "./service/lifecycle.js";
+export { readPidFile, isProcessAlive } from "./service/pid-lock.js";
 export {
   localBrainRequest,
   localBrainEvents,
