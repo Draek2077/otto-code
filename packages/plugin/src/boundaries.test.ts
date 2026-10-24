@@ -16,6 +16,8 @@ const entries = {
   // OTTO(provider-harness): every owned export retains the SDK's runtime boundary proof.
   "./server/otto-openai": "server",
   "./server/otto-brain": "server",
+  "./server/otto-kanban": "server", // OTTO(kanban): concrete host library stays Node-only.
+  "./otto/kanban": "shared", // OTTO(kanban): structural RPC/model definitions only.
   "./otto/openai-settings": "shared",
   "./client": "client",
   "./client/host": "client",
