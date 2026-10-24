@@ -5,8 +5,11 @@ export { startLocalBrain, stopLocalBrain, type LocalBrainState } from "./service
 export {
   localBrainRequest,
   localBrainEvents,
+  localBrainClient,
   type LocalBrainClientOptions,
 } from "./service/local-client.js";
+export { remoteBrainClient, type RemoteBrainClientOptions } from "./service/remote-client.js";
+export { BrainHttpClient, BrainHttpResponseError } from "./service/host-http-client.js";
 export type { BrainHostEvent } from "./service/event-decoder.js";
 export {
   BrainStatusStore,

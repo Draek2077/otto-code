@@ -6,8 +6,8 @@ import path from "node:path";
 import { resolveBrainPaths } from "../config/paths.js";
 import type { BrainConfig } from "../config/schema.js";
 import type { PidRecord } from "./pid-lock.js";
-import { StringDecoder } from "node:string_decoder";
-import { BrainEventDecoder, type BrainHostEvent } from "./event-decoder.js";
+import { BrainHttpClient } from "./host-http-client.js";
+import type { BrainHostEvent } from "./event-decoder.js";
 
 export interface LocalBrainClientOptions {
   record: PidRecord;
@@ -69,46 +69,21 @@ function localRequestOptions(
   };
 }
 
+/** One owner transport is reused for management JSON and events. */
+export function localBrainClient(options: LocalBrainClientOptions): BrainHttpClient {
+  return new BrainHttpClient((route, signal, payload, receive) => {
+    const transport = options.record.secure ? https : http;
+    return transport.request(localRequestOptions(options, route, signal, payload), receive);
+  });
+}
+
 export async function localBrainRequest(
   options: LocalBrainClientOptions,
   route: string,
   body?: unknown,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
-  const lifetime = signal
-    ? AbortSignal.any([signal, AbortSignal.timeout(5000)])
-    : AbortSignal.timeout(5000);
-  const transport = options.record.secure ? https : http;
-  return new Promise((resolve, reject) => {
-    const request = transport.request(
-      localRequestOptions(options, route, lifetime, payload),
-      (response) => {
-        const chunks: Buffer[] = [];
-        let size = 0;
-        response.on("data", (chunk: Buffer) => {
-          size += chunk.length;
-          if (size > 4 * 1024 * 1024)
-            request.destroy(new Error("Brain management response exceeded its byte limit"));
-          else chunks.push(chunk);
-        });
-        response.once("error", reject);
-        response.once("end", () => {
-          if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
-            reject(new Error(`Brain management request failed (${response.statusCode ?? 0})`));
-            return;
-          }
-          try {
-            resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown);
-          } catch {
-            reject(new Error("Invalid Brain management response"));
-          }
-        });
-      },
-    );
-    request.once("error", reject);
-    request.end(payload);
-  });
+  return localBrainClient(options).request(route, body, signal);
 }
 
 /** No reconnect or polling here: the owning demand store decides stream lifetime. */
@@ -117,43 +92,5 @@ export async function localBrainEvents(
   receive: (event: BrainHostEvent) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const transport = options.record.secure ? https : http;
-  return new Promise((resolve, reject) => {
-    const request = transport.request(
-      localRequestOptions(options, "/__host/events", signal),
-      (response) => {
-        clearTimeout(handshake);
-        if (
-          response.statusCode !== 200 ||
-          !response.headers["content-type"]?.startsWith("text/event-stream")
-        ) {
-          response.destroy();
-          reject(new Error("Brain host event stream is unavailable"));
-          return;
-        }
-        const utf8 = new StringDecoder("utf8");
-        const decoder = new BrainEventDecoder(receive);
-        response.on("data", (chunk: Buffer) => {
-          try {
-            decoder.push(utf8.write(chunk));
-          } catch (error) {
-            request.destroy(
-              error instanceof Error ? error : new Error("Invalid Brain event stream"),
-            );
-          }
-        });
-        response.once("error", reject);
-        response.once("end", resolve);
-      },
-    );
-    const handshake = setTimeout(
-      () => request.destroy(new Error("Brain event handshake timed out")),
-      5000,
-    );
-    handshake.unref();
-    request.setTimeout(45000, () => request.destroy(new Error("Brain event heartbeat timed out")));
-    request.once("close", () => clearTimeout(handshake));
-    request.once("error", reject);
-    request.end();
-  });
+  return localBrainClient(options).events(receive, signal);
 }

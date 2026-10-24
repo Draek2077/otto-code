@@ -123,6 +123,16 @@ are masked in configuration responses; engine exceptions are not reflected into
 HTTP responses. Existing file, cached self-signed and Tailscale certificate modes
 are retained. Tailscale issuance requires the owner's installed Tailscale service.
 
+Local and remote management clients share bounded JSON and SSE handling. Remote
+HTTPS uses the system trust store unless the owner explicitly saves a SHA-256
+certificate pin. In pinned mode the TLS handshake and fingerprint comparison
+finish before the socket is handed to HTTP, so a mismatched peer receives no
+access key. Invalid pins and URL-shaped host fields are rejected before connecting.
+Requests do not follow redirects. Aborting an event reader or an incomplete TLS
+handshake closes its client wait; it does not cancel an admitted host job.
+Non-success JSON responses retain their untrusted body separately from fixed
+display text, for validation by the owning operation's error contract.
+
 A model engine implements `BrainRuntime` behind this listener. It owns its model
 processes and requests; the listener owns sockets and service lifetime. Stop closes
 active sockets and calls engine teardown once, with an abort signal and a six-second
