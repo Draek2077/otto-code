@@ -1,5 +1,6 @@
 /** Standalone composition of the existing host-owned model and scheduler libraries. */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import os from "node:os";
 import type { Model, GpuInfo, Runtime } from "../types.js";
 import type { Profile, ProfilesStore } from "../config/schema.js";
 import { loadCatalog, loadProfilesStore, saveProfilesStore } from "../config/store.js";
@@ -18,7 +19,7 @@ import {
 import { listAllRuntimes, resolveRuntime, runtimeBuild } from "../runtime/index.js";
 import { query, usedBytes } from "../gpu.js";
 import { budget, fitToBudget, reserveBytesForGpu } from "../vram.js";
-import { SlotActivityTracker, type SlotInfo } from "../sysmon.js";
+import { createCpuSampler, SlotActivityTracker, type SlotInfo } from "../sysmon.js";
 import { resolveVersion } from "../version.js";
 import { EngineProcess, allocateEnginePort } from "./engine-process.js";
 import { Supervisor } from "./supervisor.js";
@@ -44,6 +45,7 @@ import type { RuntimeManagement } from "./runtime-management.js";
 import { ModelAcquisition } from "./model-acquisition.js";
 import { BrainOwnerSettings } from "./owner-settings.js";
 import { handleOwnerSettings } from "./owner-settings-http.js";
+import { BrainResourceReader, type BrainHostResources } from "./resource-reader.js";
 
 interface ResidentSignals {
   reasoning: ReasoningTracker;
@@ -59,6 +61,7 @@ export interface HostEnginePorts {
   runtime?(): Runtime | null;
   runtimeList?(): Runtime[];
   ranking?(): RankedModel[];
+  resourceSample?(signal: AbortSignal): Promise<BrainHostResources>;
 }
 const COMPLETIONS = new Set([
   "/v1/chat/completions",
@@ -84,6 +87,7 @@ export class HostEngine implements BrainRuntime {
   private readonly runtimeManagement: RuntimeManagement;
   private readonly acquisition: ModelAcquisition;
   private readonly settings: BrainOwnerSettings;
+  private readonly resources: BrainResourceReader<BrainHostResources>;
   get capabilities() {
     return {
       apiVersion: 3,
@@ -108,6 +112,7 @@ export class HostEngine implements BrainRuntime {
       modelAcquisition: true,
       benchmarkOptions: true,
       ownerSettings: true,
+      resources: true,
     };
   }
   private readonly lifetime = new AbortController();
@@ -141,6 +146,22 @@ export class HostEngine implements BrainRuntime {
       changed: () => this.events.notify(),
     });
     this.gpu = ports.gpu ?? (async (signal) => query(this.availableRuntime(), signal));
+    const cpu = createCpuSampler();
+    this.resources = new BrainResourceReader(
+      ports.resourceSample ??
+        (async (signal) => {
+          const gpu = await this.gpu(signal);
+          signal.throwIfAborted();
+          const ramTotalBytes = os.totalmem();
+          return {
+            cpu: cpu(),
+            cpuCount: os.cpus().length,
+            ramUsedBytes: ramTotalBytes - os.freemem(),
+            ramTotalBytes,
+            gpu,
+          };
+        }),
+    );
     const create =
       ports.createSupervisor ??
       (async () => {
@@ -459,20 +480,7 @@ export class HostEngine implements BrainRuntime {
     }
     const lifetime = requestLifetime(response, this.lifetime.signal);
     try {
-      if (
-        await handleOwnerSettings(
-          this.settings,
-          request,
-          response,
-          lifetime.signal,
-          (ownerRequest) => this.requireWrite(ownerRequest),
-        )
-      )
-        return true;
-      if (await this.runtimeManagement.handle(request, response, lifetime.signal)) return true;
-      if (await this.acquisition.handle(request, response, lifetime.signal)) return true;
-      if (await this.library.handle(request, response, lifetime.signal)) return true;
-      if (await this.management.handle(request, response, lifetime.signal)) return true;
+      if (await this.handleManagement(request, response, route, lifetime.signal)) return true;
       if (request.method === "GET" && MODEL_LISTS.has(route)) {
         sendJson(response, 200, {
           object: "list",
@@ -505,6 +513,27 @@ export class HostEngine implements BrainRuntime {
     } finally {
       lifetime.dispose();
     }
+  }
+
+  private async handleManagement(
+    request: IncomingMessage,
+    response: ServerResponse,
+    route: string,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    if (request.method === "GET" && route === "/__host/resources") {
+      sendJson(response, 200, await this.resources.read(signal));
+      return true;
+    }
+    if (
+      await handleOwnerSettings(this.settings, request, response, signal, (ownerRequest) =>
+        this.requireWrite(ownerRequest),
+      )
+    )
+      return true;
+    for (const handler of [this.runtimeManagement, this.acquisition, this.library, this.management])
+      if (await handler.handle(request, response, signal)) return true;
+    return false;
   }
 
   private async control(
@@ -603,9 +632,11 @@ export class HostEngine implements BrainRuntime {
   async stop(_signal: AbortSignal): Promise<void> {
     this.lifetime.abort(new Error("Brain host stopped"));
     this.events.close();
+    const resourcesStopped = this.resources.close();
     const jobsStopped = this.jobs.close();
     await this.pool.stop();
     await jobsStopped;
+    await resourcesStopped;
     this.signals = new WeakMap();
   }
 }

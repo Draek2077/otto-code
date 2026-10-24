@@ -107,6 +107,14 @@ fixed display text. The owner supplies the complete status DTO validator; no
 browser socket or parallel feature cache is created by this library. This is a
 composition boundary, not registration of the app's Brain surfaces.
 
+`GET /__host/resources` is an explicit, separately advertised hardware read.
+It samples the owning host's CPU, RAM and available GPU, while cheap status and
+the icon feed never trigger that probe. Concurrent requests share one in-flight
+sample. Canceling one request keeps other readers alive; canceling the last
+reader aborts the probe. A later request does not overlap a probe still stopping.
+Host shutdown waits for its canceled hardware probe to settle. There is no
+resource timer or background sampling when no view requests it.
+
 Profile reads and saves carry an opaque edit revision. A saved profile reports
 whether an existing resident needs reloading; saving never restarts that resident.
 An explicit model load drains inference before applying changed profile or runtime
