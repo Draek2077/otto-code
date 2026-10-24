@@ -247,6 +247,34 @@ function StepperButton({
   testID: string;
 }) {
   const styles = useStyles();
+  const stepped = useRef(false);
+  const releaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (releaseTimer.current !== null) clearTimeout(releaseTimer.current);
+    },
+    [],
+  );
+  const begin = useCallback(() => {
+    if (releaseTimer.current !== null) clearTimeout(releaseTimer.current);
+    stepped.current = true;
+    onPressIn();
+  }, [onPressIn]);
+  const end = useCallback(() => {
+    onPressOut();
+    // The completed press follows release in this event turn. Clear canceled
+    // gestures afterward so a later accessibility-only click still steps once.
+    releaseTimer.current = setTimeout(() => {
+      stepped.current = false;
+    }, 0);
+  }, [onPressOut]);
+  const press = useCallback(() => {
+    if (!stepped.current) {
+      onPressIn();
+      onPressOut();
+    }
+    stepped.current = false;
+  }, [onPressIn, onPressOut]);
   const renderStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.stepperButton,
@@ -262,8 +290,9 @@ function StepperButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       disabled={disabled}
-      onPressIn={onPressIn}
-      onPressOut={onPressOut}
+      onPressIn={begin}
+      onPressOut={end}
+      onPress={press}
       style={renderStyle}
       testID={testID}
     >

@@ -612,5 +612,5 @@ it("keeps budget overrides numeric/boolean, omitting null and prompt/template ch
       hostingProfileMode: "custom",
       hostingProfileId: "prompt-a",
     }),
-  ).toEqual({ contextSize: "8192", temperature: "0", flashAttention: "false", cacheTypeK: "q8_0" });
+  ).toEqual({ contextSize: 8192, temperature: 0, flashAttention: false, cacheTypeK: "q8_0" });
 });

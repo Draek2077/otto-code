@@ -94,7 +94,7 @@ export interface BrainScreenOperations {
   ) => Promise<BrainProfileSaved>;
   previewBudget: (
     modelId: string,
-    overrides: Record<string, string>,
+    overrides: Record<string, string | number | boolean>,
   ) => Promise<BrainBudgetPreview>;
   calibrate: (modelId: string) => Promise<BrainJob>;
   sweep: (modelId: string) => Promise<BrainJob>;

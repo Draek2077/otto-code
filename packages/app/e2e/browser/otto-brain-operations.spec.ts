@@ -23,7 +23,10 @@ for (const compact of [false, true]) {
     await expect(page.getByText(brainOwner.modelName, { exact: true }).first()).toBeVisible();
     await page.getByRole("button", { name: "Models", exact: true }).click();
     await page.getByTestId(`brain-model-${brainOwner.modelId}`).click();
-    await page.getByTestId("brain-field-contextSize-down").click();
+    const decreaseContext = page.getByTestId("brain-field-contextSize-down");
+    await expect(decreaseContext).toBeEnabled();
+    await decreaseContext.click();
+    await expect(decreaseContext.locator("..")).toContainText("8,192");
     await expect.poll(() => brainOwner.profileContext()).toBe(8192);
     await page.getByTestId("brain-model-rename").click();
     await page.getByTestId("brain-model-rename-modal-input").fill("UI fixture model");

@@ -57,11 +57,13 @@ function changedHostingKeys(draft: ProfileDraft, saved: ProfileDraft): ProfileDr
   return patch;
 }
 
-export function profileDraftToOverrides(draft: ProfileDraft): Record<string, string> {
-  const overrides: Record<string, string> = {};
+export function profileDraftToOverrides(
+  draft: ProfileDraft,
+): Record<string, string | number | boolean> {
+  const overrides: Record<string, string | number | boolean> = {};
   for (const [key, value] of Object.entries(draft)) {
     if (HOSTING_KEYS.some((hostingKey) => key === hostingKey) || value === null) continue;
-    overrides[key] = String(value);
+    overrides[key] = value;
   }
   return overrides;
 }

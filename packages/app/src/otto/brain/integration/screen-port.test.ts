@@ -3,6 +3,7 @@ import { z } from "zod";
 import { BrainConnectionState } from "./connection-state";
 import { BrainRpc } from "./rpc";
 import { BrainScreenFacade } from "./screen-port";
+import { profileDraftToOverrides } from "../screens/models/profile-draft-controller";
 
 const cleanup: Array<() => void> = [];
 afterEach(() => {
@@ -73,6 +74,8 @@ function fixture() {
       }
       if (request.action === "runtime-candidate")
         return { ok: true, value: { id: "opaque-candidate", build: "latest", variant: "auto" } };
+      if (request.action === "budget")
+        return { ok: true, value: { budget: null, maxContextThatFits: null } };
       if (request.action === "install-runtime" || request.action === "job")
         return {
           ok: true,
@@ -140,6 +143,36 @@ test("model controls call typed host operations and coalesce their canonical inv
       (call) => call.method === "brain.query" && JSON.stringify(call.input).includes("inventory"),
     ),
   ).toHaveLength(1);
+});
+
+test("draft budget preview retains numeric and boolean types across the actual screen RPC boundary", async () => {
+  const f = fixture();
+  await f.core.refresh();
+  const result = await f.screen.operations.previewBudget(
+    "owner/model",
+    profileDraftToOverrides({
+      contextSize: 8192,
+      flashAttention: false,
+      cacheTypeK: "q8_0",
+      temperature: 0,
+      hostingProfileMode: "custom",
+      preserveReasoning: null,
+    }),
+  );
+  expect(f.calls.at(-1)).toEqual({
+    method: "brain.action",
+    input: {
+      action: "budget",
+      modelId: "owner/model",
+      patch: {
+        contextSize: 8192,
+        flashAttention: false,
+        cacheTypeK: "q8_0",
+        temperature: 0,
+      },
+    },
+  });
+  expect(result).toEqual({ budget: null, maxContextThatFits: null });
 });
 test("runtime acquisition submits the host-issued candidate and publishes the actual accepted job", async () => {
   const f = fixture();
