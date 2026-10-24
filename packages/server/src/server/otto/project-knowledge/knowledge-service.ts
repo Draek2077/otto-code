@@ -53,17 +53,17 @@ export interface KnowledgeServicePorts {
   replacement?: KnowledgeReplacementPorts;
 }
 
-interface RecordTarget {
+export interface RecordTarget {
   projectId: string;
   kind: KnowledgeKind;
   id: string;
 }
 
-interface RecordEdit extends RecordTarget {
+export interface RecordEdit extends RecordTarget {
   expectedRevision: string;
 }
 
-/** Standalone daemon library. No registration, prompt injection or confirmation authority. */
+/** Canonical daemon library; adapters own caller scope and human review authority. */
 export class KnowledgeService {
   constructor(private readonly ports: KnowledgeServicePorts) {}
 
@@ -138,7 +138,7 @@ export class KnowledgeService {
   async updateTruth(
     input: RecordEdit & { statement: string; reason: string },
   ): Promise<KnowledgeDocument> {
-    return this.edit(input, (raw, now) =>
+    return this.editPage(input, (raw, now) =>
       appendPageEvent({
         raw,
         statement: requiredText(input.statement),
@@ -150,7 +150,7 @@ export class KnowledgeService {
   async appendEvidence(
     input: RecordEdit & { text: string; source?: string },
   ): Promise<KnowledgeDocument> {
-    return this.edit(input, (raw, now) =>
+    return this.editPage(input, (raw, now) =>
       appendPageEvent({
         raw,
         event: {
@@ -163,7 +163,8 @@ export class KnowledgeService {
     );
   }
 
-  private async edit(
+  /** Internal composition seam. Never accepts a renderer/function from the wire. */
+  async editPage(
     input: RecordEdit,
     render: (raw: string, now: string) => string,
   ): Promise<KnowledgeDocument> {
@@ -186,6 +187,25 @@ export class KnowledgeService {
       });
       return this.readFromStore(store, input);
     });
+  }
+
+  async writeRoot(input: {
+    projectId: string;
+    slug: KnowledgeRoot;
+    expectedRevision: string | null;
+    body: string;
+  }): Promise<void> {
+    if (!knowledgeRoots.includes(input.slug)) throw new Error("Unknown Knowledge root");
+    const store = await this.ports.resolver.resolve(input.projectId);
+    await withKnowledgeWrite(store, () =>
+      replaceKnowledgeFile({
+        store,
+        file: path.join(store.base, "knowledge", `${input.slug}.md`),
+        expectedRevision: input.expectedRevision,
+        body: input.body,
+        replacement: this.ports.replacement,
+      }),
+    );
   }
 
   private async readFromStore(

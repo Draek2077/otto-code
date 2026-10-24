@@ -17,6 +17,7 @@ import { isWeb } from "@/constants/platform";
 import { getForgePresentation, normalizeForge } from "@/git/forge";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useAppSettings } from "@/hooks/use-settings";
+import { KnowledgeWorkspaceMenuItem } from "@/otto/knowledge/workspace-menu-item"; // OTTO(knowledge): native workspace panel, clicked-row identity.
 import type { Theme } from "@/styles/theme";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import {
@@ -232,6 +233,8 @@ function SidebarWorkspaceMenuItems({
         path={openInFileManagerPath}
         testID={`sidebar-workspace-menu-open-folder-${workspaceKey}`}
       />
+      {/* OTTO(knowledge): shared by right-click and compact workspace action menus. */}
+      <KnowledgeWorkspaceMenuItem surface={surface} serverId={serverId} workspaceId={workspaceId} />
       {onArchive ? (
         <WorkspaceMenuItem
           surface={surface}

@@ -241,6 +241,7 @@ import { PluginService } from "./plugins/index.js";
 import { BrainDaemonService } from "./otto/brain/service.js"; // OTTO(brain-host): one controller for all app consumers.
 import { KanbanDaemonService } from "./otto/kanban/service.js"; // OTTO(kanban): host-owned projects and forge transport.
 import { createHostIntegrations } from "../services/otto/integrations/host.js"; // OTTO(integration): shared daemon-owned credentials.
+import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OTTO(knowledge)
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
 
@@ -634,6 +635,7 @@ export async function createPaseoDaemon(
   const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until demand/action or saved startup intent.
   let ottoKanban: KanbanDaemonService | null = null; // OTTO(kanban): bound after registry/server identity creation, before plugins start.
   let ottoIntegrations: ReturnType<typeof createHostIntegrations> | null = null; // OTTO(integration)
+  let ottoKnowledge: KnowledgeDaemonService | null = null; // OTTO(knowledge)
   const pluginRuntime: PluginService = new PluginService(
     logger,
     daemonConfigStore,
@@ -654,11 +656,13 @@ export async function createPaseoDaemon(
         has: (pluginId) =>
           pluginId === "otto-brain" ||
           (pluginId === "otto-kanban" && ottoKanban !== null) ||
-          (pluginId === "otto-integrations" && ottoIntegrations !== null),
+          (pluginId === "otto-integrations" && ottoIntegrations !== null) ||
+          (pluginId === "otto-project-knowledge" && ottoKnowledge !== null), // OTTO(knowledge)
         invoke: (pluginId, method, input, clientId) => {
           if (pluginId === "otto-brain") return ottoBrain.invoke(method, input, clientId);
           if (pluginId === "otto-kanban") return ottoKanban?.invoke(method, input); // OTTO(kanban)
           if (pluginId === "otto-integrations") return ottoIntegrations?.rpc.invoke(method, input); // OTTO(integration)
+          if (pluginId === "otto-project-knowledge") return ottoKnowledge?.invoke(method, input); // OTTO(knowledge)
           return undefined;
         },
         releaseClient: (clientId) => ottoBrain.releaseClient(clientId),
@@ -931,6 +935,12 @@ export async function createPaseoDaemon(
     workspaceRegistry,
   });
   const github = createGitHubService();
+  ottoKnowledge = new KnowledgeDaemonService({
+    hostId: serverId,
+    home: config.paseoHome,
+    metadata: projectRegistry.ottoMetadata,
+    workspaces: workspaceRegistry,
+  }); // OTTO(knowledge): scoped demand, no startup file writes.
   ottoKanban = new KanbanDaemonService({
     hostId: serverId,
     metadata: projectRegistry.ottoMetadata,
@@ -1435,6 +1445,7 @@ export async function createPaseoDaemon(
   const createAgentToolHostDependencies = (
     runtime: PaseoToolRuntimeContext,
   ): PaseoToolHostDependencies => ({
+    ottoKnowledge: ottoKnowledge ?? undefined, // OTTO(knowledge)
     agentManager,
     agentStorage,
     terminalManager,

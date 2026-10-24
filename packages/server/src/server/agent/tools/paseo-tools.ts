@@ -108,8 +108,11 @@ import {
 } from "./types.js";
 import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-config";
 import { isPaseoToolEnabled } from "../paseo-tool-policy.js";
+import type { KnowledgeDaemonService } from "../../otto/project-knowledge/host.js"; // OTTO(knowledge)
+import { createKnowledgeTools } from "../../otto/project-knowledge/tools.js"; // OTTO(knowledge)
 
 export interface PaseoToolHostDependencies {
+  ottoKnowledge?: KnowledgeDaemonService; // OTTO(knowledge): one provider-neutral canonical host service.
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager?: TerminalManager | null;
@@ -3294,6 +3297,23 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     },
   );
 
+  // OTTO(knowledge): register only in the normal catalog, after the voice-only early return.
+  if (options.ottoKnowledge && options.workspaceRegistry) {
+    const host = options.ottoKnowledge;
+    const registry = options.workspaceRegistry;
+    for (const tool of createKnowledgeTools(host, async (requested) => {
+      const caller = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
+      const selected = requested ?? caller?.workspaceId;
+      if (!selected) throw new PaseoToolInputError("workspaceId is required outside a chat.");
+      if (callerContext?.lockedCwd && caller?.workspaceId && selected !== caller.workspaceId)
+        throw new PaseoToolInputError("Knowledge is bound to this chat's workspace.");
+      const workspace = await registry.get(selected);
+      if (!workspace || workspace.archivedAt) throw new PaseoToolInputError("Workspace not found.");
+      return host.workspaceScope(workspace.workspaceId);
+    })) {
+      if (isPaseoToolEnabled(options.paseoToolPolicy, tool.name)) tools.set(tool.name, tool);
+    }
+  }
   return toCatalog();
 }
 

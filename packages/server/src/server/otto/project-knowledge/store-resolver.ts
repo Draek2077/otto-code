@@ -23,7 +23,7 @@ export interface KnowledgeStore {
 export interface KnowledgeResolverPorts {
   ottoHome: string;
   resolveProject: (projectId: string) => Promise<KnowledgeProject>;
-  defaultLocation: () => KnowledgeLocation;
+  defaultLocation: () => KnowledgeLocation | Promise<KnowledgeLocation>;
 }
 
 export class KnowledgeStoreResolver {
@@ -38,7 +38,9 @@ export class KnowledgeStoreResolver {
     const repositoryBase = path.join(root, ".otto");
     const location =
       project.knowledgeLocation ??
-      ((await repositoryStoreExists(repositoryBase)) ? "repository" : this.ports.defaultLocation());
+      ((await repositoryStoreExists(repositoryBase))
+        ? "repository"
+        : await this.ports.defaultLocation());
     if (location === "repository") {
       return { projectId, projectRoot: root, location, boundary: root, base: repositoryBase };
     }

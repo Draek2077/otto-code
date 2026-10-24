@@ -83,6 +83,51 @@ export async function readKnowledgeFile(
   }
 }
 
+/** Byte-preserving migration reads share the same no-symlink boundary as Markdown reads. */
+export async function readKnowledgeBytes(
+  store: KnowledgeStore,
+  file: string,
+): Promise<Buffer | null> {
+  try {
+    await checkPath(store, file, false);
+    return await readFile(file);
+  } catch (error) {
+    if (hasCode(error, "ENOENT")) return null;
+    throw error;
+  }
+}
+
+/** Enumerates payload only, never follows links or enters the cooperative writer lock. */
+export async function listKnowledgePayload(store: KnowledgeStore): Promise<string[]> {
+  const files: string[] = [];
+  async function visit(directory: string): Promise<void> {
+    await checkPath(store, directory, false);
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (directory === path.join(store.base, "knowledge") && entry.name === ".write-lock")
+        continue;
+      const file = path.join(directory, entry.name);
+      if (entry.isSymbolicLink())
+        throw new Error("Knowledge migration cannot follow symbolic links");
+      if (entry.isDirectory()) await visit(file);
+      else if (entry.isFile()) files.push(file);
+      else throw new Error("Knowledge migration cannot copy special files");
+      if (files.length > 10000) throw new Error("Knowledge migration exceeds the file limit");
+    }
+  }
+  const root = path.join(store.base, "knowledge");
+  let exists = true;
+  try {
+    await checkPath(store, root, false);
+  } catch (error) {
+    if (!hasCode(error, "ENOENT")) throw error;
+    exists = false;
+  }
+  if (exists) await visit(root);
+  const policy = path.join(store.base, "KNOWLEDGE.md");
+  if (await readKnowledgeBytes(store, policy)) files.push(policy);
+  return files.sort();
+}
+
 export async function listKnowledgeFiles(
   store: KnowledgeStore,
   directory: string,
@@ -108,13 +153,13 @@ export async function replaceKnowledgeFile(input: {
   store: KnowledgeStore;
   file: string;
   expectedRevision: string | null;
-  body: string;
+  body: string | Uint8Array;
   replacement?: KnowledgeReplacementPorts;
 }): Promise<void> {
   const { store, file, expectedRevision, body } = input;
   const ports = input.replacement ?? replacementPorts;
   await checkPath(store, path.dirname(file), true);
-  const current = await readKnowledgeFile(store, file);
+  const current = await readKnowledgeBytes(store, file);
   assertRevision(current, expectedRevision);
   const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}.tmp`);
   const handle = await ports.openStagedFile(temporary);
@@ -129,7 +174,7 @@ export async function replaceKnowledgeFile(input: {
       });
       // Catch external saves since preparation. Filesystems do not offer a portable
       // compare-and-rename against an editor that ignores the Otto store lock.
-      assertRevision(await readKnowledgeFile(store, file), expectedRevision);
+      assertRevision(await readKnowledgeBytes(store, file), expectedRevision);
       if (expectedRevision === null) {
         try {
           await link(temporary, file);
@@ -184,7 +229,7 @@ function combineKnowledgeFailures(input: {
   );
 }
 
-function assertRevision(raw: string | null, expected: string | null): void {
+function assertRevision(raw: string | Uint8Array | null, expected: string | null): void {
   const actual = raw === null ? null : digest(raw);
   if (actual !== expected) throw new KnowledgeConflictError();
 }

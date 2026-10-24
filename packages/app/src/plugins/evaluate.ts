@@ -7,6 +7,8 @@ import * as pluginSharedRuntime from "@getpaseo/plugin";
 import * as ottoOpenAiSettings from "@getpaseo/plugin/otto/openai-settings";
 import * as ottoKanbanShared from "@getpaseo/plugin/otto/kanban"; // OTTO(kanban): client-safe contracts.
 import * as ottoAtlassianSettings from "@getpaseo/plugin/otto/atlassian-settings"; // OTTO(integration): safe account contracts, no vault code.
+import * as ottoKnowledge from "@getpaseo/plugin/otto/project-knowledge"; // OTTO(knowledge): no filesystem implementation.
+import * as ottoKnowledgeUi from "@/otto/knowledge/plugin-ui"; // OTTO(knowledge): only trusted built-in presentation.
 import * as pluginClientRuntime from "@getpaseo/plugin/client";
 import * as React from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
@@ -449,6 +451,8 @@ export function runPluginClientBundle(
     if (name === "@getpaseo/plugin/client/otto-brain" && id === "otto-brain" && runtime.ottoBrain)
       return runtime.ottoBrain;
     if (name === "@getpaseo/plugin/client/ui") return pluginUiRuntime;
+    if (name === "@getpaseo/plugin/client/otto-knowledge" && id === "otto-project-knowledge")
+      return ottoKnowledgeUi; // OTTO(knowledge)
     if (name === "react") return React;
     if (name === "react/jsx-runtime") return ReactJsxRuntime;
     if (name === "react-native") return ReactNative;
@@ -457,6 +461,7 @@ export function runPluginClientBundle(
     if (name === "@getpaseo/plugin/otto/openai-settings") return ottoOpenAiSettings;
     if (name === "@getpaseo/plugin/otto/kanban") return ottoKanbanShared; // OTTO(kanban)
     if (name === "@getpaseo/plugin/otto/atlassian-settings") return ottoAtlassianSettings; // OTTO(integration)
+    if (name === "@getpaseo/plugin/otto/project-knowledge") return ottoKnowledge; // OTTO(knowledge)
     if (name === "@getpaseo/plugin/client")
       return {
         ...pluginClientRuntime,

@@ -20,11 +20,13 @@ const entries = {
   "./otto/kanban": "shared", // OTTO(kanban): structural RPC/model definitions only.
   "./otto/openai-settings": "shared",
   "./otto/atlassian-settings": "shared", // OTTO(integration): structural contracts, never credentials or native binding.
+  "./otto/project-knowledge": "shared", // OTTO(knowledge): structural records and scoped RPC only.
   "./client": "client",
   "./client/host": "client",
   "./client/react-native": "client",
   "./client/ui": "client",
   "./client/otto-brain": "client",
+  "./client/otto-knowledge": "client", // OTTO(knowledge): app-only presentation bridge.
 } as const;
 const uiDependency = /^(react(?:-dom|-native)?|use-sync-external-store)(\/|$)/;
 const serverModule = /^server\//;

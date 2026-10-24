@@ -48,6 +48,11 @@
       "source": "./src/otto/atlassian-settings.ts",
       "default": "./dist/otto/atlassian-settings.js"
     },
+    "./otto/project-knowledge": {
+      "types": "./dist/otto/project-knowledge.d.ts",
+      "source": "./src/otto/project-knowledge.ts",
+      "default": "./dist/otto/project-knowledge.js"
+    },
     "./otto/openai-settings": {
       "types": "./dist/otto/openai-settings.d.ts",
       "source": "./src/otto/openai-settings.ts",
@@ -82,6 +87,11 @@
       "types": "./dist/client/otto-brain.d.ts",
       "source": "./src/client/otto-brain.ts",
       "default": "./dist/client/otto-brain.js"
+    },
+    "./client/otto-knowledge": {
+      "types": "./dist/client/otto-knowledge.d.ts",
+      "source": "./src/client/otto-knowledge.ts",
+      "default": "./dist/client/otto-knowledge.js"
     },
     "./client": {
       "types": "./dist/client/index.d.ts",

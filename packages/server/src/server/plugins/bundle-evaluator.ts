@@ -11,6 +11,7 @@ import * as ottoKanbanRuntime from "@getpaseo/plugin/server/otto-kanban"; // OTT
 import * as ottoKanbanShared from "@getpaseo/plugin/otto/kanban"; // OTTO(kanban)
 import * as ottoOpenAiSettings from "@getpaseo/plugin/otto/openai-settings";
 import * as ottoAtlassianSettings from "@getpaseo/plugin/otto/atlassian-settings"; // OTTO(integration)
+import * as ottoKnowledge from "@getpaseo/plugin/otto/project-knowledge"; // OTTO(knowledge)
 import type { PluginServerContribution } from "@getpaseo/plugin/server";
 import * as zod from "zod";
 import { isPluginClientOnlySdkSpecifier } from "./plugin-sdk-specifiers.js";
@@ -29,6 +30,7 @@ function runtimeRequire(name: string): unknown {
   if (name === "@getpaseo/plugin/otto/kanban") return ottoKanbanShared; // OTTO(kanban)
   if (name === "@getpaseo/plugin/otto/openai-settings") return ottoOpenAiSettings;
   if (name === "@getpaseo/plugin/otto/atlassian-settings") return ottoAtlassianSettings; // OTTO(integration)
+  if (name === "@getpaseo/plugin/otto/project-knowledge") return ottoKnowledge; // OTTO(knowledge)
   if (name === "@getpaseo/plugin/server") return pluginServerRuntime;
   if (name === "@getpaseo/plugin/server/provider") return pluginProviderRuntime;
   if (name === "@getpaseo/plugin/server/acp") return pluginAcpRuntime;

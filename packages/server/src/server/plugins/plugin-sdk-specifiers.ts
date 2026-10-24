@@ -5,6 +5,7 @@ export const PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS = [
   "@getpaseo/plugin/client/react-native",
   // OTTO(brain-ui): renderer injection, kept out of the general plugin graphics API.
   "@getpaseo/plugin/client/otto-brain",
+  "@getpaseo/plugin/client/otto-knowledge", // OTTO(knowledge): app-owned Markdown/editor only.
 ] as const;
 
 const PLUGIN_SERVER_ONLY_SDK_SPECIFIERS = [
@@ -24,6 +25,7 @@ export const PLUGIN_SDK_SPECIFIERS = [
   "@getpaseo/plugin/otto/openai-settings",
   "@getpaseo/plugin/otto/kanban", // OTTO(kanban): shared structural contracts only.
   "@getpaseo/plugin/otto/atlassian-settings", // OTTO(integration): account status/explicit write intents only.
+  "@getpaseo/plugin/otto/project-knowledge", // OTTO(knowledge): client-safe scoped contracts.
   ...PLUGIN_SERVER_ONLY_SDK_SPECIFIERS,
   ...PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS,
 ] as const;

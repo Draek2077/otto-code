@@ -52,7 +52,7 @@ export interface KnowledgePage {
   revision: string;
 }
 
-export function digest(body: string): string {
+export function digest(body: string | Uint8Array): string {
   return createHash("sha256").update(body).digest("hex");
 }
 
@@ -144,7 +144,7 @@ function validTimeline(raw: string): boolean {
 }
 
 export interface KnowledgeEvent {
-  kind: "decision" | "evidence";
+  kind: "decision" | "evidence" | "note" | "reversal" | "migration";
   text: string;
   recordedAt: string;
   source?: string;
@@ -154,15 +154,23 @@ export function appendPageEvent(input: {
   raw: string;
   event: KnowledgeEvent;
   statement?: string;
+  /** Daemon-validated, owned metadata only. Unknown existing YAML stays intact. */
+  metadata?: Readonly<Record<string, string | number | string[] | null>>;
 }): string {
   const page = parseKnowledgePage(input.raw);
   const parts = splitPage(input.raw);
   const document = parseDocument(parts.frontmatter);
   document.set("updated_at", input.event.recordedAt);
+  for (const [key, value] of Object.entries(input.metadata ?? {})) {
+    if (value === null) document.delete(key);
+    else document.set(key, value);
+  }
   const changed = input.statement !== undefined && input.statement !== page.statement;
   if (changed && page.metadata.status === "confirmed") document.set("status", "proposed");
   const previousTimeline = parts.timeline.endsWith("\n") ? parts.timeline : `${parts.timeline}\n`;
-  return `---\n${document.toString()}---\n${parts.heading}\n\n<!-- compiled_truth -->\n\n${input.statement ?? parts.statement}\n\n## Timeline\n\n${previousTimeline}${renderEvent(input.event)}\n`;
+  const heading =
+    typeof input.metadata?.title === "string" ? `# ${input.metadata.title}` : parts.heading;
+  return `---\n${document.toString()}---\n${heading}\n\n<!-- compiled_truth -->\n\n${input.statement ?? parts.statement}\n\n## Timeline\n\n${previousTimeline}${renderEvent(input.event)}\n`;
 }
 
 export function createDraftPage(input: {
