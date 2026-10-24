@@ -12,6 +12,7 @@ describe("plugin host navigation", () => {
         workspaces.has(`${serverId}:${workspaceId}`) ? workspaceId : null,
       openAgent: (input) => destinations.push(input),
       openWorkspace: (input) => destinations.push(input),
+      openProjectSettings: (input) => destinations.push(input),
       createBrowser: ({ initialUrl }) => {
         browsers.push(initialUrl);
         return { browserId: `browser-${browsers.length}` };
@@ -86,5 +87,18 @@ describe("plugin host navigation", () => {
       "workspaceId",
     );
     expect(browsers).toEqual([]);
+  });
+
+  it("opens canonical Project Settings on the selected or explicit host without creating tabs", () => {
+    const { navigation, destinations, browsers } = setup(false);
+    navigation.openProjectSettings!({ projectId: "project-a" });
+    navigation.openProjectSettings!({ projectId: "project-b", serverId: "remote" });
+    expect(destinations).toEqual([
+      { serverId: "selected", projectId: "project-a" },
+      { serverId: "remote", projectId: "project-b" },
+    ]);
+    expect(browsers).toEqual([]);
+    expect(() => navigation.openProjectSettings!({ projectId: " " })).toThrow("projectId");
+    expect(destinations).toHaveLength(2);
   });
 });

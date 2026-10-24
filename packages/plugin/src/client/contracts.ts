@@ -44,6 +44,12 @@ interface PluginNavigableHostProps extends PluginHostProps {
       readonly workspaceId: string;
       readonly serverId?: string;
     }) => void;
+    /** OTTO(kanban): canonical app-owned project settings, bound to this surface's host. */
+    // COMPAT(ottoProjectSettingsNavigation): added in v0.10.0; remove optional after 2027-04-24.
+    readonly openProjectSettings?: (input: {
+      readonly projectId: string;
+      readonly serverId?: string;
+    }) => void;
   };
 }
 

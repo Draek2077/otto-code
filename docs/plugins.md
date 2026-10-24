@@ -396,6 +396,10 @@ existing agent-context instances, but it cannot create an agent panel without an
 Command Center callbacks use the selected host's existing `PaseoApi` for normal Paseo operations.
 They use typed plugin RPC only for plugin-specific backend work. Surface and panel navigation
 belongs to the app; plugins do not receive Expo Router or workspace-layout store access.
+Otto's `navigation.openProjectSettings({ projectId, serverId? })` opens the same canonical
+Project Settings route as the app. An omitted host selects the rendering installation's host;
+plugins pass project identities rather than filesystem paths. Check method availability before
+rendering the action on clients predating this navigation capability.
 See the public [navigation fields](../public-docs/plugins/reference.md#screens-and-sidebar-items)
 and [external links and workspace browsers](../public-docs/plugins/reference.md#external-links-and-workspace-browsers)
 for the author-facing contract.
