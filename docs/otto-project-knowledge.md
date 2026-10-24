@@ -47,16 +47,18 @@ existing indexes remain unchanged. Reading a chat's catalog never initializes a 
 
 ## MCP and UI
 
-All providers receive the same six tools through the existing Paseo tool catalog:
+All providers receive the same eight tools through the existing Paseo tool catalog:
 
-| Tool                            | Contract                                                                                                                           |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `list_project_knowledge`        | Confirmed metadata and root discovery by default; explicit inactive review, title/tag search and bounded pagination                |
-| `read_project_knowledge`        | One on-demand article and its complete retained history                                                                            |
-| `read_project_knowledge_root`   | One of the six on-demand root bodies                                                                                               |
-| `read_project_knowledge_policy` | Optional custom Knowledge guidance from the canonical owning-host store, read only on demand                                       |
-| `lint_project_knowledge_links`  | Read-only bounded link health for current confirmed pages and roots, with source identities and revisions                          |
-| `manage_project_knowledge`      | Draft creation, reason-bearing changes, evidence, review, delivery, references, roots, explicit initialization and confirmed purge |
+| Tool                               | Contract                                                                                                                           |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `list_project_knowledge`           | Confirmed metadata and root discovery by default; explicit inactive review, title/tag search and bounded pagination                |
+| `read_project_knowledge`           | One on-demand article and its complete retained history                                                                            |
+| `read_project_knowledge_root`      | One of the six on-demand root bodies                                                                                               |
+| `read_project_knowledge_policy`    | Optional custom Knowledge guidance from the canonical owning-host store, read only on demand                                       |
+| `lint_project_knowledge_links`     | Read-only bounded link health for current confirmed pages and roots, with source identities and revisions                          |
+| `inspect_project_knowledge_format` | Read-only revision-pinned preview of known older Markdown and v1 JSON conversions                                                  |
+| `migrate_project_knowledge_format` | Explicit human-approved conversion with verified byte recovery and no identity rewriting                                           |
+| `manage_project_knowledge`         | Draft creation, reason-bearing changes, evidence, review, delivery, references, roots, explicit initialization and confirmed purge |
 
 Tools resolve the chat workspace by default. Outside a chat, callers supply a
 workspace ID. A restricted chat cannot redirect Knowledge to another workspace.
@@ -103,8 +105,9 @@ approval. Purge validates every input before writing, pins each repaired file's
 digest and deletes the selected page last after another revision check. A partial
 repair failure retains the selected file when deletion has not happened and
 requires explicit reconciliation; it does not roll repairs back over newer
-external edits. Recovery copies from earlier explicit storage switches are
-separate stores and remain untouched. This is not a multi-file transaction.
+external edits. Recovery copies from earlier explicit storage switches or format
+conversions are outside the canonical pages and remain untouched. This is not a
+multi-file transaction.
 
 Active views share one change feed per canonical host/project. The daemon uses
 Paseo's file-observer service, prunes unrelated subtrees and debounces filesystem
@@ -136,6 +139,47 @@ already present at the destination; it never replaces conflicting destination
 data or deletes original stores. This is copy-and-switch with recovery, not a
 filesystem/registry transaction across independent processes.
 
+Queued record/root writers re-resolve the canonical store after acquiring its
+lock. A storage switch invalidates a queued old-store write instead of allowing
+it to change the retained recovery copy after publication.
+
+## Older formats
+
+Older Knowledge formats offers an explicit inspection and confirmed conversion
+in workspace and host-settings views, including when an older page prevents the
+normal catalog from loading. Inspection reads the selected canonical host store,
+its project-registry revision and repository `.otto/project-knowledge.json`. It
+never creates a directory or changes files. Previews contain at most 100 record
+summaries plus the complete count; the revision covers the complete inventory.
+
+Conversion supports the frozen v1 JSON record envelope and the older Markdown
+Current truth / Evidence / bullet Timeline sections. IDs, review status, source
+timestamps, unknown fields, evidence and custom timeline events survive. Fenced
+examples cannot become provenance. Ambiguous sections, malformed records,
+duplicate identities and unrelated destinations stop the operation before page
+writes. No automatic slug renaming or status confirmation occurs.
+
+Before replacing older Markdown, Otto copies and verifies its original bytes in
+`knowledge-recovery/<preview-revision>/` beside `knowledge/`. JSON stays in place
+and also receives a verified recovery copy. Authored roots and existing indexes
+remain unchanged. A missing index is created explicitly so converted pages enter
+the compact chat-start catalog; interrupted finalization remains inspectable.
+The conversion appends a reason-bearing migration event and relative recovery location. A
+completion receipt prevents repeated JSON imports; older Otto completion markers
+remain recognized. Interrupted imports recognize their original source revision
+and preserve subsequent peer edits rather than resurrecting old JSON truth.
+
+Application requires the exact preview revision and a reason. UI confirmation is
+explicit; MCP additionally requires `userApprovedMigration`. A shared store lock,
+project/store revalidation, source digests and exclusive destination creation
+protect cooperating writers. A partial failure retains recovery data and requires
+a new explicit preview, without automatic retry or rollback over newer changes.
+The form retains its reason on conflict or unknown outcomes and invalidates late
+confirmation/write responses across hide/unmount. External editors still do not
+participate in the final filesystem comparison interval; this is not a multi-file
+transaction. Limits are 10,000 files, 4 MiB per source and 64 MiB total, with explicit
+failure rather than truncation.
+
 ## Filesystem and recovery limits
 
 Edits require the digest from the last read. A per-store queue and an exclusive
@@ -163,7 +207,6 @@ Focused fixtures cover canonical host/workspace binding, record operations,
 copy/switch and local form models. Browser acceptance exercises real wide/compact
 app controls against isolated daemon data; it never uses an installed Otto home.
 
-Abandoned-lock recovery, older noncanonical format conversion, host-wide default
-editing and broader historical management/review features remain
+Abandoned-lock recovery, host-wide default editing and broader historical management/review features remain
 separate integration boundaries. The implementation does not claim those
 remaining behaviors or full F04 completion from focused service or form tests.

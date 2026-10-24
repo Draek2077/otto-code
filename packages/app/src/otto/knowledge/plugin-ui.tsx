@@ -27,6 +27,7 @@ import { KnowledgeStorage } from "./storage";
 import { styles } from "./styles";
 import { useKnowledgeChanges } from "./use-knowledge-changes";
 import { KnowledgeLinkHealth } from "./link-health";
+import { KnowledgeFormat } from "./format";
 
 function KnowledgeBody({
   scope,
@@ -120,11 +121,17 @@ function KnowledgeBody({
         <Button variant="outline" onPress={refresh}>
           Retry
         </Button>
+        <KnowledgeFormat key="format" scope={scope} active={active} />
       </>
     );
   if (!catalog.data) return <SettingsRow label="Loading Project Knowledge..." />;
   if (settingsOnly)
-    return <KnowledgeStorage scope={scope} settings={catalog.data.settings} onChanged={refresh} />;
+    return (
+      <>
+        <KnowledgeStorage scope={scope} settings={catalog.data.settings} onChanged={refresh} />
+        <KnowledgeFormat key="format" scope={scope} active={active} />
+      </>
+    );
   return (
     <>
       <SettingsSection title={catalog.data.settings.label}>
@@ -169,6 +176,7 @@ function KnowledgeBody({
       )}
       <KnowledgeLinkHealth scope={scope} active={active} onSelect={setSelection} />
       <KnowledgeStorage scope={scope} settings={catalog.data.settings} onChanged={refresh} />
+      <KnowledgeFormat key="format" scope={scope} active={active} />
     </>
   );
 }

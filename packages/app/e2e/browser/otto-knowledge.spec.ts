@@ -8,6 +8,7 @@ import {
   readKnowledgeCatalog,
   readKnowledgeRoot,
   readKnowledgeLinkHealth,
+  inspectKnowledgeFormat,
   type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import { test, expect } from "../support/fixtures";
@@ -85,8 +86,15 @@ async function callKnowledgeMcp(name: string, args: Record<string, unknown>) {
   const text = await response.text();
   const event = text.split("\n").find((line) => line.startsWith("data:"));
   const envelope = z
-    .object({ result: z.object({ structuredContent: z.unknown() }) })
+    .object({
+      result: z.object({
+        structuredContent: z.unknown(),
+        content: z.array(z.object({ type: z.literal("text"), text: z.string() })),
+      }),
+    })
     .parse(JSON.parse(event ? event.slice(5).trim() : text));
+  expect(envelope.result.content).toHaveLength(1);
+  expect(JSON.parse(envelope.result.content[0].text)).toEqual(envelope.result.structuredContent);
   return envelope.result.structuredContent;
 }
 
@@ -132,6 +140,104 @@ async function proveLinkHealth(
   await health.getByRole("button", { name: "Open source", exact: true }).click();
   await expect(surface.getByRole("button", { name: "Edit root", exact: true })).toBeVisible();
   await expect(surface.getByText("Link-health source fixture.", { exact: true })).toBeVisible();
+}
+
+async function proveFormatConversion(
+  page: Page,
+  surface: Locator,
+  client: Pick<DaemonClient, "invokePluginRpc">,
+  scope: KnowledgeScope,
+  project: { workspaceId: string; repoPath: string },
+  id: string,
+) {
+  const catalog = readKnowledgeCatalog.output.parse(
+    await client.invokePluginRpc("otto-project-knowledge", readKnowledgeCatalog.name, {
+      scope,
+      includeInactive: true,
+      query: "",
+      offset: 0,
+      limit: 50,
+    }),
+  );
+  if (!catalog.ok) throw new Error(catalog.error.message);
+  const oldId = `${id}-old-format`;
+  const jsonId = `${id}-json-format`;
+  const oldFile = path.join(catalog.value.settings.path, "knowledge/requirements", `${oldId}.md`);
+  const oldRaw = `---\nid: ${oldId}\nkind: requirement\ntitle: Older Markdown fixture\nstatus: confirmed\ntags: []\ncreated_at: "2026-01-01T00:00:00.000Z"\nupdated_at: "2026-01-01T00:00:00.000Z"\nfuture: { retained: true }\n---\n# Older Markdown fixture\n\n## Current truth\n\nRetained older truth.\n\n## Evidence\n\nRetained older evidence.\n\n## Timeline\n\n- 2026-01-01T00:00:00.000Z [decision] Original record\n`;
+  const jsonFile = path.join(project.repoPath, ".otto/project-knowledge.json");
+  const jsonRaw = JSON.stringify({
+    version: 1,
+    records: [
+      {
+        id: jsonId,
+        kind: "requirement",
+        title: "Older JSON fixture",
+        statement: "Retained JSON truth.",
+        tags: [],
+        status: "confirmed",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+  });
+  await writeFile(oldFile, oldRaw);
+  await writeFile(jsonFile, jsonRaw);
+  const form = surface.getByTestId("knowledge-format");
+  await form.getByRole("button", { name: "Inspect formats", exact: true }).click();
+  await expect(form.getByText("2 records need conversion", { exact: true })).toBeVisible();
+  const inspected = inspectKnowledgeFormat.output.parse(
+    await callKnowledgeMcp("inspect_project_knowledge_format", {
+      workspaceId: project.workspaceId,
+    }),
+  );
+  if (!inspected.ok) throw new Error(inspected.error.message);
+  await expect(
+    form.getByText(`Recovery: ${inspected.value.recoveryPath}`, { exact: true }),
+  ).toBeVisible();
+  await form
+    .getByRole("textbox", { name: "Conversion reason", exact: true })
+    .fill("Human reviewed conversion fixture");
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await form.getByRole("button", { name: "Convert formats", exact: true }).click();
+  expect(await readFile(oldFile, "utf8")).toBe(oldRaw);
+  page.once("dialog", (dialog) => void dialog.accept());
+  await form.getByRole("button", { name: "Convert formats", exact: true }).click();
+  await expect(
+    form.getByText(`2 records converted. Recovery bytes: ${inspected.value.recoveryPath}`, {
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(await readFile(jsonFile, "utf8")).toBe(jsonRaw);
+  expect(
+    await readFile(
+      path.join(inspected.value.recoveryPath, "store/knowledge/requirements", `${oldId}.md`),
+      "utf8",
+    ),
+  ).toBe(oldRaw);
+  const imported = readKnowledgePage.output.parse(
+    await callKnowledgeMcp("read_project_knowledge", {
+      workspaceId: project.workspaceId,
+      id: jsonId,
+    }),
+  );
+  expect(imported).toMatchObject({
+    ok: true,
+    value: { statement: "Retained JSON truth.", status: "confirmed" },
+  });
+  const converted = readKnowledgePage.output.parse(
+    await callKnowledgeMcp("read_project_knowledge", {
+      workspaceId: project.workspaceId,
+      id: oldId,
+    }),
+  );
+  expect(converted).toMatchObject({
+    ok: true,
+    value: {
+      statement: "Retained older truth.",
+      status: "confirmed",
+      timeline: expect.stringContaining("Retained older evidence."),
+    },
+  });
 }
 
 for (const compact of [false, true]) {
@@ -305,6 +411,8 @@ for (const compact of [false, true]) {
       await expect(surface.getByRole("button", { name: "New entry", exact: true })).toBeVisible();
       expect(await readFile(sourcePath)).toEqual(original);
       await proveLinkHealth(surface, client, scope, project.workspaceId);
+      await proveFormatConversion(page, surface, client, scope, project, id);
+      await page.screenshot({ path: testInfo.outputPath("knowledge-format-conversion.png") });
     } finally {
       try {
         await client.close();

@@ -7,6 +7,8 @@ import {
   readKnowledgePage,
   readKnowledgeRoot,
   readKnowledgeLinkHealth,
+  inspectKnowledgeFormat,
+  applyKnowledgeFormat,
   type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import type { PaseoToolDefinition } from "../../agent/tools/types.js";
@@ -52,6 +54,42 @@ export function createKnowledgeTools(
     },
   });
   return [
+    tool(
+      "inspect_project_knowledge_format",
+      "Inspect a revision-pinned conversion preview for the known older Markdown and v1 JSON formats on the owning host. This is read-only and returns bounded metadata, never article bodies. No store is initialized and no data is rewritten.",
+      z.object({ workspaceId }).strict(),
+      async (input) =>
+        host.invoke(inspectKnowledgeFormat.name, {
+          scope: await scopeForWorkspace(input.workspaceId),
+        }),
+    ),
+    tool(
+      "migrate_project_knowledge_format",
+      "Apply a previously inspected Knowledge conversion only after explicit human agreement. Requires the exact preview revision and a reason; verifies recovery copies before replacing legacy Markdown, retains original JSON and unknown fields, and never re-slugs identities. A conflict or partial failure requires a new explicit inspection, never automatic retry or rollback.",
+      z
+        .object({
+          workspaceId,
+          expectedRevision: z.string().length(64),
+          reason: z.string().trim().min(1).max(65536),
+          userApprovedMigration: z.boolean(),
+        })
+        .strict(),
+      async (input) => {
+        if (!input.userApprovedMigration)
+          return {
+            ok: false,
+            error: {
+              code: "invalid",
+              message: "Explicit human agreement is required before Knowledge format conversion.",
+            },
+          };
+        return host.invoke(applyKnowledgeFormat.name, {
+          scope: await scopeForWorkspace(input.workspaceId),
+          expectedRevision: input.expectedRevision,
+          reason: input.reason,
+        });
+      },
+    ),
     tool(
       "lint_project_knowledge_links",
       "Check wiki-links in current confirmed truth and project roots against active confirmed pages. Draft/History targets are reported as inactive; historical timeline links are ignored. Returns bounded metadata with originating revisions, never bodies. Read the source before an explicit revision-pinned repair; this tool never rewrites or confirms data.",
@@ -135,7 +173,7 @@ export function createKnowledgeTools(
     ),
     tool(
       "manage_project_knowledge",
-      "Create Draft records/charters/references, update truth with a reason, append evidence, track delivery, evaluate references or edit roots. Use read revisions; never retry or rebase a conflict automatically. Reconcile only verified durable outcomes at effort end. Never confirm or supersede without explicit user agreement; set userApprovedReview only after that agreement. Initialization is explicit and preserves authored roots. Purge permanently deletes a page and its history and repairs incoming current wiki-links; it requires explicit human approval and userApprovedDeletion.",
+      "Create Draft records/charters/references, update truth with a reason, append evidence, track delivery, evaluate references or edit roots. Use read revisions; never retry or rebase a conflict automatically. Reconcile only verified durable outcomes at effort end. Never confirm or supersede without explicit user agreement; set userApprovedReview only after that agreement. Initialization is explicit and preserves authored roots. Purge permanently deletes a canonical page and its history and repairs incoming current wiki-links; separate storage/format recovery copies remain unchanged. Purge requires explicit human approval and userApprovedDeletion.",
       z
         .object({
           workspaceId,

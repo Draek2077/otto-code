@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { parseDocument } from "yaml";
 import { z } from "zod";
 import { removeWikiLinksTo } from "./links.js";
+import { knowledgeHeadingOffsets } from "./markdown-structure.js";
 
 export const knowledgeKinds = {
   decision: "decisions",
@@ -87,7 +88,7 @@ function splitPage(raw: string): PageParts {
   );
   if (!match) throw new Error("Unsupported Knowledge Markdown; explicit migration required");
   const content = normalized.slice(match[0].length);
-  const candidates = timelineBoundaries(content);
+  const candidates = knowledgeHeadingOffsets({ content, heading: timelineHeading });
   if (!candidates.length) throw new Error("Knowledge timeline boundary is missing");
   const valid = candidates.filter((offset) =>
     validTimeline(content.slice(offset + timelinePrefixLength)),
@@ -100,37 +101,6 @@ function splitPage(raw: string): PageParts {
     statement: content.slice(0, offset - 2),
     timeline: content.slice(offset + timelinePrefixLength),
   };
-}
-
-interface MarkdownFence {
-  marker: string;
-  width: number;
-}
-
-function timelineBoundaries(content: string): number[] {
-  const lines = content.split("\n");
-  const boundaries: number[] = [];
-  let fence: MarkdownFence | undefined;
-  let offset = 0;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    const delimiter = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-    if (fence) {
-      if (
-        delimiter &&
-        delimiter[1][0] === fence.marker &&
-        delimiter[1].length >= fence.width &&
-        !delimiter[2].trim()
-      )
-        fence = undefined;
-    } else if (delimiter && (delimiter[1][0] !== "`" || !delimiter[2].includes("`"))) {
-      fence = { marker: delimiter[1][0], width: delimiter[1].length };
-    } else if (line === timelineHeading && lines[index - 1] === "" && lines[index + 1] === "") {
-      boundaries.push(offset);
-    }
-    offset += line.length + 1;
-  }
-  return boundaries;
 }
 
 function validTimeline(raw: string): boolean {

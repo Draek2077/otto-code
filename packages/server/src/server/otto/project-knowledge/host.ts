@@ -11,6 +11,8 @@ import {
   setKnowledgeLocation,
   waitKnowledgeChanges,
   releaseKnowledgeChanges,
+  inspectKnowledgeFormat,
+  applyKnowledgeFormat,
   type KnowledgeScope,
   type KnowledgeCommand,
 } from "@getpaseo/plugin/otto/project-knowledge";
@@ -33,6 +35,11 @@ import { assertSafeSegment, type KnowledgeStore } from "./store-resolver.js";
 import { KnowledgeObservations } from "./observation.js";
 import { knowledgeCatalogPrompt } from "./catalog-prompt.js";
 import { readKnowledgePolicy } from "./policy.js";
+import {
+  inspectKnowledgeFormat as inspectFormat,
+  applyKnowledgeFormat as applyFormat,
+  KnowledgeFormatIncompleteError,
+} from "./format-migration.js";
 type KnowledgeObservationPort = Pick<
   KnowledgeObservations,
   "notify" | "wait" | "release" | "releaseClient" | "close"
@@ -269,6 +276,40 @@ export class KnowledgeDaemonService {
 
   invoke(method: string, value: unknown, clientId = ""): Promise<unknown> | undefined {
     switch (method) {
+      case inspectKnowledgeFormat.name:
+        return this.guard(async () => {
+          const input = inspectKnowledgeFormat.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          return inspectKnowledgeFormat.output.parse({
+            ok: true,
+            value: await inspectFormat({
+              store: await this.resolver.resolve(project.projectId),
+              projectRevision: project.revision,
+            }),
+          });
+        });
+      case applyKnowledgeFormat.name:
+        return this.guard(async () => {
+          const input = applyKnowledgeFormat.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          try {
+            const result = await applyFormat({
+              context: async () => {
+                const current = await this.resolveProject(input.scope);
+                return {
+                  store: await this.resolver.resolve(current.projectId),
+                  projectRevision: current.revision,
+                };
+              },
+              expectedRevision: input.expectedRevision,
+              reason: input.reason,
+              now: this.ports.now ?? (() => new Date()),
+            });
+            return applyKnowledgeFormat.output.parse({ ok: true, value: result });
+          } finally {
+            this.observations.notify(project.projectId);
+          }
+        });
       case readKnowledgeLinkHealth.name:
         return this.guard(async () => {
           const input = readKnowledgeLinkHealth.input.parse(value);
@@ -360,7 +401,10 @@ export class KnowledgeDaemonService {
     try {
       return await run();
     } catch (error) {
-      if (error instanceof KnowledgePurgeIncompleteError)
+      if (
+        error instanceof KnowledgePurgeIncompleteError ||
+        error instanceof KnowledgeFormatIncompleteError
+      )
         return { ok: false, error: { code: "conflict", message: error.message } };
       if (error instanceof KnowledgeNotFoundError)
         return { ok: false, error: { code: "not_found", message: error.message } };

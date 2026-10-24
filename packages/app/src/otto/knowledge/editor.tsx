@@ -226,7 +226,7 @@ export function KnowledgeEditor({
         !(await confirmDialog({
           title: "Permanently delete this page?",
           message:
-            "This removes the canonical page and its entire history, and repairs links in current pages and roots. Historical references in other pages and recovery copies from earlier storage changes remain unchanged.",
+            "This removes the canonical page and its entire history, and repairs links in current pages and roots. Historical references in other pages and recovery copies from earlier storage or format changes remain unchanged.",
           confirmLabel: "Delete permanently",
           destructive: true,
         }))

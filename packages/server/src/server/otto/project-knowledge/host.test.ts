@@ -15,6 +15,8 @@ import {
   readKnowledgeCatalog,
   readKnowledgePage,
   readKnowledgeLinkHealth,
+  inspectKnowledgeFormat,
+  applyKnowledgeFormat,
   setKnowledgeLocation,
 } from "@getpaseo/plugin/otto/project-knowledge";
 
@@ -334,4 +336,74 @@ it("shares bounded link-health RPC and MCP results through the canonical workspa
     ok: true,
     value: { nextOffset: null, issues: [{ target: "missing-b" }] },
   });
+});
+
+it("exposes explicit old-format inspection and approved conversion through the same RPC and MCP host", async () => {
+  const f = await fixture();
+  await mkdir(path.join(f.repo, ".otto"));
+  const source = path.join(f.repo, ".otto/project-knowledge.json");
+  const raw = JSON.stringify({
+    version: 1,
+    records: [
+      {
+        id: "legacy-page",
+        kind: "requirement",
+        title: "Legacy",
+        statement: "Retained truth",
+        tags: [],
+        status: "confirmed",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        future: { retained: true },
+      },
+    ],
+  });
+  await writeFile(source, raw);
+  const inspected = inspectKnowledgeFormat.output.parse(
+    await f.host.invoke(inspectKnowledgeFormat.name, { scope: f.scope }),
+  );
+  if (!inspected.ok) throw new Error(inspected.error.message);
+  expect(inspected.value).toMatchObject({
+    required: true,
+    count: 1,
+    changes: [{ id: "legacy-page", action: "import-json" }],
+  });
+  expect(await readFile(source, "utf8")).toBe(raw);
+  expect(await readdir(path.join(f.repo, ".otto"))).toEqual(["project-knowledge.json"]);
+  const tools = createKnowledgeTools(f.host, async () => f.scope);
+  const inspect = tools.find((tool) => tool.name === "inspect_project_knowledge_format");
+  const migrate = tools.find((tool) => tool.name === "migrate_project_knowledge_format");
+  if (!inspect || !migrate) throw new Error("Missing format tools");
+  expect((await inspect.handler({}, {})).structuredContent).toEqual(inspected);
+  const input = {
+    expectedRevision: inspected.value.revision,
+    reason: "Human approved this conversion",
+    userApprovedMigration: false,
+  };
+  expect((await migrate.handler(input, {})).structuredContent).toMatchObject({
+    ok: false,
+    error: { code: "invalid" },
+  });
+  expect(await readdir(path.join(f.repo, ".otto"))).toEqual(["project-knowledge.json"]);
+  expect(
+    (await migrate.handler({ ...input, userApprovedMigration: true }, {})).structuredContent,
+  ).toMatchObject({ ok: true, value: { converted: 1 } });
+  const converted = await f.host.service.read({
+    projectId: "project-a",
+    kind: "requirement",
+    id: "legacy-page",
+  });
+  expect(converted.metadata).toMatchObject({ status: "confirmed", future: { retained: true } });
+  expect(await readFile(source, "utf8")).toBe(raw);
+  expect(
+    await f.host.invoke(applyKnowledgeFormat.name, {
+      scope: f.scope,
+      expectedRevision: inspected.value.revision,
+      reason: "No stale replay",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "conflict" } });
+  expect(
+    await f.host.invoke(inspectKnowledgeFormat.name, { scope: { ...f.scope, hostId: "other" } }),
+  ).toMatchObject({ ok: false, error: { code: "wrong_host" } });
+  expect(f.notifications).toContain("project-a");
 });

@@ -228,6 +228,35 @@ export const releaseKnowledgeChanges = defineRpc({
   input: z.object({ leaseId: z.string().uuid() }).strict(),
   output: result(z.object({ released: z.literal(true) })),
 });
+const KnowledgeFormatPlanSchema = z.object({
+  revision,
+  required: z.boolean(),
+  count: z.number().int().nonnegative(),
+  omitted: z.number().int().nonnegative(),
+  recoveryPath: z.string(),
+  changes: z
+    .array(
+      z.object({
+        id,
+        kind: KnowledgeKindSchema,
+        title,
+        source: z.string(),
+        action: z.enum(["convert-markdown", "import-json"]),
+      }),
+    )
+    .max(100),
+});
+export const inspectKnowledgeFormat = defineRpc({
+  name: "knowledge.project.format.inspect.request",
+  input: z.object({ scope: KnowledgeScopeSchema }).strict(),
+  output: result(KnowledgeFormatPlanSchema),
+});
+export const applyKnowledgeFormat = defineRpc({
+  name: "knowledge.project.format.apply.request",
+  input: z.object({ scope: KnowledgeScopeSchema, expectedRevision: revision, reason }).strict(),
+  output: result(z.object({ converted: z.number().int().nonnegative(), recoveryPath: z.string() })),
+});
+export type KnowledgeFormatPlan = z.infer<typeof KnowledgeFormatPlanSchema>;
 export type KnowledgeScope = z.infer<typeof KnowledgeScopeSchema>;
 export type KnowledgeCommand = z.infer<typeof KnowledgeCommandSchema>;
 export type KnowledgeRecord = z.infer<typeof KnowledgePageSchema>;
