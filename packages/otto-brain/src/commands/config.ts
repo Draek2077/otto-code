@@ -18,10 +18,6 @@ const configSchema: OutputSchema<BrainConfig> = {
   serialize: (data) => data,
 };
 
-export function addConfigShowOptions(cmd: Command): Command {
-  return cmd.description("Show the effective brain config");
-}
-
 export async function runConfigShowCommand(
   _options: unknown,
   _command: Command,
@@ -107,12 +103,6 @@ function applyKey(config: BrainConfig, key: string, raw: string): BrainConfig {
   }
   return parsed.data;
 }
-export function addConfigSetOptions(cmd: Command): Command {
-  return cmd
-    .description("Set a config value")
-    .argument("<key>", "config key (e.g. enabled, listen.port, runtime.source)")
-    .argument("<value>", "new value");
-}
 
 export async function runConfigSetCommand(
   key: string,
@@ -125,3 +115,5 @@ export async function runConfigSetCommand(
   updateBrainConfig(origin.revision, () => config);
   return { type: "single", data: redactBrainConfig(config), schema: configSchema };
 }
+
+export { addConfigShowOptions, addConfigSetOptions } from "./options.js";

@@ -24,13 +24,6 @@ const searchSchema: OutputSchema<SearchRow> = {
   ],
 };
 
-export function addSearchOptions(cmd: Command): Command {
-  return cmd
-    .description("Search Hugging Face for GGUF models")
-    .argument("<query>", "search text")
-    .option("--limit <n>", "maximum results", "25");
-}
-
 export async function runSearchCommand(
   query: string,
   options: { limit?: string },
@@ -84,17 +77,6 @@ const addQuantSchema: OutputSchema<AddQuantRow> = {
   ],
 };
 
-export function addAddOptions(cmd: Command): Command {
-  return cmd
-    .description("Download a model from an arbitrary Hugging Face repo")
-    .argument("<repo>", "owner/repo on Hugging Face")
-    .option("--quant <label>", "quantization to download (e.g. Q5_K_M)")
-    .option("--component <id...>", "download optional discovered component ids")
-    .option("--primary-only", "download only the selected primary quant")
-    .option("--components-only", "download selected bundle components without the primary quant")
-    .option("--list-quants", "list the quantizations the repo offers and exit");
-}
-
 export async function runAddCommand(
   repo: string,
   options: {
@@ -135,3 +117,5 @@ export async function runAddCommand(
     };
   });
 }
+
+export { addSearchOptions, addAddOptions } from "./options.js";

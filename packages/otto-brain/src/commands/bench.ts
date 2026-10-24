@@ -1,6 +1,5 @@
 /** Local models benchmark through the shared host pool; external endpoints stay explicit. */
 import path from "node:path";
-import type { Command } from "commander";
 import { z } from "zod/v3";
 import { loadBrainConfig } from "../config/store.js";
 import { formatReport, formatComparison } from "../bench/index.js";
@@ -161,23 +160,7 @@ export async function runHostedBenchmarks(
   }
   return entries;
 }
-export function addBenchOptions(command: Command): Command {
-  return command
-    .description("Score agentic coding ability on the Brain owner")
-    .option("--model <fragments>", "model name fragment(s), comma-separated")
-    .option("--endpoint <host:port>", "benchmark an endpoint already serving")
-    .option("--only <a,b>", "run only these tasks")
-    .option("--depths <a,b,c>", "prompt depths for the depth-scaling task")
-    .option("--concurrency <n>", "requests in flight for the concurrency task", "3")
-    .option("--no-execute", "syntax-check generated Python without executing it")
-    .option("--port <n>", "legacy internal-port option; managed Brain chooses its resident ports")
-    .option("--repo-workspace-dir <dir>", "workspace path to mine SWE-bench tasks from")
-    .option("--repo-workspace <name>", "npm workspace name for mined tasks")
-    .option("--repo-dir <dir>", "source repository for a Brain-owned disposable checkout")
-    .option("--repo-ref <ref>", "git ref to mine", "origin/main")
-    .option("--repo-max <n>", "maximum mined tasks", "5")
-    .option("--curated <name>", "curated mined-repository preset (requires --repo-dir)");
-}
+
 export async function runBenchCommand(
   options: BenchOptions,
 ): Promise<AnyCommandResult<BenchEntry>> {
@@ -217,3 +200,5 @@ export async function runBenchCommand(
       );
   return { type: "list", data, schema };
 }
+
+export { addBenchOptions } from "./options.js";

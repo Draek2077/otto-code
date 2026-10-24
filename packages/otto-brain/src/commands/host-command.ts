@@ -7,7 +7,7 @@ import {
   type BrainJobStatus,
 } from "../service/job-client.js";
 import { localBrainRequest } from "../service/local-client.js";
-import { withOperationHost } from "./operation-host.js";
+import { selectedBrainCommandHost } from "./target.js";
 
 export interface HostCommandPort extends BrainJobTransport {
   request(route: string, signal: AbortSignal, body?: unknown): Promise<unknown>;
@@ -78,6 +78,9 @@ export function commandJobProgress(
 export async function withCommandHost<T>(
   run: (port: HostCommandPort, signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
+  const selected = selectedBrainCommandHost();
+  if (selected) return withCommandSignal((signal) => run(selected, signal));
+  const { withOperationHost } = await import("./operation-host.js");
   return withCommandSignal((signal) =>
     withOperationHost((client) => {
       // COMPAT(brainHostJobs): added in v0.10.0, remove after 2027-04-23.

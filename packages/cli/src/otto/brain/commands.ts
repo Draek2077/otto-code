@@ -32,6 +32,7 @@ import { withOutput, type CommandOptions, type SingleResult } from "../../output
 import { addJsonAndDaemonHostOptions, withGlobalOptions } from "../../utils/command-options.js";
 import { BrainCliError, runBrainRequest, type BrainCliRequest } from "./rpc.js";
 import { readBrainInput } from "./input.js";
+import { adoptSharedBrainCommands } from "./shared.js";
 
 type RequestBuilder = (command: Command) => BrainCliRequest | Promise<BrainCliRequest>;
 const Accepted = z.object({ accepted: z.literal(true) });
@@ -172,19 +173,13 @@ function registerModels(brain: Command): void {
   );
 }
 
-function registerRuntime(brain: Command): void {
-  const runtime = brain.command("runtime").description("Manage runtimes on the actual Brain owner");
-  register(runtime.command("list"), () => query({ resource: "runtimes" }));
+function registerRuntimeExtensions(runtime: Command): void {
   register(
     runtime
       .command("candidate <build>")
       .description("Offer an official build tag or latest without installing"),
     (command) => action({ action: "runtime-candidate", build: argument(command) }),
   );
-  for (const operation of ["install", "select", "remove"] as const)
-    register(runtime.command(`${operation} <runtime-id>`), (command) =>
-      action({ action: `${operation}-runtime`, runtimeId: argument(command) }),
-    );
   register(runtime.command("auto").description("Restore automatic runtime selection"), () =>
     action({ action: "select-runtime", runtimeId: null }),
   );
@@ -283,55 +278,23 @@ export function createOttoBrainCommand(): Command {
       }),
     );
   registerModels(brain);
-  registerRuntime(brain);
   registerSettings(brain);
-  register(brain.command("catalog"), () => query({ resource: "catalog" }));
-  register(
-    brain.command("search <query>").option("--limit <count>", "Maximum results", "20"),
-    (command) =>
-      query({
-        resource: "search",
-        query: argument(command),
-        limit: Number(option(command, "limit")),
-      }),
-  );
   register(brain.command("quants <repo>"), (command) =>
     query({ resource: "quants", repo: argument(command) }),
   );
   register(
-    brain.command("pull <catalog-id>").option("--quant <quant>").option("--component <id...>"),
-    (command) =>
-      action(
-        BrainActionSchema.parse({
-          action: "pull",
-          modelId: argument(command),
-          quant: option(command, "quant"),
-          components: command.opts().component,
-        }),
-      ),
+    brain.command("benchmark <model-id>").description("Admit a durable host benchmark job"),
+    (command) => action({ action: "job", operation: "benchmark", modelId: argument(command) }),
   );
-  register(brain.command("add <repo> <quant>").option("--component <id...>"), (command) =>
-    action(
-      BrainActionSchema.parse({
-        action: "add",
-        repo: argument(command),
-        quant: argument(command, 1),
-        components: command.opts().component,
-      }),
-    ),
-  );
-  for (const operation of ["calibrate", "sweep", "benchmark"] as const)
-    register(
-      brain
-        .command(`${operation} <model-id>`)
-        .description("Admit a durable host job; closing this CLI does not cancel it"),
-      (command) => action({ action: "job", operation, modelId: argument(command) }),
-    );
   const jobs = brain.command("job").description("Inspect and explicitly cancel durable Brain jobs");
   register(jobs.command("ls"), () => query({ resource: "jobs" }));
   register(jobs.command("cancel <job-id>"), (command) =>
     action({ action: "cancel-job", jobId: argument(command) }),
   );
   register(brain.command("evals"), () => query({ resource: "evals" }));
+  adoptSharedBrainCommands(brain);
+  const runtime = brain.commands.find((command) => command.name() === "runtime");
+  if (!runtime) throw new Error("Shared Brain runtime commands were not registered");
+  registerRuntimeExtensions(runtime);
   return brain;
 }

@@ -108,6 +108,46 @@ test("the actual daemon bridge reaches a remote unloaded host without starting a
       logs: [],
       status: { running: true, residents: [], jobs: [] },
     });
+    const commandOrigin = {
+      connectionRevision: bootstrap.connection.revision,
+      instanceId: snapshot.status?.instanceId,
+      requestId: "00000000-0000-4000-8000-000000000002",
+      request: { operation: "inventory" },
+    };
+    const commandInventory = value(
+      await bridge.invoke("brain.cli.request", commandOrigin, "fixture-session"),
+    );
+    expect(commandInventory).toMatchObject({ models: [] });
+    expect(
+      await bridge.invoke(
+        "brain.cli.request",
+        {
+          ...commandOrigin,
+          connectionRevision: "peer-changed-connection",
+        },
+        "fixture-session",
+      ),
+    ).toMatchObject({ ok: false, error: { kind: "conflict" } });
+    expect(
+      await bridge.invoke(
+        "brain.cli.request",
+        {
+          ...commandOrigin,
+          instanceId: "old-owner-lifetime",
+        },
+        "fixture-session",
+      ),
+    ).toMatchObject({ ok: false, error: { kind: "conflict" } });
+    expect(
+      await bridge.invoke(
+        "brain.cli.request",
+        {
+          ...commandOrigin,
+          request: { operation: "inventory", route: "/__host/settings" },
+        },
+        "fixture-session",
+      ),
+    ).toMatchObject({ ok: false, error: { kind: "validation" } });
     const owner = bootstrap.owner;
     if (!owner) throw new Error("Fixture owner missing");
     const saved = BrainOwnerReadSchema.parse(

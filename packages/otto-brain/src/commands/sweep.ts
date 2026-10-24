@@ -1,4 +1,3 @@
-import type { Command } from "commander";
 import { z } from "zod/v3";
 import { formatReasoningBudget } from "../config/index.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
@@ -57,12 +56,7 @@ export function parseSweepBudgets(raw: string | undefined): number[] | undefined
     });
   return result.data;
 }
-export function addSweepOptions(command: Command): Command {
-  return command
-    .description("Find and save the best reasoning budget")
-    .option("--model <fragment>", "model name fragment or catalog id")
-    .option("--budgets <a,b,c>", "reasoning budgets to sweep");
-}
+
 export async function runSweepCommand(options: {
   model?: string;
   budgets?: string;
@@ -84,3 +78,5 @@ export async function runSweepCommand(options: {
     })),
   };
 }
+
+export { addSweepOptions } from "./options.js";

@@ -1,3 +1,4 @@
+import { DEFAULT_LLAMA_BUILD } from "./default-build.js";
 /**
  * The self-contained runtime source: otto-brain downloads a pinned llama.cpp
  * build into `$OTTO_HOME/otto-brain/runtimes/` and runs it directly, so the tool
@@ -94,7 +95,7 @@ export interface InstallProgress {
  * The default runtime build. Bumping this requires re-reading the tag's asset
  * names (see the module header) - the naming scheme is not stable across tags.
  */
-export const DEFAULT_LLAMA_BUILD = "b10265";
+export { DEFAULT_LLAMA_BUILD } from "./default-build.js";
 const LLAMA_RELEASE_BASE = "https://github.com/ggml-org/llama.cpp/releases/download";
 const LLAMA_RELEASE_API = "https://api.github.com/repos/ggml-org/llama.cpp/releases";
 

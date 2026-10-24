@@ -49,11 +49,7 @@ const schema: OutputSchema<ReportOutput> = {
   columns: [{ header: "REPORT", field: "file" }],
   renderHuman: renderReport,
 };
-export function addReportOptions(command: Command): Command {
-  return command
-    .description("Write the HTML comparison report")
-    .option("--out <path>", "output HTML path");
-}
+
 export async function runReportCommand(
   options: { out?: string },
   _command: Command,
@@ -81,3 +77,5 @@ export async function runReportCommand(
     },
   };
 }
+
+export { addReportOptions } from "./options.js";

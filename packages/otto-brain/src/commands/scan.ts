@@ -42,12 +42,6 @@ export const scanSchema: OutputSchema<ScanRow> = {
   ],
 };
 
-export function addScanOptions(cmd: Command): Command {
-  return cmd
-    .description("List detected local models")
-    .option("--no-metadata", "skip reading GGUF headers (faster)");
-}
-
 export async function runScanCommand(
   options: { metadata?: boolean },
   _command: Command,
@@ -87,3 +81,5 @@ export async function runScanCommand(
 
   return { type: "list", data: rows, schema: scanSchema };
 }
+
+export { addScanOptions } from "./options.js";

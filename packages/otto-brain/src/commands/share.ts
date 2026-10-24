@@ -77,20 +77,6 @@ export interface ShareOptions {
   https?: string;
 }
 
-export function addShareOptions(cmd: Command): Command {
-  return cmd
-    .description("Share this brain with other Otto hosts (off by default)")
-    .option("--on", "turn sharing on")
-    .option("--off", "turn sharing off (bind loopback only)")
-    .option("--bind <where>", "network to bind: tailscale, all, or an explicit IP/host")
-    .option("--access <mode>", "open (trusted network) or key (bearer token)")
-    .option("--key <token>", "use this access key")
-    .option("--generate", "generate a fresh access key")
-    .option("--allow-config", "let key holders change model/lock over the network")
-    .option("--no-allow-config", "forbid remote configuration")
-    .option("--https <mode>", "off, self-signed, or tailscale");
-}
-
 function resolveBind(bind: string): string {
   if (bind === "all") return "0.0.0.0";
   if (bind === "tailscale") return "tailscale";
@@ -185,3 +171,5 @@ function selectedAccess(options: ShareOptions, config: BrainConfig): "open" | "k
     return "key";
   return "open";
 }
+
+export { addShareOptions } from "./options.js";

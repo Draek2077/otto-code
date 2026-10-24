@@ -58,21 +58,6 @@ function findCatalogModel(models: CatalogModel[], needle: string): CatalogModel 
   return matches[0];
 }
 
-export function addPullOptions(cmd: Command): Command {
-  return (
-    cmd
-      .description("Download a model from the catalog")
-      .argument("<model>", "catalog id or name fragment")
-      .option("--file <name.gguf>", "explicit GGUF file name in the repo")
-      .option("--quant <label>", "download a specific quantization (e.g. Q5_K_M)")
-      .option("--component <id...>", "download optional bundle component ids")
-      // The daemon uses this for a bundle job that gained companions after its
-      // primary transfer began. It is deliberately not a normal user action.
-      .option("--components-only", "download selected bundle components without the primary quant")
-      .option("--list-quants", "list the quantizations the repo offers and exit")
-  );
-}
-
 export interface PullOptionsInput {
   file?: string;
   quant?: string;
@@ -116,3 +101,5 @@ export async function runPullCommand(
     };
   });
 }
+
+export { addPullOptions } from "./options.js";

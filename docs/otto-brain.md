@@ -50,9 +50,26 @@ stopped. `live-status`, `resources`, `model ls`/`scan`/`load`/`unload`/`rename`/
 `reset-name`/`delete-plan`/`delete`/`delete-component`, `model profile show`/`save`/
 `budget`, `catalog`, `search`, `quants`, `pull`, `add`, `runtime list`/`candidate`/
 `install`/`select`/`auto`/`remove`, `calibrate`, `sweep`, `benchmark`, `job ls`/
-`cancel` and `evals` use host-issued identities. Job submission returns admission;
-closing the CLI does not cancel that durable job. Inspect it with `job ls` and
-cancel it explicitly with `job cancel`.
+`cancel` and `evals` use host-issued identities. `benchmark <model-id>` returns
+job admission; closing that command does not cancel its durable work. Inspect it
+with `job ls` and cancel it explicitly with `job cancel`.
+
+Catalog, search, pull/add, calibration, sweeps and runtime commands share their
+option definitions, handlers and table/JSON/YAML/quiet formatters with
+`otto-brain`. Calibration and sweeps use `--model <fragment>`; sweeps also accept
+`--budgets`. Runtime installation accepts `--build` and `--variant`; destinations
+and installed identities belong to the owner. Downloads support quant discovery
+and bundle selections. These commands wait on the existing event feed for their
+admitted job. An explicit Ctrl-C requests cancellation of that job; a dropped
+feed alone does not. An uncertain admission must be checked in the host's jobs
+before another submission.
+
+The shared handlers borrow one target-scoped transport. A disconnected Remote
+owner never falls back to a local home. Each command request carries the captured
+connection revision and owner lifetime, and crosses encrypted RPC as a fixed
+operation with validated arguments, rather than an arbitrary HTTP path. An
+explicit model command may start its selected daemon's unloaded local management
+owner when absent; it never starts a Remote service or loads a saved default.
 
 `connection show` and `owner show <owner-id>` return revisioned sanitized settings.
 Their `save --input <file|->` commands take explicit JSON write documents with the

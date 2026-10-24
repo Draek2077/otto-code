@@ -33,8 +33,17 @@ import { BrainStatusLeases } from "./status-leases.js";
 import { decodeBrainQuery, decodeBrainAction } from "./library-output.js";
 import { BrainRequestLeases } from "./request-leases.js";
 import { BrainDaemonTui } from "./tui.js";
+import { BrainCommandRequestSchema, brainCommandHttpRequest } from "@getpaseo/brain/cli-target";
 
 const OwnerRead = z.object({ ownerId: z.string().min(1).max(256) }).strict();
+const CommandRequest = z
+  .object({
+    connectionRevision: z.string().min(1).max(1024),
+    instanceId: z.string().min(1).max(1024),
+    requestId: z.string().uuid(),
+    request: z.unknown(),
+  })
+  .strict();
 const SafeOwnerError = z
   .object({
     error: z
@@ -49,6 +58,7 @@ const METHODS = new Set([
   "brain.tui.start",
   "brain.tui.read",
   "brain.tui.action",
+  "brain.cli.request",
   "brain.bootstrap",
   "brain.connection.read",
   "brain.connection.save",
@@ -128,6 +138,8 @@ export class BrainDaemonService {
   }
   private async dispatch(method: string, input: unknown, clientId: string): Promise<unknown> {
     switch (method) {
+      case "brain.cli.request":
+        return this.commandRequest(input, clientId);
       case "brain.tui.start":
       case "brain.tui.read":
       case "brain.tui.action":
@@ -166,6 +178,20 @@ export class BrainDaemonService {
       default:
         return this.ownerOperation(method, input);
     }
+  }
+  private async commandRequest(input: unknown, clientId: string): Promise<unknown> {
+    const origin = CommandRequest.parse(input);
+    const call = BrainCommandRequestSchema.safeParse(origin.request);
+    if (!call.success)
+      throw new BrainConnectionError("validation", "Check the Brain command fields.");
+    const operation = brainCommandHttpRequest(call.data);
+    return this.reads.run(clientId, origin.requestId, (signal) =>
+      this.controller.withOwner(
+        origin,
+        (request) => request(operation.route, operation.body),
+        signal,
+      ),
+    );
   }
   private async readQuery(input: unknown, clientId: string) {
     const query = BrainQuerySchema.parse(input);

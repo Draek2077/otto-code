@@ -51,10 +51,6 @@ export const catalogSchema: OutputSchema<CatalogRow> = {
   ],
 };
 
-export function addCatalogOptions(cmd: Command): Command {
-  return cmd.description("List downloadable models from the catalog");
-}
-
 export async function runCatalogCommand(
   _options: unknown,
   _command: Command,
@@ -89,3 +85,5 @@ export async function runCatalogCommand(
     return { type: "list", data: rows, schema: catalogSchema };
   });
 }
+
+export { addCatalogOptions } from "./options.js";

@@ -1,5 +1,4 @@
 /** Runtime commands use host-issued identities and the host's ownership guards. */
-import type { Command } from "commander";
 import { z } from "zod/v3";
 import { DEFAULT_LLAMA_BUILD } from "../runtime/managed.js";
 import { pickModel } from "../models/pick.js";
@@ -51,25 +50,7 @@ async function inventory(port: HostCommandPort, signal: AbortSignal): Promise<Ru
 function selectedRuntime(rows: RuntimeRow[], name: string): RuntimeRow {
   return rows.find((row) => row.id === name || row.label === name) ?? pickModel(rows, name);
 }
-export function addRuntimeListOptions(command: Command): Command {
-  return command.description("List runtimes on the Brain host");
-}
-export function addRuntimeInstallOptions(command: Command): Command {
-  return command
-    .description("Download a self-contained llama.cpp runtime on the Brain host")
-    .option("--build <tag>", "official build tag, or latest", DEFAULT_LLAMA_BUILD)
-    .option("--variant <name>", "auto, cuda, metal, vulkan or cpu", "auto");
-}
-export function addRuntimeRemoveOptions(command: Command): Command {
-  return command
-    .description("Remove an unused Otto-managed runtime")
-    .argument("<name>", "host runtime id or runtime name");
-}
-export function addRuntimeSelectOptions(command: Command): Command {
-  return command
-    .description("Select an installed runtime without restarting a resident model")
-    .argument("<name>", "host runtime id, name or auto");
-}
+
 export async function runRuntimeListCommand(): Promise<AnyCommandResult<RuntimeRow>> {
   return withCommandHost(async (port, signal) => ({
     type: "list",
@@ -147,3 +128,10 @@ export async function runRuntimeSelectCommand(name: string): Promise<AnyCommandR
     return { type: "list", data: await inventory(port, signal), schema: runtimeSchema };
   });
 }
+
+export {
+  addRuntimeListOptions,
+  addRuntimeInstallOptions,
+  addRuntimeRemoveOptions,
+  addRuntimeSelectOptions,
+} from "./options.js";

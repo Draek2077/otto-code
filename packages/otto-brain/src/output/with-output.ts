@@ -16,8 +16,14 @@ import {
 
 const FORMATS = new Set<OutputFormat>(["table", "json", "yaml"]);
 
+export interface CommandExecution {
+  run<T>(command: Command, execute: () => Promise<T>): Promise<T>;
+}
+
 function optionsFromCommand(command: Command): OutputOptions {
-  const opts = command.optsWithGlobals() as Record<string, unknown>;
+  const opts = Object.fromEntries(
+    ["format", "json", "quiet", "headers", "color"].map((key) => [key, outputOption(command, key)]),
+  );
   let format = typeof opts.format === "string" ? opts.format : "table";
   if (opts.json === true) format = "json";
   if (format === "cli") format = "table";
@@ -36,14 +42,35 @@ function optionsFromCommand(command: Command): OutputOptions {
   };
 }
 
+/** A parent's default must not erase an explicitly supplied nested output flag.
+ * Explicit global flags still take precedence, as in Commander's normal merge. */
+function outputOption(command: Command, key: string): unknown {
+  let fallback: unknown;
+  let explicit: unknown;
+  let supplied = false;
+  for (let current: Command | null = command; current; current = current.parent) {
+    const value: unknown = current.opts()[key];
+    const source = current.getOptionValueSource(key);
+    if (source === "default") fallback ??= value;
+    else if (source !== undefined) {
+      supplied = true;
+      explicit = value;
+    }
+  }
+  return supplied ? explicit : fallback;
+}
+
 export function withOutput<A extends unknown[], T>(
   handler: (...args: A) => Promise<AnyCommandResult<T>>,
+  execute?: CommandExecution["run"],
 ): (...args: A) => Promise<void> {
   return async (...args: A): Promise<void> => {
     const command = args[args.length - 1] as Command;
     const options = optionsFromCommand(command);
     try {
-      const result = await handler(...args);
+      const result = execute
+        ? await execute(command, () => handler(...args))
+        : await handler(...args);
       process.stdout.write(`${renderResult(result, options)}\n`);
     } catch (error) {
       const shape =

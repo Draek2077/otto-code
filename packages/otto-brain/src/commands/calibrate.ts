@@ -1,4 +1,3 @@
-import type { Command } from "commander";
 import { z } from "zod/v3";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { formatGiB } from "../vram.js";
@@ -27,11 +26,7 @@ const resultSchema = z.object({
   theoreticalKvBytesPerToken: z.number().nullable(),
   maxContext: z.number().nullable(),
 });
-export function addCalibrateOptions(command: Command): Command {
-  return command
-    .description("Measure real KV bytes/token and save it")
-    .option("--model <fragment>", "model name fragment or catalog id");
-}
+
 export async function runCalibrateCommand(options: {
   model?: string;
 }): Promise<AnyCommandResult<CalibrateRow>> {
@@ -51,3 +46,5 @@ export async function runCalibrateCommand(options: {
     },
   };
 }
+
+export { addCalibrateOptions } from "./options.js";

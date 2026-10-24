@@ -28,6 +28,7 @@ it("imports public built entry points without touching a home or starting a host
     "service/supervisor",
     "ops/index",
     "cli",
+    "cli-target",
     "host",
   ].map((name) => pathToFileURL(path.join(packageRoot, `dist/${name}.js`)).href);
   const child = spawnSync(
@@ -72,6 +73,39 @@ it("standalone help succeeds without reading or creating user configuration", ()
     "config",
   ])
     expect(child.stdout).toContain(command);
+  expect(existsSync(home)).toBe(false);
+});
+
+it("registers the shared command tree without evaluating model, host or benchmark implementations", () => {
+  const { home, env } = environment();
+  const loader = `export async function resolve(specifier, context, next) {
+    const result = await next(specifier, context);
+    if (/\\/(?:service|models|ops|bench)\\//.test(result.url))
+      throw new Error('Command registration evaluated an operation: ' + result.url);
+    return result;
+  }`;
+  const cli = pathToFileURL(path.join(packageRoot, "dist/cli.js")).href;
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+    import { register } from 'node:module';
+    register(${JSON.stringify(`data:text/javascript,${encodeURIComponent(loader)}`)});
+    const { createBrainCommand } = await import(${JSON.stringify(cli)});
+    const command = createBrainCommand();
+    process.stdout.write(command.helpInformation());
+    process.stdout.write(command.commands.find(item => item.name() === 'runtime').helpInformation());
+  `,
+    ],
+    { env, encoding: "utf8", timeout: 5000, windowsHide: true },
+  );
+  expect(child.stderr).toBe("");
+  expect(child.status).toBe(0);
+  expect(child.stdout).toContain("rescore");
+  expect(child.stdout).toContain("--quiet");
+  expect(child.stdout).toContain("install");
   expect(existsSync(home)).toBe(false);
 });
 

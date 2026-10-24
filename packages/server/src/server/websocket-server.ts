@@ -1814,6 +1814,7 @@ export class VoiceAssistantWebSocketServer {
         // OTTO(brain-host): no feature claim when this daemon lacks the shared controller.
         ottoBrain: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
         ottoBrainTui: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
+        ottoBrainCommands: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
         usageSources: true,
         ownedSubscriptions: true,
         agentRequestReceipts: true,

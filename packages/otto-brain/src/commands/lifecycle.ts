@@ -1,4 +1,3 @@
-import type { Command } from "commander";
 import { loadBrainConfig } from "../config/store.js";
 import { scanModels, pickModel } from "../models/index.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
@@ -36,28 +35,6 @@ function result(
     },
     schema,
   };
-}
-
-export function addServeOptions(command: Command): Command {
-  return command
-    .description("Run the Brain host in the foreground")
-    .option("--model <fragment>", "explicit model to load after the host is ready");
-}
-export function addStartOptions(command: Command): Command {
-  return command
-    .description("Start Brain detached")
-    .option("--model <fragment>", "explicit model to load");
-}
-export function addStopOptions(command: Command): Command {
-  return command.description("Stop the exact locally owned Brain host");
-}
-export function addRestartOptions(command: Command): Command {
-  return command
-    .description("Restart the locally owned Brain host")
-    .option("--model <fragment>", "explicit model to load");
-}
-export function addStatusOptions(command: Command): Command {
-  return command.description("Show local Brain host health");
 }
 
 export async function runServeCommand(options: { model?: string }): Promise<void> {
@@ -134,3 +111,11 @@ export async function runStatusCommand(): Promise<AnyCommandResult<LifecycleRow>
     return result("unreachable", record);
   }
 }
+
+export {
+  addServeOptions,
+  addStartOptions,
+  addStopOptions,
+  addRestartOptions,
+  addStatusOptions,
+} from "./options.js";

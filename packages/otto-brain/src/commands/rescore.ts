@@ -75,12 +75,7 @@ const schema: OutputSchema<RescoreRow> = {
   ],
   renderHuman: renderRescore,
 };
-export function addRescoreOptions(command: Command): Command {
-  return command
-    .description("Re-grade archived runs with the current scorer (no GPU)")
-    .option("--run <id>", "rescore a single archived run")
-    .option("--no-execute", "syntax-check generated code but do not run it");
-}
+
 export async function runRescoreCommand(
   options: { run?: string; execute?: boolean },
   _command: Command,
@@ -109,3 +104,5 @@ export async function runRescoreCommand(
   });
   return { type: "list", data, schema };
 }
+
+export { addRescoreOptions } from "./options.js";
