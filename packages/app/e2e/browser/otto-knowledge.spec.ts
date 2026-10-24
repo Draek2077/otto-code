@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
@@ -109,6 +109,13 @@ for (const compact of [false, true]) {
         ok: true,
         value: { statement: "Original source-backed draft." },
       });
+      const sourcePath = path.join(project.repoPath, ".otto/knowledge/requirements", `${id}.md`);
+      const beforeExternal = await readFile(sourcePath, "utf8");
+      await writeFile(
+        sourcePath,
+        beforeExternal.replace("Original source-backed draft.", "External editor conclusion."),
+      );
+      await expect(surface.getByText("External editor conclusion.", { exact: true })).toBeVisible();
       await surface.getByRole("button", { name: "Edit truth", exact: true }).click();
       const markdown = editor.getByRole("textbox", { name: "Markdown", exact: true });
       await markdown.fill("Local draft survives a peer write.");
@@ -152,7 +159,6 @@ for (const compact of [false, true]) {
       page.once("dialog", (dialog) => void dialog.accept());
       await editor.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(surface.getByText("Peer conclusion.", { exact: true })).toBeVisible();
-      const sourcePath = path.join(project.repoPath, ".otto/knowledge/requirements", `${id}.md`);
       const original = await readFile(sourcePath);
       await surface.getByRole("button", { name: "Change storage", exact: true }).click();
       await surface
@@ -177,6 +183,24 @@ for (const compact of [false, true]) {
         .toBe("host");
       expect(await readFile(sourcePath)).toEqual(original);
       await page.screenshot({ path: testInfo.outputPath("knowledge-host-settings.png") });
+      const hosted = readKnowledgeCatalog.output.parse(
+        await client.invokePluginRpc("otto-project-knowledge", readKnowledgeCatalog.name, {
+          scope,
+          includeInactive: true,
+          query: "",
+          offset: 0,
+          limit: 50,
+        }),
+      );
+      if (!hosted.ok) throw new Error(hosted.error.message);
+      await unlink(path.join(hosted.value.settings.path, "knowledge/requirements", `${id}.md`));
+      await expect(surface.getByTestId(`knowledge-record-${id}`)).toHaveCount(0);
+      await expect(surface.getByRole("button", { name: "Edit truth", exact: true })).toHaveCount(0);
+      await expect(surface.getByRole("button", { name: "Back to pages", exact: true })).toHaveCount(
+        0,
+      );
+      await expect(surface.getByRole("button", { name: "New entry", exact: true })).toBeVisible();
+      expect(await readFile(sourcePath)).toEqual(original);
     } finally {
       try {
         await client.close();

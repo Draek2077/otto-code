@@ -68,6 +68,18 @@ Editing captures the opened revision; peer conflicts retain the draft and block
 another save. Cancel/discard is explicit. Hide/unmount invalidates pending review
 confirmations and late write acknowledgments, without claiming host cancellation.
 
+Active views share one change feed per canonical host/project. The daemon uses
+Paseo's file-observer service, prunes unrelated subtrees and debounces filesystem
+bursts. It observes the nearest existing store ancestor so an external first
+store creation is visible, then narrows observation to the store. Confirmed own
+writes notify after completion; external edits invalidate catalogs and open
+articles without replacing local drafts. A deleted article clears its selection.
+Storage switches rebind observation to the new canonical store. Hidden views
+release demand, paired-session disconnects release their leases, and daemon
+shutdown awaits observation teardown. Heartbeats do not poll the filesystem or
+invalidate unchanged data. Observation failures show a disconnected notice and
+use bounded reconnection; manual Refresh remains available.
+
 ## Explicit storage changes
 
 Project Knowledge settings offer Repository or Host storage. A confirmed change
@@ -112,9 +124,8 @@ Focused fixtures cover canonical host/workspace binding, record operations,
 copy/switch and local form models. Browser acceptance exercises real wide/compact
 app controls against isolated daemon data; it never uses an installed Otto home.
 
-Automatic daemon filesystem observation, abandoned-lock recovery, older
+Abandoned-lock recovery, older
 noncanonical format conversion, host-wide default editing, automatic per-chat
 catalog injection and broader historical management/review features remain
-separate integration boundaries. Current views refresh after own writes,
-reopening/refocus or explicit Refresh. The implementation does not claim those
+separate integration boundaries. The implementation does not claim those
 remaining behaviors or full F04 completion from focused service or form tests.

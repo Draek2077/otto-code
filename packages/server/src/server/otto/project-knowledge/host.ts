@@ -8,19 +8,27 @@ import {
   readKnowledgeRoot,
   mutateKnowledge,
   setKnowledgeLocation,
+  waitKnowledgeChanges,
+  releaseKnowledgeChanges,
   type KnowledgeScope,
   type KnowledgeCommand,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import type { OttoProjectMetadata } from "../project-metadata.js";
 import { OttoProjectMetadataError } from "../project-metadata.js";
 import type { WorkspaceRegistry } from "../../workspace-registry.js";
-import { KnowledgeService, knowledgeRoots, type KnowledgeDocument } from "./knowledge-service.js";
+import {
+  KnowledgeService,
+  KnowledgeNotFoundError,
+  knowledgeRoots,
+  type KnowledgeDocument,
+} from "./knowledge-service.js";
 import { KnowledgeStoreResolver, hasCode } from "./store-resolver.js";
 import { KnowledgeBusyError, KnowledgeConflictError } from "./knowledge-files.js";
 import { KnowledgeRecordOperations, recordDetails } from "./record-operations.js";
 import { initializeKnowledgeRoots } from "./bootstrap.js";
 import { copyKnowledgeStore } from "./migration.js";
 import { assertSafeSegment, type KnowledgeStore } from "./store-resolver.js";
+import { KnowledgeObservations } from "./observation.js";
 
 const location = z.enum(["repository", "host"]);
 const projectFields = z.object({
@@ -60,6 +68,7 @@ export class KnowledgeDaemonService {
   readonly service: KnowledgeService;
   readonly records: KnowledgeRecordOperations;
   readonly resolver: KnowledgeStoreResolver;
+  readonly observations: KnowledgeObservations;
   constructor(
     private readonly ports: {
       hostId: string;
@@ -92,6 +101,9 @@ export class KnowledgeDaemonService {
       now: ports.now ?? (() => new Date()),
     });
     this.records = new KnowledgeRecordOperations(this.service);
+    this.observations = new KnowledgeObservations({
+      resolve: (projectId) => this.resolver.resolve(projectId),
+    });
   }
 
   async resolveProject(scope: KnowledgeScope) {
@@ -139,7 +151,7 @@ export class KnowledgeDaemonService {
             boundary: this.ports.home,
             base: path.join(this.ports.home, "project-knowledge", directoryName),
           };
-    return copyKnowledgeStore({
+    const result = await copyKnowledgeStore({
       from,
       to,
       publish: async () => {
@@ -150,6 +162,8 @@ export class KnowledgeDaemonService {
         });
       },
     });
+    this.observations.notify(project.projectId);
+    return result;
   }
 
   async catalog(input: z.infer<typeof readKnowledgeCatalog.input>) {
@@ -222,11 +236,32 @@ export class KnowledgeDaemonService {
         });
         break;
     }
+    this.observations.notify(project.projectId);
     return { changed: true as const };
   }
 
-  invoke(method: string, value: unknown): Promise<unknown> | undefined {
+  invoke(method: string, value: unknown, clientId = ""): Promise<unknown> | undefined {
     switch (method) {
+      case waitKnowledgeChanges.name:
+        return this.guard(async () => {
+          const input = waitKnowledgeChanges.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          return waitKnowledgeChanges.output.parse({
+            ok: true,
+            value: await this.observations.wait(
+              clientId,
+              input.leaseId,
+              project.projectId,
+              input.cursor,
+            ),
+          });
+        });
+      case releaseKnowledgeChanges.name:
+        return this.guard(async () => {
+          const input = releaseKnowledgeChanges.input.parse(value);
+          await this.observations.release(clientId, input.leaseId);
+          return releaseKnowledgeChanges.output.parse({ ok: true, value: { released: true } });
+        });
       case readKnowledgeCatalog.name:
         return this.guard(async () => {
           const input = readKnowledgeCatalog.input.parse(value);
@@ -272,10 +307,19 @@ export class KnowledgeDaemonService {
     }
   }
 
+  releaseClient(clientId: string): Promise<void> {
+    return this.observations.releaseClient(clientId);
+  }
+  close(): Promise<void> {
+    return this.observations.close();
+  }
+
   private async guard(run: () => Promise<unknown>) {
     try {
       return await run();
     } catch (error) {
+      if (error instanceof KnowledgeNotFoundError)
+        return { ok: false, error: { code: "not_found", message: error.message } };
       if (error instanceof KnowledgeHostError)
         return { ok: false, error: { code: error.code, message: error.message } };
       if (

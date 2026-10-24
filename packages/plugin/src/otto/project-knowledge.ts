@@ -186,6 +186,22 @@ export const setKnowledgeLocation = defineRpc({
     .strict(),
   output: result(z.object({ copied: z.number().int().nonnegative() })),
 });
+export const waitKnowledgeChanges = defineRpc({
+  name: "knowledge.project.changes.wait.request",
+  input: z
+    .object({
+      scope: KnowledgeScopeSchema,
+      leaseId: z.string().uuid(),
+      cursor: z.string().nullable(),
+    })
+    .strict(),
+  output: result(z.object({ cursor: z.string(), error: z.string().nullable() })),
+});
+export const releaseKnowledgeChanges = defineRpc({
+  name: "knowledge.project.changes.release.request",
+  input: z.object({ leaseId: z.string().uuid() }).strict(),
+  output: result(z.object({ released: z.literal(true) })),
+});
 export type KnowledgeScope = z.infer<typeof KnowledgeScopeSchema>;
 export type KnowledgeCommand = z.infer<typeof KnowledgeCommandSchema>;
 export type KnowledgeRecord = z.infer<typeof KnowledgePageSchema>;

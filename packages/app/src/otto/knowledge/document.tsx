@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { View } from "react-native";
 import { useFetchQuery } from "@/data/query";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -120,11 +120,13 @@ export function KnowledgeDocument({
   selection,
   active,
   onEdit,
+  onMissing,
 }: {
   scope: KnowledgeScope;
   selection: KnowledgeSelection;
   active: boolean;
   onEdit(seed: EditorSeed): void;
+  onMissing(): void;
 }) {
   const readPage = useRpc(readKnowledgePage);
   const readRoot = useRpc(readKnowledgeRoot);
@@ -144,6 +146,7 @@ export function KnowledgeDocument({
     queryFn: async () => {
       if (selection.type === "page") {
         const result = await readPage({ scope, kind: selection.kind, id: selection.id });
+        if (!result.ok && result.error.code === "not_found") return { type: "missing" as const };
         if (!result.ok) throw new Error(result.error.message);
         return { type: "page" as const, page: result.value };
       }
@@ -152,6 +155,11 @@ export function KnowledgeDocument({
       return { type: "root" as const, root: result.value };
     },
   });
+  useEffect(() => {
+    if (query.data?.type === "missing") onMissing();
+  }, [query.data, onMissing]);
+  if (query.data?.type === "missing")
+    return <SettingsRow label="This page was removed. Returning to the catalog." />;
   if (query.error) return <Alert variant="error" description={query.error.message} />;
   if (!query.data) return <SettingsRow label="Loading Knowledge..." />;
   if (query.data.type === "page")

@@ -662,10 +662,16 @@ export async function createPaseoDaemon(
           if (pluginId === "otto-brain") return ottoBrain.invoke(method, input, clientId);
           if (pluginId === "otto-kanban") return ottoKanban?.invoke(method, input); // OTTO(kanban)
           if (pluginId === "otto-integrations") return ottoIntegrations?.rpc.invoke(method, input); // OTTO(integration)
-          if (pluginId === "otto-project-knowledge") return ottoKnowledge?.invoke(method, input); // OTTO(knowledge)
+          if (pluginId === "otto-project-knowledge")
+            return ottoKnowledge?.invoke(method, input, clientId); // OTTO(knowledge)
           return undefined;
         },
-        releaseClient: (clientId) => ottoBrain.releaseClient(clientId),
+        releaseClient: (clientId) => {
+          ottoBrain.releaseClient(clientId);
+          void ottoKnowledge
+            ?.releaseClient(clientId)
+            .catch((error) => logger.warn({ err: error }, "Knowledge observation cleanup failed")); // OTTO(knowledge)
+        },
       },
     },
   );
@@ -1863,6 +1869,7 @@ export async function createPaseoDaemon(
       unsubscribePluginProviders();
       await pluginRuntime.stopAllPlugins().catch(() => undefined);
       await ottoBrain.close(); // OTTO(brain-host): release waits/feed; never stop independent host jobs.
+      await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
       await serviceProxy.stopStandalone().catch(() => undefined);
       await agentProviderRuntime.shutdown().catch(() => undefined);
       if (mainStarted) {
@@ -1899,6 +1906,7 @@ export async function createPaseoDaemon(
     await agentProviderRuntime.shutdown();
     await pluginRuntime.stopAllPlugins();
     await ottoBrain.close(); // OTTO(brain-host)
+    await ottoKnowledge?.close(); // OTTO(knowledge)
     terminalManager.killAll();
     await speechService.stop();
     await scheduleService.stop().catch(() => undefined);

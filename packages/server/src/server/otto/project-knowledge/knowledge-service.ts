@@ -62,6 +62,11 @@ export interface RecordTarget {
 export interface RecordEdit extends RecordTarget {
   expectedRevision: string;
 }
+export class KnowledgeNotFoundError extends Error {
+  constructor() {
+    super("This Knowledge page was removed. Choose another page.");
+  }
+}
 
 /** Canonical daemon library; adapters own caller scope and human review authority. */
 export class KnowledgeService {
@@ -214,7 +219,7 @@ export class KnowledgeService {
   ): Promise<KnowledgeDocument> {
     const absolutePath = pagePath(store, target);
     const raw = await readKnowledgeFile(store, absolutePath);
-    if (raw === null) throw new Error("Knowledge page does not exist");
+    if (raw === null) throw new KnowledgeNotFoundError();
     const page = parseKnowledgePage(raw);
     if (page.metadata.id !== target.id || page.metadata.kind !== target.kind) {
       throw new Error("Knowledge metadata does not match its canonical path");

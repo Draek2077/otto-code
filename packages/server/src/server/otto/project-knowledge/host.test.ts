@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import pino from "pino";
 import {
   FileBackedProjectRegistry,
@@ -141,6 +141,22 @@ it("rejects foreign hosts, missing workspaces and client paths before touching s
     }),
   ).toMatchObject({ ok: false, error: { code: "invalid" } });
   expect(await readdir(f.repo)).toEqual([]);
+});
+
+it("publishes successful own writes and classifies a deleted selected page without stale data", async () => {
+  const f = await fixture();
+  const notify = vi.spyOn(f.host.observations, "notify");
+  expect(await f.create()).toMatchObject({ ok: true });
+  expect(notify).toHaveBeenCalledExactlyOnceWith("project-a");
+  const file = path.join(f.repo, ".otto/knowledge/requirements/fixture-page.md");
+  await rm(file);
+  expect(
+    await f.host.invoke(readKnowledgePage.name, {
+      scope: f.scope,
+      kind: "requirement",
+      id: "fixture-page",
+    }),
+  ).toMatchObject({ ok: false, error: { code: "not_found" } });
 });
 
 it("copies to host storage only after explicit CAS, retains repository recovery and unrelated settings", async () => {

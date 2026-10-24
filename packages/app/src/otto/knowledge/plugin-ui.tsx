@@ -25,6 +25,7 @@ import { KnowledgeEditor } from "./editor";
 import type { EditorSeed } from "./editor-model";
 import { KnowledgeStorage } from "./storage";
 import { styles } from "./styles";
+import { useKnowledgeChanges } from "./use-knowledge-changes";
 
 function KnowledgeBody({
   scope,
@@ -72,6 +73,11 @@ function KnowledgeBody({
       return result.value;
     },
   });
+  const observationError = useKnowledgeChanges(
+    scope.hostId,
+    catalog.data?.settings.projectId,
+    active,
+  );
   const setQuery = useCallback((value: string) => {
     updateQuery(value);
     setOffset(0);
@@ -139,8 +145,15 @@ function KnowledgeBody({
         </View>
       </SettingsSection>
       {actionError ? <Alert variant="error" description={actionError} /> : null}
+      {observationError ? <Alert variant="warning" description={observationError} /> : null}
       {selection ? (
-        <KnowledgeDocument scope={scope} selection={selection} active={active} onEdit={setEditor} />
+        <KnowledgeDocument
+          scope={scope}
+          selection={selection}
+          active={active}
+          onEdit={setEditor}
+          onMissing={back}
+        />
       ) : (
         <KnowledgeCatalogView
           catalog={catalog.data}

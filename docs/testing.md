@@ -254,7 +254,7 @@ packaging remains a build gate.
 | Kanban configured board     | `packages/app/e2e/browser/otto-kanban-board.spec.ts`: actual UI and daemon through the isolated local-fixture GitHub CLI adapter, paginated cards/fields, compact column selection, provider links, scope failure and refresh recovery. Synthetic provider responses do not establish live GitHub acceptance.                                           |
 | Kanban card actions         | `packages/app/e2e/browser/otto-kanban-actions.spec.ts`: wide/compact create, move, edit, link, detach and uncertain-response reconciliation through the isolated tracker adapter and real daemon. No real provider mutation is performed.                                                                                                               |
 
-| Project Knowledge | `packages/app/e2e/browser/otto-knowledge.spec.ts`: wide/compact workspace action menu and native panel, Markdown draft creation, real MCP reads of shared records, revision-conflict draft retention and explicit repository-to-host copy with source recovery retained. Isolated daemon/project fixtures only; no agents or models. |
+| Project Knowledge | `packages/app/e2e/browser/otto-knowledge.spec.ts`: wide/compact workspace action menu and native panel, Markdown draft creation, real MCP reads of shared records, external-file refresh, revision-conflict draft retention, explicit repository-to-host copy with source recovery retained, and clearing an externally deleted hosted article. Isolated daemon/project fixtures only; no agents or models. |
 
 ## Debugging with tests
 
