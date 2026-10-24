@@ -1,5 +1,7 @@
 export {
   getBoard,
+  getEditableBoard,
+  mutateBoard,
   getCapabilities,
   getProjectConfiguration,
   setProjectTarget,

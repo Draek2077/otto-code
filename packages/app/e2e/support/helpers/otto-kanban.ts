@@ -17,7 +17,7 @@ interface KanbanFixture {
   project: SeededWorkspace;
   read(): Promise<ProjectConfiguration>;
   write(target: ProjectConfiguration["target"]): Promise<ProjectConfiguration>;
-  setProviderError(error: "scope" | null): Promise<void>;
+  setProviderError(error: "scope" | "after-write" | null): Promise<void>;
   requests(): Promise<Array<{ operation: string; cursor: string }>>;
 }
 
@@ -36,9 +36,16 @@ export const test = base.extend<{ kanban: KanbanFixture; kanbanWithBoard: boolea
       const client = await connectDaemonClient<Client>({ clientIdPrefix: "otto-kanban-ui" });
       connection = client;
       const directory = path.join(project.repoPath, ".tmp", "kanban-fixture");
-      const setProviderError = async (error: "scope" | null) => {
+      const setProviderError = async (error: "scope" | "after-write" | null) => {
         await mkdir(directory, { recursive: true });
-        await writeFile(path.join(directory, "state.json"), JSON.stringify({ error }));
+        let state = {};
+        try {
+          state = JSON.parse(await readFile(path.join(directory, "state.json"), "utf8"));
+        } catch (failure) {
+          if (!(failure instanceof Error && "code" in failure && failure.code === "ENOENT"))
+            throw failure;
+        }
+        await writeFile(path.join(directory, "state.json"), JSON.stringify({ ...state, error }));
       };
       const binding = { hostId: getServerId(), projectId: project.projectId };
       const read = async () => {

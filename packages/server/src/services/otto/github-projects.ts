@@ -12,12 +12,22 @@ import {
   ForgeCommandError,
 } from "../forge-cli-command.js";
 import { z } from "zod";
+import {
+  editableFieldsDocument,
+  cardDetailsDocument,
+  repositoryChoicesDocument,
+  linkContentDocument,
+} from "./github-project-details-documents.js";
 
 const DOCUMENTS = new Set([
   discoverRepositoryDocument,
   resolveNumberDocument,
   readFieldsDocument,
   readItemsDocument,
+  editableFieldsDocument,
+  cardDetailsDocument,
+  repositoryChoicesDocument,
+  linkContentDocument,
 ]);
 const GraphqlErrors = z.object({
   errors: z.array(z.object({ message: z.string(), type: z.string().optional() })).min(1),

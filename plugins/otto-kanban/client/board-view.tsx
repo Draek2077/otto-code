@@ -7,6 +7,7 @@ import {
   SettingsCard,
   SettingsRow,
   SettingsSelect,
+  SettingsButton,
 } from "@getpaseo/plugin/client/ui";
 import type { Board } from "../shared/model.js";
 
@@ -22,7 +23,16 @@ function EmptyColumn() {
   return <SettingsRow label="No cards in this column." />;
 }
 
-function CardRow({ card, onOpenError }: { card: Card; onOpenError(): void }) {
+function CardRow({
+  card,
+  onOpenError,
+  onSelectCard,
+}: {
+  card: Card;
+  onOpenError(): void;
+  onSelectCard(id: string): void;
+}) {
+  const select = useCallback(() => onSelectCard(card.id), [onSelectCard, card.id]);
   return (
     <SettingsCard testID={`kanban-card-${card.id}`}>
       <SettingsRow
@@ -30,6 +40,9 @@ function CardRow({ card, onOpenError }: { card: Card; onOpenError(): void }) {
         hint={card.description ? card.description.slice(0, 180) : undefined}
       />
       {card.archived ? <SettingsRow label="Archived" /> : null}
+      <SettingsButton onPress={select} variant="outline">
+        View card
+      </SettingsButton>
       {card.assignees.length ? (
         <SettingsRow label={`Assigned to ${card.assignees.join(", ")}`} />
       ) : null}
@@ -52,16 +65,20 @@ function BoardColumn({
   compact,
   color,
   onOpenError,
+  onSelectCard,
 }: {
   column: Board["columns"][number];
   cards: Card[];
   compact: boolean;
   color: string;
   onOpenError(): void;
+  onSelectCard(id: string): void;
 }) {
   const renderCard = useCallback(
-    ({ item }: { item: Card }) => <CardRow card={item} onOpenError={onOpenError} />,
-    [onOpenError],
+    ({ item }: { item: Card }) => (
+      <CardRow card={item} onOpenError={onOpenError} onSelectCard={onSelectCard} />
+    ),
+    [onOpenError, onSelectCard],
   );
   const headerStyle = useMemo(() => ({ color }), [color]);
   return (
@@ -88,12 +105,17 @@ export function BoardView({
   board,
   layout,
   theme,
+  onSelectCard,
+  columnId,
+  onColumnChange,
 }: {
   board: Board;
   layout: PluginScreenProps["layout"];
   theme: PluginScreenProps["theme"];
+  onSelectCard(id: string): void;
+  columnId: string;
+  onColumnChange(id: string): void;
 }) {
-  const [columnId, setColumnId] = useState(board.columns[0]?.id ?? "");
   const [openError, setOpenError] = useState(false);
   const onOpenError = useCallback(() => setOpenError(true), []);
   const columnOptions = useMemo(
@@ -109,7 +131,7 @@ export function BoardView({
   const selected = board.columns.find((column) => column.id === columnId) ?? board.columns[0];
   return (
     <View style={panelStyle}>
-      <SettingsRow label={board.title} hint="Read-only board" />
+      <SettingsRow label={board.title} />
       {board.url ? (
         <ExternalLink href={board.url} onError={onOpenError}>
           Open board in provider
@@ -127,7 +149,7 @@ export function BoardView({
           <SettingsSelect
             label="Column"
             value={selected?.id ?? ""}
-            onValueChange={setColumnId}
+            onValueChange={onColumnChange}
             options={columnOptions}
           />
           {selected ? (
@@ -137,6 +159,7 @@ export function BoardView({
               compact
               color={theme.colors.foreground}
               onOpenError={onOpenError}
+              onSelectCard={onSelectCard}
             />
           ) : null}
         </>
@@ -150,6 +173,7 @@ export function BoardView({
               compact={false}
               color={theme.colors.foreground}
               onOpenError={onOpenError}
+              onSelectCard={onSelectCard}
             />
           ))}
         </ScrollView>

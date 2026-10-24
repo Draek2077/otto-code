@@ -66,6 +66,12 @@ async function fixture(configured = true) {
   }> = [];
   const service = new KanbanDaemonService({
     hostId: "host-a",
+    operationDirectory: path.join(root, "operations"),
+    writes: {
+      execute: async () => {
+        throw new Error("Unexpected provider write");
+      },
+    },
     metadata: registry.ottoMetadata,
     github: {
       repository: async () => ({ owner: "owner", repository: "repo" }),
@@ -210,9 +216,9 @@ it("does not recover a removed project through a caller-supplied filesystem path
   expect(f.queries).toEqual([]);
 });
 
-it("does not expose arbitrary methods or vendor mutations", async () => {
+it("refuses arbitrary vendor queries and unvalidated mutation requests", async () => {
   const f = await fixture();
   expect(f.service.invoke("kanban.vendor.query", { document: "mutation {}" })).toBe(undefined);
-  expect(f.service.invoke("kanban.board.mutate", {})).toBe(undefined);
+  await expect(f.service.invoke("kanban.board.mutate", {})).rejects.toThrow();
   expect(f.queries).toEqual([]);
 });

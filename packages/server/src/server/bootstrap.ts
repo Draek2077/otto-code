@@ -929,6 +929,8 @@ export async function createPaseoDaemon(
     hostId: serverId,
     metadata: projectRegistry.ottoMetadata,
     github: github.projectBoards,
+    writes: github.projectBoardWrites, // OTTO(kanban): provider effects share the normal CLI policy.
+    operationDirectory: path.join(config.paseoHome, "kanban", "operations"), // OTTO(kanban): durable write admission belongs to this isolated daemon home.
   }); // OTTO(kanban)
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger,

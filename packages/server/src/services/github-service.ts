@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { createGitHubProjectReads, type GitHubProjectReads } from "./otto/github-projects.js"; // OTTO(kanban): reuse host/account policy.
 import {
+  createGitHubProjectWrites,
+  type GitHubProjectWrites,
+} from "./otto/github-project-commands.js"; // OTTO(kanban): explicit host-owned commands.
+import {
   isGitHubHost,
   parseGitHubRemoteUrl,
   parseGitRemoteLocation,
@@ -994,6 +998,7 @@ export interface SearchGitHubRepositoriesOptions {
 
 export interface GitHubService extends ForgeService {
   readonly projectBoards: GitHubProjectReads; // OTTO(kanban): read-only typed host bridge.
+  readonly projectBoardWrites: GitHubProjectWrites; // OTTO(kanban): no alternate CLI/auth path.
   searchRepositories(options: SearchGitHubRepositoriesOptions): Promise<GitHubRepositorySummary[]>;
 }
 
@@ -2026,6 +2031,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
   api = {
     authProbeCanThrow: true,
     projectBoards: createGitHubProjectReads({ run, resolveRepository: resolveRepoSlugCached }), // OTTO(kanban)
+    projectBoardWrites: createGitHubProjectWrites({ run }), // OTTO(kanban)
 
     listPullRequests(input) {
       return cached({

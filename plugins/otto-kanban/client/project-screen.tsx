@@ -15,8 +15,10 @@ import {
   type ProjectSelection,
 } from "./project-selection.js";
 import { useRead, type ReadState } from "./use-read.js";
+import type { BoardActionDrafts } from "./action-drafts.js";
 
 export interface KanbanScreenProps extends PluginScreenProps {
+  actionDrafts: BoardActionDrafts;
   onProjectSelection(selection: ProjectSelection): void;
 }
 
@@ -163,6 +165,7 @@ export function ProjectScreen(props: KanbanScreenProps) {
             layout={props.layout}
             theme={props.theme}
             navigation={props.navigation}
+            actionDrafts={props.actionDrafts}
           />
         ) : (
           <SettingsRow label="Choose a project to view its board." />

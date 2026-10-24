@@ -4,6 +4,7 @@
   "include": [
     "src/server/otto/kanban/**/*.test.ts",
     "src/services/otto/github-projects.test.ts",
+    "src/services/otto/github-project-commands.test.ts",
     "src/server/otto/project-metadata.test.ts"
   ],
   "exclude": ["node_modules", "dist"]

@@ -30,5 +30,7 @@ export function KanbanScreen(props: KanbanScreenProps) {
   if (!result.ok) return <SettingsRow label="Kanban unavailable" error={result.error.message} />;
   if (result.value.hostId !== props.host.id || !result.value.read)
     return <SettingsRow label="Kanban board reading is unavailable on this host." />;
+  if (!result.value.providers.some((provider) => provider.id === "github" && provider.mutate))
+    return <SettingsRow label="Update the host to use Kanban." />;
   return <ProjectScreen {...props} />;
 }

@@ -1,6 +1,8 @@
 // Synthetic official-shaped Projects responses, used only by the isolated local-fixture gh shim.
 const fs = require("node:fs");
 const path = require("node:path");
+const fixture = require("./otto-kanban-gh-board.cjs");
+const write = require("./otto-kanban-gh-write.cjs");
 
 const page = { hasNextPage: false, endCursor: null };
 const header = {
@@ -8,32 +10,30 @@ const header = {
   id: "PVT_otto_fixture",
   updatedAt: "2026-10-24T00:00:00Z",
 };
-
-function item(id, kind, title, optionId) {
+function items(state, cursor) {
+  const first = cursor === "null";
+  const hasMore = first && state.cards.length > 1;
+  const cards = first ? state.cards.slice(0, 1) : state.cards.slice(1);
   return {
-    id,
-    isArchived: false,
-    fieldValueByName: {
-      __typename: "ProjectV2ItemFieldSingleSelectValue",
-      optionId,
-      field: { id: "status" },
-    },
-    content: {
-      __typename: kind,
-      title,
-      body: "Work from the configured project board.",
-      ...(kind === "Issue" ? { url: "https://github.com/paseo-e2e/local-fixture/issues/1" } : {}),
-      assignees: { nodes: [{ login: "fixture-user" }], pageInfo: page },
+    data: {
+      node: {
+        ...fixture.header(state),
+        items: {
+          nodes: cards.map((card) => fixture.item(state, card)),
+          pageInfo: hasMore ? { hasNextPage: true, endCursor: "items-page-2" } : page,
+        },
+      },
     },
   };
 }
 
 module.exports = function reply(args) {
   const query = args.find((value) => value.startsWith("query="))?.slice(6) ?? "";
-  const operation = query.match(/^query\s+(OttoKanban\w+)/)?.[1];
+  const operation = query.match(/^(?:query|mutation)\s+(OttoKanban\w+)/)?.[1];
   if (args[0] !== "api" || args[1] !== "graphql" || !operation) return false;
   const directory = path.join(process.cwd(), ".tmp", "kanban-fixture");
   const state = JSON.parse(fs.readFileSync(path.join(directory, "state.json"), "utf8"));
+  fixture.initialize(state);
   const cursor = args.find((value) => value.startsWith("cursor="))?.slice(7) ?? "null";
   fs.appendFileSync(
     path.join(directory, "requests.jsonl"),
@@ -55,43 +55,30 @@ module.exports = function reply(args) {
     result = {
       data: {
         node: {
-          ...header,
+          ...fixture.header(state),
           title: "Otto fixture board",
           url: "https://github.com/orgs/paseo-e2e/projects/42",
           fields: {
-            nodes: first
-              ? [
-                  {
-                    __typename: "ProjectV2SingleSelectField",
-                    id: "status",
-                    name: "Status",
-                    options: [
-                      { id: "todo", name: "Todo" },
-                      { id: "done", name: "Done" },
-                    ],
-                  },
-                ]
-              : [{ __typename: "ProjectV2Field", id: "notes", name: "Notes" }],
+            nodes: first ? fixture.fields().slice(0, 1) : fixture.fields().slice(1),
             pageInfo: first ? { hasNextPage: true, endCursor: "fields-page-2" } : page,
           },
         },
       },
     };
   } else if (operation === "OttoKanbanItems") {
-    const first = cursor === "null";
-    result = {
-      data: {
-        node: {
-          ...header,
-          items: {
-            nodes: first
-              ? [item("issue-1", "Issue", "Coordinate the release", "todo")]
-              : [item("draft-2", "DraftIssue", "Review the implementation", "done")],
-            pageInfo: first ? { hasNextPage: true, endCursor: "items-page-2" } : page,
-          },
-        },
-      },
-    };
+    result = items(state, cursor);
+  } else if (operation.startsWith("OttoKanbanWrite")) {
+    result = write(query, state, args);
+    fs.writeFileSync(path.join(directory, "state.json"), JSON.stringify(state));
+  } else if (
+    [
+      "OttoKanbanEditableFields",
+      "OttoKanbanCardDetails",
+      "OttoKanbanRepositoryChoices",
+      "OttoKanbanLinkContent",
+    ].includes(operation)
+  ) {
+    result = fixture.read(operation, state, args);
   } else {
     throw new Error("Unsupported local Kanban query");
   }

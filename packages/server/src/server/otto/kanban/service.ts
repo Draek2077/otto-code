@@ -11,6 +11,8 @@ import {
   getProjectConfiguration,
   setProjectTarget,
   getBoard,
+  getEditableBoard,
+  mutateBoard,
   type ProjectBinding,
   type Result,
 } from "@getpaseo/plugin/otto/kanban";
@@ -20,6 +22,8 @@ import {
   type OttoProjectSnapshot,
 } from "../project-metadata.js";
 import type { GitHubProjectReads } from "../../../services/otto/github-projects.js";
+import type { GitHubProjectWrites } from "../../../services/otto/github-project-commands.js";
+import { KanbanEditingHost } from "./mutations/host.js";
 
 function projectFailure(error: unknown): Result<never> {
   if (error instanceof OttoProjectMetadataError) {
@@ -36,11 +40,14 @@ function projectFailure(error: unknown): Result<never> {
 }
 export class KanbanDaemonService {
   private readonly handlers: ReturnType<typeof createKanbanHandlers>;
+  private readonly editing: KanbanEditingHost;
   constructor(
     private readonly ports: {
       hostId: string;
       metadata: Pick<OttoProjectMetadata, "read" | "update">;
       github: GitHubProjectReads;
+      writes: GitHubProjectWrites;
+      operationDirectory: string;
     },
   ) {
     const projects: ProjectBoardPort = {
@@ -92,6 +99,14 @@ export class KanbanDaemonService {
         },
       },
     });
+    this.editing = new KanbanEditingHost({
+      hostId: ports.hostId,
+      metadata: ports.metadata,
+      reads: ports.github,
+      writes: ports.writes,
+      operationDirectory: ports.operationDirectory,
+      readBoard: this.handlers.readBoard,
+    });
   }
   private snapshot(
     binding: ProjectBinding,
@@ -121,14 +136,21 @@ export class KanbanDaemonService {
         return this.setTarget(input);
       case getBoard.name:
         return this.board(input);
+      case getEditableBoard.name:
+        return this.editing.get(input);
+      case mutateBoard.name:
+        return this.editing.mutate(input);
       default:
         return undefined;
     }
   }
   private async capabilities(input: unknown) {
-    return getCapabilities.output.parse(
-      this.handlers.capabilities(getCapabilities.input.parse(input)),
-    );
+    const result = this.handlers.capabilities(getCapabilities.input.parse(input));
+    if (result.ok)
+      result.value.providers = result.value.providers.map((provider) =>
+        provider.id === "github" ? { ...provider, mutate: true } : provider,
+      );
+    return getCapabilities.output.parse(result);
   }
   private async configuration(input: unknown) {
     return getProjectConfiguration.output.parse(

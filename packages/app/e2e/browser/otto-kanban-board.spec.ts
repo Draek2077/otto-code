@@ -67,6 +67,9 @@ for (const compact of [false, true]) {
     await kanban.setProviderError(null);
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(page.getByText("Otto fixture board", { exact: true })).toBeVisible();
-    await expect(page.getByTestId("kanban-card-issue-1")).toBeVisible();
+    if (compact) {
+      await expect(page.getByRole("button", { name: "Column: Done", exact: true })).toBeVisible();
+      await expect(page.getByTestId("kanban-card-draft-2")).toBeVisible();
+    } else await expect(page.getByTestId("kanban-card-issue-1")).toBeVisible();
   });
 }

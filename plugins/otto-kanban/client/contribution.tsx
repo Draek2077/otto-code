@@ -10,6 +10,7 @@ import { KanbanScreen } from "./screen.js";
 import type { ProjectSelection } from "./project-selection.js";
 import { ProjectTargetDrafts } from "./target-drafts.js";
 import { KanbanProjectSettings } from "./project-settings.js";
+import { BoardActionDrafts } from "./action-drafts.js";
 
 function KanbanSidebar({ currentScreen, openScreen }: PluginSidebarItemProps) {
   const openBoard = useCallback(() => openScreen({ screenId: "board" }), [openScreen]);
@@ -23,7 +24,7 @@ function KanbanSidebar({ currentScreen, openScreen }: PluginSidebarItemProps) {
   );
 }
 
-function screenFor(client: PluginClientContext) {
+function screenFor(client: PluginClientContext, actionDrafts: BoardActionDrafts) {
   return function Screen(props: PluginScreenProps) {
     const selectProject = useCallback(
       (selection: ProjectSelection) =>
@@ -33,13 +34,16 @@ function screenFor(client: PluginClientContext) {
         }),
       [],
     );
-    return <KanbanScreen {...props} onProjectSelection={selectProject} />;
+    return (
+      <KanbanScreen {...props} onProjectSelection={selectProject} actionDrafts={actionDrafts} />
+    );
   };
 }
 
 export function createKanbanClientContribution(): PluginClientContribution {
   return (client) => {
     const drafts = new ProjectTargetDrafts();
+    const actionDrafts = new BoardActionDrafts();
     function ProjectSettings(props: PluginScreenProps) {
       return <KanbanProjectSettings {...props} drafts={drafts} />;
     }
@@ -51,7 +55,7 @@ export function createKanbanClientContribution(): PluginClientContribution {
     const removeScreen = client.addScreen({
       id: "board",
       title: "Kanban",
-      Component: screenFor(client),
+      Component: screenFor(client, actionDrafts),
     });
     const removeSidebar = client.addSidebarHeaderItem({
       id: "kanban",
@@ -75,6 +79,7 @@ export function createKanbanClientContribution(): PluginClientContribution {
       await removeScreen();
       await removeSettings();
       drafts.dispose();
+      actionDrafts.dispose();
     };
   };
 }
