@@ -53,6 +53,25 @@ export function registerBrainCommands(program: Command): void {
     .option("-q, --quiet", "minimal output (ids only)")
     .option("--no-headers", "omit table headers")
     .option("--no-color", "disable colored output");
+  const openUi = async () => {
+    const { runUiCommand } = await import("./commands/ui.js");
+    let owner: { close(): Promise<void> } | undefined;
+    try {
+      await runUiCommand(async () => {
+        const { openLocalBrainTui } = await import("./client/tui-http.js");
+        const client = await openLocalBrainTui();
+        owner = client;
+        return client;
+      });
+    } finally {
+      await owner?.close();
+    }
+  };
+  program.action(openUi);
+  program
+    .command("ui")
+    .description("Open the interactive Brain terminal without loading a model")
+    .action(openUi);
   addServeOptions(program.command("serve")).action(runServeCommand);
   addStartOptions(program.command("start")).action(withOutput(runStartCommand));
   addStopOptions(program.command("stop")).action(withOutput(runStopCommand));

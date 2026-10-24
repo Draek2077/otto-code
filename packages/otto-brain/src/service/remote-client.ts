@@ -85,7 +85,7 @@ export function remoteBrainClient(input: RemoteBrainClientOptions): BrainHttpCli
   options.host = host;
   const fingerprint =
     options.certFingerprint === null ? null : normalizeFingerprint(options.certFingerprint);
-  return new BrainHttpClient((route, signal, payload, receive) => {
+  return new BrainHttpClient((route, signal, payload, receive, expectedInstanceId) => {
     if (!route.startsWith("/") || route.startsWith("//") || /[\r\n]/u.test(route))
       throw new Error("Invalid Brain route");
     const request: http.RequestOptions = {
@@ -95,6 +95,9 @@ export function remoteBrainClient(input: RemoteBrainClientOptions): BrainHttpCli
       method: payload ? "POST" : "GET",
       signal,
       headers: {
+        ...(expectedInstanceId === undefined
+          ? {}
+          : { "x-otto-brain-instance": expectedInstanceId }),
         ...(options.authToken ? { authorization: `Bearer ${options.authToken}` } : {}),
         ...(payload
           ? { "content-type": "application/json", "content-length": payload.length }

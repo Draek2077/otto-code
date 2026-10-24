@@ -5,7 +5,7 @@ export interface BrainHostResources {
   cpuCount: number;
   ramUsedBytes: number;
   ramTotalBytes: number;
-  gpu: GpuInfo | null;
+  gpu: (GpuInfo & { utilization?: number | null; temperature?: number | null }) | null;
 }
 interface ResourceWaiter<T> {
   finish(value: T | null, error: Error | null): void;

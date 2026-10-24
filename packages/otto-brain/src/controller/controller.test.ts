@@ -208,6 +208,57 @@ test("an explicit Remote restart uses only that owner and serializes connection 
     expect.any(AbortSignal),
   );
 });
+
+test("explicit terminal management startup never loads the saved default model", async () => {
+  const f = fixture();
+  f.save({ enabled: true, autoStart: true });
+  f.ports.defaultModel.mockReturnValue("must-not-load-on-ui-open");
+  await f.controller.startManagementOwner();
+  expect(f.ports.start).toHaveBeenCalledExactlyOnceWith(null, expect.any(AbortSignal));
+  expect(f.ports.defaultModel).not.toHaveBeenCalled();
+});
+
+test("terminal operations reject a peer-changed connection before sending a model mutation", async () => {
+  const f = fixture();
+  f.save({ enabled: true, mode: "remote", remote: { host: "original.example" } });
+  const origin = f.controller.readConnection().revision;
+  let inspected!: (value: unknown) => void;
+  f.transport.request = vi.fn(
+    () =>
+      new Promise((resolve) => {
+        inspected = resolve;
+      }),
+  );
+  const mutation = vi.fn(async (request: (route: string, body?: unknown) => Promise<unknown>) =>
+    request("/__host/model/load?id=same-id", {}),
+  );
+  const pending = f.controller.withOwner(
+    { connectionRevision: origin, instanceId: "original-lifetime" },
+    mutation,
+  );
+  f.save({ remote: { host: "replacement.example" } });
+  inspected({ instanceId: "original-lifetime" });
+  await expect(pending).rejects.toThrow("connection changed");
+  expect(mutation).not.toHaveBeenCalled();
+  expect(f.transport.request).toHaveBeenCalledTimes(1);
+});
+
+test("terminal operations reject another lifetime even when a model ID still matches", async () => {
+  const f = fixture();
+  f.save({ enabled: true });
+  f.transport.request = vi.fn(async () => ({ instanceId: "replacement-lifetime" }));
+  const mutation = vi.fn(async () => undefined);
+  await expect(
+    f.controller.withOwner(
+      {
+        connectionRevision: f.controller.readConnection().revision,
+        instanceId: "original-lifetime",
+      },
+      mutation,
+    ),
+  ).rejects.toThrow("owner restarted");
+  expect(mutation).not.toHaveBeenCalled();
+});
 test("closing the controller aborts pending client reads without invoking host shutdown", async () => {
   const f = fixture();
   f.transport.request = async (_route, _body, signal) =>

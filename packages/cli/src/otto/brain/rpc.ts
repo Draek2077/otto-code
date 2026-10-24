@@ -30,6 +30,17 @@ const FAILURES = {
   unavailable: "The selected Brain owner is unavailable. Check its connection and access key.",
   unknown: "The Brain operation could not be confirmed. Read its current state before retrying.",
 };
+export function decodeBrainEnvelope(raw: unknown): unknown {
+  const result = BrainOperationResultSchema.safeParse(raw);
+  if (!result.success)
+    throw new BrainCliError("BRAIN_RESPONSE_INVALID", "Update the host to read its Brain data.");
+  if (!result.data.ok)
+    throw new BrainCliError(
+      `BRAIN_${result.data.error.kind.toUpperCase()}`,
+      FAILURES[result.data.error.kind],
+    );
+  return result.data.value;
+}
 
 export async function runBrainRequest(
   target: DaemonTarget,
@@ -49,15 +60,7 @@ export async function runBrainRequest(
     if (client.getLastServerInfoMessage()?.features?.ottoBrain !== true)
       throw new BrainCliError("DAEMON_UPDATE_REQUIRED", "Update the host to use Otto Brain.");
     const raw = await client.invokePluginRpc("otto-brain", request.method, request.input);
-    const result = BrainOperationResultSchema.safeParse(raw);
-    if (!result.success)
-      throw new BrainCliError("BRAIN_RESPONSE_INVALID", "Update the host to read its Brain data.");
-    if (!result.data.ok)
-      throw new BrainCliError(
-        `BRAIN_${result.data.error.kind.toUpperCase()}`,
-        FAILURES[result.data.error.kind],
-      );
-    const parsed = request.output.safeParse(result.data.value);
+    const parsed = request.output.safeParse(decodeBrainEnvelope(raw));
     if (!parsed.success)
       throw new BrainCliError("BRAIN_RESPONSE_INVALID", "Update the host to read its Brain data.");
     return parsed.data;

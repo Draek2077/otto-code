@@ -55,6 +55,8 @@ import { BrainOwnerSettings } from "./owner-settings.js";
 import { handleOwnerSettings } from "./owner-settings-http.js";
 import { BrainResourceReader, type BrainHostResources } from "./resource-reader.js";
 import { CompletionTelemetry } from "./completion-telemetry.js";
+import { BrainTuiReadService } from "./tui-projection.js";
+import { loadRenameMap } from "../models/rename-map.js";
 
 interface ResidentSignals {
   reasoning: ReasoningTracker;
@@ -112,6 +114,7 @@ export class HostEngine implements BrainRuntime {
   private readonly settings: BrainOwnerSettings;
   private readonly resources: BrainResourceReader<BrainHostResources>;
   private readonly telemetry = new CompletionTelemetry();
+  private readonly tui: BrainTuiReadService;
   get capabilities() {
     return {
       apiVersion: 3,
@@ -140,6 +143,7 @@ export class HostEngine implements BrainRuntime {
       networkDiscovery: true,
       resources: true,
       restart: this.context.restartSupported === true,
+      tui: true,
     };
   }
   private readonly lifetime = new AbortController();
@@ -301,6 +305,21 @@ export class HostEngine implements BrainRuntime {
       },
       requireWrite: (request) => this.requireWrite(request),
     });
+    this.tui = new BrainTuiReadService({
+      revision: () => ({ library: this.libraryRevision, jobs: this.jobRevision }),
+      status: () => this.snapshot(),
+      resources: (signal) => this.resources.read(signal),
+      inventory: (signal, gpu) => this.inventory(signal, { gpu }),
+      models: () => this.models(),
+      runtime: () => this.availableRuntime(),
+      runtimes: () => this.runtimeManagement.list(),
+      catalog: () => this.acquisition.catalog(),
+      jobs: this.jobs,
+      results: this.results,
+      names: () => loadRenameMap(this.context.paths),
+      deletion: (id) => this.library.deletionState(id),
+      requireWrite: (request) => this.requireWrite(request),
+    });
   }
 
   private libraryChanged(): void {
@@ -346,8 +365,8 @@ export class HostEngine implements BrainRuntime {
     }
   }
 
-  async inventory(signal: AbortSignal) {
-    const gpu = await this.gpu(signal);
+  async inventory(signal: AbortSignal, sample?: { gpu: GpuInfo | null }) {
+    const gpu = sample ? sample.gpu : await this.gpu(signal);
     signal.throwIfAborted();
     const catalog = this.models();
     const store = this.profiles();
@@ -602,7 +621,13 @@ export class HostEngine implements BrainRuntime {
       )
     )
       return true;
-    for (const handler of [this.runtimeManagement, this.acquisition, this.library, this.management])
+    for (const handler of [
+      this.tui,
+      this.runtimeManagement,
+      this.acquisition,
+      this.library,
+      this.management,
+    ])
       if (await handler.handle(request, response, signal)) return true;
     return false;
   }

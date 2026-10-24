@@ -67,6 +67,36 @@ it("does not advertise or invoke an absent owner restart implementation", async 
   expect((await fetch(`${base}/__host/restart`, { method: "POST" })).status).toBe(404);
 });
 
+it("checks a pinned lifetime before dispatching a terminal model write", async () => {
+  const options = fixture();
+  const handleRequest = vi.fn(
+    async (_request: http.IncomingMessage, response: http.ServerResponse) => {
+      response.end(JSON.stringify({ accepted: true }));
+      return true;
+    },
+  );
+  const host = await start({
+    ...options,
+    runtime: {
+      status: () => ({ state: "stopped", model: null, modelId: null }),
+      handleRequest,
+      stop: async () => {},
+    },
+  });
+  const instanceId = readPidFile(options.env)!.instanceId!;
+  const base = `http://127.0.0.1:${host.port}`;
+  const post = (expected: string) =>
+    fetch(`${base}/__host/model/load?id=shared-model`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-otto-brain-instance": expected },
+      body: "{}",
+    });
+  expect((await post("previous-lifetime")).status).toBe(409);
+  expect(handleRequest).not.toHaveBeenCalled();
+  expect((await post(instanceId)).status).toBe(200);
+  expect(handleRequest).toHaveBeenCalledTimes(1);
+});
+
 it.each([
   { writable: false, origin: undefined },
   { writable: true, origin: "https://unrelated.example" },

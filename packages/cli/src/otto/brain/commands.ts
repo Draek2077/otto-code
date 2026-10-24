@@ -29,7 +29,7 @@ import {
 } from "@getpaseo/protocol/otto/brain-library";
 import { BrainStatusSchema } from "@getpaseo/protocol/otto/brain";
 import { withOutput, type CommandOptions, type SingleResult } from "../../output/index.js";
-import { addJsonAndDaemonHostOptions } from "../../utils/command-options.js";
+import { addJsonAndDaemonHostOptions, withGlobalOptions } from "../../utils/command-options.js";
 import { BrainCliError, runBrainRequest, type BrainCliRequest } from "./rpc.js";
 import { readBrainInput } from "./input.js";
 
@@ -254,6 +254,14 @@ export function createOttoBrainCommand(): Command {
   const brain = new Command("brain").description(
     "Manage Brain through the selected Otto daemon (including its Remote Brain)",
   );
+  const openTerminal = withGlobalOptions(async (options: CommandOptions, _command: Command) => {
+    const { runDaemonBrainTui } = await import("./tui.js");
+    await runDaemonBrainTui(options.daemonTarget);
+  });
+  addJsonAndDaemonHostOptions(brain).action(openTerminal);
+  addJsonAndDaemonHostOptions(
+    brain.command("ui").description("Open the interactive terminal on the selected Brain owner"),
+  ).action(openTerminal);
   register(brain.command("status"), () => ({
     method: "brain.bootstrap",
     input: {},

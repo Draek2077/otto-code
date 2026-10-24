@@ -101,6 +101,13 @@ function handler(
       json(response, 401, { error: "unauthorized" });
       return;
     }
+    // An owner replacement between a client's read and write must not redirect
+    // that write to another lifetime that happens to have the same model IDs.
+    const expectedInstance = request.headers["x-otto-brain-instance"];
+    if (expectedInstance !== undefined && expectedInstance !== control.instanceId) {
+      json(response, 409, { error: "Brain host lifetime changed; reload before submitting" });
+      return;
+    }
     if (isStopping()) {
       json(response, 503, { error: "Brain host is stopping" });
       return;

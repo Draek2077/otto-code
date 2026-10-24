@@ -38,6 +38,7 @@ function localRequestOptions(
   route: string,
   signal: AbortSignal,
   payload?: Buffer,
+  expectedInstanceId?: string,
 ): https.RequestOptions {
   if (!route.startsWith("/") || route.startsWith("//")) throw new Error("Invalid Brain route");
   const { record, config } = options;
@@ -45,6 +46,7 @@ function localRequestOptions(
   if (host === "0.0.0.0") host = "127.0.0.1";
   else if (host === "::") host = "::1";
   const headers: http.OutgoingHttpHeaders = {};
+  if (expectedInstanceId !== undefined) headers["x-otto-brain-instance"] = expectedInstanceId;
   // Exact private lifetime proof authorizes local stop, independently of a staged key rotation.
   if (route !== "/__host/local/stop" && config.auth.mode === "token" && config.auth.token)
     headers.authorization = `Bearer ${config.auth.token}`;
@@ -71,9 +73,12 @@ function localRequestOptions(
 
 /** One owner transport is reused for management JSON and events. */
 export function localBrainClient(options: LocalBrainClientOptions): BrainHttpClient {
-  return new BrainHttpClient((route, signal, payload, receive) => {
+  return new BrainHttpClient((route, signal, payload, receive, expectedInstanceId) => {
     const transport = options.record.secure ? https : http;
-    return transport.request(localRequestOptions(options, route, signal, payload), receive);
+    return transport.request(
+      localRequestOptions(options, route, signal, payload, expectedInstanceId),
+      receive,
+    );
   });
 }
 

@@ -7,14 +7,14 @@ import type {
   BrainTuiActionType,
   BrainTuiActions,
   TuiModel,
+  TuiModelInfo as Model,
+  TuiProfile as Profile,
 } from "./host.js";
 import { standardKey } from "./keys.js";
 import { draw } from "./views.js";
 import { ProfileDraft } from "./draft.js";
 import { requestHost, TuiActionError } from "./host.js";
 import type { ProfileFieldDescriptor } from "../config/profile-edit.js";
-import type { Model } from "../types.js";
-import type { Profile } from "../config/schema.js";
 import type { RankedModel } from "../ops/results.js";
 import type { QuantOption, RepoQuants, ModelSearchResult } from "../models/hf.js";
 import * as vram from "../vram.js";
@@ -376,7 +376,26 @@ export class App {
   }
   applyMaxContext(): void {
     const model = this.model;
-    if (model) void this.dispatch({ type: "profile.fit", modelId: model.id });
+    const draft = this.draft;
+    if (!model || !draft || draft.saving || draft.error) return;
+    const profile = draft.profile;
+    void this.guard("profile.fit", async () => {
+      const preview = await this.send({
+        type: "profile.fit",
+        modelId: model.id,
+        expectedRevision: draft.revision,
+        patch: draft.overrides(),
+      });
+      if (draft !== this.draft || draft.profile !== profile || this.lifetime.signal.aborted) return;
+      if (preview.contextSize === null) {
+        this.setStatus("A GPU budget is unavailable for this profile.", "warn");
+        return;
+      }
+      draft.write("contextSize", preview.contextSize);
+      await draft.save(this.host, model.id, this.lifetime.signal);
+      this.receive();
+      this.setStatus("Context fitted and saved", "good");
+    });
   }
   async modelAction(
     type: "model.load" | "model.unload" | "job.start",
@@ -455,7 +474,7 @@ export class App {
     this.confirming = {
       kind: "action",
       action: { type: "model.delete", modelId: row.model.id },
-      label: `delete ${row.model.displayName} - frees ${vram.formatGiB(row.deleteBytes)}?`,
+      label: `delete ${row.model.displayName} - frees ${row.deleteBytes === null ? "an unknown size" : vram.formatGiB(row.deleteBytes)}?`,
     };
     this.setStatus(`${this.confirming.label} y / n`, "warn");
   }
@@ -544,7 +563,7 @@ export class App {
 
   capabilityBonus(model: Model): number {
     return (
-      (model.mmprojPath ? VISION_RANK_BONUS : 0) +
+      (model.hasProjector ? VISION_RANK_BONUS : 0) +
       (model.metadata?.reasoning || model.thinking ? THINKING_RANK_BONUS : 0)
     );
   }
@@ -673,9 +692,7 @@ export class App {
   }
 
   repoOf(model: Model): string | null {
-    if (model.catalogHfRepo) return model.catalogHfRepo;
-    const segments = model.id.split("/");
-    return segments.length >= 3 ? segments.slice(0, 2).join("/") : null;
+    return model.repo;
   }
 
   async beginDownload(): Promise<void> {

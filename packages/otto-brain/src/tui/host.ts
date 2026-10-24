@@ -1,24 +1,75 @@
 import type { ProfileFieldDescriptor, ProfileWarning } from "../config/profile-edit.js";
-import type { Calibration, Profile } from "../config/schema.js";
+import type { Profile } from "../config/schema.js";
 import type { ModelSearchResult, RepoQuants } from "../models/hf.js";
-import type { RankedModel, RunRecord } from "../ops/results.js";
-import type { SweepReport } from "../ops/sweep.js";
+import type { RankedModel, RunRecord, RecordTask, RecordModel } from "../ops/results.js";
+import type { SweepResult } from "../ops/sweep.js";
 import type { GpuInfo, Model, Runtime } from "../types.js";
 import type { Budget } from "../vram.js";
 
+/** Presentation data never asks a terminal client to infer owning-host paths. */
+export type TuiModelInfo = Pick<
+  Model,
+  | "id"
+  | "displayName"
+  | "quant"
+  | "sizeBytes"
+  | "mmprojBytes"
+  | "features"
+  | "metadata"
+  | "thinking"
+> & { repo: string | null; hasProjector: boolean };
+export type TuiProfile = Pick<
+  Profile,
+  | "contextSize"
+  | "cacheTypeK"
+  | "cacheTypeV"
+  | "flashAttention"
+  | "gpuLayers"
+  | "vision"
+  | "enabledComponents"
+  | "reasoningBudget"
+  | "reasoningBudgetMessage"
+  | "preserveReasoning"
+  | "temperature"
+  | "topP"
+  | "topK"
+  | "minP"
+  | "presencePenalty"
+  | "repeatPenalty"
+  | "parallelSlots"
+  | "cachedChats"
+  | "contextMultiplier"
+  | "calibrationRequired"
+  | "hostingProfileId"
+  | "hostingProfileMode"
+> &
+  Record<string, unknown>;
+export type TuiBenchmark = Pick<
+  RunRecord,
+  "ranAt" | "configKey" | "overall" | "grade" | "seconds"
+> & {
+  model: Pick<RecordModel, "displayName"> & { id?: string | null };
+  tasks: Array<Pick<RecordTask, "id" | "category" | "score"> & { detail?: unknown }>;
+};
 export interface TuiModel {
-  model: Model;
+  model: TuiModelInfo;
   revision: string;
-  profile: Profile;
+  profile: TuiProfile;
   fields: ProfileFieldDescriptor[];
   warnings: ProfileWarning[];
-  calibration: Calibration | null;
+  calibration: { kvBytesPerToken: number; inherited: boolean } | null;
   calibrationStale: boolean;
   budget: Budget | null;
   maxContext: number | null;
-  sweep: SweepReport | null;
+  sweep: {
+    results: Pick<
+      SweepResult,
+      "budget" | "error" | "contentChars" | "filesDelivered" | "elapsedSeconds"
+    >[];
+    recommended: number | null;
+  } | null;
   renamed: boolean;
-  deleteBytes: number;
+  deleteBytes: number | null;
   deleteBlocked: string | null;
 }
 
@@ -68,6 +119,8 @@ export interface TuiRuntimeEntry {
 }
 export interface BrainTuiSnapshot {
   instanceId: string;
+  libraryRevision: number;
+  jobRevision: number;
   version: string;
   connection: "connected" | "connecting" | "disconnected";
   endpoint: string | null;
@@ -91,7 +144,7 @@ export interface BrainTuiSnapshot {
     warning: string | null;
   };
   rankings: RankedModel[];
-  benchmarks: RunRecord[];
+  benchmarks: TuiBenchmark[];
   availableActions: BrainTuiActionType[];
 }
 
@@ -106,7 +159,10 @@ export interface BrainTuiActions {
     patch: Record<string, unknown>;
     expectedRevision: string;
   }>;
-  "profile.fit": Action<{ modelId: string }>;
+  "profile.fit": Action<
+    { modelId: string; expectedRevision: string; patch: Record<string, unknown> },
+    { contextSize: number | null }
+  >;
   "model.load": Action<{ modelId: string }>;
   "model.unload": Action<{ modelId: string }>;
   "model.rename": Action<{ modelId: string; displayName: string }>;

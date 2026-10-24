@@ -12,7 +12,12 @@ import { readBrainConfig } from "../config/store.js";
 import { restartRemoteBrain } from "./remote-restart.js";
 
 export interface BrainControllerTransport {
-  request(route: string, body?: unknown, signal?: AbortSignal): Promise<unknown>;
+  request(
+    route: string,
+    body?: unknown,
+    signal?: AbortSignal,
+    expectedInstanceId?: string,
+  ): Promise<unknown>;
   events(receive: (event: BrainHostEvent) => void, signal: AbortSignal): Promise<void>;
 }
 export interface BrainControllerPorts {
@@ -101,6 +106,45 @@ export class BrainController<Status extends { instanceId: string }> {
     this.transportLifetime.abort();
     this.transportLifetime = new AbortController();
   }
+  async withOwner<T>(
+    origin: { connectionRevision: string; instanceId?: string },
+    run: (request: (route: string, body?: unknown) => Promise<unknown>) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    this.assertOpen();
+    if (this.readConnection().revision !== origin.connectionRevision)
+      throw new BrainConnectionError(
+        "conflict",
+        "The selected Brain connection changed. Reopen the terminal on the intended owner.",
+      );
+    const owner = this.client();
+    const signals = [this.lifetime.signal, this.transportLifetime.signal];
+    if (signal) signals.push(signal);
+    const lifetime = AbortSignal.any(signals);
+    if (origin.instanceId !== undefined) {
+      const status = await owner.request("/__host/status", undefined, lifetime);
+      if (
+        !status ||
+        typeof status !== "object" ||
+        !("instanceId" in status) ||
+        status.instanceId !== origin.instanceId
+      )
+        throw new BrainConnectionError(
+          "conflict",
+          "The Brain owner restarted. Reload before another operation.",
+        );
+    }
+    if (this.readConnection().revision !== origin.connectionRevision)
+      throw new BrainConnectionError(
+        "conflict",
+        "The selected Brain connection changed. Reopen the terminal on the intended owner.",
+      );
+    lifetime.throwIfAborted();
+    return run((route, body) => owner.request(route, body, lifetime, origin.instanceId));
+  }
+  startManagementOwner(signal?: AbortSignal): Promise<void> {
+    return this.performLocalAction("start", null, signal, false);
+  }
   performLifecycleAction(
     action: "start" | "stop" | "restart",
     modelId: string | null = null,
@@ -144,6 +188,7 @@ export class BrainController<Status extends { instanceId: string }> {
     action: "start" | "stop" | "restart",
     modelId: string | null = null,
     signal?: AbortSignal,
+    useDefaultModel = true,
   ): Promise<void> {
     this.assertOpen();
     if (this.connection.resolve().mode !== "local")
@@ -175,7 +220,10 @@ export class BrainController<Status extends { instanceId: string }> {
       if (action !== "start") await this.ports.stop(operationSignal);
       operationSignal.throwIfAborted();
       if (action !== "stop")
-        await this.ports.start(modelId ?? this.ports.defaultModel(), operationSignal);
+        await this.ports.start(
+          modelId ?? (useDefaultModel ? this.ports.defaultModel() : null),
+          operationSignal,
+        );
     };
     this.lifecycle = run().finally(() => {
       this.lifecycle = null;

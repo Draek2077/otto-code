@@ -20,6 +20,12 @@
   "type": "module",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./tui": {
+      "types": "./dist/tui.d.ts",
+      "node": "./dist/tui.js",
+      "import": "./src/tui.ts",
+      "default": "./src/tui.ts"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "node": "./dist/index.js",

@@ -61,7 +61,7 @@ export function modelRow(id = "owner/model/Q4_K_M.gguf"): TuiModel {
     chatSystemAddendum: null,
   };
   return {
-    model,
+    model: { ...model, repo: "owner/model", hasProjector: false },
     profile,
     revision: "revision-1",
     calibration: null,
@@ -108,6 +108,8 @@ export function modelRow(id = "owner/model/Q4_K_M.gguf"): TuiModel {
 export function snapshot(): BrainTuiSnapshot {
   return {
     instanceId: "host-instance-1",
+    libraryRevision: 0,
+    jobRevision: 0,
     version: "fixture",
     connection: "connected",
     endpoint: null,
@@ -160,7 +162,7 @@ export class MemoryTuiHost implements BrainTuiHost {
   readonly results: { [K in BrainTuiActionType]: BrainTuiActions[K]["result"] } = {
     refresh: undefined,
     "profile.save": undefined,
-    "profile.fit": undefined,
+    "profile.fit": { contextSize: null },
     "model.load": undefined,
     "model.unload": undefined,
     "model.rename": undefined,

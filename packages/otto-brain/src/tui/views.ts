@@ -1,5 +1,5 @@
 import type { App } from "./app.js";
-import type { RunRecord } from "../ops/results.js";
+import type { TuiBenchmark } from "./host.js";
 import type { ModelMetadata } from "../types.js";
 import { stripStyles, box, meter, pad, style, truncate, width } from "./screen.js";
 import { formatGiB, GIB } from "../vram.js";
@@ -416,7 +416,7 @@ function modelPanel(app: App, innerWidth: number, rows: number): string[] {
     const size = formatGiB(m.sizeBytes).padStart(6);
     const isReasoning = Boolean(m.metadata?.reasoning || m.thinking);
     const tags = [
-      m.mmprojPath ? `${style.cyan}V${style.reset}` : " ",
+      m.hasProjector ? `${style.cyan}V${style.reset}` : " ",
       m.features.mtp ? `${style.magenta}M${style.reset}` : " ",
       isReasoning ? `${style.green}R${style.reset}` : " ",
     ].join("");
@@ -835,7 +835,7 @@ function drawAuxiliary(app: App, cols: number): void {
   ]);
 }
 
-function benchmarkTaskDetails(app: App, rec: RunRecord): string[] {
+function benchmarkTaskDetails(app: App, rec: TuiBenchmark): string[] {
   const lines: string[] = [];
   const conc = rec.tasks.find((t) => t.id === "concurrency");
   if (conc && conc.detail) {

@@ -113,6 +113,21 @@ export class ModelLibrary {
       componentIds: plan.componentIds,
     };
   }
+  deletionState(id: string): { bytes: number | null; blocked: string | null } {
+    try {
+      const model = this.model(id);
+      const plan = planDelete(model);
+      try {
+        this.guardDelete(model, plan.files);
+      } catch (error) {
+        if (error instanceof RequestError) return { bytes: plan.bytes, blocked: error.message };
+        throw error;
+      }
+      return { bytes: plan.bytes, blocked: null };
+    } catch {
+      return { bytes: null, blocked: "The owning host could not inspect these model files." };
+    }
+  }
 
   private guardDelete(model: Model, files: string[]): void {
     if (this.ports.isModelInUse(model.id))

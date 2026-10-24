@@ -5,7 +5,7 @@ name `@getpaseo/brain` follows this checkout's workspace convention; release pac
 maps it to the existing public package `@otto-code/brain`. Its executable remains
 `otto-brain`. No app or daemon is required to import or run the package.
 
-The standalone CLI provides `serve`, detached `start`/`stop`/`restart`, `status`,
+The standalone CLI provides the interactive `ui`, `serve`, detached `start`/`stop`/`restart`, `status`,
 `scan`, `catalog`, `search`, `pull`, `add`, `config show`/`set`, `runtime list`/`install`/`select`/`remove`,
 `calibrate`, `sweep`, `bench`, `share`, `report`, `rescore` and help,
 configuration persistence, home ownership, HTTP/HTTPS, credential masking and host
@@ -32,7 +32,7 @@ overrides it without rewriting that default. Passive settings projections apply
 environment overrides in memory without seeding a missing configuration file.
 Daemon-owned connection and owner settings use the same local/Remote transport
 and private home. The same plugin registers the `otto-brain` agent provider,
-sharing the complete OpenAI harness. Full CLI/TUI host composition and
+sharing the complete OpenAI harness. Native terminal, model and
 product acceptance remain restoration work tracked in Otto Knowledge. This
 package is not yet the complete Brain product. `serve`
 starts unloaded unless its caller explicitly passes `--model`.
@@ -62,6 +62,34 @@ stdin, keeping secrets out of command-line history. Profile saves also require
 never rebase, and uncertain writes never retry. Read current state before another
 explicit submission. Reads strip unknown output fields; stored keys and raw host
 errors are not printed.
+
+### Interactive terminal
+
+`otto-brain` and `otto-brain ui` open the original full-screen terminal. An explicit
+invocation starts a detached, unloaded local owner if none is running. It does not
+require an installed model runtime, load the saved default model or apply autostart.
+`otto brain` and `otto brain ui` instead use the selected Otto daemon and its
+enabled local/Remote connection. They can start its unloaded local management
+owner; a Remote service must already be running on its own machine. Both TTY
+streams are checked before connecting or resolving a home. Piped invocations
+receive console guidance and have no host side effects.
+
+The terminal reads one batch of canonical model/profile/catalog/runtime metadata.
+It shares one demand-owned status/log stream, refreshes metadata on library
+revision changes and reads hardware while the terminal is active. Repository,
+model, slot and runtime identities come from the owner, including repeated slot
+numbers in different resident processes. No owning-host paths are inferred or
+sent back as commands. The same owner scheduler and durable jobs perform loads,
+calibration, sweeps, benchmarks, downloads and runtime management.
+
+Profile edits serialize with their originating revision and use the normalized
+acknowledgment before saving a newer edit. Failed or conflicted drafts remain
+local until explicit reload. Fit previews also check that originating revision
+before applying and saving a context size. Node transports pin the intended host
+lifetime on each terminal operation, so a replacement listener rejects a stale
+write even when its model IDs match. Closing the terminal releases its feed,
+hardware reads and client waits. It leaves the independent host, its residents
+and admitted jobs running; cancellation is an explicit job action.
 
 ## Ownership and continuity
 

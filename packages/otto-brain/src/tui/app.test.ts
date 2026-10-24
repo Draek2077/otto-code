@@ -103,6 +103,51 @@ describe("original Brain terminal presentation over the owning host", () => {
     await finished;
   });
 
+  it("fits the current draft against its origin revision before saving the suggested context", async () => {
+    const { app, host, finished } = setup();
+    host.results["profile.fit"] = { contextSize: 16384 };
+    app.draft?.write("temperature", 0.9);
+    app.applyMaxContext();
+    await settle();
+    expect(host.actions).toEqual([
+      {
+        type: "profile.fit",
+        modelId: host.current.models[0].model.id,
+        expectedRevision: "revision-1",
+        patch: { temperature: 0.9 },
+      },
+      {
+        type: "profile.save",
+        modelId: host.current.models[0].model.id,
+        expectedRevision: "revision-1",
+        patch: { temperature: 0.9, contextSize: 16384 },
+      },
+    ]);
+    expect(app.draft?.revision).toBe("revision-1+");
+    app.shutdown();
+    await finished;
+  });
+
+  it("does not save a fit without a GPU budget or overwrite an edit made during its preview", async () => {
+    const { app, host, finished } = setup();
+    app.applyMaxContext();
+    await settle();
+    expect(app.status.text).toContain("unavailable");
+    let release!: () => void;
+    host.wait = new Promise((resolve) => {
+      release = resolve;
+    });
+    host.results["profile.fit"] = { contextSize: 16384 };
+    app.applyMaxContext();
+    app.draft?.write("contextSize", 8192);
+    release();
+    await settle();
+    expect(host.actions.map((action) => action.type)).toEqual(["profile.fit", "profile.fit"]);
+    expect(app.draft?.read("contextSize")).toBe(8192);
+    app.shutdown();
+    await finished;
+  });
+
   it("pins rename/delete confirmations to their original model identity", async () => {
     const { app, host, finished } = setup();
     app.onKey("R");

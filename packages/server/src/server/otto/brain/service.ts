@@ -32,6 +32,7 @@ import { brainActionRequest, brainQueryRequest } from "./routes.js";
 import { BrainStatusLeases } from "./status-leases.js";
 import { decodeBrainQuery, decodeBrainAction } from "./library-output.js";
 import { BrainRequestLeases } from "./request-leases.js";
+import { BrainDaemonTui } from "./tui.js";
 
 const OwnerRead = z.object({ ownerId: z.string().min(1).max(256) }).strict();
 const SafeOwnerError = z
@@ -45,6 +46,9 @@ const SafeOwnerError = z
   })
   .strict();
 const METHODS = new Set([
+  "brain.tui.start",
+  "brain.tui.read",
+  "brain.tui.action",
   "brain.bootstrap",
   "brain.connection.read",
   "brain.connection.save",
@@ -66,6 +70,7 @@ export class BrainDaemonService {
   private readonly env: NodeJS.ProcessEnv;
   private readonly reads = new BrainRequestLeases();
   private readonly startup: BrainStartup;
+  private readonly tui: BrainDaemonTui;
   constructor(home: string, env: NodeJS.ProcessEnv = process.env) {
     this.env = { ...env, OTTO_HOME: home, PASEO_HOME: home };
     this.controller = createBrainController({
@@ -74,6 +79,7 @@ export class BrainDaemonService {
       decodeStatus: (value) => BrainStatusSchema.parse(value),
     });
     this.leases = new BrainStatusLeases(this.controller.status);
+    this.tui = new BrainDaemonTui(this.controller, this.reads, () => this.localRunning());
     this.startup = new BrainStartup({
       connection: () => this.controller.readConnection().config,
       isRunning: () => this.localRunning(),
@@ -122,6 +128,10 @@ export class BrainDaemonService {
   }
   private async dispatch(method: string, input: unknown, clientId: string): Promise<unknown> {
     switch (method) {
+      case "brain.tui.start":
+      case "brain.tui.read":
+      case "brain.tui.action":
+        return this.tui.invoke(method, input, clientId);
       case "brain.bootstrap":
         return this.bootstrap();
       case "brain.connection.read":

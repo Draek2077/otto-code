@@ -1,5 +1,4 @@
-import type { Profile } from "../config/schema.js";
-import type { BrainTuiHost, TuiModel } from "./host.js";
+import type { BrainTuiHost, TuiModel, TuiProfile as Profile } from "./host.js";
 import { requestHost, TuiActionError } from "./host.js";
 
 /** Edits survive status events and failed writes. A conflict requires explicit
@@ -24,6 +23,9 @@ export class ProfileDraft {
   }
   read(key: string): unknown {
     return this.profile[key];
+  }
+  overrides(): Record<string, unknown> {
+    return structuredClone(this.patch);
   }
   write(key: string, value: unknown): void {
     this.profile = { ...this.profile, [key]: value };

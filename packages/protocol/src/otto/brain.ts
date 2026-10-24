@@ -15,6 +15,7 @@ const Thread = z.object({
   tokensPerSecond: NumberOrNull,
 });
 const Slots = z.object({
+  idleSlots: z.array(z.number().int().nonnegative()).max(256).optional(),
   total: z.number().int().nonnegative(),
   busy: z.number().int().nonnegative(),
   idle: z.number().int().nonnegative(),
@@ -64,6 +65,7 @@ export const BrainStatusSchema = z.object({
     modelAcquisition: z.boolean(),
     ownerSettings: z.boolean(),
     restart: z.boolean().optional(),
+    tui: z.boolean().optional(),
   }),
   residents: z
     .array(
