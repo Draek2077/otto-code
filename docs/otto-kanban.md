@@ -169,6 +169,47 @@ repeated cursors, mismatched IDs and detected board revisions changing mid-read.
 Limits are 500 fields, 2,000 items and 100 assignees per item. The revision is a
 provider change marker; multi-request reads are not transactionally consistent.
 
+## Provider-neutral agent tools
+
+The normal Otto tool catalog registers `kanban_list_boards`, `kanban_get_board`,
+`kanban_get_create_options`, `kanban_create_card`, `kanban_link_task`,
+`kanban_move_card`, `kanban_update_card` and `kanban_delete_card`. The same catalog
+serves every provider. Voice-only catalogs do not receive these tools. Current
+per-provider `paseoTools.enabled` and `paseoTools.disabledTools` remain authoritative.
+The read-only retained Otto configuration adds its existing host Kanban group and
+provider `ottoTools` ceilings. `mcp.toolGroupsV2` wins over `toolGroups`, including
+an explicit empty selection; missing selections retain the all-groups default.
+Retained MCP enable/injection flags and provider-specific group selections also
+keep their existing effect; v2 provider selections win over their legacy key.
+The live canonical daemon configuration is checked too, because Paseo preserves
+these older keys in passthrough sections without splitting them into the sidecar.
+Malformed or unreadable retained policy refuses access rather than enabling it.
+No retained settings or credentials are rewritten by these tools.
+
+A chat resolves its project through the canonical active workspace registry.
+Other workspaces in that same project may share the board; another project is
+refused. Locked voice/workspace callers cannot choose a different workspace.
+Outside a chat an explicit active workspace ID is required. Tool arguments never
+accept a host ID, project path, credentials, arbitrary board or vendor query.
+
+List returns only the configured board's metadata and counts. Board reads page
+card summaries, 50 by default and at most 100, without their bodies. A subsequent
+page can pin `expectedBoardRevision`; a changed board refuses mixed-page results.
+`cardId` requests one body. `includeEditing: true` requests that card's current
+revision and editable field IDs; `fieldId` requests one field's actual value and
+options. Ordinary reads do not require editing metadata. Long titles and selected
+descriptions disclose truncation; oversized field responses refuse instead of
+silently returning a partial value. Read replies are bounded to 200,000 characters.
+
+Writes require the captured board/settings/card revisions and a stable operation
+ID. The adapter calls the same canonical mutation service and durable admission
+ledger as the app, then returns a compact acknowledgment rather than reinjecting
+all card bodies. It never invents another operation ID or automatically retries
+an uncertain response. Jira creation choices use the same board-associated
+metadata lookup. Detach never deletes the underlying issue or pull request, and
+providers that cannot detach refuse it explicitly. Provider authentication,
+capability checks and read-back remain in their existing host implementations.
+
 ## Provider contract and proof
 
 The documents and synthetic response fixtures follow GitHub's

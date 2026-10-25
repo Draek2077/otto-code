@@ -43,6 +43,9 @@ function projectFailure(error: unknown): ReturnType<typeof failure> {
   return failure("unavailable", "The owning host could not read or save Project Settings.");
 }
 export class KanbanDaemonService {
+  get hostId() {
+    return this.ports.hostId;
+  }
   private readonly handlers: ReturnType<typeof createKanbanHandlers>;
   private readonly editing: KanbanEditingHost;
   private readonly jira: JiraBoardHost | null;

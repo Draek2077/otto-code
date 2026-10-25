@@ -110,9 +110,14 @@ import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-confi
 import { isPaseoToolEnabled } from "../paseo-tool-policy.js";
 import type { KnowledgeDaemonService } from "../../otto/project-knowledge/host.js"; // OTTO(knowledge)
 import { createKnowledgeTools } from "../../otto/project-knowledge/tools.js"; // OTTO(knowledge)
+import type { KanbanDaemonService } from "../../otto/kanban/service.js"; // OTTO(kanban)
+import { createKanbanCatalogTools } from "../../otto/kanban/catalog.js"; // OTTO(kanban)
+import type { KanbanToolPolicy } from "../../otto/kanban/tool-policy.js"; // OTTO(kanban)
 
 export interface PaseoToolHostDependencies {
   ottoKnowledge?: KnowledgeDaemonService; // OTTO(knowledge): one provider-neutral canonical host service.
+  ottoKanban?: KanbanDaemonService; // OTTO(kanban): UI and every provider share durable board admission.
+  kanbanToolPolicy?: KanbanToolPolicy; // OTTO(kanban): preserve retained group/provider ceilings.
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager?: TerminalManager | null;
@@ -3313,6 +3318,22 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     })) {
       if (isPaseoToolEnabled(options.paseoToolPolicy, tool.name)) tools.set(tool.name, tool);
     }
+  }
+  for (const tool of createKanbanCatalogTools({
+    host: options.ottoKanban,
+    workspaces: options.workspaceRegistry,
+    policy: options.kanbanToolPolicy,
+    caller: () => ({
+      bound: Boolean(callerAgentId),
+      workspaceId: callerAgentId
+        ? (agentManager.getAgent(callerAgentId)?.workspaceId ?? null)
+        : null,
+      locked: Boolean(callerContext?.lockedCwd),
+      provider: callerAgentId ? agentManager.getAgent(callerAgentId)?.provider : undefined,
+    }),
+  })) {
+    // OTTO(kanban): after the voice-only return; existing per-provider tool policy remains authoritative.
+    if (isPaseoToolEnabled(options.paseoToolPolicy, tool.name)) tools.set(tool.name, tool);
   }
   return toCatalog();
 }

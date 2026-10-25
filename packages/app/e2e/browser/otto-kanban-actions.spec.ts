@@ -2,6 +2,8 @@ import { test, expect, openKanban } from "../support/helpers/otto-kanban";
 import { gotoAppShell } from "../support/helpers/app";
 import { getServerId } from "../support/helpers/server-id";
 import type { Page } from "../support/fixtures";
+import { z } from "zod";
+import { callKnowledgeMcp as callAgentMcp } from "../support/helpers/otto-knowledge";
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true }, kanbanWithBoard: true });
 async function select(page: Page, label: string, option: string) {
@@ -25,6 +27,116 @@ async function openWorkspace(page: Page, workspaceId: string, compact: boolean) 
   await expect(page.getByText("Otto fixture board", { exact: true })).toBeVisible();
 }
 for (const compact of [false, true]) {
+  test(`Kanban agent tools share the configured board and durable writes with the app (${compact ? "compact" : "wide"})`, async ({
+    page,
+    kanban,
+  }) => {
+    await openWorkspace(page, kanban.project.workspaceId, compact);
+    const workspaceId = kanban.project.workspaceId;
+    const pageSchema = z.object({
+      status: z.literal("ready"),
+      settingsRevision: z.string(),
+      board: z.object({
+        id: z.string(),
+        revision: z.string(),
+        columns: z.array(z.object({ id: z.string(), title: z.string() })),
+      }),
+      cards: z.array(z.object({ id: z.string(), title: z.string() })),
+      editing: z
+        .object({
+          cardRevision: z.string(),
+          fields: z.array(z.object({ id: z.string(), name: z.string() })),
+        })
+        .nullable(),
+    });
+    const read = async (cardId?: string) =>
+      pageSchema.parse(
+        await callAgentMcp("kanban_get_board", {
+          workspaceId,
+          ...(cardId ? { cardId, includeEditing: true } : {}),
+        }),
+      );
+    const first = await read();
+    const create = {
+      workspaceId,
+      operationId: "e2e-kanban-mcp-create",
+      boardId: first.board.id,
+      expectedSettingsRevision: first.settingsRevision,
+      expectedBoardRevision: first.board.revision,
+      title: "Created through agent tools",
+      description: "Provider-neutral MCP body",
+      columnId: null,
+    };
+    expect(await callAgentMcp("kanban_create_card", create)).toMatchObject({
+      status: "applied",
+      operationId: create.operationId,
+    });
+    expect(await callAgentMcp("kanban_create_card", create)).toMatchObject({
+      status: "applied",
+      operationId: create.operationId,
+    });
+    expect(
+      (await kanban.requests()).filter((request) =>
+        request.operation.startsWith("OttoKanbanWrite"),
+      ),
+    ).toHaveLength(1);
+    const listed = await read();
+    const created = listed.cards.find((card) => card.title === create.title);
+    if (!created) throw new Error("MCP-created card was not read back");
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    if (compact) await select(page, "Column", "Unassigned");
+    await expect(page.getByText(create.title, { exact: true })).toBeVisible();
+    const detail = await read(created.id);
+    const title = detail.editing?.fields.find((field) => field.name === "Title");
+    if (!detail.editing || !title) throw new Error("The actual host did not offer title editing");
+    expect(
+      await callAgentMcp("kanban_update_card", {
+        workspaceId,
+        operationId: "e2e-kanban-mcp-edit-title",
+        boardId: detail.board.id,
+        expectedSettingsRevision: detail.settingsRevision,
+        expectedBoardRevision: detail.board.revision,
+        cardId: created.id,
+        expectedCardRevision: detail.editing.cardRevision,
+        fieldId: title.id,
+        value: { kind: "text", value: "Renamed through agent tools" },
+      }),
+    ).toMatchObject({ status: "applied" });
+    const moved = await read(created.id);
+    const done = moved.board.columns.find((column) => column.title === "Done");
+    if (!moved.editing || !done) throw new Error("Missing host movement metadata");
+    expect(
+      await callAgentMcp("kanban_move_card", {
+        workspaceId,
+        operationId: "e2e-kanban-mcp-move-card",
+        boardId: moved.board.id,
+        expectedSettingsRevision: moved.settingsRevision,
+        expectedBoardRevision: moved.board.revision,
+        cardId: created.id,
+        expectedCardRevision: moved.editing.cardRevision,
+        columnId: done.id,
+      }),
+    ).toMatchObject({ status: "applied" });
+    const removing = await read(created.id);
+    if (!removing.editing) throw new Error("Missing current card revision");
+    expect(
+      await callAgentMcp("kanban_delete_card", {
+        workspaceId,
+        operationId: "e2e-kanban-mcp-detach-card",
+        boardId: removing.board.id,
+        expectedSettingsRevision: removing.settingsRevision,
+        expectedBoardRevision: removing.board.revision,
+        cardId: created.id,
+        expectedCardRevision: removing.editing.cardRevision,
+      }),
+    ).toMatchObject({ status: "applied" });
+    expect((await read()).cards.some((card) => card.id === created.id)).toBe(false);
+    expect(
+      (await kanban.requests()).filter((request) =>
+        request.operation.startsWith("OttoKanbanWrite"),
+      ),
+    ).toHaveLength(4);
+  });
   test(`Kanban create, move, edit, link and detach (${compact ? "compact" : "wide"})`, async ({
     page,
     kanban,

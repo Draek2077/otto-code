@@ -240,6 +240,7 @@ import { DaemonExecutions } from "./hub/daemon-executions.js";
 import { PluginService } from "./plugins/index.js";
 import { BrainDaemonService } from "./otto/brain/service.js"; // OTTO(brain-host): one controller for all app consumers.
 import { KanbanDaemonService } from "./otto/kanban/service.js"; // OTTO(kanban): host-owned projects and forge transport.
+import { createRetainedKanbanToolPolicy } from "./otto/kanban/tool-policy.js"; // OTTO(kanban): inert, read-only retained tool ceilings.
 import { createHostIntegrations } from "../services/otto/integrations/host.js"; // OTTO(integration): shared daemon-owned credentials.
 import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OTTO(knowledge)
 import { createKnowledgeGenerationSource } from "./otto/project-knowledge/generation.js"; // OTTO(knowledge): use the existing provider-neutral generation boundary.
@@ -1461,6 +1462,10 @@ export async function createPaseoDaemon(
     runtime: PaseoToolRuntimeContext,
   ): PaseoToolHostDependencies => ({
     ottoKnowledge: ottoKnowledge ?? undefined, // OTTO(knowledge)
+    ottoKanban: ottoKanban ?? undefined, // OTTO(kanban): one host boundary for app and agent tools.
+    kanbanToolPolicy: createRetainedKanbanToolPolicy(config.paseoHome, () =>
+      daemonConfigStore.get(),
+    ), // OTTO(kanban): live primary + retained ceilings, no startup reads or writes.
     agentManager,
     agentStorage,
     terminalManager,

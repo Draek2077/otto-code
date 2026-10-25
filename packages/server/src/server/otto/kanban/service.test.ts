@@ -15,6 +15,7 @@ import {
   FileBackedProjectRegistry,
 } from "../../workspace-registry.js";
 import { KanbanDaemonService } from "./service.js";
+import { createKanbanTools } from "./tools.js";
 import { compilePlugin } from "../../plugins/compiler.js";
 import { evaluateBundle } from "../../plugins/bundle-evaluator.js";
 
@@ -221,4 +222,22 @@ it("refuses arbitrary vendor queries and unvalidated mutation requests", async (
   expect(f.service.invoke("kanban.vendor.query", { document: "mutation {}" })).toBe(undefined);
   await expect(f.service.invoke("kanban.board.mutate", {})).rejects.toThrow();
   expect(f.queries).toEqual([]);
+});
+it("exposes the actual configured-project provider error through the same agent tool boundary without changing settings", async () => {
+  const f = await fixture();
+  const before = await f.bytes();
+  const tools = createKanbanTools(f.service, async () => f.binding);
+  const list = tools.find((tool) => tool.name === "kanban_list_boards");
+  const read = tools.find((tool) => tool.name === "kanban_get_board");
+  if (!list || !read) throw new Error("Missing configured Kanban tools");
+  expect(await list.handler({}, {})).toMatchObject({
+    isError: true,
+    structuredContent: { status: "error", binding: f.binding, error: { code: "scope_required" } },
+  });
+  expect(await read.handler({}, {})).toMatchObject({
+    isError: true,
+    structuredContent: { error: { code: "scope_required" } },
+  });
+  expect(f.queries.length).toBeGreaterThan(0);
+  expect(await f.bytes()).toBe(before);
 });
