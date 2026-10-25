@@ -302,7 +302,11 @@ function ProjectPicker({
   );
   if (settingsOnly) return <View>{body}</View>;
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.page}
+      contentContainerStyle={styles.content}
+      testID="otto-knowledge-page"
+    >
       {body}
     </ScrollView>
   );
