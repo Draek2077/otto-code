@@ -76,26 +76,26 @@ test("canceling a running benchmark releases the actual owner job and permits lo
   page,
   brainOwner,
 }, testInfo) => {
-  await openBrainSettings(page, false);
-  await page.getByRole("button", { name: "Open Brain", exact: true }).click();
-  await page.getByRole("button", { name: "Models", exact: true }).click();
-  await page.getByTestId(`brain-model-${brainOwner.modelId}`).click();
-  await page.getByTestId("brain-model-load").click();
-  await expect(page.getByTestId("brain-model-unload")).toBeEnabled({ timeout: 30000 });
-  await page.getByRole("button", { name: "Benchmark", exact: true }).click();
-  await page.getByTestId("brain-bench-run").click();
-  await expect(page.getByTestId("brain-bench-cancel")).toBeVisible({ timeout: 30000 });
-  await expect
-    .poll(async () =>
-      (await brainOwner.jobs()).jobs.map(({ operation, state, subject }) => ({
-        operation,
-        state,
-        modelId: subject.modelId,
-      })),
-    )
-    .toEqual([{ operation: "benchmark", state: "running", modelId: brainOwner.modelId }]);
-  await page.getByTestId("brain-bench-cancel").click();
   try {
+    await openBrainSettings(page, false);
+    await page.getByRole("button", { name: "Open Brain", exact: true }).click();
+    await page.getByRole("button", { name: "Models", exact: true }).click();
+    await page.getByTestId(`brain-model-${brainOwner.modelId}`).click();
+    await page.getByTestId("brain-model-load").click();
+    await expect(page.getByTestId("brain-model-unload")).toBeEnabled({ timeout: 30000 });
+    await page.getByRole("button", { name: "Benchmark", exact: true }).click();
+    await page.getByTestId("brain-bench-run").click();
+    await expect(page.getByTestId("brain-bench-cancel")).toBeVisible({ timeout: 30000 });
+    await expect
+      .poll(async () =>
+        (await brainOwner.jobs()).jobs.map(({ operation, state, subject }) => ({
+          operation,
+          state,
+          modelId: subject.modelId,
+        })),
+      )
+      .toEqual([{ operation: "benchmark", state: "running", modelId: brainOwner.modelId }]);
+    await page.getByTestId("brain-bench-cancel").click();
     await expect
       .poll(async () => (await brainOwner.jobs()).jobs.map((row) => row.state))
       .toEqual(["canceled"]);
@@ -110,7 +110,24 @@ test("canceling a running benchmark releases the actual owner job and permits lo
   } catch (error) {
     // Capture the live owner BEFORE the fixture restores the daemon connection.
     // The later default failure screenshot can otherwise show teardown state.
-    const evidence = await brainOwner.jobDiagnostics().catch(() => null);
+    const evidence = {
+      jobs: await brainOwner.jobDiagnostics().catch(() => null),
+      engine: brainOwner.engineDiagnostics(),
+      status: await brainOwner
+        .status()
+        .then((status) => ({
+          instanceId: status.instanceId,
+          state: status.state,
+          running: status.running,
+          capabilities: status.capabilities,
+          residents: status.residents.map((row) => ({
+            residentId: row.residentId,
+            modelId: row.modelId,
+            state: row.state,
+          })),
+        }))
+        .catch(() => null),
+    };
     await testInfo
       .attach("brain-cancel-owner-state", {
         body: JSON.stringify(evidence),

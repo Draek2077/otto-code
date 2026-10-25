@@ -102,6 +102,7 @@ interface BrainOwnerFixture {
   status(): Promise<ReturnType<typeof BrainStatusSchema.parse>>;
   jobs(): Promise<ReturnType<typeof BrainJobListSchema.parse>>;
   jobDiagnostics(): Promise<{ jobs: { id: string; state: string; cancelRequested: boolean }[] }>;
+  engineDiagnostics(): { state: string; lastError: string | null; logs: string[] };
 }
 export const test = base.extend<{ brainOwner: BrainOwnerFixture }>({
   brainOwner: async ({ brain }, provide) => {
@@ -183,6 +184,13 @@ export const test = base.extend<{ brainOwner: BrainOwnerFixture }>({
       await provide({
         modelId: model.id,
         modelName: model.displayName,
+        engineDiagnostics: () => ({
+          state: fixture.supervisor.state,
+          lastError: fixture.supervisor.lastError?.replaceAll(fixture.root, "<fixture>") ?? null,
+          logs: fixture.supervisor.logLines
+            .slice(-20)
+            .map((line) => line.replaceAll(fixture.root, "<fixture>").slice(0, 2000)),
+        }),
         profileContext: async () => {
           const loadedProfile = BrainProfileReadSchema.parse(
             await requestBrain(boundClient, "brain.query", {
