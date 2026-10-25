@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { z } from "zod";
 import { readProjectTarget } from "@getpaseo/plugin/server/otto-kanban";
 import {
   failure,
@@ -7,6 +8,7 @@ import {
   type EditableBoard,
   type ProjectBinding,
   type BoardMutationIntent,
+  type getJiraCreateOptions,
 } from "@getpaseo/plugin/otto/kanban";
 import type { OttoProjectMetadata } from "../../project-metadata.js";
 import type { AtlassianAccountService } from "../../../../services/otto/atlassian/account.js";
@@ -16,6 +18,8 @@ import { readJiraCard, type JiraMutationContext } from "./details.js";
 import { executeJiraCard } from "./execute.js";
 import type { ProviderMutationResult } from "../mutations/service.js";
 import { linkJiraIssue, type JiraBoardActionContext } from "./link.js";
+import { readJiraCreation } from "./creation-metadata.js";
+import { createJiraIssue } from "./create.js";
 
 export interface JiraHostContext {
   accountRevision: string;
@@ -117,7 +121,10 @@ export class JiraBoardHost {
         "The Jira board or shared account changed. Refresh before editing.",
       );
     const snapshot: EditableBoard = {
-      board: { ...value.board, capabilities: { ...value.board.capabilities, link: true } },
+      board: {
+        ...value.board,
+        capabilities: { ...value.board.capabilities, link: true, create: true },
+      },
       fields: [],
       cardFields: {},
       cardRevisions: {},
@@ -162,24 +169,50 @@ export class JiraBoardHost {
           message: "The shared Atlassian account changed. Refresh before applying this action.",
         },
       };
+    const beforeWrite = async () => {
+      const project = await this.ports.metadata.read(intent.binding.projectId);
+      if (
+        project.revision !== intent.expectedSettingsRevision ||
+        (await this.ports.account.read()).revision !== context.accountRevision
+      )
+        return failure(
+          "revision_conflict",
+          "Project Settings or the shared account changed. Refresh before applying this action.",
+        );
+      return { ok: true as const, value: true as const };
+    };
     if (intent.mutation.kind === "link")
-      return linkJiraIssue(intent.mutation, context.board, async () => {
-        const project = await this.ports.metadata.read(intent.binding.projectId);
-        if (
-          project.revision !== intent.expectedSettingsRevision ||
-          (await this.ports.account.read()).revision !== context.accountRevision
-        )
-          return failure(
-            "revision_conflict",
-            "Project Settings or the shared account changed. Refresh before applying this action.",
-          );
-        return { ok: true, value: true };
-      });
+      return linkJiraIssue(intent.mutation, context.board, beforeWrite);
+    if (intent.mutation.kind === "create")
+      return createJiraIssue(intent.mutation, context.board, beforeWrite);
     if (!context.card)
       return {
         status: "rejected",
         error: { code: "unsupported", message: "Open a Jira issue before editing it." },
       };
     return executeJiraCard(intent, context.card);
+  }
+  async creation(input: z.infer<typeof getJiraCreateOptions.input>) {
+    const source = await this.source(input.binding);
+    if (!source.ok) return source;
+    const value = source.value;
+    if (
+      value.settingsRevision !== input.expectedSettingsRevision ||
+      value.board.revision !== input.expectedBoardRevision
+    )
+      return failure(
+        "revision_conflict",
+        "Project Settings, the Jira board or the shared account changed. Refresh before creating an issue.",
+      );
+    const metadata = await readJiraCreation(
+      {
+        http: value.http,
+        board: value.board,
+        configuration: value.configuration,
+        siteUrl: value.siteUrl,
+      },
+      input,
+    );
+    return metadata.ok ? { ok: true as const, value: metadata.value.options } : metadata;
   }
 }

@@ -91,6 +91,51 @@ it("submits explicit creation once with its originating host, project and revisi
   ]);
   expect(f.model.getSnapshot()).toMatchObject({ saved: true, dirty: false, busy: false });
 });
+it("requires explicit ready Jira creation choices and carries their origin revision into the real action form", async () => {
+  const f = fixture();
+  f.origin.snapshot.board.provider = "jira";
+  const model = openBoardAction({
+    ...f.input,
+    readCreation: async () => ({
+      ok: true,
+      value: {
+        projects: [{ id: "jira-project", label: "Project" }],
+        issueTypes: [{ id: "task", label: "Task" }],
+        revision: "create-origin",
+        available: true,
+        message: null,
+      },
+    }),
+  });
+  model.setTitle("New Jira issue");
+  expect(model.canSubmit()).toBe(false);
+  const creation = model.creation;
+  if (!creation) throw new Error("Expected Jira choices");
+  const hide = creation.activate();
+  await creation.reload();
+  creation.selectProject("jira-project");
+  await creation.reload();
+  creation.selectType("task");
+  await creation.reload();
+  expect(model.canSubmit()).toBe(true);
+  await model.submit();
+  expect(f.calls).toMatchObject([
+    {
+      binding: f.origin.binding,
+      expectedSettingsRevision: "settings-1",
+      expectedBoardRevision: "board-1",
+      mutation: {
+        kind: "create",
+        jira: {
+          projectId: "jira-project",
+          issueTypeId: "task",
+          expectedCreateRevision: "create-origin",
+        },
+      },
+    },
+  ]);
+  hide();
+});
 it("refuses clear and whitespace values for a required provider field", async () => {
   const f = fixture("edit");
   const title = f.origin.snapshot.fields.find((field) => field.id === "title");

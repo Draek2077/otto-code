@@ -8,6 +8,7 @@ import {
   type EditableBoard,
   type ProjectBinding,
 } from "../shared/model.js";
+import { JiraCreationDraft, type ReadJiraCreation } from "./jira-creation-draft.js";
 
 export type ActionMode = BoardMutation["kind"];
 export interface ActionOrigin {
@@ -36,6 +37,7 @@ export function openBoardAction(input: {
   origin: ActionOrigin;
   mode: ActionMode;
   operationId(): string;
+  readCreation?: ReadJiraCreation;
   submit(intent: BoardMutationIntent): Promise<BoardMutationOutcome>;
 }) {
   const { origin } = input;
@@ -72,6 +74,12 @@ export function openBoardAction(input: {
         ...(state.blocked ? {} : { error: "" }),
       });
   }
+  const creation =
+    origin.snapshot.board.provider === "jira"
+      ? new JiraCreationDraft(input.readCreation, (edited) =>
+          publish(edited ? { dirty: true } : {}),
+        )
+      : null;
   function field(fieldId: string) {
     const current = origin.cardId
       ? origin.snapshot.cardFields[origin.cardId]?.find((row) => row.fieldId === fieldId)
@@ -106,15 +114,19 @@ export function openBoardAction(input: {
   }
   function mutation(): BoardMutation | null {
     if (!origin.snapshot.board.capabilities[state.mode]) return null;
-    if (state.mode === "create")
+    if (state.mode === "create") {
+      const jira = creation?.mutation();
+      if (creation && !jira) return null;
       return state.title.trim()
         ? {
             kind: "create",
             title: state.title,
             description: state.description,
             columnId: state.columnId || null,
+            ...(jira ? { jira } : {}),
           }
         : null;
+    }
     if (state.mode === "link")
       return state.reference.trim()
         ? { kind: "link", reference: state.reference.trim(), columnId: state.columnId || null }
@@ -137,6 +149,7 @@ export function openBoardAction(input: {
   }
   return {
     origin,
+    creation,
     getSnapshot: () => state,
     subscribe(listener: () => void) {
       listeners.add(listener);

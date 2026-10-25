@@ -16,6 +16,7 @@ import {
 } from "./action-form.js";
 import type { BoardActionDrafts } from "./action-drafts.js";
 import { ActionValue } from "./action-value.js";
+import { JiraCreationInputs } from "./jira-creation-inputs.js";
 
 const scrollStyle = { flex: 1, minHeight: 0 } as const;
 // PageLayout's 720px frame includes two 16px gutters, already owned by this
@@ -218,6 +219,9 @@ function ActionInputs({
     <>
       {state.mode === "create" ? (
         <>
+          {model.creation ? (
+            <JiraCreationInputs draft={model.creation} disabled={disabled} />
+          ) : null}
           <SettingsInput
             label="Title"
             initialValue={state.title}

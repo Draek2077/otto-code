@@ -61,7 +61,7 @@ async function verifyBacklog(context: JiraBoardActionContext, key: string): Prom
         "Choose an issue already in this board's backlog. Linking never changes the board filter.",
       );
 }
-async function placeLinkedIssue(
+export async function placeLinkedIssue(
   context: JiraBoardActionContext,
   key: string,
   columnId: string | null,

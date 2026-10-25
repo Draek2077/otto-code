@@ -2,6 +2,7 @@ export {
   getBoard,
   getEditableBoard,
   mutateBoard,
+  getJiraCreateOptions,
   getCapabilities,
   getProjectConfiguration,
   setProjectTarget,

@@ -149,6 +149,8 @@ export async function executeGitHubMutation(input: {
   const { intent, snapshot, context, writes } = input;
   const mutation = intent.mutation;
   const invalidPlacement = placement(intent, context, snapshot);
+  if (mutation.kind === "create" && mutation.jira)
+    return reject("Jira creation settings cannot be applied to a GitHub board.");
   if (invalidPlacement) return invalidPlacement;
   let command: GitHubBoardCommand;
   switch (mutation.kind) {

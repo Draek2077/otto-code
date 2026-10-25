@@ -2,3 +2,4 @@
 export * from "./kanban/shared/model.js";
 export * from "./kanban/shared/rpc.js";
 export * from "./kanban/shared/mutations.js";
+export * from "./kanban/shared/creation.js";

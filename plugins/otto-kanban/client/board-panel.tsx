@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { View } from "react-native";
 import { useRpc, type PluginScreenProps } from "@getpaseo/plugin/client";
 import { SettingsButton, SettingsCard, SettingsRow } from "@getpaseo/plugin/client/ui";
-import { getEditableBoard, mutateBoard } from "../shared/rpc.js";
+import { getEditableBoard, mutateBoard, getJiraCreateOptions } from "../shared/rpc.js";
+import type { ReadJiraCreation } from "./jira-creation-draft.js";
 import type { ActionMode, BoardActionModel } from "./action-form.js";
 import { newBoardOperationId } from "./action-form.js";
 import type { BoardActionDrafts } from "./action-drafts.js";
@@ -59,6 +60,7 @@ export function BoardPanel({
 }) {
   const read = useRpc(getEditableBoard);
   const mutate = useRpc(mutateBoard);
+  const readCreationOptions = useRpc(getJiraCreateOptions);
   const [cardId, setCardId] = useState<string | undefined>();
   const [columnId, setColumnId] = useState("");
   const [editor, setEditor] = useState<BoardActionModel | null>(() =>
@@ -82,6 +84,22 @@ export function BoardPanel({
     openProjectSettings?.({ serverId: host.id, projectId: project.projectId });
   }, [openProjectSettings, host.id, project.projectId]);
   const board = state.status === "ready" ? state.value : null;
+  const readCreation = useCallback<ReadJiraCreation>(
+    async (selection) => {
+      if (board?.status !== "ready")
+        return {
+          ok: false,
+          error: { code: "unavailable", message: "Refresh the board before creating an issue." },
+        };
+      return readCreationOptions({
+        binding: board.binding,
+        expectedSettingsRevision: board.settingsRevision,
+        expectedBoardRevision: board.snapshot.board.revision,
+        ...selection,
+      });
+    },
+    [board, readCreationOptions],
+  );
   const open = useCallback(
     (mode: ActionMode) => {
       if (board?.status !== "ready") return;
@@ -95,11 +113,12 @@ export function BoardPanel({
         mode,
         operationId: newBoardOperationId,
         submit: mutate,
+        readCreation,
       });
       setSaved(false);
       setEditor(model);
     },
-    [board, actionDrafts, cardId, mutate],
+    [board, actionDrafts, cardId, mutate, readCreation],
   );
   const create = useCallback(() => open("create"), [open]);
   const link = useCallback(() => open("link"), [open]);

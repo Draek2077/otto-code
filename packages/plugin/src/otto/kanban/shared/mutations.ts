@@ -22,6 +22,10 @@ export const BoardMutationSchema = z.discriminatedUnion("kind", [
       title: z.string().min(1).max(1024),
       description: z.string().max(65_536),
       columnId: id.nullable(),
+      jira: z
+        .object({ projectId: id, issueTypeId: id, expectedCreateRevision: id })
+        .strict()
+        .optional(),
     })
     .strict(),
   z

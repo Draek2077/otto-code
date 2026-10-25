@@ -17,6 +17,10 @@ function fixture() {
     calls.push(url.pathname);
     if (init?.method !== "GET") {
       writes.push(JSON.parse(String(init?.body)));
+      if (url.pathname === "/rest/api/3/issue") {
+        state.linked = true;
+        return Response.json({ id: "101", key: "OTTO-2" });
+      }
       if (url.pathname === "/rest/agile/1.0/board/42/issue") state.linked = true;
       return new Response(null, { status: 204 });
     }
@@ -38,6 +42,32 @@ function fixture() {
         },
       });
     if (url.pathname.endsWith("/transitions")) return Response.json({ transitions: [] });
+    if (url.pathname.endsWith("/project"))
+      return Response.json({
+        startAt: 0,
+        total: 1,
+        values: [{ id: "10", key: "OTTO", name: "Otto" }],
+      });
+    if (url.pathname.endsWith("/issuetypes"))
+      return Response.json({
+        startAt: 0,
+        total: 1,
+        issueTypes: [{ id: "20", name: "Task", subtask: false }],
+      });
+    if (url.pathname.endsWith("/issuetypes/20"))
+      return Response.json({
+        startAt: 0,
+        total: 1,
+        fields: [
+          {
+            fieldId: "summary",
+            name: "Title",
+            required: true,
+            schema: { type: "string" },
+            operations: ["set"],
+          },
+        ],
+      });
     const issue = {
       id: "100",
       key: "OTTO-1",
@@ -187,4 +217,46 @@ it("exposes and executes backlog linking through the owning account and project 
     status: "ready",
     board: { cards: [{ id: "OTTO-1" }, { id: "OTTO-2" }] },
   });
+});
+it("discovers and creates a Jira issue through the same captured owning-host boundary", async () => {
+  const f = fixture();
+  const initial = await f.host.readBoard(f.binding);
+  if (initial.status !== "ready") throw new Error("Expected fixture board");
+  const choices = await f.host.creation({
+    binding: f.binding,
+    expectedSettingsRevision: initial.settingsRevision,
+    expectedBoardRevision: initial.board.revision,
+    projectId: "10",
+    issueTypeId: "20",
+  });
+  if (!choices.ok || !choices.value.revision) throw new Error("Expected create choices");
+  const opened = await f.host.editable(f.binding, initial.board, initial.settingsRevision);
+  if (!opened.ok) throw new Error(opened.error.message);
+  expect(opened.value.snapshot.board.capabilities.create).toBe(true);
+  expect(
+    await f.host.execute(
+      {
+        binding: f.binding,
+        boardId: "42",
+        operationId: "operation-create-01",
+        expectedBoardRevision: initial.board.revision,
+        expectedSettingsRevision: initial.settingsRevision,
+        mutation: {
+          kind: "create",
+          title: "Created",
+          description: "",
+          columnId: null,
+          jira: {
+            projectId: "10",
+            issueTypeId: "20",
+            expectedCreateRevision: choices.value.revision,
+          },
+        },
+      },
+      opened.value.context,
+    ),
+  ).toEqual({ status: "applied" });
+  expect(f.writes).toEqual([
+    { fields: { project: { id: "10" }, issuetype: { id: "20" }, summary: "Created" } },
+  ]);
 });

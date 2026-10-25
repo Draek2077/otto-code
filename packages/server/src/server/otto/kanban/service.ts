@@ -14,6 +14,7 @@ import {
   getBoard,
   getEditableBoard,
   mutateBoard,
+  getJiraCreateOptions,
   type ProjectBinding,
   type Result,
 } from "@getpaseo/plugin/otto/kanban";
@@ -171,6 +172,8 @@ export class KanbanDaemonService {
         return this.editing.get(input);
       case mutateBoard.name:
         return this.editing.mutate(input);
+      case getJiraCreateOptions.name:
+        return this.creation(input);
       default:
         return undefined;
     }
@@ -197,5 +200,24 @@ export class KanbanDaemonService {
   }
   private async board(input: unknown) {
     return getBoard.output.parse(await this.readBoard(getBoard.input.parse(input)));
+  }
+  private async creation(input: unknown) {
+    try {
+      const request = getJiraCreateOptions.input.parse(input);
+      const result = this.jira
+        ? await this.jira.creation(request)
+        : failure(
+            "unsupported",
+            "Configure this host's shared Atlassian account to use Jira creation.",
+          );
+      return getJiraCreateOptions.output.parse(result);
+    } catch {
+      return getJiraCreateOptions.output.parse(
+        failure(
+          "unavailable",
+          "Jira creation choices could not be loaded. Your draft is retained.",
+        ),
+      );
+    }
   }
 }

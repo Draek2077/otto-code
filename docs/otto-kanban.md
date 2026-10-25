@@ -8,7 +8,7 @@ client contribution and reexports those canonical contracts. The `otto-kanban`
 built-in registers a top-level sidebar entry and a project-settings contribution;
 it has no credential store. Constructing a service or contribution does not
 start a process, contact GitHub or subscribe to anything. Registration does not
-complete the feature: Jira creation and complete provider/product acceptance remain open.
+complete the feature: complete provider/product acceptance remains open.
 
 ## Ownership and integration boundary
 
@@ -138,7 +138,28 @@ back; incomplete placement requires reconciliation rather than rollback or retry
 Project settings and the shared account revision are rechecked before each write.
 Jira's own default column is described as such instead of promising Unassigned.
 The owning-host request fixtures prove these contracts; real-provider and app
-acceptance of Jira linking remain open. Creation still requires its own metadata.
+acceptance of Jira linking remain open.
+
+Create card reads the board's associated projects, then the selected project's
+non-subtask issue types and that exact type's current create-screen fields. The
+user chooses both identities explicitly. Reads are paginated and bounded; denied,
+changing, repeated or incomplete metadata leaves creation unavailable. The form
+captures a digest of the complete metadata. The daemon rereads it before creation
+and rejects a changed digest, settings or shared account without creating an issue.
+Titles and descriptions use Jira's known summary and ADF description fields.
+Unknown required fields without a host default disable this form with a concrete
+explanation; Otto does not invent values or create an incomplete issue. Defaults
+remain provider-owned and are omitted from the request. Subtask creation and
+arbitrary Jira create-screen custom fields are not supported by this form.
+
+An accepted creation is read back on the board. When Jira initially places the
+new issue in that board's backlog, the same verified Link backlog issue operation
+moves it onto the board. A missing membership or incomplete placement reports the
+returned issue key and requires reconciliation. No issue is deleted, recreated or
+blindly retried. The form retains local project/type choices and the originating
+metadata revision across errors; hiding an unfinished lookup invalidates its late
+reply. Focused request/form fixtures cover these behaviors. Real Jira account,
+browser/device and final exact-source acceptance remain separate proof gates.
 Account/site revision is part of board identity and
 is checked again before effects. Jira shares the same durable write admission
 and reconciliation path as GitHub.
