@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { SettingsButton, SettingsRow, SettingsSelect } from "@getpaseo/plugin/client/ui";
 import type { JiraCreationDraft } from "./jira-creation-draft.js";
+function capturedChoices(choices: { id: string; label: string }[], id: string, label: string) {
+  const options = choices.map((row) => ({ value: row.id, label: row.label }));
+  if (id && label && !options.some((row) => row.value === id)) options.push({ value: id, label });
+  return options;
+}
 
 export function JiraCreationInputs({
   draft,
@@ -14,16 +19,16 @@ export function JiraCreationInputs({
   const projects = useMemo(
     () => [
       { value: "", label: "Choose a Jira project" },
-      ...(state.options?.projects ?? []).map((row) => ({ value: row.id, label: row.label })),
+      ...capturedChoices(state.options?.projects ?? [], state.projectId, state.projectLabel),
     ],
-    [state.options],
+    [state.options, state.projectId, state.projectLabel],
   );
   const types = useMemo(
     () => [
       { value: "", label: "Choose an issue type" },
-      ...(state.options?.issueTypes ?? []).map((row) => ({ value: row.id, label: row.label })),
+      ...capturedChoices(state.options?.issueTypes ?? [], state.issueTypeId, state.issueTypeLabel),
     ],
-    [state.options],
+    [state.options, state.issueTypeId, state.issueTypeLabel],
   );
   return (
     <>

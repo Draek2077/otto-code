@@ -55,10 +55,12 @@ it("prevents a stale earlier lookup from overwriting a newer explicit choice", a
   const old = deferred<Result<JiraCreateOptions>>();
   let reads = 0;
   const draft = new JiraCreationDraft(
-    async () => (++reads === 1 ? old.promise : { ok: true, value: choices }),
+    async () => (++reads === 2 ? old.promise : { ok: true, value: choices }),
     () => {},
   );
   const hide = draft.activate();
+  await settle();
+  draft.selectProject("project");
   draft.selectProject("project");
   await settle();
   old.resolve({ ok: true, value: { ...choices, projects: [], revision: "old" } });
@@ -103,6 +105,8 @@ it("keeps explicit selections and exposes failed lookup recovery without allowin
     projectId: "project",
     issueTypeId: "type",
     error: "Jira denied creation metadata",
+    projectLabel: "Explicit project",
+    issueTypeLabel: "Task",
   });
   expect(draft.mutation()).toBeNull();
   failed = false;

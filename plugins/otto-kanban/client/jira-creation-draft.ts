@@ -13,7 +13,9 @@ export class JiraCreationDraft {
   private epoch = 0;
   private state = {
     projectId: "",
+    projectLabel: "",
     issueTypeId: "",
+    issueTypeLabel: "",
     options: null as JiraCreateOptions | null,
     busy: false,
     error: "",
@@ -44,10 +46,14 @@ export class JiraCreationDraft {
     };
   }
   selectProject = (projectId: string) => {
+    const project = this.state.options?.projects.find((row) => row.id === projectId);
+    if (projectId && !project) return;
     this.publish(
       {
         projectId,
+        projectLabel: project?.label ?? "",
         issueTypeId: "",
+        issueTypeLabel: "",
         options: this.state.options
           ? { ...this.state.options, issueTypes: [], available: false, revision: null }
           : null,
@@ -57,7 +63,9 @@ export class JiraCreationDraft {
     void this.reload();
   };
   selectType = (issueTypeId: string) => {
-    this.publish({ issueTypeId }, true);
+    const issueType = this.state.options?.issueTypes.find((row) => row.id === issueTypeId);
+    if (issueTypeId && !issueType) return;
+    this.publish({ issueTypeId, issueTypeLabel: issueType?.label ?? "" }, true);
     void this.reload();
   };
   reload = async () => {
