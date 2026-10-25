@@ -1800,6 +1800,8 @@ export class VoiceAssistantWebSocketServer {
   }
 
   private buildServerInfoStatusPayload(session: Session): ServerInfoStatusPayload {
+    const knowledgeAvailable =
+      this.pluginRuntime?.supportsBuiltinRpc?.("otto-project-knowledge") === true; // OTTO(knowledge)
     return {
       status: "server_info",
       protocolVersion: WS_PROTOCOL_VERSION,
@@ -1817,7 +1819,8 @@ export class VoiceAssistantWebSocketServer {
         ottoBrainCommands: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
         ottoBrainSharing: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
         ottoKanban: this.pluginRuntime?.supportsBuiltinRpc?.("otto-kanban") === true, // OTTO(kanban)
-        ottoKnowledge: this.pluginRuntime?.supportsBuiltinRpc?.("otto-project-knowledge") === true, // OTTO(knowledge)
+        ottoKnowledge: knowledgeAvailable, // OTTO(knowledge)
+        ottoKnowledgeRefinement: knowledgeAvailable, // OTTO(knowledge)
         usageSources: true,
         ownedSubscriptions: true,
         agentRequestReceipts: true,

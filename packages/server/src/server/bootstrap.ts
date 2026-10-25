@@ -242,6 +242,7 @@ import { BrainDaemonService } from "./otto/brain/service.js"; // OTTO(brain-host
 import { KanbanDaemonService } from "./otto/kanban/service.js"; // OTTO(kanban): host-owned projects and forge transport.
 import { createHostIntegrations } from "../services/otto/integrations/host.js"; // OTTO(integration): shared daemon-owned credentials.
 import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OTTO(knowledge)
+import { createKnowledgeGeneration } from "./otto/project-knowledge/generation.js"; // OTTO(knowledge): use the existing provider-neutral generation boundary.
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
 
@@ -946,6 +947,17 @@ export async function createPaseoDaemon(
     home: config.paseoHome,
     metadata: projectRegistry.ottoMetadata,
     workspaces: workspaceRegistry,
+    generation: (selection) =>
+      createKnowledgeGeneration(
+        {
+          agentManager,
+          providerSnapshotManager,
+          readDaemonConfig: () => ({
+            metadataGeneration: daemonConfigStore.get().metadataGeneration,
+          }),
+        },
+        selection,
+      ), // OTTO(knowledge): lazy; no agent is constructed or launched during startup/read.
   }); // OTTO(knowledge): scoped demand, no startup file writes.
   ottoKanban = new KanbanDaemonService({
     hostId: serverId,

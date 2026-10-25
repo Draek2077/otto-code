@@ -47,6 +47,7 @@ function RootRow({
   return (
     <SettingsAction
       label={`${slug[0].toUpperCase()}${slug.slice(1)}`}
+      testID={`knowledge-root-${slug}`}
       actionLabel="Open"
       onPress={open}
     />

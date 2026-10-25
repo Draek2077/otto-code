@@ -261,6 +261,7 @@ packaging remains a build gate.
 | Knowledge write-lock recovery | `packages/app/e2e/browser/otto-knowledge-lock.spec.ts`: wide/compact blocked-draft retention, read-only inspection, explicit no-writer verification and reason, declined/accepted confirmation, unchanged article bytes, retained recovery claim, real MCP unlocked state, and a separate fresh write. No automatic lock expiry or retry. |
 
 | Knowledge scoped edit drafts | `packages/app/e2e/browser/otto-knowledge-drafts.spec.ts`: wide/compact project switching and real route departure/reentry, original revision and reason retained across a peer edit, stale writes refused, explicit declined/accepted discard and reload, fresh saved text after accepted reload, no lock-repair affordance for a revision conflict, and unchanged newer canonical truth. No reload is used to simulate route return. |
+| Knowledge reviewed refinement | `packages/app/e2e/browser/otto-knowledge-refinement.spec.ts`: wide/compact rendered selection and Replace notes, no-write proposals, per-hunk acceptance, declined/accepted confirmation, canonical daemon/MCP parity, preserved metadata/history, Draft demotion and a refused stale root proposal. No model launch. |
 
 The Otto App Acceptance workflow always runs all Otto journeys for pushes and pull
 requests. Manual dispatch accepts an exact `checkout_ref` and a bounded `journey`
@@ -270,6 +271,15 @@ subset does not replace the full acceptance gate. Failure evidence is retained;
 diagnostics use a separate concurrency group so they cannot cancel that gate.
 The Brain cancellation journey captures sanitized live owner state before its
 fixture restores the daemon's connection.
+
+The Knowledge refinement journey in
+`packages/app/e2e/browser/otto-knowledge-refinement.spec.ts` covers actual rendered
+selection, exact replacement notes, no-write generation, per-hunk keep/drop,
+declined and accepted confirmation, real daemon/MCP parity, confirmed-to-Draft
+transition, preserved metadata/history and a stale root proposal, wide and compact.
+It uses direct replacements without launching a model. Scoped model requests and
+response validation have injected provider-boundary fixtures; those do not establish
+live-provider or physical-device acceptance.
 
 ## Debugging with tests
 

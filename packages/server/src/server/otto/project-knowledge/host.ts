@@ -15,8 +15,10 @@ import {
   readKnowledgeReviewSignals,
   inspectKnowledgeWriteLock,
   recoverKnowledgeWriteLock,
+  proposeKnowledgeRefinement,
   type KnowledgeScope,
   type KnowledgeCommand,
+  type KnowledgeGenerationSelection,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import type { OttoProjectMetadata } from "../project-metadata.js";
 import { OttoProjectMetadataError } from "../project-metadata.js";
@@ -34,6 +36,8 @@ import { KnowledgeHostDefaultsError } from "./host-defaults.js";
 import { KnowledgeStorageSetupService } from "./storage-setup.js";
 import { knowledgeProjectFields as projectFields } from "./project-fields.js";
 import { KnowledgeReviewUnavailableError } from "./review-signals.js";
+import { KnowledgeRefinementError, proposeKnowledgeBody } from "./refinement.js";
+import type { StructuredTextGeneration } from "../../session/checkout/git-metadata-generator.js";
 import {
   inspectKnowledgeLock,
   recoverKnowledgeLock,
@@ -101,6 +105,7 @@ export class KnowledgeDaemonService {
       workspaces: Pick<WorkspaceRegistry, "get">;
       now?: () => Date;
       observations?: KnowledgeObservationPort;
+      generation?: (selection?: KnowledgeGenerationSelection) => StructuredTextGeneration;
     },
   ) {
     this.hostSettings = new KnowledgeHostSettings({
@@ -160,6 +165,43 @@ export class KnowledgeDaemonService {
   async policy(scope: KnowledgeScope) {
     const project = await this.resolveProject(scope);
     return readKnowledgePolicy(await this.resolver.resolve(project.projectId));
+  }
+
+  async proposeRefinement(input: z.infer<typeof proposeKnowledgeRefinement.input>) {
+    const project = await this.resolveProject(input.scope);
+    const read = async () => {
+      const target = input.target;
+      if (target.type === "page") {
+        const page = await this.service.read({
+          projectId: project.projectId,
+          kind: target.kind,
+          id: target.id,
+        });
+        return { body: page.statement, revision: page.revision };
+      }
+      return this.service.readRoot({ projectId: project.projectId, slug: target.slug });
+    };
+    const current = await read();
+    if (!current || current.revision !== input.target.revision) throw new KnowledgeConflictError();
+    if (current.body.length > 80000)
+      throw new KnowledgeRefinementError("This article is too large to refine in one pass.");
+    const proposal = await proposeKnowledgeBody({
+      body: input.workingBody,
+      directives: input.directives,
+      cwd: project.rootPath,
+      generation: input.directives.some((item) => item.kind === "refine")
+        ? this.ports.generation?.(input.selection)
+        : undefined,
+    });
+    const latestProject = await this.resolveProject(input.scope);
+    const latest = await read();
+    if (
+      latestProject.projectId !== project.projectId ||
+      latestProject.revision !== project.revision ||
+      latest?.revision !== input.target.revision
+    )
+      throw new KnowledgeConflictError();
+    return { base: current.body, proposal };
   }
 
   async setLocation(input: z.infer<typeof setKnowledgeLocation.input>) {
@@ -330,6 +372,14 @@ export class KnowledgeDaemonService {
             }),
           });
         });
+      case proposeKnowledgeRefinement.name:
+        return this.guard(async () => {
+          const input = proposeKnowledgeRefinement.input.parse(value);
+          return proposeKnowledgeRefinement.output.parse({
+            ok: true,
+            value: await this.proposeRefinement(input),
+          });
+        });
       case inspectKnowledgeFormat.name:
         return this.guard(async () => {
           const input = inspectKnowledgeFormat.input.parse(value);
@@ -459,6 +509,8 @@ export class KnowledgeDaemonService {
         return { ok: false, error: { code: error.code, message: error.message } };
       if (error instanceof KnowledgeReviewUnavailableError)
         return { ok: false, error: { code: "unavailable", message: error.message } };
+      if (error instanceof KnowledgeRefinementError)
+        return { ok: false, error: { code: "invalid", message: error.message } };
       if (error instanceof KnowledgeHostDefaultsError)
         return { ok: false, error: { code: error.kind, message: error.message } };
       if (

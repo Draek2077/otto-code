@@ -1,6 +1,7 @@
 import { StyleSheet } from "react-native-unistyles";
 export const styles = StyleSheet.create((theme) => ({
   page: { flex: 1, minHeight: 0 },
+  contentGap: { gap: theme.spacing[3] },
   content: {
     width: "100%",
     maxWidth: 720,

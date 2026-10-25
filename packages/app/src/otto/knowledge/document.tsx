@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { View } from "react-native";
 import { useFetchQuery } from "@/data/query";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -7,6 +7,7 @@ import {
   readKnowledgeRoot,
   type KnowledgeRecord,
   type KnowledgeScope,
+  type KnowledgeRefinementTarget,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import { SettingsSection, SettingsRow } from "@/components/settings";
 import { SettingsExpander } from "@/otto/plugin-settings-ui";
@@ -16,6 +17,7 @@ import { MarkdownRenderer } from "@/components/markdown/renderer";
 import type { EditorSeed } from "./editor-model";
 import { styles } from "./styles";
 import { KnowledgeReviewSignals } from "./review-signals";
+import { KnowledgeArticleReview } from "./review";
 
 export type KnowledgeSelection =
   | { type: "page"; kind: KnowledgeRecord["kind"]; id: string }
@@ -71,6 +73,10 @@ function PageArticle({
 }) {
   const status = { proposed: "Draft", confirmed: "Confirmed", superseded: "History" }[page.status];
   const timeline = `\`\`\`yaml\n${page.timeline}\n\`\`\``;
+  const target = useMemo<KnowledgeRefinementTarget>(
+    () => ({ type: "page", kind: page.kind, id: page.id, revision: page.revision }),
+    [page.kind, page.id, page.revision],
+  );
   return (
     <SettingsSection title={page.title}>
       <SettingsRow
@@ -94,7 +100,7 @@ function PageArticle({
         />
       ) : null}
       <PageActions page={page} onEdit={onEdit} />
-      <MarkdownRenderer text={page.statement} serverId={scope.hostId} />
+      <KnowledgeArticleReview scope={scope} target={target} body={page.statement} active={active} />
       <SettingsExpander label="Review signals">
         <KnowledgeReviewSignals scope={scope} page={page} active={active} />
       </SettingsExpander>
@@ -109,22 +115,34 @@ function RootArticle({
   body,
   revision,
   onEdit,
+  scope,
+  active,
 }: {
   selection: Extract<KnowledgeSelection, { type: "root" }>;
   body: string;
   revision: string | null;
   onEdit(seed: EditorSeed): void;
+  scope: KnowledgeScope;
+  active: boolean;
 }) {
   const edit = useCallback(
     () => onEdit({ root: { slug: selection.slug, body, revision } }),
     [selection.slug, body, revision, onEdit],
+  );
+  const target = useMemo<KnowledgeRefinementTarget | null>(
+    () => (revision ? { type: "root", slug: selection.slug, revision } : null),
+    [selection.slug, revision],
   );
   return (
     <SettingsSection title={selection.slug}>
       <Button onPress={edit} variant="outline" size="sm">
         Edit root
       </Button>
-      <MarkdownRenderer text={body || "This root has not been written yet."} />
+      {target ? (
+        <KnowledgeArticleReview scope={scope} target={target} body={body} active={active} />
+      ) : (
+        <MarkdownRenderer text="This root has not been written yet." />
+      )}
     </SettingsSection>
   );
 }
@@ -183,6 +201,8 @@ export function KnowledgeDocument({
       selection={selection}
       body={query.data.root?.body ?? ""}
       revision={query.data.root?.revision ?? null}
+      scope={scope}
+      active={active}
       onEdit={onEdit}
     />
   );

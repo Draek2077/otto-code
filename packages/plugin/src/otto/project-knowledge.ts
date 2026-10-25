@@ -358,6 +358,41 @@ export const applyKnowledgeFormat = defineRpc({
 });
 export type KnowledgeFormatPlan = z.infer<typeof KnowledgeFormatPlanSchema>;
 export type KnowledgeScope = z.infer<typeof KnowledgeScopeSchema>;
+export const KnowledgeRefinementTargetSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("page"), kind: KnowledgeKindSchema, id, revision }).strict(),
+  z.object({ type: z.literal("root"), slug: KnowledgeRootSchema, revision }).strict(),
+]);
+export const KnowledgeReviewDirectiveSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    kind: z.enum(["replace", "refine"]),
+    start: z.number().int().nonnegative(),
+    end: z.number().int().positive(),
+    selectedText: z.string().min(1).max(80000),
+    value: z.string().max(16000),
+  })
+  .strict();
+export const proposeKnowledgeRefinement = defineRpc({
+  name: "knowledge.project.refinement.propose.request",
+  input: z
+    .object({
+      scope: KnowledgeScopeSchema,
+      target: KnowledgeRefinementTargetSchema,
+      workingBody: z.string().min(1).max(80000),
+      directives: z.array(KnowledgeReviewDirectiveSchema).min(1).max(32),
+      selection: z
+        .object({ provider: z.string().min(1).max(512), model: z.string().min(1).max(2048) })
+        .strict()
+        .optional(),
+    })
+    .strict(),
+  output: result(z.object({ base: z.string().max(80000), proposal: z.string().max(80000) })),
+});
+export type KnowledgeRefinementTarget = z.infer<typeof KnowledgeRefinementTargetSchema>;
+export type KnowledgeGenerationSelection = NonNullable<
+  z.infer<typeof proposeKnowledgeRefinement.input>["selection"]
+>;
+export type KnowledgeReviewDirective = z.infer<typeof KnowledgeReviewDirectiveSchema>;
 export type KnowledgeCommand = z.infer<typeof KnowledgeCommandSchema>;
 export type KnowledgeRecord = z.infer<typeof KnowledgePageSchema>;
 export type KnowledgeCatalog = Extract<

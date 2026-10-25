@@ -25,6 +25,7 @@ import {
   readKnowledgeReviewSignals,
   inspectKnowledgeWriteLock,
   recoverKnowledgeWriteLock,
+  proposeKnowledgeRefinement,
 } from "@getpaseo/plugin/otto/project-knowledge";
 
 const parent = fileURLToPath(new URL("../../../../../../.tmp/knowledge-host/", import.meta.url));
@@ -120,6 +121,77 @@ it("sets up a fresh inherited Host store only through an explicit inspected choi
       choice: { kind: "new" },
     }),
   ).toMatchObject({ ok: false, error: { code: "conflict" } });
+});
+
+it("proposes scoped changes without writing and applies only a human-accepted current record or root revision", async () => {
+  const f = await fixture();
+  await f.create();
+  const target = { projectId: "project-a", kind: "requirement", id: "fixture-page" } as const;
+  const draft = await f.host.service.read(target);
+  await f.host.records.review({
+    ...target,
+    expectedRevision: draft.revision,
+    status: "confirmed",
+    reason: "Human confirmation",
+  });
+  const original = await f.host.service.read(target);
+  const file = path.join(f.repo, ".otto/knowledge/requirements/fixture-page.md");
+  const bytes = await readFile(file);
+  const input = {
+    scope: f.scope,
+    target: { type: "page", kind: target.kind, id: target.id, revision: original.revision },
+    workingBody: original.statement,
+    directives: [
+      { id: "one", kind: "replace", start: 0, end: 8, selectedText: "Verified", value: "Reviewed" },
+    ],
+  };
+  expect(await f.host.invoke(proposeKnowledgeRefinement.name, input)).toMatchObject({
+    ok: true,
+    value: { base: "Verified fixture", proposal: "Reviewed fixture" },
+  });
+  expect(await readFile(file)).toEqual(bytes);
+  expect(
+    await f.host.invoke(proposeKnowledgeRefinement.name, {
+      ...input,
+      scope: { ...f.scope, hostId: "foreign" },
+    }),
+  ).toMatchObject({ ok: false, error: { code: "wrong_host" } });
+  await f.host.mutate(f.scope, {
+    action: "truth",
+    kind: target.kind,
+    id: target.id,
+    expectedRevision: original.revision,
+    statement: "Reviewed fixture",
+    reason: "Accepted selected Knowledge review changes",
+  });
+  const updated = await f.host.service.read(target);
+  expect(updated.metadata.status).toBe("proposed");
+  expect(updated.timeline).toContain("Accepted selected");
+  expect(await f.host.invoke(proposeKnowledgeRefinement.name, input)).toMatchObject({
+    ok: false,
+    error: { code: "conflict" },
+  });
+  await f.host.service.writeRoot({
+    projectId: "project-a",
+    slug: "architecture",
+    expectedRevision: null,
+    body: "Root truth",
+  });
+  const root = await f.host.service.readRoot({ projectId: "project-a", slug: "architecture" });
+  if (!root) throw new Error("Missing root");
+  expect(
+    await f.host.invoke(proposeKnowledgeRefinement.name, {
+      ...input,
+      target: { type: "root", slug: "architecture", revision: root.revision },
+      workingBody: root.body,
+      directives: [
+        { id: "root", kind: "replace", start: 0, end: 4, selectedText: "Root", value: "Revised" },
+      ],
+    }),
+  ).toMatchObject({ ok: true, value: { base: "Root truth", proposal: "Revised truth" } });
+  expect(
+    (await f.host.service.readRoot({ projectId: "project-a", slug: "architecture" }))?.body,
+  ).toBe("Root truth");
 });
 
 it("offers retained ownership by stable project ID or canonical root and reconnects without rewriting old bytes", async () => {
@@ -382,7 +454,68 @@ it("leaves dormant host copies unbound when the old default was repository and r
     (await f.registry.ottoMetadata.read("project-a")).record.knowledgeLocation,
   ).toBeUndefined();
 });
-async function fixture() {
+it("routes the selected model through scoped generation and refuses a late proposal after a peer edit", async () => {
+  let release!: () => void;
+  let started!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const selections: unknown[] = [];
+  const f = await fixture({
+    generation: (selection) => {
+      selections.push(selection);
+      return {
+        generate: async (request) => {
+          expect(request.cwd).toBe(f.repo);
+          expect(request.prompt).not.toContain("Original canonical markdown evidence");
+          started();
+          await pending;
+          return request.schema.parse({ replacements: [{ id: "scope", content: "Refined" }] });
+        },
+      };
+    },
+  });
+  await f.create();
+  const target = { projectId: "project-a", kind: "requirement", id: "fixture-page" } as const;
+  const original = await f.host.service.read(target);
+  const selection = { provider: "openai-compatible", model: "local/qwen" };
+  const result = f.host.invoke(proposeKnowledgeRefinement.name, {
+    scope: f.scope,
+    selection,
+    target: { type: "page", kind: target.kind, id: target.id, revision: original.revision },
+    workingBody: original.statement,
+    directives: [
+      {
+        id: "scope",
+        kind: "refine",
+        start: 0,
+        end: 8,
+        selectedText: "Verified",
+        value: "Use precise prose",
+      },
+    ],
+  });
+  await entered;
+  await f.host.service.appendEvidence({
+    ...target,
+    expectedRevision: original.revision,
+    text: "Peer evidence",
+    source: "Separate writer",
+  });
+  release();
+  expect(await result).toMatchObject({ ok: false, error: { code: "conflict" } });
+  expect(selections).toEqual([selection]);
+  const saved = await f.host.service.read(target);
+  expect(saved.statement).toBe(original.statement);
+  expect(saved.timeline).toContain("Peer evidence");
+});
+
+async function fixture(
+  options: Pick<ConstructorParameters<typeof KnowledgeDaemonService>[0], "generation"> = {},
+) {
   await mkdir(parent, { recursive: true });
   const root = await mkdtemp(path.join(parent, "case-"));
   roots.push(root);
@@ -420,6 +553,7 @@ async function fixture() {
   });
   const notifications: string[] = [];
   const host = new KnowledgeDaemonService({
+    ...options,
     hostId: "host-a",
     home,
     metadata: registry.ottoMetadata,

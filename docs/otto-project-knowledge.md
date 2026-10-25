@@ -207,6 +207,46 @@ shutdown awaits observation teardown. Heartbeats do not poll the filesystem or
 invalidate unchanged data. Observation failures show a disconnected notice and
 use bounded reconnection; manual Refresh remains available.
 
+## Reviewed article refinement
+
+Review article opens an installation-local review of the current record statement
+or existing root body. The original file digest and article stay pinned across
+peer refreshes, navigation and generation rounds. Notes and proposals are local
+intent, never a second store, agent context or persisted discussion. The review
+remains in Knowledge. Discarding it changes no saved content.
+
+Select rendered source-backed text and choose Replace or Refine. Replace supplies
+the exact new text, including an explicit empty replacement; Refine supplies a
+model instruction. Web notes have source-range markers and an anchored editor;
+compact and native use the standard sheet. Native source blocks show note markers
+and expose selection-menu commands. A transformed or ambiguous quote is refused
+rather than attached to a guessed Markdown offset. Notes can be edited or removed.
+
+The owning daemon validates nonoverlapping source ranges, at most 32 notes, an
+80,000-character article and a combined 16,000-character instruction/replacement
+budget. Generation uses the existing provider-neutral structured-generation
+boundary, the canonical project root and the host's configured provider order.
+The normal model browser can select a preferred provider/model, including local
+Brain and OpenAI Compatible API models. That explicit choice leads the normal
+host fallback order; without a choice, host generation defaults apply. Its display
+labels remain local selection intent and are never sent as provider identities.
+Only Refine scopes and small surrounding context enter the request; metadata,
+other records, policy and timeline do not. Direct replacements remain outside
+model authority. Unknown, duplicate or missing response scopes reject the proposal.
+The daemon assembles unchanged source plus exact replacements; generation never
+writes a file. It rechecks the project binding and article digest after generation.
+
+The user keeps or drops individual diff hunks against the original saved article.
+Refine kept result feeds the kept result into another annotation round, while the
+next diff still uses the original base. Display diff work is bounded: very large
+line matrices or long individual lines become one whole-article decision.
+Apply kept changes requires a reason and human confirmation. It uses the existing
+conditional truth/root write, retains unknown metadata and history, and demotes a
+changed Confirmed record to Draft. Roots keep their existing lifecycle. Peer
+changes refuse application. Hidden reads cannot replace local intent, and an
+unacknowledged or hidden write requires reopening the saved article before another
+write. A dedicated additive host capability gates refinement in one app boundary.
+
 ## Explicit write-lock recovery
 
 Knowledge settings and blocked editors expose manual lock inspection. Reading is
