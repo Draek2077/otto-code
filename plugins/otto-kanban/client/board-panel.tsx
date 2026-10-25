@@ -176,7 +176,11 @@ export function BoardPanel({
                 <SettingsButton onPress={create}>Create card</SettingsButton>
               ) : null}
               {board.snapshot.board.capabilities.link ? (
-                <SettingsButton onPress={link}>Link issue or pull request</SettingsButton>
+                <SettingsButton onPress={link}>
+                  {board.snapshot.board.provider === "jira"
+                    ? "Link backlog issue"
+                    : "Link issue or pull request"}
+                </SettingsButton>
               ) : null}
             </View>
             <BoardView

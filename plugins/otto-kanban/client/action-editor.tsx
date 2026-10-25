@@ -28,6 +28,10 @@ const panelStyle = {
   paddingBottom: 24,
 } as const;
 const buttonsStyle = { flexDirection: "row", flexWrap: "wrap", gap: 8 } as const;
+function defaultColumnLabel(mode: ActionMode, provider: string) {
+  if (mode === "move") return "Choose a column";
+  return provider === "jira" ? "Jira default column" : "Unassigned";
+}
 function ReadOnlyFields({ model }: { model: BoardActionModel }) {
   const rows = model.origin.snapshot.cardFields[model.origin.cardId ?? ""] ?? [];
   return (
@@ -108,7 +112,13 @@ export function ActionEditor({
         ]
       : [
           { value: "create", label: "Create card" },
-          { value: "link", label: "Link issue or pull request" },
+          {
+            value: "link",
+            label:
+              model.origin.snapshot.board.provider === "jira"
+                ? "Link backlog issue"
+                : "Link issue or pull request",
+          },
         ];
     return names.filter((mode) => model.origin.snapshot.board.capabilities[mode.value]);
   }, [model]);
@@ -119,7 +129,7 @@ export function ActionEditor({
           .filter((column) => column.id !== "otto:unassigned")
           .map((column) => column.id);
     return [
-      { value: "", label: state.mode === "move" ? "Choose a column" : "Unassigned" },
+      { value: "", label: defaultColumnLabel(state.mode, model.origin.snapshot.board.provider) },
       ...model.origin.snapshot.board.columns
         .filter((column) => available.includes(column.id))
         .map((column) => ({ value: column.id, label: column.title })),
@@ -224,10 +234,20 @@ function ActionInputs({
       ) : null}
       {state.mode === "link" ? (
         <SettingsInput
-          label="Issue or pull request URL"
+          label={
+            model.origin.snapshot.board.provider === "jira"
+              ? "Backlog issue key or URL"
+              : "Issue or pull request URL"
+          }
           initialValue={state.reference}
           onChangeText={model.setReference}
           disabled={disabled}
+        />
+      ) : null}
+      {state.mode === "link" && model.origin.snapshot.board.provider === "jira" ? (
+        <SettingsRow
+          label="Choose an issue already in this board's backlog."
+          hint="Otto moves it onto this board through Jira's workflow; it never changes the board filter."
         />
       ) : null}
       {state.mode === "create" || state.mode === "link" || state.mode === "move" ? (

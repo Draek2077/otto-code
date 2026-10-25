@@ -3,6 +3,30 @@ import type { ProviderMutationResult } from "../mutations/service.js";
 import { jiraWriteValue } from "./fields.js";
 import type { JiraMutationContext } from "./details.js";
 
+export async function moveJiraIssue(
+  columnId: string,
+  context: JiraMutationContext,
+): Promise<ProviderMutationResult> {
+  const transition = context.transitions.get(columnId);
+  if (!transition)
+    return {
+      status: "rejected",
+      error: {
+        code: "unsupported",
+        message:
+          "This column has no unambiguous available workflow transition without additional required fields.",
+      },
+    };
+  const result = await context.http.write(
+    "POST",
+    `/rest/api/3/issue/${encodeURIComponent(context.issue.key)}/transitions`,
+    { transition: { id: transition } },
+  );
+  return result.status === "applied"
+    ? { status: "applied" }
+    : { status: result.status, error: result.error };
+}
+
 export async function executeJiraCard(
   intent: BoardMutationIntent,
   context: JiraMutationContext,
@@ -24,22 +48,7 @@ export async function executeJiraCard(
       },
     };
   if (mutation.kind === "move") {
-    const transition = context.transitions.get(mutation.columnId);
-    if (!transition)
-      return {
-        status: "rejected",
-        error: {
-          code: "unsupported",
-          message:
-            "This column has no unambiguous available workflow transition without additional required fields.",
-        },
-      };
-    const result = await context.http.write("POST", endpoint + "/transitions", {
-      transition: { id: transition },
-    });
-    return result.status === "applied"
-      ? { status: "applied" }
-      : { status: result.status, error: result.error };
+    return moveJiraIssue(mutation.columnId, context);
   }
   const plan = context.plans.get(mutation.fieldId);
   if (!plan)

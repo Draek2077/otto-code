@@ -8,7 +8,7 @@ client contribution and reexports those canonical contracts. The `otto-kanban`
 built-in registers a top-level sidebar entry and a project-settings contribution;
 it has no credential store. Constructing a service or contribution does not
 start a process, contact GitHub or subscribe to anything. Registration does not
-complete the feature: Jira creation/linking and complete provider/product acceptance remain open.
+complete the feature: Jira creation and complete provider/product acceptance remain open.
 
 ## Ownership and integration boundary
 
@@ -128,8 +128,18 @@ only after an explicit description edit; other edits do not flatten rich content
 People use account IDs, options use native IDs, and required fields cannot be
 cleared. Unrecognized types remain read-only. Jira does not provide a generic
 detach-from-filtered-board operation, so Otto does not substitute issue deletion.
-Create/link workflows remain unavailable until their metadata and membership
-semantics are implemented. Account/site revision is part of board identity and
+Jira's Link backlog issue action accepts an exact issue key or a browse URL on
+the configured site. It first verifies that exact issue through the current
+enhanced backlog endpoint, then uses the official Move issues to board operation.
+It never changes a saved filter, attaches an arbitrary foreign issue, or deletes
+an issue. Existing board cards are refused as duplicate links. An optional column
+uses the issue's current unambiguous native transition after membership is read
+back; incomplete placement requires reconciliation rather than rollback or retry.
+Project settings and the shared account revision are rechecked before each write.
+Jira's own default column is described as such instead of promising Unassigned.
+The owning-host request fixtures prove these contracts; real-provider and app
+acceptance of Jira linking remain open. Creation still requires its own metadata.
+Account/site revision is part of board identity and
 is checked again before effects. Jira shares the same durable write admission
 and reconciliation path as GitHub.
 

@@ -3,7 +3,12 @@ import { JiraBoardHost } from "./host.js";
 import type { BoardMutationIntent } from "@getpaseo/plugin/otto/kanban";
 
 function fixture() {
-  const state = { accountRevision: "account-1", settingsRevision: "settings-1", connected: true };
+  const state = {
+    accountRevision: "account-1",
+    settingsRevision: "settings-1",
+    connected: true,
+    linked: false,
+  };
   const calls: string[] = [];
   const writes: unknown[] = [];
   const binding = { hostId: "host", projectId: "project" };
@@ -12,6 +17,7 @@ function fixture() {
     calls.push(url.pathname);
     if (init?.method !== "GET") {
       writes.push(JSON.parse(String(init?.body)));
+      if (url.pathname === "/rest/agile/1.0/board/42/issue") state.linked = true;
       return new Response(null, { status: 204 });
     }
     if (url.pathname.endsWith("/configuration"))
@@ -37,8 +43,11 @@ function fixture() {
       key: "OTTO-1",
       fields: { summary: "Title", updated: "2026-10-24", status: { id: "1" } },
     };
+    const backlog = { ...issue, id: "101", key: "OTTO-2" };
+    if (url.pathname.endsWith("/backlog"))
+      return Response.json({ isLast: true, issues: [backlog] });
     if (url.pathname.startsWith("/rest/software/"))
-      return Response.json({ isLast: true, issues: [issue] });
+      return Response.json({ isLast: true, issues: state.linked ? [issue, backlog] : [issue] });
     return Response.json(issue);
   };
   const host = new JiraBoardHost({
@@ -151,4 +160,31 @@ it("refuses a foreign host before reading a site", async () => {
     error: { code: "wrong_host" },
   });
   expect(f.calls).toEqual([]);
+});
+it("exposes and executes backlog linking through the owning account and project context", async () => {
+  const f = fixture();
+  const initial = await f.host.readBoard(f.binding);
+  if (initial.status !== "ready") throw new Error("Expected fixture board");
+  const editing = await f.host.editable(f.binding, initial.board, initial.settingsRevision);
+  if (!editing.ok) throw new Error(editing.error.message);
+  expect(editing.value.snapshot.board.capabilities.link).toBe(true);
+  expect(
+    await f.host.execute(
+      {
+        binding: f.binding,
+        operationId: "operation-link-0001",
+        boardId: "42",
+        expectedBoardRevision: initial.board.revision,
+        expectedSettingsRevision: initial.settingsRevision,
+        mutation: { kind: "link", reference: "OTTO-2", columnId: null },
+      },
+      editing.value.context,
+    ),
+  ).toEqual({ status: "applied" });
+  expect(f.writes).toEqual([{ issues: ["OTTO-2"] }]);
+  const updated = await f.host.readBoard(f.binding);
+  expect(updated).toMatchObject({
+    status: "ready",
+    board: { cards: [{ id: "OTTO-1" }, { id: "OTTO-2" }] },
+  });
 });

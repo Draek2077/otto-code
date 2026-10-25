@@ -15,9 +15,11 @@ import { readJiraBoard } from "./reader.js";
 import { readJiraCard, type JiraMutationContext } from "./details.js";
 import { executeJiraCard } from "./execute.js";
 import type { ProviderMutationResult } from "../mutations/service.js";
+import { linkJiraIssue, type JiraBoardActionContext } from "./link.js";
 
 export interface JiraHostContext {
   accountRevision: string;
+  board: JiraBoardActionContext;
   card?: JiraMutationContext;
 }
 export class JiraBoardHost {
@@ -73,6 +75,7 @@ export class JiraBoardHost {
         http,
         settingsRevision: project.revision,
         accountRevision: credential.revision,
+        siteUrl: credential.siteUrl,
       },
     };
   }
@@ -114,17 +117,25 @@ export class JiraBoardHost {
         "The Jira board or shared account changed. Refresh before editing.",
       );
     const snapshot: EditableBoard = {
-      board: value.board,
+      board: { ...value.board, capabilities: { ...value.board.capabilities, link: true } },
       fields: [],
       cardFields: {},
       cardRevisions: {},
       allowedMoves: {},
     };
-    const context: JiraHostContext = { accountRevision: value.accountRevision };
+    const context: JiraHostContext = {
+      accountRevision: value.accountRevision,
+      board: {
+        http: value.http,
+        board: value.board,
+        configuration: value.configuration,
+        siteUrl: value.siteUrl,
+      },
+    };
     if (!cardId) return { ok: true as const, value: { settingsRevision, snapshot, context } };
     const card = await readJiraCard({
       http: value.http,
-      board: value.board,
+      board: snapshot.board,
       configuration: value.configuration,
       cardId,
     });
@@ -134,7 +145,7 @@ export class JiraBoardHost {
           value: {
             settingsRevision,
             snapshot: card.value.snapshot,
-            context: { accountRevision: value.accountRevision, card: card.value.context },
+            context: { ...context, card: card.value.context },
           },
         }
       : card;
@@ -151,6 +162,19 @@ export class JiraBoardHost {
           message: "The shared Atlassian account changed. Refresh before applying this action.",
         },
       };
+    if (intent.mutation.kind === "link")
+      return linkJiraIssue(intent.mutation, context.board, async () => {
+        const project = await this.ports.metadata.read(intent.binding.projectId);
+        if (
+          project.revision !== intent.expectedSettingsRevision ||
+          (await this.ports.account.read()).revision !== context.accountRevision
+        )
+          return failure(
+            "revision_conflict",
+            "Project Settings or the shared account changed. Refresh before applying this action.",
+          );
+        return { ok: true, value: true };
+      });
     if (!context.card)
       return {
         status: "rejected",
