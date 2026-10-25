@@ -179,6 +179,63 @@ it("updates reference evaluation with explicit source and rejects unsafe URLs", 
   expect(saved.metadata.status).toBe("proposed");
 });
 
+it.each([
+  { mode: "oversized", expected: "exceeds the 256 KiB source limit" },
+  { mode: "directory", expected: "symbolic link or non-regular file" },
+  { mode: "absent", expected: "absent at inspection" },
+])(
+  "discloses $mode README source gaps without inventing repository purpose or silently claiming absence",
+  async ({ mode, expected }) => {
+    const { root, service } = await fixture();
+    if (mode === "oversized") await writeFile(path.join(root, "README.md"), "x".repeat(262145));
+    if (mode === "directory") await mkdir(path.join(root, "README.md"));
+    const result = await initializeKnowledgeRoots({
+      service,
+      projectId: "project-a",
+      projectRoot: root,
+    });
+    expect(result.created).toHaveLength(6);
+    for (const slug of [
+      "background",
+      "architecture",
+      "flow",
+      "mindmap",
+      "stack",
+      "roadmap",
+    ] as const) {
+      const body = (await service.readRoot({ projectId: "project-a", slug }))?.body;
+      expect(body).toContain(
+        `\`README.md\`: ${mode === "absent" ? "" : "not inspected: "}${expected}.`,
+      );
+      expect(body).toContain("`package.json`: absent at inspection.");
+      expect(body).toContain("`docs/README.md`: absent at inspection.");
+      expect(body).not.toContain("No README is present");
+    }
+    expect((await service.readRoot({ projectId: "project-a", slug: "stack" }))?.body).toContain(
+      "Package behavior is unknown",
+    );
+    expect((await service.readRoot({ projectId: "project-a", slug: "flow" }))?.body).not.toContain(
+      "No package commands are declared",
+    );
+  },
+);
+
+it.each(["{broken", "[]"])(
+  "keeps invalid or non-object manifest evidence explicit (%s)",
+  async (manifest) => {
+    const { root, service } = await fixture();
+    await writeFile(path.join(root, "README.md"), "");
+    await writeFile(path.join(root, "package.json"), manifest);
+    await initializeKnowledgeRoots({ service, projectId: "project-a", projectRoot: root });
+    expect(
+      (await service.readRoot({ projectId: "project-a", slug: "background" }))?.body,
+    ).toContain("The inspected README is empty");
+    const body = (await service.readRoot({ projectId: "project-a", slug: "stack" }))?.body;
+    expect(body).toContain(manifest === "[]" ? "not a JSON object" : "could not be parsed");
+    expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(manifest);
+  },
+);
+
 it("bootstraps six source-backed roots explicitly and never overwrites authored or empty roots", async () => {
   const { root, service } = await fixture();
   await writeFile(path.join(root, "README.md"), "# Original project\n\nRepository purpose.\n");

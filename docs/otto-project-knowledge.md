@@ -78,6 +78,11 @@ authored roots, including empty files, are never overwritten. Root editing uses
 a separate whole-file digest and has no fabricated record review status. Explicit
 initialization creates a missing `knowledge/index.md` marker with root links;
 existing indexes remain unchanged. Reading a chat's catalog never initializes a store.
+Every generated root discloses the three candidate source files and explicit gaps:
+absent, non-regular/symbolic, outside-root or over the 256 KiB inspection limit.
+Skipped input is not described as nonexistent. Empty README content, malformed or
+non-object manifests, and uninspected package behavior remain explicit unknowns;
+initialization does not invent purpose, commands or stack details to fill them.
 
 ## MCP and UI
 
