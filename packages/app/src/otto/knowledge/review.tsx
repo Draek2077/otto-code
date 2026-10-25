@@ -292,8 +292,8 @@ export function KnowledgeArticleReview({
   const available = useHostFeature(scope.hostId, "ottoKnowledgeRefinement");
   const installation = usePaseo();
   const owner = useMemo(() => knowledgeReviewsFor(installation), [installation]);
-  useSyncExternalStore(owner.subscribe, owner.getSnapshot);
-  const model = owner.get(scope, target);
+  const readReview = useCallback(() => owner.get(scope, target) ?? null, [owner, scope, target]);
+  const model = useSyncExternalStore(owner.subscribe, readReview);
   const propose = useRpc(proposeKnowledgeRefinement);
   const mutate = useRpc(mutateKnowledge);
   const cache = useQueryClient();
