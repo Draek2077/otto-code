@@ -252,7 +252,9 @@ jobs:
       - &server_plugin_tests
         name: Run built-in plugin tests
         if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
-        run: npm run test --workspace=@getpaseo/builtin-plugins
+        # OTTO(ci): provider fixtures spawn child processes; serialize files so
+        # Windows runners do not contend across independent fake-provider hosts.
+        run: npm run test --workspace=@getpaseo/builtin-plugins -- --maxWorkers=1 --no-file-parallelism
 
       # OTTO(brain): fixture-only tests; no real models or downloads.
       - &server_brain_tests

@@ -16,7 +16,7 @@ import {
 import { test, expect } from "../support/fixtures";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
-import { gotoAppShell, openSettings } from "../support/helpers/app";
+import { gotoAppShell } from "../support/helpers/app";
 import { openWorkspaceContextMenu } from "../support/helpers/sidebar";
 import { getServerId } from "../support/helpers/server-id";
 import { getE2EDaemonPort } from "../support/helpers/daemon-port";
@@ -46,7 +46,11 @@ async function proveHostDefaults(input: {
     if (compact) {
       await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
     }
-    await openSettings(page);
+    // Settings remembers its last section. Follow the real control without
+    // requiring an unrelated General landing route before choosing Plugins.
+    const settingsButton = page.locator('[data-testid="sidebar-settings"]:visible').first();
+    await expect(settingsButton).toBeVisible();
+    await settingsButton.click();
     await page.getByTestId("settings-host-section-plugins").click();
     await page.getByRole("button", { name: "Configure Project Knowledge", exact: true }).click();
     const form = page.getByTestId("knowledge-host-defaults");
