@@ -3,7 +3,7 @@ import { gotoAppShell } from "../support/helpers/app";
 import { getServerId } from "../support/helpers/server-id";
 import type { Page } from "../support/fixtures";
 import { z } from "zod";
-import { callKnowledgeMcp as callAgentMcp } from "../support/helpers/otto-knowledge";
+import { callAgentMcp } from "../support/helpers/agent-mcp";
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true }, kanbanWithBoard: true });
 async function select(page: Page, label: string, option: string) {
