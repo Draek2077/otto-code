@@ -356,6 +356,11 @@ Focused fixtures cover canonical host/workspace binding, record operations,
 copy/switch and local form models. Browser acceptance exercises real wide/compact
 app controls against isolated daemon data; it never uses an installed Otto home.
 
-Abandoned-lock recovery and broader historical management/review features remain
-separate integration boundaries. The implementation does not claim those
-remaining behaviors or full F04 completion from focused service or form tests.
+The integrated surface includes explicit abandoned-lock recovery and reviewed
+article/root refinement through the canonical conditional writes described above.
+Wide and compact browser journeys exercise these operations against an isolated
+daemon, including declined confirmations, stale revisions and retained drafts.
+Provider-boundary fixtures exercise scoped generation; browser refinement uses
+direct replacements and does not establish a live model response. Native/device
+acceptance, the documented external-editor filesystem race and final exact-source
+product checks remain distinct from focused service, form and browser proof.
