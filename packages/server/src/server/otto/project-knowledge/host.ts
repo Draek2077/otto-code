@@ -12,6 +12,7 @@ import {
   releaseKnowledgeChanges,
   inspectKnowledgeFormat,
   applyKnowledgeFormat,
+  readKnowledgeReviewSignals,
   type KnowledgeScope,
   type KnowledgeCommand,
 } from "@getpaseo/plugin/otto/project-knowledge";
@@ -30,6 +31,7 @@ import { KnowledgeHostSettings } from "./host-settings.js";
 import { KnowledgeHostDefaultsError } from "./host-defaults.js";
 import { KnowledgeStorageSetupService } from "./storage-setup.js";
 import { knowledgeProjectFields as projectFields } from "./project-fields.js";
+import { KnowledgeReviewUnavailableError } from "./review-signals.js";
 import { KnowledgeBusyError, KnowledgeConflictError } from "./knowledge-files.js";
 import { KnowledgeRecordOperations, recordDetails } from "./record-operations.js";
 import { initializeKnowledgeRoots } from "./bootstrap.js";
@@ -283,6 +285,20 @@ export class KnowledgeDaemonService {
     const setupOperation = this.storageSetup.invoke(method, value);
     if (setupOperation) return this.guard(() => setupOperation);
     switch (method) {
+      case readKnowledgeReviewSignals.name:
+        return this.guard(async () => {
+          const input = readKnowledgeReviewSignals.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          return readKnowledgeReviewSignals.output.parse({
+            ok: true,
+            value: await this.service.reviewSignals({
+              projectId: project.projectId,
+              kind: input.kind,
+              id: input.id,
+              expectedRevision: input.expectedRevision,
+            }),
+          });
+        });
       case inspectKnowledgeFormat.name:
         return this.guard(async () => {
           const input = inspectKnowledgeFormat.input.parse(value);
@@ -408,6 +424,8 @@ export class KnowledgeDaemonService {
     try {
       return await run();
     } catch (error) {
+      if (error instanceof KnowledgeReviewUnavailableError)
+        return { ok: false, error: { code: "unavailable", message: error.message } };
       if (error instanceof KnowledgeHostDefaultsError)
         return { ok: false, error: { code: error.kind, message: error.message } };
       if (

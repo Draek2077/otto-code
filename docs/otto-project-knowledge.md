@@ -81,20 +81,21 @@ existing indexes remain unchanged. Reading a chat's catalog never initializes a 
 
 ## MCP and UI
 
-All providers receive the same ten tools through the existing Paseo tool catalog:
+All providers receive the same eleven tools through the existing Paseo tool catalog:
 
-| Tool                                  | Contract                                                                                                                           |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `list_project_knowledge`              | Confirmed metadata and root discovery by default; explicit inactive review, title/tag search and bounded pagination                |
-| `read_project_knowledge`              | One on-demand article and its complete retained history                                                                            |
-| `read_project_knowledge_root`         | One of the six on-demand root bodies                                                                                               |
-| `read_project_knowledge_policy`       | Optional custom Knowledge guidance from the canonical owning-host store, read only on demand                                       |
-| `inspect_project_knowledge_storage`   | Read-only captured setup choices for a missing Host directory identity; no implicit allocation or adoption                         |
-| `configure_project_knowledge_storage` | Human-approved, revision-pinned Repository choice, fresh Host allocation or exact offered retained-store binding                   |
-| `lint_project_knowledge_links`        | Read-only bounded link health for current confirmed pages and roots, with source identities and revisions                          |
-| `inspect_project_knowledge_format`    | Read-only revision-pinned preview of known older Markdown and v1 JSON conversions                                                  |
-| `migrate_project_knowledge_format`    | Explicit human-approved conversion with verified byte recovery and no identity rewriting                                           |
-| `manage_project_knowledge`            | Draft creation, reason-bearing changes, evidence, review, delivery, references, roots, explicit initialization and confirmed purge |
+| Tool                                    | Contract                                                                                                                           |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `list_project_knowledge`                | Confirmed metadata and root discovery by default; explicit inactive review, title/tag search and bounded pagination                |
+| `read_project_knowledge`                | One on-demand article and its complete retained history                                                                            |
+| `read_project_knowledge_review_signals` | Revision-pinned, read-only counted diagnostics for one article; no related article bodies or inferred review authority             |
+| `read_project_knowledge_root`           | One of the six on-demand root bodies                                                                                               |
+| `read_project_knowledge_policy`         | Optional custom Knowledge guidance from the canonical owning-host store, read only on demand                                       |
+| `inspect_project_knowledge_storage`     | Read-only captured setup choices for a missing Host directory identity; no implicit allocation or adoption                         |
+| `configure_project_knowledge_storage`   | Human-approved, revision-pinned Repository choice, fresh Host allocation or exact offered retained-store binding                   |
+| `lint_project_knowledge_links`          | Read-only bounded link health for current confirmed pages and roots, with source identities and revisions                          |
+| `inspect_project_knowledge_format`      | Read-only revision-pinned preview of known older Markdown and v1 JSON conversions                                                  |
+| `migrate_project_knowledge_format`      | Explicit human-approved conversion with verified byte recovery and no identity rewriting                                           |
+| `manage_project_knowledge`              | Draft creation, reason-bearing changes, evidence, review, delivery, references, roots, explicit initialization and confirmed purge |
 
 Tools resolve the chat workspace by default. Outside a chat, callers supply a
 workspace ID. A restricted chat cannot redirect Knowledge to another workspace.
@@ -132,6 +133,20 @@ revision-pinned edit. Checking never repairs, confirms, initializes or deletes d
 Editing captures the opened revision; peer conflicts retain the draft and block
 another save. Cancel/discard is explicit. Hide/unmount invalidates pending review
 confirmations and late write acknowledgments, without claiming host cancellation.
+
+Each article retains its collapsed **Review signals** section. Opening it reads
+counted bullets for identical complete tag sets, partial tag overlap, overlapping
+current truth and stale review. Only confirmed atomic records participate in
+overlap; broad project/reference records receive only the stale-date check.
+Tag sets are unique trimmed tags; truth overlap requires three distinct shared
+words of at least five ASCII characters, ignoring case and timeline history.
+These are inspection hints, not conclusions. Staleness means the record's last
+changed timestamp is more than 180 days old; it does not infer a human review date.
+The operation pins the source digest, caps inspection at 2,000 peers, 512 KiB per
+statement and 16 MiB of peer statements, and fails explicitly beyond those bounds.
+No counts, peer lists or findings are persisted, and no review status changes.
+The section fetches only while expanded on an active surface, refreshes after
+external changes and exposes the same sanitized count result through MCP.
 
 Permanently delete requires a reason and a destructive human confirmation. It
 removes the canonical page and its full history, repairs incoming wiki-links in

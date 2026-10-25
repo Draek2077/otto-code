@@ -24,6 +24,7 @@ import {
   type KnowledgeStoreResolver,
 } from "./store-resolver.js";
 import { removeWikiLinksTo, wikiLinks } from "./links.js";
+import { inspectReviewSignals } from "./review-signals.js";
 
 export const knowledgeRoots = [
   "background",
@@ -140,6 +141,17 @@ export class KnowledgeService {
   async read(input: RecordTarget): Promise<KnowledgeDocument> {
     const store = await this.ports.resolver.resolve(input.projectId);
     return this.readFromStore(store, input);
+  }
+
+  async reviewSignals(input: RecordTarget & { expectedRevision: string }) {
+    const store = await this.ports.resolver.resolve(input.projectId);
+    const pages = await this.documents(store);
+    const source = pages.find(
+      (page) => page.metadata.kind === input.kind && page.metadata.id === input.id,
+    );
+    if (!source) throw new KnowledgeNotFoundError();
+    if (source.revision !== input.expectedRevision) throw new KnowledgeConflictError();
+    return inspectReviewSignals({ source, pages, now: this.ports.now() });
   }
 
   async readRoot(input: { projectId: string; slug: KnowledgeRoot }): Promise<{

@@ -12,6 +12,8 @@ import {
   inspectKnowledgeStorage,
   bindKnowledgeStorage,
   KnowledgeStorageChoiceSchema,
+  readKnowledgeReviewSignals,
+  KnowledgeKindSchema,
   type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import type { PaseoToolDefinition } from "../../agent/tools/types.js";
@@ -57,6 +59,25 @@ export function createKnowledgeTools(
     },
   });
   return [
+    tool(
+      "read_project_knowledge_review_signals",
+      "Read revision-pinned diagnostic counts for one article: identical complete tag sets, partial tag overlap, overlapping current truth and stale review. Only confirmed records participate; broad charters/references do not receive overlap hints. Counts are not conclusions, include no related article bodies, and never mutate or confirm Knowledge.",
+      z
+        .object({
+          workspaceId,
+          kind: KnowledgeKindSchema,
+          id: z.string().min(1),
+          expectedRevision: z.string().length(64),
+        })
+        .strict(),
+      async (input) =>
+        host.invoke(readKnowledgeReviewSignals.name, {
+          scope: await scopeForWorkspace(input.workspaceId),
+          kind: input.kind,
+          id: input.id,
+          expectedRevision: input.expectedRevision,
+        }),
+    ),
     tool(
       "inspect_project_knowledge_storage",
       "Read a bounded, revision-pinned setup preview when a project's Host store has no persisted directory identity. Matching retained 0.9 ownership markers are offered explicitly; other directories stay untouched. Never initializes, adopts or migrates data.",

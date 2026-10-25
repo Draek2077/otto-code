@@ -22,6 +22,7 @@ import {
   saveKnowledgeHostDefaults,
   inspectKnowledgeStorage,
   bindKnowledgeStorage,
+  readKnowledgeReviewSignals,
 } from "@getpaseo/plugin/otto/project-knowledge";
 
 const parent = fileURLToPath(new URL("../../../../../../.tmp/knowledge-host/", import.meta.url));
@@ -639,6 +640,89 @@ it("discovers custom host-owned Knowledge guidance without injecting its body an
     value: { body: policy, custom: true },
   });
   expect(await readFile(path.join(f.repo, ".otto/KNOWLEDGE.md"), "utf8")).toBe(policy);
+});
+
+it("shares revision-pinned read-only review counts across RPC and MCP and rejects stale or foreign scope", async () => {
+  const f = await fixture();
+  await f.create();
+  const target = { projectId: "project-a", kind: "requirement", id: "fixture-page" } as const;
+  const draft = await f.host.service.read(target);
+  const source = await f.host.records.review({
+    ...target,
+    expectedRevision: draft.revision,
+    status: "confirmed",
+    reason: "Explicit fixture agreement",
+  });
+  const peer = await f.host.service.createDraft({
+    projectId: target.projectId,
+    kind: "finding",
+    id: "peer",
+    title: "Private peer title",
+    statement: "Private peer body",
+    tags: ["fixture"],
+  });
+  await f.host.records.review({
+    projectId: target.projectId,
+    kind: "finding",
+    id: "peer",
+    expectedRevision: peer.revision,
+    status: "confirmed",
+    reason: "Explicit fixture agreement",
+  });
+  const file = path.join(f.repo, ".otto/knowledge/requirements/fixture-page.md");
+  const before = await readFile(file);
+  const notifications = [...f.notifications];
+  const input = {
+    scope: f.scope,
+    kind: target.kind,
+    id: target.id,
+    expectedRevision: source.revision,
+  };
+  const rpc = readKnowledgeReviewSignals.output.parse(
+    await f.host.invoke(readKnowledgeReviewSignals.name, input),
+  );
+  expect(rpc).toMatchObject({
+    ok: true,
+    value: {
+      sourceRevision: source.revision,
+      comparedRecords: 1,
+      identicalTagSets: 1,
+      partialTagOverlap: 0,
+      overlappingTruth: 0,
+    },
+  });
+  expect(JSON.stringify(rpc)).not.toContain("Private peer");
+  expect(JSON.stringify(rpc)).not.toContain(f.repo);
+  const tool = createKnowledgeTools(f.host, async () => f.scope).find(
+    (entry) => entry.name === "read_project_knowledge_review_signals",
+  );
+  if (!tool) throw new Error("Missing review tool");
+  expect(
+    (
+      await tool.handler(
+        { kind: target.kind, id: target.id, expectedRevision: source.revision },
+        {},
+      )
+    ).structuredContent,
+  ).toEqual(rpc);
+  expect(await readFile(file)).toEqual(before);
+  expect(f.notifications).toEqual(notifications);
+  expect(
+    await f.host.invoke(readKnowledgeReviewSignals.name, {
+      ...input,
+      scope: { ...f.scope, hostId: "foreign" },
+    }),
+  ).toMatchObject({ ok: false, error: { code: "wrong_host" } });
+  await f.host.service.appendEvidence({
+    ...target,
+    expectedRevision: source.revision,
+    text: "New evidence",
+    source: "Fixture",
+  });
+  expect(await f.host.invoke(readKnowledgeReviewSignals.name, input)).toMatchObject({
+    ok: false,
+    error: { code: "conflict" },
+  });
 });
 
 it("shares bounded link-health RPC and MCP results through the canonical workspace binding", async () => {

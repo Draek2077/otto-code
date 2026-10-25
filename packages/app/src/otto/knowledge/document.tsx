@@ -15,6 +15,7 @@ import { Alert } from "@/components/ui/alert";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
 import type { EditorSeed } from "./editor-model";
 import { styles } from "./styles";
+import { KnowledgeReviewSignals } from "./review-signals";
 
 export type KnowledgeSelection =
   | { type: "page"; kind: KnowledgeRecord["kind"]; id: string }
@@ -51,7 +52,7 @@ function PageActions({ page, onEdit }: { page: KnowledgeRecord; onEdit(seed: Edi
           Evaluate reference
         </Button>
       ) : null}
-      <Button onPress={purge} variant="destructive" size="sm">
+      <Button onPress={purge} variant="outline" size="sm">
         Permanently delete
       </Button>
     </View>
@@ -61,16 +62,21 @@ function PageArticle({
   page,
   scope,
   onEdit,
+  active,
 }: {
   page: KnowledgeRecord;
   scope: KnowledgeScope;
   onEdit(seed: EditorSeed): void;
+  active: boolean;
 }) {
   const status = { proposed: "Draft", confirmed: "Confirmed", superseded: "History" }[page.status];
   const timeline = `\`\`\`yaml\n${page.timeline}\n\`\`\``;
   return (
     <SettingsSection title={page.title}>
-      <SettingsRow label={status} hint={`${page.kind} · ${page.tags.join(", ")}`} />
+      <SettingsRow
+        label={status}
+        hint={[page.kind, page.tags.join(", ")].filter(Boolean).join(" · ")}
+      />
       {page.deliveryStatus ? (
         <SettingsRow
           label={`Delivery: ${page.deliveryStatus}`}
@@ -89,6 +95,9 @@ function PageArticle({
       ) : null}
       <PageActions page={page} onEdit={onEdit} />
       <MarkdownRenderer text={page.statement} serverId={scope.hostId} />
+      <SettingsExpander label="Review signals">
+        <KnowledgeReviewSignals scope={scope} page={page} active={active} />
+      </SettingsExpander>
       <SettingsExpander label="History">
         <MarkdownRenderer text={timeline} />
       </SettingsExpander>
@@ -167,7 +176,7 @@ export function KnowledgeDocument({
   if (query.error) return <Alert variant="error" description={query.error.message} />;
   if (!query.data) return <SettingsRow label="Loading Knowledge..." />;
   if (query.data.type === "page")
-    return <PageArticle page={query.data.page} scope={scope} onEdit={onEdit} />;
+    return <PageArticle page={query.data.page} scope={scope} onEdit={onEdit} active={active} />;
   if (selection.type !== "root") return null;
   return (
     <RootArticle

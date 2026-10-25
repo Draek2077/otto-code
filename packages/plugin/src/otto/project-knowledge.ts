@@ -147,6 +147,30 @@ export const bindKnowledgeStorage = defineRpc({
 });
 export type KnowledgeStorageSetup = z.infer<typeof KnowledgeStorageSetupSchema>;
 export type KnowledgeStorageChoice = z.infer<typeof KnowledgeStorageChoiceSchema>;
+const KnowledgeReviewSignalsSchema = z.object({
+  sourceRevision: revision,
+  checkedAt: z.string(),
+  eligible: z.boolean(),
+  comparedRecords: z.number().int().nonnegative(),
+  identicalTagSets: z.number().int().nonnegative(),
+  partialTagOverlap: z.number().int().nonnegative(),
+  overlappingTruth: z.number().int().nonnegative(),
+  stale: z.boolean(),
+  ageDays: z.number().int().nonnegative(),
+});
+export const readKnowledgeReviewSignals = defineRpc({
+  name: "knowledge.project.review_signals.read.request",
+  input: z
+    .object({
+      scope: KnowledgeScopeSchema,
+      kind: KnowledgeKindSchema,
+      id,
+      expectedRevision: revision,
+    })
+    .strict(),
+  output: result(KnowledgeReviewSignalsSchema),
+});
+export type KnowledgeReviewSignals = z.infer<typeof KnowledgeReviewSignalsSchema>;
 const pageTarget = { kind: KnowledgeKindSchema, id };
 const editTarget = { ...pageTarget, expectedRevision: revision };
 export const KnowledgeCommandSchema = z.discriminatedUnion("action", [
