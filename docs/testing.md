@@ -258,6 +258,8 @@ packaging remains a build gate.
 
 | Knowledge article review | `packages/app/e2e/browser/otto-knowledge-review.spec.ts`: wide/compact counted Review signals in the existing article expander, identical/partial tag separation, current-truth and stale-date hints, real MCP parity, unchanged file bytes, and automatic refreshed counts after an external peer edit. No related-article view or persisted diagnostic records. |
 
+| Knowledge write-lock recovery | `packages/app/e2e/browser/otto-knowledge-lock.spec.ts`: wide/compact blocked-draft retention, read-only inspection, explicit no-writer verification and reason, declined/accepted confirmation, unchanged article bytes, retained recovery claim, real MCP unlocked state, and a separate fresh write. No automatic lock expiry or retry. |
+
 The Otto App Acceptance workflow always runs all Otto journeys for pushes and pull
 requests. Manual dispatch accepts an exact `checkout_ref` and a bounded `journey`
 selection: `all`, `knowledge`, or `brain-cancellation`. The cancellation diagnostic

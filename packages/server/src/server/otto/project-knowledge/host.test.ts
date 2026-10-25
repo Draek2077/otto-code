@@ -23,6 +23,8 @@ import {
   inspectKnowledgeStorage,
   bindKnowledgeStorage,
   readKnowledgeReviewSignals,
+  inspectKnowledgeWriteLock,
+  recoverKnowledgeWriteLock,
 } from "@getpaseo/plugin/otto/project-knowledge";
 
 const parent = fileURLToPath(new URL("../../../../../../.tmp/knowledge-host/", import.meta.url));
@@ -640,6 +642,53 @@ it("discovers custom host-owned Knowledge guidance without injecting its body an
     value: { body: policy, custom: true },
   });
   expect(await readFile(path.join(f.repo, ".otto/KNOWLEDGE.md"), "utf8")).toBe(policy);
+});
+
+it("requires the same revision and explicit no-writer verification for recovery through RPC and MCP", async () => {
+  const f = await fixture();
+  await f.create();
+  const store = await f.host.resolver.resolve("project-a");
+  const lock = path.join(store.base, "knowledge/.write-lock");
+  await mkdir(lock);
+  const file = path.join(store.base, "knowledge/requirements/fixture-page.md");
+  const bytes = await readFile(file);
+  const plan = inspectKnowledgeWriteLock.output.parse(
+    await f.host.invoke(inspectKnowledgeWriteLock.name, { scope: f.scope }),
+  );
+  if (!plan.ok) throw new Error(plan.error.message);
+  expect(plan.value.state).toBe("unverified");
+  const tool = createKnowledgeTools(f.host, async () => f.scope).find(
+    (entry) => entry.name === "recover_project_knowledge_lock",
+  );
+  if (!tool) throw new Error("Missing recovery tool");
+  const input = {
+    expectedRevision: plan.value.revision,
+    reason: "Human verified all writers stopped",
+    userVerifiedNoActiveWriter: false,
+  };
+  expect((await tool.handler(input, {})).structuredContent).toMatchObject({
+    ok: false,
+    error: { code: "invalid" },
+  });
+  expect(await readdir(lock)).toEqual([]);
+  expect(
+    await f.host.invoke(recoverKnowledgeWriteLock.name, {
+      scope: { ...f.scope, hostId: "other" },
+      ...input,
+      userVerifiedNoActiveWriter: true,
+    }),
+  ).toMatchObject({ ok: false, error: { code: "wrong_host" } });
+  expect(
+    (await tool.handler({ ...input, userVerifiedNoActiveWriter: true }, {})).structuredContent,
+  ).toMatchObject({ ok: true });
+  expect(await readFile(file)).toEqual(bytes);
+  expect(
+    await f.host.invoke(recoverKnowledgeWriteLock.name, {
+      scope: f.scope,
+      ...input,
+      userVerifiedNoActiveWriter: true,
+    }),
+  ).toMatchObject({ ok: false, error: { code: "conflict" } });
 });
 
 it("shares revision-pinned read-only review counts across RPC and MCP and rejects stale or foreign scope", async () => {

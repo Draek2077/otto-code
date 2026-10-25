@@ -86,7 +86,7 @@ initialization does not invent purpose, commands or stack details to fill them.
 
 ## MCP and UI
 
-All providers receive the same eleven tools through the existing Paseo tool catalog:
+All providers receive the same thirteen tools through the existing Paseo tool catalog:
 
 | Tool                                    | Contract                                                                                                                           |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -101,6 +101,10 @@ All providers receive the same eleven tools through the existing Paseo tool cata
 | `inspect_project_knowledge_format`      | Read-only revision-pinned preview of known older Markdown and v1 JSON conversions                                                  |
 | `migrate_project_knowledge_format`      | Explicit human-approved conversion with verified byte recovery and no identity rewriting                                           |
 | `manage_project_knowledge`              | Draft creation, reason-bearing changes, evidence, review, delivery, references, roots, explicit initialization and confirmed purge |
+
+The additional recovery tools are `inspect_project_knowledge_lock` (read-only
+captured lock state) and `recover_project_knowledge_lock` (revision-pinned empty
+lock recovery with a reason and explicit verification that all writers stopped).
 
 Tools resolve the chat workspace by default. Outside a chat, callers supply a
 workspace ID. A restricted chat cannot redirect Knowledge to another workspace.
@@ -176,6 +180,29 @@ release demand, paired-session disconnects release their leases, and daemon
 shutdown awaits observation teardown. Heartbeats do not poll the filesystem or
 invalidate unchanged data. Observation failures show a disconnected notice and
 use bounded reconnection; manual Refresh remains available.
+
+## Explicit write-lock recovery
+
+Knowledge settings and blocked editors expose manual lock inspection. Reading is
+inert. A pending or active writer in this daemon prevents recovery. An empty lock
+has no durable ownership proof, so age never establishes abandonment: the person
+must verify that every writer using that store has stopped, including other
+daemons, supply a reason and confirm recovery against the captured revision.
+
+Only the exact inspected empty directory can be recovered. Unknown contents,
+non-directories and prior recovery claims are refused. An exclusively created
+claim arbitrates cooperating recovery attempts; the directory identity is checked
+again before the lock is renamed to `.recovered-write-lock-<opaque-id>` beside it.
+The retained claim records the reason and inspected revision. No articles, roots,
+settings, pending writes or staged files are moved, deleted or replayed. A crashed
+recovery claim requires owning-host inspection; there is no automatic takeover.
+As with other filesystem writes, external processes do not participate in Otto's
+queues, and the final check-to-rename interval is not a filesystem transaction.
+
+Failures or unknown outcomes retain the local reason and block another recovery
+until fresh inspection and renewed verification. Hide/unmount invalidates pending
+confirmation and acknowledgments. A blocked article draft stays blocked and intact
+after recovery; a later write requires a fresh article read and explicit intent.
 
 ## Explicit storage changes
 

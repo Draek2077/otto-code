@@ -171,6 +171,29 @@ export const readKnowledgeReviewSignals = defineRpc({
   output: result(KnowledgeReviewSignalsSchema),
 });
 export type KnowledgeReviewSignals = z.infer<typeof KnowledgeReviewSignalsSchema>;
+const KnowledgeLockInspectionSchema = z.object({
+  revision,
+  state: z.enum(["unlocked", "busy", "unverified", "unsupported"]),
+  message: z.string(),
+});
+export type KnowledgeLockInspection = z.infer<typeof KnowledgeLockInspectionSchema>;
+export const inspectKnowledgeWriteLock = defineRpc({
+  name: "knowledge.project.write_lock.inspect.request",
+  input: z.object({ scope: KnowledgeScopeSchema }).strict(),
+  output: result(KnowledgeLockInspectionSchema),
+});
+export const recoverKnowledgeWriteLock = defineRpc({
+  name: "knowledge.project.write_lock.recover.request",
+  input: z
+    .object({
+      scope: KnowledgeScopeSchema,
+      expectedRevision: revision,
+      reason,
+      userVerifiedNoActiveWriter: z.boolean(),
+    })
+    .strict(),
+  output: result(z.object({ recoveryName: z.string() })),
+});
 const pageTarget = { kind: KnowledgeKindSchema, id };
 const editTarget = { ...pageTarget, expectedRevision: revision };
 export const KnowledgeCommandSchema = z.discriminatedUnion("action", [

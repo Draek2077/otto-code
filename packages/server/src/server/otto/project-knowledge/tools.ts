@@ -13,6 +13,8 @@ import {
   bindKnowledgeStorage,
   KnowledgeStorageChoiceSchema,
   readKnowledgeReviewSignals,
+  inspectKnowledgeWriteLock,
+  recoverKnowledgeWriteLock,
   KnowledgeKindSchema,
   type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
@@ -59,6 +61,34 @@ export function createKnowledgeTools(
     },
   });
   return [
+    tool(
+      "inspect_project_knowledge_lock",
+      "Inspect the selected owning-host Knowledge write lock without changing it. A pending writer in this daemon blocks recovery. An empty legacy lock does not prove abandonment; verify writers on every daemon using the store. Unknown lock contents are never moved automatically.",
+      z.object({ workspaceId }).strict(),
+      async (input) =>
+        host.invoke(inspectKnowledgeWriteLock.name, {
+          scope: await scopeForWorkspace(input.workspaceId),
+        }),
+    ),
+    tool(
+      "recover_project_knowledge_lock",
+      "Recover only a freshly inspected empty Knowledge lock after the user explicitly verifies that every writer using this store has stopped. Requires its captured revision, a reason and userVerifiedNoActiveWriter=true. Retains the old lock and reason as recovery evidence; never moves articles/roots/settings, deletes files, retries writes or treats age as proof of abandonment.",
+      z
+        .object({
+          workspaceId,
+          expectedRevision: z.string().length(64),
+          reason: z.string().trim().min(1).max(2000),
+          userVerifiedNoActiveWriter: z.boolean(),
+        })
+        .strict(),
+      async (input) =>
+        host.invoke(recoverKnowledgeWriteLock.name, {
+          scope: await scopeForWorkspace(input.workspaceId),
+          expectedRevision: input.expectedRevision,
+          reason: input.reason,
+          userVerifiedNoActiveWriter: input.userVerifiedNoActiveWriter,
+        }),
+    ),
     tool(
       "read_project_knowledge_review_signals",
       "Read revision-pinned diagnostic counts for one article: identical complete tag sets, partial tag overlap, overlapping current truth and stale review. Only confirmed records participate; broad charters/references do not receive overlap hints. Counts are not conclusions, include no related article bodies, and never mutate or confirm Knowledge.",

@@ -19,6 +19,7 @@ import { styles } from "./styles";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { KnowledgeLockRecovery } from "./lock-recovery";
 
 type TextField =
   | "id"
@@ -267,6 +268,7 @@ export function KnowledgeEditor({
       testID="knowledge-editor"
     >
       {state.error ? <Alert variant="error" description={state.error} /> : null}
+      {state.blocked ? <KnowledgeLockRecovery scope={scope} active={retained && visible} /> : null}
       <EditorFields model={model} />
       <View style={styles.actions}>
         <Button onPress={cancel} disabled={state.busy} variant="outline">

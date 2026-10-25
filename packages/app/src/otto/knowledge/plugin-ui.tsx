@@ -30,6 +30,7 @@ import { KnowledgeLinkHealth } from "./link-health";
 import { KnowledgeFormat } from "./format";
 import { KnowledgeHostDefaults } from "./host-defaults";
 import { KnowledgeStorageSetup } from "./setup";
+import { KnowledgeLockRecovery } from "./lock-recovery";
 
 function KnowledgeBody({
   scope,
@@ -125,6 +126,7 @@ function KnowledgeBody({
         </Button>
         <KnowledgeStorageSetup scope={scope} active={active} />
         <KnowledgeFormat key="format" scope={scope} active={active} />
+        <KnowledgeLockRecovery scope={scope} active={active} />
       </>
     );
   if (!catalog.data) return <SettingsRow label="Loading Project Knowledge..." />;
@@ -133,6 +135,7 @@ function KnowledgeBody({
       <>
         <KnowledgeStorage scope={scope} settings={catalog.data.settings} onChanged={refresh} />
         <KnowledgeFormat key="format" scope={scope} active={active} />
+        <KnowledgeLockRecovery scope={scope} active={active} />
       </>
     );
   return (

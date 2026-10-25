@@ -31,6 +31,13 @@ export class KnowledgeBusyError extends Error {
 
 const queues = new Map<string, Promise<unknown>>();
 
+/** Recovery never takes over an admitted writer in this daemon, including one
+ * still waiting for the cooperative filesystem lock. */
+export function knowledgeWriterPending(store: KnowledgeStore): boolean {
+  const key = process.platform === "win32" ? store.base.toLowerCase() : store.base;
+  return queues.has(key);
+}
+
 export interface KnowledgeReplacementPorts {
   openStagedFile: (file: string) => Promise<FileHandle>;
   renameFile: (source: string, target: string) => Promise<void>;

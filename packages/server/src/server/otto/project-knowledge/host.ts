@@ -13,6 +13,8 @@ import {
   inspectKnowledgeFormat,
   applyKnowledgeFormat,
   readKnowledgeReviewSignals,
+  inspectKnowledgeWriteLock,
+  recoverKnowledgeWriteLock,
   type KnowledgeScope,
   type KnowledgeCommand,
 } from "@getpaseo/plugin/otto/project-knowledge";
@@ -32,6 +34,11 @@ import { KnowledgeHostDefaultsError } from "./host-defaults.js";
 import { KnowledgeStorageSetupService } from "./storage-setup.js";
 import { knowledgeProjectFields as projectFields } from "./project-fields.js";
 import { KnowledgeReviewUnavailableError } from "./review-signals.js";
+import {
+  inspectKnowledgeLock,
+  recoverKnowledgeLock,
+  KnowledgeLockRecoveryError,
+} from "./lock-recovery.js";
 import { KnowledgeBusyError, KnowledgeConflictError } from "./knowledge-files.js";
 import { KnowledgeRecordOperations, recordDetails } from "./record-operations.js";
 import { initializeKnowledgeRoots } from "./bootstrap.js";
@@ -285,6 +292,30 @@ export class KnowledgeDaemonService {
     const setupOperation = this.storageSetup.invoke(method, value);
     if (setupOperation) return this.guard(() => setupOperation);
     switch (method) {
+      case inspectKnowledgeWriteLock.name:
+        return this.guard(async () => {
+          const input = inspectKnowledgeWriteLock.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          const store = await this.resolver.resolve(project.projectId);
+          return inspectKnowledgeWriteLock.output.parse({
+            ok: true,
+            value: await inspectKnowledgeLock(store),
+          });
+        });
+      case recoverKnowledgeWriteLock.name:
+        return this.guard(async () => {
+          const input = recoverKnowledgeWriteLock.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          const store = await this.resolver.resolve(project.projectId);
+          const result = await recoverKnowledgeLock({
+            store,
+            expectedRevision: input.expectedRevision,
+            reason: input.reason,
+            userVerifiedNoActiveWriter: input.userVerifiedNoActiveWriter,
+          });
+          this.observations.notify(project.projectId);
+          return recoverKnowledgeWriteLock.output.parse({ ok: true, value: result });
+        });
       case readKnowledgeReviewSignals.name:
         return this.guard(async () => {
           const input = readKnowledgeReviewSignals.input.parse(value);
@@ -424,6 +455,8 @@ export class KnowledgeDaemonService {
     try {
       return await run();
     } catch (error) {
+      if (error instanceof KnowledgeLockRecoveryError)
+        return { ok: false, error: { code: error.code, message: error.message } };
       if (error instanceof KnowledgeReviewUnavailableError)
         return { ok: false, error: { code: "unavailable", message: error.message } };
       if (error instanceof KnowledgeHostDefaultsError)
