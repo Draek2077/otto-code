@@ -7,6 +7,9 @@ host settings and an Open Project Knowledge command. Workspace right-click and
 action menus open the panel for the clicked workspace, even when another
 workspace is active. App-owned forms and Markdown rendering remain in
 `packages/app/src/otto/knowledge/` behind a narrow typed presentation bridge.
+The single app boundary checks `server_info.features.ottoKnowledge` before loading
+operational surfaces. An older host receives an update-host message; it does not
+fan out across older operations to simulate this feature.
 
 ## Ownership and resolution
 
@@ -36,6 +39,23 @@ moves stores or deletes recovery copies. External editors do not join the
 daemon's queues, so the final compare/rename interval remains a filesystem limit.
 Changing a default does not allocate a missing host directory identity.
 
+When an inherited or explicit Host store has no persisted directory identity,
+the Knowledge error surface exposes explicit storage setup. Inspection is read-only
+and pins the project revision, host default and retained ownership markers. It
+offers known `project.json` markers matching the stable project ID or canonical
+root; directories already bound to another project, including archived projects,
+are excluded. Other directories are retained and never selected automatically.
+Matching previews are bounded to 100 entries and 24,000 bytes.
+
+The user explicitly chooses Repository instead of the Host default, a new empty
+Host store, or an offered retained store. Confirmation persists the project setting
+under the canonical registry queue. New Host identities are opaque, allocated once
+and saved before marker creation; changing a project name cannot rederive them.
+Retained-store binding rechecks the captured marker under that queue and never
+rewrites existing records, roots, policy or history. A marker-publication failure
+keeps the saved identity and requires a fresh read rather than rollback or another
+automatic allocation. Root initialization remains a separate explicit action.
+
 ## Records and roots
 
 Catalog reads return metadata and full-file digests, with confirmed records only
@@ -61,18 +81,20 @@ existing indexes remain unchanged. Reading a chat's catalog never initializes a 
 
 ## MCP and UI
 
-All providers receive the same eight tools through the existing Paseo tool catalog:
+All providers receive the same ten tools through the existing Paseo tool catalog:
 
-| Tool                               | Contract                                                                                                                           |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `list_project_knowledge`           | Confirmed metadata and root discovery by default; explicit inactive review, title/tag search and bounded pagination                |
-| `read_project_knowledge`           | One on-demand article and its complete retained history                                                                            |
-| `read_project_knowledge_root`      | One of the six on-demand root bodies                                                                                               |
-| `read_project_knowledge_policy`    | Optional custom Knowledge guidance from the canonical owning-host store, read only on demand                                       |
-| `lint_project_knowledge_links`     | Read-only bounded link health for current confirmed pages and roots, with source identities and revisions                          |
-| `inspect_project_knowledge_format` | Read-only revision-pinned preview of known older Markdown and v1 JSON conversions                                                  |
-| `migrate_project_knowledge_format` | Explicit human-approved conversion with verified byte recovery and no identity rewriting                                           |
-| `manage_project_knowledge`         | Draft creation, reason-bearing changes, evidence, review, delivery, references, roots, explicit initialization and confirmed purge |
+| Tool                                  | Contract                                                                                                                           |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `list_project_knowledge`              | Confirmed metadata and root discovery by default; explicit inactive review, title/tag search and bounded pagination                |
+| `read_project_knowledge`              | One on-demand article and its complete retained history                                                                            |
+| `read_project_knowledge_root`         | One of the six on-demand root bodies                                                                                               |
+| `read_project_knowledge_policy`       | Optional custom Knowledge guidance from the canonical owning-host store, read only on demand                                       |
+| `inspect_project_knowledge_storage`   | Read-only captured setup choices for a missing Host directory identity; no implicit allocation or adoption                         |
+| `configure_project_knowledge_storage` | Human-approved, revision-pinned Repository choice, fresh Host allocation or exact offered retained-store binding                   |
+| `lint_project_knowledge_links`        | Read-only bounded link health for current confirmed pages and roots, with source identities and revisions                          |
+| `inspect_project_knowledge_format`    | Read-only revision-pinned preview of known older Markdown and v1 JSON conversions                                                  |
+| `migrate_project_knowledge_format`    | Explicit human-approved conversion with verified byte recovery and no identity rewriting                                           |
+| `manage_project_knowledge`            | Draft creation, reason-bearing changes, evidence, review, delivery, references, roots, explicit initialization and confirmed purge |
 
 Tools resolve the chat workspace by default. Outside a chat, callers supply a
 workspace ID. A restricted chat cannot redirect Knowledge to another workspace.
@@ -221,6 +243,6 @@ Focused fixtures cover canonical host/workspace binding, record operations,
 copy/switch and local form models. Browser acceptance exercises real wide/compact
 app controls against isolated daemon data; it never uses an installed Otto home.
 
-Abandoned-lock recovery, host-wide default editing and broader historical management/review features remain
+Abandoned-lock recovery and broader historical management/review features remain
 separate integration boundaries. The implementation does not claim those
 remaining behaviors or full F04 completion from focused service or form tests.

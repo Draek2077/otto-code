@@ -84,7 +84,7 @@ jobs:
               npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1
               ;;
             knowledge)
-              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-knowledge.spec.ts --workers=1 --retries=0 --max-failures=1
+              npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-knowledge.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1
               ;;
             brain-cancellation)
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-brain-operations.spec.ts --grep='canceling a running benchmark' --repeat-each=3 --workers=1 --retries=0 --max-failures=1

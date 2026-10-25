@@ -9,6 +9,9 @@ import {
   readKnowledgeLinkHealth,
   inspectKnowledgeFormat,
   applyKnowledgeFormat,
+  inspectKnowledgeStorage,
+  bindKnowledgeStorage,
+  KnowledgeStorageChoiceSchema,
   type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import type { PaseoToolDefinition } from "../../agent/tools/types.js";
@@ -54,6 +57,43 @@ export function createKnowledgeTools(
     },
   });
   return [
+    tool(
+      "inspect_project_knowledge_storage",
+      "Read a bounded, revision-pinned setup preview when a project's Host store has no persisted directory identity. Matching retained 0.9 ownership markers are offered explicitly; other directories stay untouched. Never initializes, adopts or migrates data.",
+      z.object({ workspaceId }).strict(),
+      async (input) =>
+        host.invoke(inspectKnowledgeStorage.name, {
+          scope: await scopeForWorkspace(input.workspaceId),
+        }),
+    ),
+    tool(
+      "configure_project_knowledge_storage",
+      "Resolve missing Host-store setup only after explicit human agreement and a prior storage inspection. Choose Repository, a new empty Host store, or an exact offered retained directory. Existing records, roots and history stay unchanged. Conflicts or unknown outcomes require a fresh inspection, never automatic retry.",
+      z
+        .object({
+          workspaceId,
+          expectedRevision: z.string().length(64),
+          choice: KnowledgeStorageChoiceSchema,
+          userApprovedStorageChange: z.boolean(),
+        })
+        .strict(),
+      async (input) => {
+        if (!input.userApprovedStorageChange)
+          return {
+            ok: false,
+            error: {
+              code: "invalid",
+              message:
+                "Explicit human agreement is required before binding a Knowledge host store.",
+            },
+          };
+        return host.invoke(bindKnowledgeStorage.name, {
+          scope: await scopeForWorkspace(input.workspaceId),
+          expectedRevision: input.expectedRevision,
+          choice: input.choice,
+        });
+      },
+    ),
     tool(
       "inspect_project_knowledge_format",
       "Inspect a revision-pinned conversion preview for the known older Markdown and v1 JSON formats on the owning host. This is read-only and returns bounded metadata, never article bodies. No store is initialized and no data is rewritten.",

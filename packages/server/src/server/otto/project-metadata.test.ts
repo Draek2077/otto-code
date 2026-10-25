@@ -41,6 +41,23 @@ async function fixture() {
   return { file, record, registry, metadata: registry.ottoMetadata, bytes };
 }
 
+it("keeps the original registry when final storage ownership validation fails", async () => {
+  const f = await fixture();
+  const origin = await f.metadata.read("project-1");
+  const before = await f.bytes();
+  await expect(
+    f.metadata.update({
+      projectId: "project-1",
+      expectedRevision: origin.revision,
+      patch: { knowledgeDirectoryName: "explicit-retained-choice" },
+      beforePublish: async () => {
+        throw new Error("Ownership marker changed while queued");
+      },
+    }),
+  ).rejects.toThrow("Ownership marker changed");
+  expect(await f.bytes()).toBe(before);
+});
+
 it("keeps initialized inherited stores, including archived projects, under the project queue through default publication", async () => {
   const f = await fixture();
   const inherited = { ...f.record, knowledgeLocation: null };

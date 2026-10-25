@@ -29,6 +29,7 @@ import { useKnowledgeChanges } from "./use-knowledge-changes";
 import { KnowledgeLinkHealth } from "./link-health";
 import { KnowledgeFormat } from "./format";
 import { KnowledgeHostDefaults } from "./host-defaults";
+import { KnowledgeStorageSetup } from "./setup";
 
 function KnowledgeBody({
   scope,
@@ -122,6 +123,7 @@ function KnowledgeBody({
         <Button variant="outline" onPress={refresh}>
           Retry
         </Button>
+        <KnowledgeStorageSetup scope={scope} active={active} />
         <KnowledgeFormat key="format" scope={scope} active={active} />
       </>
     );

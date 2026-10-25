@@ -40,7 +40,9 @@ test("manual diagnostics stay bounded while every push and pull request retains 
   assert.ok(source.includes("options: [all, knowledge, brain-cancellation]"));
   assert.ok(source.includes("github.event_name == 'workflow_dispatch' && inputs.journey || 'all'"));
   assert.ok(
-    source.includes("e2e/browser/otto-knowledge.spec.ts --workers=1 --retries=0 --max-failures=1"),
+    source.includes(
+      "'e2e/browser/otto-knowledge.*\\.spec\\.ts$' --workers=1 --retries=0 --max-failures=1",
+    ),
   );
   assert.ok(
     source.includes(

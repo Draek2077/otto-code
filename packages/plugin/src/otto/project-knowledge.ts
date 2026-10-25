@@ -115,6 +115,38 @@ export const saveKnowledgeHostDefaults = defineRpc({
   output: result(KnowledgeHostDefaultsSchema),
 });
 export type KnowledgeHostDefaults = z.infer<typeof KnowledgeHostDefaultsSchema>;
+export const KnowledgeStorageChoiceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("repository") }).strict(),
+  z.object({ kind: z.literal("new") }).strict(),
+  z.object({ kind: z.literal("retained"), directoryName: id }).strict(),
+]);
+const KnowledgeStorageSetupSchema = z.object({
+  revision,
+  required: z.boolean(),
+  label: z.string(),
+  otherStores: z.number().int().nonnegative(),
+  candidates: z.array(z.object({ directoryName: id, rootPath: z.string() })).max(100),
+});
+export const inspectKnowledgeStorage = defineRpc({
+  name: "knowledge.project.storage.inspect.request",
+  input: z.object({ scope: KnowledgeScopeSchema }).strict(),
+  output: result(KnowledgeStorageSetupSchema),
+});
+export const bindKnowledgeStorage = defineRpc({
+  name: "knowledge.project.storage.bind.request",
+  input: z
+    .object({
+      scope: KnowledgeScopeSchema,
+      expectedRevision: revision,
+      choice: KnowledgeStorageChoiceSchema,
+    })
+    .strict(),
+  output: result(
+    z.object({ location: z.enum(["repository", "host"]), directoryName: id.nullable() }),
+  ),
+});
+export type KnowledgeStorageSetup = z.infer<typeof KnowledgeStorageSetupSchema>;
+export type KnowledgeStorageChoice = z.infer<typeof KnowledgeStorageChoiceSchema>;
 const pageTarget = { kind: KnowledgeKindSchema, id };
 const editTarget = { ...pageTarget, expectedRevision: revision };
 export const KnowledgeCommandSchema = z.discriminatedUnion("action", [

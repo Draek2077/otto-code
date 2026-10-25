@@ -28,6 +28,8 @@ import {
 import { KnowledgeStoreResolver } from "./store-resolver.js";
 import { KnowledgeHostSettings } from "./host-settings.js";
 import { KnowledgeHostDefaultsError } from "./host-defaults.js";
+import { KnowledgeStorageSetupService } from "./storage-setup.js";
+import { knowledgeProjectFields as projectFields } from "./project-fields.js";
 import { KnowledgeBusyError, KnowledgeConflictError } from "./knowledge-files.js";
 import { KnowledgeRecordOperations, recordDetails } from "./record-operations.js";
 import { initializeKnowledgeRoots } from "./bootstrap.js";
@@ -46,11 +48,6 @@ type KnowledgeObservationPort = Pick<
   "notify" | "notifyAll" | "wait" | "release" | "releaseClient" | "close"
 >;
 
-const location = z.enum(["repository", "host"]);
-const projectFields = z.object({
-  knowledgeLocation: location.nullish(),
-  knowledgeDirectoryName: z.string().nullable().optional(),
-});
 class KnowledgeHostError extends Error {
   constructor(
     readonly code: "wrong_host" | "not_found" | "invalid",
@@ -83,11 +80,15 @@ export class KnowledgeDaemonService {
   readonly resolver: KnowledgeStoreResolver;
   readonly observations: KnowledgeObservationPort;
   private readonly hostSettings: KnowledgeHostSettings;
+  private readonly storageSetup: KnowledgeStorageSetupService;
   constructor(
     private readonly ports: {
       hostId: string;
       home: string;
-      metadata: Pick<OttoProjectMetadata, "read" | "update" | "retainKnowledgeHostStores">;
+      metadata: Pick<
+        OttoProjectMetadata,
+        "read" | "update" | "retainKnowledgeHostStores" | "knowledgeDirectoryBindings"
+      >;
       workspaces: Pick<WorkspaceRegistry, "get">;
       now?: () => Date;
       observations?: KnowledgeObservationPort;
@@ -98,6 +99,13 @@ export class KnowledgeDaemonService {
       home: ports.home,
       metadata: ports.metadata,
       changed: () => this.observations.notifyAll(),
+    });
+    this.storageSetup = new KnowledgeStorageSetupService({
+      home: ports.home,
+      metadata: ports.metadata,
+      resolveProject: (scope) => this.resolveProject(scope),
+      defaults: () => this.hostSettings.defaults.read(),
+      changed: (projectId) => this.observations.notify(projectId),
     });
     this.resolver = new KnowledgeStoreResolver({
       ottoHome: ports.home,
@@ -272,6 +280,8 @@ export class KnowledgeDaemonService {
   invoke(method: string, value: unknown, clientId = ""): Promise<unknown> | undefined {
     const hostOperation = this.hostSettings.invoke(method, value);
     if (hostOperation) return this.guard(() => hostOperation);
+    const setupOperation = this.storageSetup.invoke(method, value);
+    if (setupOperation) return this.guard(() => setupOperation);
     switch (method) {
       case inspectKnowledgeFormat.name:
         return this.guard(async () => {

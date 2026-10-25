@@ -10,6 +10,18 @@ export interface OttoProjectSnapshot {
   revision: string;
   record: Readonly<Record<string, unknown>>;
 }
+export interface OttoProjectUpdate {
+  projectId: string;
+  expectedRevision: string;
+  patch: Readonly<Record<string, unknown>>;
+  /** Trusted daemon-only final filesystem validation under the registry queue.
+   * Must not reenter this registry or a host-preference queue. */
+  beforePublish?(): Promise<void>;
+}
+export interface OttoKnowledgeDirectoryBinding {
+  projectId: string;
+  directoryName: string;
+}
 interface ProjectIdentity {
   projectId: string;
   rootPath: string;
@@ -45,12 +57,25 @@ export class OttoProjectMetadata {
   read(projectId: string): Promise<OttoProjectSnapshot> {
     return this.ports.exclusive(async () => (await this.load(projectId)).snapshot);
   }
+  knowledgeDirectoryBindings(): Promise<OttoKnowledgeDirectoryBinding[]> {
+    return this.ports.exclusive(async () => {
+      const current = await this.loadAll();
+      const bindings: OttoKnowledgeDirectoryBinding[] = [];
+      for (const row of current.records) {
+        const directoryName = object(row).knowledgeDirectoryName;
+        if (directoryName === null || directoryName === undefined) continue;
+        if (typeof directoryName !== "string")
+          throw new OttoProjectMetadataError(
+            "invalid",
+            "A preserved Knowledge directory binding is invalid",
+          );
+        bindings.push({ projectId: this.ports.parse(row).projectId, directoryName });
+      }
+      return bindings;
+    });
+  }
 
-  update(input: {
-    projectId: string;
-    expectedRevision: string;
-    patch: Readonly<Record<string, unknown>>;
-  }): Promise<OttoProjectSnapshot> {
+  update(input: OttoProjectUpdate): Promise<OttoProjectSnapshot> {
     return this.ports.exclusive(async () => {
       if (Object.keys(input.patch).some((key) => !FIELDS.has(key)))
         throw new OttoProjectMetadataError("invalid", "Only owned Otto project fields may change");
@@ -62,6 +87,24 @@ export class OttoProjectMetadata {
         );
       const record = { ...current.snapshot.record, ...input.patch };
       this.ports.parse(record);
+      const directory = input.patch.knowledgeDirectoryName;
+      if (
+        typeof directory === "string" &&
+        current.records.some((row) => {
+          const identity = this.ports.parse(row);
+          const bound = object(row).knowledgeDirectoryName;
+          return (
+            identity.projectId !== input.projectId &&
+            typeof bound === "string" &&
+            directoryKey(bound) === directoryKey(directory)
+          );
+        })
+      )
+        throw new OttoProjectMetadataError(
+          "conflict",
+          "This Knowledge directory is already bound to another project, including archived projects.",
+        );
+      await input.beforePublish?.();
       // Also reject edits outside this daemon's queue observed before publication.
       // External editors do not participate in the queue; this is not a cross-process lock.
       if ((await readFile(this.ports.file, "utf8")) !== current.bytes)
@@ -186,4 +229,7 @@ export class OttoProjectMetadata {
       snapshot: { projectId, rootPath: identity.rootPath, record: raw, revision: revision(raw) },
     };
   }
+}
+function directoryKey(value: string) {
+  return process.platform === "win32" ? value.toLowerCase() : value;
 }

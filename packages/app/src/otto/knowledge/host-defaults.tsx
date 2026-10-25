@@ -81,27 +81,27 @@ export function KnowledgeHostDefaults({ hostId, active }: { hostId: string; acti
           onValueChange={select}
           disabled={!state.origin || state.busy || !active}
         />
-        {state.error ? <Alert variant="error" description={state.error} /> : null}
-        {state.success ? <Alert description={state.success} /> : null}
-        <View style={styles.actions}>
-          <Button variant="outline" size="sm" onPress={reload} disabled={!active || state.busy}>
-            Reload default
-          </Button>
-          <Button
-            size="sm"
-            onPress={submit}
-            disabled={
-              !active ||
-              !state.origin ||
-              state.busy ||
-              state.blocked ||
-              state.location === state.origin.defaultStoreLocation
-            }
-          >
-            {state.busy ? "Working..." : "Save default"}
-          </Button>
-        </View>
       </SettingsCard>
+      {state.error ? <Alert variant="error" description={state.error} /> : null}
+      {state.success ? <Alert description={state.success} /> : null}
+      <View style={styles.actions}>
+        <Button variant="outline" size="sm" onPress={reload} disabled={!active || state.busy}>
+          Reload default
+        </Button>
+        <Button
+          size="sm"
+          onPress={submit}
+          disabled={
+            !active ||
+            !state.origin ||
+            state.busy ||
+            state.blocked ||
+            state.location === state.origin.defaultStoreLocation
+          }
+        >
+          {state.busy ? "Working..." : "Save default"}
+        </Button>
+      </View>
     </SettingsSection>
   );
 }

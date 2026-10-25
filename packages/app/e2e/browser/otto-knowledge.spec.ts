@@ -19,8 +19,7 @@ import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import { gotoAppShell } from "../support/helpers/app";
 import { openWorkspaceContextMenu } from "../support/helpers/sidebar";
 import { getServerId } from "../support/helpers/server-id";
-import { getE2EDaemonPort } from "../support/helpers/daemon-port";
-import { z } from "zod";
+import { callKnowledgeMcp } from "../support/helpers/otto-knowledge";
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
 
 async function proveHostDefaults(input: {
@@ -153,33 +152,6 @@ async function proveConfirmedPurge(
     }),
   );
   expect(removed).toMatchObject({ ok: false, error: { code: "not_found" } });
-}
-
-async function callKnowledgeMcp(name: string, args: Record<string, unknown>) {
-  const response = await fetch(`http://127.0.0.1:${getE2EDaemonPort()}/mcp/agents`, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: { name, arguments: args },
-    }),
-  });
-  if (!response.ok) throw new Error(`Isolated Knowledge MCP request failed: ${response.status}`);
-  const text = await response.text();
-  const event = text.split("\n").find((line) => line.startsWith("data:"));
-  const envelope = z
-    .object({
-      result: z.object({
-        structuredContent: z.unknown(),
-        content: z.array(z.object({ type: z.literal("text"), text: z.string() })),
-      }),
-    })
-    .parse(JSON.parse(event ? event.slice(5).trim() : text));
-  expect(envelope.result.content).toHaveLength(1);
-  expect(JSON.parse(envelope.result.content[0].text)).toEqual(envelope.result.structuredContent);
-  return envelope.result.structuredContent;
 }
 
 async function proveLinkHealth(

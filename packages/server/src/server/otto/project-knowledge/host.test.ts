@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile, readdir } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile, readdir, symlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
@@ -20,6 +20,8 @@ import {
   setKnowledgeLocation,
   readKnowledgeHostDefaults,
   saveKnowledgeHostDefaults,
+  inspectKnowledgeStorage,
+  bindKnowledgeStorage,
 } from "@getpaseo/plugin/otto/project-knowledge";
 
 const parent = fileURLToPath(new URL("../../../../../../.tmp/knowledge-host/", import.meta.url));
@@ -31,6 +33,262 @@ afterEach(async () => {
       throw new Error("Fixture escaped");
     await rm(root, { recursive: true, force: true });
   }
+});
+
+async function storagePreview(f: Awaited<ReturnType<typeof fixture>>) {
+  const result = inspectKnowledgeStorage.output.parse(
+    await f.host.invoke(inspectKnowledgeStorage.name, { scope: f.scope }),
+  );
+  if (!result.ok) throw new Error(result.error.message);
+  return result.value;
+}
+async function retainedMarker(input: {
+  f: Awaited<ReturnType<typeof fixture>>;
+  directoryName: string;
+  marker?: Record<string, unknown>;
+}) {
+  const directory = path.join(input.f.home, "project-knowledge", input.directoryName);
+  await mkdir(directory, { recursive: true });
+  const bytes = JSON.stringify({
+    projectId: "project-a",
+    projectKey: null,
+    rootPath: input.f.repo,
+    updatedAt: "2026-01-01T00:00:00Z",
+    ...input.marker,
+  });
+  const file = path.join(directory, "project.json");
+  await writeFile(file, bytes);
+  return { directory, file, bytes };
+}
+async function hostDefault(f: Awaited<ReturnType<typeof fixture>>) {
+  await writeFile(
+    path.join(f.home, "otto-config.json"),
+    JSON.stringify({ projectKnowledge: { defaultStoreLocation: "host" }, untouched: true }),
+  );
+}
+
+it("sets up a fresh inherited Host store only through an explicit inspected choice and human-approved MCP action", async () => {
+  const f = await fixture();
+  await hostDefault(f);
+  const original = await f.registry.ottoMetadata.read("project-a");
+  const homeFiles = await readdir(f.home);
+  const plan = await storagePreview(f);
+  expect(plan).toMatchObject({ required: true, candidates: [], otherStores: 0 });
+  expect(await readdir(f.home)).toEqual(homeFiles);
+  const tool = createKnowledgeTools(f.host, async () => f.scope).find(
+    (item) => item.name === "configure_project_knowledge_storage",
+  );
+  if (!tool) throw new Error("Missing setup tool");
+  const input = {
+    expectedRevision: plan.revision,
+    choice: { kind: "new" },
+    userApprovedStorageChange: false,
+  };
+  expect((await tool.handler(input, {})).structuredContent).toMatchObject({
+    ok: false,
+    error: { code: "invalid" },
+  });
+  expect(await f.registry.ottoMetadata.read("project-a")).toEqual(original);
+  const result = bindKnowledgeStorage.output.parse(
+    (await tool.handler({ ...input, userApprovedStorageChange: true }, {})).structuredContent,
+  );
+  if (!result.ok) throw new Error(result.error.message);
+  expect(result.value.directoryName).toMatch(/^project-[a-f0-9-]+$/);
+  const project = await f.registry.ottoMetadata.read("project-a");
+  expect(project.record).toMatchObject({
+    knowledgeLocation: "host",
+    knowledgeDirectoryName: result.value.directoryName,
+    future: { retained: true },
+    kanban: { adapter: "github", boardId: "7" },
+  });
+  const store = await f.host.resolver.resolve("project-a");
+  expect(JSON.parse(await readFile(path.join(store.base, "project.json"), "utf8"))).toMatchObject({
+    projectId: "project-a",
+    rootPath: f.repo,
+  });
+  expect(await f.create()).toMatchObject({ ok: true });
+  expect(await readdir(f.repo)).toEqual([]);
+  expect(await readdir(f.worktree)).toEqual([]);
+  expect((await storagePreview(f)).required).toBe(false);
+  expect(
+    await f.host.invoke(bindKnowledgeStorage.name, {
+      scope: f.scope,
+      expectedRevision: plan.revision,
+      choice: { kind: "new" },
+    }),
+  ).toMatchObject({ ok: false, error: { code: "conflict" } });
+});
+
+it("offers retained ownership by stable project ID or canonical root and reconnects without rewriting old bytes", async () => {
+  const f = await fixture();
+  await f.create();
+  const source = path.join(f.repo, ".otto/knowledge/requirements/fixture-page.md");
+  const raw = await readFile(source);
+  const current = await f.registry.ottoMetadata.read("project-a");
+  await f.registry.ottoMetadata.update({
+    projectId: "project-a",
+    expectedRevision: current.revision,
+    patch: { knowledgeLocation: "host" },
+  });
+  const retained = await retainedMarker({
+    f,
+    directoryName: "new",
+    marker: { rootPath: path.join(f.root, "previous-root"), future: "preserved-only" },
+  });
+  await retainedMarker({ f, directoryName: "by-root", marker: { projectId: null } });
+  await retainedMarker({
+    f,
+    directoryName: "foreign",
+    marker: { projectId: "other", rootPath: path.join(f.root, "other-root") },
+  });
+  await mkdir(path.join(f.home, "project-knowledge/unmarked"));
+  await mkdir(path.join(retained.directory, "knowledge/requirements"), { recursive: true });
+  await writeFile(path.join(retained.directory, "knowledge/requirements/fixture-page.md"), raw);
+  const plan = await storagePreview(f);
+  expect(plan.candidates.map((item) => item.directoryName)).toEqual(["by-root", "new"]);
+  expect(plan.otherStores).toBe(2);
+  expect(JSON.stringify(plan)).not.toContain("preserved-only");
+  expect(
+    await f.host.invoke(bindKnowledgeStorage.name, {
+      scope: f.scope,
+      expectedRevision: plan.revision,
+      choice: { kind: "retained", directoryName: "new" },
+    }),
+  ).toMatchObject({ ok: true, value: { directoryName: "new" } });
+  expect(await readFile(retained.file, "utf8")).toBe(retained.bytes);
+  expect(
+    await readFile(path.join(retained.directory, "knowledge/requirements/fixture-page.md")),
+  ).toEqual(raw);
+  expect(await readFile(source)).toEqual(raw);
+  expect(
+    (await f.host.service.read({ projectId: "project-a", kind: "requirement", id: "fixture-page" }))
+      .statement,
+  ).toBe("Verified fixture");
+});
+
+it("lets a new project choose Repository instead of allocating a Host store under the Host default", async () => {
+  const f = await fixture();
+  await hostDefault(f);
+  const plan = await storagePreview(f);
+  const original = await readFile(path.join(f.home, "otto-config.json"));
+  expect(
+    await f.host.invoke(bindKnowledgeStorage.name, {
+      scope: f.scope,
+      expectedRevision: plan.revision,
+      choice: { kind: "repository" },
+    }),
+  ).toMatchObject({ ok: true, value: { location: "repository", directoryName: null } });
+  expect((await f.registry.ottoMetadata.read("project-a")).record).toMatchObject({
+    knowledgeLocation: "repository",
+    future: { retained: true },
+  });
+  expect(
+    (await f.registry.ottoMetadata.read("project-a")).record.knowledgeDirectoryName,
+  ).toBeUndefined();
+  expect(await readdir(f.home)).not.toContain("project-knowledge");
+  expect(await f.create()).toMatchObject({ ok: true });
+  expect(
+    await readFile(path.join(f.repo, ".otto/knowledge/requirements/fixture-page.md"), "utf8"),
+  ).toContain("Verified fixture");
+  expect(await readFile(path.join(f.home, "otto-config.json"))).toEqual(original);
+});
+
+it.each(["project", "marker"] as const)(
+  "rejects a setup preview after its %s origin changes without allocating another directory",
+  async (changed) => {
+    const f = await fixture();
+    await hostDefault(f);
+    const retained = await retainedMarker({ f, directoryName: "retained" });
+    const plan = await storagePreview(f);
+    if (changed === "marker")
+      await writeFile(
+        retained.file,
+        JSON.stringify({ ...JSON.parse(retained.bytes), future: "peer change" }),
+      );
+    else {
+      const project = await f.registry.ottoMetadata.read("project-a");
+      await f.registry.ottoMetadata.update({
+        projectId: "project-a",
+        expectedRevision: project.revision,
+        patch: { kanban: { future: "peer change" } },
+      });
+    }
+    const before = await readFile(retained.file);
+    expect(
+      await f.host.invoke(bindKnowledgeStorage.name, {
+        scope: f.scope,
+        expectedRevision: plan.revision,
+        choice: { kind: "retained", directoryName: "retained" },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "conflict" } });
+    expect(
+      (await f.registry.ottoMetadata.read("project-a")).record.knowledgeDirectoryName,
+    ).toBeUndefined();
+    expect(await readdir(path.dirname(retained.directory))).toEqual(["retained"]);
+    expect(await readFile(retained.file)).toEqual(before);
+  },
+);
+
+it("does not offer a directory bound to another archived project even if its marker matches this root", async () => {
+  const f = await fixture();
+  await hostDefault(f);
+  const retained = await retainedMarker({ f, directoryName: "retained" });
+  const preview = await storagePreview(f);
+  const current = await f.registry.ottoMetadata.read("project-a");
+  const archived = {
+    ...current.record,
+    projectId: "other",
+    rootPath: path.join(f.root, "other"),
+    archivedAt: "2026-01-01T00:00:00Z",
+    knowledgeDirectoryName: "retained",
+  };
+  await writeFile(path.join(f.home, "projects.json"), JSON.stringify([current.record, archived]));
+  const plan = await storagePreview(f);
+  expect(plan).toMatchObject({ candidates: [], otherStores: 1 });
+  expect(
+    await f.host.invoke(bindKnowledgeStorage.name, {
+      scope: f.scope,
+      expectedRevision: preview.revision,
+      choice: { kind: "retained", directoryName: "retained" },
+    }),
+  ).toMatchObject({ ok: false, error: { code: "conflict" } });
+  expect(
+    await f.registry.ottoMetadata
+      .update({
+        projectId: "project-a",
+        expectedRevision: current.revision,
+        patch: { knowledgeDirectoryName: "retained" },
+      })
+      .then(
+        () => "accepted",
+        () => "rejected",
+      ),
+  ).toBe("rejected");
+  expect(await readFile(retained.file, "utf8")).toBe(retained.bytes);
+});
+
+it("refuses host-store symlinks and client-supplied paths before publishing an identity", async () => {
+  const f = await fixture();
+  await hostDefault(f);
+  const retained = await retainedMarker({ f, directoryName: "retained" });
+  await symlink(retained.directory, path.join(f.home, "project-knowledge/linked"), "junction");
+  expect(await f.host.invoke(inspectKnowledgeStorage.name, { scope: f.scope })).toMatchObject({
+    ok: false,
+    error: { code: "unavailable" },
+  });
+  expect(
+    await f.host.invoke(bindKnowledgeStorage.name, {
+      scope: f.scope,
+      expectedRevision: "a".repeat(64),
+      choice: { kind: "retained", directoryName: "../outside" },
+    }),
+  ).toMatchObject({ ok: false, error: { code: "invalid" } });
+  expect(
+    await f.host.invoke(inspectKnowledgeStorage.name, { scope: { ...f.scope, hostId: "wrong" } }),
+  ).toMatchObject({ ok: false, error: { code: "wrong_host" } });
+  expect(
+    (await f.registry.ottoMetadata.read("project-a")).record.knowledgeDirectoryName,
+  ).toBeUndefined();
 });
 
 it("publishes host defaults without redirecting initialized inherited stores or rewriting retained settings", async () => {
