@@ -242,7 +242,7 @@ import { BrainDaemonService } from "./otto/brain/service.js"; // OTTO(brain-host
 import { KanbanDaemonService } from "./otto/kanban/service.js"; // OTTO(kanban): host-owned projects and forge transport.
 import { createHostIntegrations } from "../services/otto/integrations/host.js"; // OTTO(integration): shared daemon-owned credentials.
 import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OTTO(knowledge)
-import { createKnowledgeGeneration } from "./otto/project-knowledge/generation.js"; // OTTO(knowledge): use the existing provider-neutral generation boundary.
+import { createKnowledgeGenerationSource } from "./otto/project-knowledge/generation.js"; // OTTO(knowledge): use the existing provider-neutral generation boundary.
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
 
@@ -942,22 +942,13 @@ export async function createPaseoDaemon(
     workspaceRegistry,
   });
   const github = createGitHubService();
+  const knowledgeGeneration = createKnowledgeGenerationSource(); // OTTO(knowledge): inert until AgentManager composition below.
   ottoKnowledge = new KnowledgeDaemonService({
     hostId: serverId,
     home: config.paseoHome,
     metadata: projectRegistry.ottoMetadata,
     workspaces: workspaceRegistry,
-    generation: (selection) =>
-      createKnowledgeGeneration(
-        {
-          agentManager,
-          providerSnapshotManager,
-          readDaemonConfig: () => ({
-            metadataGeneration: daemonConfigStore.get().metadataGeneration,
-          }),
-        },
-        selection,
-      ), // OTTO(knowledge): lazy; no agent is constructed or launched during startup/read.
+    generation: knowledgeGeneration.forSelection, // OTTO(knowledge): no launch during startup/read.
   }); // OTTO(knowledge): scoped demand, no startup file writes.
   ottoKanban = new KanbanDaemonService({
     hostId: serverId,
@@ -1032,6 +1023,11 @@ export async function createPaseoDaemon(
       resolvePaseoToolPolicy(provider, daemonConfigStore.get().providers),
     logger,
   });
+  knowledgeGeneration.initialize({
+    agentManager,
+    providerSnapshotManager,
+    readDaemonConfig: () => ({ metadataGeneration: daemonConfigStore.get().metadataGeneration }),
+  }); // OTTO(knowledge): wire only after both sides of the host/agent dependency exist.
   const syncPluginProviders = () => {
     agentManager.updateProviderRegistry(
       providerSnapshotManager.replacePluginProviders(pluginRuntime.getProviderRegistrations()),
