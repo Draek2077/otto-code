@@ -143,6 +143,19 @@ Editing captures the opened revision; peer conflicts retain the draft and block
 another save. Cancel/discard is explicit. Hide/unmount invalidates pending review
 confirmations and late write acknowledgments, without claiming host cancellation.
 
+Article/root edit intent belongs to the plugin installation and actual
+host/workspace-or-project scope. Switching a project, leaving the route or closing
+the panel retains changed or blocked drafts in memory; reopening that scope uses
+the original model and digest, including its reason, rather than seeding from a
+newer peer snapshot. No navigation confirmation is needed to retain a draft.
+Explicit Cancel still confirms discard. An admitted write prevents discard; a
+write settling after departure remains blocked until the person reads the current
+article and starts a new explicit edit. Untouched abandoned forms are pruned after
+effect replay; up to 50 pending scopes are retained without silent eviction.
+Only local intent is retained: no transport, observation feed, canonical record
+cache or filesystem path is added. App reload or plugin removal is outside this
+in-memory lifetime; it is not crash-persistent draft storage.
+
 Each article retains its collapsed **Review signals** section. Opening it reads
 counted bullets for identical complete tag sets, partial tag overlap, overlapping
 current truth and stale review. Only confirmed atomic records participate in

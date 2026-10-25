@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { ScrollView, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchQuery } from "@/data/query";
@@ -31,6 +31,7 @@ import { KnowledgeFormat } from "./format";
 import { KnowledgeHostDefaults } from "./host-defaults";
 import { KnowledgeStorageSetup } from "./setup";
 import { KnowledgeLockRecovery } from "./lock-recovery";
+import { knowledgeEditorDraftsFor } from "./editor-drafts";
 
 function KnowledgeBody({
   scope,
@@ -43,12 +44,15 @@ function KnowledgeBody({
 }) {
   const readCatalog = useRpc(readKnowledgeCatalog);
   const mutate = useRpc(mutateKnowledge);
+  const paseo = usePaseo();
+  const drafts = useMemo(() => knowledgeEditorDraftsFor(paseo), [paseo]);
+  useSyncExternalStore(drafts.subscribe, drafts.getSnapshot);
+  const editor = settingsOnly ? null : drafts.get(scope);
   const cache = useQueryClient();
   const [query, updateQuery] = useState("");
   const [inactive, updateInactive] = useState(true);
   const [offset, setOffset] = useState(0);
   const [selection, setSelection] = useState<KnowledgeSelection | null>(null);
-  const [editor, setEditor] = useState<EditorSeed | null>(null);
   const [actionError, setActionError] = useState("");
   const [initializing, setInitializing] = useState(false);
   const catalog = useFetchQuery({
@@ -94,12 +98,30 @@ function KnowledgeBody({
   const refresh = useCallback(() => {
     void cache.invalidateQueries({ queryKey: ["ottoKnowledge", scope.hostId] });
   }, [cache, scope.hostId]);
-  const closeEditor = useCallback(() => setEditor(null), []);
+  const closeEditor = useCallback(() => {
+    if (editor) drafts.discard(scope, editor);
+  }, [drafts, scope, editor]);
   const saved = useCallback(() => {
-    setEditor(null);
-    refresh();
-  }, [refresh]);
-  const create = useCallback(() => setEditor({}), []);
+    if (editor && drafts.discard(scope, editor)) refresh();
+  }, [refresh, drafts, scope, editor]);
+  const openEditor = useCallback(
+    (seed: EditorSeed) => {
+      try {
+        drafts.open({
+          scope,
+          seed,
+          submit: async (command) => {
+            const result = await mutate({ scope, command });
+            return result.ok ? { ok: true } : { ok: false, message: result.error.message };
+          },
+        });
+      } catch {
+        setActionError("Finish or discard an existing Knowledge draft before opening more.");
+      }
+    },
+    [drafts, scope, mutate],
+  );
+  const create = useCallback(() => openEditor({}), [openEditor]);
   const back = useCallback(() => setSelection(null), []);
   const initialize = useCallback(async () => {
     if (initializing) return;
@@ -116,7 +138,15 @@ function KnowledgeBody({
     }
   }, [initializing, mutate, scope, refresh]);
   if (editor)
-    return <KnowledgeEditor scope={scope} seed={editor} onSaved={saved} onCancel={closeEditor} />;
+    return (
+      <KnowledgeEditor
+        scope={scope}
+        model={editor}
+        drafts={drafts}
+        onSaved={saved}
+        onCancel={closeEditor}
+      />
+    );
   if (catalog.error)
     return (
       <>
@@ -165,7 +195,7 @@ function KnowledgeBody({
           scope={scope}
           selection={selection}
           active={active}
-          onEdit={setEditor}
+          onEdit={openEditor}
           onMissing={back}
         />
       ) : (

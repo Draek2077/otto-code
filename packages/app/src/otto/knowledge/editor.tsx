@@ -1,12 +1,10 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { View } from "react-native";
-import { useRpc } from "@getpaseo/plugin/client";
 import {
   KnowledgeDeliverySchema,
   KnowledgeDispositionSchema,
   KnowledgeKindSchema,
   KnowledgeReviewSchema,
-  mutateKnowledge,
   type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import { SettingsCard, SettingsSection, SettingsSelect } from "@/components/settings";
@@ -14,7 +12,8 @@ import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import { KnowledgeEditorModel, type EditorFields, type EditorSeed } from "./editor-model";
+import type { KnowledgeEditorModel, EditorFields } from "./editor-model";
+import type { KnowledgeEditorDrafts } from "./editor-drafts";
 import { styles } from "./styles";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
@@ -195,28 +194,23 @@ function EditorFields({ model }: { model: KnowledgeEditorModel }) {
 
 export function KnowledgeEditor({
   scope,
-  seed,
+  model,
+  drafts,
   onSaved,
   onCancel,
 }: {
   scope: KnowledgeScope;
-  seed: EditorSeed;
+  model: KnowledgeEditorModel;
+  drafts: KnowledgeEditorDrafts;
   onSaved(): void;
   onCancel(): void;
 }) {
-  const mutate = useRpc(mutateKnowledge);
-  const [model] = useState(
-    () =>
-      new KnowledgeEditorModel(seed, async (command) => {
-        const result = await mutate({ scope, command });
-        return result.ok ? { ok: true } : { ok: false, message: result.error.message };
-      }),
-  );
+  const seed = model.seed;
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   useEffect(() => {
     model.activate();
-    return () => model.close();
-  }, [model]);
+    return drafts.retain(scope, model);
+  }, [model, drafts, scope]);
   const retained = useRetainedPanelActive();
   const visible = useAppVisible();
   useEffect(() => model.setActive(retained && visible), [model, retained, visible]);

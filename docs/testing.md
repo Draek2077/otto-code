@@ -260,6 +260,8 @@ packaging remains a build gate.
 
 | Knowledge write-lock recovery | `packages/app/e2e/browser/otto-knowledge-lock.spec.ts`: wide/compact blocked-draft retention, read-only inspection, explicit no-writer verification and reason, declined/accepted confirmation, unchanged article bytes, retained recovery claim, real MCP unlocked state, and a separate fresh write. No automatic lock expiry or retry. |
 
+| Knowledge scoped edit drafts | `packages/app/e2e/browser/otto-knowledge-drafts.spec.ts`: wide/compact project switching and real route departure/reentry, original revision and reason retained across a peer edit, stale writes refused, explicit declined/accepted discard, and unchanged newer canonical truth. No reload is used to simulate route return. |
+
 The Otto App Acceptance workflow always runs all Otto journeys for pushes and pull
 requests. Manual dispatch accepts an exact `checkout_ref` and a bounded `journey`
 selection: `all`, `knowledge`, or `brain-cancellation`. The cancellation diagnostic

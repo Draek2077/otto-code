@@ -104,6 +104,9 @@ export class KnowledgeEditorModel {
     };
   }
   getSnapshot = () => this.state;
+  hasChanges() {
+    return JSON.stringify(this.state.fields) !== JSON.stringify(initialFields(this.seed));
+  }
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => {
