@@ -404,7 +404,7 @@ export class BrainScreenFacade implements BrainScreenPort {
       },
       cancelJob: async (jobId) => {
         await this.action({ action: "cancel-job", jobId }, Accepted);
-        return this.reads.jobs.read();
+        return this.reads.jobs.refresh();
       },
       refresh: (keys) => this.refresh(keys),
       observeJob: this.observeJob,

@@ -40,6 +40,19 @@ product acceptance remain restoration work tracked in Otto Knowledge. This
 package is not yet the complete Brain product. `serve`
 starts unloaded unless its caller explicitly passes `--model`.
 
+### Active app resource reads
+
+Operational views share one installation-owned read per resource. A host revision
+event arriving during that read queues one follow-up for retained consumers;
+the older response cannot consume the event and leave terminal jobs displayed as
+running. Event bursts coalesce, and releasing the last consumer drops queued work.
+Connection/owner replacement clears it rather than carrying work to the next host.
+An explicit post-mutation refresh waits past any earlier query before beginning
+its own read. Job cancellation uses that barrier. A newer accepted job projection
+also prevents an older query or its error from replacing that projection.
+These are demand-owned invalidations and explicit refreshes, not polling or
+automatic failure retries.
+
 ### Otto CLI management
 
 `otto brain` manages the Brain selected by the target Otto daemon. Normal `--home`

@@ -9,7 +9,7 @@ const cleanup: Array<() => void> = [];
 afterEach(() => {
   for (const close of cleanup.splice(0)) close();
 });
-function fixture() {
+function fixture(options: { readJobs?: () => Promise<unknown> } = {}) {
   const calls: Array<{ method: string; input: unknown }> = [];
   const resourceReplies = new Map<string, (reply: unknown) => void>();
   const statusReplies = new Map<string, (reply: unknown) => void>();
@@ -70,7 +70,8 @@ function fixture() {
         if (request.resource === "inventory")
           return { ok: true, value: { models: [], disk: null, lastModelId: "last-model" } };
         if (request.resource === "catalog") return { ok: true, value: { models: [] } };
-        if (request.resource === "jobs") return { ok: true, value: { jobs: [] } };
+        if (request.resource === "jobs")
+          return options.readJobs ? options.readJobs() : { ok: true, value: { jobs: [] } };
       }
       if (request.action === "runtime-candidate")
         return { ok: true, value: { id: "opaque-candidate", build: "latest", variant: "auto" } };
@@ -192,4 +193,41 @@ test("benchmark with no explicit model retains the host's last-model selection",
     method: "brain.action",
     input: { action: "job", operation: "benchmark", modelId: "last-model" },
   });
+});
+
+test("canceling a job cannot reuse a running-job query that began before cancellation was accepted", async () => {
+  let finishOld!: (value: unknown) => void;
+  const old = new Promise<unknown>((resolve) => {
+    finishOld = resolve;
+  });
+  let reads = 0;
+  const job = {
+    id: "job",
+    operation: "benchmark",
+    state: "running",
+    subject: { modelId: "model", catalogModelId: null, repo: null, quant: null },
+    createdAt: "created",
+    startedAt: "started",
+    finishedAt: null,
+    error: null,
+    progress: null,
+  };
+  const f = fixture({
+    readJobs: async () =>
+      ++reads === 1
+        ? old
+        : { ok: true, value: { jobs: [{ ...job, state: "canceled", finishedAt: "finished" }] } },
+  });
+  await f.core.refresh();
+  const release = f.screen.retain("jobs");
+  const cancellation = f.screen.operations.cancelJob("job");
+  // Settle the fake RPC action before releasing the earlier owner query.
+  for (let index = 0; index < 12; index++) await Promise.resolve();
+  expect(reads).toBe(1);
+  finishOld({ ok: true, value: { jobs: [job] } });
+  const current = await cancellation;
+  expect(reads).toBe(2);
+  expect(current).toMatchObject([{ id: "job", status: "canceled" }]);
+  expect(f.screen.getSnapshot().jobs.data).toMatchObject([{ id: "job", status: "canceled" }]);
+  release();
 });
