@@ -22,6 +22,40 @@ const page: KnowledgeRecord = {
   sourceUrl: null,
 };
 const submit = async () => ({ ok: true as const });
+it("retains its original scoped reload port and replaces only the explicitly reloaded draft", async () => {
+  const drafts = new KnowledgeEditorDrafts();
+  const targets: unknown[] = [];
+  const fresh = { ...page, statement: "Fresh saved truth", revision: "b".repeat(64) };
+  const model = drafts.open({
+    scope,
+    seed: { page },
+    submit,
+    readSaved: async (target) => {
+      targets.push(target);
+      return { page: fresh };
+    },
+  });
+  model.set("body", "Local intent");
+  const release = drafts.retain(scope, model);
+  release();
+  await Promise.resolve();
+  const resumed = drafts.open({
+    scope,
+    seed: { page: fresh },
+    submit,
+    readSaved: async () => {
+      throw new Error("A replacement port must not be adopted implicitly");
+    },
+  });
+  expect(resumed).toBe(model);
+  model.activate();
+  expect(await resumed.reload(async () => true)).toBe(true);
+  expect(targets).toEqual([{ type: "page", kind: "requirement", id: "article" }]);
+  expect(resumed.getSnapshot().fields.body).toBe("Fresh saved truth");
+  resumed.set("reason", "New explicit write");
+  expect(resumed.command()).toMatchObject({ expectedRevision: fresh.revision });
+  expect(drafts.get(scope)).toBe(model);
+});
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {

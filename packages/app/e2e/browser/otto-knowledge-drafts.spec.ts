@@ -108,6 +108,7 @@ for (const compact of [false, true]) {
           }),
         ).toBeVisible();
         await expect(editor.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+        await expect(editor.getByTestId("knowledge-lock-recovery")).toHaveCount(0);
         await page.goBack();
         await expect(page).not.toHaveURL(/\/plugin\/otto-project-knowledge\//);
         await openKnowledge({ page, compact });
@@ -129,6 +130,21 @@ for (const compact of [false, true]) {
           path: screenshot,
           contentType: "image/png",
         });
+        page.once("dialog", (dialog) => void dialog.dismiss());
+        await editor.getByRole("button", { name: "Reload saved page", exact: true }).click();
+        await expect(editor.getByRole("textbox", { name: "Markdown", exact: true })).toHaveValue(
+          "My retained local edit.",
+        );
+        page.once("dialog", (dialog) => void dialog.accept());
+        await editor.getByRole("button", { name: "Reload saved page", exact: true }).click();
+        await expect(editor.getByRole("textbox", { name: "Markdown", exact: true })).toHaveValue(
+          "Newer peer truth.",
+        );
+        await expect(editor.getByRole("textbox", { name: "Reason", exact: true })).toHaveValue("");
+        await expect(editor.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+        await editor
+          .getByRole("textbox", { name: "Markdown", exact: true })
+          .fill("Explicitly discarded after reload");
         page.once("dialog", (dialog) => void dialog.accept());
         await editor.getByRole("button", { name: "Cancel", exact: true }).click();
         await expect(surface.getByTestId("knowledge-editor")).toHaveCount(0);

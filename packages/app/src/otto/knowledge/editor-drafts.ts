@@ -9,6 +9,7 @@ interface OpenDraft {
   scope: KnowledgeScope;
   seed: EditorSeed;
   submit: ConstructorParameters<typeof KnowledgeEditorModel>[1];
+  readSaved?: ConstructorParameters<typeof KnowledgeEditorModel>[2];
 }
 /** Installation-owned local intent, keyed by actual host/workspace-or-project
  * scope. No canonical records, filesystem paths, feeds or query cache live here. */
@@ -35,7 +36,7 @@ export class KnowledgeEditorDrafts {
     if (current) return current.model;
     if (this.entries.size >= 50)
       throw new Error("Finish or discard an existing Knowledge draft before opening more.");
-    const model = new KnowledgeEditorModel(input.seed, input.submit);
+    const model = new KnowledgeEditorModel(input.seed, input.submit, input.readSaved);
     this.entries.set(key, { model, consumers: 0 });
     this.changed();
     return model;

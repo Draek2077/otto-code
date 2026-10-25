@@ -86,6 +86,234 @@ it("keeps dirty drafts and blocks further writes after conflict or unknown outco
   expect(await model.save()).toBe(false);
   expect(calls).toBe(1);
 });
+it("reloads only after confirmation and uses the newly read revision for a separate explicit save", async () => {
+  const commands: KnowledgeCommand[] = [];
+  let reads = 0;
+  const fresh = {
+    ...page(),
+    revision: "b".repeat(64),
+    statement: "Peer truth",
+    title: "Peer title",
+  };
+  const model = new KnowledgeEditorModel(
+    { page: page() },
+    async (command) => {
+      commands.push(command);
+      return commands.length === 1
+        ? { ok: false, code: "conflict", message: "Changed" }
+        : { ok: true };
+    },
+    async () => {
+      reads++;
+      return { page: fresh };
+    },
+  );
+  model.set("body", "My local draft");
+  model.set("reason", "My reason");
+  expect(await model.save()).toBe(false);
+  expect(await model.reload(async () => false)).toBe(false);
+  expect(reads).toBe(0);
+  expect(model.getSnapshot()).toMatchObject({
+    fields: { body: "My local draft", reason: "My reason" },
+    blocked: true,
+    lockBlocked: false,
+  });
+  expect(await model.reload(async () => true)).toBe(true);
+  expect(reads).toBe(1);
+  expect(commands).toHaveLength(1);
+  expect(model.getSnapshot()).toMatchObject({
+    fields: { body: "Peer truth", reason: "", title: "Peer title" },
+    blocked: false,
+    reloadVersion: 1,
+  });
+  expect(model.hasChanges()).toBe(false);
+  model.set("body", "Explicitly reviewed peer truth");
+  model.set("reason", "Reviewed after reload");
+  expect(await model.save()).toBe(true);
+  expect(commands[1]).toMatchObject({
+    expectedRevision: fresh.revision,
+    statement: "Explicitly reviewed peer truth",
+  });
+});
+it("retains the original draft, revision and lock cause if a confirmed reload read fails", async () => {
+  const model = new KnowledgeEditorModel(
+    { page: page() },
+    async () => ({ ok: false, code: "busy", message: "Store locked" }),
+    async () => {
+      throw new Error("private path");
+    },
+  );
+  model.set("body", "Retained");
+  model.set("reason", "Reason");
+  await model.save();
+  expect(model.getSnapshot().lockBlocked).toBe(true);
+  expect(await model.reload(async () => true)).toBe(false);
+  expect(model.getSnapshot()).toMatchObject({
+    blocked: true,
+    lockBlocked: true,
+    fields: { body: "Retained", reason: "Reason" },
+    error:
+      "Saved Knowledge could not be read. Your local draft and its original revision are retained.",
+  });
+  expect(model.command()).toMatchObject({ expectedRevision: revision });
+});
+it("keeps a blocked operation's explanation visible while its local fields are edited", async () => {
+  const model = new KnowledgeEditorModel({ page: page() }, async () => ({
+    ok: false,
+    code: "conflict",
+    message: "Reload before saving",
+  }));
+  model.set("reason", "Reason");
+  await model.save();
+  model.set("body", "New local edit");
+  expect(model.getSnapshot()).toMatchObject({
+    blocked: true,
+    lockBlocked: false,
+    error: "Reload before saving",
+  });
+});
+it("serializes reload confirmation, read and save without allowing a second operation", async () => {
+  const confirmation = deferred<boolean>();
+  let reads = 0;
+  let writes = 0;
+  const model = new KnowledgeEditorModel(
+    { page: page() },
+    async () => {
+      writes++;
+      return { ok: true };
+    },
+    async () => {
+      reads++;
+      return { page: page() };
+    },
+  );
+  model.set("reason", "Reason");
+  const reload = model.reload(() => confirmation.promise);
+  expect(await model.reload(async () => true)).toBe(false);
+  expect(await model.save()).toBe(false);
+  confirmation.resolve(true);
+  expect(await reload).toBe(true);
+  expect(reads).toBe(1);
+  expect(writes).toBe(0);
+});
+it("invalidates a reload confirmation captured before hide/reactivation", async () => {
+  const confirmation = deferred<boolean>();
+  let reads = 0;
+  const model = new KnowledgeEditorModel(
+    { page: page() },
+    async () => ({ ok: true }),
+    async () => {
+      reads++;
+      return { page: page() };
+    },
+  );
+  model.set("body", "Keep");
+  const reload = model.reload(() => confirmation.promise);
+  model.setActive(false);
+  model.setActive(true);
+  confirmation.resolve(true);
+  expect(await reload).toBe(false);
+  expect(reads).toBe(0);
+  expect(model.getSnapshot().fields.body).toBe("Keep");
+});
+it("ignores a late successful reload after hide and retains the old revision", async () => {
+  const response = deferred<{ page: KnowledgeRecord }>();
+  const model = new KnowledgeEditorModel(
+    { page: page() },
+    async () => ({ ok: true }),
+    () => response.promise,
+  );
+  model.set("body", "Keep");
+  model.set("reason", "Retained reason");
+  const reload = model.reload(async () => true);
+  await Promise.resolve();
+  model.setActive(false);
+  model.setActive(true);
+  response.resolve({ page: { ...page(), revision: "b".repeat(64), statement: "Late" } });
+  expect(await reload).toBe(false);
+  expect(model.getSnapshot()).toMatchObject({ busy: false, fields: { body: "Keep" } });
+  expect(model.command()).toMatchObject({ expectedRevision: revision });
+});
+it("refuses a reload that returns a different page instead of silently changing edit targets", async () => {
+  const model = new KnowledgeEditorModel(
+    { page: page() },
+    async () => ({ ok: true }),
+    async () => ({ page: { ...page(), id: "other" } }),
+  );
+  model.set("body", "Keep");
+  expect(await model.reload(async () => true)).toBe(false);
+  expect(model.getSnapshot().fields.body).toBe("Keep");
+});
+it("reloads a root body against its own fresh digest without inventing record review metadata", async () => {
+  const model = new KnowledgeEditorModel(
+    { root: { slug: "architecture", body: "Old root", revision } },
+    async () => ({ ok: true }),
+    async () => ({ root: { slug: "architecture", body: "New root", revision: "b".repeat(64) } }),
+  );
+  model.set("body", "Local root");
+  expect(await model.reload(async () => true)).toBe(true);
+  expect(model.command()).toEqual({
+    action: "root",
+    slug: "architecture",
+    expectedRevision: "b".repeat(64),
+    body: "New root",
+  });
+});
+it("reconciles an uncertain creation by reading the submitted identity and never repeating create", async () => {
+  const targets: unknown[] = [];
+  const commands: KnowledgeCommand[] = [];
+  const saved = { ...page(), id: "created", revision: "b".repeat(64), statement: "Saved creation" };
+  const model = new KnowledgeEditorModel(
+    {},
+    async (command) => {
+      commands.push(command);
+      if (commands.length === 1) throw new Error("Lost acknowledgment");
+      return { ok: true };
+    },
+    async (target) => {
+      targets.push(target);
+      return { page: saved };
+    },
+  );
+  expect(model.supportsReload()).toBe(false);
+  model.set("id", "created");
+  model.set("title", "Created");
+  model.set("body", "Creation draft");
+  expect(await model.save()).toBe(false);
+  expect(model.supportsReload()).toBe(true);
+  model.set("id", "not-attempted");
+  expect(await model.reload(async () => true)).toBe(true);
+  expect(targets).toEqual([{ type: "page", kind: "requirement", id: "created" }]);
+  expect(model.getSnapshot()).toMatchObject({
+    fields: { action: "truth", id: "created", body: "Saved creation" },
+    blocked: false,
+  });
+  model.set("reason", "Reviewed existing saved page");
+  expect(await model.save()).toBe(true);
+  expect(commands.map((command) => command.action)).toEqual(["create", "truth"]);
+  expect(commands[1]).toMatchObject({ expectedRevision: saved.revision });
+});
+it("keeps an uncertain creation blocked with its full local draft if the submitted page cannot be read", async () => {
+  const model = new KnowledgeEditorModel(
+    {},
+    async () => {
+      throw new Error("Lost acknowledgment");
+    },
+    async () => {
+      throw new Error("Not found");
+    },
+  );
+  model.set("id", "created");
+  model.set("title", "Created");
+  model.set("body", "Creation draft");
+  await model.save();
+  expect(await model.reload(async () => true)).toBe(false);
+  expect(model.getSnapshot()).toMatchObject({
+    fields: { action: "create", id: "created", title: "Created", body: "Creation draft" },
+    blocked: true,
+  });
+  expect(await model.save()).toBe(false);
+});
 
 it("invalidates hidden write acknowledgments and pending review confirmations across reactivation", async () => {
   const pending = deferred<{ ok: true }>();

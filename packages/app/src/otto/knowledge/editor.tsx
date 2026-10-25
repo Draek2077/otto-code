@@ -255,6 +255,19 @@ export function KnowledgeEditor({
       if (model.getAuthority() === authority) onCancel();
   }, [state.busy, onCancel, model]);
   const destructive = state.fields.action === "purge";
+  const reload = useCallback(
+    () =>
+      model.reload(() =>
+        confirmDialog({
+          title: "Discard local edits and reload?",
+          message:
+            "This replaces your local draft with the currently saved Knowledge. A creation that already succeeded opens as an existing page. If it cannot be read, your draft will be kept.",
+          confirmLabel: "Reload saved page",
+          destructive: true,
+        }),
+      ),
+    [model],
+  );
   const saveLabel = destructive ? "Delete permanently" : "Save";
   return (
     <SettingsSection
@@ -262,18 +275,25 @@ export function KnowledgeEditor({
       testID="knowledge-editor"
     >
       {state.error ? <Alert variant="error" description={state.error} /> : null}
-      {state.blocked ? <KnowledgeLockRecovery scope={scope} active={retained && visible} /> : null}
-      <EditorFields model={model} />
+      {state.lockBlocked ? (
+        <KnowledgeLockRecovery scope={scope} active={retained && visible} />
+      ) : null}
+      <EditorFields key={state.reloadVersion} model={model} />
       <View style={styles.actions}>
         <Button onPress={cancel} disabled={state.busy} variant="outline">
           Cancel
         </Button>
+        {model.supportsReload() ? (
+          <Button onPress={reload} disabled={state.busy} variant="outline">
+            {state.reloading ? "Reloading..." : "Reload saved page"}
+          </Button>
+        ) : null}
         <Button
           onPress={save}
           disabled={state.busy || state.blocked}
           variant={destructive ? "destructive" : "secondary"}
         >
-          {state.busy ? "Saving..." : saveLabel}
+          {state.busy && !state.reloading ? "Saving..." : saveLabel}
         </Button>
       </View>
     </SettingsSection>

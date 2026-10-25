@@ -84,6 +84,19 @@ Skipped input is not described as nonexistent. Empty README content, malformed o
 non-object manifests, and uninspected package behavior remain explicit unknowns;
 initialization does not invent purpose, commands or stack details to fill them.
 
+Existing article and root editors expose Reload saved page. It requires explicit
+confirmation before replacing local intent, then reads the same target on its
+owning host and adopts that read's revision. A declined, failed or hidden read
+retains the old draft and origin. Reload is read-only, serializes with saves, and
+never replays a blocked write. The uncontrolled text fields remount only after
+the accepted reload. Conflict explanations remain visible while a blocked draft
+is edited. Write-lock recovery appears only for a typed busy response, rather
+than suggesting lock repair for ordinary peer changes.
+After an uncertain creation, reload reads the identity that was actually submitted,
+even if the local ID was subsequently edited. A successfully read page opens as
+an existing truth edit with its fresh revision; creation is never replayed. If the
+page cannot be read, the complete creation draft stays retained and blocked.
+
 ## MCP and UI
 
 All providers receive the same thirteen tools through the existing Paseo tool catalog:

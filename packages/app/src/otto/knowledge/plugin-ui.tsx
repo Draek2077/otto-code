@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { ScrollView, View } from "react-native";
+import type { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchQuery } from "@/data/query";
 import {
@@ -12,6 +13,8 @@ import {
 import {
   mutateKnowledge,
   readKnowledgeCatalog,
+  readKnowledgePage,
+  readKnowledgeRoot,
   type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
 import { SettingsRow, SettingsSection, SettingsSelect } from "@/components/settings";
@@ -22,7 +25,7 @@ import { useAppVisible } from "@/hooks/use-app-visible";
 import { KnowledgeCatalogView } from "./catalog";
 import { KnowledgeDocument, type KnowledgeSelection } from "./document";
 import { KnowledgeEditor } from "./editor";
-import type { EditorSeed } from "./editor-model";
+import type { EditorSeed, EditorReloadTarget } from "./editor-model";
 import { KnowledgeStorage } from "./storage";
 import { styles } from "./styles";
 import { useKnowledgeChanges } from "./use-knowledge-changes";
@@ -32,6 +35,34 @@ import { KnowledgeHostDefaults } from "./host-defaults";
 import { KnowledgeStorageSetup } from "./setup";
 import { KnowledgeLockRecovery } from "./lock-recovery";
 import { knowledgeEditorDraftsFor } from "./editor-drafts";
+
+async function readEditorSeed(
+  scope: KnowledgeScope,
+  target: EditorReloadTarget,
+  readers: {
+    page(
+      input: z.input<typeof readKnowledgePage.input>,
+    ): Promise<z.output<typeof readKnowledgePage.output>>;
+    root(
+      input: z.input<typeof readKnowledgeRoot.input>,
+    ): Promise<z.output<typeof readKnowledgeRoot.output>>;
+  },
+): Promise<EditorSeed> {
+  if (target.type === "page") {
+    const result = await readers.page({ scope, kind: target.kind, id: target.id });
+    if (!result.ok) throw new Error("Saved Knowledge could not be read");
+    return { page: result.value };
+  }
+  const result = await readers.root({ scope, slug: target.slug });
+  if (!result.ok) throw new Error("Saved Knowledge root could not be read");
+  return {
+    root: {
+      slug: target.slug,
+      body: result.value?.body ?? "",
+      revision: result.value?.revision ?? null,
+    },
+  };
+}
 
 function KnowledgeBody({
   scope,
@@ -44,6 +75,8 @@ function KnowledgeBody({
 }) {
   const readCatalog = useRpc(readKnowledgeCatalog);
   const mutate = useRpc(mutateKnowledge);
+  const readPage = useRpc(readKnowledgePage);
+  const readRoot = useRpc(readKnowledgeRoot);
   const paseo = usePaseo();
   const drafts = useMemo(() => knowledgeEditorDraftsFor(paseo), [paseo]);
   useSyncExternalStore(drafts.subscribe, drafts.getSnapshot);
@@ -112,14 +145,17 @@ function KnowledgeBody({
           seed,
           submit: async (command) => {
             const result = await mutate({ scope, command });
-            return result.ok ? { ok: true } : { ok: false, message: result.error.message };
+            return result.ok
+              ? { ok: true }
+              : { ok: false, message: result.error.message, code: result.error.code };
           },
+          readSaved: (target) => readEditorSeed(scope, target, { page: readPage, root: readRoot }),
         });
       } catch {
         setActionError("Finish or discard an existing Knowledge draft before opening more.");
       }
     },
-    [drafts, scope, mutate],
+    [drafts, scope, mutate, readPage, readRoot],
   );
   const create = useCallback(() => openEditor({}), [openEditor]);
   const back = useCallback(() => setSelection(null), []);
