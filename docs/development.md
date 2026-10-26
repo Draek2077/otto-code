@@ -31,6 +31,26 @@ the titlebar row. Production builds leave the variable unset and show no label.
 
 `npm run dev` is only a shorthand for `npm run dev:server`. Keep `127.0.0.1:6868` for the packaged app and production-style `~/.otto` state.
 
+<!-- OTTO(metro-resources): keep the fork's resource policy separate from upstream Metro configuration. -->
+
+### Metro file-handle pressure
+
+The Otto-owned `packages/app/otto/metro-resource-policy.cjs` extends Expo's
+existing exclusions. Checkout scratch directories, package runtime homes,
+coverage, Playwright traces and exported app copies are excluded from Metro's
+source map. Compiled workspace dependencies remain visible. Windows uses at most
+two Metro workers; smaller explicit budgets and other platforms retain their
+existing setting. This bounds transform pressure without changing installed Otto,
+system limits or dependency sources.
+
+An `EMFILE` error means the process could not open another file. If the stack
+ends in Metro's error formatter, it may conceal an earlier bundling failure;
+inspect the preceding output rather than assuming the last file is defective.
+The resource policy takes effect the next time the dev command starts. Policy
+tests and configuration inspection do not establish that a reported crash has
+been reproduced or resolved. No cache deletion or daemon restart is required by
+this policy.
+
 ## Nix desktop package
 
 The flake exposes `packages.<system>.desktop` on Linux and macOS:

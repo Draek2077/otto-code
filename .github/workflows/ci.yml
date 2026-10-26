@@ -65,6 +65,10 @@ jobs:
       - name: Test Otto release and dev adapters
         run: node --test scripts/otto/dev-environment.test.mjs scripts/otto/npm-rename.test.mjs scripts/otto/verify-android-signing.test.mjs scripts/otto/app-acceptance.test.mjs scripts/publish-release-packages.test.mjs scripts/ensure-github-release.test.mjs
 
+      # OTTO(metro-resources): guard dependency visibility and Windows worker limits without launching Metro.
+      - name: Test Otto Metro resource policy
+        run: node --test packages/app/otto/metro-resource-policy.test.cjs
+
   quality:
     name: quality
     needs: changes

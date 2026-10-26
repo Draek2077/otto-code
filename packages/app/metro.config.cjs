@@ -1,6 +1,7 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const { resolve } = require("metro-resolver");
 const path = require("path");
+const { metroResourcePolicy } = require("./otto/metro-resource-policy.cjs"); // OTTO(metro-resources): bounded Windows work and preserved upstream exclusions.
 
 const projectRoot = __dirname;
 const appNodeModulesRoot = path.resolve(projectRoot, "node_modules");
@@ -16,6 +17,14 @@ const customWebPlatform = (process.env.PASEO_WEB_PLATFORM ?? "")
   .toLowerCase();
 
 const config = getDefaultConfig(projectRoot);
+const resourcePolicy = metroResourcePolicy({
+  root: path.resolve(projectRoot, "../.."),
+  app: projectRoot,
+  platform: process.platform,
+  maxWorkers: config.maxWorkers,
+  blockList: config.resolver.blockList,
+}); // OTTO(metro-resources): generated output and runtime state never become watched source copies.
+config.maxWorkers = resourcePolicy.maxWorkers; // OTTO(metro-resources)
 const defaultResolveRequest = config.resolver.resolveRequest ?? resolve;
 
 // Keep app exports deterministic across dev machines and CI. Metro's Watchman
@@ -36,9 +45,12 @@ config.resolver.extraNodeModules = {
   "react/jsx-runtime": path.join(appNodeModulesRoot, "react/jsx-runtime"),
   "react/jsx-dev-runtime": path.join(appNodeModulesRoot, "react/jsx-dev-runtime"),
 };
-config.resolver.blockList = new RegExp(
-  `(^${escapedAppSrcRoot}${pathSeparatorPattern}.*\\.(test|spec)\\.(ts|tsx)$|${pathSeparatorPattern}__tests__${pathSeparatorPattern}.*)$`,
-);
+config.resolver.blockList = [
+  ...resourcePolicy.blockList,
+  new RegExp( // OTTO(metro-resources): extend, never replace, Expo's exclusions.
+    `(^${escapedAppSrcRoot}${pathSeparatorPattern}.*\\.(test|spec)\\.(ts|tsx)$|${pathSeparatorPattern}__tests__${pathSeparatorPattern}.*)$`,
+  ),
+];
 
 function isLocalModuleImport(moduleName) {
   return (
