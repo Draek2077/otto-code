@@ -49,9 +49,12 @@ export function BrowserHistorySuggestions({
   const choose = useCallback(
     (url: string) => {
       model.dismiss();
+      // The address field is uncontrolled. Selecting its current page does not
+      // change browser.url, so the pane's URL-change effect cannot replace the query.
+      inputRef.current?.replaceText(url);
       onNavigate(url);
     },
-    [model, onNavigate],
+    [model, inputRef, onNavigate],
   );
   const retry = useCallback(() => model.search(query), [model, query]);
   const overlayKey = useCallback(
