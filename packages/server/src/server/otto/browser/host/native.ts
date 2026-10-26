@@ -17,6 +17,7 @@ export function createNativeHostBrowser(ports: {
   hostId: string;
   broker: BrowserToolsBroker;
   reportError?(error: unknown): void;
+  runtimeState?(state: "started" | "closed"): void;
   workspaces: { get(id: string): Promise<{ cwd: string; archivedAt: string | null } | null> };
 }) {
   const commands = new HostBrowserCommands();
@@ -64,7 +65,7 @@ export function createNativeHostBrowser(ports: {
       }
     })();
   }
-  const runtime = new HostBrowserRuntime(ports.home, observe);
+  const runtime = new HostBrowserRuntime(ports.home, observe, ports.runtimeState);
   pages = new HostBrowserPages({
     open: async (tab) => {
       try {
@@ -110,9 +111,9 @@ export function createNativeHostBrowser(ports: {
         },
         command.command === "wait" ? (command.args.timeoutMs ?? 5000) + 1000 : 15_000,
       ),
-    input: (host, event) =>
+    input: (host, event, ticket) =>
       hostBrowserDeadline(
-        () => dispatchHostBrowserInput(host, event),
+        () => dispatchHostBrowserInput(host, event, ticket),
         () => host.close(),
         10_000,
       ),

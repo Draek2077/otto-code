@@ -1,0 +1,55 @@
+name: Otto Host Browser Acceptance
+
+# OTTO(browser-host): real isolated browsers run on runners, never during local fixture validation.
+on:
+  workflow_dispatch:
+  push:
+    branches: [otto-0.10/phase-0]
+    paths:
+      - .github/workflows/otto-host-browser-acceptance.yml
+      - packages/server/src/server/otto/browser/host/**
+      - packages/server/src/server/otto/browser/paint-pump.ts
+      - packages/protocol/src/otto/browser-frames.ts
+      - packages/plugin/src/otto/host-browser.ts
+
+permissions:
+  contents: read
+
+concurrency:
+  group: otto-host-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: native (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install repository dependencies
+        run: node scripts/npm-retry.mjs ci
+      - name: Build owning declarations and SDK
+        run: npm run build:server-deps
+      - name: Install CI Chromium
+        if: ${{ runner.os == 'Linux' }}
+        run: npx playwright install chromium
+      - name: Verify Host Browser automation and streaming
+        run: npm run test:e2e:otto-host-browser --workspace=@getpaseo/server
+        env:
+          OTTO_HOST_BROWSER_ARTIFACT_DIR: ${{ runner.temp }}/otto-host-browser
+      - name: Upload isolated browser proof
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: otto-host-browser-${{ runner.os }}
+          path: ${{ runner.temp }}/otto-host-browser
+          if-no-files-found: ignore
+          retention-days: 7

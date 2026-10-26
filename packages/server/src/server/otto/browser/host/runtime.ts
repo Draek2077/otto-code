@@ -6,6 +6,9 @@ import { OTTO_BROWSER_FRAME_MAX_JPEG_BYTES } from "@getpaseo/protocol/otto/brows
 import { HostBrowserTelemetry } from "./telemetry.js";
 import { resolveHostBrowser } from "./runtime-paths.js";
 import type { HostTab } from "./pages.js";
+import { createHostBrowserInputs } from "./input.js";
+import type { HostBrowserInputs } from "./input-state.js";
+import { hostBrowserDeadline } from "./deadline.js";
 const paintSchema = z.object({
   data: z.string().max(Math.ceil(OTTO_BROWSER_FRAME_MAX_JPEG_BYTES / 3) * 4),
   sessionId: z.number().int().nonnegative(),
@@ -13,6 +16,7 @@ const paintSchema = z.object({
 export class ManagedHostPage {
   readonly telemetry: HostBrowserTelemetry;
   readonly paint: BrowserPaintPump;
+  readonly inputs: HostBrowserInputs;
   private capturing = false;
   private demand = false;
   private captureQueue: Promise<void> = Promise.resolve();
@@ -25,6 +29,7 @@ export class ManagedHostPage {
     readonly cdp: CDPSession,
   ) {
     this.telemetry = new HostBrowserTelemetry(page);
+    this.inputs = createHostBrowserInputs(page, cdp);
     this.paint = new BrowserPaintPump({
       ack: (sessionId) => {
         void cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
@@ -55,7 +60,22 @@ export class ManagedHostPage {
   watch(sink: PaintSink) {
     this.assertUsable();
     if (this.closing || this.isClosed()) throw new Error("The Host Browser page is closing.");
-    return this.paint.watch(sink);
+    const release = this.paint.watch(sink);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      release();
+      void hostBrowserDeadline(
+        () => this.inputs.release(sink.ticket),
+        () => this.close(),
+        10_000,
+      ).catch(() => {
+        this.lastNavigationError =
+          "The viewer's native input could not be released. Close this tab and reopen it explicitly.";
+        void this.close().catch(() => {});
+      });
+    };
   }
   private setCaptureDemand(active: boolean) {
     this.demand = active;
@@ -107,6 +127,7 @@ export class ManagedHostPage {
     return this.closing;
   }
   private async closePage() {
+    this.inputs.close();
     this.paint.close();
     // Closing an owned target must not wait behind a hung renderer/CDP screencast command.
     // The capture queue already handles its rejection when the target is destroyed.
@@ -120,24 +141,42 @@ export class HostBrowserRuntime {
   constructor(
     private readonly home: string,
     private readonly changed: (tab: HostTab, page: Page, error: string | null) => void,
+    private readonly runtimeState?: (state: "started" | "closed") => void,
   ) {}
   private async getContext(): Promise<BrowserContext> {
     if (this.context) return this.context;
     const executablePath = await resolveHostBrowser();
-    this.context = await chromium.launchPersistentContext(path.join(this.home, "browser-profile"), {
-      executablePath,
-      headless: true,
-      timeout: 15_000,
-      viewport: { width: 390, height: 844 },
-      acceptDownloads: false,
-      args: ["--disable-dev-shm-usage", "--no-default-browser-check"],
+    const context = await chromium.launchPersistentContext(
+      path.join(this.home, "browser-profile"),
+      {
+        executablePath,
+        headless: true,
+        timeout: 15_000,
+        viewport: { width: 390, height: 844 },
+        acceptDownloads: false,
+        args: [
+          "--disable-dev-shm-usage",
+          "--no-default-browser-check",
+          ...(process.platform === "linux" ? ["--use-angle=swiftshader"] : []),
+        ],
+      },
+    );
+    this.context = context;
+    this.reportState("started");
+    context.setDefaultTimeout(10_000);
+    context.on("close", () => {
+      if (this.context === context) this.context = null;
+      this.reportState("closed");
     });
-    this.context.setDefaultTimeout(10_000);
-    this.context.on("close", () => {
-      this.context = null;
-    });
-    for (const page of this.context.pages()) await page.close();
-    return this.context;
+    for (const page of context.pages()) await page.close();
+    return context;
+  }
+  private reportState(state: "started" | "closed") {
+    try {
+      this.runtimeState?.(state);
+    } catch {
+      /* Diagnostics cannot alter runtime ownership. */
+    }
   }
   async open(tab: HostTab): Promise<ManagedHostPage> {
     const context = await this.getContext(),

@@ -40,7 +40,7 @@ export class HostBrowserService<P extends HostCapturePage> {
         page: P,
         command: BrowserAutomationCommand,
       ): Promise<BrowserAutomationResult>;
-      input(page: P, event: HostBrowserInput): Promise<void>;
+      input(page: P, event: HostBrowserInput, ticket: string): Promise<void>;
       clear(browserId: string): void;
       dialogs(page: P): BrowserAutomationDialogEvent[];
     },
@@ -195,7 +195,7 @@ export class HostBrowserService<P extends HostCapturePage> {
           await this.views.input(
             input.ticket,
             this.source(source),
-            (page) => this.ports.input(page, input.event),
+            (page) => this.ports.input(page, input.event, input.ticket),
             input.workspaceId,
           );
           return true as const;

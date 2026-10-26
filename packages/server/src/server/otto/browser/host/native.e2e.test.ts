@@ -59,6 +59,7 @@ test("native Host Browser executes against the streamed page and preserves its o
   const service = createNativeHostBrowser({
     home,
     hostId: "native-proof",
+    runtimeState: (state) => trace.push({ command: "runtime-state", result: state }),
     broker,
     reportError: (error) =>
       trace.push({
@@ -215,6 +216,12 @@ test("native Host Browser executes against the streamed page and preserves its o
       browserId,
       "() => { document.cookie='ottoHostFixture=yes;path=/'; return true; }",
     );
+    expect(
+      await evaluate(
+        browserId,
+        "() => ({cookie: document.cookie, href: location.href, enabled: navigator.cookieEnabled})",
+      ),
+    ).toMatchObject({ cookie: expect.stringContaining("ottoHostFixture=yes"), enabled: true });
     await delivery.detach(socket);
     const count = paints.length;
     await evaluate(browserId, "() => { document.body.style.background='pink'; return true; }");
