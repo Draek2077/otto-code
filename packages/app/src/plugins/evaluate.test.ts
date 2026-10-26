@@ -29,6 +29,16 @@ function bundle(body: string): string {
 }
 
 describe("evaluatePluginClientBundle", () => {
+  it("keeps Context Management UI built-in-only and lazy while sharing structural contracts", () => {
+    const source = bundle(
+      `const ui=require("@getpaseo/plugin/client/otto-knowledge");const rpc=require("@getpaseo/plugin/otto/context-management");rpc.readContextAgents.input.parse({hostId:"host",workspaceId:"workspace"});plugin.addWorkspacePanel({id:"context-management",title:"Context Management",icon:"Layers",context:"workspace",Component:ui.ContextManagementWorkspace});`,
+    );
+    const plugin = evaluatePluginClientBundle("otto-project-knowledge", source);
+    expect(plugin.workspacePanels.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: "context-management", title: "Context Management" },
+    ]);
+    expect(() => evaluatePluginClientBundle("unrelated-plugin", source)).toThrow();
+  });
   it("loads the trusted Knowledge bridge without eagerly importing its Markdown surface", () => {
     const source = bundle(`
       const ui = require("@getpaseo/plugin/client/otto-knowledge");

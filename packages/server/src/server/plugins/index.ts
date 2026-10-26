@@ -39,6 +39,7 @@ import type { PluginUsageSourceMetadata } from "./plugin-process-protocol.js";
 const BUILTIN_PROVIDER_ID_SET: ReadonlySet<string> = new Set(BUILTIN_PROVIDER_IDS);
 
 interface PluginRuntimePort {
+  hasMethod?: PluginRuntime["hasMethod"]; // OTTO(context-management): read-only method capability.
   emit?: PluginLifecycle["emit"];
   drainEvents?: PluginRuntime["drainEvents"];
   before?: PluginLifecycle["before"];
@@ -157,6 +158,17 @@ export class PluginService {
 
   bindPaseoSessionHost(sessionHost: Parameters<PluginRuntime["bindPaseoSessionHost"]>[0]): void {
     this.runtime.bindPaseoSessionHost(sessionHost);
+  }
+
+  // OTTO(context-management): inspect by registered capability, including aliases and third-party providers.
+  ottoProviderOwner(providerId: string): string | undefined {
+    for (const [pluginId, ids] of this.providerIdsByPlugin)
+      if (
+        ids.includes(providerId) &&
+        this.runtime.hasMethod?.(pluginId, "context.provider.inspect.request")
+      )
+        return pluginId;
+    return undefined;
   }
 
   getProviderRegistrations(): readonly ProviderRegistration[] {

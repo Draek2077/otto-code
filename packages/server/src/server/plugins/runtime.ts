@@ -394,6 +394,11 @@ export class PluginRuntime {
     return this.plugins.get(pluginId)?.providers ?? [];
   }
 
+  // OTTO(context-management): discovery reads registered methods; it never invokes or launches a provider.
+  hasMethod(pluginId: string, method: string): boolean {
+    return this.plugins.get(pluginId)?.methods.has(method) === true;
+  }
+
   getUsageSourceRegistrations(pluginId: string): readonly PluginUsageSourceMetadata[] {
     return this.plugins.get(pluginId)?.usageSources ?? [];
   }

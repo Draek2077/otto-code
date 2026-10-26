@@ -8,3 +8,9 @@ import type {
 export declare const ProjectKnowledgeWorkspace: ComponentType<PluginWorkspacePanelProps>;
 export declare const ProjectKnowledgeScreen: ComponentType<PluginScreenProps>;
 export declare const ProjectKnowledgeSettings: ComponentType<PluginSurfaceProps>;
+
+/** Optional until the supported app floor includes the Context Management bridge. */
+export declare const ContextManagementWorkspace:
+  | ComponentType<PluginWorkspacePanelProps>
+  | undefined;
+export declare const ContextManagementScreen: ComponentType<PluginScreenProps> | undefined;

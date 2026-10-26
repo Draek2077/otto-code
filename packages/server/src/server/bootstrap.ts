@@ -243,6 +243,8 @@ import { KanbanDaemonService } from "./otto/kanban/service.js"; // OTTO(kanban):
 import { createRetainedKanbanToolPolicy } from "./otto/kanban/tool-policy.js"; // OTTO(kanban): inert, read-only retained tool ceilings.
 import { createHostIntegrations } from "../services/otto/integrations/host.js"; // OTTO(integration): shared daemon-owned credentials.
 import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OTTO(knowledge)
+import { contextAgents } from "./otto/context-management/agents.js"; // OTTO(context-management)
+import { ContextManagementService } from "./otto/context-management/host.js"; // OTTO(context-management)
 import { createKnowledgeGenerationSource } from "./otto/project-knowledge/generation.js"; // OTTO(knowledge): use the existing provider-neutral generation boundary.
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
@@ -637,6 +639,7 @@ export async function createPaseoDaemon(
   const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until demand/action or saved startup intent.
   let ottoKanban: KanbanDaemonService | null = null; // OTTO(kanban): bound after registry/server identity creation, before plugins start.
   let ottoIntegrations: ReturnType<typeof createHostIntegrations> | null = null; // OTTO(integration)
+  let ottoContext: ContextManagementService | null = null; // OTTO(context-management): composed after AgentManager.
   let ottoKnowledge: KnowledgeDaemonService | null = null; // OTTO(knowledge)
   const pluginRuntime: PluginService = new PluginService(
     logger,
@@ -665,7 +668,9 @@ export async function createPaseoDaemon(
           if (pluginId === "otto-kanban") return ottoKanban?.invoke(method, input, clientId); // OTTO(kanban)
           if (pluginId === "otto-integrations") return ottoIntegrations?.rpc.invoke(method, input); // OTTO(integration)
           if (pluginId === "otto-project-knowledge")
-            return ottoKnowledge?.invoke(method, input, clientId); // OTTO(knowledge)
+            return (
+              ottoContext?.invoke(method, input) ?? ottoKnowledge?.invoke(method, input, clientId)
+            ); // OTTO(context-management): namespaced delegation. // OTTO(knowledge)
           return undefined;
         },
         releaseClient: (clientId) => {
@@ -1025,6 +1030,14 @@ export async function createPaseoDaemon(
       resolvePaseoToolPolicy(provider, daemonConfigStore.get().providers),
     logger,
   });
+  ottoContext = new ContextManagementService({
+    hostId: serverId,
+    home: config.paseoHome,
+    workspaces: workspaceRegistry,
+    agents: contextAgents(agentManager), // OTTO(context-management): live, sanitized projection.
+    providerOwner: (id) => pluginRuntime.ottoProviderOwner(id),
+    invoke: (id, method, input) => pluginRuntime.invokePluginRpc(id, method, input),
+  }); // OTTO(context-management): no reads, watches or writes during registration.
   knowledgeGeneration.initialize({
     agentManager,
     providerSnapshotManager,

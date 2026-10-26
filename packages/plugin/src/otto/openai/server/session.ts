@@ -31,6 +31,7 @@ import { Compactor, type CompactionPolicy } from "./compaction.js";
 import { savedSession } from "./session-state.js";
 import type { SessionArchive } from "./session-store.js";
 import type { InstructionSource } from "./instructions.js";
+import type { PreparedContext } from "./context-inspection.js";
 
 const jsonObject = z.record(z.string(), z.json());
 const revertToken = z.object({ format: z.literal("otto-openai-revert-v1"), id: z.string().min(1) });
@@ -53,6 +54,28 @@ interface OpenAiSessionOptions {
 }
 
 export class OpenAiSession {
+  private preparedContext: PreparedContext | null = null;
+  private captureContext(system: string, tools: readonly unknown[]): void {
+    const serialized = JSON.stringify(tools);
+    this.preparedContext =
+      system.length + serialized.length <= 524288
+        ? {
+            capturedAt: new Date().toISOString(),
+            phase: "prepared",
+            system,
+            instructionText: this.instructions?.preparedText() ?? "",
+            tools: serialized,
+            blocks: [...(this.instructions?.preparedBlocks() ?? [])],
+          }
+        : null;
+  }
+  private completeContext(): void {
+    if (this.preparedContext)
+      this.preparedContext = { ...this.preparedContext, phase: "completed" };
+  }
+  inspectContext(): PreparedContext | null {
+    return this.preparedContext;
+  }
   readonly id: string;
   readonly config: ProviderSessionConfig;
   readonly settings: ConnectionSettings;
@@ -324,6 +347,7 @@ export class OpenAiSession {
           )
         )
           await this.compactHistory(turnId, controller, preferences, usage, "auto");
+        this.captureContext(systemPrompt, tools);
         const result = await streamCompletion({
           ...(await this.completionSettings(preferences)),
           messages: [
@@ -339,6 +363,7 @@ export class OpenAiSession {
           onReasoning: (text) => this.item({ id: reasoningId, type: "reasoning", text }),
           onUsage: (value) => this.addUsage(turnId, usage, value),
         });
+        this.completeContext();
         this.messages.push({
           role: "assistant",
           content: result.content || null,

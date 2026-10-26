@@ -6,6 +6,7 @@ import {
   ProjectKnowledgeScreen,
   ProjectKnowledgeSettings,
 } from "@getpaseo/plugin/client/otto-knowledge";
+import * as knowledgeUi from "@getpaseo/plugin/client/otto-knowledge";
 function KnowledgeSidebar({ currentScreen, openScreen }: PluginSidebarItemProps) {
   const open = useCallback(() => openScreen({ screenId: "knowledge" }), [openScreen]);
   return (
@@ -17,8 +18,54 @@ function KnowledgeSidebar({ currentScreen, openScreen }: PluginSidebarItemProps)
     />
   );
 }
+function ContextSidebar({ currentScreen, openScreen }: PluginSidebarItemProps) {
+  const open = useCallback(() => openScreen({ screenId: "context-management" }), [openScreen]);
+  return (
+    <SidebarRow
+      icon="Layers"
+      label="Context Management"
+      active={currentScreen?.screenId === "context-management"}
+      onPress={open}
+    />
+  );
+}
+function registerContext(client: PluginClientContext) {
+  const { ContextManagementWorkspace, ContextManagementScreen } = knowledgeUi;
+  // COMPAT(ottoContextUi): added v0.10.0; remove after 2027-04-25 when app floor includes this bridge.
+  // Older apps keep Knowledge usable without importing an unknown private module.
+  if (!ContextManagementWorkspace || !ContextManagementScreen) return [];
+  return [
+    client.addSidebarHeaderItem({
+      id: "context-management",
+      title: "Context Management",
+      Component: ContextSidebar,
+    }),
+    client.addWorkspacePanel({
+      id: "context-management",
+      title: "Context Management",
+      icon: "Layers",
+      context: "workspace",
+      Component: ContextManagementWorkspace,
+    }),
+    client.addScreen({
+      id: "context-management",
+      title: "Context Management",
+      Component: ContextManagementScreen,
+    }),
+    client.addCommandCenterItem({
+      id: "open-context-management",
+      title: "Open Context Management",
+      icon: "Layers",
+      context: "workspace",
+      onSelect({ openPanel }) {
+        openPanel("context-management");
+      },
+    }),
+  ];
+}
 export default function contribute(client: PluginClientContext) {
   const cleanups = [
+    ...registerContext(client),
     client.addWorkspacePanel({
       id: "knowledge",
       title: "Knowledge",

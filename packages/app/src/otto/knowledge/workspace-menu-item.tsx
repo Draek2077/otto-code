@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { BookOpen } from "lucide-react-native";
+import { BookOpen, Layers } from "lucide-react-native";
 import { withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import { ContextMenuItem } from "@/components/ui/context-menu";
@@ -8,18 +8,22 @@ import { useInstalledPlugin } from "@/plugins/registry";
 import { createPluginNavigation } from "@/plugins/navigation";
 import { usePanelStore } from "@/stores/panel-store";
 import { useIsCompactFormFactor } from "@/constants/layout";
+const ThemedLayers = withUnistyles(Layers);
 const ThemedBook = withUnistyles(BookOpen);
 const color = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const contextLeading = <ThemedLayers size={14} uniProps={color} />;
 const leading = <ThemedBook size={14} uniProps={color} />;
 /** Bind the clicked row, including when a different workspace is currently active. */
 export function KnowledgeWorkspaceMenuItem({
   serverId,
   workspaceId,
   surface,
+  context = false,
 }: {
   serverId?: string;
   workspaceId?: string;
   surface: "context" | "dropdown";
+  context?: boolean;
 }) {
   const plugin = useInstalledPlugin(serverId ?? "", "otto-project-knowledge");
   const compact = useIsCompactFormFactor();
@@ -29,25 +33,31 @@ export function KnowledgeWorkspaceMenuItem({
   );
   const open = useCallback(() => {
     if (compact) usePanelStore.getState().showMobileAgent();
-    navigation.openWorkspacePanel("otto-project-knowledge", "knowledge", "workspace");
-  }, [navigation, compact]);
+    navigation.openWorkspacePanel(
+      "otto-project-knowledge",
+      context ? "context-management" : "knowledge",
+      "workspace",
+    );
+  }, [navigation, compact, context]);
   if (
     !serverId ||
     !workspaceId ||
     !plugin?.workspacePanels.some(
-      (panel) => panel.id === "knowledge" && panel.context === "workspace",
+      (panel) =>
+        panel.id === (context ? "context-management" : "knowledge") &&
+        panel.context === "workspace",
     )
   )
     return null;
   if (surface === "context")
     return (
-      <ContextMenuItem onSelect={open} leading={leading}>
-        Open Knowledge
+      <ContextMenuItem onSelect={open} leading={context ? contextLeading : leading}>
+        {context ? "Open Context Management" : "Open Knowledge"}
       </ContextMenuItem>
     );
   return (
-    <DropdownMenuItem onSelect={open} leading={leading}>
-      Open Knowledge
+    <DropdownMenuItem onSelect={open} leading={context ? contextLeading : leading}>
+      {context ? "Open Context Management" : "Open Knowledge"}
     </DropdownMenuItem>
   );
 }

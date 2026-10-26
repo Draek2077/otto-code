@@ -51,3 +51,5 @@ export function ProjectKnowledgeSettings(props: PluginSurfaceProps) {
     </Available>
   );
 }
+
+export { ContextManagementWorkspace, ContextManagementScreen } from "../context-management/bridge";

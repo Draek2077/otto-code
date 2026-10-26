@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstat, open, realpath } from "node:fs/promises";
 import path from "node:path";
+import { instructionReferences, renderInstructions } from "./instruction-graph.js";
 
 const MAX_BYTES = 128 * 1024;
 const MAX_FILES = 32;
@@ -35,23 +36,12 @@ function chain(root: string, directory: string): string[] {
 
 /** Local literal imports are instructions; ordinary links and code examples are not. */
 function imports(text: string): string[] {
-  let fence: string | undefined;
-  return text.split(/\r?\n/).flatMap((line) => {
-    const marker = line.trimStart().match(/^(`{3,}|~{3,})/u)?.[1];
-    if (marker) {
-      if (!fence) fence = marker[0];
-      else if (marker[0] === fence) fence = undefined;
-      return [];
-    }
-    if (fence) return [];
-    const prose = line.replace(/`[^`]*`/gu, "");
-    return [...prose.matchAll(/(?:^|\s)@((?:\.{0,2}\/)?[\w./-]+\.md)(?=$|\s|[,;])/gu)].map(
-      (match) => match[1]!,
-    );
-  });
+  return instructionReferences(text)
+    .filter((reference) => reference.kind === "import")
+    .map((reference) => reference.target);
 }
 
-interface InstructionBlock {
+export interface InstructionBlock {
   file: string;
   scope: string;
   text: string;
@@ -63,6 +53,7 @@ interface InstructionBlock {
  * Files are bounded and reread for each request, never copied into persistent chat.
  */
 export class InstructionSource {
+  private lastBlocks: InstructionBlock[] = [];
   private readonly directories = new Set<string>();
   private admitted = "";
   private constructor(
@@ -76,6 +67,10 @@ export class InstructionSource {
     return new InstructionSource(cwd, await realpath(options.home), await workspaceRoot(cwd));
   }
 
+  get workspaceRoot(): string {
+    return this.root;
+  }
+
   beginTurn(): void {
     this.directories.clear();
     this.admitted = "";
@@ -84,14 +79,22 @@ export class InstructionSource {
   async forRequest(): Promise<string> {
     const blocks = await this.load();
     this.admitted = this.signature(blocks);
-    if (!blocks.length) return "";
-    return [
-      "Current host and repository instructions follow. Deeper directory rules apply only within that directory and override broader rules. Current files take precedence over historical instruction copies in this conversation. Before using a shell or MCP tool to change files, inspect instructions in the affected subdirectories.",
-      ...blocks.map(
-        ({ file, scope, text }) =>
-          `${JSON.stringify({ instructionFile: file, appliesWithin: scope })}\n${text}`,
-      ),
-    ].join("\n\n");
+    this.lastBlocks = blocks;
+    return renderInstructions(blocks);
+  }
+
+  preparedBlocks(): readonly InstructionBlock[] {
+    return this.lastBlocks;
+  }
+
+  preparedText(): string {
+    return renderInstructions(this.lastBlocks);
+  }
+
+  /** Read-only inspection uses the runtime's exact resolver without admitting a write. */
+  async inspect(): Promise<{ blocks: InstructionBlock[]; text: string }> {
+    const blocks = await this.load();
+    return { blocks, text: renderInstructions(blocks) };
   }
 
   /** A native write waits until its applicable current rules have reached the model. */

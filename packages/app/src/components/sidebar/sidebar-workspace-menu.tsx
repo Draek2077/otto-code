@@ -235,6 +235,13 @@ function SidebarWorkspaceMenuItems({
       />
       {/* OTTO(knowledge): shared by right-click and compact workspace action menus. */}
       <KnowledgeWorkspaceMenuItem surface={surface} serverId={serverId} workspaceId={workspaceId} />
+      {/* OTTO(context-management): bind the clicked workspace, never the active chat. */}
+      <KnowledgeWorkspaceMenuItem
+        context
+        surface={surface}
+        serverId={serverId}
+        workspaceId={workspaceId}
+      />
       {onArchive ? (
         <WorkspaceMenuItem
           surface={surface}

@@ -15,6 +15,7 @@ import { SessionArchive } from "./session-store.js";
 import { importLegacyConversation, restoredLegacyConfig } from "./legacy-history.js";
 import { InstructionSource } from "./instructions.js";
 import type { CompactionPolicy } from "./compaction.js";
+import type { PreparedContext } from "./context-inspection.js";
 
 const capabilities = [
   "prompt.message",
@@ -27,8 +28,14 @@ const capabilities = [
   "permission.tool_policy",
 ] as const;
 
-type ManagedConnection = ProviderConnection & { retireProfile(profileId: string): Promise<void> };
-type OttoProvider = ProviderRegistration & { retireProfile(profileId: string): Promise<void> };
+type ManagedConnection = ProviderConnection & {
+  retireProfile(profileId: string): Promise<void>;
+  inspectContext(sessionId: string): PreparedContext | null | undefined;
+};
+type OttoProvider = ProviderRegistration & {
+  retireProfile(profileId: string): Promise<void>;
+  inspectContext(sessionId: string): PreparedContext | null;
+};
 
 export function createOpenAiProvider(
   readSettings: () => Promise<ConnectionSettings>,
@@ -62,6 +69,13 @@ export function createOpenAiProvider(
     id: options.id ?? "openai-compatible",
     label: options.label ?? "OpenAI Compatible API",
     description: "Use a local or hosted OpenAI-compatible Chat Completions endpoint with Otto.",
+    inspectContext(sessionId) {
+      for (const value of connections) {
+        const context = value.inspectContext(sessionId);
+        if (context !== undefined) return context;
+      }
+      throw new Error("This session is not active in its owning provider.");
+    },
     async retireProfile(profileId) {
       await Promise.all([...connections].map((value) => value.retireProfile(profileId)));
     },
@@ -353,6 +367,9 @@ function connection({
       }
     },
     version: 1,
+    inspectContext(sessionId) {
+      return sessions.get(sessionId)?.inspectContext();
+    },
     capabilities: supported,
     async send(input) {
       if (closed || closing) throw new Error("The provider connection is closed.");

@@ -156,6 +156,14 @@ test("native writes wait for scoped and changed rules to reach the model, withou
       state: "completed",
     });
     expect(requests).toHaveLength(4);
+    expect(session.inspectContext()).toMatchObject({
+      phase: "completed",
+      system: requests[3]![0]!.content,
+      instructionText: expect.stringContaining("DEEP_RULE_CHANGED"),
+    });
+    expect(
+      session.inspectContext()?.blocks.some((block) => block.text === "DEEP_RULE_CHANGED"),
+    ).toBe(true);
     expect(observed).toEqual(["unchanged", "unchanged", "unchanged"]);
     expect(requests[0]![0]).toMatchObject({
       role: "system",
@@ -171,6 +179,25 @@ test("native writes wait for scoped and changed rules to reach the model, withou
     await session.close();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await f.close();
+  }
+});
+
+test("inspection shares request resolution without admitting native writes", async () => {
+  const f = await fixture();
+  try {
+    await writeFile(path.join(f.project, "AGENTS.md"), "RULE\n@extra.md");
+    await writeFile(path.join(f.project, "extra.md"), "EXTRA");
+    const source = await f.source();
+    const inspection = await source.inspect();
+    expect(inspection.text).toBe(await source.forRequest());
+    expect(inspection.blocks.map((block) => block.text)).toContain("EXTRA");
+    source.beginTurn();
+    await source.inspect();
+    await expect(
+      source.beforeFile({ file: path.join(f.cwd, "proof.txt"), write: true }),
+    ).rejects.toThrow("Review the current instructions");
+  } finally {
     await f.close();
   }
 });

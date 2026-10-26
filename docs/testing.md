@@ -282,6 +282,17 @@ It uses direct replacements without launching a model. Scoped model requests and
 response validation have injected provider-boundary fixtures; those do not establish
 live-provider or physical-device acceptance.
 
+<!-- OTTO(context-management): rendered scope and source-edit proof is part of the existing acceptance matrix. -->
+
+## Context Management acceptance
+
+`e2e/browser/otto-context-management.spec.ts` covers wide and compact workspace
+entry, owning-host graph/source inspection, declined and accepted load-mode
+confirmation, actual source-byte changes, referenced-body preview and external
+source refresh through the real isolated daemon. It does not launch a model or
+prove provider-native hidden context. The normal Otto all-journey acceptance
+includes this file; focused service and action-controller fixtures remain separate.
+
 ## Debugging with tests
 
 Use the test as your debugging ground:

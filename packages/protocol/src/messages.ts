@@ -3579,6 +3579,7 @@ export const ServerInfoStatusPayloadSchema = z
         ottoBrainSharing: z.boolean().optional(),
         ottoKanban: z.boolean().optional(), // OTTO(kanban): additive built-in host bridge capability.
         ottoKnowledge: z.boolean().optional(), // OTTO(knowledge): daemon-owned Knowledge bridge.
+        ottoContextManagement: z.boolean().optional(), // OTTO(context-management): additive host capability.
         ottoKnowledgeRefinement: z.boolean().optional(), // OTTO(knowledge): scoped generation, explicit CAS apply.
         // COMPAT(agentRequestReceipts): added in v0.8.0; remove gate after 2027-03-05.
         agentRequestReceipts: z.boolean().optional(),

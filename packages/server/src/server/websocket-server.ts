@@ -1820,6 +1820,7 @@ export class VoiceAssistantWebSocketServer {
         ottoBrainSharing: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
         ottoKanban: this.pluginRuntime?.supportsBuiltinRpc?.("otto-kanban") === true, // OTTO(kanban)
         ottoKnowledge: knowledgeAvailable, // OTTO(knowledge)
+        ottoContextManagement: knowledgeAvailable, // OTTO(context-management): daemon-owned inspection and conditional edits.
         ottoKnowledgeRefinement: knowledgeAvailable, // OTTO(knowledge)
         usageSources: true,
         ownedSubscriptions: true,

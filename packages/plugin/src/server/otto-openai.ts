@@ -19,3 +19,5 @@ export * from "../otto/openai/server/instructions.js";
 export * from "../otto/openai/server/endpoint-catalog.js";
 export * from "../otto/openai/server/legacy-history.js";
 export * from "../otto/openai/server/legacy-config.js";
+export * from "../otto/openai/server/instruction-graph.js";
+export * from "../otto/openai/server/context-inspection.js";

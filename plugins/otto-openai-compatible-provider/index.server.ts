@@ -1,3 +1,7 @@
+import {
+  registerProviderContext,
+  type ContextInspectableProvider,
+} from "@getpaseo/plugin/server/otto-openai";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { createOpenAiProvider } from "./server/provider.js";
 import path from "node:path";
@@ -9,6 +13,11 @@ import { z } from "zod";
 import { endpoint } from "./server/http.js";
 
 export default function contribute(server: PluginServerContext) {
+  const contextProviders: ContextInspectableProvider[] = [];
+  const register = (provider: ReturnType<typeof createOpenAiProvider> & { icon?: string }) => {
+    contextProviders.push(provider);
+    server.registerProvider(provider);
+  };
   const home = process.env.OTTO_PROVIDER_HOST_HOME;
   // The daemon owns its reserved identities. Plugin source compiles from a
   // separate resources directory in desktop builds, so depend only on the SDK
@@ -86,7 +95,7 @@ export default function contribute(server: PluginServerContext) {
       );
     },
   });
-  server.registerProvider(provider);
+  register(provider);
   let aliases: ReturnType<typeof legacyProfiles> = [];
   try {
     aliases = legacyProfiles();
@@ -95,7 +104,7 @@ export default function contribute(server: PluginServerContext) {
   }
   for (const alias of aliases) {
     if (alias.id === "openai-compatible" || reserved.has(alias.id)) continue;
-    server.registerProvider(
+    register(
       createOpenAiProvider(
         async () => {
           const profile = legacy!.profile(alias.id);
@@ -121,5 +130,6 @@ export default function contribute(server: PluginServerContext) {
       ),
     );
   }
+  registerProviderContext(server, contextProviders);
   return () => {};
 }
