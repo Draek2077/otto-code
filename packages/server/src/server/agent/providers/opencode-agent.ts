@@ -1449,7 +1449,18 @@ export class OpenCodeAgentClient implements AgentClient {
     launchContext?: AgentLaunchContext,
     options?: AgentCreateSessionOptions,
   ): Promise<AgentSession> {
-    const openCodeConfig = this.assertConfig(config);
+    // OTTO(context-generation): final session permission policy also overrides configured aliases.
+    const openCodeConfig = this.assertConfig(
+      launchContext?.ottoReadOnlyGeneration
+        ? {
+            ...config,
+            modeId: "plan",
+            providerOptions: { ...config.providerOptions, permission: "deny" },
+            mcpServers: {},
+            toolPolicy: { preapproved: [] },
+          }
+        : config,
+    );
     const connectServer = this.connectServer.bind(this, openCodeConfig, launchContext);
     const connection = await connectServer();
     const { client } = connection;

@@ -104,6 +104,15 @@ export class OpenCodeV2AgentClient implements AgentClient {
     launch?: AgentLaunchContext,
     options?: AgentCreateSessionOptions,
   ): Promise<AgentSession> {
+    // OTTO(context-generation): native permission denial is session-owned and applied before the first prompt.
+    if (launch?.ottoReadOnlyGeneration)
+      config = {
+        ...config,
+        modeId: "plan",
+        providerOptions: { ...config.providerOptions, permission: "deny" },
+        mcpServers: {},
+        toolPolicy: { preapproved: [] },
+      };
     const connection = await this.runtime.acquire(
       requiresDedicatedV2Server(config, launch) ? { env: launch?.env, dedicated: true } : {},
     );

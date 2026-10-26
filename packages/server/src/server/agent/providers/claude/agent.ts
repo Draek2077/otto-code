@@ -78,6 +78,7 @@ import {
 import { renderPromptAttachmentAsText } from "../../prompt-attachments.js";
 import { discoverClaudeModels } from "./model-discovery.js";
 import { claudeQuery, type ClaudeOptions, type ClaudeQueryFactory } from "./query.js";
+import { readOnlyClaudeOptions } from "../../../otto/context-management/native-generation-policy.js"; // OTTO(context-generation)
 import {
   realClaudeRewindSdk,
   revertClaudeConversation,
@@ -468,6 +469,7 @@ interface ClaudeAgentClientOptions {
 }
 
 interface ClaudeAgentSessionOptions {
+  ottoReadOnlyGeneration?: true; // OTTO(context-generation)
   defaults?: { agents?: Record<string, AgentDefinition> };
   runtimeSettings?: ProviderRuntimeSettings;
   handle?: AgentPersistenceHandle;
@@ -1601,6 +1603,7 @@ export class ClaudeAgentClient implements AgentClient {
       agentId: launchContext?.agentId,
       launchEnv: launchContext?.env,
       persistSession: options?.persistSession,
+      ottoReadOnlyGeneration: launchContext?.ottoReadOnlyGeneration, // OTTO(context-generation)
       logger: this.logger,
       queryFactory: this.queryFactory,
       resolveBinary: this.resolveBinary,
@@ -2195,6 +2198,7 @@ class ClaudeAgentSession implements AgentSession {
   private readonly defaults?: { agents?: Record<string, AgentDefinition> };
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly persistSession?: boolean;
+  private readonly ottoReadOnlyGeneration?: true; // OTTO(context-generation)
   private readonly logger: Logger;
   private readonly queryFactory?: ClaudeQueryFactory;
   private readonly resolveBinary: () => Promise<string>;
@@ -2307,6 +2311,7 @@ class ClaudeAgentSession implements AgentSession {
     this.runtimeSettings = options.runtimeSettings;
     this.harnessEnvironment = this.buildSdkEnv();
     this.persistSession = options.persistSession;
+    this.ottoReadOnlyGeneration = options.ottoReadOnlyGeneration; // OTTO(context-generation)
     this.logger = options.logger.child({ agentId: this.agentId });
     this.queryFactory = options.queryFactory;
     this.resolveBinary = options.resolveBinary;
@@ -3374,6 +3379,7 @@ class ClaudeAgentSession implements AgentSession {
         runtimeSettings: this.runtimeSettings,
         launchEnv: this.launchEnv,
         queryFactory: this.queryFactory,
+        ottoReadOnlyGeneration: this.ottoReadOnlyGeneration, // OTTO(context-generation)
         onChildProcess: (child) => {
           this.childProcess = child;
           child.once("exit", (code, signal) => this.handleRuntimeExit(child, code, signal));
@@ -3585,7 +3591,7 @@ class ClaudeAgentSession implements AgentSession {
         ...this.runtimeSettings.disallowedTools,
       ];
     }
-    return base;
+    return this.ottoReadOnlyGeneration ? readOnlyClaudeOptions(base) : base; // OTTO(context-generation): apply after all ordinary options.
   }
 
   private buildSettingsOptions(

@@ -224,9 +224,21 @@ Brain and their aliases expose a provider-owned text-only generation operation.
 It reuses the owning endpoint, credentials and transport without constructing a
 chat, instruction resolver, native tool executor, MCP client or session archive.
 Requests contain no tool definitions; returned tool calls are rejected. Explicit
-model selection never falls through to a different provider. Native CLI sessions
-are unavailable for this operation until their execution policy is established;
-ordinary tool-capable agent sessions are never substituted.
+model selection never falls through to a different provider.
+
+Native Claude, Codex, Copilot, OpenCode, Pi and OMP use fresh provider-owned utility
+sessions with enforced restrictions, outside the normal chat manager. Claude has
+an empty tool/MCP catalog and disabled hooks; Codex requires an acknowledged
+read-only sandbox and disables discovered MCP servers; OpenCode denies tools at
+session creation. Pi and OMP launch without tools, executable extensions or
+skills. Copilot uses the native SDK stdio protocol with an explicit empty tool
+allowlist and denied permission/tool requests. Its one temporary native session
+is removed afterward; existing native chats are never enumerated or changed.
+Configured aliases retain the owning command, environment and selected model.
+Unrecognized native execution contracts fail visibly rather than running an
+ordinary writable chat. Utility output and time are bounded, and provider stderr
+is never included in recovery messages. These restrictions concern proposal
+generation only; ordinary chat compaction and provider sessions are unchanged.
 
 Generating a proposal writes nothing. Every hunk starts dropped. Keep/Drop changes
 the local kept result, with original and kept text side by side on wide screens
@@ -254,3 +266,7 @@ wide/compact journey is `packages/app/e2e/browser/otto-context-management.spec.t
 Source registration and pure fixtures alone do not establish browser, native,
 live-provider or complete F05 acceptance. Deferred personalities, teams and the
 general File Editor are not restored by this feature.
+
+The native generation policy, session lifecycle and Copilot SDK protocol have
+focused injected-adapter fixtures. They do not establish a live CLI/model run or
+support for arbitrary third-party ACP clients without a read-only contract.

@@ -2290,6 +2290,7 @@ export class OmpAgentClient implements AgentClient {
   ): Promise<AgentSession> {
     const launchMode = this.resolveLaunchMode(config.modeId, config.providerOptions);
     const startInput: OmpStartSessionInput = {
+      ottoReadOnlyGeneration: launchContext?.ottoReadOnlyGeneration, // OTTO(context-generation): apply native launch policy before process start.
       cwd: config.cwd,
       protocolMode: "rpc-ui",
       model: config.model,
@@ -2305,12 +2306,14 @@ export class OmpAgentClient implements AgentClient {
     );
     let hostTools: OmpHostToolRouter | undefined;
     try {
-      hostTools = await this.configureNativePaseoTools(
-        runtimeSession,
-        launchContext?.paseoTools,
-        config,
-        startInput.env,
-      );
+      hostTools = launchContext?.ottoReadOnlyGeneration
+        ? undefined
+        : await this.configureNativePaseoTools(
+            runtimeSession,
+            launchContext?.paseoTools,
+            config,
+            startInput.env,
+          );
       const initialState = await this.restoreFastMode(
         runtimeSession,
         config,

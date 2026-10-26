@@ -74,6 +74,7 @@ import {
 import { revertPiConversation } from "./rewind.js";
 import { listPiImportableSessions, readPiImportSessionConfig } from "./session-descriptor.js";
 import type { PiRuntime, PiRuntimeSession, PiStartSessionInput } from "./runtime.js";
+import { createReadOnlyPiSession } from "../../../otto/context-management/pi-generation.js"; // OTTO(context-generation)
 import type {
   PiAgentSessionEvent,
   PiAgentMessage,
@@ -2503,6 +2504,31 @@ export class PiRpcAgentClient implements AgentClient {
   }
 
   async createSession(
+    config: AgentSessionConfig,
+    launchContext?: AgentLaunchContext,
+  ): Promise<AgentSession> {
+    if (launchContext?.ottoReadOnlyGeneration) {
+      // OTTO(context-generation): bypass MCP probes and executable extensions.
+      const providerOptions = PiProviderOptionsSchema.parse(config.providerOptions ?? {});
+      return createReadOnlyPiSession(
+        this.resolveRuntime(providerOptions.rpcTimeoutMs),
+        config,
+        launchContext.env,
+        (runtimeSession, initialState) =>
+          new PiRpcAgentSession({
+            runtimeSession,
+            initialState,
+            config,
+            capabilities: capabilitiesForSession(false),
+            logger: this.logger,
+            usagePollScheduler: this.usagePollScheduler,
+          }),
+      );
+    }
+    return this.createInteractiveSession(config, launchContext); // OTTO(context-generation): ordinary chat startup remains unchanged.
+  }
+
+  private async createInteractiveSession(
     config: AgentSessionConfig,
     launchContext?: AgentLaunchContext,
   ): Promise<AgentSession> {

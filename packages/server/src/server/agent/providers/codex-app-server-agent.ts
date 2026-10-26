@@ -50,6 +50,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import { readOnlyCodexConfig } from "../../otto/context-management/native-generation-policy.js"; // OTTO(context-generation)
 import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 import { composeSystemPromptParts } from "../system-prompt.js";
 import { curateAgentActivity } from "../activity-curator.js";
@@ -271,6 +272,7 @@ interface CodexAppServerClientLike {
 }
 
 interface CodexAppServerAgentDeps {
+  ottoReadOnlyGeneration?: true; // OTTO(context-generation)
   environment?: Record<string, string>;
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
   customProvider?: {
@@ -3438,6 +3440,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     CodexProviderOptions["sandbox_workspace_write"]
   > | null = null;
   private resolvedSandboxPolicy: Record<string, unknown> | null = null;
+  private ottoReadOnlyMcpServers: string[] = []; // OTTO(context-generation): resolved native/profile MCP names, never a saved setting.
   private currentThreadId: string | null = null;
   private currentTurnId: string | null = null;
   private pendingForegroundTurnIdentification: {
@@ -3684,8 +3687,17 @@ export class CodexAppServerAgentSession implements AgentSession {
         await this.client.request("config/read", { cwd: this.config.cwd ?? null }),
       );
       const config = toObjectRecord(response?.config);
+      // OTTO(context-generation): remember names only; never return or persist native MCP credentials.
+      if (this.deps.ottoReadOnlyGeneration) {
+        if (!config) throw new Error("Native read-only config could not be validated");
+        const servers = toObjectRecord(config.mcp_servers);
+        if (config.mcp_servers !== undefined && !servers)
+          throw new Error("Native MCP configuration could not be validated"); // OTTO(context-generation)
+        this.ottoReadOnlyMcpServers = Object.keys(servers ?? {});
+      }
       this.resolvedWorkspaceWrite = readSandboxWorkspaceWrite(config?.sandbox_workspace_write);
     } catch (error) {
+      if (this.deps.ottoReadOnlyGeneration) throw error; // OTTO(context-generation): config opacity cannot grant a writable run.
       this.logger.debug({ error }, "Failed to read resolved Codex workspace-write config");
     }
   }
@@ -5296,6 +5308,10 @@ export class CodexAppServerAgentSession implements AgentSession {
     const { params, approvalPolicy, sandbox } = this.buildThreadStartRequest(model);
     const rawResponse = await this.client.request("thread/start", params);
     this.rememberResolvedSandboxPolicy(rawResponse);
+    // OTTO(context-generation): managed policy must acknowledge the sandbox before any prompt.
+    if (this.deps.ottoReadOnlyGeneration && this.resolvedSandboxPolicy?.type !== "readOnly") {
+      throw new Error("Codex did not acknowledge a read-only Context generation sandbox.");
+    }
     const response = toObjectRecord(rawResponse);
     const threadRecord = toObjectRecord(response?.thread);
     const threadId = typeof threadRecord?.id === "string" ? threadRecord.id : undefined;
@@ -5360,7 +5376,9 @@ export class CodexAppServerAgentSession implements AgentSession {
       }
       innerConfig.mcp_servers = mcpServers;
     }
-    const configured = applyCodexToolPolicy(innerConfig, this.config.toolPolicy);
+    const configured = this.deps.ottoReadOnlyGeneration
+      ? readOnlyCodexConfig(innerConfig, this.ottoReadOnlyMcpServers)
+      : applyCodexToolPolicy(innerConfig, this.config.toolPolicy); // OTTO(context-generation)
     return Object.keys(configured).length > 0 ? configured : null;
   }
 
@@ -7287,7 +7305,11 @@ export class CodexAppServerAgentClient implements AgentClient {
           agentId: launchContext?.agentId,
           environment,
         }),
-      { ...this.sessionDeps(launchContext?.env), environment },
+      {
+        ...this.sessionDeps(launchContext?.env),
+        environment,
+        ottoReadOnlyGeneration: launchContext?.ottoReadOnlyGeneration,
+      }, // OTTO(context-generation)
       options?.persistSession === false,
       goalsEnabled,
       autoReviewEnabled,

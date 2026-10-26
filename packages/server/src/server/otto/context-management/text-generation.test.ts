@@ -66,7 +66,7 @@ test("explicit unsupported CLI selections cannot create or fall through to an ag
     createContextTextGeneration(ports, { provider: "native-cli", model: "native" }).generate(
       request,
     ),
-  ).rejects.toThrow("normal CLI agent sessions are not used");
+  ).rejects.toThrow("Normal writable chat sessions are never used");
   expect(calls).toHaveLength(0);
 });
 test("provider failures are sanitized and explicit selections never use a different provider", async () => {
@@ -75,7 +75,7 @@ test("provider failures are sanitized and explicit selections never use a differ
   ]);
   await expect(
     createContextTextGeneration(ports, { provider: "api", model: "fixture" }).generate(request),
-  ).rejects.toThrow(/^Tool-free proposal generation is unavailable/);
+  ).rejects.toThrow(/^Read-only proposal generation is unavailable/);
   expect(calls).toHaveLength(1);
 });
 test("schema-invalid responses stop after the bounded correction attempts", async () => {
@@ -83,7 +83,24 @@ test("schema-invalid responses stop after the bounded correction attempts", asyn
     Array.from({ length: 5 }, () => ({ ok: true, value: { text: '{"wrong":true}' } })),
   );
   await expect(createContextTextGeneration(ports).generate(request)).rejects.toThrow(
-    "Tool-free proposal generation is unavailable",
+    "Read-only proposal generation is unavailable",
   );
   expect(calls).toHaveLength(3);
+});
+test("an explicit native selection uses only its enforced read-only operation and bounded schema correction", async () => {
+  const { ports, calls } = fixture();
+  const nativeCalls: string[] = [];
+  ports.native = async (input) => {
+    nativeCalls.push(input.prompt);
+    expect(input).toMatchObject({ provider: "native-cli", model: "selected", cwd: "/fixture" });
+    return nativeCalls.length === 1 ? "not json" : '{"text":"native proposal"}';
+  };
+  await expect(
+    createContextTextGeneration(ports, { provider: "native-cli", model: "selected" }).generate(
+      request,
+    ),
+  ).resolves.toEqual({ text: "native proposal" });
+  expect(nativeCalls).toHaveLength(2);
+  expect(nativeCalls[1]).toContain("Previous response was invalid");
+  expect(calls).toHaveLength(0);
 });

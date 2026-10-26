@@ -246,6 +246,7 @@ import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OT
 import { contextAgents } from "./otto/context-management/agents.js"; // OTTO(context-management)
 import { ContextManagementService } from "./otto/context-management/host.js"; // OTTO(context-management)
 import { createContextTextGeneration } from "./otto/context-management/text-generation.js"; // OTTO(context-compaction): provider-owned, tool-free generation only.
+import { createNativeContextGeneration } from "./otto/context-management/native-generation.js"; // OTTO(context-generation): native enforcement, no AgentManager chat registration.
 import { resolveStructuredGenerationProviders } from "./agent/structured-generation-providers.js"; // OTTO(context-compaction): reuse canonical model selection without launching a normal agent.
 import { nativeContextInspector } from "./otto/context-management/native-host.js"; // OTTO(context-management): read-only native conventions.
 import { createKnowledgeGenerationSource } from "./otto/project-knowledge/generation.js"; // OTTO(knowledge): use the existing provider-neutral generation boundary.
@@ -1048,6 +1049,9 @@ export async function createPaseoDaemon(
       createContextTextGeneration(
         {
           providerOwner: (id) => pluginRuntime.ottoProviderOwner(id),
+          native: createNativeContextGeneration(() =>
+            providerSnapshotManager.getAgentManagerProviderState(),
+          ), // OTTO(context-generation)
           invoke: (id, method, input) => pluginRuntime.invokePluginRpc(id, method, input),
           candidates: (cwd) =>
             resolveStructuredGenerationProviders({

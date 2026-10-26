@@ -146,6 +146,7 @@
     "tree-kill": "^1.2.2",
     "typescript": "^5.9.3",
     "uuid": "^9.0.1",
+    "vscode-jsonrpc": "8.2.1",
     "which": "^5.0.0",
     "ws": "^8.14.2",
     "yaml": "2.9.1",

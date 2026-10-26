@@ -13,6 +13,7 @@ import type {
   OmpThinkingLevel,
 } from "./rpc-types.js";
 import type { ProviderRuntimeSettings } from "../../provider-launch-config.js";
+import { readOnlyPiArgs } from "../../../otto/context-management/native-generation-policy.js"; // OTTO(context-generation)
 
 export interface OmpRuntimeLaunch {
   cwd: string;
@@ -29,6 +30,7 @@ export interface OmpRuntimeLaunch {
 }
 
 export interface OmpStartSessionInput {
+  ottoReadOnlyGeneration?: true; // OTTO(context-generation): no saved provider/profile field.
   cwd: string;
   signal?: AbortSignal;
   env?: Record<string, string>;
@@ -103,6 +105,10 @@ export function buildOmpLaunch(input: {
   const protocolMode = input.session.protocolMode ?? "rpc";
   const systemPrompt = input.session.systemPrompt?.trim();
   appendOmpLaunchArgs(argv, input.session, protocolMode, systemPrompt);
+  if (input.session.ottoReadOnlyGeneration) {
+    // OTTO(context-generation): native tool names/extensions cannot be restored by a profile.
+    argv.splice(1, argv.length - 1, ...readOnlyPiArgs(argv.slice(1)), "--no-rules", "--no-title");
+  }
 
   return {
     cwd: input.session.cwd,

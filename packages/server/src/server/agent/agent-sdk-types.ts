@@ -616,6 +616,8 @@ export interface AgentSessionConfig {
 }
 
 export interface AgentLaunchContext {
+  /** OTTO(context-generation): runtime-only restriction for fresh reviewed-prose utility sessions. */
+  ottoReadOnlyGeneration?: true;
   agentId?: string;
   env?: Record<string, string>;
   /**
@@ -749,6 +751,13 @@ export interface ResolveAgentDefaultModeInput {
 export interface AgentClient {
   readonly provider: AgentProvider;
   readonly capabilities: AgentCapabilityFlags;
+  /** OTTO(context-generation): provider-owned text utility, with no chat registration or tool authority. */
+  ottoGenerateContextText?(input: {
+    cwd: string;
+    model?: string;
+    prompt: string;
+    signal: AbortSignal;
+  }): Promise<string>;
   createSession(
     config: AgentSessionConfig,
     launchContext?: AgentLaunchContext,

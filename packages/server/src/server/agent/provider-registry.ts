@@ -501,6 +501,7 @@ function wrapClientProvider(
       return inner.capabilities;
     },
     shutdown: inner.shutdown?.bind(inner),
+    ottoGenerateContextText: inner.ottoGenerateContextText?.bind(inner), // OTTO(context-generation): retain configured aliases and their owning client.
     createSession: async (config, launchContext, options) =>
       wrapSessionProvider(
         provider,

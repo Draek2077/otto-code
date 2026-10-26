@@ -8,6 +8,7 @@ import type {
   PiSessionStats,
 } from "./rpc-types.js";
 import type { ProviderRuntimeSettings } from "../../provider-launch-config.js";
+import { readOnlyPiArgs } from "../../../otto/context-management/native-generation-policy.js"; // OTTO(context-generation)
 
 export interface PiRuntimeLaunch {
   cwd: string;
@@ -25,6 +26,7 @@ export interface PiRuntimeLaunch {
 }
 
 export interface PiStartSessionInput {
+  ottoReadOnlyGeneration?: true; // OTTO(context-generation): runtime-only utility launch policy.
   cwd: string;
   signal?: AbortSignal;
   env?: Record<string, string>;
@@ -91,6 +93,16 @@ export function buildPiLaunch(input: {
 
   const protocolMode = input.session.protocolMode ?? "rpc";
   appendPiLaunchArgs(argv, input.session, protocolMode);
+  if (input.session.ottoReadOnlyGeneration) {
+    // OTTO(context-generation): apply after configured launch arguments.
+    argv.splice(
+      1,
+      argv.length - 1,
+      ...readOnlyPiArgs(argv.slice(1)),
+      "--no-mcp",
+      "--no-context-files",
+    );
+  }
 
   return {
     cwd: input.session.cwd,

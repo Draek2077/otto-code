@@ -1,4 +1,5 @@
 import type { Logger } from "pino";
+import { generateCopilotContextText } from "../../otto/context-management/copilot-generation.js"; // OTTO(context-generation): native SDK utility denies every tool; normal ACP chats stay unchanged.
 import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 
 import type { AgentCapabilityFlags, AgentMode } from "../agent-sdk-types.js";
@@ -79,6 +80,11 @@ interface CopilotACPAgentClientOptions {
 }
 
 export class CopilotACPAgentClient extends ACPAgentClient {
+  ottoGenerateContextText(
+    input: Parameters<typeof generateCopilotContextText>[0],
+  ): Promise<string> {
+    return generateCopilotContextText(input, this.runtimeSettings);
+  } // OTTO(context-generation)
   constructor(options: CopilotACPAgentClientOptions) {
     super({
       provider: "copilot",

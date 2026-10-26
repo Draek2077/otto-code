@@ -6,6 +6,12 @@ export interface ContextTextGenerationPorts {
   providerOwner(provider: string): string | undefined;
   invoke(pluginId: string, method: string, input: unknown): Promise<unknown>;
   candidates(cwd: string): Promise<{ provider: string; model?: string }[]>;
+  native?(input: {
+    provider: string;
+    model?: string;
+    cwd: string;
+    prompt: string;
+  }): Promise<string>;
 }
 /** Only this owned error carries user-safe recovery copy across the generation boundary. */
 export class ContextTextGenerationUnavailable extends Error {}
@@ -19,7 +25,7 @@ export function createContextTextGeneration(
       const candidates = selection ? [selection] : await ports.candidates(request.cwd);
       for (const candidate of candidates) {
         const owner = ports.providerOwner(candidate.provider);
-        if (!owner) continue;
+        if (!owner && !ports.native) continue;
         try {
           return await getStructuredAgentResponse({
             prompt: request.prompt,
@@ -27,6 +33,9 @@ export function createContextTextGeneration(
             schemaName: request.schemaName,
             maxRetries: 2,
             caller: async (prompt) => {
+              if (!owner && ports.native)
+                return ports.native({ ...candidate, cwd: request.cwd, prompt });
+              if (!owner) throw new Error("No provider-owned generation contract.");
               const result = generateProviderContextText.output.parse(
                 await ports.invoke(owner, generateProviderContextText.name, {
                   providerId: candidate.provider,
@@ -43,7 +52,7 @@ export function createContextTextGeneration(
         }
       }
       throw new ContextTextGenerationUnavailable(
-        "Tool-free proposal generation is unavailable for this selection. Choose an available OpenAI Compatible API or Brain model; normal CLI agent sessions are not used as a substitute.",
+        "Read-only proposal generation is unavailable for this selection. Check the selected provider and model configuration. Normal writable chat sessions are never used as a substitute.",
       );
     },
   };
