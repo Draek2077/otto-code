@@ -87,3 +87,45 @@ test("a rejected write remains blocked and retains its failure until explicit re
   );
   expect(write).toHaveBeenCalledTimes(1);
 });
+test("a replaced origin cannot confirm a write while the containing Context page remains active", async () => {
+  const model = new ContextEdgeEdit();
+  model.activate();
+  const origin = {},
+    confirmation = deferred<boolean>(),
+    write = vi.fn(async () => ({ ok: true as const }));
+  let current = origin;
+  const task = model.change(
+    () => confirmation.promise,
+    write,
+    () => {},
+    () => current === origin,
+  );
+  current = {};
+  confirmation.resolve(true);
+  await task;
+  expect(write).not.toHaveBeenCalled();
+  expect(model.getSnapshot()).toMatchObject({ busy: false, blocked: false, saved: false });
+});
+test("a late origin response blocks another write on the shared page lane", async () => {
+  const model = new ContextEdgeEdit();
+  model.activate();
+  const origin = {},
+    response = deferred<{ ok: true }>(),
+    changed = vi.fn();
+  let current = origin;
+  const write = vi.fn(() => response.promise);
+  const task = model.change(
+    async () => true,
+    write,
+    changed,
+    () => current === origin,
+  );
+  await Promise.resolve();
+  current = {};
+  response.resolve({ ok: true });
+  await task;
+  expect(changed).not.toHaveBeenCalled();
+  expect(model.getSnapshot()).toMatchObject({ busy: false, blocked: true, saved: false });
+  await model.change(async () => true, write, changed);
+  expect(write).toHaveBeenCalledTimes(1);
+});

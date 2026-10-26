@@ -138,6 +138,37 @@ a later activation. Conflict or uncertain writes remain blocked until the user
 explicitly refreshes and reviews canonical context. No automatic retry, revision
 adoption, native provider reset, or model launch is used.
 
+## Issues and reviewed fixes
+
+The Context and Issues views share one page-level write authority. A scheduled
+report refresh does not grant new write authority after a conflict, an uncertain
+reply, or a completed edit. Explicit Refresh context reads canonical state and
+opens a fresh review. Write feedback remains outside the independently scrolling
+panes, including when its originating row disappears.
+
+Typed findings identify missing imports/references, cycles, depth limits, repeated
+prose within a file or across global/project scopes, and oversized memory entries.
+Each finding carries a source revision and UTF-16 range with owning line numbers.
+At most 256 findings are returned. Only known missing targets and exact repeated
+prose in editable project sources qualify for mechanical removal. Unavailable,
+excluded, outside-boundary or depth-limited targets never become dead imports.
+Code examples, case-only similarities, cycles and memory restructuring require
+manual review. Global copies survive cross-scope deduplication.
+
+Fix all pins the reviewed report and finding IDs behind an explicit confirmation.
+The daemon recomputes the plan; it accepts no client paths or deletion spans.
+The common atomic source writer applies one revision-pinned edit per owning file,
+preserving unrelated bytes and line endings. Multi-file results name changed,
+unchanged, conflicted and unavailable outcomes individually. A partial operation
+does not roll back successful files or retry failed writes. Locks belong to their
+writers and are never stolen.
+
+When a hard import is missing, inspection returns bounded available text with
+an explicit blocked-runtime notice. This diagnostic mode does not admit a native
+write or relax the actual harness: request preparation and file-tool preparation
+still fail until required instructions can be loaded. A captured request remains
+a separate historical view.
+
 ## Proof boundary
 
 Collocated fixtures exercise the shared resolver, import/reference accounting,

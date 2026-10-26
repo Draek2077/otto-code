@@ -32,6 +32,7 @@ function missing(error: unknown): boolean {
 export class NativeContextFiles {
   readonly notes: string[] = [];
   private readonly cache = new Map<string, NativeFile | null>();
+  private readonly failures = new Map<string, "missing" | "unavailable">();
   private bytes = 0;
   private entries = 0;
   private directories = 0;
@@ -45,11 +46,18 @@ export class NativeContextFiles {
     this.capped = true;
     this.note("Context discovery reached its bounded filesystem limit; this inventory is partial.");
   }
+  failure(candidate: string): "missing" | "unavailable" {
+    return this.failures.get(candidate) ?? "unavailable";
+  }
   async identity(candidate: string): Promise<{ file: string; revision: string } | null> {
     try {
       const file = await realpath(candidate);
       const info = await stat(file);
-      if (!info.isFile()) return null;
+      if (!info.isFile()) {
+        this.failures.set(candidate, "unavailable");
+        return null;
+      }
+      this.failures.delete(candidate);
       return {
         file,
         revision: instructionDigest(
@@ -57,6 +65,7 @@ export class NativeContextFiles {
         ),
       };
     } catch (error) {
+      this.failures.set(candidate, missing(error) ? "missing" : "unavailable");
       if (!missing(error))
         this.note(`Could not inspect the identity of ${path.basename(candidate)}.`);
       return null;
@@ -108,6 +117,7 @@ export class NativeContextFiles {
       }
       this.bytes += size;
       const value = { file, text };
+      this.failures.delete(candidate);
       this.cache.set(file, value);
       this.cache.set(candidate, value);
       return value;
@@ -115,6 +125,7 @@ export class NativeContextFiles {
       if (!missing(error))
         this.note(`Could not inspect ${path.basename(candidate)} as bounded UTF-8 context text.`);
       this.cache.set(candidate, null);
+      this.failures.set(candidate, missing(error) ? "missing" : "unavailable");
       return null;
     }
   }

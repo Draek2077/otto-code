@@ -3,6 +3,7 @@ import { realpath } from "node:fs/promises";
 import { z } from "zod";
 import {
   changeContextEdge,
+  fixContextFindings,
   readContextAgents,
   readContextPreview,
   readContextReport,
@@ -18,6 +19,7 @@ import { buildContextGraph, within } from "./graph.js";
 import { changeInstructionEdge, ContextBusy, ContextConflict } from "./source-write.js";
 import type { NativeContextInventory } from "./native-inventory.js";
 import { nativeContextGraph } from "./native-graph.js";
+import { applyContextFindingFixes } from "./fixes.js";
 
 interface AgentPort {
   list(): ContextAgent[] | Promise<ContextAgent[]>;
@@ -102,6 +104,7 @@ export class ContextManagementService {
         blocks: preview.blocks,
         system: preview.text,
         tools: null,
+        instructionIssues: preview.issues,
       };
     }
     const root = source.workspaceRoot;
@@ -118,6 +121,7 @@ export class ContextManagementService {
       root,
       home,
       cwd,
+      issues: inspected.instructionIssues,
     });
     return { ...contextReport(inspected, graph, input), graph, root };
   }
@@ -193,6 +197,28 @@ export class ContextManagementService {
               edge,
               expectedRevision: source.revision,
               mode: input.mode,
+            }),
+          };
+        });
+      case fixContextFindings.name:
+        return this.guard(async () => {
+          const input = fixContextFindings.input.parse(value);
+          if (!input.userApprovedFixes)
+            throw new Error(
+              "Review and explicitly approve the proposed mechanical removals first.",
+            );
+          const current = await this.inspection(input);
+          if (current.report.revision !== input.revision)
+            throw new ContextConflict(
+              "Context changed. Refresh and review the current issues before applying fixes.",
+            );
+          return {
+            files: await applyContextFindingFixes({
+              root: current.root,
+              nodes: current.report.nodes,
+              sources: current.graph.sources,
+              findings: current.findingDetails,
+              findingIds: input.findingIds,
             }),
           };
         });

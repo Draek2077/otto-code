@@ -3,10 +3,17 @@ export interface ContextEdgeEditState {
   blocked: boolean;
   saved: boolean;
   error: string;
+  operationId: string | null;
 }
 /** Local confirmation/write authority only. Canonical source/revision stays in the host report. */
 export class ContextEdgeEdit {
-  private state: ContextEdgeEditState = { busy: false, blocked: false, saved: false, error: "" };
+  private state: ContextEdgeEditState = {
+    busy: false,
+    blocked: false,
+    saved: false,
+    error: "",
+    operationId: null,
+  };
   private readonly listeners = new Set<() => void>();
   private activation: object | null = null;
   private inFlight = false;
@@ -32,17 +39,19 @@ export class ContextEdgeEdit {
     confirm: () => Promise<boolean>,
     write: () => Promise<{ ok: true } | { ok: false; message: string }>,
     changed: () => void,
+    isCurrent: () => boolean = () => true,
+    operationId: string | null = null,
   ): Promise<void> {
-    if (!this.activation || this.inFlight || this.state.blocked) return;
+    if (!this.activation || this.inFlight || this.state.blocked || !isCurrent()) return;
     const activation = this.activation;
     this.inFlight = true;
     let sent = false;
-    this.publish({ busy: true, error: "" });
+    this.publish({ busy: true, error: "", operationId });
     try {
-      if (!(await confirm()) || this.activation !== activation) return;
+      if (!(await confirm()) || this.activation !== activation || !isCurrent()) return;
       sent = true;
       const result = await write();
-      if (this.activation !== activation) {
+      if (this.activation !== activation || !isCurrent()) {
         this.publish({
           blocked: true,
           error:

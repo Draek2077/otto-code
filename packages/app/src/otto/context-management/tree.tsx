@@ -1,5 +1,5 @@
-import { ContextEdgeEdit } from "./edge-edit";
-import React, { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import type { ContextEdgeEdit, ContextEdgeEditState } from "./edge-edit";
+import React, { useCallback, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useRpc } from "@getpaseo/plugin/client";
 import {
@@ -13,11 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { styles } from "./styles";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { ContextIssues } from "./issues";
+import { useContextEditOrigin } from "./use-edit-origin";
+import type { ContextSourceSelection } from "./selection";
 
-interface SourceSelection {
-  nodeId: string | null;
-  category: ContextCategory | null;
-}
 const categoryNames: Record<ContextCategory, string> = {
   context_files: "Instruction files",
   memory_index: "Memory index",
@@ -30,15 +30,19 @@ interface TreeProps {
   report: ContextReport;
   scope: ContextSelection;
   active: boolean;
-  onSelect(value: SourceSelection): void;
+  writeModel: ContextEdgeEdit;
+  writeState: ContextEdgeEditState;
+  onSelect(value: ContextSourceSelection): void;
   onChanged(): void;
 }
 function CategoryRow({
   row,
   onSelect,
+  disabled,
 }: {
   row: ContextReport["categories"][number];
-  onSelect(value: SourceSelection): void;
+  onSelect(value: ContextSourceSelection): void;
+  disabled: boolean;
 }) {
   const select = useCallback(
     () => onSelect({ nodeId: null, category: row.category }),
@@ -53,7 +57,7 @@ function CategoryRow({
         variant="outline"
         size="sm"
         onPress={select}
-        disabled={row.visibility === "not_visible"}
+        disabled={disabled || row.visibility === "not_visible"}
       >
         Inspect
       </Button>
@@ -71,14 +75,14 @@ function EdgeRow({
   scope,
   active,
   onChanged,
+  writeModel,
+  writeState,
 }: { edge: ContextReport["edges"][number] } & Omit<TreeProps, "onSelect">) {
   const mutate = useRpc(changeContextEdge);
-  const model = useMemo(() => new ContextEdgeEdit(), []);
-  const state = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
-  useEffect(() => (active ? model.activate() : undefined), [active, model]);
+  const captureOrigin = useContextEditOrigin(active);
   const change = useCallback(
     () =>
-      model.change(
+      writeModel.change(
         () =>
           confirmDialog({
             title:
@@ -98,8 +102,10 @@ function EdgeRow({
           return { ok: true as const };
         },
         onChanged,
+        captureOrigin(),
+        edge.id,
       ),
-    [edge.id, edge.kind, model, mutate, onChanged, report.revision, scope],
+    [captureOrigin, edge.id, edge.kind, writeModel, mutate, onChanged, report.revision, scope],
   );
   return (
     <View>
@@ -108,18 +114,24 @@ function EdgeRow({
           variant="outline"
           size="sm"
           onPress={change}
-          disabled={!active || state.busy || state.blocked || !edge.to || edge.editable === false}
+          disabled={
+            !active || writeState.busy || writeState.blocked || !edge.to || edge.editable === false
+          }
         >
-          {state.busy ? "Saving..." : "Change load mode"}
+          {writeState.busy && writeState.operationId === edge.id
+            ? "Reviewing..."
+            : "Change load mode"}
         </Button>
       </SettingsRow>
-      {state.saved ? (
+      {writeState.operationId === edge.id && writeState.error ? (
+        <Alert variant="error" description={writeState.error} />
+      ) : null}
+      {writeState.operationId === edge.id && writeState.saved ? (
         <Alert
           variant="info"
           description="Saved for future instruction reads. A captured request and conversation history remain unchanged."
         />
       ) : null}
-      {state.error ? <Alert variant="error" description={state.error} /> : null}
     </View>
   );
 }
@@ -130,6 +142,8 @@ function SourceRow({
   active,
   onSelect,
   onChanged,
+  writeModel,
+  writeState,
 }: { node: ContextReport["nodes"][number] } & TreeProps) {
   const select = useCallback(
     () => onSelect({ nodeId: node.id, category: null }),
@@ -141,7 +155,7 @@ function SourceRow({
         label={node.label}
         hint={`${node.scope} · ${node.costClass} · ${node.costClass === "referenced" ? "available to read; not loaded" : `${node.estimatedTokens.toLocaleString()} estimated tokens`}`}
       >
-        <Button variant="outline" size="sm" onPress={select}>
+        <Button variant="outline" size="sm" onPress={select} disabled={writeState.busy}>
           Inspect source
         </Button>
       </SettingsRow>
@@ -150,12 +164,14 @@ function SourceRow({
             .filter((edge) => edge.from === node.id)
             .map((edge) => (
               <EdgeRow
-                key={`${edge.id}/${report.revision}`}
+                key={edge.id}
                 edge={edge}
                 report={report}
                 scope={scope}
                 active={active}
                 onChanged={onChanged}
+                writeModel={writeModel}
+                writeState={writeState}
               />
             ))
         : null}
@@ -163,32 +179,67 @@ function SourceRow({
   );
 }
 export function ContextTree(props: TreeProps) {
+  const { onSelect } = props;
+  const [view, setView] = useState<"context" | "issues">("context");
+  const options = useMemo(
+    () => [
+      { value: "context" as const, label: "Context", disabled: props.writeState.busy },
+      { value: "issues" as const, label: "Issues", disabled: props.writeState.busy },
+    ],
+    [props.writeState.busy],
+  );
+  const selectIssue = useCallback(
+    (value: ContextSourceSelection) => {
+      setView("context");
+      onSelect(value);
+    },
+    [onSelect],
+  );
   return (
     <>
-      <SettingsSection
-        title="Sent before you type"
-        info="Each visible source is counted once. Links are available to read and do not add fixed weight. Missing provider categories remain visible as unknown."
-      >
-        <SettingsCard>
-          {props.report.categories.map((row) => (
-            <CategoryRow key={row.category} row={row} onSelect={props.onSelect} />
-          ))}
-        </SettingsCard>
-      </SettingsSection>
-      <SettingsSection title="Source graph">
-        {props.report.nodes.length ? (
-          props.report.nodes.map((node) => <SourceRow key={node.id} node={node} {...props} />)
-        ) : (
-          <SettingsRow label="No instruction sources are visible for this selection." />
-        )}
-      </SettingsSection>
-      {props.report.findings.length ? (
-        <SettingsSection title="Findings">
-          {[...new Set(props.report.findings)].map((finding) => (
-            <Alert key={finding} variant="warning" description={finding} />
-          ))}
-        </SettingsSection>
+      <View style={styles.actions}>
+        <SegmentedControl
+          options={options}
+          value={view}
+          onValueChange={setView}
+          size="sm"
+          testID="context-view-tabs"
+        />
+      </View>
+      {view === "context" ? (
+        <>
+          <SettingsSection
+            title="Sent before you type"
+            info="Each visible source is counted once. Links are available to read and do not add fixed weight. Missing provider categories remain visible as unknown."
+          >
+            <SettingsCard>
+              {props.report.categories.map((row) => (
+                <CategoryRow
+                  key={row.category}
+                  row={row}
+                  onSelect={props.onSelect}
+                  disabled={props.writeState.busy}
+                />
+              ))}
+            </SettingsCard>
+          </SettingsSection>
+          <SettingsSection title="Source graph">
+            {props.report.nodes.length ? (
+              props.report.nodes.map((node) => <SourceRow key={node.id} node={node} {...props} />)
+            ) : (
+              <SettingsRow label="No instruction sources are visible for this selection." />
+            )}
+          </SettingsSection>
+          {props.report.findings.length ? (
+            <SettingsSection title="Inspection notes">
+              {[...new Set(props.report.findings)].map((finding) => (
+                <Alert key={finding} variant="warning" description={finding} />
+              ))}
+            </SettingsSection>
+          ) : null}
+        </>
       ) : null}
+      <ContextIssues {...props} visible={view === "issues"} onSelect={selectIssue} />
       <View style={styles.actions} />
     </>
   );

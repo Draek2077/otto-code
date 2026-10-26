@@ -11,6 +11,7 @@ import type {
 } from "@getpaseo/plugin/otto/context-management";
 import type { buildContextGraph } from "./graph.js";
 import type { NativeContextInventory } from "./native-inventory.js";
+import { collectContextFindings } from "./findings.js";
 export interface InspectedContext {
   provider: string;
   visible: boolean;
@@ -18,6 +19,13 @@ export interface InspectedContext {
   blocks: readonly InstructionBlock[];
   system: string;
   tools: string | null;
+  instructionIssues?: {
+    kind: string;
+    file: string;
+    parentFile: string | null;
+    target: string | null;
+    message: string;
+  }[];
   native?: {
     inventory: NativeContextInventory;
     sections: Partial<Record<ContextCategory, string>>;
@@ -73,6 +81,7 @@ export function contextReport(
       nodes: graph.nodes,
     }),
   );
+  const findingDetails = collectContextFindings(graph);
   const report: ContextReport = {
     revision,
     workspaceId: selection.workspaceId,
@@ -83,7 +92,14 @@ export function contextReport(
     categories: totals,
     nodes: graph.nodes,
     edges: graph.edges,
-    findings: graph.findings,
+    findings: [
+      ...new Set([
+        ...graph.findings,
+        ...(input.instructionIssues ?? []).map((issue) => issue.message),
+      ]),
+    ],
+    findingDetails,
+    instructionState: instructionState(input, selection),
     fixedTokens,
     workingRoom: Math.max(0, selection.windowTokens - fixedTokens),
     sharePercent,
@@ -92,7 +108,15 @@ export function contextReport(
       ? { capturedAt: input.prepared.capturedAt, phase: input.prepared.phase }
       : null,
   };
-  return { report, sections };
+  return { report, sections, findingDetails };
+}
+function instructionState(
+  input: InspectedContext,
+  selection: ContextSelection,
+): "ready" | "blocked" | "unknown" {
+  if (input.instructionIssues?.length) return "blocked";
+  if (input.native) return "unknown";
+  return input.prepared || (!selection.agentId && input.visible) ? "ready" : "unknown";
 }
 function categoryTotal(
   category: ContextCategory,
@@ -122,6 +146,7 @@ function categoryTotal(
       Boolean(selection.agentId),
       Boolean(input.prepared),
       measurable,
+      Boolean(input.instructionIssues?.length),
     ),
   };
 }
@@ -136,6 +161,7 @@ function explanation(
   agent: boolean,
   prepared: boolean,
   measurable: boolean,
+  blocked: boolean,
 ): string {
   if (category === "otto_injected" && prepared)
     return "Otto, Knowledge and MCP instructions are included in Remaining system text. No separate count is added twice.";
@@ -143,6 +169,8 @@ function explanation(
     return agent && !prepared
       ? "No prepared request is available from this provider. This is unknown, not zero."
       : "Provider-native memory, skills, or hidden input are not observable here. No controls or cost were invented.";
+  if (category === "context_files" && blocked)
+    return "Partial prospective instruction text. The shared runtime resolver refuses requests until the required instruction failures are resolved; inspection never admits a write.";
   if (category === "context_files")
     return agent
       ? "Exact instruction text captured when the request was prepared; token count is a characters/4 estimate."

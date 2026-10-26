@@ -142,6 +142,51 @@ test("cycles, missing imports and external approval boundaries remain visible wi
   expect(result.notes.join("\n")).toContain("Import cycle");
   expect(result.notes.join("\n")).toContain("Missing or unavailable");
   expect(result.notes.join("\n")).toContain("requires provider approval");
+  expect(result.dependencies.map((entry) => [entry.target, entry.resolution])).toEqual([
+    ["rules.md", "resolved"],
+    ["CLAUDE.md", "resolved"],
+    ["missing.md", "missing"],
+    ["../outside.md", "outside"],
+  ]);
+});
+
+test("excluded and depth-capped dependencies retain metadata without reading their bodies", async () => {
+  const f = await fixture();
+  await f.write(path.join(f.root, "CLAUDE.md"), "@excluded.md\n@level1.md");
+  await f.write(path.join(f.root, "excluded.md"), "EXCLUDED_BODY");
+  for (let index = 1; index <= 5; index++)
+    await f.write(path.join(f.root, `level${index}.md`), `@level${index + 1}.md`);
+  const plan = f.claude();
+  plan.excludes = ["**/excluded.md"];
+  const result = await f.inspect(plan);
+  expect(result.dependencies.find((entry) => entry.target === "excluded.md")).toMatchObject({
+    resolution: "excluded",
+  });
+  expect(result.dependencies.find((entry) => entry.target === "level5.md")).toMatchObject({
+    resolution: "depth_capped",
+  });
+  expect(
+    result.entries.find((entry) => entry.file === path.join(f.root, "excluded.md")),
+  ).toMatchObject({ text: "", countedText: "", costClass: "referenced" });
+  expect(
+    result.entries.find((entry) => entry.file === path.join(f.root, "level5.md")),
+  ).toMatchObject({ text: "", countedText: "", costClass: "referenced" });
+  expect(result.dependencies.some((entry) => entry.target === "level6.md")).toBe(false);
+});
+
+test("an exhausted body-read budget is unavailable, never a missing-target deletion candidate", async () => {
+  const f = await fixture();
+  await f.write(path.join(f.root, "CLAUDE.md"), "@large.md");
+  await f.write(path.join(f.root, "large.md"), "LARGE".repeat(100));
+  const result = await f.inspect(
+    f.claude(),
+    new NativeContextFiles({ bytes: 40, entries: 2048, directories: 256 }),
+  );
+  expect(result.dependencies.find((entry) => entry.target === "large.md")).toMatchObject({
+    resolution: "unavailable",
+    resolved: null,
+  });
+  expect(result.notes.join("\n")).toContain("partial");
 });
 test("skill and subagent cost includes descriptor metadata, never their implementation body", async () => {
   const f = await fixture();

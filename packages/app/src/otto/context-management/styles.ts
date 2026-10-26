@@ -15,6 +15,7 @@ export const styles = StyleSheet.create((theme) => ({
   paneContent: { gap: theme.spacing[4], paddingBottom: theme.spacing[8] },
   preview: { gap: theme.spacing[3] },
   chooser: { paddingHorizontal: theme.spacing[4], paddingTop: theme.spacing[4] },
+  writeStatus: { paddingHorizontal: theme.spacing[4], gap: theme.spacing[2] },
   tree: { flexBasis: 360, flexGrow: 1, flexShrink: 1, minWidth: 0, gap: theme.spacing[3] },
   detail: { flexGrow: 2, flexShrink: 1, flexBasis: 420, minWidth: 0, gap: theme.spacing[3] },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing[2] },

@@ -289,7 +289,10 @@ live-provider or physical-device acceptance.
 `e2e/browser/otto-context-management.spec.ts` covers wide and compact workspace
 entry, owning-host graph/source inspection, declined and accepted load-mode
 confirmation, actual source-byte changes, referenced-body preview and external
-source refresh through the real isolated daemon. It does not launch a model or
+source refresh through the real isolated daemon. The Issues path covers declined
+fixes, a peer edit during confirmation, occupied-lock per-file feedback, retained
+write blocking across a scheduled report refresh, explicit refresh recovery and
+accepted missing-import removal. It does not launch a model or
 prove provider-native hidden context. The normal Otto all-journey acceptance
 includes this file; focused service and action-controller fixtures remain separate.
 

@@ -27,6 +27,30 @@ export const ContextEdgeSchema = z.object({
   kind: z.enum(["import", "reference"]),
   target: z.string(),
   editable: z.boolean().optional(),
+  resolution: z
+    .enum(["resolved", "missing", "outside", "unavailable", "depth_capped", "excluded"])
+    .optional(),
+});
+export const ContextFindingSchema = z.object({
+  id: z.string(),
+  kind: z.enum([
+    "dead_import",
+    "dead_reference",
+    "import_cycle",
+    "depth_capped",
+    "duplicate_across_scope",
+    "duplicate_within_file",
+    "oversized_memory_entry",
+  ]),
+  nodeId: z.string(),
+  sourceRevision: z.string(),
+  message: z.string(),
+  range: z.object({ start: z.number().int().nonnegative(), end: z.number().int().nonnegative() }),
+  line: z.number().int().positive(),
+  lineEnd: z.number().int().positive(),
+  snippet: z.string(),
+  relatedNodeIds: z.array(z.string()),
+  fixable: z.boolean(),
 });
 export const ContextReportSchema = z.object({
   revision: z.string(),
@@ -46,6 +70,7 @@ export const ContextReportSchema = z.object({
   nodes: z.array(ContextNodeSchema),
   edges: z.array(ContextEdgeSchema),
   findings: z.array(z.string()),
+  findingDetails: z.array(ContextFindingSchema).optional(),
   fixedTokens: z.number().int().nonnegative(),
   workingRoom: z.number().int().nonnegative(),
   sharePercent: z.number().nonnegative(),
@@ -53,6 +78,7 @@ export const ContextReportSchema = z.object({
   preparedRequest: z
     .object({ capturedAt: z.string(), phase: z.enum(["prepared", "completed"]) })
     .nullable(),
+  instructionState: z.enum(["ready", "blocked", "unknown"]).optional(),
 });
 const scope = z.object({ hostId: z.string().min(1), workspaceId: z.string().min(1) }).strict();
 export const ContextSelectionSchema = scope
@@ -103,6 +129,28 @@ export const changeContextEdge = defineRpc({
   }).strict(),
   output: contextResult(z.object({ changed: z.boolean() })),
 });
+export const ContextFixOutcomeSchema = z.object({
+  nodeId: z.string(),
+  label: z.string(),
+  status: z.enum(["changed", "unchanged", "conflict", "unavailable"]),
+  fixedCount: z.number().int().nonnegative(),
+  message: z.string(),
+});
+export const fixContextFindings = defineRpc({
+  name: "context.findings.fix.request",
+  input: ContextSelectionSchema.extend({
+    revision: z.string(),
+    findingIds: z.array(z.string()).min(1).max(256),
+    userApprovedFixes: z.boolean(),
+  }).strict(),
+  output: contextResult(
+    z.object({
+      files: z.array(ContextFixOutcomeSchema),
+    }),
+  ),
+});
 export type ContextReport = z.infer<typeof ContextReportSchema>;
 export type ContextSelection = z.infer<typeof ContextSelectionSchema>;
 export type ContextCategory = z.infer<typeof ContextCategorySchema>;
+export type ContextFinding = z.infer<typeof ContextFindingSchema>;
+export type ContextFixOutcome = z.infer<typeof ContextFixOutcomeSchema>;

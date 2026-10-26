@@ -19,6 +19,8 @@ export interface NativeContextEntry {
   label: string;
   revision: string;
   imports: boolean;
+  contextStart?: number;
+  contextLength?: number;
 }
 export interface NativeContextDependency {
   file: string;
@@ -27,6 +29,7 @@ export interface NativeContextDependency {
   target: string;
   resolved: string | null;
   kind: "import" | "reference";
+  resolution: "resolved" | "missing" | "outside" | "unavailable" | "depth_capped" | "excluded";
 }
 export interface NativeContextInventory {
   entries: NativeContextEntry[];
@@ -102,7 +105,7 @@ export async function inspectNativeContext(
     return entry;
   }
   function availableSource(
-    target: { file: string; revision?: string },
+    target: { file: string; revision?: string; text?: string },
     category: ContextCategory,
   ): void {
     if (entries.has(target.file)) return;
@@ -113,7 +116,7 @@ export async function inspectNativeContext(
       "",
       input.plan.imports,
     );
-    if (available && target.revision) available.revision = target.revision;
+    if (available) available.revision = target.revision ?? instructionDigest(target.text ?? "");
   }
   async function inspectDependency(
     source: NativeFile,
@@ -127,27 +130,42 @@ export async function inspectNativeContext(
       path.dirname(source.file),
       expandHome(reference.target, input.userHome),
     );
-    const dependency: NativeContextDependency = { file: source.file, ...reference, resolved: null };
+    const dependency: NativeContextDependency = {
+      file: source.file,
+      ...reference,
+      resolved: null,
+      resolution: "unavailable",
+    };
     dependencies.push(dependency);
     if (!permitted(candidate)) {
+      dependency.resolution = "outside";
       files.note(
         `External dependency requires provider approval and is not inspected: ${reference.target}`,
       );
       return;
     }
     const target =
-      reference.kind === "reference"
+      reference.kind === "reference" ||
+      depth >= input.plan.importDepth ||
+      excluded(candidate, input)
         ? await files.identity(candidate)
         : await files.read(candidate);
     if (!target || !permitted(target.file)) {
+      dependency.resolution = target ? "outside" : files.failure(candidate);
       files.note(`Missing or unavailable dependency: ${reference.target}`);
       return;
     }
     dependency.resolved = target.file;
+    dependency.resolution = "resolved";
     if (reference.kind === "reference") availableSource(target, point.category);
-    else if (depth >= input.plan.importDepth)
+    else if (excluded(candidate, input) || excluded(target.file, input)) {
+      dependency.resolution = "excluded";
+      availableSource(target, point.category);
+    } else if (depth >= input.plan.importDepth) {
+      dependency.resolution = "depth_capped";
+      availableSource(target, point.category);
       files.note(`Import depth limit reached at ${reference.target}.`);
-    else if ("text" in target)
+    } else if ("text" in target)
       await instruction(target, point, costClass, depth + 1, [...chain, source.file]);
   }
   async function instruction(
@@ -176,7 +194,10 @@ export async function inspectNativeContext(
     }
     const referenceText = countedText;
     if (input.plan.provider === "claude") countedText = claudeInstructionText(countedText);
-    if (!add(source, point.category, costClass, countedText, input.plan.imports)) return;
+    const entry = add(source, point.category, costClass, countedText, input.plan.imports);
+    if (!entry) return;
+    entry.contextStart = contextStart;
+    entry.contextLength = referenceText.length;
     for (const original of nativeReferences(referenceText, input.plan.imports)) {
       const reference = {
         ...original,

@@ -17,6 +17,7 @@ export function nativeContextGraph(inventory: NativeContextInventory, root: stri
       loaded: entry.costClass !== "referenced" && entry.category !== "skills_roster",
       editable,
       native: true,
+      nativeImports: entry.imports,
     });
     if (entry.costClass === "fixed")
       sections[entry.category] = [sections[entry.category], entry.countedText]
@@ -54,6 +55,7 @@ export function nativeContextGraph(inventory: NativeContextInventory, root: stri
       target: dependency.target,
       kind: dependency.kind,
       editable: convertible,
+      resolution: dependency.resolution,
     };
   });
   for (const category of ["context_files", "memory_index", "skills_roster"] as const)

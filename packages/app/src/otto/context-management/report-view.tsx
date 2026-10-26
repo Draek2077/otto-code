@@ -4,6 +4,55 @@ import type { ContextReport } from "@getpaseo/plugin/otto/context-management";
 import { SettingsCard, SettingsRow, SettingsSection } from "@/components/settings";
 import { Alert } from "@/components/ui/alert";
 import { styles } from "./styles";
+import { Button } from "@/components/ui/button";
+import type { ContextEdgeEditState } from "./edge-edit";
+import type { ContextSourceSelection } from "./selection";
+export function ContextWriteFeedback({ state }: { state: ContextEdgeEditState }) {
+  if (!state.busy && !state.error && !state.saved) return null;
+  return (
+    <View style={styles.writeStatus} testID="context-write-feedback">
+      {state.busy ? <SettingsRow label="Reviewing or applying the context change..." /> : null}
+      {state.error ? <Alert variant="error" description={state.error} /> : null}
+      {state.saved ? (
+        <Alert
+          variant="info"
+          description="Review the operation's file outcomes and current context. Existing chats may retain their earlier instructions. Refresh context before another change."
+        />
+      ) : null}
+    </View>
+  );
+}
+export function ContextDetail({
+  compact,
+  selection,
+  onBack,
+  preview,
+  error,
+  fetching,
+}: {
+  compact: boolean;
+  selection: ContextSourceSelection | null;
+  onBack(): void;
+  preview: { label: string; text: string } | undefined;
+  error: Error | null;
+  fetching: boolean;
+}) {
+  return (
+    <>
+      {compact && selection ? (
+        <Button variant="outline" size="sm" onPress={onBack}>
+          Back to context
+        </Button>
+      ) : null}
+      <ContextPreviewPane
+        preview={preview}
+        error={error}
+        fetching={fetching}
+        selected={Boolean(selection)}
+      />
+    </>
+  );
+}
 export function ContextReadStatus({
   notice,
   agentError,
@@ -37,6 +86,12 @@ export function ContextSummary({ report }: { report: ContextReport }) {
   }
   return (
     <SettingsCard>
+      {report.instructionState === "blocked" ? (
+        <Alert
+          variant="error"
+          description="Required instructions could not be read. The runtime refuses requests until these instruction issues are resolved; the text below is a partial inspection."
+        />
+      ) : null}
       <SettingsRow
         label={convention ? "Estimated fixed weight" : "Measured fixed weight"}
         hint={`${report.fixedTokens.toLocaleString()} estimated tokens · ${report.sharePercent}% of selected window · ${report.severity}`}

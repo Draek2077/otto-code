@@ -1,6 +1,18 @@
-import { ContextSummary, ContextPreviewPane, ContextReadStatus } from "./report-view";
+import {
+  ContextSummary,
+  ContextDetail,
+  ContextReadStatus,
+  ContextWriteFeedback,
+} from "./report-view";
 import { ContextLayout } from "./layout";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { View } from "react-native";
 import {
   usePaseo,
@@ -23,6 +35,8 @@ import { useAppVisible } from "@/hooks/use-app-visible";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ContextTree } from "./tree";
 import { styles } from "./styles";
+import { ContextEdgeEdit } from "./edge-edit";
+import type { ContextSourceSelection } from "./selection";
 
 const windows = [16384, 32768, 65536, 131072, 200000, 1000000].map((value) => ({
   value: String(value),
@@ -42,12 +56,16 @@ function ContextBody({
   const readPreview = useRpc(readContextPreview);
   const [agentId, setAgentId] = useState("");
   const [windowTokens, setWindowTokens] = useState("200000");
-  const [selection, setSelection] = useState<{
-    nodeId: string | null;
-    category: import("@getpaseo/plugin/otto/context-management").ContextCategory | null;
-  } | null>(null);
+  const [selection, setSelection] = useState<ContextSourceSelection | null>(null);
   const [notice, setNotice] = useState("");
   const [reviewEpoch, setReviewEpoch] = useState(0);
+  const [writeModel, setWriteModel] = useState(() => new ContextEdgeEdit());
+  const writeState = useSyncExternalStore(
+    writeModel.subscribe,
+    writeModel.getSnapshot,
+    writeModel.getSnapshot,
+  );
+  useLayoutEffect(() => (active ? writeModel.activate() : undefined), [active, writeModel]);
   const compact = useIsCompactFormFactor();
   const scope = useMemo<ContextSelection>(
     () => ({ hostId, workspaceId, agentId: agentId || null, windowTokens: Number(windowTokens) }),
@@ -107,12 +125,23 @@ function ContextBody({
   const preview = useFetchQuery({
     dataShape: "value",
     staleTimeMs: 0,
-    queryKey: ["ottoContextPreview", scope, report.data?.revision, selection],
+    queryKey: [
+      "ottoContextPreview",
+      scope,
+      report.data?.revision,
+      selection?.nodeId,
+      selection?.category,
+    ],
     enabled: active && Boolean(selection) && Boolean(report.data) && !report.error,
     retry: false,
     queryFn: async () => {
       if (!selection || !report.data) throw new Error("Select a context source first.");
-      const result = await readPreview({ ...scope, ...selection, revision: report.data.revision });
+      const result = await readPreview({
+        ...scope,
+        nodeId: selection.nodeId,
+        category: selection.category,
+        revision: report.data.revision,
+      });
       if (!result.ok) throw new Error(result.error.message);
       return result.value;
     },
@@ -120,7 +149,10 @@ function ContextBody({
   const { refetch: refetchReport } = report;
   const refresh = useCallback(async () => {
     const result = await refetchReport();
-    if (result.isSuccess) setReviewEpoch((value) => value + 1);
+    if (result.isSuccess) {
+      setWriteModel(new ContextEdgeEdit());
+      setReviewEpoch((value) => value + 1);
+    }
   }, [refetchReport]);
   const changed = useCallback(() => {
     void refetchReport();
@@ -147,16 +179,23 @@ function ContextBody({
             value={agentId}
             options={options}
             onValueChange={chooseAgent}
+            disabled={writeState.busy}
           />
           <SettingsSelect
             label="Window for budget estimate"
             value={windowTokens}
             options={windows}
             onValueChange={chooseWindow}
+            disabled={writeState.busy}
           />
         </SettingsCard>
         <View style={styles.actions}>
-          <Button variant="outline" size="sm" onPress={refresh} disabled={report.isFetching}>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={refresh}
+            disabled={report.isFetching || writeState.busy}
+          >
             {report.isFetching ? "Refreshing..." : "Refresh context"}
           </Button>
         </View>
@@ -179,31 +218,31 @@ function ContextBody({
         active={active}
         onSelect={chooseSource}
         onChanged={changed}
+        writeModel={writeModel}
+        writeState={writeState}
       />
     ) : null;
   const detail = contentVisible ? (
-    <>
-      {compact && selection ? (
-        <Button variant="outline" size="sm" onPress={back}>
-          Back to context
-        </Button>
-      ) : null}
-      <ContextPreviewPane
-        preview={preview.data}
-        error={preview.error}
-        fetching={preview.isFetching}
-        selected={Boolean(selection)}
-      />
-    </>
+    <ContextDetail
+      compact={compact}
+      selection={selection}
+      onBack={back}
+      preview={preview.data}
+      error={preview.error}
+      fetching={preview.isFetching}
+    />
   ) : null;
   return (
-    <ContextLayout compact={compact}>
-      <>
-        {controls}
-        {!compact || !selection ? tree : null}
-      </>
-      {!compact || selection ? detail : null}
-    </ContextLayout>
+    <View style={styles.page}>
+      <ContextWriteFeedback state={writeState} />
+      <ContextLayout compact={compact}>
+        <>
+          {controls}
+          {!compact || !selection ? tree : null}
+        </>
+        {!compact || selection ? detail : null}
+      </ContextLayout>
+    </View>
   );
 }
 function ContextFrame({ hostId, workspaceId }: { hostId: string; workspaceId: string }) {

@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { readContextReport } from "@getpaseo/plugin/otto/context-management";
@@ -101,6 +101,80 @@ for (const compact of [false, true]) {
         path: testInfo.outputPath(`context-management-${compact ? "compact" : "wide"}.png`),
         fullPage: true,
       });
+      if (compact)
+        await surface.getByRole("button", { name: "Back to context", exact: true }).click();
+      const repeated =
+        "Always preserve unrelated user settings and review every change before writing canonical instructions.";
+      const issuesText = `CONTEXT_ISSUES_PROOF\n@missing-context.md\n\n${repeated}\n\n${repeated}\n`;
+      await writeFile(file, issuesText);
+      await surface.getByRole("button", { name: "Refresh context", exact: true }).click();
+      const issuesTab = surface
+        .getByTestId("context-view-tabs")
+        .getByText("Issues", { exact: true });
+      await issuesTab.click();
+      const fixes = surface.getByRole("button", { name: "Fix all", exact: true });
+      const issueCards = surface.locator('[data-testid^="context-issue-"]');
+      await expect(issueCards).toHaveCount(2);
+      page.once("dialog", (dialog) => void dialog.dismiss());
+      await fixes.click();
+      await expect(fixes).toBeEnabled();
+      expect(await readFile(file, "utf8")).toBe(issuesText);
+
+      // Change the real source while the reviewed confirmation is open.
+      const peerText = issuesText + "\nPEER_EDIT_MUST_SURVIVE\n";
+      page.once("dialog", async (dialog) => {
+        await writeFile(file, peerText);
+        await dialog.accept();
+      });
+      await fixes.click();
+      await expect(
+        surface.getByText(
+          "Context changed. Refresh and review the current issues before applying fixes.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await expect(fixes).toBeDisabled();
+      expect(await readFile(file, "utf8")).toBe(peerText);
+
+      await surface.getByRole("button", { name: "Refresh context", exact: true }).click();
+      await issuesTab.click();
+      const lock = file + ".otto-context-lock";
+      await writeFile(lock, "ANOTHER_CONTEXT_WRITER");
+      try {
+        page.once("dialog", (dialog) => void dialog.accept());
+        await fixes.click();
+        await expect(surface.getByTestId(`context-fix-result-${root.id}`)).toContainText(
+          "Another context edit is active.",
+        );
+        await expect(fixes).toBeDisabled();
+        expect(await readFile(lock, "utf8")).toBe("ANOTHER_CONTEXT_WRITER");
+        expect(await readFile(file, "utf8")).toBe(peerText);
+      } finally {
+        await unlink(lock);
+      }
+      // A polling refresh may update findings but cannot grant fresh write authority.
+      const oneIssueText = `CONTEXT_ISSUES_PROOF\n@missing-context.md\n\n${repeated}\nPEER_EDIT_MUST_SURVIVE\n`;
+      await writeFile(file, oneIssueText);
+      // The canonical read interval is ten seconds; allow one scheduled read and its reply.
+      await expect(issueCards).toHaveCount(1, { timeout: 15000 });
+      await expect(fixes).toBeDisabled();
+      await surface.getByRole("button", { name: "Refresh context", exact: true }).click();
+      await issuesTab.click();
+      await expect(fixes).toBeEnabled();
+      page.once("dialog", (dialog) => void dialog.accept());
+      await fixes.click();
+      await expect
+        .poll(() => readFile(file, "utf8"))
+        .toBe(`CONTEXT_ISSUES_PROOF\n\n${repeated}\nPEER_EDIT_MUST_SURVIVE\n`);
+      await expect(surface.getByTestId(`context-fix-result-${root.id}`)).toContainText(
+        "Reviewed removals saved",
+      );
+      await expect(fixes).toBeDisabled();
+      await surface.getByRole("button", { name: "Refresh context", exact: true }).click();
+      await issuesTab.click();
+      await expect(
+        surface.getByText("No deterministic issues found in the visible sources.", { exact: true }),
+      ).toBeVisible();
     } finally {
       await client.close();
       await workspace.cleanup();

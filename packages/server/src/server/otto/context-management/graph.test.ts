@@ -83,6 +83,34 @@ test("reports missing and outside references without reading their bodies", asyn
     "PRIVATE_OUTSIDE",
   );
 });
+test("inspection diagnoses a missing hard import while request preparation and write admission remain fail-closed", async () => {
+  const f = await fixture();
+  await writeFile(path.join(f.root, "AGENTS.md"), "ROOT\n@gone.md");
+  const target = path.join(f.root, "target.txt");
+  await writeFile(target, "ORIGINAL");
+  const source = await InstructionSource.create({ cwd: f.root, home: f.home });
+  const inspected = await source.inspect();
+  expect(inspected.blocks.map((block) => block.text)).toEqual(["ROOT\n@gone.md"]);
+  expect(inspected.issues).toMatchObject([
+    { kind: "missing", parentFile: path.join(f.root, "AGENTS.md"), target: "gone.md" },
+  ]);
+  expect(source.preparedBlocks()).toEqual([]);
+  await expect(source.forRequest()).rejects.toThrow();
+  await expect(source.beforeFile({ file: target, write: true })).rejects.toThrow();
+  expect(await readFile(target, "utf8")).toBe("ORIGINAL");
+});
+test("failed instruction inspection is bounded without relaxing the runtime import limits", async () => {
+  const f = await fixture();
+  await writeFile(
+    path.join(f.root, "AGENTS.md"),
+    Array.from({ length: 300 }, (_, index) => `@missing-${index}.md`).join("\n"),
+  );
+  const source = await InstructionSource.create({ cwd: f.root, home: f.home });
+  const inspected = await source.inspect();
+  expect(inspected.issues).toHaveLength(32);
+  expect(inspected.issues[31]?.kind).toBe("limit");
+  await expect(source.forRequest()).rejects.toThrow();
+});
 test("changing one reviewed import preserves CRLF and unrelated source bytes", async () => {
   const f = await fixture();
   const file = path.join(f.root, "AGENTS.md"),

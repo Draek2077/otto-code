@@ -16,8 +16,32 @@ export async function changeInstructionEdge(input: {
 }): Promise<boolean> {
   const { edge } = input;
   if (edge.kind === input.mode) return false;
-  const file = await realpath(edge.file);
-  if (file !== edge.file || !within(input.root, file))
+  return rewriteContextFile({
+    root: input.root,
+    file: edge.file,
+    expectedRevision: input.expectedRevision,
+    rewrite(before) {
+      const span = before.slice(edge.start, edge.end);
+      const expected = edge.kind === "import" ? `@${edge.target}` : null;
+      if (expected !== null && span !== expected)
+        throw new ContextConflict(
+          "The selected import is no longer at its reviewed source location.",
+        );
+      const replacement =
+        input.mode === "import" ? `@${edge.target}` : `[${edge.target}](${edge.target})`;
+      return before.slice(0, edge.start) + replacement + before.slice(edge.end);
+    },
+  });
+}
+/** One owning-file CAS path for edge edits, reviewed mechanical fixes and source saves. */
+export async function rewriteContextFile(input: {
+  root: string;
+  file: string;
+  expectedRevision: string;
+  rewrite(before: string): string;
+}): Promise<boolean> {
+  const file = await realpath(input.file);
+  if (file !== input.file || !within(input.root, file))
     throw new Error("Only files in the selected workspace may be changed.");
   const lock = `${file}.otto-context-lock`;
   let handle;
@@ -40,15 +64,14 @@ export async function changeInstructionEdge(input: {
       const before = await readContextSource(file);
       if (instructionDigest(before) !== input.expectedRevision)
         throw new ContextConflict("The source changed. Refresh and review it before trying again.");
-      const span = before.slice(edge.start, edge.end);
-      const expected = edge.kind === "import" ? `@${edge.target}` : null;
-      if (expected !== null && span !== expected)
-        throw new ContextConflict(
-          "The selected import is no longer at its reviewed source location.",
-        );
-      const replacement =
-        input.mode === "import" ? `@${edge.target}` : `[${edge.target}](${edge.target})`;
-      const after = before.slice(0, edge.start) + replacement + before.slice(edge.end);
+      const after = input.rewrite(before);
+      if (after === before) return false;
+      if (
+        Buffer.byteLength(after, "utf8") > 131072 ||
+        after.includes("\0") ||
+        Buffer.from(after, "utf8").toString("utf8") !== after
+      )
+        throw new Error("Context changes require UTF-8 text within the 128 KiB source limit.");
       const staged = await open(temporary, "wx", info.mode);
       await withContextCleanup(
         async () => {
@@ -59,7 +82,7 @@ export async function changeInstructionEdge(input: {
         () => staged.close(),
       );
       if (
-        (await realpath(edge.file)) !== file ||
+        (await realpath(input.file)) !== file ||
         instructionDigest(await readContextSource(file)) !== input.expectedRevision
       )
         throw new ContextConflict(
