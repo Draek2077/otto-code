@@ -58,6 +58,8 @@ function AvailableHostBrowserPane({ client, ...props }: Props & { client: HostBr
     lock = useRef(false),
     authority = useRef<object | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const [capturing, setCapturing] = useState(false),
+    captureLock = useRef(false);
   useEffect(() => {
     if (!active) return;
     const owner = {};
@@ -129,6 +131,9 @@ function AvailableHostBrowserPane({ client, ...props }: Props & { client: HostBr
   );
   const screenshot = useCallback(() => {
     const owner = authority.current;
+    if (!owner || captureLock.current || lock.current) return;
+    captureLock.current = true;
+    setCapturing(true);
     void (async () => {
       const result = await run({
         command: "screenshot",
@@ -158,9 +163,14 @@ function AvailableHostBrowserPane({ client, ...props }: Props & { client: HostBr
           }),
         },
       });
-    })().catch(() => {
-      if (authority.current === owner) setError("The page screenshot could not be attached.");
-    });
+    })()
+      .catch(() => {
+        if (authority.current === owner) setError("The page screenshot could not be attached.");
+      })
+      .finally(() => {
+        captureLock.current = false;
+        setCapturing(false);
+      });
   }, [props.browserId, props.cwd, props.serverId, props.workspaceId, run, viewer]);
   const displayed = useCallback((sequence: number) => viewer.displayed(sequence), [viewer]);
   const failed = useCallback((sequence: number) => viewer.decodeFailed(sequence), [viewer]);
@@ -168,16 +178,7 @@ function AvailableHostBrowserPane({ client, ...props }: Props & { client: HostBr
     (event: Parameters<typeof viewer.input>[0]) => viewer.input(event),
     [viewer],
   );
-  const send = useCallback(
-    (text: string) => {
-      if (text) viewer.input({ kind: "text", text });
-      else {
-        viewer.input({ kind: "key", phase: "down", key: "Enter" });
-        viewer.input({ kind: "key", phase: "up", key: "Enter" });
-      }
-    },
-    [viewer],
-  );
+  const send = useCallback((text: string) => viewer.type(text), [viewer]);
   const layout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     setSize({ width, height });
@@ -221,14 +222,14 @@ function AvailableHostBrowserPane({ client, ...props }: Props & { client: HostBr
         hostId={props.serverId}
         workspaceId={props.workspaceId}
         active={active}
-        busy={busy || !active}
+        busy={busy || capturing || !active}
         act={act}
         screenshot={screenshot}
         reconnect={reconnect}
         keyboard={keyboard}
         report={setError}
       />
-      {typing && active ? <HostBrowserTyping send={send} /> : null}
+      {typing ? <HostBrowserTyping send={send} /> : null}
       {error ? (
         <View style={styles.feedback}>
           <Alert variant="error" description={error} />

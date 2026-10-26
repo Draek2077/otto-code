@@ -8,7 +8,6 @@ import {
 } from "react-native";
 import { EditingTextInput, type EditingTextInputHandle } from "@/components/ui/text-input";
 import { PressHighlight } from "@/components/ui/press-highlight";
-import { useBrowserHistoryPort } from "../history-client";
 import { BrowserHistoryModel } from "../history-model";
 import { styles } from "./styles";
 
@@ -19,10 +18,9 @@ export function HostBrowserAddress(props: {
   title: string;
   active: boolean;
   navigate(url: string): void;
+  model: BrowserHistoryModel | null;
 }) {
-  const port = useBrowserHistoryPort(props.hostId, props.workspaceId);
-  const model = useMemo(() => (port ? new BrowserHistoryModel(port) : null), [port]);
-  return <AddressInput {...props} key={`${props.hostId}/${props.workspaceId}`} model={model} />;
+  return <AddressInput {...props} key={`${props.hostId}/${props.workspaceId}`} />;
 }
 function AddressInput({
   url,

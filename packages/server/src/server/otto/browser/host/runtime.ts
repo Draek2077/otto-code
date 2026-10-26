@@ -158,7 +158,10 @@ export class HostBrowserRuntime {
           "--disable-dev-shm-usage",
           "--no-default-browser-check",
           ...(process.platform === "linux"
-            ? ["--ozone-platform=headless", "--use-angle=swiftshader"]
+            ? // Select both GL and ANGLE explicitly; a vendor Vulkan default can
+              // otherwise still try XCB on a displayless Linux host.
+              // https://chromium.googlesource.com/chromium/src/+/main/docs/gpu/swiftshader.md
+              ["--ozone-platform=headless", "--use-gl=angle", "--use-angle=swiftshader"]
             : []),
         ],
       },

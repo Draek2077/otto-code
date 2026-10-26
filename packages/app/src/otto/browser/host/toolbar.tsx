@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { ArrowLeft, ArrowRight, RotateCw, Camera, MoreHorizontal } from "lucide-react-native";
 import { withUnistyles } from "react-native-unistyles";
@@ -8,7 +8,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/component
 import { EditingTextInput, type EditingTextInputHandle } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
-import { confirmDialog } from "@/utils/confirm-dialog";
 import { useBrowserHistoryPort } from "../history-client";
 import { PreviewWorkspaceMenuItem } from "@/otto/preview/workspace-menu-item";
 import type { BrowserAutomationCommand } from "@getpaseo/protocol/browser-automation/rpc-schemas";
@@ -16,6 +15,8 @@ import type { BrowserRecord } from "@/desktop/browser/store";
 import { HostBrowserAddress } from "./address";
 import { styles } from "./styles";
 import { HostBrowserViewport } from "./viewport";
+import { BrowserHistoryModel } from "../history-model";
+import { HostHistoryClear } from "./history-menu";
 const Back = withUnistyles(ArrowLeft),
   Forward = withUnistyles(ArrowRight),
   Refresh = withUnistyles(RotateCw),
@@ -34,8 +35,13 @@ export interface HostToolbarProps {
   keyboard(): void;
   report(message: string): void;
 }
-export function HostBrowserToolbar(props: HostToolbarProps) {
+export const HostBrowserToolbar = memo(function HostBrowserToolbar(props: HostToolbarProps) {
   const { browser, act } = props;
+  const historyPort = useBrowserHistoryPort(props.hostId, props.workspaceId);
+  const history = useMemo(
+    () => (historyPort ? new BrowserHistoryModel(historyPort) : null),
+    [historyPort],
+  );
   const back = useCallback(
     () => act({ command: "back", args: { browserId: browser.browserId } }),
     [act, browser.browserId],
@@ -74,6 +80,7 @@ export function HostBrowserToolbar(props: HostToolbarProps) {
         title={browser.title}
         active={props.active}
         navigate={navigate}
+        model={history}
       />
       <ToolbarButton
         label="Attach page screenshot"
@@ -82,11 +89,11 @@ export function HostBrowserToolbar(props: HostToolbarProps) {
       >
         <Capture size={16} uniProps={muted} />
       </ToolbarButton>
-      <HostBrowserMore {...props} />
+      <HostBrowserMore {...props} history={history} />
       <HostBrowserViewport browserId={browser.browserId} />
     </View>
   );
-}
+});
 function HostBrowserMore({
   browser,
   hostId,
@@ -95,27 +102,11 @@ function HostBrowserMore({
   keyboard,
   report,
   busy,
-}: HostToolbarProps) {
-  const history = useBrowserHistoryPort(hostId, workspaceId);
+  history,
+}: HostToolbarProps & { history: BrowserHistoryModel | null }) {
   const copy = useCallback(() => {
     void copyToClipboard(browser.url).catch(() => report("The address could not be copied."));
   }, [browser.url, report]);
-  const clear = useCallback(() => {
-    void (async () => {
-      if (
-        !history ||
-        !(await confirmDialog({
-          title: "Clear browsing history?",
-          message:
-            "Clear this project's browsing history on this host? Cookies and sign-in sessions stay unchanged.",
-          confirmLabel: "Clear history",
-          destructive: true,
-        }))
-      )
-        return;
-      await history.clear();
-    })().catch(() => report("Browsing history could not be cleared. Make a new explicit attempt."));
-  }, [history, report]);
   return (
     <DropdownMenu>
       <ToolbarButton label="More" kind="menu">
@@ -127,24 +118,35 @@ function HostBrowserMore({
         <DropdownMenuItem onSelect={reconnect} disabled={busy}>
           Reconnect viewer
         </DropdownMenuItem>
-        {history ? (
-          <DropdownMenuItem onSelect={clear} disabled={busy}>
-            Clear browsing history
-          </DropdownMenuItem>
-        ) : null}
+        {history ? <HostHistoryClear model={history} /> : null}
         <PreviewWorkspaceMenuItem serverId={hostId} workspaceId={workspaceId} surface="dropdown" />
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
-export function HostBrowserTyping({ send }: { send(text: string): void }) {
+export function HostBrowserTyping({ send }: { send(text: string): Promise<boolean> }) {
   const input = useRef<EditingTextInputHandle>(null);
+  const [pending, setPending] = useState(false),
+    sending = useRef(false),
+    edits = useRef(0);
+  const changed = useCallback(() => {
+    edits.current++;
+  }, []);
   const submit = useCallback(() => {
     const text = input.current?.getText() ?? "";
-    if (text.length <= 16384) {
-      send(text);
-      input.current?.reset();
-    }
+    if (sending.current || text.length > 16384) return;
+    const revision = edits.current;
+    sending.current = true;
+    setPending(true);
+    void send(text)
+      .then((accepted) => {
+        if (accepted && edits.current === revision) input.current?.reset();
+        return;
+      })
+      .finally(() => {
+        sending.current = false;
+        setPending(false);
+      });
   }, [send]);
   return (
     <View style={styles.bar}>
@@ -156,10 +158,11 @@ export function HostBrowserTyping({ send }: { send(text: string): void }) {
           accessibilityLabel="Text for focused page field"
           placeholder="Type into the selected page field"
           onSubmitEditing={submit}
+          onChangeText={changed}
           autoFocus
         />
       </View>
-      <Button size="sm" variant="outline" onPress={submit}>
+      <Button size="sm" variant="outline" onPress={submit} disabled={pending} loading={pending}>
         Send
       </Button>
     </View>

@@ -3,11 +3,13 @@ import path from "node:path";
 import { createServer } from "node:net";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { readPreviewConfig, stopPreviewServer } from "@getpaseo/plugin/otto/preview";
-import { executeHostBrowser } from "@getpaseo/plugin/otto/host-browser";
 import { z } from "zod";
 import { test, expect } from "../support/fixtures";
 import { seedWorkspace } from "../support/helpers/seed-client";
-import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
+import {
+  connectDaemonClient,
+  loadHostBrowserContracts,
+} from "../support/helpers/daemon-client-loader";
 import { gotoAppShell } from "../support/helpers/app";
 import { openWorkspaceContextMenu } from "../support/helpers/sidebar";
 import { getServerId } from "../support/helpers/server-id";
@@ -46,6 +48,7 @@ for (const compact of [false, true]) {
     const client = await connectDaemonClient<
       Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">
     >({ clientIdPrefix: "preview-acceptance" });
+    const { executeHostBrowser } = await loadHostBrowserContracts();
     const scope = { hostId: getServerId(), workspaceId: workspace.workspaceId };
     const port = await freePort();
     const file = path.join(workspace.repoPath, ".claude", "launch.json");
@@ -131,7 +134,7 @@ for (const compact of [false, true]) {
         hosted.getByRole("img", { name: "Host browser page", exact: true }),
       ).toBeVisible();
       await expect(hosted.getByLabel("Browser address", { exact: true })).toHaveValue(
-        `http://localhost:${port}/`,
+        `http://127.0.0.1:${port}/`,
       );
       const browserId = (await inspect()).servers[0]?.browserId;
       if (!browserId) throw new Error("Preview did not retain its designated browser.");
@@ -173,6 +176,9 @@ for (const compact of [false, true]) {
         path: testInfo.outputPath(`host-browser-${compact ? "compact" : "wide"}.png`),
       });
       await hosted.getByRole("button", { name: "More", exact: true }).click();
+      page.once("dialog", (dialog) => void dialog.accept());
+      await page.getByRole("menuitem", { name: "Clear browsing history", exact: true }).click();
+      await expect(page.getByText("Browsing history cleared", { exact: true })).toBeVisible();
       await page.getByRole("menuitem", { name: "Manage Preview servers", exact: true }).click();
       await expect(surface).toBeVisible();
       expect((await inspect()).servers).toHaveLength(1);

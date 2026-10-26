@@ -124,7 +124,6 @@ import type { CheckoutStatusPayload } from "@/git/use-status-query";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { createWorkspaceBrowser } from "@/desktop/browser/store"; // OTTO(browser-host): owning cleanup lives beside the host bridge.
 import { useBrowserCreation } from "@/otto/browser/host/creation"; // OTTO(browser-host): one existing New browser action on every supported client.
 import { HostBrowserWorkspace } from "@/otto/browser/host/workspace"; // OTTO(browser-host): active-workspace metadata demand.
 import { closeBrowserResources } from "@/otto/browser/host/close"; // OTTO(browser-host): close the owning resource, never a same-named guest.
@@ -1935,17 +1934,20 @@ function WorkspaceScreenContent({
 
   const handleOpenUrlInBrowserTab = useCallback(
     (url: string) => {
-      if (!persistenceKey || !getIsElectron()) {
+      if (!persistenceKey) {
         return;
       }
-      const { browserId } = createWorkspaceBrowser({ initialUrl: url });
-      openWorkspaceTabFocused(
-        persistenceKey,
-        { kind: "browser", browserId },
-        FOCUSED_PANE_PLACEMENT,
-      );
+      void createBrowser(url).then((created) => {
+        if (created)
+          openWorkspaceTabFocused(
+            persistenceKey,
+            { kind: "browser", browserId: created.browserId },
+            FOCUSED_PANE_PLACEMENT,
+          );
+        return;
+      }); // OTTO(browser-host): the selected client/host owns URL opens too.
     },
-    [openWorkspaceTabFocused, persistenceKey],
+    [openWorkspaceTabFocused, persistenceKey, createBrowser],
   );
 
   useDesktopBrowserNewTabRequests({

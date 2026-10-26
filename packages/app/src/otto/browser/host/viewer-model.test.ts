@@ -217,3 +217,34 @@ test("a stale negative acknowledgment cannot close the next viewer", async () =>
   expect(f.viewer.getSnapshot().phase).toBe("live");
   second();
 });
+test("typed text resolves only after its ordered host acknowledgment", async () => {
+  const f = fixture(),
+    blocked = deferred<void>();
+  f.input.mockImplementationOnce(() => blocked.promise);
+  const hide = f.viewer.activate();
+  f.paint();
+  let accepted: boolean | null = null;
+  const sending = f.viewer.type("Keep this draft until acknowledged").then((value) => {
+    accepted = value;
+    return value;
+  });
+  await Promise.resolve();
+  expect(accepted).toBeNull();
+  blocked.resolve();
+  await expect(sending).resolves.toBe(true);
+  hide();
+});
+test("hidden or failed text settles false so a form retains its unacknowledged draft", async () => {
+  const f = fixture(),
+    blocked = deferred<void>();
+  f.input.mockImplementationOnce(() => blocked.promise);
+  const hide = f.viewer.activate();
+  f.paint();
+  const sending = f.viewer.type("Preserved text");
+  hide();
+  await expect(sending).resolves.toBe(false);
+  blocked.resolve();
+  await Promise.resolve();
+  expect(f.input).toHaveBeenCalledOnce();
+  expect(f.viewer.getSnapshot().phase).toBe("inactive");
+});

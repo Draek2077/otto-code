@@ -145,6 +145,14 @@ export class HostBrowserViewer {
   input(event: HostBrowserInput) {
     if (this.state.phase === "live") this.opening?.input.push(event);
   }
+  async type(text: string): Promise<boolean> {
+    const opening = this.opening;
+    if (!opening?.active || this.state.phase !== "live" || text.length > 16384) return false;
+    if (text) return opening.input.acknowledged({ kind: "text", text });
+    if (!(await opening.input.acknowledged({ kind: "key", phase: "down", key: "Enter" })))
+      return false;
+    return opening.input.acknowledged({ kind: "key", phase: "up", key: "Enter" });
+  }
   private fail(opening: Opening, error: string) {
     if (opening.active) this.finish(opening, "error", error);
   }
