@@ -10,6 +10,7 @@ import {
   type PreviewServer,
 } from "@getpaseo/plugin/otto/preview";
 import type { BrowserToolsBroker } from "../../browser-tools/broker.js";
+import type { BrowserToolsExecuteInput } from "../../browser-tools/broker.js";
 import { PreviewManager } from "./manager.js";
 import {
   previewDestination,
@@ -49,6 +50,29 @@ export class PreviewHost {
   }
   private project(binding: PreviewBinding, server: PreviewServer): PreviewServer {
     return { ...server, browserId: this.browserBindings.get(this.key(binding, server.id)) ?? null };
+  }
+  async navigationTarget(input: BrowserToolsExecuteInput) {
+    const command = input.command;
+    if (
+      !input.cwd ||
+      !input.workspaceId ||
+      (command.command !== "new_tab" && command.command !== "navigate") ||
+      !command.args.url
+    )
+      return null;
+    const destination = new URL(command.args.url);
+    const servers = await this.ports.manager.list(input.cwd, null);
+    const server = servers.find(
+      (candidate) => candidate.status !== "stopped" && matchesPreviewUrl(candidate, destination),
+    );
+    if (!server) return null;
+    return {
+      serverId: server.id,
+      browserId:
+        this.browserBindings.get(
+          this.key({ cwd: server.cwd, workspaceId: input.workspaceId }, server.id),
+        ) ?? null,
+    };
   }
   async list(binding: PreviewBinding) {
     let config: PreviewLaunchConfig | null = null,
@@ -140,8 +164,11 @@ export class PreviewHost {
       throw new Error(
         "Preview's browser association limit is reached. No extra tab was requested.",
       );
+    // A successful list proved the old tab closed; only now can its association yield to a replacement.
+    this.browserBindings.delete(key);
     const opened = await this.ports.broker.execute({
       ...binding,
+      ottoPreviewServerId: id,
       command: { command: "new_tab", args: { url: server.url } },
     });
     if (
@@ -206,4 +233,11 @@ export class PreviewHost {
       };
     }
   }
+}
+function matchesPreviewUrl(server: PreviewServer, url: URL): boolean {
+  if (new URL(server.url).origin === url.origin) return true;
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  const loopback = host === "localhost" || host === "::1" || /^127\.\d+\.\d+\.\d+$/.test(host);
+  const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
+  return loopback && port === server.port;
 }

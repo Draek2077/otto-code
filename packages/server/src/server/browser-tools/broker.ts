@@ -17,6 +17,7 @@ export interface BrowserHostClient {
 }
 
 export interface BrowserToolsExecuteInput {
+  ottoPreviewServerId?: string; // OTTO(preview): daemon-owned create authority, never accepted on the wire.
   command: BrowserAutomationCommand;
   agentId?: string;
   cwd?: string;
@@ -39,6 +40,11 @@ interface RegisteredBrowserHost {
 }
 
 export interface BrowserToolsBrokerOptions {
+  // OTTO(browser-admission): policy wraps the same broker; direct execution retains affinity and host ownership.
+  ottoAdmission?: (
+    input: BrowserToolsExecuteInput,
+    next: (input: BrowserToolsExecuteInput) => Promise<BrowserToolsResponsePayload>,
+  ) => Promise<BrowserToolsResponsePayload>;
   defaultTimeoutMs?: number;
   createRequestId?: () => string;
 }
@@ -53,8 +59,10 @@ export class BrowserToolsBroker {
   private readonly browserHostByBrowserId = new Map<string, string>();
   private readonly strandedBrowserHostByBrowserId = new Map<string, string>();
   private registrationSequence = 0;
+  private readonly ottoAdmission: BrowserToolsBrokerOptions["ottoAdmission"]; // OTTO(browser-admission)
 
   public constructor(options: BrowserToolsBrokerOptions) {
+    this.ottoAdmission = options.ottoAdmission; // OTTO(browser-admission)
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_BROWSER_TOOLS_TIMEOUT_MS;
     this.createRequestId = options.createRequestId ?? (() => `browser_${randomUUID()}`);
   }
@@ -111,6 +119,15 @@ export class BrowserToolsBroker {
   }
 
   public async execute(input: BrowserToolsExecuteInput): Promise<BrowserToolsResponsePayload> {
+    // OTTO(browser-admission): Preview and ordinary creates share one admission queue, not separate tab stacks.
+    const request = { ...input, requestId: input.requestId ?? this.createRequestId() };
+    const next = (value: BrowserToolsExecuteInput) => this.executeDirect(value);
+    return this.ottoAdmission ? this.ottoAdmission(request, next) : next(request);
+  }
+
+  private async executeDirect(
+    input: BrowserToolsExecuteInput,
+  ): Promise<BrowserToolsResponsePayload> {
     const requestId = input.requestId ?? this.createRequestId();
 
     const request = BrowserAutomationExecuteRequestSchema.safeParse({

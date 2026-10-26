@@ -250,6 +250,8 @@ import { PreviewHost } from "./otto/preview/host.js"; // OTTO(preview)
 import { PreviewManager } from "./otto/preview/manager.js"; // OTTO(preview)
 import { createPreviewProcessPorts, previewProtectedPorts } from "./otto/preview/process-ports.js"; // OTTO(preview)
 import { createRetainedToolPolicy } from "./otto/retained-tool-policy.js"; // OTTO(preview)
+import { BrowserAdmissions } from "./otto/browser/admission.js"; // OTTO(browser-admission)
+import { lookup as lookupBrowserDestination } from "node:dns/promises"; // OTTO(browser-admission): only explicit navigation resolves DNS.
 import { createContextTextGeneration } from "./otto/context-management/text-generation.js"; // OTTO(context-compaction): provider-owned, tool-free generation only.
 import { createNativeContextGeneration } from "./otto/context-management/native-generation.js"; // OTTO(context-generation): native enforcement, no AgentManager chat registration.
 import { resolveStructuredGenerationProviders } from "./agent/structured-generation-providers.js"; // OTTO(context-compaction): reuse canonical model selection without launching a normal agent.
@@ -642,7 +644,13 @@ export async function createPaseoDaemon(
     logger.error({ err: error }, "Failed to maintain orchestration skills at startup");
   });
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
-  const browserToolsBroker = new BrowserToolsBroker({});
+  const browserAdmissions = new BrowserAdmissions({
+    previewTarget: async (input) => ottoPreview?.navigationTarget(input) ?? null,
+    lookup: (hostname) => lookupBrowserDestination(hostname, { all: true }),
+  }); // OTTO(browser-admission): inert until a browser command.
+  const browserToolsBroker = new BrowserToolsBroker({
+    ottoAdmission: (input, next) => browserAdmissions.execute(input, next),
+  }); // OTTO(browser-admission)
   // OTTO(paseo-version): plugins target the Paseo API, so the plugin host reports
   // the Paseo base release instead of Otto's version.
   const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until demand/action or saved startup intent.

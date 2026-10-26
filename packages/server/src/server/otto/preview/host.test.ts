@@ -148,6 +148,34 @@ test("Preview projection exposes a bounded execution digest without host environ
   expect(JSON.stringify(f.config)).not.toContain("NEVER_RETURN_THIS_SECRET");
   expect(f.spawn).not.toHaveBeenCalled();
 });
+test("Preview navigation admission resolves one designated tab with loopback aliases and workspace identity", async () => {
+  const f = await fixture();
+  const result = startPreviewServer.output.parse(
+    await f.host.invoke(startPreviewServer.name, f.input),
+  );
+  if (!result.ok) throw new Error(result.error.message);
+  const input = {
+    cwd: f.cwd,
+    workspaceId: "workspace",
+    command: { command: "new_tab" as const, args: { url: "http://[::1]:8200/another-route" } },
+  };
+  expect(await f.host.navigationTarget(input)).toEqual({
+    serverId: result.value.server.id,
+    browserId: result.value.server.browserId,
+  });
+  expect(await f.host.navigationTarget({ ...input, workspaceId: "second" })).toEqual({
+    serverId: result.value.server.id,
+    browserId: null,
+  });
+  expect(
+    await f.host.navigationTarget({
+      ...input,
+      command: { command: "new_tab", args: { url: "http://127.0.0.1:8201" } },
+    }),
+  ).toBeNull();
+  await f.manager.stop(f.cwd, result.value.server.id);
+  expect(await f.host.navigationTarget(input)).toBeNull();
+});
 test("Preview app projection refuses oversized transport payloads without losing process ownership", async () => {
   const f = await fixture();
   const servers = Array.from({ length: 128 }, (_, index) => ({

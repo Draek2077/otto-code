@@ -62,6 +62,14 @@ than sending an unbounded launch inventory or silently clipping a command approv
 Preview opens one designated tab per server/workspace through Paseo's browser broker,
 reuses a confirmed existing association and refuses to create another when listing fails.
 Browser failures leave process ownership visible. Closing the tab does not stop the server.
+The shared broker serializes AI tab creation per workspace and counts both ordinary
+browser and Preview tabs toward its twelve-tab admission ceiling. Failed inventory
+reads never authorize another create. Navigation to a running Preview origin, or
+a loopback alias matching its local port, requires that workspace's designated ID.
+Only the daemon's Preview service can request its first designated tab; that authority
+is not a wire field. Initial HTTP(S) navigation rejects credential-bearing URLs and
+known cloud metadata addresses, including DNS aliases and IPv4-mapped IPv6 forms.
+This preflight does not claim interception of page-initiated redirects or requests.
 The host reports a separate capability; an older daemon offers an update message.
 
 Rendered wide/compact lifecycle acceptance is authored in
