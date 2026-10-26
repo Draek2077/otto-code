@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { forgeStatusErrorMessage } from "./otto/forge-error.js"; // OTTO(forge-errors): actionable PR lookup failures.
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { LRUCache } from "lru-cache";
@@ -3841,7 +3842,7 @@ async function loadForgeSnapshot(options: {
     // The auth probe succeeded, so a failure here is a command error, not an
     // auth problem — surface it as an error while keeping features enabled.
     return buildForgeSnapshot("authenticated", null, {
-      message: error instanceof Error ? error.message : String(error),
+      message: forgeStatusErrorMessage(error), // OTTO(forge-errors): keep command dumps in host diagnostics.
     });
   }
 }

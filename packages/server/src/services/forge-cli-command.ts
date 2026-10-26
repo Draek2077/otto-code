@@ -2,6 +2,7 @@ import { z } from "zod";
 import { findExecutable } from "../executable-resolution/executable-resolution.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { execCommand } from "../utils/spawn.js";
+import { execForgeCommand } from "../utils/otto/forge-command.js"; // OTTO(forge-argv): native Windows CLIs bypass cmd.exe.
 
 /**
  * Timeout for the per-host CLI auth probe (`gh`/`glab`/`tea` auth status) used
@@ -103,7 +104,7 @@ export interface ForgeCliRunnerFactory {
  */
 export function createForgeCliRunner(options: CreateForgeCliRunnerOptions): ForgeCliRunnerFactory {
   const run: ForgeCliRunner = (args, runOptions) =>
-    execCommand(options.binary, args, {
+    execForgeCommand(options.binary, args, {
       cwd: runOptions.cwd,
       envOverlay: { ...options.envOverlay, ...runOptions.envOverlay },
       maxBuffer: 10 * 1024 * 1024,

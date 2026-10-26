@@ -51,6 +51,19 @@ tests and configuration inspection do not establish that a reported crash has
 been reproduced or resolved. No cache deletion or daemon restart is required by
 this policy.
 
+### GitHub PR lookup diagnostics on Windows
+
+The forge command runner resolves native Windows executables before invoking
+them. Native `gh`, `glab` and `tea` receive argv directly, including multiline
+GraphQL, JSON and literal shell characters. Command-script wrappers retain the
+shared process launcher's script policy. This does not change CLI accounts,
+credentials or global configuration.
+
+A GitHub repository lookup failure can mean an incorrect remote or insufficient
+access for the host's current CLI account. The Changes panel explains that
+uncertainty instead of rendering the full `gh pr view --json ...` command.
+It does not treat that failure as an absent PR or hide the local file diff.
+
 ## Nix desktop package
 
 The flake exposes `packages.<system>.desktop` on Linux and macOS:
