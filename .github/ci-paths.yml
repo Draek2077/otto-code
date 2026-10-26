@@ -46,6 +46,8 @@ desktop:
   # OTTO(browser-actions): Electron-owned UI follows desktop acceptance too.
   - "packages/app/src/otto/browser/**"
   - "packages/server/src/server/browser-tools/**"
+  # OTTO(preview): native owned-process proof runs with desktop platform lanes.
+  - "packages/server/src/server/otto/preview/**"
   - "packages/app/e2e/support/**"
   - "packages/app/*config.{cjs,js,ts}"
   - "packages/app/package.json"

@@ -24,6 +24,7 @@ test("Otto fixture declarations and bounded Brain runtime tests stay in CI", () 
     "npm run typecheck --workspace=@getpaseo/brain -- -p tsconfig.tests.json",
     "npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-knowledge-tests.json",
     "npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-brain-tests.json",
+    "npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-preview-tests.json",
     "npm run typecheck --workspace=@getpaseo/builtin-plugins -- -p otto-kanban/tsconfig.tests.json",
   ])
     assert.ok(declarations.includes(command), `Missing fixture typecheck: ${command}`);
@@ -37,6 +38,7 @@ test("Otto fixture declarations and bounded Brain runtime tests stay in CI", () 
     "packages/otto-brain/tsconfig.tests.json",
     "packages/server/tsconfig.otto-knowledge-tests.json",
     "packages/server/tsconfig.otto-brain-tests.json",
+    "packages/server/tsconfig.otto-preview-tests.json",
     "plugins/otto-kanban/tsconfig.tests.json",
   ]) {
     const parsed = JSON.parse(readFileSync(new URL(config, repoRoot), "utf8"));
@@ -258,6 +260,7 @@ test("PR routing declares stable behavior ownership", () => {
       "packages/app/src/desktop/**",
       "packages/app/src/otto/browser/**",
       "packages/server/src/server/browser-tools/**",
+      "packages/server/src/server/otto/preview/**",
       "packages/app/e2e/support/**",
       "packages/app/*config.{cjs,js,ts}",
       "packages/app/package.json",
@@ -356,6 +359,7 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
     "packages/app/src/desktop/**",
     "packages/app/src/otto/browser/**",
     "packages/server/src/server/browser-tools/**",
+    "packages/server/src/server/otto/preview/**",
     "packages/app/e2e/support/**",
     "packages/app/*config.{cjs,js,ts}",
     "packages/app/package.json",
