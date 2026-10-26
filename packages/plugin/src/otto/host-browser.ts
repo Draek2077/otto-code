@@ -10,6 +10,7 @@ const Scope = z.object({
   workspaceId: z.string().min(1).max(512),
 });
 export const HostBrowserTabSchema = z.object({
+  revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   browserId: BrowserAutomationBrowserIdSchema,
   workspaceId: z.string().min(1).max(512),
   url: z.string().max(8192),

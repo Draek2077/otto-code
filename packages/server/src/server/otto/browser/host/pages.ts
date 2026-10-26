@@ -6,6 +6,7 @@ export interface HostPage {
   isClosed(): boolean;
 }
 export interface HostTab {
+  revision: number;
   browserId: string;
   workspaceId: string;
   cwd: string;
@@ -87,7 +88,7 @@ export class HostBrowserPages<P extends HostPage> {
     >,
   ): void {
     const entry = this.entry(workspaceId, browserId);
-    entry.tab = { ...entry.tab, ...patch };
+    entry.tab = { ...entry.tab, ...patch, revision: entry.tab.revision + 1 };
     this.publish();
   }
   async create(binding: { workspaceId: string; cwd: string }, url: string): Promise<HostTab> {
@@ -95,6 +96,7 @@ export class HostBrowserPages<P extends HostPage> {
     if (this.entries.size >= 256)
       throw new Error("Close an existing Host Browser tab before creating another.");
     const tab: HostTab = {
+      revision: 0,
       ...binding,
       browserId: randomUUID(),
       url,
@@ -161,7 +163,12 @@ export class HostBrowserPages<P extends HostPage> {
     if (!entry.page) return;
     await entry.page.close();
     entry.page = null;
-    entry.tab = { ...entry.tab, state: "suspended", isLoading: false };
+    entry.tab = {
+      ...entry.tab,
+      state: "suspended",
+      isLoading: false,
+      revision: entry.tab.revision + 1,
+    };
     this.clearIdle(entry);
     this.publish();
   }
@@ -188,20 +195,21 @@ export class HostBrowserPages<P extends HostPage> {
             await this.suspend(victim);
           }
           try {
-            entry.tab = { ...entry.tab, error: null };
+            entry.tab = { ...entry.tab, error: null, revision: entry.tab.revision + 1 };
             const page = await this.ports.open({ ...entry.tab });
             entry.page = page;
             if (this.closed) {
               await this.suspend(entry);
               throw new Error("Host Browser closed while the page was opening.");
             }
-            entry.tab = { ...entry.tab, state: "ready" };
+            entry.tab = { ...entry.tab, state: "ready", revision: entry.tab.revision + 1 };
             this.publish();
             return page;
           } catch (error) {
             entry.tab = {
               ...entry.tab,
               state: "error",
+              revision: entry.tab.revision + 1,
               error:
                 "The host could not open this page. Inspect the host browser runtime and explicitly reopen the tab.",
             };

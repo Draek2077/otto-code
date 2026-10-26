@@ -29,6 +29,7 @@ import { useFetchQuery } from "@/data/query";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { PreviewActions } from "./action-model";
 import { PreviewWorkspaceMenuItem } from "./workspace-menu-item";
+import { useRevealBrowser } from "@/otto/browser/host/reveal";
 const Icon = withUnistyles(Play);
 const iconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 type PreviewConfig = Extract<z.output<typeof readPreviewConfig.output>, { ok: true }>["value"];
@@ -60,6 +61,7 @@ function AvailablePreviewGutterMenu({
     if (!active) setMenuOpen(false);
   }, [active]);
   const scope = useMemo(() => ({ hostId: serverId, workspaceId }), [serverId, workspaceId]);
+  const revealBrowser = useRevealBrowser(serverId, workspaceId);
   const invoke = useCallback(
     async (method: string, input: unknown) => {
       if (!client) throw new Error("The Preview host is disconnected.");
@@ -147,12 +149,13 @@ function AvailablePreviewGutterMenu({
             await invoke(openPreviewBrowser.name, { ...scope, serverId: server.id }),
           );
           if (!result.ok) throw new Error(result.error.message);
+          await revealBrowser(result.value.browserId);
           return "The designated browser tab is open.";
         },
         refresh,
       );
     },
-    [actions, invoke, refresh, scope],
+    [actions, invoke, refresh, scope, revealBrowser],
   );
   const busy = !active || action.busy;
   return (

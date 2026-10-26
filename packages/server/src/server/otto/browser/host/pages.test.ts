@@ -59,6 +59,26 @@ test("construction and workspace inventory do not launch or schedule; a create r
   await expect(f.manager.use("peer", tab.browserId, async () => {})).rejects.toThrow("workspace");
   expect(f.open).toHaveBeenCalledTimes(1);
 });
+test("metadata revisions advance across navigation, suspension and wake without mutating old snapshots", async () => {
+  const f = fixture(),
+    tab = await f.manager.create(binding, "https://example.test");
+  const before = f.manager.get(binding.workspaceId, tab.browserId);
+  f.manager.update(binding.workspaceId, tab.browserId, {
+    title: "Updated",
+    url: "https://example.test/new",
+  });
+  const navigated = f.manager.get(binding.workspaceId, tab.browserId);
+  expect(navigated.revision).toBeGreaterThan(before.revision);
+  expect(before.title).toBe("");
+  await vi.advanceTimersByTimeAsync(5 * 60_000);
+  const suspended = f.manager.get(binding.workspaceId, tab.browserId);
+  expect(suspended.state).toBe("suspended");
+  expect(suspended.revision).toBeGreaterThan(navigated.revision);
+  await f.manager.use(binding.workspaceId, tab.browserId, async () => {});
+  const awake = f.manager.get(binding.workspaceId, tab.browserId);
+  expect(awake.revision).toBeGreaterThan(suspended.revision);
+  expect(awake.url).toBe(navigated.url);
+});
 test("four live pages are bounded under concurrent creates and inactive pages alone yield capacity", async () => {
   const f = fixture();
   const tabs = await Promise.all(

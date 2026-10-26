@@ -3583,6 +3583,7 @@ export const ServerInfoStatusPayloadSchema = z
         ottoContextStarter: z.boolean().optional(), // OTTO(context-starter): reviewed creation is separately gated.
         ottoBrowserHistory: z.boolean().optional(), // OTTO(browser-history): additive, no history payload in core framing.
         ottoPreview: z.boolean().optional(), // OTTO(preview): explicit workspace-scoped server lifecycle and browser binding.
+        ottoHostBrowser: z.boolean().optional(), // OTTO(browser-host): source-bound streamed host pages on the existing encrypted transport.
         ottoKnowledgeRefinement: z.boolean().optional(), // OTTO(knowledge): scoped generation, explicit CAS apply.
         // COMPAT(agentRequestReceipts): added in v0.8.0; remove gate after 2027-03-05.
         agentRequestReceipts: z.boolean().optional(),

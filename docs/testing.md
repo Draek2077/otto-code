@@ -291,10 +291,15 @@ live-provider or physical-device acceptance.
 Preview Servers: `e2e/browser/otto-preview.spec.ts` exercises the single gutter play
 menu with management last and no process on declined quick launch, wide and compact workspace
 entry, declined and stale command confirmations, real isolated host-owned start/stop,
-bounded logs, browser-open failure recovery and corrupt configuration. It runs in CI,
+bounded logs, designated streamed browser opening, trusted pointer/keyboard input
+against that same host page, and corrupt configuration. It runs in CI,
 alongside native Linux/Windows process-tree ownership fixtures. No installed app or
 developer daemon participates. Pure action fixtures additionally cover hidden-confirmation
-invalidation and duplicate admission.
+invalidation and duplicate admission. Browser-open failure ownership recovery is
+covered by the isolated Preview host fixtures. Separate Windows/Linux native host
+acceptance verifies shared ARIA refs, native input, uploads, dialogs, screenshots,
+source-bound JPEGs and profile cookies across a final-tab close. Pure viewer fixtures
+verify late replies, hidden input, bounded queues and preserved binding data.
 
 `e2e/browser/otto-context-health.spec.ts` covers the real composer pill, provider
 catalog window, mute, registered Manage navigation and persisted warning

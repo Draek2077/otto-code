@@ -38,6 +38,7 @@ import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useOttoBrowserActions } from "@/otto/browser/actions.electron"; // OTTO(browser-actions)
 import { useOttoBrowserHistory } from "@/otto/browser/history.electron"; // OTTO(browser-history)
 import { PreviewWorkspaceMenuItem } from "@/otto/preview/workspace-menu-item"; // OTTO(preview): add only to More; visible Paseo controls stay intact.
+import { OpenHostBrowserMenuItem } from "@/otto/browser/host/open-menu-item"; // OTTO(browser-host): explicit URL open; native cookies and controls stay on the desktop.
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import {
@@ -1441,6 +1442,11 @@ export function BrowserPane({
     () => (
       <>
         {history.menuItem}
+        <OpenHostBrowserMenuItem
+          serverId={serverId}
+          workspaceId={workspaceId}
+          url={browser?.url ?? "about:blank"}
+        />
         <PreviewWorkspaceMenuItem
           surface="dropdown"
           serverId={serverId}
@@ -1448,7 +1454,7 @@ export function BrowserPane({
         />
       </>
     ),
-    [history.menuItem, serverId, workspaceId],
+    [history.menuItem, serverId, workspaceId, browser?.url],
   ); // OTTO(preview)
   const ottoActions = useOttoBrowserActions({
     browserId,

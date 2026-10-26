@@ -28,6 +28,7 @@ import {
   type PreviewCommand,
 } from "./cards";
 import { styles } from "./styles";
+import { useRevealBrowser } from "@/otto/browser/host/reveal";
 const levels = [
   { value: "all", label: "All output" },
   { value: "error", label: "Errors" },
@@ -83,6 +84,7 @@ function PreviewLogs({
   );
 }
 export function PreviewWorkspace(props: PluginWorkspacePanelProps) {
+  const revealBrowser = useRevealBrowser(props.host.id, props.workspaceId);
   const read = useRpc(readPreviewConfig),
     start = useRpc(startPreviewServer),
     stop = useRpc(stopPreviewServer),
@@ -171,12 +173,13 @@ export function PreviewWorkspace(props: PluginWorkspacePanelProps) {
         async () => {
           const result = await open({ ...scope, serverId: server.id });
           if (!result.ok) throw new Error(result.error.message);
+          await revealBrowser(result.value.browserId);
           return "The designated browser tab is open.";
         },
         refresh,
       );
     },
-    [actions, open, refresh, scope],
+    [actions, open, refresh, scope, revealBrowser],
   );
   const copySetup = useCallback(() => {
     void actions.run(

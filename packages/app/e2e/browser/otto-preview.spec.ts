@@ -3,6 +3,8 @@ import path from "node:path";
 import { createServer } from "node:net";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { readPreviewConfig, stopPreviewServer } from "@getpaseo/plugin/otto/preview";
+import { executeHostBrowser } from "@getpaseo/plugin/otto/host-browser";
+import { z } from "zod";
 import { test, expect } from "../support/fixtures";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
@@ -47,7 +49,9 @@ for (const compact of [false, true]) {
     const scope = { hostId: getServerId(), workspaceId: workspace.workspaceId };
     const port = await freePort();
     const file = path.join(workspace.repoPath, ".claude", "launch.json");
-    const script = `require('node:http').createServer((req,res)=>res.end('Preview fixture')).listen(${port},'127.0.0.1',()=>console.log('PREVIEW_READY_PROOF'))`;
+    const html =
+      '<!doctype html><title>Preview fixture</title><style>body{font:20px sans-serif;padding:20px}input{font:inherit}</style><h1>Preview fixture</h1><label>Name <input aria-label="Name"></label>';
+    const script = `require('node:http').createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end(${JSON.stringify(html)})}).listen(${port},'127.0.0.1',()=>console.log('PREVIEW_READY_PROOF'))`;
     const launch = (extra: string) =>
       JSON.stringify({
         configurations: [
@@ -120,16 +124,57 @@ for (const compact of [false, true]) {
       await expect(
         surface.getByText("[stdout] PREVIEW_READY_PROOF", { exact: false }),
       ).toBeVisible();
-      await expect(
-        surface.getByText("The server is tracked, but its browser could not open.", {
-          exact: false,
-        }),
-      ).toBeVisible();
-      // Web acceptance has no native browser host. A failed Open must keep the server and logs.
+      // Open reveals the daemon's designated page in an ordinary workspace tab.
       await surface.getByRole("button", { name: "Open browser", exact: true }).click();
+      const hosted = page.getByTestId("otto-host-browser").filter({ visible: true });
       await expect(
-        surface.getByText("The host could not acknowledge this action.", { exact: false }),
+        hosted.getByRole("img", { name: "Host browser page", exact: true }),
       ).toBeVisible();
+      await expect(hosted.getByLabel("Browser address", { exact: true })).toHaveValue(
+        `http://localhost:${port}/`,
+      );
+      const browserId = (await inspect()).servers[0]?.browserId;
+      if (!browserId) throw new Error("Preview did not retain its designated browser.");
+      const evaluate = async (source: string) => {
+        const response = executeHostBrowser.output.parse(
+          await client.invokePluginRpc("otto-browser", executeHostBrowser.name, {
+            ...scope,
+            command: { command: "evaluate", args: { browserId, function: source } },
+          }),
+        );
+        if (!response.ok) throw new Error(response.error.message);
+        if (response.result.command !== "evaluate") throw new Error("Expected host evaluation.");
+        return JSON.parse(response.result.resultJson);
+      };
+      const geometry = z
+        .object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
+        .parse(
+          await evaluate(
+            "() => { const box=document.querySelector('input').getBoundingClientRect(); return {x:box.x+box.width/2,y:box.y+box.height/2,width:innerWidth,height:innerHeight}; }",
+          ),
+        );
+      const frame = hosted.getByRole("application", { name: "Host browser page", exact: true });
+      await expect(frame).toHaveAttribute("data-host-viewport-width", String(geometry.width));
+      await expect(frame).toHaveAttribute("data-host-viewport-height", String(geometry.height));
+      const box = await frame.boundingBox();
+      if (!box) throw new Error("The streamed page has no visible viewport.");
+      const scale = Math.min(box.width / geometry.width, box.height / geometry.height);
+      await frame.click({
+        position: {
+          x: (box.width - geometry.width * scale) / 2 + geometry.x * scale,
+          y: (box.height - geometry.height * scale) / 2 + geometry.y * scale,
+        },
+      });
+      await page.keyboard.type("Otto");
+      await expect
+        .poll(() => evaluate("() => document.querySelector('input').value"), { timeout: 10_000 })
+        .toBe("Otto");
+      await page.screenshot({
+        path: testInfo.outputPath(`host-browser-${compact ? "compact" : "wide"}.png`),
+      });
+      await hosted.getByRole("button", { name: "More", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Manage Preview servers", exact: true }).click();
+      await expect(surface).toBeVisible();
       expect((await inspect()).servers).toHaveLength(1);
       page.once("dialog", (dialog) => void dialog.accept());
       await surface.getByRole("button", { name: "Stop", exact: true }).click();

@@ -8,7 +8,7 @@ panel, main process and preload.
 The pure Paseo ARIA snapshot and ref implementation is shared through
 `@getpaseo/plugin/server/otto-browser`. Its original desktop entry points re-export
 the shared implementation. The extraction preserves the source bytes and keeps one
-ref/fingerprint implementation for desktop and future daemon browser hosts. Native
+ref/fingerprint implementation for desktop and daemon browser hosts. Native
 guest lifetime, trusted input and Electron capture remain in their existing owners.
 The daemon declares Playwright core at the repository's pinned version; installing
 that library does not download a browser or launch a runtime.
@@ -26,7 +26,34 @@ to peer clients or acquire JSON reply authority. Disconnect and release invalida
 its producer. The paint pump retains one latest JPEG, permits one unacknowledged
 packet per viewer and isolates slow viewers. Chrome acknowledgments enforce the
 idle and interactive byte budgets; capture demand stops with the last viewer.
-These primitives do not themselves launch a browser or advertise a viewer capability.
+The packet primitives do not launch a browser. The composed daemon advertises
+`ottoHostBrowser`; runtime discovery and launch remain lazy until a page is created.
+
+## Host browser tabs
+
+The existing New browser action creates a host tab on mobile and browser web.
+Desktop keeps native tabs by default and offers Open in Host Browser in More.
+That action opens the URL with the host profile; it does not transfer the desktop's
+cookies, form drafts or sign-in state. Preview and agent tools use the same daemon
+browser broker and designated page, independent of desktop connection order.
+
+The app uses Paseo's canonical browser records and workspace tabs. Immutable
+host/workspace ownership is persisted separately, before inserting a host record.
+Restoration waits for that binding before mounting any Electron guest. Unreadable
+bindings remain preserved and block native fallback. A host's localhost is never
+opened as the client's localhost or used for a client-side favicon request.
+Explicit Open reveals the designated tab; agent-created tabs open in the background.
+Active workspace metadata shares the existing query cache and stops refreshing when hidden.
+
+Each visible pane owns one stream ticket and one current JPEG. Paint registration
+precedes its watch RPC because the first packet can arrive before the JSON reply.
+The image decoder acknowledges the displayed sequence. Hiding, disconnecting or
+decode failure releases the subscription and image. Ordered, bounded input coalesces
+adjacent motion; dropped connections release only that viewer's held native input.
+Web paints use revoked Blob URLs; native paints use the existing image component.
+Both map input through contained-image geometry, including letterboxing.
+The host profile keeps a private blank target so closing its final user tab does
+not end the profile session. Context shutdown closes that target too.
 
 The native adapter under `packages/server/src/server/otto/browser/host/` registers
 as a host in Paseo's existing browser broker. Host creation can be selected

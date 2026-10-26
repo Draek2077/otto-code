@@ -10,6 +10,8 @@ import { createServer as createHTTPServer, type IncomingMessage, type ServerResp
 import { constants, existsSync, unlinkSync } from "fs";
 import { open, rm, stat } from "fs/promises";
 import { randomUUID } from "node:crypto";
+import { createNativeHostBrowser } from "./otto/browser/host/native.js"; // OTTO(browser-host): lazy page/runtime ownership.
+import { OTTO_BROWSER_HOST_ID } from "./otto/browser/host/service.js"; // OTTO(browser-host)
 import { getHostName } from "./host-name.js";
 import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -650,6 +652,7 @@ export async function createPaseoDaemon(
   }); // OTTO(browser-admission): inert until a browser command.
   const browserToolsBroker = new BrowserToolsBroker({
     ottoAdmission: (input, next) => browserAdmissions.execute(input, next),
+    ottoNewTabHostId: () => (ottoHostBrowser ? OTTO_BROWSER_HOST_ID : undefined), // OTTO(browser-host): stable daemon host, independent of desktop connection order.
   }); // OTTO(browser-admission)
   // OTTO(paseo-version): plugins target the Paseo API, so the plugin host reports
   // the Paseo base release instead of Otto's version.
@@ -660,6 +663,7 @@ export async function createPaseoDaemon(
   let ottoBrowserHistory: BrowserHistoryHost | null = null; // OTTO(browser-history): no startup reads or writes.
   let ottoPreview: PreviewHost | null = null; // OTTO(preview): inert until an explicit scoped request.
   let previewManager: PreviewManager | null = null; // OTTO(preview): owns only children it creates.
+  let ottoHostBrowser: ReturnType<typeof createNativeHostBrowser> | null = null; // OTTO(browser-host): composition never launches Chromium.
   let ottoKnowledge: KnowledgeDaemonService | null = null; // OTTO(knowledge)
   const pluginRuntime: PluginService = new PluginService(
     logger,
@@ -684,10 +688,14 @@ export async function createPaseoDaemon(
           (pluginId === "otto-kanban" && ottoKanban !== null) ||
           (pluginId === "otto-integrations" && ottoIntegrations !== null) ||
           (pluginId === "otto-project-knowledge" && ottoKnowledge !== null), // OTTO(knowledge)
-        invoke: (pluginId, method, input, clientId) => {
+        invoke: (pluginId, method, input, clientId, source) => {
           if (pluginId === "otto-brain") return ottoBrain.invoke(method, input, clientId);
           if (pluginId === "otto-browser")
-            return ottoBrowserHistory?.invoke(method, input) ?? ottoPreview?.invoke(method, input); // OTTO(preview): same authenticated plugin transport. // OTTO(browser-history)
+            return (
+              ottoBrowserHistory?.invoke(method, input) ??
+              ottoPreview?.invoke(method, input) ??
+              ottoHostBrowser?.invoke(method, input, source)
+            ); // OTTO(browser-host): source-bound streaming through the existing authenticated plugin transport. // OTTO(preview) // OTTO(browser-history)
           if (pluginId === "otto-kanban") return ottoKanban?.invoke(method, input, clientId); // OTTO(kanban)
           if (pluginId === "otto-integrations") return ottoIntegrations?.rpc.invoke(method, input); // OTTO(integration)
           if (pluginId === "otto-project-knowledge")
@@ -986,6 +994,14 @@ export async function createPaseoDaemon(
     workspaces: workspaceRegistry,
     broker: browserToolsBroker,
   }); // OTTO(preview)
+  ottoHostBrowser = createNativeHostBrowser({
+    home: config.paseoHome,
+    hostId: serverId,
+    broker: browserToolsBroker,
+    workspaces: workspaceRegistry,
+    reportError: (error) => logger.error({ err: error }, "Host Browser runtime failed"),
+  }); // OTTO(browser-host): profile/process resources remain lazy until explicit page creation.
+  ottoHostBrowser.register(); // OTTO(browser-host)
   const knowledgeGeneration = createKnowledgeGenerationSource(); // OTTO(knowledge): inert until AgentManager composition below.
   ottoKnowledge = new KnowledgeDaemonService({
     hostId: serverId,
@@ -1961,6 +1977,11 @@ export async function createPaseoDaemon(
       await ottoBrain.close(); // OTTO(brain-host): release waits/feed; never stop independent host jobs.
       await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
       await ottoKanban?.close(); // OTTO(kanban): no polling survives daemon startup failure.
+      await ottoHostBrowser
+        ?.close()
+        .catch((cleanupError) =>
+          logger.error({ err: cleanupError }, "Host Browser cleanup failed"),
+        ); // OTTO(browser-host)
       await previewManager
         ?.close()
         .catch((cleanupError) =>
@@ -2004,6 +2025,9 @@ export async function createPaseoDaemon(
     await ottoBrain.close(); // OTTO(brain-host)
     await ottoKnowledge?.close(); // OTTO(knowledge)
     await ottoKanban?.close(); // OTTO(kanban)
+    await ottoHostBrowser
+      ?.close()
+      .catch((error) => logger.error({ err: error }, "Host Browser cleanup failed")); // OTTO(browser-host)
     await previewManager
       ?.close()
       .catch((error) =>

@@ -6,6 +6,8 @@ import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { createOttoBrowserTabIcon } from "@/otto/browser/tab-icon"; // OTTO(browser-favicon)
 import { useBrowserStore } from "@/desktop/browser/store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
+import { BrowserSurface } from "@/otto/browser/host/surface"; // OTTO(browser-host): positive persisted ownership precedes any native guest.
+import { useHostBrowserBinding } from "@/otto/browser/host/ownership"; // OTTO(browser-host)
 
 function getBrowserLabel(input: { title: string; url: string }): string {
   const title = input.title.trim();
@@ -29,13 +31,15 @@ function useBrowserPanelDescriptor(target: {
   const url = browser?.url ?? "https://example.com";
   const faviconUrl = browser?.faviconUrl ?? null;
   const pageUrl = browser?.url ?? null;
+  const binding = useHostBrowserBinding(target.browserId); // OTTO(browser-host): host localhost/favicon requests stay on the host.
+  const nativeIcon = binding.phase === "ready" && binding.value === null;
   // OTTO(browser-favicon): preserve Paseo descriptor ownership; icon fetching/decoding lives in Otto files.
   const icon = useMemo(
     () =>
       createOttoBrowserTabIcon(
-        pageUrl ? { browserId: target.browserId, faviconUrl, pageUrl } : null,
+        pageUrl && nativeIcon ? { browserId: target.browserId, faviconUrl, pageUrl } : null,
       ),
-    [target.browserId, faviconUrl, pageUrl],
+    [target.browserId, faviconUrl, pageUrl, nativeIcon],
   );
   const label = getBrowserLabel({ title: browser?.title ?? "", url });
 
@@ -55,14 +59,23 @@ function BrowserPanel() {
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
   invariant(target.kind === "browser", "BrowserPanel requires browser target");
   return (
-    <BrowserPane
+    <BrowserSurface
       browserId={target.browserId}
       serverId={serverId}
       workspaceId={workspaceId}
       cwd={cwd}
       isInteractive={isInteractive}
       onFocusPane={focusPane}
-    />
+    >
+      <BrowserPane
+        browserId={target.browserId}
+        serverId={serverId}
+        workspaceId={workspaceId}
+        cwd={cwd}
+        isInteractive={isInteractive}
+        onFocusPane={focusPane}
+      />
+    </BrowserSurface>
   );
 }
 

@@ -28,6 +28,7 @@ export function createNativeHostBrowser(ports: {
   >();
   async function update(tab: HostTab, page: Page, error: string | null) {
     const title = await page.title();
+    if (page.isClosed()) return;
     const url = page.url();
     if (url.length > 8192) {
       pages.update(tab.workspaceId, tab.browserId, {

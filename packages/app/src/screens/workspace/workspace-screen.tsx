@@ -124,8 +124,10 @@ import type { CheckoutStatusPayload } from "@/git/use-status-query";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { removeResidentBrowserWebview } from "@/desktop/browser/resident-webviews";
-import { createWorkspaceBrowser, useBrowserStore } from "@/desktop/browser/store";
+import { createWorkspaceBrowser } from "@/desktop/browser/store"; // OTTO(browser-host): owning cleanup lives beside the host bridge.
+import { useBrowserCreation } from "@/otto/browser/host/creation"; // OTTO(browser-host): one existing New browser action on every supported client.
+import { HostBrowserWorkspace } from "@/otto/browser/host/workspace"; // OTTO(browser-host): active-workspace metadata demand.
+import { closeBrowserResources } from "@/otto/browser/host/close"; // OTTO(browser-host): close the owning resource, never a same-named guest.
 import { getDesktopHost } from "@/desktop/host";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
@@ -1395,13 +1397,13 @@ function WorkspaceScreenContent({
       }
       if (input.target?.kind === "browser") {
         const { browserId } = input.target;
-        useBrowserStore.getState().removeBrowser(browserId);
-        removeResidentBrowserWebview(browserId);
-        void getDesktopHost()?.browser?.unregisterWorkspaceBrowser?.(browserId);
+        void closeBrowserResources(browserId).catch(() =>
+          toast.error("The browser could not be closed on its host. Reopen the tab to inspect it."),
+        ); // OTTO(browser-host)
       }
       closeWorkspaceTab(persistenceKey, normalizedTabId);
     },
-    [closeWorkspaceTab, hideWorkspaceAgent, persistenceKey, unpinWorkspaceAgent],
+    [closeWorkspaceTab, hideWorkspaceAgent, persistenceKey, unpinWorkspaceAgent, toast],
   );
 
   const focusedPaneTabState = useMemo(
@@ -1859,19 +1861,28 @@ function WorkspaceScreenContent({
     [createTerminal],
   );
 
+  const browserCreation = useBrowserCreation(
+    normalizedServerId,
+    normalizedWorkspaceId,
+    isRouteFocused,
+  ); // OTTO(browser-host)
+  const createBrowser = browserCreation.create; // OTTO(browser-host)
   const handleCreateBrowserTab = useCallback(
     (input?: { paneId?: string }) => {
-      if (!persistenceKey || !getIsElectron()) {
+      if (!persistenceKey) {
         return;
       }
-      const { browserId } = createWorkspaceBrowser();
-      openWorkspaceTabFocused(
-        persistenceKey,
-        { kind: "browser", browserId },
-        paneLocalPlacement(input?.paneId),
-      );
+      void createBrowser().then((created) => {
+        if (created)
+          openWorkspaceTabFocused(
+            persistenceKey,
+            { kind: "browser", browserId: created.browserId },
+            paneLocalPlacement(input?.paneId),
+          );
+        return;
+      });
     },
-    [openWorkspaceTabFocused, persistenceKey],
+    [openWorkspaceTabFocused, persistenceKey, createBrowser],
   );
 
   const handleCreateNewTab = useCallback(
@@ -1914,10 +1925,12 @@ function WorkspaceScreenContent({
         });
         return;
       }
-      const { browserId } = createWorkspaceBrowser();
-      openTarget({ kind: "browser", browserId });
+      void createBrowser().then((created) => {
+        if (created) openTarget({ kind: "browser", browserId: created.browserId });
+        return;
+      }); // OTTO(browser-host)
     },
-    [createTerminal, createWorkspaceTab, persistenceKey, replaceWorkspaceTabTarget],
+    [createTerminal, createWorkspaceTab, persistenceKey, replaceWorkspaceTabTarget, createBrowser],
   );
 
   const handleOpenUrlInBrowserTab = useCallback(
@@ -3320,7 +3333,7 @@ function WorkspaceScreenContent({
     () => createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
     [createTerminalMutation.isPending, pendingTerminalCreateInput],
   );
-  const showCreateBrowserTab = getIsElectron();
+  const showCreateBrowserTab = browserCreation.available; // OTTO(browser-host)
   const newTabLauncher = useMemo<NewTabLauncher>(
     () => ({
       showChanges: isGitCheckout,
@@ -3743,6 +3756,12 @@ function WorkspaceScreenContent({
   }
   return (
     <WorkspaceContentProviders key={persistenceKey} workspaceKey={persistenceKey}>
+      <HostBrowserWorkspace
+        key={`${normalizedServerId}/${normalizedWorkspaceId}`}
+        serverId={normalizedServerId}
+        workspaceId={normalizedWorkspaceId}
+        focused={isRouteFocused}
+      />
       <AssistantFileLinkResolverProvider
         client={client}
         serverId={normalizedServerId}
