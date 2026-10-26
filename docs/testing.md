@@ -310,6 +310,12 @@ declined apply, occupied-lock feedback with retained review, explicit reload
 recovery and actual saved bytes. This proves the application path, not the quality
 or availability of a live model, native CLI execution or physical-device rendering.
 
+`e2e/browser/otto-context-layout.spec.ts` covers dragging both desktop reading
+splitters, persisted width/summary height, compact geometry leaving the desktop
+preference untouched and restoration after a fresh app load. Pure persistence
+fixtures cover legacy-width preservation, future/corrupt data and visible save
+failure recovery. Native touch dragging remains a separate device proof.
+
 ## Debugging with tests
 
 Use the test as your debugging ground:

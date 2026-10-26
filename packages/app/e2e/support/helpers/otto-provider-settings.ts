@@ -17,7 +17,10 @@ import {
 
 const pluginId = "otto-openai-compatible-provider";
 const rpc = settingsRpc("connection");
-type SettingsClient = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">;
+type SettingsClient = Pick<
+  DaemonClient,
+  "connect" | "close" | "invokePluginRpc" | "refreshProvidersSnapshot" | "getProvidersSnapshot"
+>;
 
 async function createProviderFixture() {
   const requests: unknown[] = [];
@@ -96,6 +99,22 @@ async function createProviderFixture() {
   };
   return {
     url,
+    refreshCatalog: async () => {
+      // Raw settings RPC bypasses the form's normal catalog-refresh action.
+      // Refresh only this API fixture, never native CLIs or model processes.
+      await client.refreshProvidersSnapshot({ providers: ["openai-compatible"] });
+      await expect
+        .poll(async () => {
+          const snapshot = await client.getProvidersSnapshot();
+          const entry = snapshot.entries.find((value) => value.provider === "openai-compatible");
+          return {
+            status: entry?.status,
+            enabled: entry?.enabled,
+            models: entry?.models?.map((model) => model.id),
+          };
+        })
+        .toEqual({ status: "ready", enabled: true, models: ["fixture"] });
+    },
     requests,
     replyWith: (generate: (body: unknown) => string) => {
       reply = generate;

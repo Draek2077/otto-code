@@ -234,13 +234,12 @@ function ContextBody({
     />
   ) : null;
   const layout = (
-    <ContextLayout compact={compact}>
-      <>
-        {controls}
-        {!compact || !selection ? tree : null}
-      </>
-      {!compact || selection ? detail : null}
-    </ContextLayout>
+    <ContextLayout
+      compact={compact}
+      header={controls}
+      tree={!compact || !selection ? tree : null}
+      detail={!compact || selection ? detail : null}
+    />
   );
   return (
     <View style={styles.page}>

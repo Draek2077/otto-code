@@ -65,6 +65,7 @@ for (const compact of [false, true]) {
       Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">
     >({ clientIdPrefix: "context-compaction-proof" });
     try {
+      await ottoProvider.refreshCatalog();
       const report = readContextReport.output.parse(
         await client.invokePluginRpc("otto-project-knowledge", readContextReport.name, {
           hostId: getServerId(),

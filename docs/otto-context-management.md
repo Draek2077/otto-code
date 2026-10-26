@@ -10,6 +10,14 @@ selected preview and provide Back to context. Desktop source and preview columns
 scroll independently, so selecting a source far down the graph keeps its preview
 visible in the other column.
 
+Desktop uses the existing Paseo pointer/touch splitters for reading width and
+summary-versus-tree height. Both are app-local user preferences under
+`otto-context-layout`, not host/project settings. The old `panel-state`
+`contextSidebarWidth` seeds the width when the new preference is absent; its bytes
+and unrelated fields are never rewritten by Context. Newer/invalid layout data is
+preserved and disclosed instead of reset. Narrow or hidden geometry only clamps
+the displayed width; compact drill-down never overwrites the desktop preference.
+
 ## Ownership
 
 The implementation lives in Otto-owned modules:
