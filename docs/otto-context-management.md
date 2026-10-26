@@ -29,7 +29,9 @@ workspace and agent ownership before reading context; clients cannot supply a
 filesystem path. A plugin can contribute the structural inspection method for
 its registered provider. Discovery checks that method rather than guessing from
 a provider ID. The OpenAI-compatible harness, Brain and preserved aliases use
-the same implementation. Providers without that contract remain opaque.
+the same implementation. Native Claude, Codex and OpenCode also have a separate,
+read-only convention inventory. Configured aliases use their declared native
+family; other providers without an inspection contract remain opaque.
 
 Older apps retain the existing Knowledge bridge and skip the new contributions
 when its optional context components are absent. New apps check the optional
@@ -53,6 +55,43 @@ and MCP tool schemas are reported together. Remaining system text contains
 daemon/Knowledge/MCP instructions and is counted once. A separate Otto-input
 number is not invented from that combined text. Provider-native memory, skills,
 hidden presets and other unavailable inputs show Not visible instead of zero.
+
+### Native provider inventory
+
+Selecting a native chat inspects its owning working directory and provider
+configuration without launching or resuming it. Existing session discovery paths
+take precedence over current provider settings and inherited host paths. Only
+the known discovery path/flag fields cross this adapter; credentials and raw
+configuration never enter the report. Invalid settings produce a sanitized
+partial-inventory notice, without changing the file or claiming a complete zero.
+
+The discovery plans follow [Claude memory conventions](https://code.claude.com/docs/en/memory),
+[Codex AGENTS discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
+[Codex skill discovery](https://learn.chatgpt.com/docs/build-skills), and
+[OpenCode V2 instructions](https://opencode.ai/v2/docs/instructions). They are
+convention estimates, not observed native requests. Installed CLI versions,
+managed policy, approval state, bundled input and skill advertising budgets can
+change what a provider actually sends.
+
+Claude startup instructions, local overrides, AGENTS fallback/combined modes,
+memory indexes and rules are distinguished from deeper or path-scoped rules.
+The memory index contributes at most its first 200 lines or 25 KB. Skills and
+subagents contribute descriptor metadata, not implementation bodies. Enabled
+plugin rosters use recorded installation identities and project scope rather
+than guessing a cache version. Codex uses one first-nonempty instruction per
+directory, override/fallback priority and its configured combined byte cap.
+OpenCode V2 uses its nearest-first AGENTS chain and configured instruction
+patterns; it does not borrow V1's CLAUDE fallback.
+
+Each inventory bounds file reads, directory visits, sources and dependencies.
+Recursive discovery skips generated/vendor directories and directory links;
+explicit skill aliases can resolve to their recorded descriptor. Remote
+instruction URLs are not fetched. External imports outside the selected
+project/provider roots are reported for provider approval rather than silently
+read. Conditional and referenced sources do not increase fixed weight. Native
+category previews contain exactly the text used for their displayed estimate;
+source previews remain separate, on-demand reads. Unsupported native import
+rewrites are disabled and rejected by the owning host.
 
 Exact text does not mean exact tokenizer output. All numeric token estimates use
 characters divided by four, rounded up. The evaluation window is an explicit

@@ -22,7 +22,8 @@ test("project and workspace kebabs open action sheets on compact layouts", async
     await waitForSidebarHydration(page);
 
     await page.getByTestId("sidebar-display-preferences-menu").click();
-    const preferences = page.getByTestId("sidebar-display-preferences-content");
+    // OTTO(fixture-contracts): MenuSheetSurface appends -content to its caller's testID.
+    const preferences = page.getByTestId("sidebar-display-preferences-content-content");
     await expect(preferences).toBeVisible();
     // OTTO(fixture-contracts): Host/Project/Label filter rows depend on the live
     // catalog. Verify this sheet's required actions without assuming no other project exists.

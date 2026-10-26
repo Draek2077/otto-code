@@ -245,6 +245,7 @@ import { createHostIntegrations } from "../services/otto/integrations/host.js"; 
 import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OTTO(knowledge)
 import { contextAgents } from "./otto/context-management/agents.js"; // OTTO(context-management)
 import { ContextManagementService } from "./otto/context-management/host.js"; // OTTO(context-management)
+import { nativeContextInspector } from "./otto/context-management/native-host.js"; // OTTO(context-management): read-only native conventions.
 import { createKnowledgeGenerationSource } from "./otto/project-knowledge/generation.js"; // OTTO(knowledge): use the existing provider-neutral generation boundary.
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
@@ -1035,6 +1036,10 @@ export async function createPaseoDaemon(
     home: config.paseoHome,
     workspaces: workspaceRegistry,
     agents: contextAgents(agentManager), // OTTO(context-management): live, sanitized projection.
+    nativeInspection: nativeContextInspector({
+      providers: () => daemonConfigStore.get().providers ?? {},
+      sessionEnvironment: (id) => agentManager.usageSession(id)?.env,
+    }), // OTTO(context-management): no provider launch; only discovery path fields leave the adapter.
     providerOwner: (id) => pluginRuntime.ottoProviderOwner(id),
     invoke: (id, method, input) => pluginRuntime.invokePluginRpc(id, method, input),
   }); // OTTO(context-management): no reads, watches or writes during registration.

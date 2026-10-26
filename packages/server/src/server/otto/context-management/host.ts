@@ -16,6 +16,8 @@ import {
 import type { ContextAgent } from "./agents.js";
 import { buildContextGraph, within } from "./graph.js";
 import { changeInstructionEdge, ContextBusy, ContextConflict } from "./source-write.js";
+import type { NativeContextInventory } from "./native-inventory.js";
+import { nativeContextGraph } from "./native-graph.js";
 
 interface AgentPort {
   list(): ContextAgent[];
@@ -35,6 +37,10 @@ export class ContextManagementService {
       agents: AgentPort;
       providerOwner(providerId: string): string | undefined;
       invoke(pluginId: string, method: string, input: unknown): Promise<unknown>;
+      nativeInspection?(
+        agent: ContextAgent,
+        location: { root: string; cwd: string },
+      ): Promise<NativeContextInventory | null>;
     },
   ) {}
 
@@ -77,7 +83,14 @@ export class ContextManagementService {
   private async inspection(input: ContextSelection) {
     const workspace = await this.workspace(input);
     const home = await realpath(this.ports.home);
-    const source = await InstructionSource.create({ cwd: workspace.cwd, home });
+    const selected = input.agentId ? this.ports.agents.get(input.agentId) : null;
+    if (
+      input.agentId &&
+      (!selected || selected.workspaceId !== workspace.workspaceId || selected.internal)
+    )
+      throw new Error("The selected chat does not belong to this workspace.");
+    const cwd = await realpath(selected?.cwd ?? workspace.cwd);
+    const source = await InstructionSource.create({ cwd, home });
     let inspected: InspectedContext;
     if (input.agentId) inspected = await this.readPrepared(input, workspace.workspaceId);
     else {
@@ -92,11 +105,19 @@ export class ContextManagementService {
       };
     }
     const root = source.workspaceRoot;
+    if (selected && !inspected.visible && this.ports.nativeInspection) {
+      const inventory = await this.ports.nativeInspection(selected, { root, cwd });
+      if (inventory) {
+        const graph = nativeContextGraph(inventory, root);
+        inspected.native = { inventory, sections: graph.sections };
+        return { ...contextReport(inspected, graph, input), graph, root };
+      }
+    }
     const graph = await buildContextGraph({
       blocks: inspected.blocks,
       root,
       home,
-      cwd: workspace.cwd,
+      cwd,
     });
     return { ...contextReport(inspected, graph, input), graph, root };
   }
@@ -131,6 +152,7 @@ export class ContextManagementService {
             if (!source)
               throw new ContextConflict("This source is no longer in the context graph.");
             if (
+              !source.native &&
               !within(current.root, source.file) &&
               !within(await realpath(this.ports.home), source.file)
             )

@@ -6,6 +6,7 @@ export interface ContextAgent {
   title: string | null;
   sessionId: string | null;
   internal: boolean;
+  cwd?: string;
 }
 function project(agent: ManagedAgent | null): ContextAgent | null {
   if (!agent) return null;
@@ -16,6 +17,7 @@ function project(agent: ManagedAgent | null): ContextAgent | null {
     title: agent.config.title ?? null,
     sessionId: agent.session?.id ?? null,
     internal: agent.internal === true,
+    cwd: agent.cwd,
   };
 }
 /** Live projection, not a second chat store or provider session owner. */

@@ -18,6 +18,7 @@ export const ContextNodeSchema = z.object({
   characters: z.number().int().nonnegative(),
   estimatedTokens: z.number().int().nonnegative(),
   editable: z.boolean(),
+  category: ContextCategorySchema.optional(),
 });
 export const ContextEdgeSchema = z.object({
   id: z.string(),
@@ -25,6 +26,7 @@ export const ContextEdgeSchema = z.object({
   to: z.string().nullable(),
   kind: z.enum(["import", "reference"]),
   target: z.string(),
+  editable: z.boolean().optional(),
 });
 export const ContextReportSchema = z.object({
   revision: z.string(),

@@ -25,18 +25,26 @@ export function ContextReadStatus({
   );
 }
 export function ContextSummary({ report }: { report: ContextReport }) {
-  const requestLabel = report.agentId ? "Prepared request unavailable" : "Prospective instructions";
-  const requestHint = report.agentId
+  const convention = report.categories.some((row) => row.visibility === "convention");
+  let requestLabel = report.agentId ? "Prepared request unavailable" : "Prospective instructions";
+  let requestHint = report.agentId
     ? "The provider has not exposed a prepared request, or it exceeds the inspection bound. No model was launched to inspect it."
     : "No model was called. Select a chat to inspect its prepared input.";
+  if (convention) {
+    requestLabel = "Provider convention inventory";
+    requestHint =
+      "Estimated from documented provider discovery, not observed in a request. Installed versions, approvals and hidden input can change what is actually sent. No model was launched.";
+  }
   return (
     <SettingsCard>
       <SettingsRow
-        label="Measured fixed weight"
+        label={convention ? "Estimated fixed weight" : "Measured fixed weight"}
         hint={`${report.fixedTokens.toLocaleString()} estimated tokens · ${report.sharePercent}% of selected window · ${report.severity}`}
       />
       <SettingsRow
-        label="Room after measured fixed weight"
+        label={
+          convention ? "Room after estimated fixed weight" : "Room after measured fixed weight"
+        }
         hint={`${report.workingRoom.toLocaleString()} tokens. Hidden provider input and conversation history are not deducted.`}
       />
       <SettingsRow
@@ -68,7 +76,7 @@ export function ContextPreviewPane({
         {fetching ? <SettingsRow label="Reading selected context..." /> : null}
         {preview && !error ? (
           <Text selectable style={styles.code} testID="context-source-preview">
-            {preview.text || "This category contains no text in the inspected request."}
+            {preview.text || "No text is available in this category."}
           </Text>
         ) : null}
         {!selected ? (

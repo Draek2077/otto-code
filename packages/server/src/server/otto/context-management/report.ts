@@ -10,6 +10,7 @@ import type {
   ContextSelection,
 } from "@getpaseo/plugin/otto/context-management";
 import type { buildContextGraph } from "./graph.js";
+import type { NativeContextInventory } from "./native-inventory.js";
 export interface InspectedContext {
   provider: string;
   visible: boolean;
@@ -17,6 +18,10 @@ export interface InspectedContext {
   blocks: readonly InstructionBlock[];
   system: string;
   tools: string | null;
+  native?: {
+    inventory: NativeContextInventory;
+    sections: Partial<Record<ContextCategory, string>>;
+  };
 }
 const categories: ContextCategory[] = [
   "context_files",
@@ -32,7 +37,9 @@ export function contextReport(
   selection: ContextSelection,
 ) {
   const instructionText = input.prepared?.instructionText ?? renderInstructions(input.blocks);
-  const sections: Partial<Record<ContextCategory, string>> = { context_files: instructionText };
+  const sections: Partial<Record<ContextCategory, string>> = input.native?.sections ?? {
+    context_files: instructionText,
+  };
   if (input.prepared) {
     let remaining = input.system;
     if (instructionText) {
@@ -94,6 +101,14 @@ function categoryTotal(
   selection: ContextSelection,
 ): ContextReport["categories"][number] {
   const text = sections[category];
+  if (input.native && text !== undefined)
+    return {
+      category,
+      visibility: "convention",
+      estimatedTokens: Math.ceil(text.length / 4),
+      explanation:
+        "Bounded provider-convention estimate, not captured request text. Only startup instruction text, memory index and descriptor metadata count here; conditional and linked bodies do not. Provider presets and hidden input remain unknown.",
+    };
   const measurable =
     input.visible &&
     text !== undefined &&

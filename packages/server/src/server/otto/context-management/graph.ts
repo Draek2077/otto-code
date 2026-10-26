@@ -18,6 +18,8 @@ export interface GraphSource {
   scope: string;
   revision: string;
   editable: boolean;
+  /** Native catalog membership is established by the daemon's bounded provider discovery. */
+  native?: boolean;
 }
 export interface GraphEdge {
   file: string;

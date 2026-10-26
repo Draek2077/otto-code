@@ -60,6 +60,11 @@ function CategoryRow({
     </SettingsRow>
   );
 }
+function edgeHint(edge: ContextReport["edges"][number]): string {
+  if (edge.editable === false)
+    return "Read-only dependency · this provider's load mode cannot be rewritten here.";
+  return edge.kind === "import" ? "Always load" : "Link only · not fixed prompt weight";
+}
 function EdgeRow({
   edge,
   report,
@@ -98,15 +103,12 @@ function EdgeRow({
   );
   return (
     <View>
-      <SettingsRow
-        label={edge.target}
-        hint={edge.kind === "import" ? "Always load" : "Link only · not fixed prompt weight"}
-      >
+      <SettingsRow label={edge.target} hint={edgeHint(edge)}>
         <Button
           variant="outline"
           size="sm"
           onPress={change}
-          disabled={!active || state.busy || state.blocked || !edge.to}
+          disabled={!active || state.busy || state.blocked || !edge.to || edge.editable === false}
         >
           {state.busy ? "Saving..." : "Change load mode"}
         </Button>
