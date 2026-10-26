@@ -12,6 +12,7 @@ decisions, and measured findings live in Otto Knowledge.
 | [otto-brain.md](otto-brain.md)                           | Standalone Brain host, llama.cpp process and model acquisition           |
 | [otto-project-knowledge.md](otto-project-knowledge.md)   | Canonical Knowledge, workspace UI, MCP, runtime catalogs and storage     |
 | [otto-context-management.md](otto-context-management.md) | Workspace context graph, prepared request inspection and source controls |
+| [otto-browser.md](otto-browser.md)                       | Browser extension boundary and bounded tab favicon resolution            |
 | [otto-kanban.md](otto-kanban.md)                         | Project-bound Kanban UI, host operations and provider boundaries         |
 | [otto-integrations.md](otto-integrations.md)             | Shared host accounts, OS-keyring credentials and explicit saves          |
 | [architecture.md](architecture.md)                       | Paseo base architecture                                                  |

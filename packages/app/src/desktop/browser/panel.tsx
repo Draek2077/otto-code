@@ -1,10 +1,9 @@
 import { useMemo } from "react";
-import { Image } from "react-native";
-import { Globe } from "lucide-react-native";
 import invariant from "tiny-invariant";
 import { BrowserPane } from "@/desktop/browser/pane";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
-import { definePanel, type PanelDescriptor, type PanelIconProps } from "@/panels/panel-registry";
+import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
+import { createOttoBrowserTabIcon } from "@/otto/browser/tab-icon"; // OTTO(browser-favicon)
 import { useBrowserStore } from "@/desktop/browser/store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 
@@ -22,26 +21,22 @@ function getBrowserLabel(input: { title: string; url: string }): string {
   }
 }
 
-function createBrowserTabIcon(faviconUrl: string | null) {
-  return function BrowserTabIcon({ size, color }: PanelIconProps) {
-    const source = useMemo(() => (faviconUrl ? { uri: faviconUrl } : undefined), []);
-    const imageStyle = useMemo(() => ({ width: size, height: size, borderRadius: 3 }), [size]);
-
-    if (faviconUrl) {
-      return <Image accessibilityIgnoresInvertColors source={source} style={imageStyle} />;
-    }
-
-    return <Globe size={size} color={color} />;
-  };
-}
-
 function useBrowserPanelDescriptor(target: {
   kind: "browser";
   browserId: string;
 }): PanelDescriptor {
   const browser = useBrowserStore((state) => state.browsersById[target.browserId] ?? null);
   const url = browser?.url ?? "https://example.com";
-  const icon = createBrowserTabIcon(browser?.faviconUrl ?? null);
+  const faviconUrl = browser?.faviconUrl ?? null;
+  const pageUrl = browser?.url ?? null;
+  // OTTO(browser-favicon): preserve Paseo descriptor ownership; icon fetching/decoding lives in Otto files.
+  const icon = useMemo(
+    () =>
+      createOttoBrowserTabIcon(
+        pageUrl ? { browserId: target.browserId, faviconUrl, pageUrl } : null,
+      ),
+    [target.browserId, faviconUrl, pageUrl],
+  );
   const label = getBrowserLabel({ title: browser?.title ?? "", url });
 
   return {

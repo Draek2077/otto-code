@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { BrowserKeyboardPolicy } from "./features/browser-keyboard/index.js";
 import type { DesktopWindowChromeMode } from "./window/chrome.js";
+import type { BrowserFaviconRequest } from "./otto/browser/favicon.js"; // OTTO(browser-favicon): type-only; keep the sandbox import boundary.
 
 // This preload runs in Electron's sandbox and is tsc-compiled (not bundled), so it MUST
 // NOT emit any runtime module load other than "electron" — a require() of a local or
@@ -115,6 +116,8 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       ipcRenderer.invoke("paseo:menu:set-capturing-shortcut", capturing),
   },
   browser: {
+    resolveFavicon: (input: BrowserFaviconRequest) =>
+      ipcRenderer.invoke("otto:browser:resolve-favicon", input), // OTTO(browser-favicon)
     setShortcutPolicy: (input: BrowserKeyboardPolicy) =>
       ipcRenderer.invoke("paseo:browser:set-shortcut-policy", input),
     profilePartition: PASEO_BROWSER_PROFILE_PARTITION,

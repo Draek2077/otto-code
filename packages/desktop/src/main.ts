@@ -58,6 +58,7 @@ import {
 } from "./features/notifications.js";
 import { createExternalUrlOpener } from "./features/opener.js";
 import { createBrowserCaptureService } from "./features/browser-capture.js";
+import { createBrowserFaviconHandler } from "./otto/browser/favicon-ipc.js"; // OTTO(browser-favicon)
 import { registerEditorTargetHandlers } from "./features/editor-targets/ipc.js";
 import { resolveAppIconPath } from "./features/stamped-icon.js";
 import { setupApplicationMenu } from "./features/menu.js";
@@ -560,6 +561,23 @@ const browserCapture = createBrowserCaptureService<Electron.NativeImage>({
   },
   warn: (event, details) => log.warn(`[browser-capture] ${event}`, details),
 });
+
+// OTTO(browser-favicon): use the guest's cookie profile and return a bounded image,
+// including restored tabs whose resident guest has not attached yet.
+const browserFavicons = createBrowserFaviconHandler({
+  trusted: (event) =>
+    event.senderFrame === event.sender.mainFrame &&
+    BrowserWindow.getAllWindows().some((win) => win.webContents.id === event.sender.id),
+  fetchForBrowser: (browserId, hostId) => {
+    const guest = getPaseoBrowserWebContentsForHostWindow(browserId, hostId);
+    const profile = guest?.session ?? session.fromPartition(PASEO_BROWSER_PROFILE_PARTITION);
+    return (url, init) =>
+      profile.fetch(url, { signal: init.signal, credentials: "include", redirect: "follow" });
+  },
+});
+ipcMain.handle("otto:browser:resolve-favicon", (event, input: unknown) =>
+  browserFavicons.resolve(event, input),
+); // OTTO(browser-favicon)
 
 ipcMain.handle("paseo:browser:capture-element", (event, browserId: unknown, rect: unknown) =>
   browserCapture.capture({ browserId, hostWebContentsId: event.sender.id, rect }),

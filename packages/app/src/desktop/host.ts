@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import { getElectronHost } from "@/desktop/electron/host";
 import type { BrowserKeyboardPolicy } from "@/desktop/browser/shortcuts";
+import type { BrowserFaviconLookup } from "@/otto/browser/favicon-cache"; // OTTO(browser-favicon)
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 type BrowserAutomationExecuteRequest = Extract<
@@ -145,6 +146,7 @@ export interface DesktopAttachedBrowserRegistration {
 }
 
 export interface DesktopBrowserBridge {
+  resolveFavicon?: (input: BrowserFaviconLookup) => Promise<string | null>; // OTTO(browser-favicon): bounded main-owned image resolution.
   setShortcutPolicy?: (input: BrowserKeyboardPolicy) => Promise<void>;
   readonly profilePartition?: string;
   registerAttachedBrowser?: (input: DesktopAttachedBrowserRegistration) => Promise<void>;
