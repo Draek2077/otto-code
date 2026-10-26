@@ -182,6 +182,48 @@ export type ContextFinding = z.infer<typeof ContextFindingSchema>;
 export type ContextFixOutcome = z.infer<typeof ContextFixOutcomeSchema>;
 export type ContextSourceFile = z.infer<typeof ContextSourceFileSchema>;
 
+// OTTO(context-starter): host-nominated project-root targets, never client filesystem paths.
+export const ContextStarterNameSchema = z.enum(["AGENTS.md", "CLAUDE.md"]);
+export const ContextStarterSchema = z.object({
+  fileName: ContextStarterNameSchema,
+  projectLabel: z.string(),
+  revision: z.string(),
+  repositoryContext: z.string().max(24000),
+});
+const starterScope = ContextSelectionSchema.extend({ fileName: ContextStarterNameSchema }).strict();
+export const readContextStarter = defineRpc({
+  name: "context.starter.read.request",
+  input: starterScope,
+  output: contextResult(ContextStarterSchema),
+});
+export const proposeContextStarter = defineRpc({
+  name: "context.starter.propose.request",
+  input: starterScope
+    .extend({
+      expectedRevision: z.string().min(1),
+      instruction: z.string().max(8000),
+      selection: z
+        .object({ provider: z.string().min(1).max(512), model: z.string().min(1).max(2048) })
+        .strict()
+        .optional(),
+    })
+    .strict(),
+  output: contextResult(z.object({ text: z.string().min(1).max(131072) })),
+});
+export const createContextStarter = defineRpc({
+  name: "context.starter.create.request",
+  input: starterScope
+    .extend({
+      expectedRevision: z.string().min(1),
+      text: z.string().min(1).max(131072),
+      userApprovedCreate: z.literal(true),
+    })
+    .strict(),
+  output: contextResult(z.object({ created: z.literal(true), fileName: ContextStarterNameSchema })),
+});
+export type ContextStarter = z.infer<typeof ContextStarterSchema>;
+export type ContextStarterName = z.infer<typeof ContextStarterNameSchema>;
+
 // OTTO(context-compaction): rewritable documents and read-only references are separate, revision-pinned sets.
 const refinementIds = z.array(z.string().min(1)).min(1).max(12);
 const refinementReference = z.object({

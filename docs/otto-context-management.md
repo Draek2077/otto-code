@@ -20,6 +20,18 @@ the displayed width; compact drill-down never overwrites the desktop preference.
 
 ## Ownership
 
+An empty context graph offers Set up your project context in the existing detail
+pane. Load repository context explicitly, choose `AGENTS.md` or `CLAUDE.md`, and
+optionally generate a starter using the normal preferred-model picker. The host
+reads only bounded root filenames and a README excerpt; it does not recursively
+scan code, read environment files or launch a writable generation session.
+Review and edit the local Markdown draft, then confirm Create instruction file.
+Generating never writes it. A changed repository snapshot or existing target
+refuses creation. Publication uses a synced staging file and exclusive hard-link
+creation, so even a racing external writer's existing file is never replaced.
+Failures retain the draft and require explicit refresh/review before another
+write. Initial setup requires the separate `ottoContextStarter` host capability.
+
 The implementation lives in Otto-owned modules:
 
 | Boundary                                     | Owner                                                                            |

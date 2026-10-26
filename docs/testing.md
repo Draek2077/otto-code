@@ -286,6 +286,13 @@ live-provider or physical-device acceptance.
 
 ## Context Management acceptance
 
+`e2e/browser/otto-context-starter.spec.ts` exercises empty-project setup on wide
+and compact layouts through the real daemon and a local HTTP inference fixture.
+It checks tool-free proposal generation, editable draft review, declined create,
+occupied-lock feedback with retained draft, explicit refresh recovery and the
+resulting instruction bytes. It runs in the existing Otto all-journey CI lane;
+focused filesystem/controller tests alone do not prove rendered acceptance.
+
 `e2e/browser/otto-context-management.spec.ts` covers wide and compact workspace
 entry, owning-host graph/source inspection, declined and accepted load-mode
 confirmation, actual source-byte changes, referenced-body preview and external

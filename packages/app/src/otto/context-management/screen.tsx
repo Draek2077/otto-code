@@ -39,6 +39,7 @@ import type { ContextSourceSelection } from "./selection";
 import { ContextSourceDrafts } from "./source-model";
 import { ContextSelectedDetail } from "./source-detail";
 import { ContextCompactionGate } from "./compaction";
+import { ContextStarterGate } from "./starter";
 
 const windows = [16384, 32768, 65536, 131072, 200000, 1000000].map((value) => ({
   value: String(value),
@@ -218,27 +219,37 @@ function ContextBody({
       />
     ) : null;
   const detail = contentVisible ? (
-    <ContextSelectedDetail
-      compact={compact}
-      selection={selection}
-      onBack={back}
-      preview={preview.data}
-      error={preview.error}
-      fetching={preview.isFetching}
+    <ContextStarterGate
+      ready={contentVisible}
+      report={report.data}
       scope={scope}
-      drafts={sourceDrafts}
       active={active}
       writeModel={writeModel}
       writeState={writeState}
       onChanged={changed}
-    />
+    >
+      <ContextSelectedDetail
+        compact={compact}
+        selection={selection}
+        onBack={back}
+        preview={preview.data}
+        error={preview.error}
+        fetching={preview.isFetching}
+        scope={scope}
+        drafts={sourceDrafts}
+        active={active}
+        writeModel={writeModel}
+        writeState={writeState}
+        onChanged={changed}
+      />
+    </ContextStarterGate>
   ) : null;
   const layout = (
     <ContextLayout
       compact={compact}
       header={controls}
       tree={!compact || !selection ? tree : null}
-      detail={!compact || selection ? detail : null}
+      detail={!compact || selection || report.data?.nodes.length === 0 ? detail : null}
     />
   );
   return (

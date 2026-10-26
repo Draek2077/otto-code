@@ -1822,6 +1822,7 @@ export class VoiceAssistantWebSocketServer {
         ottoKanban: this.pluginRuntime?.supportsBuiltinRpc?.("otto-kanban") === true, // OTTO(kanban)
         ottoKnowledge: knowledgeAvailable, // OTTO(knowledge)
         ottoContextManagement: knowledgeAvailable, // OTTO(context-management): daemon-owned inspection and conditional edits.
+        ottoContextStarter: knowledgeAvailable, // OTTO(context-starter): reviewed root-file creation.
         ...ottoBrowserCapabilities(this.pluginRuntime), // OTTO(browser-history)
         ottoKnowledgeRefinement: knowledgeAvailable, // OTTO(knowledge)
         usageSources: true,

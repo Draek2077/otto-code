@@ -12,6 +12,9 @@ import {
   readContextRefinementSet,
   proposeContextRefinement,
   applyContextRefinement,
+  readContextStarter,
+  proposeContextStarter,
+  createContextStarter,
   type ContextSelection,
 } from "@getpaseo/plugin/otto/context-management";
 import {
@@ -29,6 +32,7 @@ import { currentContextFile, saveCurrentContextFile } from "./source-file.js";
 import { readRefinementSet, proposeRefinement, applyRefinement } from "./refinement.js";
 import type { ContextFileTarget } from "./source-file.js";
 import type { StructuredTextGeneration } from "../../session/checkout/git-metadata-generator.js";
+import { inspectContextStarter, proposeStarter, saveStarter } from "./starter.js";
 
 interface AgentPort {
   list(): ContextAgent[] | Promise<ContextAgent[]>;
@@ -159,6 +163,25 @@ export class ContextManagementService {
 
   invoke(method: string, value: unknown): Promise<unknown> | undefined {
     switch (method) {
+      case readContextStarter.name:
+        return this.guard(async () => {
+          const input = readContextStarter.input.parse(value);
+          return inspectContextStarter((await this.inspection(input)).root, input.fileName);
+        });
+      case proposeContextStarter.name:
+        return this.guard(async () => {
+          const input = proposeContextStarter.input.parse(value);
+          return proposeStarter(
+            (await this.inspection(input)).root,
+            input,
+            this.ports.generation?.(input.selection),
+          );
+        });
+      case createContextStarter.name:
+        return this.guard(async () => {
+          const input = createContextStarter.input.parse(value);
+          return saveStarter((await this.inspection(input)).root, input);
+        });
       case readContextAgents.name:
         return this.guard(async () => {
           const scope = readContextAgents.input.parse(value);
