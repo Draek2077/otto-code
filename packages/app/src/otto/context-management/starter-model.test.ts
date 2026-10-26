@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { ContextStarterModel } from "./starter-model";
+import { ContextStarterModel, needsContextStarter } from "./starter-model";
 import { ContextEdgeEdit } from "./edge-edit";
 const origin = {
   fileName: "AGENTS.md" as const,
@@ -26,6 +26,35 @@ function fixture() {
 }
 const yes = async () => true,
   no = async () => false;
+test("host instructions do not hide project setup, but project and subdirectory instructions do", () => {
+  expect(needsContextStarter(undefined)).toBe(false);
+  expect(needsContextStarter({ nodes: [] })).toBe(true);
+  expect(
+    needsContextStarter({
+      nodes: [{ scope: "host", category: "context_files", costClass: "fixed" }],
+    }),
+  ).toBe(true);
+  expect(
+    needsContextStarter({
+      nodes: [{ scope: "project", category: "memory_index", costClass: "fixed" }],
+    }),
+  ).toBe(true);
+  expect(
+    needsContextStarter({
+      nodes: [{ scope: "project", category: "context_files", costClass: "referenced" }],
+    }),
+  ).toBe(true);
+  expect(
+    needsContextStarter({
+      nodes: [{ scope: "project", category: "context_files", costClass: "fixed" }],
+    }),
+  ).toBe(false);
+  expect(
+    needsContextStarter({
+      nodes: [{ scope: "subdirectory", category: "context_files", costClass: "conditional" }],
+    }),
+  ).toBe(false);
+});
 test("loading and proposal generation never create a file; save uses reviewed revision", async () => {
   const { model, create, writes } = fixture();
   await model.load("AGENTS.md", yes);

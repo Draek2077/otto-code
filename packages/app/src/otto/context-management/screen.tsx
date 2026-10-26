@@ -40,6 +40,7 @@ import { ContextSourceDrafts } from "./source-model";
 import { ContextSelectedDetail } from "./source-detail";
 import { ContextCompactionGate } from "./compaction";
 import { ContextStarterGate } from "./starter";
+import { needsContextStarter } from "./starter-model";
 
 const windows = [16384, 32768, 65536, 131072, 200000, 1000000].map((value) => ({
   value: String(value),
@@ -221,6 +222,7 @@ function ContextBody({
     ) : null;
   const detail = contentVisible ? (
     <ContextStarterGate
+      selected={selection !== null}
       ready={contentVisible}
       report={report.data}
       scope={scope}
@@ -250,7 +252,7 @@ function ContextBody({
       compact={compact}
       header={controls}
       tree={!compact || !selection ? tree : null}
-      detail={!compact || selection || report.data?.nodes.length === 0 ? detail : null}
+      detail={!compact || selection || needsContextStarter(report.data) ? detail : null}
     />
   );
   return (

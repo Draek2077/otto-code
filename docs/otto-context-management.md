@@ -20,8 +20,10 @@ the displayed width; compact drill-down never overwrites the desktop preference.
 
 ## Ownership
 
-An empty context graph offers Set up your project context in the existing detail
-pane. Load repository context explicitly, choose `AGENTS.md` or `CLAUDE.md`, and
+A workspace without loaded project instructions offers Set up your project
+context in the existing detail pane. Host-wide instructions and project
+references do not hide setup. Selecting a host source retains the hidden starter
+draft. Load repository context explicitly, choose `AGENTS.md` or `CLAUDE.md`, and
 optionally generate a starter using the normal preferred-model picker. The host
 reads only bounded root filenames and a README excerpt; it does not recursively
 scan code, read environment files or launch a writable generation session.

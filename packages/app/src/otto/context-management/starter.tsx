@@ -15,7 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Bot } from "lucide-react-native";
 import { ReviewModelPicker } from "@/otto/knowledge/review-model-picker";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import { ContextStarterModel } from "./starter-model";
+import { ContextStarterModel, needsContextStarter } from "./starter-model";
+import { RetainedPanel } from "@/components/retained-panel";
 import { useHostFeature } from "@/runtime/host-features";
 import type { ContextEdgeEdit, ContextEdgeEditState } from "./edge-edit";
 import { styles } from "./styles";
@@ -48,25 +49,32 @@ export function ContextStarterSetup({
   const read = useRpc(readContextStarter),
     propose = useRpc(proposeContextStarter),
     create = useRpc(createContextStarter);
+  const { hostId, workspaceId } = scope;
+  // Project setup belongs to the workspace, independent of the inspected chat
+  // or what-if budget. Those controls cannot discard an in-progress starter.
+  const starterScope = useMemo<ContextSelection>(
+    () => ({ hostId, workspaceId, agentId: null, windowTokens: 200000 }),
+    [hostId, workspaceId],
+  );
   const model = useMemo(
     () =>
       new ContextStarterModel({
         async read(fileName) {
-          const reply = await read({ ...scope, fileName });
+          const reply = await read({ ...starterScope, fileName });
           if (!reply.ok) throw new Error(reply.error.message);
           return reply.value;
         },
         async propose(input) {
-          const reply = await propose({ ...scope, ...input });
+          const reply = await propose({ ...starterScope, ...input });
           if (!reply.ok) throw new Error(reply.error.message);
           return reply.value;
         },
         async create(input) {
-          const reply = await create({ ...scope, ...input, userApprovedCreate: true });
+          const reply = await create({ ...starterScope, ...input, userApprovedCreate: true });
           return reply.ok ? { ok: true } : { ok: false, message: reply.error.message };
         },
       }),
-    [scope, read, propose, create],
+    [starterScope, read, propose, create],
   );
   useLayoutEffect(() => (active ? model.activate() : undefined), [model, active]);
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
@@ -183,13 +191,25 @@ export function ContextStarterGate(
     ready: boolean;
     report: ContextReport | undefined;
     children: ReactNode;
+    selected: boolean;
   },
 ) {
   // COMPAT(ottoContextStarter): added v0.10.0; remove after 2027-04-26 when host floor >= v0.10.0.
   const supported = useHostFeature(props.scope.hostId, "ottoContextStarter");
   if (!props.ready || !props.report) return null;
-  if (props.report.nodes.length > 0) return props.children;
+  if (!needsContextStarter(props.report)) return props.children;
   if (!supported)
-    return <Alert variant="info" description="Update the host to set up project context." />;
-  return <ContextStarterSetup {...props} />;
+    return props.selected ? (
+      props.children
+    ) : (
+      <Alert variant="info" description="Update the host to set up project context." />
+    );
+  return (
+    <>
+      <RetainedPanel active={!props.selected}>
+        <ContextStarterSetup {...props} active={props.active && !props.selected} />
+      </RetainedPanel>
+      {props.selected ? props.children : null}
+    </>
+  );
 }

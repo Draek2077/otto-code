@@ -1,6 +1,24 @@
-import type { ContextStarter, ContextStarterName } from "@getpaseo/plugin/otto/context-management";
+import type {
+  ContextStarter,
+  ContextStarterName,
+  ContextReport,
+} from "@getpaseo/plugin/otto/context-management";
 import type { ReviewModelSelection } from "@/otto/knowledge/review-model-picker";
 import type { ContextEdgeEdit } from "./edge-edit";
+
+export function needsContextStarter(
+  report:
+    | { nodes: Pick<ContextReport["nodes"][number], "scope" | "category" | "costClass">[] }
+    | undefined,
+): boolean {
+  if (!report) return false;
+  return !report.nodes.some(
+    (node) =>
+      (node.scope === "project" || node.scope === "subdirectory") &&
+      node.costClass !== "referenced" &&
+      (node.category === "context_files" || node.category === undefined),
+  );
+}
 
 interface StarterPort {
   read(fileName: ContextStarterName): Promise<ContextStarter>;

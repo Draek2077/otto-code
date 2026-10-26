@@ -15,15 +15,18 @@ async function ownedDisplay(inspectorPort) {
       socket.addEventListener("message", ({ data }) => {
         const response = JSON.parse(data);
         if (response.id !== 1) return;
-        const display = response.result?.result?.value;
+        const environment = response.result?.result?.value;
         if (
           response.error ||
           response.result?.exceptionDetails ||
-          typeof display !== "string" ||
-          !/^:\d+(?:\.\d+)?$/.test(display)
+          typeof environment?.display !== "string" ||
+          !/^:\d+(?:\.\d+)?$/.test(environment.display) ||
+          typeof environment.authority !== "string" ||
+          !path.isAbsolute(environment.authority) ||
+          environment.authority.includes("\0")
         )
-          reject(Error("Missing private Xvfb display"));
-        else resolve(display);
+          reject(Error("Missing private Xvfb display authorization"));
+        else resolve({ DISPLAY: environment.display, XAUTHORITY: environment.authority });
       });
       socket.addEventListener(
         "open",
@@ -32,7 +35,10 @@ async function ownedDisplay(inspectorPort) {
             JSON.stringify({
               id: 1,
               method: "Runtime.evaluate",
-              params: { expression: "process.env.DISPLAY", returnByValue: true },
+              params: {
+                expression: "({ display: process.env.DISPLAY, authority: process.env.XAUTHORITY })",
+                returnByValue: true,
+              },
             }),
           ),
         { once: true },
@@ -43,9 +49,9 @@ async function ownedDisplay(inspectorPort) {
     socket.close();
   }
 }
-async function answerOwnedDialog(display, key) {
+async function answerOwnedDialog(displayEnvironment, key) {
   // This display belongs to the Electron process just launched by this test, never the user's desktop.
-  const env = { ...process.env, DISPLAY: display };
+  const env = { ...process.env, ...displayEnvironment };
   let windowId;
   await expect
     .poll(

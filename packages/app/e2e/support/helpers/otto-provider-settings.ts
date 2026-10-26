@@ -102,7 +102,7 @@ async function createProviderFixture() {
   };
   return {
     url,
-    refreshCatalog: async () => {
+    refreshCatalog: async (expectedContextWindow?: number) => {
       // Raw settings RPC bypasses the form's normal catalog-refresh action.
       // Refresh only this API fixture, never native CLIs or model processes.
       await client.refreshProvidersSnapshot({ providers: ["openai-compatible"] });
@@ -117,6 +117,16 @@ async function createProviderFixture() {
           };
         })
         .toEqual({ status: "ready", enabled: true, models: ["fixture"] });
+      if (expectedContextWindow !== undefined) {
+        await expect
+          .poll(async () => {
+            const snapshot = await client.getProvidersSnapshot();
+            return snapshot.entries
+              .find((entry) => entry.provider === "openai-compatible")
+              ?.models?.find((model) => model.id === "fixture")?.contextWindowMaxTokens;
+          })
+          .toBe(expectedContextWindow);
+      }
     },
     requests,
     setContextWindow: (tokens: number) => {

@@ -22,7 +22,10 @@ for (const compact of [false, true]) {
       "Use only the project's documented commands.\n".repeat(2100),
     );
     ottoProvider.setContextWindow(65536);
-    await ottoProvider.refreshCatalog();
+    // A manually pinned ID deliberately skips catalog discovery and has no
+    // window metadata. This journey exercises a discovered model instead.
+    await ottoProvider.update({ model: "" });
+    await ottoProvider.refreshCatalog(65536);
     try {
       const agent = await workspace.client.createAgent({
         provider: "openai-compatible",
@@ -89,6 +92,11 @@ for (const compact of [false, true]) {
         page.getByRole("textbox", { name: "Message agent..." }).filter({ visible: true }),
       ).toBeVisible();
       await expect(pill).toBeHidden();
+    } catch (error) {
+      await page
+        .screenshot({ path: testInfo.outputPath("context-health-before-cleanup.png") })
+        .catch(() => undefined);
+      throw error;
     } finally {
       await workspace.cleanup();
     }
