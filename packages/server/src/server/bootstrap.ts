@@ -1035,7 +1035,7 @@ export async function createPaseoDaemon(
     hostId: serverId,
     home: config.paseoHome,
     workspaces: workspaceRegistry,
-    agents: contextAgents(agentManager), // OTTO(context-management): live, sanitized projection.
+    agents: contextAgents(agentManager, agentStorage), // OTTO(context-management): sanitized live/persisted projection, never resumes sessions.
     nativeInspection: nativeContextInspector({
       providers: () => daemonConfigStore.get().providers ?? {},
       sessionEnvironment: (id) => agentManager.usageSession(id)?.env,

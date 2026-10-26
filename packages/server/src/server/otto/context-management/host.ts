@@ -20,8 +20,8 @@ import type { NativeContextInventory } from "./native-inventory.js";
 import { nativeContextGraph } from "./native-graph.js";
 
 interface AgentPort {
-  list(): ContextAgent[];
-  get(id: string): ContextAgent | null;
+  list(): ContextAgent[] | Promise<ContextAgent[]>;
+  get(id: string): ContextAgent | null | Promise<ContextAgent | null>;
 }
 import { contextReport, type InspectedContext } from "./report.js";
 export class ContextManagementService {
@@ -55,7 +55,7 @@ export class ContextManagementService {
     input: ContextSelection,
     workspaceId: string,
   ): Promise<InspectedContext> {
-    const agent = this.ports.agents.get(input.agentId!);
+    const agent = await this.ports.agents.get(input.agentId!);
     if (!agent || agent.workspaceId !== workspaceId || agent.internal)
       throw new Error("The selected chat does not belong to this workspace.");
     const owner = this.ports.providerOwner(agent.provider);
@@ -83,7 +83,7 @@ export class ContextManagementService {
   private async inspection(input: ContextSelection) {
     const workspace = await this.workspace(input);
     const home = await realpath(this.ports.home);
-    const selected = input.agentId ? this.ports.agents.get(input.agentId) : null;
+    const selected = input.agentId ? await this.ports.agents.get(input.agentId) : null;
     if (
       input.agentId &&
       (!selected || selected.workspaceId !== workspace.workspaceId || selected.internal)
@@ -128,8 +128,7 @@ export class ContextManagementService {
         return this.guard(async () => {
           const scope = readContextAgents.input.parse(value);
           await this.workspace(scope);
-          return this.ports.agents
-            .list()
+          return (await this.ports.agents.list())
             .filter((agent) => agent.workspaceId === scope.workspaceId && !agent.internal)
             .map((agent) => ({
               id: agent.id,

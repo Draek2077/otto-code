@@ -65,6 +65,12 @@ the known discovery path/flag fields cross this adapter; credentials and raw
 configuration never enter the report. Invalid settings produce a sanitized
 partial-inventory notice, without changing the file or claiming a complete zero.
 
+The picker projects both the canonical live manager and persisted chat registry.
+Live metadata wins once per chat; archived and internal chats are excluded at
+the workspace boundary. A closed chat is never resumed for inspection. Its
+native convention inventory explicitly uses current host/provider settings,
+without reconstructing a historical launch environment or prepared request.
+
 The discovery plans follow [Claude memory conventions](https://code.claude.com/docs/en/memory),
 [Codex AGENTS discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
 [Codex skill discovery](https://learn.chatgpt.com/docs/build-skills), and

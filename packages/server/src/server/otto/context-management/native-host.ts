@@ -29,13 +29,18 @@ export function nativeContextInspector(ports: {
         process.env[key];
       if (value !== undefined) environment[key] = value;
     }
-    return readNativeContext({
+    const inventory = await readNativeContext({
       ...location,
       provider: family,
       userHome: os.homedir(),
       environment,
       managedDirectory: managedDirectory(family),
     });
+    if (agent.fromStorage)
+      inventory.notes.push(
+        "This closed chat is inspected using current host/provider discovery settings. Its historical launch environment and request text are not reconstructed.",
+      );
+    return inventory;
   };
 }
 function managedDirectory(provider: "claude" | "codex" | "opencode"): string | null {
