@@ -296,6 +296,12 @@ accepted missing-import removal. It does not launch a model or
 prove provider-native hidden context. The normal Otto all-journey acceptance
 includes this file; focused service and action-controller fixtures remain separate.
 
+`e2e/browser/otto-context-source.spec.ts` covers current-source versus prompt
+preview, retained drafts across view changes, declined reload/save, peer-conflict
+feedback, explicit reload recovery, actual saved bytes and revision-matched issue
+line selection/focus on wide and compact screens. It uses the same real isolated
+daemon and does not touch installed homes or launch a model.
+
 ## Debugging with tests
 
 Use the test as your debugging ground:

@@ -7,6 +7,8 @@ import {
   readContextAgents,
   readContextPreview,
   readContextReport,
+  readContextSourceFile,
+  saveContextSourceFile,
   type ContextSelection,
 } from "@getpaseo/plugin/otto/context-management";
 import {
@@ -20,6 +22,7 @@ import { changeInstructionEdge, ContextBusy, ContextConflict } from "./source-wr
 import type { NativeContextInventory } from "./native-inventory.js";
 import { nativeContextGraph } from "./native-graph.js";
 import { applyContextFindingFixes } from "./fixes.js";
+import { currentContextFile, saveCurrentContextFile } from "./source-file.js";
 
 interface AgentPort {
   list(): ContextAgent[] | Promise<ContextAgent[]>;
@@ -126,6 +129,15 @@ export class ContextManagementService {
     return { ...contextReport(inspected, graph, input), graph, root };
   }
 
+  private async sourceFile(input: ContextSelection & { nodeId: string }) {
+    const current = await this.inspection(input);
+    const source = current.graph.sources.get(input.nodeId);
+    const node = current.report.nodes.find((entry) => entry.id === input.nodeId);
+    if (!source || !node)
+      throw new ContextConflict("This source is no longer in the context graph.");
+    return { source, node, root: current.root, home: await realpath(this.ports.home) };
+  }
+
   invoke(method: string, value: unknown): Promise<unknown> | undefined {
     switch (method) {
       case readContextAgents.name:
@@ -144,6 +156,15 @@ export class ContextManagementService {
         return this.guard(
           async () => (await this.inspection(readContextReport.input.parse(value))).report,
         );
+      case readContextSourceFile.name:
+        return this.guard(async () =>
+          currentContextFile(await this.sourceFile(readContextSourceFile.input.parse(value))),
+        );
+      case saveContextSourceFile.name:
+        return this.guard(async () => {
+          const input = saveContextSourceFile.input.parse(value);
+          return saveCurrentContextFile(await this.sourceFile(input), input);
+        });
       case readContextPreview.name:
         return this.guard(async () => {
           const input = readContextPreview.input.parse(value);

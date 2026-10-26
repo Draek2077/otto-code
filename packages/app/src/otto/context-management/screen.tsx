@@ -1,9 +1,4 @@
-import {
-  ContextSummary,
-  ContextDetail,
-  ContextReadStatus,
-  ContextWriteFeedback,
-} from "./report-view";
+import { ContextSummary, ContextReadStatus, ContextWriteFeedback } from "./report-view";
 import { ContextLayout } from "./layout";
 import React, {
   useCallback,
@@ -37,6 +32,8 @@ import { ContextTree } from "./tree";
 import { styles } from "./styles";
 import { ContextEdgeEdit } from "./edge-edit";
 import type { ContextSourceSelection } from "./selection";
+import { ContextSourceDrafts } from "./source-model";
+import { ContextSelectedDetail } from "./source-detail";
 
 const windows = [16384, 32768, 65536, 131072, 200000, 1000000].map((value) => ({
   value: String(value),
@@ -60,6 +57,7 @@ function ContextBody({
   const [notice, setNotice] = useState("");
   const [reviewEpoch, setReviewEpoch] = useState(0);
   const [writeModel, setWriteModel] = useState(() => new ContextEdgeEdit());
+  const [sourceDrafts] = useState(() => new ContextSourceDrafts());
   const writeState = useSyncExternalStore(
     writeModel.subscribe,
     writeModel.getSnapshot,
@@ -223,13 +221,19 @@ function ContextBody({
       />
     ) : null;
   const detail = contentVisible ? (
-    <ContextDetail
+    <ContextSelectedDetail
       compact={compact}
       selection={selection}
       onBack={back}
       preview={preview.data}
       error={preview.error}
       fetching={preview.isFetching}
+      scope={scope}
+      drafts={sourceDrafts}
+      active={active}
+      writeModel={writeModel}
+      writeState={writeState}
+      onChanged={changed}
     />
   ) : null;
   return (

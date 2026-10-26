@@ -169,6 +169,36 @@ write or relax the actual harness: request preparation and file-tool preparation
 still fail until required instructions can be loaded. A captured request remains
 a separate historical view.
 
+## Current source editing
+
+Prompt preview and Current source are separate views. The editor always reads
+current bytes from a fresh host-owned graph nomination, even when the prompt
+preview shows a previously captured request. The client submits a source ID,
+originating file revision and exact reviewed text, never a filesystem path.
+Save is explicit. Host-wide instruction files require a confirmation that names
+their effect on other projects, in addition to ordinary write approval.
+
+The editor uses the same bounded UTF-8 reader and atomic source writer as
+load-mode changes and mechanical fixes. Ordinary files with multiple links are
+read-only; missing, foreign and vanished graph entries cannot become arbitrary
+writes. Exact bytes and line endings are preserved. Existing requests and chat
+history remain untouched. A successful response acknowledges only that operation,
+not future external changes to the file.
+
+Workspace-local drafts survive source selection, prompt/source view changes,
+compact back navigation and scheduled metadata reads. Dirty drafts retain their
+originating revision across hidden activations. Reload explicitly confirms draft
+discard, and read failure retains the draft. Hidden confirmations cannot dispatch
+a write; hidden acknowledgments cannot clear drafts or adopt a new revision.
+The shared page write lane still requires a fresh explicit context review after
+an edit or conflict. Clean sources refresh on reactivation. Closing the workspace
+view discards its local editor instances; no prompt/draft copy is persisted.
+
+Inspect issue opens Current source and selects the finding's line range only when
+the current file still matches the finding's revision. A changed file displays a
+notice instead of selecting an obsolete range. Source editing does not imply
+reviewed AI compaction or starter-file generation; those are separate operations.
+
 ## Proof boundary
 
 Collocated fixtures exercise the shared resolver, import/reference accounting,

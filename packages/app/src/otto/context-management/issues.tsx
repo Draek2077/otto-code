@@ -52,10 +52,11 @@ function IssueRow({
         nodeId: finding.nodeId,
         category: null,
         findingId: finding.id,
+        sourceRevision: finding.sourceRevision,
         line: finding.line,
         lineEnd: finding.lineEnd,
       }),
-    [finding.id, finding.line, finding.lineEnd, finding.nodeId, onSelect],
+    [finding.id, finding.line, finding.lineEnd, finding.nodeId, finding.sourceRevision, onSelect],
   );
   return (
     <SettingsCard testID={`context-issue-${finding.id}`}>

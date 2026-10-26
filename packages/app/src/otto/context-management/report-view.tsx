@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import type { ContextReport } from "@getpaseo/plugin/otto/context-management";
 import { SettingsCard, SettingsRow, SettingsSection } from "@/components/settings";
@@ -7,6 +7,7 @@ import { styles } from "./styles";
 import { Button } from "@/components/ui/button";
 import type { ContextEdgeEditState } from "./edge-edit";
 import type { ContextSourceSelection } from "./selection";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 export function ContextWriteFeedback({ state }: { state: ContextEdgeEditState }) {
   if (!state.busy && !state.error && !state.saved) return null;
   return (
@@ -29,6 +30,8 @@ export function ContextDetail({
   preview,
   error,
   fetching,
+  editor,
+  editInitially,
 }: {
   compact: boolean;
   selection: ContextSourceSelection | null;
@@ -36,7 +39,17 @@ export function ContextDetail({
   preview: { label: string; text: string } | undefined;
   error: Error | null;
   fetching: boolean;
+  editor: ReactNode;
+  editInitially: boolean;
 }) {
+  const [view, setView] = useState<"preview" | "source">(editInitially ? "source" : "preview");
+  const choices = useMemo(
+    () => [
+      { value: "preview" as const, label: "Prompt preview" },
+      { value: "source" as const, label: "Current source" },
+    ],
+    [],
+  );
   return (
     <>
       {compact && selection ? (
@@ -44,12 +57,25 @@ export function ContextDetail({
           Back to context
         </Button>
       ) : null}
-      <ContextPreviewPane
-        preview={preview}
-        error={error}
-        fetching={fetching}
-        selected={Boolean(selection)}
-      />
+      {editor ? (
+        <SegmentedControl
+          options={choices}
+          value={view}
+          onValueChange={setView}
+          size="sm"
+          testID="context-detail-tabs"
+        />
+      ) : null}
+      {editor && view === "source" ? (
+        editor
+      ) : (
+        <ContextPreviewPane
+          preview={preview}
+          error={error}
+          fetching={fetching}
+          selected={Boolean(selection)}
+        />
+      )}
     </>
   );
 }

@@ -129,6 +129,32 @@ export const changeContextEdge = defineRpc({
   }).strict(),
   output: contextResult(z.object({ changed: z.boolean() })),
 });
+// OTTO(context-source): current file bytes have their own CAS revision, separate from captured prompt text.
+export const ContextSourceFileSchema = z.object({
+  nodeId: z.string(),
+  label: z.string(),
+  text: z.string(),
+  revision: z.string(),
+  scope: z.enum(["host", "project", "subdirectory"]),
+  writable: z.boolean(),
+  readOnlyReason: z.string().nullable(),
+});
+export const readContextSourceFile = defineRpc({
+  name: "context.source.read.request",
+  input: ContextSelectionSchema.extend({ nodeId: z.string().min(1) }).strict(),
+  output: contextResult(ContextSourceFileSchema),
+});
+export const saveContextSourceFile = defineRpc({
+  name: "context.source.save.request",
+  input: ContextSelectionSchema.extend({
+    nodeId: z.string().min(1),
+    expectedRevision: z.string().min(1),
+    text: z.string().max(131072),
+    userApprovedSave: z.boolean(),
+    userApprovedGlobal: z.boolean(),
+  }).strict(),
+  output: contextResult(z.object({ changed: z.boolean(), revision: z.string() })),
+});
 export const ContextFixOutcomeSchema = z.object({
   nodeId: z.string(),
   label: z.string(),
@@ -154,3 +180,4 @@ export type ContextSelection = z.infer<typeof ContextSelectionSchema>;
 export type ContextCategory = z.infer<typeof ContextCategorySchema>;
 export type ContextFinding = z.infer<typeof ContextFindingSchema>;
 export type ContextFixOutcome = z.infer<typeof ContextFixOutcomeSchema>;
+export type ContextSourceFile = z.infer<typeof ContextSourceFileSchema>;
