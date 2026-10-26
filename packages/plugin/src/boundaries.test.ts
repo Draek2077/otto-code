@@ -18,6 +18,7 @@ const entries = {
   "./server/otto-brain": "server",
   "./server/otto-kanban": "server", // OTTO(kanban): concrete host library stays Node-only.
   "./server/otto-preview": "server", // OTTO(preview): shared daemon/provider launch parser remains Node-only.
+  "./server/otto-browser": "server", // OTTO(browser-host): shared snapshot/ref engine, never a UI module.
   "./otto/preview": "shared", // OTTO(preview): structural RPC data contains no Node imports.
   "./otto/kanban": "shared", // OTTO(kanban): structural RPC/model definitions only.
   "./otto/openai-settings": "shared",

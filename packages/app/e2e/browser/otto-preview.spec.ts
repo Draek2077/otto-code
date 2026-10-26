@@ -100,7 +100,9 @@ for (const compact of [false, true]) {
       await start.click();
       await expect.poll(async () => (await inspect()).servers[0]?.status).toBe("ready");
       await surface.getByRole("button", { name: "Logs and actions", exact: true }).click();
-      await expect(surface.getByText("PREVIEW_READY_PROOF", { exact: false })).toBeVisible();
+      await expect(
+        surface.getByText("[stdout] PREVIEW_READY_PROOF", { exact: false }),
+      ).toBeVisible();
       await expect(
         surface.getByText("The server is tracked, but its browser could not open.", {
           exact: false,
@@ -124,10 +126,16 @@ for (const compact of [false, true]) {
       await expect(
         surface.getByText("Invalid launch configuration", { exact: false }),
       ).toBeVisible();
-      await expect(surface.getByText("PREVIEW_READY_PROOF", { exact: false })).toBeVisible();
+      await expect(
+        surface.getByText("[stdout] PREVIEW_READY_PROOF", { exact: false }),
+      ).toBeVisible();
       await page.screenshot({
         path: testInfo.outputPath(`preview-${compact ? "compact" : "wide"}.png`),
       });
+    } catch (error) {
+      // Keep the actual panel before fixture cleanup removes its workspace route.
+      await page.screenshot({ path: testInfo.outputPath("preview-before-cleanup.png") });
+      throw error;
     } finally {
       // Only this fixture's exact host-owned records can be stopped; no PID/port guessing.
       try {

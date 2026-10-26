@@ -19,6 +19,7 @@ const PLUGIN_SERVER_ONLY_SDK_SPECIFIERS = [
   "@getpaseo/plugin/server/otto-brain",
   "@getpaseo/plugin/server/otto-kanban", // OTTO(kanban): injected host library, never client transport.
   "@getpaseo/plugin/server/otto-preview", // OTTO(preview): launch parser and provider approval stay Node-only.
+  "@getpaseo/plugin/server/otto-browser", // OTTO(browser-host): shared snapshot/ref engine stays Node-only.
 ] as const;
 
 export const PLUGIN_SDK_SPECIFIERS = [

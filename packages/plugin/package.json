@@ -122,6 +122,11 @@
       "types": "./dist/client/otto-preview.d.ts",
       "source": "./src/client/otto-preview.ts",
       "default": "./dist/client/otto-preview.js"
+    },
+    "./server/otto-browser": {
+      "types": "./dist/server/otto-browser.d.ts",
+      "source": "./src/server/otto-browser.ts",
+      "default": "./dist/server/otto-browser.js"
     }
   },
   "publishConfig": {

@@ -5,6 +5,14 @@ profile ownership. Otto additions live under `packages/app/src/otto/browser/` an
 `packages/desktop/src/otto/browser/`, with marked composition seams in the existing
 panel, main process and preload.
 
+The pure Paseo ARIA snapshot and ref implementation is shared through
+`@getpaseo/plugin/server/otto-browser`. Its original desktop entry points re-export
+the shared implementation. The extraction preserves the source bytes and keeps one
+ref/fingerprint implementation for desktop and future daemon browser hosts. Native
+guest lifetime, trusted input and Electron capture remain in their existing owners.
+The daemon declares Playwright core at the repository's pinned version; installing
+that library does not download a browser or launch a runtime.
+
 ## Tab icons
 
 The tab shows a Globe while its icon is unavailable or loading. Desktop main
