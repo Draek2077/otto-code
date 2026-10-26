@@ -23,7 +23,7 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ReviewModelPicker } from "@/otto/knowledge/review-model-picker";
 import type { ContextEdgeEdit, ContextEdgeEditState } from "./edge-edit";
-import { ContextCompactionModel } from "./compaction-model";
+import { ContextCompactionModel, keptContextText } from "./compaction-model";
 import { ContextCompactionFiles } from "./compaction-files";
 import { ContextCompactionReview } from "./compaction-review";
 import { contextCompactionPresets } from "./compaction-presets";
@@ -149,6 +149,9 @@ function ContextCompaction(props: CompactionProps) {
   }, [captureOrigin, model, onClose]);
   const hasProposal = state.documents.some((item) => item.diff !== null);
   const pendingHunks = state.documents.some((item) => item.diff?.hunks.length);
+  // Derive rendering from the subscribed snapshot. A no-argument controller read
+  // can be memoized against the stable model identity by React Compiler.
+  const hasKeptChanges = state.documents.some((item) => keptContextText(item) !== item.file.text);
   const disabled = !props.active || state.busy || props.writeState.busy;
   return (
     <ScrollView
@@ -230,7 +233,7 @@ function ContextCompaction(props: CompactionProps) {
               props.writeState.blocked ||
               state.blocked ||
               state.setChanged ||
-              !model.changedFiles().length
+              !hasKeptChanges
             }
           >
             Apply kept changes

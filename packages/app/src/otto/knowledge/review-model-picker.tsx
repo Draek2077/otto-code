@@ -109,6 +109,9 @@ export function ReviewModelPicker({
           onOpen={open}
           onRetryProvider={retry}
           isRetryingProvider={isRefreshing}
+          // OTTO(review-model-picker): this form control sits below the document inputs;
+          // use the shared picker's upward placement so its rows remain reachable.
+          desktopPlacement="top-start"
         />
       </Field>
       {state.selection ? (
