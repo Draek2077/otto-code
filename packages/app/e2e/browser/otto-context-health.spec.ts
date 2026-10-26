@@ -4,6 +4,10 @@ import { test, expect } from "../support/helpers/otto-provider-settings";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { openAgentRoute } from "../support/helpers/mock-agent";
 import { CONTEXT_WARNING_PREFERENCE } from "../../src/otto/context-management/health-model";
+import { readContextReport } from "@getpaseo/plugin/otto/context-management";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
+import { getServerId } from "../support/helpers/server-id";
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
 for (const compact of [false, true]) {
@@ -26,6 +30,10 @@ for (const compact of [false, true]) {
     // window metadata. This journey exercises a discovered model instead.
     await ottoProvider.update({ model: "" });
     await ottoProvider.refreshCatalog(65536);
+    const inspection = await connectDaemonClient<
+      Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">
+    >({ clientIdPrefix: "context-health-inspection" });
+    let prepared: unknown;
     try {
       const agent = await workspace.client.createAgent({
         provider: "openai-compatible",
@@ -35,6 +43,32 @@ for (const compact of [false, true]) {
         initialPrompt: "Reply Ready without using tools.",
         title: "Context health chat",
       });
+      // Prove that the real provider has prepared the instruction-bearing request
+      // before attributing an absent warning to the renderer.
+      await expect
+        .poll(
+          async () => {
+            const result = readContextReport.output.parse(
+              await inspection.invokePluginRpc("otto-project-knowledge", readContextReport.name, {
+                hostId: getServerId(),
+                workspaceId: workspace.workspaceId,
+                agentId: agent.id,
+                windowTokens: 65536,
+              }),
+            );
+            prepared = result.ok
+              ? {
+                  fixedTokens: result.value.fixedTokens,
+                  agentId: result.value.agentId,
+                  instructionState: result.value.instructionState,
+                  categories: result.value.categories,
+                }
+              : result;
+            return result.ok ? result.value.fixedTokens : 0;
+          },
+          { timeout: 15000 },
+        )
+        .toBeGreaterThan(16384);
       await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: agent.id });
       const pill = page.getByTestId("composer-context-health").filter({ visible: true });
       await expect(pill).toBeVisible({ timeout: 20000 });
@@ -93,11 +127,16 @@ for (const compact of [false, true]) {
       ).toBeVisible();
       await expect(pill).toBeHidden();
     } catch (error) {
+      await testInfo.attach("prepared-context-health", {
+        body: JSON.stringify(prepared),
+        contentType: "application/json",
+      });
       await page
         .screenshot({ path: testInfo.outputPath("context-health-before-cleanup.png") })
         .catch(() => undefined);
       throw error;
     } finally {
+      await inspection.close();
       await workspace.cleanup();
     }
   });
