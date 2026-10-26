@@ -1,10 +1,13 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 import { execForgeCommand } from "./forge-command.js";
 
 test("forge argv preserves multiline queries, quotes and shell metacharacters in a real child", async () => {
-  const directory = await mkdtemp(path.resolve("../../.tmp/forge arguments "));
+  const scratch = fileURLToPath(new URL("../../../../../.tmp/", import.meta.url));
+  await mkdir(scratch, { recursive: true });
+  const directory = await mkdtemp(path.join(scratch, "forge arguments "));
   try {
     const script = path.join(directory, "read arguments.mjs");
     await writeFile(script, "process.stdout.write(JSON.stringify(process.argv.slice(2)));\n");
