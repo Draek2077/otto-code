@@ -6,10 +6,7 @@ import { readPreviewConfig, stopPreviewServer } from "@getpaseo/plugin/otto/prev
 import { z } from "zod";
 import { test, expect } from "../support/fixtures";
 import { seedWorkspace } from "../support/helpers/seed-client";
-import {
-  connectDaemonClient,
-  loadHostBrowserContracts,
-} from "../support/helpers/daemon-client-loader";
+import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import { gotoAppShell } from "../support/helpers/app";
 import { openWorkspaceContextMenu } from "../support/helpers/sidebar";
 import { getServerId } from "../support/helpers/server-id";
@@ -48,7 +45,6 @@ for (const compact of [false, true]) {
     const client = await connectDaemonClient<
       Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">
     >({ clientIdPrefix: "preview-acceptance" });
-    const { executeHostBrowser } = await loadHostBrowserContracts();
     const scope = { hostId: getServerId(), workspaceId: workspace.workspaceId };
     const port = await freePort();
     const file = path.join(workspace.repoPath, ".claude", "launch.json");
@@ -139,14 +135,20 @@ for (const compact of [false, true]) {
       const browserId = (await inspect()).servers[0]?.browserId;
       if (!browserId) throw new Error("Preview did not retain its designated browser.");
       const evaluate = async (source: string) => {
-        const response = executeHostBrowser.output.parse(
-          await client.invokePluginRpc("otto-browser", executeHostBrowser.name, {
-            ...scope,
-            command: { command: "evaluate", args: { browserId, function: source } },
-          }),
-        );
-        if (!response.ok) throw new Error(response.error.message);
-        if (response.result.command !== "evaluate") throw new Error("Expected host evaluation.");
+        // Assert the observable wire result here. Importing this SDK module in
+        // Playwright's CommonJS graph would initialize the native client's ESM
+        // protocol graph through a second loader before the browser even opens.
+        const response = z
+          .object({
+            ok: z.literal(true),
+            result: z.object({ command: z.literal("evaluate"), resultJson: z.string() }),
+          })
+          .parse(
+            await client.invokePluginRpc("otto-browser", "browser.host.command.execute.request", {
+              ...scope,
+              command: { command: "evaluate", args: { browserId, function: source } },
+            }),
+          );
         return JSON.parse(response.result.resultJson);
       };
       const geometry = z

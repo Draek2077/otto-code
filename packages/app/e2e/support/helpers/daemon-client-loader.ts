@@ -18,19 +18,6 @@ export async function loadDaemonClientConstructor<ClientConfig, ClientInstance>(
   return mod.DaemonClient;
 }
 
-// OTTO(browser-host): keep contracts that share the client's protocol modules in
-// its native ESM graph. Playwright's CommonJS transform must not initialize that
-// graph first and leave Node with partial named exports on Node 22.
-export async function loadHostBrowserContracts(): Promise<
-  typeof import("@getpaseo/plugin/otto/host-browser")
-> {
-  const repoRoot = path.resolve(__dirname, "../../../../../");
-  const moduleUrl = pathToFileURL(
-    path.join(repoRoot, "packages/plugin/dist/otto/host-browser.js"),
-  ).href;
-  return import(moduleUrl);
-}
-
 interface E2EDaemonClientConfig {
   url: string;
   clientId: string;

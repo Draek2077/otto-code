@@ -36,11 +36,15 @@ export function hostBrowserCandidates(input: {
       bundled,
     ];
   return [
-    "/usr/bin/microsoft-edge",
+    // Prefer the native Chromium/Chrome distributions on Linux. Edge's
+    // current Linux build can enter an XCB/Vulkan startup path without a display,
+    // even with the documented headless/SwANGLE selectors (CI native trace).
+    // Selection is still read-only and never retries another brand after launch.
     "/usr/bin/google-chrome",
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser",
     bundled,
+    "/usr/bin/microsoft-edge",
   ];
 }
 /** Read-only discovery. No shell, automatic download, profile repair or global installation. */
