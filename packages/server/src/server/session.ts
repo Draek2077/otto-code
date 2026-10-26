@@ -1,6 +1,7 @@
 import { AgentDirectory } from "./agent/directory.js";
 import { searchTimeline } from "./agent/chat-search/index.js";
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
+import { hostBrowserRequestSource } from "./otto/browser/host/source.js"; // OTTO(browser-frames): authenticate frame ownership in the existing session.
 import { BrowserAutomationHostCapabilitySchema } from "@getpaseo/protocol/browser-automation/capabilities";
 import type {
   SessionEventSubscription,
@@ -518,6 +519,7 @@ export interface SessionOptions {
       method: string,
       input: unknown,
       clientId?: string,
+      source?: import("./otto/browser/host/views.js").HostBrowserSource, // OTTO(browser-frames)
     ): Promise<unknown>; // OTTO(feature-host)
     releaseClient?(clientId: string): void; // OTTO(feature-host): authenticated subscription ownership.
     supportsBuiltinRpc?(pluginId: string): boolean; // OTTO(feature-host): concrete built-in capability.
@@ -2490,7 +2492,13 @@ export class Session {
     if (msg.type === "plugin.rpc.invoke.request") {
       if (!this.pluginRuntime) throw new Error("Plugin service is unavailable");
       return this.pluginRuntime
-        .invokePluginRpc(msg.pluginId, msg.method, msg.input, this.sessionId) // OTTO(feature-host): connection lifetime, not reusable app ID.
+        .invokePluginRpc(
+          msg.pluginId,
+          msg.method,
+          msg.input,
+          this.sessionId,
+          msg.pluginId === "otto-browser" ? hostBrowserRequestSource(this.delivery) : undefined,
+        ) // OTTO(browser-frames): no socket capability reaches third-party plugin code. // OTTO(feature-host)
         .then((output) => {
           this.emit({
             type: "plugin.rpc.invoke.response",

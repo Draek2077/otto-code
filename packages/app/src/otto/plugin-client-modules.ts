@@ -5,10 +5,12 @@ import * as knowledge from "@getpaseo/plugin/otto/project-knowledge";
 import * as context from "@getpaseo/plugin/otto/context-management";
 import * as knowledgeUi from "./knowledge/bridge";
 import * as preview from "@getpaseo/plugin/otto/preview";
+import * as hostBrowser from "@getpaseo/plugin/otto/host-browser";
 import * as previewUi from "./preview/bridge";
 
 const shared = new Map<string, unknown>([
   ["@getpaseo/plugin/otto/preview", preview],
+  ["@getpaseo/plugin/otto/host-browser", hostBrowser],
   ["@getpaseo/plugin/otto/openai-settings", openai],
   ["@getpaseo/plugin/otto/kanban", kanban],
   ["@getpaseo/plugin/otto/atlassian-settings", atlassian],

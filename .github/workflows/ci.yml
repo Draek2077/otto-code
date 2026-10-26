@@ -386,6 +386,21 @@ jobs:
         if: ${{ runner.os == 'Linux' }}
         run: npx playwright install chromium
 
+      # OTTO(browser-host): source-bound streaming and the shared ref engine use a real isolated Chromium page only in CI.
+      - name: Verify native Host Browser automation and streaming
+        run: npm run test:e2e:otto-host-browser --workspace=@getpaseo/server
+        env:
+          OTTO_HOST_BROWSER_ARTIFACT_DIR: ${{ runner.temp }}/otto-host-browser
+
+      - name: Upload Host Browser proof
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: otto-host-browser-${{ runner.os }}
+          path: ${{ runner.temp }}/otto-host-browser
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Verify Windows daemon process control
         if: ${{ runner.os == 'Windows' }}
         run: npx vitest run packages/cli/src/commands/daemon/lifecycle.e2e.test.ts --bail=1 --maxWorkers=1 -t "Windows unbound|managed two-home"

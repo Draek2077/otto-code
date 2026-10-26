@@ -498,10 +498,11 @@ export class PluginService {
     method: string,
     input: unknown,
     clientId = "",
+    source?: import("../otto/browser/host/views.js").HostBrowserSource, // OTTO(browser-frames): internal source port, never a public plugin capability.
   ): Promise<unknown> {
     // OTTO(feature-host): only registered built-ins may use daemon-owned services.
     if (this.builtinPluginIds.has(pluginId)) {
-      const handled = this.dependencies.ottoRpc?.invoke(pluginId, method, input, clientId);
+      const handled = this.dependencies.ottoRpc?.invoke(pluginId, method, input, clientId, source); // OTTO(browser-frames)
       if (handled) return handled;
     }
     return this.runtime.invoke(pluginId, method, input);

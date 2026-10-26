@@ -13,6 +13,42 @@ export interface BrowserPaintFrame {
   viewportHeight: number;
   jpeg: Uint8Array;
 }
+export interface BrowserPaintEnd {
+  ticket: string;
+  reason: "closed" | "error";
+}
+/** A terminal source-owned notice, never a broadcast or a text-bearing error channel. */
+export function encodeBrowserPaintEnd(notice: BrowserPaintEnd): Uint8Array {
+  if (
+    !isBrowserPaintTicket(notice.ticket) ||
+    (notice.reason !== "closed" && notice.reason !== "error")
+  )
+    throw new RangeError("Invalid Host Browser paint end.");
+  const bytes = new Uint8Array(OTTO_BROWSER_FRAME_HEADER_BYTES);
+  bytes.set([OTTO_BROWSER_FRAME_OPCODE, 1, 1, notice.reason === "error" ? 1 : 0]);
+  const ticket = notice.ticket.replaceAll("-", "");
+  for (let index = 0; index < 16; index++)
+    bytes[index + 4] = Number.parseInt(ticket.slice(index * 2, index * 2 + 2), 16);
+  return bytes;
+}
+export function decodeBrowserPaintEnd(bytes: Uint8Array): BrowserPaintEnd | null {
+  if (
+    bytes.length !== OTTO_BROWSER_FRAME_HEADER_BYTES ||
+    bytes[0] !== OTTO_BROWSER_FRAME_OPCODE ||
+    bytes[1] !== 1 ||
+    bytes[2] !== 1 ||
+    bytes[3] > 1 ||
+    bytes.subarray(20).some((byte) => byte !== 0)
+  )
+    return null;
+  const hex = Array.from(bytes.subarray(4, 20), (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+  const ticket = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  return isBrowserPaintTicket(ticket)
+    ? { ticket, reason: bytes[3] === 1 ? "error" : "closed" }
+    : null;
+}
 function dimension(value: number): boolean {
   return Number.isInteger(value) && value > 0 && value <= 4096;
 }

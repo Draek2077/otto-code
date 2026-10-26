@@ -10,6 +10,7 @@ import {
 import { browserToolsFailure, type BrowserToolsResponsePayload } from "./errors.js";
 
 export interface BrowserHostClient {
+  defaultTimeoutMs?: number; // OTTO(browser-host): daemon-owned runtime startup can outlast a native tab request.
   id: string;
   hostKind: string;
   supportedCommands: readonly BrowserAutomationCommandName[];
@@ -17,6 +18,7 @@ export interface BrowserHostClient {
 }
 
 export interface BrowserToolsExecuteInput {
+  ottoBrowserHostId?: string; // OTTO(browser-host): daemon-owned create destination, never a wire field.
   ottoPreviewServerId?: string; // OTTO(preview): daemon-owned create authority, never accepted on the wire.
   command: BrowserAutomationCommand;
   agentId?: string;
@@ -40,6 +42,7 @@ interface RegisteredBrowserHost {
 }
 
 export interface BrowserToolsBrokerOptions {
+  ottoNewTabHostId?: () => string | undefined; // OTTO(browser-host): daemon composition selects hosted creates; existing IDs keep host affinity.
   // OTTO(browser-admission): policy wraps the same broker; direct execution retains affinity and host ownership.
   ottoAdmission?: (
     input: BrowserToolsExecuteInput,
@@ -60,9 +63,11 @@ export class BrowserToolsBroker {
   private readonly strandedBrowserHostByBrowserId = new Map<string, string>();
   private registrationSequence = 0;
   private readonly ottoAdmission: BrowserToolsBrokerOptions["ottoAdmission"]; // OTTO(browser-admission)
+  private readonly ottoNewTabHostId: BrowserToolsBrokerOptions["ottoNewTabHostId"]; // OTTO(browser-host)
 
   public constructor(options: BrowserToolsBrokerOptions) {
     this.ottoAdmission = options.ottoAdmission; // OTTO(browser-admission)
+    this.ottoNewTabHostId = options.ottoNewTabHostId; // OTTO(browser-host)
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_BROWSER_TOOLS_TIMEOUT_MS;
     this.createRequestId = options.createRequestId ?? (() => `browser_${randomUUID()}`);
   }
@@ -154,7 +159,11 @@ export class BrowserToolsBroker {
       });
     }
 
-    const host = this.selectHostForCommand(request.data.command, requestId);
+    const host = this.selectHostForCommand(
+      request.data.command,
+      requestId,
+      input.ottoBrowserHostId,
+    ); // OTTO(browser-host)
     if (!host.ok) {
       return host.payload;
     }
@@ -171,7 +180,7 @@ export class BrowserToolsBroker {
     return this.sendRequest({
       host: host.value,
       request: request.data,
-      timeoutMs: input.timeoutMs ?? this.defaultTimeoutMs,
+      timeoutMs: input.timeoutMs ?? host.value.client.defaultTimeoutMs ?? this.defaultTimeoutMs, // OTTO(browser-host)
     });
   }
 
@@ -284,11 +293,15 @@ export class BrowserToolsBroker {
   private selectHostForCommand(
     command: BrowserAutomationCommand,
     requestId: string,
+    createHostId?: string, // OTTO(browser-host)
   ):
     | { ok: true; value: RegisteredBrowserHost }
     | { ok: false; payload: BrowserToolsResponsePayload } {
     if (command.command === "new_tab") {
-      const host = this.selectMostRecentlyRegisteredHost();
+      const preferred = createHostId ?? this.ottoNewTabHostId?.(); // OTTO(browser-host): keep explicit/default creation stable when a desktop reconnects.
+      const host = preferred
+        ? this.clients.get(preferred)
+        : this.selectMostRecentlyRegisteredHost();
       return host
         ? { ok: true, value: host }
         : { ok: false, payload: this.noBrowserHostFailure(requestId) };

@@ -4,7 +4,8 @@
   "include": [
     "src/server/otto/browser/admission.test.ts",
     "src/server/otto/browser/owned-paint.test.ts",
-    "src/server/otto/browser/paint-pump.test.ts"
+    "src/server/otto/browser/paint-pump.test.ts",
+    "src/server/otto/browser/host/*.test.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

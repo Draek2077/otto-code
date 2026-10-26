@@ -28,6 +28,34 @@ packet per viewer and isolates slow viewers. Chrome acknowledgments enforce the
 idle and interactive byte budgets; capture demand stops with the last viewer.
 These primitives do not themselves launch a browser or advertise a viewer capability.
 
+The native adapter under `packages/server/src/server/otto/browser/host/` registers
+as a host in Paseo's existing browser broker. Host creation can be selected
+independently of desktop registration order; known tab IDs retain their original
+host affinity. Native manual tabs are never adopted into a hosted profile after
+a hosted runtime failure. The adapter discovers installed Edge, Chrome and the
+repository's Chromium runtime without downloading or repairing an installation.
+Its persistent profile stays under the owning daemon home.
+
+Page inventory reads are inert. Explicit operations serialize per page; runtime
+admission permits four live pages and up to 256 retained tab identities. Only
+inactive pages yield capacity. A retained viewer holds a page lease; five idle
+minutes suspend its pixels while retaining its metadata. Startup and page events
+run outside requesting-session asynchronous storage. Source release and workspace
+archival do not confer new input or launch authority.
+
+Hosted automation uses the shared Paseo ARIA/ref engine. Upload paths resolve
+real regular files within the caller's workspace. Evaluation limits its JSON in
+the page before transfer, screenshots obey the vision and transport budgets, and
+console/network metadata has bounded retention. A hung operation closes only its
+owned page; it cannot hold the daemon's command queue indefinitely. Browser
+dialogs follow Paseo's accept-alert/dismiss-confirm policy and return at most ten
+events per tool reply.
+
+`host/native.e2e.test.ts` is the separate CI-only real Chromium contract. It checks
+that automation, viewer text input, shared refs, screenshots and source-owned
+paints reach the same page. It does not establish app-pane, mobile gesture or
+relay streaming acceptance.
+
 ## Tab icons
 
 The tab shows a Globe while its icon is unavailable or loading. Desktop main

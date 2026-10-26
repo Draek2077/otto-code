@@ -48,6 +48,11 @@
       "source": "./src/otto/preview.ts",
       "default": "./dist/otto/preview.js"
     },
+    "./otto/host-browser": {
+      "types": "./dist/otto/host-browser.d.ts",
+      "source": "./src/otto/host-browser.ts",
+      "default": "./dist/otto/host-browser.js"
+    },
     "./otto/kanban": {
       "types": "./dist/otto/kanban.d.ts",
       "source": "./src/otto/kanban.ts",

@@ -1,5 +1,8 @@
 import { expect, test, vi } from "vitest";
-import { encodeBrowserPaintFrame } from "@getpaseo/protocol/otto/browser-frames";
+import {
+  encodeBrowserPaintFrame,
+  encodeBrowserPaintEnd,
+} from "@getpaseo/protocol/otto/browser-frames";
 import { BrowserPaintSubscriptions } from "./browser-paints.js";
 const ticket = "01234567-89ab-4cde-8fab-0123456789ab",
   other = "11234567-89ab-4cde-8fab-0123456789ab";
@@ -12,6 +15,24 @@ function paint(sequence: number, id = ticket) {
     jpeg: new Uint8Array([0xff, 0xd8, 0xff, 0xd9]),
   });
 }
+test("paint-end releases only its registered viewer and invalidates all later frames", () => {
+  const hub = new BrowserPaintSubscriptions(),
+    observer = { paint: vi.fn(), closed: vi.fn() },
+    peer = { paint: vi.fn(), closed: vi.fn() };
+  hub.observe(ticket, observer);
+  hub.observe(other, peer);
+  const invalid = encodeBrowserPaintEnd({ ticket, reason: "error" });
+  invalid[3] = 9;
+  hub.handle(invalid);
+  expect(observer.closed).not.toHaveBeenCalled();
+  hub.handle(encodeBrowserPaintEnd({ ticket, reason: "error" }));
+  hub.handle(paint(1));
+  hub.handle(paint(1, other));
+  expect(observer.closed).toHaveBeenCalledExactlyOnceWith("error");
+  expect(observer.paint).not.toHaveBeenCalled();
+  expect(peer.paint).toHaveBeenCalledTimes(1);
+  expect(peer.closed).not.toHaveBeenCalled();
+});
 test("only the registered ticket receives paint; duplicates, old frames and other domains stay isolated", () => {
   const hub = new BrowserPaintSubscriptions(),
     observer = { paint: vi.fn(), closed: vi.fn() };

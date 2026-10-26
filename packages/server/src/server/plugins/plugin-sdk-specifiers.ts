@@ -30,6 +30,7 @@ export const PLUGIN_SDK_SPECIFIERS = [
   "@getpaseo/plugin/otto/atlassian-settings", // OTTO(integration): account status/explicit write intents only.
   "@getpaseo/plugin/otto/project-knowledge", // OTTO(knowledge): client-safe scoped contracts.
   "@getpaseo/plugin/otto/preview", // OTTO(preview): structural requests and responses only.
+  "@getpaseo/plugin/otto/host-browser", // OTTO(browser-host): scoped structural viewer contracts.
   ...PLUGIN_SERVER_ONLY_SDK_SPECIFIERS,
   ...PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS,
 ] as const;

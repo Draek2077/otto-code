@@ -79,8 +79,10 @@ test("concurrent starts reuse one process, expose pending status and become read
   vi.useFakeTimers();
   const [first, second] = await Promise.all([f.manager.start(f.start), f.manager.start(f.start)]);
   expect(first.server.status).toBe("starting");
-  expect(first.reused).toBe(false);
-  expect(second).toEqual({ server: first.server, reused: true });
+  // Filesystem canonicalization can finish in either caller order. Exactly one
+  // caller creates; both receive the same owned server regardless of that order.
+  expect([first.reused, second.reused].toSorted()).toEqual([false, true]);
+  expect(second.server).toEqual(first.server);
   expect(f.spawn).toHaveBeenCalledTimes(1);
   f.listening.add(8200);
   await vi.advanceTimersByTimeAsync(250);

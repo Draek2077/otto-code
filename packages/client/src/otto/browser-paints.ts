@@ -1,12 +1,13 @@
 import {
   decodeBrowserPaintFrame,
+  decodeBrowserPaintEnd,
   isBrowserPaintTicket,
   OTTO_BROWSER_FRAME_OPCODE,
   type BrowserPaintFrame,
 } from "@getpaseo/protocol/otto/browser-frames";
 export interface BrowserPaintObserver {
   paint(frame: BrowserPaintFrame): void;
-  closed(): void;
+  closed(reason?: "closed" | "error"): void;
 }
 interface Viewer {
   observer: BrowserPaintObserver;
@@ -31,6 +32,12 @@ export class BrowserPaintSubscriptions {
   }
   handle(bytes: Uint8Array): boolean {
     if (bytes[0] !== OTTO_BROWSER_FRAME_OPCODE) return false;
+    const end = decodeBrowserPaintEnd(bytes);
+    if (end) {
+      const viewer = this.viewers.get(end.ticket);
+      if (viewer) this.closeViewer(end.ticket, viewer, end.reason);
+      return true;
+    }
     const frame = decodeBrowserPaintFrame(bytes);
     if (!frame) return true;
     const viewer = this.viewers.get(frame.ticket);
@@ -43,11 +50,11 @@ export class BrowserPaintSubscriptions {
     }
     return true;
   }
-  private closeViewer(ticket: string, viewer: Viewer) {
+  private closeViewer(ticket: string, viewer: Viewer, reason?: "closed" | "error") {
     if (this.viewers.get(ticket) !== viewer) return;
     this.viewers.delete(ticket);
     try {
-      viewer.observer.closed();
+      viewer.observer.closed(reason);
     } catch {
       /* One observer cannot break the connection's other domains. */
     }

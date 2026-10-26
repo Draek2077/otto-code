@@ -20,6 +20,7 @@ const entries = {
   "./server/otto-preview": "server", // OTTO(preview): shared daemon/provider launch parser remains Node-only.
   "./server/otto-browser": "server", // OTTO(browser-host): shared snapshot/ref engine, never a UI module.
   "./otto/preview": "shared", // OTTO(preview): structural RPC data contains no Node imports.
+  "./otto/host-browser": "shared", // OTTO(browser-host): structural viewer/command contracts, no runtime code.
   "./otto/kanban": "shared", // OTTO(kanban): structural RPC/model definitions only.
   "./otto/openai-settings": "shared",
   "./otto/atlassian-settings": "shared", // OTTO(integration): structural contracts, never credentials or native binding.
@@ -67,7 +68,11 @@ function boundaryViolations(entry: string, runtime: "shared" | "server" | "clien
         if (runtime !== "server" && serverModule.test(module)) violations.push(label);
         pending.push(local);
       } else if (runtime === "shared") {
-        if (specifier !== "zod" && specifier !== "@getpaseo/protocol/agent-types")
+        if (
+          specifier !== "zod" &&
+          specifier !== "@getpaseo/protocol/agent-types" &&
+          specifier !== "@getpaseo/protocol/browser-automation/rpc-schemas"
+        )
           violations.push(label);
       } else if (runtime === "server") {
         if (uiDependency.test(specifier) || /^@getpaseo\/plugin\/client(\/|$)/.test(specifier))
