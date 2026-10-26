@@ -1,4 +1,8 @@
-import { memo, useCallback, type ReactElement } from "react";
+import { memo, useCallback, useEffect, type ReactElement } from "react";
+import {
+  ContextHealthPill,
+  useComposerContextHealth,
+} from "@/otto/context-management/health-track"; // OTTO(context-health): owned observer and pill, existing composer bar.
 import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import { AgentTaskList } from "@/composer/task-list";
@@ -39,6 +43,7 @@ export const AgentTracks = memo(function AgentTracks({
   archiveFinishedStatus,
   onArchiveFinished,
   hasPluginComposerPills,
+  onContextHealthVisibility,
 }: {
   serverId: string;
   workspaceId: string;
@@ -49,8 +54,15 @@ export const AgentTracks = memo(function AgentTracks({
   archiveFinishedStatus: ArchiveFinishedStatus;
   onArchiveFinished: () => void;
   hasPluginComposerPills: boolean;
+  onContextHealthVisibility(visible: boolean): void; // OTTO(context-health): reserve transcript clearance only for a visible warning.
 }): ReactElement | null {
   const { tabId } = usePaneContext();
+  const health = useComposerContextHealth(serverId, workspaceId, agentId); // OTTO(context-health)
+  const hasHealth = health.warning !== null;
+  useEffect(() => {
+    onContextHealthVisibility(hasHealth);
+    return () => onContextHealthVisibility(false);
+  }, [hasHealth, onContextHealthVisibility]); // OTTO(context-health)
   const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(serverId, workspaceId);
   const isCompact = useIsCompactFormFactor();
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
@@ -106,6 +118,7 @@ export const AgentTracks = memo(function AgentTracks({
 
   if (
     !hasWorkspaceDiffStat &&
+    !hasHealth && // OTTO(context-health)
     !hasAgentTracks({
       subagentRows,
       tasks,
@@ -118,6 +131,14 @@ export const AgentTracks = memo(function AgentTracks({
 
   return (
     <ComposerTrackBar>
+      {health.warning ? (
+        <ContextHealthPill
+          serverId={serverId}
+          workspaceId={workspaceId}
+          warning={health.warning}
+          report={health.report}
+        />
+      ) : null}
       <AgentTaskList tasks={tasks} />
       <SubagentsTrack
         serverId={serverId}

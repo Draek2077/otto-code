@@ -79,7 +79,14 @@ for (const compact of [false, true]) {
       page.once("dialog", (dialog) => void dialog.accept());
       await create.click();
       await expect
-        .poll(() => readFile(file, "utf8"))
+        .poll(async () => {
+          try {
+            return await readFile(file, "utf8");
+          } catch (error) {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+            throw error;
+          }
+        })
         .toBe("# Reviewed starter\nKeep this reviewed instruction.\n");
       await expect(setup).toBeHidden();
       await expect(surface.getByText("AGENTS.md", { exact: true }).first()).toBeVisible();

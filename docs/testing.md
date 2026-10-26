@@ -286,6 +286,14 @@ live-provider or physical-device acceptance.
 
 ## Context Management acceptance
 
+`e2e/browser/otto-context-health.spec.ts` covers the real composer pill, provider
+catalog window, mute, registered Manage navigation and persisted warning
+settings on wide and compact layouts. It also corrupts only the fixture's
+preference value to verify visible read failure, disabled writes, byte
+preservation and explicit reload recovery. Its chat uses the isolated local HTTP
+provider fixture. Pure policy tests cover unknown windows, severity/band changes,
+eight-hour expiry, workspace isolation, legacy preferences and write failure.
+
 `e2e/browser/otto-context-starter.spec.ts` exercises empty-project setup on wide
 and compact layouts through the real daemon and a local HTTP inference fixture.
 It checks tool-free proposal generation, editable draft review, declined create,

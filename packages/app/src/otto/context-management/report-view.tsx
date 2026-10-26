@@ -9,6 +9,7 @@ import type { ContextEdgeEditState } from "./edge-edit";
 import type { ContextSourceSelection } from "./selection";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Bot } from "lucide-react-native";
+import { ContextHealthSettings } from "./health-settings";
 export function ContextControls(props: {
   agentId: string;
   windowTokens: string;
@@ -20,6 +21,7 @@ export function ContextControls(props: {
   chooseWindow(value: string): void;
   refresh(): Promise<void>;
   compaction: { disabled: boolean; open(): void };
+  active: boolean;
 }) {
   return (
     <SettingsSection
@@ -42,6 +44,7 @@ export function ContextControls(props: {
           disabled={props.busy}
         />
       </SettingsCard>
+      <ContextHealthSettings active={props.active} />
       <View style={styles.actions}>
         <Button
           variant="outline"

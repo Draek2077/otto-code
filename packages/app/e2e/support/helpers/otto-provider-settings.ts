@@ -25,6 +25,7 @@ type SettingsClient = Pick<
 async function createProviderFixture() {
   const requests: unknown[] = [];
   let reply: (body: unknown) => string = () => "Done.";
+  let modelContextWindow: number | undefined;
   async function complete(request: IncomingMessage, response: ServerResponse) {
     try {
       const chunks: Buffer[] = [];
@@ -50,7 +51,9 @@ async function createProviderFixture() {
   const server = createServer((request, response) => {
     if (request.method === "GET") {
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ data: [{ id: "fixture" }] }));
+      response.end(
+        JSON.stringify({ data: [{ id: "fixture", context_length: modelContextWindow }] }),
+      );
     } else {
       void complete(request, response);
     }
@@ -116,6 +119,9 @@ async function createProviderFixture() {
         .toEqual({ status: "ready", enabled: true, models: ["fixture"] });
     },
     requests,
+    setContextWindow: (tokens: number) => {
+      modelContextWindow = tokens;
+    },
     replyWith: (generate: (body: unknown) => string) => {
       reply = generate;
     },

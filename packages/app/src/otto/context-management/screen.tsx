@@ -185,6 +185,7 @@ function ContextBody({
   const controls = (
     <>
       <ContextControls
+        active={active}
         agentId={agentId}
         windowTokens={windowTokens}
         options={options}

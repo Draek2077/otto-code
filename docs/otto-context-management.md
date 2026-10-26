@@ -60,6 +60,24 @@ An older host gets an update-host message; there is no legacy emulation.
 
 ## Input and cost honesty
 
+The composer's existing Paseo pill bar shows Context when fixed input reaches
+25% of a provider-reported model window, or a required instruction is blocked.
+The percentage uses live usage metadata or that exact model's host catalog
+metadata, never the Context page's what-if window. Unknown windows have no
+percentage warning. Context reports are shared through the normal query cache;
+only visible, connected, retained-active composers request them. Hidden or
+disabled warnings stop scheduled reads. Convention estimates and unavailable
+provider inputs remain labeled; chat history is excluded.
+
+The pill's Manage context action opens the registered workspace panel. Mute
+applies across chats in that host/workspace for eight hours in the current app
+session. A severity change or a new five-percentage-point size band breaks the
+mute immediately. Mutes retain at most 256 workspace identities and no prompt
+text. Context Management's Composer context warnings switch persists only the
+device-local enabled preference, preserving unknown fields and the original 0.9
+choice. Corrupt or newer preference bytes disable writes until explicit reload;
+save failures retain the previously accepted preference and expose recovery.
+
 Current Otto instructions is a prospective scan from the runtime's exact
 instruction resolver. It launches nothing and has not been sent to a model.
 Selecting a chat instead reads that provider session's last prepared request.
