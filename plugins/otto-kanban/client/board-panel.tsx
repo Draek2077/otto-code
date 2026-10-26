@@ -19,6 +19,11 @@ function shouldPoll(active: boolean, state: ReadState<{ status: string }>) {
   const value = state.status === "ready" ? state.value : state.previous;
   return active && value !== undefined && value.status !== "unconfigured";
 }
+function displayedValue<T>(state: ReadState<T>): T | null {
+  if (state.status === "ready") return state.value;
+  if (state.status === "loading") return state.previous ?? null;
+  return null;
+}
 function ReadBoundary({
   loading,
   error,
@@ -96,7 +101,9 @@ export function BoardPanel({
   const openSettings = useCallback(() => {
     openProjectSettings?.({ serverId: host.id, projectId: project.projectId });
   }, [openProjectSettings, host.id, project.projectId]);
-  const board = state.status === "ready" ? state.value : null;
+  // Retain the matching board while a background read is pending, so polling
+  // cannot tear down an open column picker or move its scroll position.
+  const board = displayedValue(state);
   const refreshFromPoll = useCallback(() => {
     // A background read must not unmount an open editor or adopt a new origin.
     // Closing/applying already rereads canonical state; writes still use CAS.
@@ -215,7 +222,7 @@ export function BoardPanel({
         />
       ) : null}
       <ReadBoundary
-        loading={state.status === "loading"}
+        loading={state.status === "loading" && !board}
         error={error}
         unconfigured={board?.status === "unconfigured"}
         projectName={project.projectDisplayName}
