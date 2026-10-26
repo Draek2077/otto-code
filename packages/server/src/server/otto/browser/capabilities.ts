@@ -2,5 +2,6 @@
 export function ottoBrowserCapabilities(
   runtime: { supportsBuiltinRpc?(id: string): boolean } | undefined,
 ) {
-  return { ottoBrowserHistory: runtime?.supportsBuiltinRpc?.("otto-browser") === true };
+  const available = runtime?.supportsBuiltinRpc?.("otto-browser") === true;
+  return { ottoBrowserHistory: available, ottoPreview: available };
 }

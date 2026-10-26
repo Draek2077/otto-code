@@ -72,6 +72,7 @@ export const MessageSquarePlus = StubIcon;
 export const Mic = StubIcon;
 export const MicOff = StubIcon;
 export const Monitor = StubIcon;
+export const MonitorPlay = StubIcon; // OTTO(preview): mirrors the installed Lucide export.
 export const Moon = StubIcon;
 export const MoreHorizontal = StubIcon;
 export const MoreVertical = StubIcon;

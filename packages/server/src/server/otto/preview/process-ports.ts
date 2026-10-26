@@ -4,6 +4,13 @@ import { terminateProcess } from "@getpaseo/plugin/server";
 import { spawnProcess } from "../../../utils/spawn.js";
 import type { PreviewManagerPorts, PreviewProcess } from "./manager.js";
 
+export function previewProtectedPorts(listen: {
+  type: string;
+  port?: number;
+}): ReadonlySet<number> {
+  return new Set([6788, 6868, ...(listen.port ? [listen.port] : [])]);
+}
+
 function missing(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ESRCH";
 }

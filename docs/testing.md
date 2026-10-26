@@ -286,6 +286,15 @@ live-provider or physical-device acceptance.
 
 ## Context Management acceptance
 
+<!-- OTTO(preview): provider-neutral host lifecycle and workspace entry points. -->
+
+Preview Servers: `e2e/browser/otto-preview.spec.ts` exercises wide and compact workspace
+entry, declined and stale command confirmations, real isolated host-owned start/stop,
+bounded logs, browser-open failure recovery and corrupt configuration. It runs in CI,
+alongside native Linux/Windows process-tree ownership fixtures. No installed app or
+developer daemon participates. Pure action fixtures additionally cover hidden-confirmation
+invalidation and duplicate admission.
+
 `e2e/browser/otto-context-health.spec.ts` covers the real composer pill, provider
 catalog window, mute, registered Manage navigation and persisted warning
 settings on wide and compact layouts. It also corrupts only the fixture's

@@ -17,6 +17,8 @@ const entries = {
   "./server/otto-openai": "server",
   "./server/otto-brain": "server",
   "./server/otto-kanban": "server", // OTTO(kanban): concrete host library stays Node-only.
+  "./server/otto-preview": "server", // OTTO(preview): shared daemon/provider launch parser remains Node-only.
+  "./otto/preview": "shared", // OTTO(preview): structural RPC data contains no Node imports.
   "./otto/kanban": "shared", // OTTO(kanban): structural RPC/model definitions only.
   "./otto/openai-settings": "shared",
   "./otto/atlassian-settings": "shared", // OTTO(integration): structural contracts, never credentials or native binding.
@@ -29,6 +31,7 @@ const entries = {
   "./client/ui": "client",
   "./client/otto-brain": "client",
   "./client/otto-knowledge": "client", // OTTO(knowledge): app-only presentation bridge.
+  "./client/otto-preview": "client", // OTTO(preview): trusted app-owned workspace controls.
 } as const;
 const uiDependency = /^(react(?:-dom|-native)?|use-sync-external-store)(\/|$)/;
 const serverModule = /^server\//;

@@ -1,6 +1,11 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "noEmit": true, "rootDir": "." },
-  "include": ["src/server/otto-brain.test.ts", "src/otto/kanban/**/*.test.ts"],
+  "include": [
+    "src/server/otto-brain.test.ts",
+    "src/otto/kanban/**/*.test.ts",
+    "src/otto/preview/**/*.test.ts",
+    "src/otto/openai/server/preview.test.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

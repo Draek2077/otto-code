@@ -246,6 +246,10 @@ import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OT
 import { contextAgents } from "./otto/context-management/agents.js"; // OTTO(context-management)
 import { ContextManagementService } from "./otto/context-management/host.js"; // OTTO(context-management)
 import { BrowserHistoryHost } from "./otto/browser/history-host.js"; // OTTO(browser-history): canonical workspace/project scope.
+import { PreviewHost } from "./otto/preview/host.js"; // OTTO(preview)
+import { PreviewManager } from "./otto/preview/manager.js"; // OTTO(preview)
+import { createPreviewProcessPorts, previewProtectedPorts } from "./otto/preview/process-ports.js"; // OTTO(preview)
+import { createRetainedToolPolicy } from "./otto/retained-tool-policy.js"; // OTTO(preview)
 import { createContextTextGeneration } from "./otto/context-management/text-generation.js"; // OTTO(context-compaction): provider-owned, tool-free generation only.
 import { createNativeContextGeneration } from "./otto/context-management/native-generation.js"; // OTTO(context-generation): native enforcement, no AgentManager chat registration.
 import { resolveStructuredGenerationProviders } from "./agent/structured-generation-providers.js"; // OTTO(context-compaction): reuse canonical model selection without launching a normal agent.
@@ -646,6 +650,8 @@ export async function createPaseoDaemon(
   let ottoIntegrations: ReturnType<typeof createHostIntegrations> | null = null; // OTTO(integration)
   let ottoContext: ContextManagementService | null = null; // OTTO(context-management): composed after AgentManager.
   let ottoBrowserHistory: BrowserHistoryHost | null = null; // OTTO(browser-history): no startup reads or writes.
+  let ottoPreview: PreviewHost | null = null; // OTTO(preview): inert until an explicit scoped request.
+  let previewManager: PreviewManager | null = null; // OTTO(preview): owns only children it creates.
   let ottoKnowledge: KnowledgeDaemonService | null = null; // OTTO(knowledge)
   const pluginRuntime: PluginService = new PluginService(
     logger,
@@ -672,7 +678,8 @@ export async function createPaseoDaemon(
           (pluginId === "otto-project-knowledge" && ottoKnowledge !== null), // OTTO(knowledge)
         invoke: (pluginId, method, input, clientId) => {
           if (pluginId === "otto-brain") return ottoBrain.invoke(method, input, clientId);
-          if (pluginId === "otto-browser") return ottoBrowserHistory?.invoke(method, input); // OTTO(browser-history)
+          if (pluginId === "otto-browser")
+            return ottoBrowserHistory?.invoke(method, input) ?? ottoPreview?.invoke(method, input); // OTTO(preview): same authenticated plugin transport. // OTTO(browser-history)
           if (pluginId === "otto-kanban") return ottoKanban?.invoke(method, input, clientId); // OTTO(kanban)
           if (pluginId === "otto-integrations") return ottoIntegrations?.rpc.invoke(method, input); // OTTO(integration)
           if (pluginId === "otto-project-knowledge")
@@ -962,6 +969,15 @@ export async function createPaseoDaemon(
     hostId: serverId,
     workspaces: workspaceRegistry,
   }); // OTTO(browser-history): inert until an authenticated workspace request.
+  previewManager = new PreviewManager(
+    createPreviewProcessPorts(previewProtectedPorts(listenTarget)),
+  ); // OTTO(preview): construction never starts a child or probes a port.
+  ottoPreview = new PreviewHost({
+    hostId: serverId,
+    manager: previewManager,
+    workspaces: workspaceRegistry,
+    broker: browserToolsBroker,
+  }); // OTTO(preview)
   const knowledgeGeneration = createKnowledgeGenerationSource(); // OTTO(knowledge): inert until AgentManager composition below.
   ottoKnowledge = new KnowledgeDaemonService({
     hostId: serverId,
@@ -1509,6 +1525,10 @@ export async function createPaseoDaemon(
   const createAgentToolHostDependencies = (
     runtime: PaseoToolRuntimeContext,
   ): PaseoToolHostDependencies => ({
+    ottoPreview: ottoPreview ?? undefined, // OTTO(preview)
+    previewToolPolicy: createRetainedToolPolicy("preview", config.paseoHome, () =>
+      daemonConfigStore.get(),
+    ), // OTTO(preview)
     ottoKnowledge: ottoKnowledge ?? undefined, // OTTO(knowledge)
     ottoKanban: ottoKanban ?? undefined, // OTTO(kanban): one host boundary for app and agent tools.
     kanbanToolPolicy: createRetainedKanbanToolPolicy(config.paseoHome, () =>
@@ -1933,6 +1953,11 @@ export async function createPaseoDaemon(
       await ottoBrain.close(); // OTTO(brain-host): release waits/feed; never stop independent host jobs.
       await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
       await ottoKanban?.close(); // OTTO(kanban): no polling survives daemon startup failure.
+      await previewManager
+        ?.close()
+        .catch((cleanupError) =>
+          logger.error({ err: cleanupError }, "Preview process cleanup failed"),
+        ); // OTTO(preview): preserve the original startup error.
       await serviceProxy.stopStandalone().catch(() => undefined);
       await agentProviderRuntime.shutdown().catch(() => undefined);
       if (mainStarted) {
@@ -1971,6 +1996,14 @@ export async function createPaseoDaemon(
     await ottoBrain.close(); // OTTO(brain-host)
     await ottoKnowledge?.close(); // OTTO(knowledge)
     await ottoKanban?.close(); // OTTO(kanban)
+    await previewManager
+      ?.close()
+      .catch((error) =>
+        logger.error(
+          { err: error },
+          "Preview process cleanup failed; some owned children may remain",
+        ),
+      ); // OTTO(preview): report ownership uncertainty while continuing daemon cleanup.
     terminalManager.killAll();
     await speechService.stop();
     await scheduleService.stop().catch(() => undefined);

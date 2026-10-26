@@ -29,6 +29,14 @@ function bundle(body: string): string {
 }
 
 describe("evaluatePluginClientBundle", () => {
+  it("keeps Preview UI lazy and built-in-only while exposing structural RPC contracts", () => {
+    const source = bundle(
+      `const ui=require("@getpaseo/plugin/client/otto-preview"); const rpc=require("@getpaseo/plugin/otto/preview"); rpc.readPreviewConfig.input.parse({hostId:"host",workspaceId:"workspace"}); plugin.addWorkspacePanel({id:"preview",title:"Preview Servers",icon:"MonitorPlay",context:"workspace",Component:ui.PreviewWorkspace});`,
+    );
+    const plugin = evaluatePluginClientBundle("otto-browser", source);
+    expect(plugin.workspacePanels.map((panel) => panel.id)).toEqual(["preview"]);
+    expect(() => evaluatePluginClientBundle("untrusted-preview", source)).toThrow();
+  });
   it("keeps Context Management UI built-in-only and lazy while sharing structural contracts", () => {
     const source = bundle(
       `const ui=require("@getpaseo/plugin/client/otto-knowledge");const rpc=require("@getpaseo/plugin/otto/context-management");rpc.readContextAgents.input.parse({hostId:"host",workspaceId:"workspace"});plugin.addWorkspacePanel({id:"context-management",title:"Context Management",icon:"Layers",context:"workspace",Component:ui.ContextManagementWorkspace});`,

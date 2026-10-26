@@ -186,7 +186,8 @@ test("log retention, partial chunks, filters and returned copies remain bounded"
   for (let index = 0; index < 2100; index++)
     logs.append("stderr", `${index}: ERROR ${"x".repeat(1500)}\n`);
   const rows = logs.read({ lines: 5000 });
-  expect(rows).toHaveLength(2000);
+  expect(rows.length).toBeLessThan(2000);
+  expect(Buffer.byteLength(JSON.stringify(rows))).toBeLessThan(128 * 1024 + 2000);
   expect(rows[0].text.length).toBe(1000);
   expect(logs.read({ level: "error", search: "2099", lines: 1 })[0].text).toContain("2099: ERROR");
   rows[0].text = "modified";

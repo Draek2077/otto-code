@@ -37,6 +37,7 @@ import { Button } from "@/components/ui/button";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useOttoBrowserActions } from "@/otto/browser/actions.electron"; // OTTO(browser-actions)
 import { useOttoBrowserHistory } from "@/otto/browser/history.electron"; // OTTO(browser-history)
+import { PreviewWorkspaceMenuItem } from "@/otto/preview/workspace-menu-item"; // OTTO(preview): add only to More; visible Paseo controls stay intact.
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import {
@@ -1436,13 +1437,26 @@ export function BrowserPane({
     active: isPresented && Boolean(isInteractive),
     onNavigate: navigate,
   }); // OTTO(browser-history): native and SPA visits share the canonical browser state.
+  const ottoExtraActions = useMemo(
+    () => (
+      <>
+        {history.menuItem}
+        <PreviewWorkspaceMenuItem
+          surface="dropdown"
+          serverId={serverId}
+          workspaceId={workspaceId}
+        />
+      </>
+    ),
+    [history.menuItem, serverId, workspaceId],
+  ); // OTTO(preview)
   const ottoActions = useOttoBrowserActions({
     browserId,
     pageUrl: browser?.url ?? null,
     active: isPresented && Boolean(isInteractive),
     guestRef: webviewRef,
     triggerStyle: baseIconButtonStyle,
-    extraActions: history.menuItem, // OTTO(browser-history)
+    extraActions: ottoExtraActions, // OTTO(preview) // OTTO(browser-history)
   });
 
   if (!isElectronRuntime()) {

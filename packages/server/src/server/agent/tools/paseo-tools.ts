@@ -113,8 +113,13 @@ import { createKnowledgeTools } from "../../otto/project-knowledge/tools.js"; //
 import type { KanbanDaemonService } from "../../otto/kanban/service.js"; // OTTO(kanban)
 import { createKanbanCatalogTools } from "../../otto/kanban/catalog.js"; // OTTO(kanban)
 import type { KanbanToolPolicy } from "../../otto/kanban/tool-policy.js"; // OTTO(kanban)
+import { registerPreviewTools } from "../../otto/preview/catalog.js"; // OTTO(preview)
+import type { PreviewHost } from "../../otto/preview/host.js"; // OTTO(preview)
+import type { RetainedToolPolicy } from "../../otto/retained-tool-policy.js"; // OTTO(preview)
 
 export interface PaseoToolHostDependencies {
+  ottoPreview?: PreviewHost; // OTTO(preview): shared app/provider process and browser ownership.
+  previewToolPolicy?: RetainedToolPolicy; // OTTO(preview): preserve existing host/provider ceilings.
   ottoKnowledge?: KnowledgeDaemonService; // OTTO(knowledge): one provider-neutral canonical host service.
   ottoKanban?: KanbanDaemonService; // OTTO(kanban): UI and every provider share durable board admission.
   kanbanToolPolicy?: KanbanToolPolicy; // OTTO(kanban): preserve retained group/provider ceilings.
@@ -1331,6 +1336,24 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       resolveCallerAgent,
     });
   }
+
+  // OTTO(preview): after the voice-only return; the owning module retains all policy gates.
+  registerPreviewTools({
+    tools,
+    enabled: options.browserToolsEnabled,
+    host: options.ottoPreview,
+    policy: options.previewToolPolicy,
+    paseoPolicy: options.paseoToolPolicy,
+    caller: () => {
+      const agent = callerAgentId ? agentManager.getAgent(callerAgentId) : null;
+      return {
+        provider: agent?.provider,
+        binding: agent?.workspaceId
+          ? { cwd: agent.cwd, workspaceId: agent.workspaceId, agentId: callerAgentId }
+          : null,
+      };
+    },
+  });
 
   registerTool(
     "create_workspace",

@@ -25,7 +25,7 @@ Owned processes begin in Starting and become Ready when their port listens.
 Readiness times out after 60 seconds. A timeout or failed stop keeps ownership
 and blocks another launch until an explicit stop succeeds. Output retains up to
 2,000 lines, each bounded to 1,000 characters, with tail, search and error filters.
-Only explicit lifecycle actions invoke the process adapter. Shutdown stops owned
+Each log response also has a 128 KiB encoded budget. Only explicit lifecycle actions invoke the process adapter. Shutdown stops owned
 processes and leaves adopted servers alone.
 The host retains at most 256 server records. Only confirmed-stopped or
 never-started historical records yield space; active or uncertain ownership is
@@ -37,7 +37,33 @@ then forces termination after five seconds. Windows uses the existing process-tr
 termination helper. Native process-tree acceptance runs only in the Linux and
 Windows CI lanes, against isolated Node fixtures.
 
-This daemon core is not yet registered as an app or MCP contribution. Browser
-binding, provider permission admission, workspace controls and tools compose it
-with Paseo's existing browser broker. They must not bypass the caller's command
-approval or create a separate browser stack.
+## Workspace controls and agent tools
+
+The built-in Otto Browser plugin contributes a Preview Servers workspace panel.
+Open it from the workspace menu, Command Center or a browser's More menu. Wide
+layouts place server selection beside output; compact layouts retain the selection
+and show its actions inline. Both use the app's existing controls and content gutters.
+Reading the page, loading configuration or copying the detection prompt starts nothing.
+Start and Stop require explicit confirmation. A changed command fingerprint is refused
+before execution. Invalid configuration leaves tracked processes available for recovery.
+Reads refresh only while the panel is retained, visible and connected; output is pulled
+on demand. A late confirmation from a hidden opening cannot start a process.
+
+`preview_list`, `preview_start`, `preview_stop` and `preview_logs` use the same host
+service for every provider. Agent tools resolve the live chat's workspace, not a
+model-supplied path. Existing host/provider tool ceilings remain authoritative.
+The OpenAI-compatible harness shares the execution parser and pins command approval;
+an edited command revokes an old automatic grant. The snapshot never creates a grant.
+Native providers retain their own permission systems.
+Agent responses are capped at 192 KiB; authenticated app responses are capped at
+768 KiB below the relay frame limit. An oversized response fails visibly rather
+than sending an unbounded launch inventory or silently clipping a command approval.
+
+Preview opens one designated tab per server/workspace through Paseo's browser broker,
+reuses a confirmed existing association and refuses to create another when listing fails.
+Browser failures leave process ownership visible. Closing the tab does not stop the server.
+The host reports a separate capability; an older daemon offers an update message.
+
+Rendered wide/compact lifecycle acceptance is authored in
+`packages/app/e2e/browser/otto-preview.spec.ts` and executes only in CI. Local fixture
+proof does not establish native browser, mobile streaming or packaged-product acceptance.

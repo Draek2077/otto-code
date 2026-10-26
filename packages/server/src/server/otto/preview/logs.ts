@@ -25,13 +25,21 @@ export class PreviewLogs {
   ): PreviewLogLine[] {
     const count = Math.min(2000, Math.max(1, Math.trunc(options.lines ?? 100)));
     const query = options.search?.toLowerCase();
-    return this.lines
+    const matched = this.lines
       .filter(
         (line) =>
           (!query || line.text.toLowerCase().includes(query)) &&
           (options.level !== "error" || /error|exception|failed|fatal/i.test(line.text)),
       )
-      .slice(-count)
-      .map((line) => Object.assign({}, line));
+      .slice(-count);
+    const tail: PreviewLogLine[] = [];
+    let bytes = 0;
+    for (let index = matched.length - 1; index >= 0; index--) {
+      const line = matched[index];
+      bytes += Buffer.byteLength(JSON.stringify(line), "utf8");
+      if (bytes > 128 * 1024) break;
+      tail.push(Object.assign({}, line));
+    }
+    return tail.toReversed();
   }
 }

@@ -1,25 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { realpath } from "node:fs/promises";
+import { resolve as resolvePath } from "node:path";
 import { PreviewLogs } from "./logs.js";
+import type { PreviewServer } from "@getpaseo/plugin/otto/preview";
+export type { PreviewServer } from "@getpaseo/plugin/otto/preview";
 import {
   previewCommandRevision,
   previewDestination,
   readPreviewLaunchConfig,
   type PreviewLaunchEntry,
+  type PreviewLaunchConfig,
 } from "./launch-config.js";
 
-export interface PreviewServer {
-  id: string;
-  name: string;
-  cwd: string;
-  port: number;
-  url: string;
-  managed: boolean;
-  status: "starting" | "ready" | "error" | "stopped";
-  pid: number | null;
-  error: string | null;
-  browserId: string | null;
-}
 export interface PreviewProcess {
   pid: number;
   exited: Promise<{ code: number | null; signal: string | null }>;
@@ -69,6 +61,29 @@ export class PreviewManager {
   private readonly queues = new Map<string, Promise<unknown>>();
   private closed = false;
   constructor(private readonly ports: PreviewManagerPorts) {}
+  private async trackedRoot(cwd: string): Promise<string> {
+    try {
+      return await realpath(cwd);
+    } catch (error) {
+      const exact = resolvePath(cwd);
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        (error.code === "ENOENT" || error.code === "ENOTDIR") &&
+        [...this.records.values()].some((record) => record.view.cwd === exact)
+      )
+        return exact;
+      throw error;
+    }
+  }
+  private async ownedRoot(cwd: string, id: string): Promise<string> {
+    const exact = resolvePath(cwd);
+    return [...this.records.values()].some(
+      (record) => record.view.cwd === exact && record.view.id === id,
+    )
+      ? exact
+      : await realpath(cwd);
+  }
   private serial<T>(cwd: string, operation: () => Promise<T>): Promise<T> {
     const next = (this.queues.get(cwd) ?? Promise.resolve()).catch(() => {}).then(operation);
     this.queues.set(cwd, next);
@@ -79,10 +94,11 @@ export class PreviewManager {
       .catch(() => {});
     return next;
   }
-  async list(cwd: string): Promise<PreviewServer[]> {
-    const root = await realpath(cwd);
+  async list(cwd: string, configuration?: PreviewLaunchConfig | null): Promise<PreviewServer[]> {
+    const root = await this.trackedRoot(cwd);
     return this.serial(root, async () => {
-      const config = await readPreviewLaunchConfig(root);
+      const config =
+        configuration === undefined ? await readPreviewLaunchConfig(root) : configuration;
       for (const entry of config?.servers ?? []) {
         const existing = [...this.records.values()].find(
           (record) =>
@@ -263,7 +279,7 @@ export class PreviewManager {
     return record;
   }
   async stop(cwd: string, id: string): Promise<PreviewServer> {
-    const root = await realpath(cwd);
+    const root = await this.ownedRoot(cwd, id);
     return this.serial(root, async () => {
       const record = this.owned(root, id);
       if (!record.view.managed)
@@ -284,10 +300,10 @@ export class PreviewManager {
     });
   }
   async logs(cwd: string, id: string, options?: Parameters<PreviewLogs["read"]>[0]) {
-    return this.owned(await realpath(cwd), id).logs.read(options);
+    return this.owned(await this.ownedRoot(cwd, id), id).logs.read(options);
   }
   async bindBrowser(cwd: string, id: string, browserId: string): Promise<void> {
-    this.owned(await realpath(cwd), id).view.browserId = browserId;
+    this.owned(await this.ownedRoot(cwd, id), id).view.browserId = browserId;
   }
   async close(): Promise<void> {
     this.closed = true;

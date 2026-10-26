@@ -32,6 +32,9 @@ import { savedSession } from "./session-state.js";
 import type { SessionArchive } from "./session-store.js";
 import type { InstructionSource } from "./instructions.js";
 import type { PreparedContext } from "./context-inspection.js";
+import { PreviewStartGate } from "../../preview/server/start-gate.js";
+import { preparePreviewCall, acceptPreviewCall, previewPermissionDecision } from "./preview.js";
+import type { PreviewCommandApproval } from "../../preview/server/start-gate.js";
 
 const jsonObject = z.record(z.string(), z.json());
 const revertToken = z.object({ format: z.literal("otto-openai-revert-v1"), id: z.string().min(1) });
@@ -101,6 +104,7 @@ export class OpenAiSession {
   private readonly tools: Map<string, AgentTool>;
   private readonly permissions = new Map<string, (response: ProviderPermissionResponse) => void>();
   private external: Awaited<ReturnType<typeof loadMcpTools>> | null = null;
+  private readonly previewStart: PreviewStartGate;
 
   constructor(options: OpenAiSessionOptions) {
     const { id, config, settings, emit, persistence, imageDirectory, models = [] } = options;
@@ -110,6 +114,7 @@ export class OpenAiSession {
     this.archive = options.archive;
     this.instructions = options.instructions;
     this.config = config;
+    this.previewStart = new PreviewStartGate(config.cwd);
     this.settings = settings;
     this.emit = emit;
     this.supportsPermissions = options.supportsPermissions ?? true;
@@ -196,6 +201,7 @@ export class OpenAiSession {
   }
 
   async prepare(signal: AbortSignal): Promise<void> {
+    await this.previewStart.capture();
     this.external = await loadMcpTools(
       this.config.mcpServers,
       this.settings.timeoutMs,
@@ -497,20 +503,22 @@ export class OpenAiSession {
     detail: ProviderToolCallDetail,
     controller: AbortController,
     mode: SessionPreferences["mode"],
+    preview?: PreviewCommandApproval,
   ): Promise<z.infer<typeof jsonObject>> {
     if (!this.supportsPermissions)
       throw new Error("Tool execution was not negotiated with this host.");
     if (!isToolAvailable(mode, tool))
       throw new Error("This tool is unavailable in Read only mode.");
     const grant = tool.preapproval;
-    if (
+    const preapproved = Boolean(
       grant &&
       this.config.toolPolicy?.preapproved.some(
         (value) => value.server === grant.server && value.tool === grant.tool,
-      )
-    )
-      return input;
-    const authority = await toolDecision(mode, tool, detail, this.config.cwd);
+      ),
+    );
+    const previewDecision = previewPermissionDecision(mode, preview, preapproved);
+    if (previewDecision === undefined && preapproved) return input;
+    const authority = previewDecision ?? (await toolDecision(mode, tool, detail, this.config.cwd));
     if (authority === "allow") return input;
     if (authority === "deny")
       throw new Error("The selected mode denies this action without asking.");
@@ -542,7 +550,9 @@ export class OpenAiSession {
       const tool = this.tools.get(call.function.name);
       if (!tool) throw new Error(`Unknown tool: ${call.function.name}`);
       let input = jsonObject.parse(JSON.parse(call.function.arguments));
-      detail = tool.detail(input);
+      const prepared = await preparePreviewCall(this.previewStart, tool, input);
+      input = prepared.input;
+      detail = prepared.detail;
       this.item({
         id: itemId,
         type: "tool_call",
@@ -552,9 +562,10 @@ export class OpenAiSession {
         status: "running",
         error: null,
       });
-      input = await this.approvedInput(tool, input, detail, controller, mode);
+      input = await this.approvedInput(tool, input, detail, controller, mode, prepared.approval);
       controller.signal.throwIfAborted();
-      detail = tool.detail(input);
+      await acceptPreviewCall(this.previewStart, prepared, input);
+      detail = prepared.approval ? prepared.detail : tool.detail(input);
       if (
         (call.function.name === "otto_read_file" && detail.type === "read") ||
         (call.function.name === "otto_write_file" && detail.type === "write")

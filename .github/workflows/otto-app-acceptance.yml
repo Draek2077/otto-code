@@ -40,7 +40,7 @@ on:
         description: Manual diagnostic scope; pushes and pull requests always run all journeys
         type: choice
         default: all
-        options: [all, knowledge, brain-cancellation, context-health]
+        options: [all, knowledge, brain-cancellation, context-health, preview]
 
 permissions:
   contents: read
@@ -91,6 +91,9 @@ jobs:
               ;;
             context-health)
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-context-health.spec.ts --workers=1 --retries=0 --max-failures=1
+              ;;
+            preview)
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-preview.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             *) echo "Unknown diagnostic journey" >&2; exit 1 ;;
           esac
