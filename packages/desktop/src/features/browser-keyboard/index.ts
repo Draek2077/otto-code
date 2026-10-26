@@ -204,6 +204,7 @@ export class BrowserKeyboard {
         }
         return;
       case "focus-url":
+      case "find-in-page": // OTTO(browser-actions): preserve owning-host routing and guest isolation.
         event.preventDefault();
         if (!guest.hostContents.isDestroyed()) {
           guest.hostContents.send(RESERVED_SHORTCUT_OUTPUT_CHANNEL, {

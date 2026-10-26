@@ -318,6 +318,17 @@ failure recovery. Native touch dragging remains a separate device proof.
 
 ## Debugging with tests
 
+### Otto browser actions
+
+`src/otto/browser/actions.browser.test.tsx` covers the actual More/Find controls,
+DOM search, match navigation, highlight cleanup and rendered external-open
+pending/success/failure recovery. Its opener is an injected desktop port, not an
+operating-system browser launch. `page-find.browser.test.ts` covers the guest's
+case/diacritic/word/whitespace matching and non-mutating highlights. Pure
+controller fixtures cover debounce, queued navigation and hidden replies;
+desktop keyboard fixtures retain guest-to-owning-window routing. These fixtures
+do not establish native Electron focus or mobile Host Browser streaming.
+
 Use the test as your debugging ground:
 
 1. Add temporary logging to the code under test

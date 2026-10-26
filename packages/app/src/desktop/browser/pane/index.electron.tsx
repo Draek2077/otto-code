@@ -35,6 +35,7 @@ import { useTranslation } from "react-i18next";
 import * as Clipboard from "expo-clipboard";
 import { Button } from "@/components/ui/button";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { useOttoBrowserActions } from "@/otto/browser/actions.electron"; // OTTO(browser-actions)
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import {
@@ -1423,6 +1424,15 @@ export function BrowserPane({
     webviewClipRef.current = node instanceof HTMLElement ? node : null;
   }, []);
 
+  // OTTO(browser-actions): missing actions use the existing pane's retained guest.
+  const ottoActions = useOttoBrowserActions({
+    browserId,
+    pageUrl: browser?.url ?? null,
+    active: isPresented && Boolean(isInteractive),
+    guestRef: webviewRef,
+    triggerStyle: baseIconButtonStyle,
+  });
+
   if (!isElectronRuntime()) {
     return (
       <View style={styles.unavailableState}>
@@ -1526,8 +1536,11 @@ export function BrowserPane({
               }
             />
           </ToolbarButton>
+          {ottoActions.more}
         </View>
       </View>
+      {ottoActions.findBar}
+      {ottoActions.error}
       {browser?.lastError ? (
         <View style={styles.errorRow}>
           <Text numberOfLines={1} style={errorTextStyle}>

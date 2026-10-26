@@ -132,6 +132,7 @@ export interface DesktopAgentNavigationBridge {
 
 export type DesktopBrowserShortcutEvent =
   | { browserId?: string; action: "focus-url" }
+  | { browserId: string; action: "find-in-page" } // OTTO(browser-actions): routed to the matching interactive guest.
   | { browserId: string; action: "new-tab" };
 
 export interface DesktopBrowserNewTabRequestEvent {
