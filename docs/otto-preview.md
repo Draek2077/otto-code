@@ -21,6 +21,12 @@ servers retain `ext:<port>` identities within their directory. Otto never kills
 a process discovered from a port. Protected host-service ports cannot launch a
 Preview process.
 
+The host resolves workspace directory aliases before looking up servers or their
+designated tabs. A previously resolved alias retains recovery access after its
+directory disappears, so both app controls and agent tools can inspect logs and
+stop an owned process. This does not authorize a new launch in a missing directory.
+Alias identities are workspace-bound and capped at 4,096 entries.
+
 Owned processes begin in Starting and become Ready when their port listens.
 Readiness times out after 60 seconds. A timeout or failed stop keeps ownership
 and blocks another launch until an explicit stop succeeds. Output retains up to

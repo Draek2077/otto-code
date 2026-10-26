@@ -1,4 +1,5 @@
 import { resolve as resolvePath } from "node:path";
+import { realpath } from "node:fs/promises";
 import { z } from "zod";
 import {
   readPreviewConfig,
@@ -29,6 +30,7 @@ export interface PreviewBinding {
 export class PreviewHost {
   private readonly browserBindings = new Map<string, string>();
   private readonly openings = new Map<string, Promise<string>>();
+  private readonly workspaceRoots = new Map<string, string>();
   constructor(
     private readonly ports: {
       hostId: string;
@@ -43,13 +45,51 @@ export class PreviewHost {
     const workspace = await this.ports.workspaces.get(scope.workspaceId);
     if (!workspace || workspace.archivedAt)
       throw new Error("Preview requires an active workspace.");
-    return { cwd: resolvePath(workspace.cwd), workspaceId: scope.workspaceId };
+    return this.directory({ cwd: workspace.cwd, workspaceId: scope.workspaceId });
   }
-  private key(binding: PreviewBinding, id: string): string {
-    return JSON.stringify([binding.cwd, binding.workspaceId, id]);
+  private directoryKey(workspaceId: string, cwd: string): string {
+    const absolute = resolvePath(cwd);
+    return JSON.stringify([
+      workspaceId,
+      process.platform === "win32" ? absolute.toLowerCase() : absolute,
+    ]);
+  }
+  private async directory(binding: PreviewBinding): Promise<PreviewBinding> {
+    const sourcePath = resolvePath(binding.cwd);
+    const sourceKey = this.directoryKey(binding.workspaceId, sourcePath);
+    const known = this.workspaceRoots.get(sourceKey);
+    let canonical: string;
+    try {
+      canonical = await realpath(sourcePath);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        (error.code === "ENOENT" || error.code === "ENOTDIR") &&
+        known
+      )
+        canonical = known;
+      else throw error;
+    }
+    const keys = new Set([sourceKey, this.directoryKey(binding.workspaceId, canonical)]);
+    if (
+      this.workspaceRoots.size +
+        Array.from(keys).filter((key) => !this.workspaceRoots.has(key)).length >
+      4096
+    )
+      throw new Error("Preview's workspace identity limit is reached.");
+    // Only aliases proved by a successful filesystem resolution acquire recovery authority.
+    for (const key of keys) this.workspaceRoots.set(key, canonical);
+    return { ...binding, cwd: canonical };
+  }
+  private key(
+    binding: Pick<PreviewBinding, "workspaceId">,
+    server: Pick<PreviewServer, "cwd" | "id">,
+  ): string {
+    return JSON.stringify([this.directoryKey(binding.workspaceId, server.cwd), server.id]);
   }
   private project(binding: PreviewBinding, server: PreviewServer): PreviewServer {
-    return { ...server, browserId: this.browserBindings.get(this.key(binding, server.id)) ?? null };
+    return { ...server, browserId: this.browserBindings.get(this.key(binding, server)) ?? null };
   }
   async navigationTarget(input: BrowserToolsExecuteInput) {
     const command = input.command;
@@ -61,7 +101,8 @@ export class PreviewHost {
     )
       return null;
     const destination = new URL(command.args.url);
-    const servers = await this.ports.manager.list(input.cwd, null);
+    const binding = await this.directory({ cwd: input.cwd, workspaceId: input.workspaceId });
+    const servers = await this.ports.manager.list(binding.cwd, null);
     const server = servers.find(
       (candidate) => candidate.status !== "stopped" && matchesPreviewUrl(candidate, destination),
     );
@@ -69,12 +110,11 @@ export class PreviewHost {
     return {
       serverId: server.id,
       browserId:
-        this.browserBindings.get(
-          this.key({ cwd: server.cwd, workspaceId: input.workspaceId }, server.id),
-        ) ?? null,
+        this.browserBindings.get(this.key({ workspaceId: input.workspaceId }, server)) ?? null,
     };
   }
-  async list(binding: PreviewBinding) {
+  async list(inputBinding: PreviewBinding) {
+    const binding = await this.directory(inputBinding);
     let config: PreviewLaunchConfig | null = null,
       configError: string | null = null;
     try {
@@ -105,7 +145,8 @@ export class PreviewHost {
       ),
     };
   }
-  async start(binding: PreviewBinding, name: string, commandRevision: string) {
+  async start(inputBinding: PreviewBinding, name: string, commandRevision: string) {
+    const binding = await this.directory(inputBinding);
     const result = await this.ports.manager.start({
       cwd: binding.cwd,
       name,
@@ -120,17 +161,29 @@ export class PreviewHost {
     }
     return { server: this.project(binding, result.server), reused: result.reused, browserError };
   }
-  async stop(binding: PreviewBinding, id: string): Promise<PreviewServer> {
+  async stop(inputBinding: PreviewBinding, id: string): Promise<PreviewServer> {
+    const binding = await this.directory(inputBinding);
     return this.project(binding, await this.ports.manager.stop(binding.cwd, id));
   }
-  logs(binding: PreviewBinding, id: string, options: Parameters<PreviewManager["logs"]>[2]) {
+  async logs(
+    inputBinding: PreviewBinding,
+    id: string,
+    options: Parameters<PreviewManager["logs"]>[2],
+  ) {
+    const binding = await this.directory(inputBinding);
     return this.ports.manager.logs(binding.cwd, id, options);
   }
-  open(binding: PreviewBinding, id: string): Promise<string> {
-    const key = this.key(binding, id);
+  async open(inputBinding: PreviewBinding, id: string): Promise<string> {
+    const binding = await this.directory(inputBinding);
+    const server = (await this.ports.manager.list(binding.cwd, null)).find(
+      (candidate) => candidate.id === id,
+    );
+    if (!server) throw new Error("Preview server does not belong to this workspace directory.");
+    const canonicalBinding = { ...binding, cwd: server.cwd };
+    const key = this.key(canonicalBinding, server);
     const pending = this.openings.get(key);
     if (pending) return pending;
-    const opening = this.openBound(binding, id, key);
+    const opening = this.openBound(canonicalBinding, server, key);
     this.openings.set(key, opening);
     void opening
       .finally(() => {
@@ -139,11 +192,11 @@ export class PreviewHost {
       .catch(() => {});
     return opening;
   }
-  private async openBound(binding: PreviewBinding, id: string, key: string): Promise<string> {
-    const server = (await this.ports.manager.list(binding.cwd, null)).find(
-      (candidate) => candidate.id === id,
-    );
-    if (!server) throw new Error("Preview server does not belong to this workspace directory.");
+  private async openBound(
+    binding: PreviewBinding,
+    server: PreviewServer,
+    key: string,
+  ): Promise<string> {
     const listed = await this.ports.broker.execute({
       ...binding,
       command: { command: "list_tabs", args: {} },
@@ -168,7 +221,7 @@ export class PreviewHost {
     this.browserBindings.delete(key);
     const opened = await this.ports.broker.execute({
       ...binding,
-      ottoPreviewServerId: id,
+      ottoPreviewServerId: server.id,
       command: { command: "new_tab", args: { url: server.url } },
     });
     if (

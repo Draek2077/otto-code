@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import os from "node:os";
+import { mkdtemp, mkdir, writeFile, rm, realpath, symlink } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
   readPreviewConfig,
@@ -17,9 +17,22 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
-async function fixture() {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), "otto-preview-host-"));
-  cleanups.push(() => rm(cwd, { recursive: true, force: true }));
+async function fixture(alias = false) {
+  const root = fileURLToPath(
+    new URL("../../../../../../.tmp/preview-host-fixtures/", import.meta.url),
+  );
+  await mkdir(root, { recursive: true });
+  const parent = await mkdtemp(path.join(root, "fixture-"));
+  cleanups.push(async () => {
+    const relative = path.relative(await realpath(root), await realpath(parent));
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative))
+      throw new Error("Preview fixture escaped its scratch root.");
+    await rm(parent, { recursive: true, force: true });
+  });
+  const physical = path.join(parent, "physical");
+  await mkdir(physical);
+  const cwd = alias ? path.join(parent, "workspace-alias") : physical;
+  if (alias) await symlink(physical, cwd, process.platform === "win32" ? "junction" : "dir");
   await mkdir(path.join(cwd, ".claude"));
   await writeFile(
     path.join(cwd, ".claude", "launch.json"),
@@ -127,6 +140,12 @@ async function fixture() {
     scope,
     input,
     cwd,
+    async removeDirectory() {
+      const relative = path.relative(await realpath(parent), await realpath(cwd));
+      if (!relative || relative.startsWith("..") || path.isAbsolute(relative))
+        throw new Error("Preview directory escaped its fixture.");
+      await rm(cwd, { recursive: true });
+    },
     file: path.join(cwd, ".claude", "launch.json"),
     spawn,
     tabs,
@@ -147,6 +166,36 @@ test("Preview projection exposes a bounded execution digest without host environ
   expect(f.config.commands[0].commandRevision).toMatch(/^[a-f0-9]{64}$/);
   expect(JSON.stringify(f.config)).not.toContain("NEVER_RETURN_THIS_SECRET");
   expect(f.spawn).not.toHaveBeenCalled();
+});
+test("directory aliases keep the designated tab and owned stop authority after the alias disappears", async () => {
+  const f = await fixture(true);
+  const started = startPreviewServer.output.parse(
+    await f.host.invoke(startPreviewServer.name, f.input),
+  );
+  if (!started.ok) throw new Error(started.error.message);
+  expect(
+    await f.host.navigationTarget({
+      cwd: f.cwd,
+      workspaceId: "workspace",
+      command: { command: "new_tab", args: { url: "http://127.0.0.1:8200" } },
+    }),
+  ).toEqual({ serverId: started.value.server.id, browserId: started.value.server.browserId });
+  await f.removeDirectory();
+  const listed = readPreviewConfig.output.parse(
+    await f.host.invoke(readPreviewConfig.name, f.scope),
+  );
+  expect(listed).toMatchObject({ ok: true, value: { servers: [{ id: started.value.server.id }] } });
+  expect(await f.host.list({ cwd: f.cwd, workspaceId: "workspace" })).toMatchObject({
+    servers: [{ id: started.value.server.id }],
+  });
+  expect(
+    await f.host.invoke(stopPreviewServer.name, {
+      ...f.scope,
+      serverId: started.value.server.id,
+      userApprovedStop: true,
+    }),
+  ).toMatchObject({ ok: true, value: { status: "stopped" } });
+  expect(f.spawn).toHaveBeenCalledTimes(1);
 });
 test("Preview navigation admission resolves one designated tab with loopback aliases and workspace identity", async () => {
   const f = await fixture();
@@ -298,7 +347,7 @@ test("invalid configuration and a removed directory retain owned stop authority"
       servers: [{ id: started.value.server.id }],
     },
   });
-  await rm(f.cwd, { recursive: true });
+  await f.removeDirectory();
   const removed = readPreviewConfig.output.parse(
     await f.host.invoke(readPreviewConfig.name, f.scope),
   );
