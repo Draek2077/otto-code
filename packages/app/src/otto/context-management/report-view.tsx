@@ -62,7 +62,7 @@ export function ContextPreviewPane({
   selected: boolean;
 }) {
   return (
-    <View style={styles.detail}>
+    <View style={styles.preview}>
       <SettingsSection title={preview?.label ?? "Inspect a source"}>
         {error ? <Alert variant="error" description={error.message} /> : null}
         {fetching ? <SettingsRow label="Reading selected context..." /> : null}

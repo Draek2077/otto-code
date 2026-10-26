@@ -93,6 +93,7 @@ for (const compact of [false, true]) {
       await expect(surface.getByTestId("context-source-preview")).toContainText(
         "EXTERNAL_CONTEXT_CHANGE",
       );
+      await expect(surface.getByTestId("context-source-preview")).toBeInViewport();
       const box = await surface.getByTestId("context-source-preview").boundingBox();
       expect(box!.x).toBeGreaterThanOrEqual(16);
       expect(box!.width).toBeGreaterThan(180);

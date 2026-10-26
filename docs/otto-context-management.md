@@ -6,7 +6,9 @@ Open it from the workspace action menu, Command Center, or the registered sideba
 screen. The global screen requires an explicit workspace on the selected host.
 The page uses Paseo controls and gutters, with the original summary, dependency
 tree and source/prompt inspection arrangement. Compact layouts drill into the
-selected preview and provide Back to context.
+selected preview and provide Back to context. Desktop source and preview columns
+scroll independently, so selecting a source far down the graph keeps its preview
+visible in the other column.
 
 ## Ownership
 

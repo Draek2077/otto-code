@@ -1,6 +1,7 @@
 import { ContextSummary, ContextPreviewPane, ContextReadStatus } from "./report-view";
+import { ContextLayout } from "./layout";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import {
   usePaseo,
   useRpc,
@@ -134,7 +135,7 @@ function ContextBody({
   }, []);
   const back = useCallback(() => setSelection(null), []);
   const contentVisible = report.status === "success";
-  return (
+  const controls = (
     <>
       <SettingsSection
         title="Context Management"
@@ -166,59 +167,57 @@ function ContextBody({
         error={report.error}
         loading={report.isLoading}
       />
-      {contentVisible && report.data ? (
-        <>
-          <ContextSummary report={report.data} />
-          <View style={compact ? styles.compact : styles.split}>
-            {!compact || !selection ? (
-              <View style={styles.tree}>
-                <ContextTree
-                  key={reviewEpoch}
-                  report={report.data}
-                  scope={scope}
-                  active={active}
-                  onSelect={chooseSource}
-                  onChanged={changed}
-                />
-              </View>
-            ) : null}
-            {!compact || selection ? (
-              <View style={styles.detail}>
-                {compact && selection ? (
-                  <Button variant="outline" size="sm" onPress={back}>
-                    Back to context
-                  </Button>
-                ) : null}
-                <ContextPreviewPane
-                  preview={preview.data}
-                  error={preview.error}
-                  fetching={preview.isFetching}
-                  selected={Boolean(selection)}
-                />
-              </View>
-            ) : null}
-          </View>
-        </>
-      ) : null}
+      {contentVisible && report.data ? <ContextSummary report={report.data} /> : null}
     </>
+  );
+  const tree =
+    contentVisible && report.data ? (
+      <ContextTree
+        key={reviewEpoch}
+        report={report.data}
+        scope={scope}
+        active={active}
+        onSelect={chooseSource}
+        onChanged={changed}
+      />
+    ) : null;
+  const detail = contentVisible ? (
+    <>
+      {compact && selection ? (
+        <Button variant="outline" size="sm" onPress={back}>
+          Back to context
+        </Button>
+      ) : null}
+      <ContextPreviewPane
+        preview={preview.data}
+        error={preview.error}
+        fetching={preview.isFetching}
+        selected={Boolean(selection)}
+      />
+    </>
+  ) : null;
+  return (
+    <ContextLayout compact={compact}>
+      <>
+        {controls}
+        {!compact || !selection ? tree : null}
+      </>
+      {!compact || selection ? detail : null}
+    </ContextLayout>
   );
 }
 function ContextFrame({ hostId, workspaceId }: { hostId: string; workspaceId: string }) {
   const retained = useRetainedPanelActive();
   const visible = useAppVisible();
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      testID="otto-context-management"
-    >
+    <View style={styles.page} testID="otto-context-management">
       <ContextBody
         key={`${hostId}/${workspaceId}`}
         hostId={hostId}
         workspaceId={workspaceId}
         active={retained && visible}
       />
-    </ScrollView>
+    </View>
   );
 }
 export function ContextManagementWorkspace(props: PluginWorkspacePanelProps) {
@@ -249,20 +248,18 @@ export function ContextManagementScreen(props: PluginScreenProps) {
     [workspaces.data],
   );
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      testID="otto-context-management-screen"
-    >
-      <SettingsSelect
-        label="Workspace"
-        value={selected}
-        options={options}
-        onValueChange={setSelected}
-      />
-      {workspaces.error ? (
-        <Alert variant="error" description="Workspaces could not be read from this host." />
-      ) : null}
+    <View style={styles.page} testID="otto-context-management-screen">
+      <View style={styles.chooser}>
+        <SettingsSelect
+          label="Workspace"
+          value={selected}
+          options={options}
+          onValueChange={setSelected}
+        />
+        {workspaces.error ? (
+          <Alert variant="error" description="Workspaces could not be read from this host." />
+        ) : null}
+      </View>
       {selected ? (
         <ContextBody
           key={`${props.host.id}/${selected}`}
@@ -273,6 +270,6 @@ export function ContextManagementScreen(props: PluginScreenProps) {
       ) : (
         <SettingsRow label="Select the workspace whose context you want to inspect." />
       )}
-    </ScrollView>
+    </View>
   );
 }
