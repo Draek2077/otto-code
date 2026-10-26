@@ -68,6 +68,11 @@ function fixture() {
   );
   const input = vi.fn(async () => {});
   const dialogs = vi.fn((): BrowserAutomationDialogEvent[] => []);
+  const getWorkspace = vi.fn(async (id: string) =>
+    id === "workspace" || id === "peer"
+      ? { cwd: `host-root/${id}`, archivedAt: archived ? "archived" : null }
+      : null,
+  );
   const service = new HostBrowserService({
     hostId: scope.hostId,
     broker,
@@ -76,12 +81,7 @@ function fixture() {
     input,
     clear: () => {},
     dialogs,
-    workspaces: {
-      get: async (id) =>
-        id === "workspace" || id === "peer"
-          ? { cwd: `host-root/${id}`, archivedAt: archived ? "archived" : null }
-          : null,
-    },
+    workspaces: { get: getWorkspace },
   });
   service.register();
   const desktop: BrowserAutomationExecuteRequest[] = [],
@@ -144,6 +144,7 @@ function fixture() {
     execute,
     input,
     dialogs,
+    getWorkspace,
     delivery,
     archive: () => {
       archived = true;
@@ -297,4 +298,27 @@ test("host dialog policy results are returned once with a bounded event count", 
   expect(response.ok).toBe(true);
   expect(response.dialogs).toHaveLength(10);
   expect(response.dialogs?.[0].message).toBe("10");
+});
+test("hiding during workspace validation cannot leave a late viewer attached", async () => {
+  const f = fixture(),
+    browserId = await create(f),
+    ticket = randomUUID();
+  let resume!: () => void, entered!: () => void;
+  const gate = new Promise<void>((resolve) => {
+      resume = resolve;
+    }),
+    ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+  f.getWorkspace.mockImplementationOnce(async () => {
+    entered();
+    await gate;
+    return { cwd: "host-root/workspace", archivedAt: null };
+  });
+  const pending = f.owned(watchHostBrowser.name, { ...scope, browserId, ticket });
+  await ready;
+  await f.owned(detachHostBrowser.name, { ...scope, ticket });
+  resume();
+  expect(watchHostBrowser.output.parse(await pending).ok).toBe(false);
+  expect(f.delivery.registrationCount).toBe(0);
 });

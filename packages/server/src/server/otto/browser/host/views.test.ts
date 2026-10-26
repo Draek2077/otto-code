@@ -55,7 +55,7 @@ async function fixture() {
       for (const page of opened) await page.close();
     },
   });
-  const views = new HostBrowserViews(pages),
+  const views = new HostBrowserViews(pages, async () => {}),
     sent: Array<{ source: object; bytes: Uint8Array }> = [],
     json = vi.fn();
   const delivery = new SessionDelivery(json, (source, bytes) => {

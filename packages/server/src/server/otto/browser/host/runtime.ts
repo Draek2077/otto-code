@@ -157,7 +157,9 @@ export class HostBrowserRuntime {
         args: [
           "--disable-dev-shm-usage",
           "--no-default-browser-check",
-          ...(process.platform === "linux" ? ["--use-angle=swiftshader"] : []),
+          ...(process.platform === "linux"
+            ? ["--ozone-platform=headless", "--use-angle=swiftshader"]
+            : []),
         ],
       },
     );
@@ -168,7 +170,14 @@ export class HostBrowserRuntime {
       if (this.context === context) this.context = null;
       this.reportState("closed");
     });
-    for (const page of context.pages()) await page.close();
+    // Chromium clears session data when its final profile window closes, even while
+    // CDP keeps the browser process alive. Keep one unexposed about:blank target for
+    // this runtime's session; closing/suspending the final user tab must not sign out
+    // every other tab opened later. The context owns and closes this blank target.
+    // https://chromium.googlesource.com/chromium/src/+/main/chrome/browser/sessions/session_service.cc
+    const restored = context.pages();
+    await context.newPage();
+    for (const page of restored) await page.close();
     return context;
   }
   private reportState(state: "started" | "closed") {
@@ -183,8 +192,9 @@ export class HostBrowserRuntime {
       page = await context.newPage();
     try {
       await page.setViewportSize({ width: tab.viewportWidth, height: tab.viewportHeight });
-      const cdp = await context.newCDPSession(page),
-        managed = new ManagedHostPage(page, cdp);
+      const cdp = await context.newCDPSession(page);
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 10 });
+      const managed = new ManagedHostPage(page, cdp);
       const update = () => {
         this.changed(tab, page, managed.lastNavigationError);
       };

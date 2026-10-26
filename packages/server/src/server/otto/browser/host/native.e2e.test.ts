@@ -233,9 +233,12 @@ test("native Host Browser executes against the streamed page and preserves its o
     const reopened = await execute({ command: "new_tab", args: { url } });
     if (reopened.result.command !== "new_tab") throw new Error("Expected reopened host tab.");
     expect(reopened.result.browserId).not.toBe(browserId);
-    expect(await evaluate(reopened.result.browserId, "() => document.cookie")).toContain(
-      "ottoHostFixture=yes",
-    );
+    expect(
+      await evaluate(
+        reopened.result.browserId,
+        "() => ({cookie: document.cookie, href: location.href})",
+      ),
+    ).toMatchObject({ cookie: expect.stringContaining("ottoHostFixture=yes"), href: `${url}/` });
   } catch (error) {
     failures.push(error);
   }

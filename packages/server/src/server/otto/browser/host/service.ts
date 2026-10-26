@@ -45,7 +45,9 @@ export class HostBrowserService<P extends HostCapturePage> {
       dialogs(page: P): BrowserAutomationDialogEvent[];
     },
   ) {
-    this.views = new HostBrowserViews(ports.pages);
+    this.views = new HostBrowserViews(ports.pages, async (workspaceId) => {
+      await this.binding(workspaceId);
+    });
   }
   register() {
     if (this.unregister) throw new Error("Host Browser is already registered.");
@@ -164,7 +166,8 @@ export class HostBrowserService<P extends HostCapturePage> {
       case watchHostBrowser.name:
         return this.guard(async () => {
           const input = watchHostBrowser.input.parse(value);
-          await this.scope(input);
+          if (input.hostId !== this.ports.hostId)
+            throw new Error("Host Browser belongs to another host.");
           await this.views.watch(input, this.source(source));
           return this.project(this.ports.pages.get(input.workspaceId, input.browserId));
         });

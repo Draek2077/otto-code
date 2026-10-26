@@ -26,7 +26,10 @@ interface View<P> {
 /** Authenticated request source, never appId, is the authority to ack or detach a viewer. */
 export class HostBrowserViews<P extends HostCapturePage> {
   private readonly views = new Map<string, View<P>>();
-  constructor(private readonly pages: HostBrowserPages<P>) {}
+  constructor(
+    private readonly pages: HostBrowserPages<P>,
+    private readonly validateWorkspace: (workspaceId: string) => Promise<void>,
+  ) {}
   async watch(
     input: { workspaceId: string; browserId: string; ticket: string },
     source: HostBrowserSource,
@@ -51,6 +54,11 @@ export class HostBrowserViews<P extends HostCapturePage> {
     };
     this.views.set(ticket, view);
     try {
+      // Reserve the source-owned ticket before asynchronous registry checks. A hidden
+      // viewer can detach during that wait, without creating a cancellation tombstone.
+      await this.validateWorkspace(input.workspaceId);
+      if (view.owner.signal.aborted)
+        throw new Error("The Host Browser viewer was released while opening.");
       const lease = await this.pages.acquire(input.workspaceId, input.browserId);
       view.releasePage = lease.release;
       view.page = lease.page;
