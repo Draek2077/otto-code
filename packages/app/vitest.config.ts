@@ -2,6 +2,7 @@ import { defineConfig, configDefaults } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 import path from "path";
 import fs from "fs";
+import { ottoBrowserTestDependencies } from "./otto-browser-test-dependencies"; // OTTO(browser-tests)
 
 // Set this before Vite resolves dependencies and Vitest starts its workers.
 Object.assign(process.env, { NODE_ENV: "test" });
@@ -79,10 +80,9 @@ export default defineConfig({
   // so it scans the native files and dies on imports react-native-web has no answer for.
   // Unbundled, the same imports go through the resolver below and land on the web files.
   optimizeDeps: {
-    // OTTO(browser-actions): crawl rendered fixtures before execution; late CJS discovery reloads running tests.
-    entries: ["src/**/*.browser.{test,spec}.{ts,tsx}"],
     // Bundle the CJS dependencies of the excluded gesture-handler package for the browser.
     include: [
+      ...ottoBrowserTestDependencies, // OTTO(browser-tests): Vitest owns scan entries; explicitly prebundle observed lazy imports.
       "react/jsx-runtime",
       "react-native-gesture-handler > hoist-non-react-statics",
       "react-native-gesture-handler > invariant",
