@@ -21,6 +21,7 @@ export default defineConfig({
   plugins: [
     {
       name: "otto-reanimated-web-style-compiler",
+      enforce: "pre",
       resolveId(id, importer) {
         if (
           id.startsWith("./webUtils") &&

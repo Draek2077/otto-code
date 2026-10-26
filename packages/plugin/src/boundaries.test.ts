@@ -22,6 +22,7 @@ const entries = {
   "./otto/atlassian-settings": "shared", // OTTO(integration): structural contracts, never credentials or native binding.
   "./otto/project-knowledge": "shared", // OTTO(knowledge): structural records and scoped RPC only.
   "./otto/context-management": "shared", // OTTO(context-management): structural reports/RPC, no provider or filesystem code.
+  "./otto/browser-history": "shared", // OTTO(browser-history): host-scoped structural RPC only.
   "./client": "client",
   "./client/host": "client",
   "./client/react-native": "client",
