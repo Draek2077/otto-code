@@ -17,6 +17,23 @@ const resolvePackageEntry = (packageName: string) => {
 };
 
 export default defineConfig({
+  // OTTO(browser-tests): preserve Reanimated behavior while resolving its RN Web compiler through ESM.
+  plugins: [
+    {
+      name: "otto-reanimated-web-style-compiler",
+      resolveId(id, importer) {
+        if (
+          id.startsWith("./webUtils") &&
+          importer
+            ?.replaceAll("\\", "/")
+            .includes("react-native-reanimated/lib/module/ReanimatedModule/js-reanimated/")
+        ) {
+          return path.resolve(__dirname, "test-stubs/reanimated-web-style-compiler.mjs");
+        }
+        return null;
+      },
+    },
+  ],
   test: {
     environment: "node",
     exclude: [...configDefaults.exclude, "e2e/**"],

@@ -2,6 +2,8 @@
 export const ottoBrowserTestDependencies = [
   "react",
   "react-native",
+  "react-native-web/dist/exports/StyleSheet/compiler/createReactDOMStyle",
+  "react-native-web/dist/exports/StyleSheet/preprocess",
   "react-dom",
   "react-dom/client",
   "react-i18next",
