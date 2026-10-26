@@ -151,7 +151,9 @@ export class HostBrowserRuntime {
       {
         executablePath,
         headless: true,
-        timeout: 15_000,
+        // Profile initialization on a cold installed browser can exceed a warm
+        // page's action budget. This is one bounded launch, not a retry.
+        timeout: 30_000,
         viewport: { width: 390, height: 844 },
         acceptDownloads: false,
         args: [

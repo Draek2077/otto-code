@@ -54,7 +54,9 @@ export class HostBrowserService<P extends HostCapturePage> {
     this.unregister = this.ports.broker.registerClient({
       id: OTTO_BROWSER_HOST_ID,
       hostKind: "Otto Host Browser",
-      defaultTimeoutMs: 45_000,
+      // Cold profile startup (30 s) plus initial navigation (15 s), below the
+      // existing client's 60 s RPC deadline. Warm page actions remain bounded separately.
+      defaultTimeoutMs: 55_000,
       supportedCommands: BROWSER_AUTOMATION_COMMAND_NAMES,
       sendBrowserAutomationRequest: async (request) => {
         const payload = await this.request(request);

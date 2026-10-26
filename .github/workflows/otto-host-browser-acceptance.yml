@@ -19,6 +19,11 @@ concurrency:
   group: otto-host-browser-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # This browser contract never uses the speech/CUDA runtime. Match normal CI
+  # rather than downloading optional NuGet binaries on every Windows run.
+  ONNXRUNTIME_NODE_INSTALL: skip
+
 jobs:
   native:
     name: native (${{ matrix.os }})
