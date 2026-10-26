@@ -7,6 +7,7 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
   getProjectConfiguration,
   setProjectTarget,
+  waitBoardChanges,
   type ProjectConfiguration,
 } from "@getpaseo/plugin/otto/kanban";
 import { test as base, expect, type Page } from "../fixtures";
@@ -22,6 +23,7 @@ interface KanbanFixture {
   setProviderError(error: "scope" | "after-write" | null): Promise<void>;
   requests(): Promise<Array<{ operation: string; cursor: string }>>;
   changeProviderTitle(cardId: string, title: string): Promise<void>;
+  changeCursor(cursor: string | null): Promise<string>;
 }
 
 export const test = base.extend<{ kanban: KanbanFixture; kanbanWithBoard: boolean }>({
@@ -62,6 +64,17 @@ export const test = base.extend<{ kanban: KanbanFixture; kanbanWithBoard: boolea
         project,
         read,
         setProviderError,
+        changeCursor: async (cursor) => {
+          const result = waitBoardChanges.output.parse(
+            await client.invokePluginRpc("otto-kanban", waitBoardChanges.name, {
+              binding,
+              leaseId: "browser-periodic-refresh-proof",
+              cursor,
+            }),
+          );
+          if (!result.ok) throw new Error(result.error.message);
+          return result.value.cursor;
+        },
         changeProviderTitle: async (cardId, title) => {
           const state = z
             .object({

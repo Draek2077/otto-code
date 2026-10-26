@@ -9,6 +9,9 @@ for (const compact of [false, true]) {
     page,
     kanban,
   }, testInfo) => {
+    // Allow the real 30-second provider cadence and bounded long-poll heartbeats.
+    // UI assertions keep the suite's ordinary ten-second deadline.
+    test.setTimeout(120_000);
     if (compact) await page.setViewportSize({ width: 390, height: 844 });
     await gotoAppShell(page);
     if (compact) await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
@@ -56,10 +59,17 @@ for (const compact of [false, true]) {
       );
     await page.screenshot({ path: testInfo.outputPath("kanban-configured-board.png") });
 
+    // Finish the initial provider sample before changing its data. The next
+    // cursor must come from a scheduled poll, not mount-time invalidation.
+    const priorCursor = await kanban.changeCursor(null);
     await kanban.changeProviderTitle("draft-2", "Changed outside Otto");
+    let nextCursor = priorCursor;
+    for (let heartbeat = 0; heartbeat < 3 && nextCursor === priorCursor; heartbeat++)
+      nextCursor = await kanban.changeCursor(nextCursor);
+    expect(nextCursor).not.toBe(priorCursor);
     await expect(
       page.getByTestId("kanban-card-draft-2").getByText("Changed outside Otto", { exact: true }),
-    ).toBeVisible({ timeout: 45_000 });
+    ).toBeVisible();
 
     await kanban.setProviderError("scope");
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
