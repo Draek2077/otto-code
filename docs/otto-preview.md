@@ -45,8 +45,14 @@ Windows CI lanes, against isolated Node fixtures.
 
 ## Workspace controls and agent tools
 
-The built-in Otto Browser plugin contributes a Preview Servers workspace panel.
-Open it from the workspace menu, Command Center or a browser's More menu. Wide
+The workspace tab gutter has one play button. Its menu lists tracked server
+states, opens their designated browsers and offers reviewed Start or reuse and
+Stop actions. Reading the menu starts nothing; its refresh demand ends when the
+menu closes or the workspace is hidden. The final option, Manage Preview servers,
+opens the optional workspace panel for setup, logs and troubleshooting.
+
+The built-in Otto Browser plugin contributes that Preview Servers workspace panel.
+It also opens from the workspace menu, Command Center or a browser's More menu. Wide
 layouts place server selection beside output; compact layouts retain the selection
 and show its actions inline. Both use the app's existing controls and content gutters.
 Reading the page, loading configuration or copying the detection prompt starts nothing.

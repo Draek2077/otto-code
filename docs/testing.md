@@ -288,7 +288,8 @@ live-provider or physical-device acceptance.
 
 <!-- OTTO(preview): provider-neutral host lifecycle and workspace entry points. -->
 
-Preview Servers: `e2e/browser/otto-preview.spec.ts` exercises wide and compact workspace
+Preview Servers: `e2e/browser/otto-preview.spec.ts` exercises the single gutter play
+menu with management last and no process on declined quick launch, wide and compact workspace
 entry, declined and stale command confirmations, real isolated host-owned start/stop,
 bounded logs, browser-open failure recovery and corrupt configuration. It runs in CI,
 alongside native Linux/Windows process-tree ownership fixtures. No installed app or

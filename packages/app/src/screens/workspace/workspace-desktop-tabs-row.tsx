@@ -86,6 +86,7 @@ import {
   useHorizontalScrollBoundary,
 } from "@/components/ui/horizontal-scroll-boundary";
 import { useSessionStore } from "@/stores/session-store";
+import { PreviewGutterMenu } from "@/otto/preview/gutter-menu"; // OTTO(preview): one play menu, optional management page last.
 
 const DROPDOWN_WIDTH = 220;
 const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
@@ -1049,6 +1050,7 @@ function ResolvedWorkspaceDesktopTabsRow({
   const newTabKeys = useShortcutKeys("workspace-tab-new");
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
   const [exitFocusModeWidth, setExitFocusModeWidth] = useState<number>(0);
+  const [previewMenuWidth, setPreviewMenuWidth] = useState(0); // OTTO(preview): measure the single gutter trigger with existing tab geometry.
   const tabScrollBoundary = useHorizontalScrollBoundary();
   const [labelMeasurements, setLabelMeasurements] = useState(
     () => new Map<string, WorkspaceTabLabelMeasurement>(),
@@ -1062,6 +1064,9 @@ function ResolvedWorkspaceDesktopTabsRow({
   const handleExitFocusModeLayout = useCallback((event: LayoutChangeEvent) => {
     updateMeasuredWidth(setExitFocusModeWidth, event);
   }, []);
+  const handlePreviewMenuLayout = useCallback((event: LayoutChangeEvent) => {
+    updateMeasuredWidth(setPreviewMenuWidth, event);
+  }, []); // OTTO(preview)
 
   const layoutMetrics = useMemo(
     () => ({
@@ -1069,6 +1074,7 @@ function ResolvedWorkspaceDesktopTabsRow({
       actionsReservedWidth: Math.max(
         0,
         DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH +
+          previewMenuWidth + // OTTO(preview)
           (focusModeEnabled ? exitFocusModeWidth : 0) +
           (showPaneSplitActions ? PANE_SPLIT_ACTIONS_RESERVED_WIDTH : 0) +
           (showPaneMaximizeAction ? PANE_MAXIMIZE_ACTION_RESERVED_WIDTH : 0),
@@ -1082,7 +1088,13 @@ function ResolvedWorkspaceDesktopTabsRow({
       tabHorizontalPadding: TAB_CHIP_HORIZONTAL_PADDING,
       closeButtonWidth: TAB_CLOSE_BUTTON_RESERVED_WIDTH,
     }),
-    [exitFocusModeWidth, focusModeEnabled, showPaneMaximizeAction, showPaneSplitActions],
+    [
+      exitFocusModeWidth,
+      focusModeEnabled,
+      previewMenuWidth,
+      showPaneMaximizeAction,
+      showPaneSplitActions,
+    ],
   );
 
   const panePanelKinds = useMemo(() => tabs.map(({ tab }) => tab.kind), [tabs]);
@@ -1406,6 +1418,10 @@ function ResolvedWorkspaceDesktopTabsRow({
           leftStyle={tabScrollBoundary.leftShadeStyle}
           rightStyle={tabScrollBoundary.rightShadeStyle}
         />
+      </View>
+      {/* OTTO(preview): same play menu for all servers; management is its final option. */}
+      <View onLayout={handlePreviewMenuLayout}>
+        <PreviewGutterMenu serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
       </View>
       <WorkspacePaneToolbarActions
         panePanelKinds={panePanelKinds}

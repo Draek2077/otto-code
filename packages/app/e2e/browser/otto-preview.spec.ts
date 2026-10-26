@@ -81,6 +81,23 @@ for (const compact of [false, true]) {
       const start = surface.getByRole("button", { name: "Start or reuse", exact: true });
       await expect(start).toBeVisible();
       expect((await inspect()).servers).toEqual([]);
+      if (!compact) {
+        // The gutter has one play trigger. Management is the final server-menu action,
+        // and declining a quick launch has the same no-process guarantee as the page.
+        const play = page.getByTestId("workspace-preview-menu").filter({ visible: true });
+        await expect(play).toHaveCount(1);
+        await play.click();
+        const menu = page.getByTestId("workspace-preview-menu-content").filter({ visible: true });
+        await expect(menu.getByRole("menuitem").last()).toHaveText("Manage Preview servers");
+        page.once("dialog", (dialog) => void dialog.dismiss());
+        const quickStart = menu.getByRole("menuitem", { name: "Start or reuse web", exact: true });
+        await quickStart.click();
+        await expect(quickStart).toBeEnabled();
+        expect((await inspect()).servers).toEqual([]);
+        await menu.getByRole("menuitem").last().click();
+        await expect(menu).not.toBeVisible();
+        await expect(surface).toBeVisible();
+      }
       page.once("dialog", (dialog) => void dialog.dismiss());
       await start.click();
       await expect(start).toBeEnabled();
