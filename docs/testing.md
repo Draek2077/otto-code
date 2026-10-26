@@ -302,6 +302,14 @@ feedback, explicit reload recovery, actual saved bytes and revision-matched issu
 line selection/focus on wide and compact screens. It uses the same real isolated
 daemon and does not touch installed homes or launch a model.
 
+`e2e/browser/otto-context-compaction.spec.ts` covers wide and compact prose
+proposal generation through the real daemon/provider RPC and a deterministic
+local HTTP completion fixture. It verifies no tools in the inference request,
+read-only reference inclusion, initially dropped hunks, chosen kept text,
+declined apply, occupied-lock feedback with retained review, explicit reload
+recovery and actual saved bytes. This proves the application path, not the quality
+or availability of a live model, native CLI execution or physical-device rendering.
+
 ## Debugging with tests
 
 Use the test as your debugging ground:

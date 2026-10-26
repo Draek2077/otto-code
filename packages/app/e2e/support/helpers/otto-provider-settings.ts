@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { once } from "node:events";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { settingsRpc } from "@getpaseo/plugin";
@@ -20,15 +20,36 @@ const rpc = settingsRpc("connection");
 type SettingsClient = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">;
 
 async function createProviderFixture() {
+  const requests: unknown[] = [];
+  let reply: (body: unknown) => string = () => "Done.";
+  async function complete(request: IncomingMessage, response: ServerResponse) {
+    try {
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      for await (const chunk of request) {
+        const data = Buffer.from(chunk);
+        bytes += data.length;
+        if (bytes > 1024 * 1024) throw new Error("Fixture request exceeds its bound");
+        chunks.push(data);
+      }
+      const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      requests.push(body);
+      const content = reply(body);
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(
+        `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+      );
+    } catch {
+      response.writeHead(500);
+      response.end("Invalid isolated provider fixture request");
+    }
+  }
   const server = createServer((request, response) => {
     if (request.method === "GET") {
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify({ data: [{ id: "fixture" }] }));
     } else {
-      response.writeHead(200, { "content-type": "text/event-stream" });
-      response.end(
-        `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Done." }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
-      );
+      void complete(request, response);
     }
   });
   server.listen(0, "127.0.0.1");
@@ -75,6 +96,10 @@ async function createProviderFixture() {
   };
   return {
     url,
+    requests,
+    replyWith: (generate: (body: unknown) => string) => {
+      reply = generate;
+    },
     read,
     saveKey,
     update: async (updates: Partial<ConnectionSettings>) =>

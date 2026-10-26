@@ -196,8 +196,45 @@ view discards its local editor instances; no prompt/draft copy is persisted.
 
 Inspect issue opens Current source and selects the finding's line range only when
 the current file still matches the finding's revision. A changed file displays a
-notice instead of selecting an obsolete range. Source editing does not imply
-reviewed AI compaction or starter-file generation; those are separate operations.
+notice instead of selecting an obsolete range. Source editing does not implicitly
+generate or rewrite a document. AI compaction is a separate reviewed operation;
+starter-file generation is a separate action.
+
+## Reviewed prose compaction
+
+Select a source and choose Compact with AI. The review nominates one to twelve
+rewritable prose files and a bounded set of read-only references from the current
+host-owned graph. Only instruction/prose extensions pass the shared Refine scope
+gate. References are complete files selected smallest-first, with twelve files
+and 60 KB combined as hard bounds; unavailable or omitted candidates are disclosed.
+Document and reference input is capped at 120,000 characters. Host paths never
+come from the browser.
+
+The default instructions preserve every distinct rule, fact, heading and link.
+The preferred-model picker uses the canonical host catalog. OpenAI Compatible API,
+Brain and their aliases expose a provider-owned text-only generation operation.
+It reuses the owning endpoint, credentials and transport without constructing a
+chat, instruction resolver, native tool executor, MCP client or session archive.
+Requests contain no tool definitions; returned tool calls are rejected. Explicit
+model selection never falls through to a different provider. Native CLI sessions
+are unavailable for this operation until their execution policy is established;
+ordinary tool-capable agent sessions are never substituted.
+
+Generating a proposal writes nothing. Every hunk starts dropped. Keep/Drop changes
+the local kept result, with original and kept text side by side on wide screens
+and stacked on compact screens. Review kept result makes that result the next
+working draft for an iterative proposal without adopting a new canonical revision.
+Readonly references retain their pinned revisions and cannot become output files.
+
+Apply kept changes requires explicit confirmation, including named host-wide
+effects when relevant. The daemon checks every nominated source and origin digest
+before the first write, then uses the shared atomic writer once per changed file.
+Per-file outcomes disclose partial success without rollback or retry. Any dispatched
+apply requires explicit Load selected files before another apply; a late hidden
+reply cannot grant new write authority. Reload confirms discarding the local review.
+Provider failures leave the draft intact and show bounded recovery copy without
+credentials or raw process diagnostics. Character counts are input-size evidence,
+not billed token measurements or a guarantee of model quality.
 
 ## Proof boundary
 

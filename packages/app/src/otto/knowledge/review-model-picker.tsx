@@ -10,8 +10,20 @@ import {
   buildSelectableProviderSelectorProviders,
   type ProviderSelectorProvider,
 } from "@/provider-selection/provider-selection";
-import { KnowledgeReviewModel } from "./review-model";
 import { styles } from "./styles";
+
+// OTTO(review-model-picker): the catalog UI is shared by reviewed prose operations; drafts stay with each feature.
+export interface ReviewModelSelection {
+  provider: string;
+  model: string;
+  providerLabel: string;
+  modelLabel: string;
+}
+export interface ReviewModelPickerModel {
+  getSnapshot(): { selection: ReviewModelSelection | null; busy: boolean };
+  subscribe(listener: () => void): () => void;
+  selectModel(selection: ReviewModelSelection | null): void;
+}
 
 /** The normal model browser reads the canonical host provider catalog. Only selection intent is local. */
 export function ReviewModelPicker({
@@ -19,7 +31,7 @@ export function ReviewModelPicker({
   hostId,
   active,
 }: {
-  model: KnowledgeReviewModel;
+  model: ReviewModelPickerModel;
   hostId: string;
   active: boolean;
 }) {

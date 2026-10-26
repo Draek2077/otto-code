@@ -1,4 +1,9 @@
-import { ContextSummary, ContextReadStatus, ContextWriteFeedback } from "./report-view";
+import {
+  ContextSummary,
+  ContextReadStatus,
+  ContextWriteFeedback,
+  ContextControls,
+} from "./report-view";
 import { ContextLayout } from "./layout";
 import React, {
   useCallback,
@@ -22,8 +27,7 @@ import {
   type ContextSelection,
 } from "@getpaseo/plugin/otto/context-management";
 import { useFetchQuery } from "@/data/query";
-import { SettingsCard, SettingsRow, SettingsSection, SettingsSelect } from "@/components/settings";
-import { Button } from "@/components/ui/button";
+import { SettingsRow, SettingsSelect } from "@/components/settings";
 import { Alert } from "@/components/ui/alert";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
@@ -34,6 +38,7 @@ import { ContextEdgeEdit } from "./edge-edit";
 import type { ContextSourceSelection } from "./selection";
 import { ContextSourceDrafts } from "./source-model";
 import { ContextSelectedDetail } from "./source-detail";
+import { ContextCompactionGate } from "./compaction";
 
 const windows = [16384, 32768, 65536, 131072, 200000, 1000000].map((value) => ({
   value: String(value),
@@ -58,10 +63,21 @@ function ContextBody({
   const [reviewEpoch, setReviewEpoch] = useState(0);
   const [writeModel, setWriteModel] = useState(() => new ContextEdgeEdit());
   const [sourceDrafts] = useState(() => new ContextSourceDrafts());
+  const [compactionTarget, setCompactionTarget] = useState<string | null>(null);
+  const closeCompaction = useCallback(() => setCompactionTarget(null), []);
   const writeState = useSyncExternalStore(
     writeModel.subscribe,
     writeModel.getSnapshot,
     writeModel.getSnapshot,
+  );
+  const compaction = useMemo(
+    () => ({
+      disabled: !active || writeState.busy || writeState.blocked || !selection?.nodeId,
+      open() {
+        if (selection?.nodeId) setCompactionTarget(selection.nodeId);
+      },
+    }),
+    [active, selection, writeState.busy, writeState.blocked],
   );
   useLayoutEffect(() => (active ? writeModel.activate() : undefined), [active, writeModel]);
   const compact = useIsCompactFormFactor();
@@ -167,37 +183,18 @@ function ContextBody({
   const contentVisible = report.status === "success";
   const controls = (
     <>
-      <SettingsSection
-        title="Context Management"
-        info="Fixed occupancy is different from conversation usage or spend. Exact text still uses an estimated token count; provider-hidden inputs are unknown, never zero."
-      >
-        <SettingsCard>
-          <SettingsSelect
-            label="Inspect"
-            value={agentId}
-            options={options}
-            onValueChange={chooseAgent}
-            disabled={writeState.busy}
-          />
-          <SettingsSelect
-            label="Window for budget estimate"
-            value={windowTokens}
-            options={windows}
-            onValueChange={chooseWindow}
-            disabled={writeState.busy}
-          />
-        </SettingsCard>
-        <View style={styles.actions}>
-          <Button
-            variant="outline"
-            size="sm"
-            onPress={refresh}
-            disabled={report.isFetching || writeState.busy}
-          >
-            {report.isFetching ? "Refreshing..." : "Refresh context"}
-          </Button>
-        </View>
-      </SettingsSection>
+      <ContextControls
+        agentId={agentId}
+        windowTokens={windowTokens}
+        options={options}
+        windows={windows}
+        chooseAgent={chooseAgent}
+        chooseWindow={chooseWindow}
+        refresh={refresh}
+        fetching={report.isFetching}
+        busy={writeState.busy}
+        compaction={compaction}
+      />
       <ContextReadStatus
         notice={notice}
         agentError={agents.error}
@@ -236,16 +233,31 @@ function ContextBody({
       onChanged={changed}
     />
   ) : null;
+  const layout = (
+    <ContextLayout compact={compact}>
+      <>
+        {controls}
+        {!compact || !selection ? tree : null}
+      </>
+      {!compact || selection ? detail : null}
+    </ContextLayout>
+  );
   return (
     <View style={styles.page}>
       <ContextWriteFeedback state={writeState} />
-      <ContextLayout compact={compact}>
-        <>
-          {controls}
-          {!compact || !selection ? tree : null}
-        </>
-        {!compact || selection ? detail : null}
-      </ContextLayout>
+      <ContextCompactionGate
+        scope={scope}
+        selectedId={compactionTarget}
+        report={report.data}
+        active={active}
+        writeModel={writeModel}
+        writeState={writeState}
+        onClose={closeCompaction}
+        onChanged={changed}
+        onReviewed={refresh}
+      >
+        {layout}
+      </ContextCompactionGate>
     </View>
   );
 }

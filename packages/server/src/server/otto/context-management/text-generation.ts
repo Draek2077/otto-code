@@ -1,0 +1,50 @@
+import { generateProviderContextText } from "@getpaseo/plugin/server/otto-openai";
+import { getStructuredAgentResponse } from "../../agent/agent-response-loop.js";
+import type { StructuredTextGeneration } from "../../session/checkout/git-metadata-generator.js";
+
+export interface ContextTextGenerationPorts {
+  providerOwner(provider: string): string | undefined;
+  invoke(pluginId: string, method: string, input: unknown): Promise<unknown>;
+  candidates(cwd: string): Promise<{ provider: string; model?: string }[]>;
+}
+/** Only this owned error carries user-safe recovery copy across the generation boundary. */
+export class ContextTextGenerationUnavailable extends Error {}
+/** Use a provider-owned text-only operation. Never fall through to a normal tool-capable agent session. */
+export function createContextTextGeneration(
+  ports: ContextTextGenerationPorts,
+  selection?: { provider: string; model: string },
+): StructuredTextGeneration {
+  return {
+    async generate(request) {
+      const candidates = selection ? [selection] : await ports.candidates(request.cwd);
+      for (const candidate of candidates) {
+        const owner = ports.providerOwner(candidate.provider);
+        if (!owner) continue;
+        try {
+          return await getStructuredAgentResponse({
+            prompt: request.prompt,
+            schema: request.schema,
+            schemaName: request.schemaName,
+            maxRetries: 2,
+            caller: async (prompt) => {
+              const result = generateProviderContextText.output.parse(
+                await ports.invoke(owner, generateProviderContextText.name, {
+                  providerId: candidate.provider,
+                  model: candidate.model,
+                  prompt,
+                }),
+              );
+              if (!result.ok) throw new Error(result.error.message);
+              return result.value.text;
+            },
+          });
+        } catch {
+          /* The caller receives bounded recovery copy, never provider stderr or credentials. */
+        }
+      }
+      throw new ContextTextGenerationUnavailable(
+        "Tool-free proposal generation is unavailable for this selection. Choose an available OpenAI Compatible API or Brain model; normal CLI agent sessions are not used as a substitute.",
+      );
+    },
+  };
+}

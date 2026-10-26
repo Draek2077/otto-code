@@ -1,13 +1,69 @@
 import React, { useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import type { ContextReport } from "@getpaseo/plugin/otto/context-management";
-import { SettingsCard, SettingsRow, SettingsSection } from "@/components/settings";
+import { SettingsCard, SettingsRow, SettingsSection, SettingsSelect } from "@/components/settings";
 import { Alert } from "@/components/ui/alert";
 import { styles } from "./styles";
 import { Button } from "@/components/ui/button";
 import type { ContextEdgeEditState } from "./edge-edit";
 import type { ContextSourceSelection } from "./selection";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Bot } from "lucide-react-native";
+export function ContextControls(props: {
+  agentId: string;
+  windowTokens: string;
+  options: { value: string; label: string }[];
+  windows: { value: string; label: string }[];
+  busy: boolean;
+  fetching: boolean;
+  chooseAgent(value: string): void;
+  chooseWindow(value: string): void;
+  refresh(): Promise<void>;
+  compaction: { disabled: boolean; open(): void };
+}) {
+  return (
+    <SettingsSection
+      title="Context Management"
+      info="Fixed occupancy is different from conversation usage or spend. Exact text still uses an estimated token count; provider-hidden inputs are unknown, never zero."
+    >
+      <SettingsCard>
+        <SettingsSelect
+          label="Inspect"
+          value={props.agentId}
+          options={props.options}
+          onValueChange={props.chooseAgent}
+          disabled={props.busy}
+        />
+        <SettingsSelect
+          label="Window for budget estimate"
+          value={props.windowTokens}
+          options={props.windows}
+          onValueChange={props.chooseWindow}
+          disabled={props.busy}
+        />
+      </SettingsCard>
+      <View style={styles.actions}>
+        <Button
+          variant="outline"
+          size="sm"
+          onPress={props.refresh}
+          disabled={props.fetching || props.busy}
+        >
+          {props.fetching ? "Refreshing..." : "Refresh context"}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          leftIcon={Bot}
+          onPress={props.compaction.open}
+          disabled={props.compaction.disabled}
+        >
+          Compact with AI
+        </Button>
+      </View>
+    </SettingsSection>
+  );
+}
 export function ContextWriteFeedback({ state }: { state: ContextEdgeEditState }) {
   if (!state.busy && !state.error && !state.saved) return null;
   return (

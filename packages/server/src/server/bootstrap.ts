@@ -245,6 +245,8 @@ import { createHostIntegrations } from "../services/otto/integrations/host.js"; 
 import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OTTO(knowledge)
 import { contextAgents } from "./otto/context-management/agents.js"; // OTTO(context-management)
 import { ContextManagementService } from "./otto/context-management/host.js"; // OTTO(context-management)
+import { createContextTextGeneration } from "./otto/context-management/text-generation.js"; // OTTO(context-compaction): provider-owned, tool-free generation only.
+import { resolveStructuredGenerationProviders } from "./agent/structured-generation-providers.js"; // OTTO(context-compaction): reuse canonical model selection without launching a normal agent.
 import { nativeContextInspector } from "./otto/context-management/native-host.js"; // OTTO(context-management): read-only native conventions.
 import { createKnowledgeGenerationSource } from "./otto/project-knowledge/generation.js"; // OTTO(knowledge): use the existing provider-neutral generation boundary.
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
@@ -1042,6 +1044,20 @@ export async function createPaseoDaemon(
     }), // OTTO(context-management): no provider launch; only discovery path fields leave the adapter.
     providerOwner: (id) => pluginRuntime.ottoProviderOwner(id),
     invoke: (id, method, input) => pluginRuntime.invokePluginRpc(id, method, input),
+    generation: (selection) =>
+      createContextTextGeneration(
+        {
+          providerOwner: (id) => pluginRuntime.ottoProviderOwner(id),
+          invoke: (id, method, input) => pluginRuntime.invokePluginRpc(id, method, input),
+          candidates: (cwd) =>
+            resolveStructuredGenerationProviders({
+              cwd,
+              providerSnapshotManager,
+              daemonConfig: { metadataGeneration: daemonConfigStore.get().metadataGeneration },
+            }),
+        },
+        selection,
+      ), // OTTO(context-compaction): API/Brain providers cannot expose tools or create a chat here.
   }); // OTTO(context-management): no reads, watches or writes during registration.
   knowledgeGeneration.initialize({
     agentManager,

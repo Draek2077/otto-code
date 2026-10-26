@@ -181,3 +181,78 @@ export type ContextCategory = z.infer<typeof ContextCategorySchema>;
 export type ContextFinding = z.infer<typeof ContextFindingSchema>;
 export type ContextFixOutcome = z.infer<typeof ContextFixOutcomeSchema>;
 export type ContextSourceFile = z.infer<typeof ContextSourceFileSchema>;
+
+// OTTO(context-compaction): rewritable documents and read-only references are separate, revision-pinned sets.
+const refinementIds = z.array(z.string().min(1)).min(1).max(12);
+const refinementReference = z.object({
+  nodeId: z.string(),
+  label: z.string(),
+  revision: z.string(),
+  characters: z.number().int().nonnegative(),
+});
+export const ContextRefinementSetSchema = z.object({
+  documents: z.array(ContextSourceFileSchema).min(1).max(12),
+  references: z.array(refinementReference).max(12),
+  omittedReferences: z.number().int().nonnegative(),
+});
+export const readContextRefinementSet = defineRpc({
+  name: "context.refinement.read.request",
+  input: ContextSelectionSchema.extend({
+    nodeIds: refinementIds,
+    referenceNodeIds: z.array(z.string().min(1)).max(256),
+  }).strict(),
+  output: contextResult(ContextRefinementSetSchema),
+});
+const refinementDocument = z
+  .object({
+    nodeId: z.string().min(1),
+    expectedRevision: z.string().min(1),
+    text: z.string().max(120000),
+  })
+  .strict();
+export const proposeContextRefinement = defineRpc({
+  name: "context.refinement.propose.request",
+  input: ContextSelectionSchema.extend({
+    documents: z.array(refinementDocument).min(1).max(12),
+    references: z
+      .array(z.object({ nodeId: z.string().min(1), expectedRevision: z.string().min(1) }).strict())
+      .max(12),
+    instruction: z.string().min(1).max(8000),
+    selection: z
+      .object({ provider: z.string().min(1).max(512), model: z.string().min(1).max(2048) })
+      .strict()
+      .optional(),
+  }).strict(),
+  output: contextResult(
+    z.object({
+      files: z
+        .array(z.object({ nodeId: z.string(), base: z.string(), proposal: z.string() }))
+        .max(12),
+      inputCharacters: z.number().int().nonnegative(),
+    }),
+  ),
+});
+export const applyContextRefinement = defineRpc({
+  name: "context.refinement.apply.request",
+  input: ContextSelectionSchema.extend({
+    documents: z.array(refinementDocument).min(1).max(12),
+    userApprovedSave: z.boolean(),
+    userApprovedGlobal: z.boolean(),
+  }).strict(),
+  output: contextResult(
+    z.object({
+      files: z
+        .array(
+          z.object({
+            nodeId: z.string(),
+            label: z.string(),
+            status: z.enum(["changed", "unchanged", "conflict", "unavailable"]),
+            revision: z.string().nullable(),
+            message: z.string(),
+          }),
+        )
+        .max(12),
+    }),
+  ),
+});
+export type ContextRefinementSet = z.infer<typeof ContextRefinementSetSchema>;

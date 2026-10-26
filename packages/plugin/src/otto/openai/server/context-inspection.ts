@@ -22,12 +22,51 @@ export const inspectProviderContext = defineRpc({
 export interface ContextInspectableProvider {
   id: string;
   inspectContext(sessionId: string): PreparedContext | null;
+  generateContextText?(input: { model?: string; prompt: string }): Promise<string>;
 }
+// OTTO(context-proposals): an explicit tool-free provider operation, never a normal agent session.
+export const generateProviderContextText = defineRpc({
+  name: "context.provider.generate.request",
+  input: z
+    .object({
+      providerId: z.string().min(1),
+      model: z.string().min(1).max(2048).optional(),
+      prompt: z.string().min(1).max(163840),
+    })
+    .strict(),
+  output: contextResult(z.object({ text: z.string().max(262144) })),
+});
 /** Provider subprocess owns its request snapshot. No launch, environment, auth or history is exposed. */
 export function registerProviderContext(
   server: PluginServerContext,
   providers: readonly ContextInspectableProvider[],
 ) {
+  server.handle(
+    generateProviderContextText,
+    async (input): Promise<z.input<typeof generateProviderContextText.output>> => {
+      const provider = providers.find((value) => value.id === input.providerId);
+      if (!provider?.generateContextText)
+        return {
+          ok: false,
+          error: {
+            code: "unavailable",
+            message: "This provider does not expose tool-free text generation.",
+          },
+        };
+      try {
+        return { ok: true, value: { text: await provider.generateContextText(input) } };
+      } catch {
+        return {
+          ok: false,
+          error: {
+            code: "unavailable",
+            message:
+              "The owning provider could not complete this tool-free proposal. No agent tools were available.",
+          },
+        };
+      }
+    },
+  );
   server.handle(
     inspectProviderContext,
     ({ providerId, sessionId }): z.input<typeof inspectProviderContext.output> => {

@@ -9,6 +9,9 @@ import {
   readContextReport,
   readContextSourceFile,
   saveContextSourceFile,
+  readContextRefinementSet,
+  proposeContextRefinement,
+  applyContextRefinement,
   type ContextSelection,
 } from "@getpaseo/plugin/otto/context-management";
 import {
@@ -23,6 +26,9 @@ import type { NativeContextInventory } from "./native-inventory.js";
 import { nativeContextGraph } from "./native-graph.js";
 import { applyContextFindingFixes } from "./fixes.js";
 import { currentContextFile, saveCurrentContextFile } from "./source-file.js";
+import { readRefinementSet, proposeRefinement, applyRefinement } from "./refinement.js";
+import type { ContextFileTarget } from "./source-file.js";
+import type { StructuredTextGeneration } from "../../session/checkout/git-metadata-generator.js";
 
 interface AgentPort {
   list(): ContextAgent[] | Promise<ContextAgent[]>;
@@ -42,6 +48,7 @@ export class ContextManagementService {
       agents: AgentPort;
       providerOwner(providerId: string): string | undefined;
       invoke(pluginId: string, method: string, input: unknown): Promise<unknown>;
+      generation?(selection?: { provider: string; model: string }): StructuredTextGeneration;
       nativeInspection?(
         agent: ContextAgent,
         location: { root: string; cwd: string },
@@ -138,6 +145,18 @@ export class ContextManagementService {
     return { source, node, root: current.root, home: await realpath(this.ports.home) };
   }
 
+  private async fileTargets(input: ContextSelection) {
+    const current = await this.inspection(input);
+    const home = await realpath(this.ports.home);
+    const targets = new Map<string, ContextFileTarget>();
+    const nodes = new Map(current.report.nodes.map((node) => [node.id, node]));
+    for (const [id, source] of current.graph.sources) {
+      const node = nodes.get(id);
+      if (node) targets.set(id, { root: current.root, home, source, node });
+    }
+    return { targets, root: current.root };
+  }
+
   invoke(method: string, value: unknown): Promise<unknown> | undefined {
     switch (method) {
       case readContextAgents.name:
@@ -164,6 +183,29 @@ export class ContextManagementService {
         return this.guard(async () => {
           const input = saveContextSourceFile.input.parse(value);
           return saveCurrentContextFile(await this.sourceFile(input), input);
+        });
+      case readContextRefinementSet.name:
+        return this.guard(async () => {
+          const input = readContextRefinementSet.input.parse(value);
+          const current = await this.fileTargets(input);
+          return readRefinementSet(current.targets, input.nodeIds, input.referenceNodeIds);
+        });
+      case proposeContextRefinement.name:
+        return this.guard(async () => {
+          const input = proposeContextRefinement.input.parse(value);
+          const current = await this.fileTargets(input);
+          return proposeRefinement(
+            current.targets,
+            input,
+            this.ports.generation?.(input.selection),
+            current.root,
+          );
+        });
+      case applyContextRefinement.name:
+        return this.guard(async () => {
+          const input = applyContextRefinement.input.parse(value);
+          const current = await this.fileTargets(input);
+          return applyRefinement(current.targets, input);
         });
       case readContextPreview.name:
         return this.guard(async () => {

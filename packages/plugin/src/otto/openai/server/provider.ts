@@ -16,6 +16,7 @@ import { importLegacyConversation, restoredLegacyConfig } from "./legacy-history
 import { InstructionSource } from "./instructions.js";
 import type { CompactionPolicy } from "./compaction.js";
 import type { PreparedContext } from "./context-inspection.js";
+import { generateToolFreeText } from "./text-generation.js";
 
 const capabilities = [
   "prompt.message",
@@ -35,6 +36,7 @@ type ManagedConnection = ProviderConnection & {
 type OttoProvider = ProviderRegistration & {
   retireProfile(profileId: string): Promise<void>;
   inspectContext(sessionId: string): PreparedContext | null;
+  generateContextText(input: { model?: string; prompt: string }): Promise<string>;
 };
 
 export function createOpenAiProvider(
@@ -69,6 +71,29 @@ export function createOpenAiProvider(
     id: options.id ?? "openai-compatible",
     label: options.label ?? "OpenAI Compatible API",
     description: "Use a local or hosted OpenAI-compatible Chat Completions endpoint with Otto.",
+    async generateContextText(input) {
+      const settings = await readSettings();
+      const signal = AbortSignal.timeout(settings.timeoutMs);
+      const models = await catalog.models(settings, signal);
+      const modelId = input.model ?? models.find((model) => model.isSelectable !== false)?.id;
+      if (!modelId) throw new Error("The owning provider has no available model.");
+      const reference = modelReference(modelId);
+      const profile = endpointProfiles(settings).find((entry) => entry.id === reference.profileId);
+      if (!profile) throw new Error("The selected endpoint is unavailable.");
+      if (
+        options.requireModelMetadata &&
+        !models.some((model) => model.id === modelId && model.isSelectable !== false)
+      )
+        throw new Error("The selected model is unavailable on its owning host.");
+      return generateToolFreeText({
+        model: modelId,
+        prompt: input.prompt,
+        profile,
+        models: models.filter((model) => model.metadata?.endpointProfileId === profile.id),
+        apiKey: await catalog.credential(profile),
+        transport: options.transport,
+      });
+    },
     inspectContext(sessionId) {
       for (const value of connections) {
         const context = value.inspectContext(sessionId);
