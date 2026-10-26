@@ -127,6 +127,10 @@ for (const compact of [false, true]) {
       ).toBeVisible();
       await expect(pill).toBeHidden();
     } catch (error) {
+      await writeFile(
+        testInfo.outputPath("prepared-context-health.json"),
+        JSON.stringify(prepared),
+      );
       await testInfo.attach("prepared-context-health", {
         body: JSON.stringify(prepared),
         contentType: "application/json",

@@ -15,7 +15,7 @@ interface LiveContextAgent {
   workspaceId?: string;
   cwd: string;
   config: { title?: string | null };
-  session: { id: string | null } | null;
+  session: { id: string | null; readonly ottoContextSessionId?: string } | null;
   internal?: boolean;
 }
 function project(agent: LiveContextAgent | null): ContextAgent | null {
@@ -25,7 +25,7 @@ function project(agent: LiveContextAgent | null): ContextAgent | null {
     provider: agent.provider,
     workspaceId: agent.workspaceId ?? null,
     title: agent.config.title ?? null,
-    sessionId: agent.session?.id ?? null,
+    sessionId: agent.session?.ottoContextSessionId ?? agent.session?.id ?? null,
     internal: agent.internal === true,
     cwd: agent.cwd,
   };

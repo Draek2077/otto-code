@@ -1146,6 +1146,12 @@ class PluginAgentSession implements AgentSession {
     return this.describePersistence()?.sessionId ?? this.bridge.id;
   }
 
+  // OTTO(context-management): inspection addresses the active provider connection,
+  // independently of the durable opaque handle used to restore conversation history.
+  get ottoContextSessionId(): string {
+    return this.bridge.providerId;
+  }
+
   get capabilities(): AgentCapabilityFlags {
     return agentCapabilities(this.bridge.negotiatedCapabilities);
   }

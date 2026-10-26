@@ -25,6 +25,7 @@ test("Otto fixture declarations and bounded Brain runtime tests stay in CI", () 
     "npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-knowledge-tests.json",
     "npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-brain-tests.json",
     "npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-preview-tests.json",
+    "npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-context-tests.json",
     "npm run typecheck --workspace=@getpaseo/builtin-plugins -- -p otto-kanban/tsconfig.tests.json",
   ])
     assert.ok(declarations.includes(command), `Missing fixture typecheck: ${command}`);
@@ -39,6 +40,7 @@ test("Otto fixture declarations and bounded Brain runtime tests stay in CI", () 
     "packages/server/tsconfig.otto-knowledge-tests.json",
     "packages/server/tsconfig.otto-brain-tests.json",
     "packages/server/tsconfig.otto-preview-tests.json",
+    "packages/server/tsconfig.otto-context-tests.json",
     "plugins/otto-kanban/tsconfig.tests.json",
   ]) {
     const parsed = JSON.parse(readFileSync(new URL(config, repoRoot), "utf8"));

@@ -88,6 +88,9 @@ asserts that a particular model followed the instructions. A snapshot can be
 absent before a normal turn, after session teardown, for an opaque provider, or
 when the combined system text/tool schemas exceed the 512 KiB inspection bound.
 Inspection never starts or resumes the chat to obtain a snapshot.
+Plugin inspection addresses the active provider connection's session ID. The
+opaque persistence handle remains the identity for restoring conversation
+history; it is not sent back as an active-session inspection address.
 
 The six original categories remain visible: instruction files, memory index,
 skills roster, tool schemas, Otto input and system text. Exact prepared native
