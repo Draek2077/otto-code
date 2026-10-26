@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url"; // OTTO(preview): compile the actual built-in entry, not a synthetic substitute.
 import { afterEach, describe, expect, it } from "vitest";
 import {
   compilePlugin,
@@ -11,6 +12,16 @@ import {
 
 const asarEsbuildDir = path.join("Resources", "app.asar", "node_modules", "esbuild");
 const temporaryDirectories: string[] = [];
+
+it("compiles the real Preview built-in client with its host-provided UI bridge", async () => {
+  const client = fileURLToPath(
+    new URL("../../../../../plugins/otto-browser/index.client.tsx", import.meta.url),
+  );
+  const result = await compilePlugin({ client, server: null });
+  expect(result.clientBundle).toContain("Preview Servers");
+  expect(result.clientBundle).toContain("@getpaseo/plugin/client/otto-preview");
+  expect(result.serverBundle).toBeNull();
+}); // OTTO(preview)
 
 afterEach(async () => {
   await Promise.all(
@@ -190,6 +201,7 @@ describe("plugin runtime entries", () => {
     "@getpaseo/plugin/client",
     "@getpaseo/plugin/client/ui",
     "@getpaseo/plugin/client/otto-brain", // OTTO(brain-ui): keep the renderer out of server bundles.
+    "@getpaseo/plugin/client/otto-preview", // OTTO(preview): app-only UI bridge.
   ])("rejects %s from server code", async (specifier) => {
     const entries = await createSplitPlugin();
     await writeFile(
@@ -204,6 +216,7 @@ describe("plugin runtime entries", () => {
     "@getpaseo/plugin/server/provider",
     "@getpaseo/plugin/server/acp",
     "@getpaseo/plugin/server/otto-kanban", // OTTO(kanban): no host library in clients.
+    "@getpaseo/plugin/server/otto-preview", // OTTO(preview): no execution parser in clients.
   ])("rejects %s from client code", async (specifier) => {
     const entries = await createSplitPlugin();
     await writeFile(

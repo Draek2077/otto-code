@@ -6,6 +6,7 @@ export const PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS = [
   // OTTO(brain-ui): renderer injection, kept out of the general plugin graphics API.
   "@getpaseo/plugin/client/otto-brain",
   "@getpaseo/plugin/client/otto-knowledge", // OTTO(knowledge): app-owned Markdown/editor only.
+  "@getpaseo/plugin/client/otto-preview", // OTTO(preview): trusted app-owned workspace controls.
 ] as const;
 
 const PLUGIN_SERVER_ONLY_SDK_SPECIFIERS = [
@@ -17,6 +18,7 @@ const PLUGIN_SERVER_ONLY_SDK_SPECIFIERS = [
   "@getpaseo/plugin/server/otto-openai",
   "@getpaseo/plugin/server/otto-brain",
   "@getpaseo/plugin/server/otto-kanban", // OTTO(kanban): injected host library, never client transport.
+  "@getpaseo/plugin/server/otto-preview", // OTTO(preview): launch parser and provider approval stay Node-only.
 ] as const;
 
 export const PLUGIN_SDK_SPECIFIERS = [
@@ -26,6 +28,7 @@ export const PLUGIN_SDK_SPECIFIERS = [
   "@getpaseo/plugin/otto/kanban", // OTTO(kanban): shared structural contracts only.
   "@getpaseo/plugin/otto/atlassian-settings", // OTTO(integration): account status/explicit write intents only.
   "@getpaseo/plugin/otto/project-knowledge", // OTTO(knowledge): client-safe scoped contracts.
+  "@getpaseo/plugin/otto/preview", // OTTO(preview): structural requests and responses only.
   ...PLUGIN_SERVER_ONLY_SDK_SPECIFIERS,
   ...PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS,
 ] as const;
