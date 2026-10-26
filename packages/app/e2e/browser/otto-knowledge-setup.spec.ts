@@ -80,7 +80,7 @@ async function seedRetained(project: SeededWorkspace) {
 
 for (const compact of [false, true]) {
   for (const choice of ["new", "retained", "repository"] as const) {
-    test(`Project Knowledge ${choice} storage setup preserves owning-host identity (${compact ? "compact" : "wide"})`, async ({
+    test(`Knowledge ${choice} storage setup preserves owning-host identity (${compact ? "compact" : "wide"})`, async ({
       page,
     }, testInfo) => {
       if (compact) await page.setViewportSize({ width: 390, height: 844 });

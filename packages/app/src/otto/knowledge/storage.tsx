@@ -102,7 +102,7 @@ export function KnowledgeStorage({
     onChanged();
   }, [onChanged]);
   return (
-    <SettingsSection title="Project Knowledge settings">
+    <SettingsSection title="Knowledge settings">
       <SettingsCard>
         <SettingsRow label="Owning project" hint={settings.label} />
         <SettingsRow label="Current store" hint={`${settings.location}: ${settings.path}`} />

@@ -51,7 +51,7 @@ async function proveHostDefaults(input: {
     await expect(settingsButton).toBeVisible();
     await settingsButton.click();
     await page.getByTestId("settings-host-section-plugins").click();
-    await page.getByRole("button", { name: "Configure Project Knowledge", exact: true }).click();
+    await page.getByRole("button", { name: "Configure Knowledge", exact: true }).click();
     const form = page.getByTestId("knowledge-host-defaults");
     // Host defaults must be usable without guessing or first selecting a project.
     await expect(form).toBeVisible();
@@ -307,7 +307,7 @@ async function proveFormatConversion(
 }
 
 for (const compact of [false, true]) {
-  test(`Project Knowledge workspace menu, editing, MCP-shared revisions and explicit storage (${compact ? "compact" : "wide"})`, async ({
+  test(`Knowledge workspace menu, editing, MCP-shared revisions and explicit storage (${compact ? "compact" : "wide"})`, async ({
     page,
     e2eWorker,
   }, testInfo) => {
@@ -334,7 +334,7 @@ for (const compact of [false, true]) {
           .getByTestId(`sidebar-workspace-kebab-${getServerId()}:${project.workspaceId}`)
           .click();
       } else await openWorkspaceContextMenu(page, project.workspaceId);
-      await page.getByText("Open Project Knowledge", { exact: true }).click();
+      await page.getByText("Open Knowledge", { exact: true }).click();
       const surface = page.getByTestId("otto-knowledge-page").filter({ visible: true });
       await expect(surface).toBeVisible();
       await surface.getByRole("button", { name: "Initialize roots", exact: true }).click();

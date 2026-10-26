@@ -15,9 +15,9 @@ export function KnowledgeSettingsEntry({ serverId }: { serverId: string }) {
   if (!plugin?.settingsScreens.some((screen) => screen.id === "knowledge")) return null;
   return (
     <SettingsCard>
-      <SettingsRow label="Project Knowledge">
+      <SettingsRow label="Knowledge">
         <Button variant="outline" size="sm" onPress={open}>
-          Configure Project Knowledge
+          Configure Knowledge
         </Button>
       </SettingsRow>
     </SettingsCard>

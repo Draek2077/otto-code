@@ -20,7 +20,7 @@ export async function openWorkspaceKnowledge(input: {
       .getByTestId(`sidebar-workspace-kebab-${getServerId()}:${input.workspaceId}`)
       .click();
   } else await openWorkspaceContextMenu(input.page, input.workspaceId);
-  await input.page.getByText("Open Project Knowledge", { exact: true }).click();
+  await input.page.getByText("Open Knowledge", { exact: true }).click();
   const surface = input.page.getByTestId("otto-knowledge-page").filter({ visible: true });
   await expect(surface).toBeVisible();
   return surface;

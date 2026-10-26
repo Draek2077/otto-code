@@ -1,5 +1,5 @@
 {
   "id": "otto-project-knowledge",
-  "name": "Otto Project Knowledge",
+  "name": "Otto Knowledge",
   "requirements": { "paseo": ">=0.12.0" }
 }

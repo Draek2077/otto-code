@@ -10,7 +10,7 @@ async function openKnowledge(input: { page: Page; compact: boolean }) {
   if (input.compact)
     await input.page.getByRole("button", { name: "Open menu", exact: true }).first().click();
   await input.page
-    .getByText("Project Knowledge", { exact: true })
+    .getByText("Knowledge", { exact: true })
     .filter({ visible: true })
     .first()
     .click();
@@ -23,7 +23,7 @@ async function chooseProject(input: { page: Page; label: string }) {
   await input.page.getByRole("menuitem", { name: input.label, exact: true }).click();
 }
 for (const compact of [false, true]) {
-  test(`Project Knowledge retains scoped drafts across project changes and route departure (${compact ? "compact" : "wide"})`, async ({
+  test(`Knowledge retains scoped drafts across project changes and route departure (${compact ? "compact" : "wide"})`, async ({
     page,
   }, testInfo) => {
     if (compact) await page.setViewportSize({ width: 390, height: 844 });

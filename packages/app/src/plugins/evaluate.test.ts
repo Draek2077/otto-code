@@ -32,7 +32,7 @@ describe("evaluatePluginClientBundle", () => {
   it("loads the trusted Knowledge bridge without eagerly importing its Markdown surface", () => {
     const source = bundle(`
       const ui = require("@getpaseo/plugin/client/otto-knowledge");
-      plugin.addWorkspacePanel({id:"knowledge",title:"Project Knowledge",icon:"BookOpen",context:"workspace",Component:ui.ProjectKnowledgeWorkspace});
+      plugin.addWorkspacePanel({id:"knowledge",title:"Knowledge",icon:"BookOpen",context:"workspace",Component:ui.ProjectKnowledgeWorkspace});
     `);
     const plugin = evaluatePluginClientBundle("otto-project-knowledge", source);
     expect(plugin.workspacePanels.map(({ id, context }) => ({ id, context }))).toEqual([

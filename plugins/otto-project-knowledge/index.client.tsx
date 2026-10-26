@@ -11,7 +11,7 @@ function KnowledgeSidebar({ currentScreen, openScreen }: PluginSidebarItemProps)
   return (
     <SidebarRow
       icon="BookOpen"
-      label="Project Knowledge"
+      label="Knowledge"
       active={currentScreen?.screenId === "knowledge"}
       onPress={open}
     />
@@ -21,30 +21,30 @@ export default function contribute(client: PluginClientContext) {
   const cleanups = [
     client.addWorkspacePanel({
       id: "knowledge",
-      title: "Project Knowledge",
+      title: "Knowledge",
       icon: "BookOpen",
       context: "workspace",
       Component: ProjectKnowledgeWorkspace,
     }),
     client.addScreen({
       id: "knowledge",
-      title: "Project Knowledge",
+      title: "Knowledge",
       Component: ProjectKnowledgeScreen,
     }),
     client.addSettingsScreen({
       id: "knowledge",
-      title: "Project Knowledge",
+      title: "Knowledge",
       icon: "BookOpen",
       Component: ProjectKnowledgeSettings,
     }),
     client.addSidebarHeaderItem({
       id: "knowledge",
-      title: "Project Knowledge",
+      title: "Knowledge",
       Component: KnowledgeSidebar,
     }),
     client.addCommandCenterItem({
       id: "open-knowledge",
-      title: "Open Project Knowledge",
+      title: "Open Knowledge",
       icon: "BookOpen",
       context: "workspace",
       onSelect({ openPanel }) {

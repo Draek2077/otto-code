@@ -1,9 +1,9 @@
-# Otto Project Knowledge
+# Otto Knowledge
 
-Project Knowledge uses one daemon-owned Markdown service in
+Knowledge uses one daemon-owned Markdown service in
 `packages/server/src/server/otto/project-knowledge/`. The bundled
 `otto-project-knowledge` plugin registers a workspace panel, a browsing screen,
-host settings and an Open Project Knowledge command. Workspace right-click and
+host settings and an Open Knowledge command. Workspace right-click and
 action menus open the panel for the clicked workspace, even when another
 workspace is active. App-owned forms and Markdown rendering remain in
 `packages/app/src/otto/knowledge/` behind a narrow typed presentation bridge.
@@ -272,7 +272,7 @@ after recovery; a later write requires a fresh article read and explicit intent.
 
 ## Explicit storage changes
 
-Project Knowledge settings offer Repository or Host storage. A confirmed change
+Knowledge settings offer Repository or Host storage. A confirmed change
 locks both stores in deterministic order, inventories the payload, copies bytes,
 verifies source and destination, then publishes the project override under the
 shared project-registry revision queue. The source is retained as recovery data.

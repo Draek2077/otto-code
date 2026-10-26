@@ -195,7 +195,7 @@ function KnowledgeBody({
         <KnowledgeLockRecovery scope={scope} active={active} />
       </>
     );
-  if (!catalog.data) return <SettingsRow label="Loading Project Knowledge..." />;
+  if (!catalog.data) return <SettingsRow label="Loading Knowledge..." />;
   if (settingsOnly)
     return (
       <>

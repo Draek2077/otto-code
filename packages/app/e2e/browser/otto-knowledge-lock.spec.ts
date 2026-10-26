@@ -12,7 +12,7 @@ import { callKnowledgeMcp, openWorkspaceKnowledge } from "../support/helpers/ott
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
 for (const compact of [false, true]) {
-  test(`Project Knowledge explicit lock recovery retains draft and original bytes (${compact ? "compact" : "wide"})`, async ({
+  test(`Knowledge explicit lock recovery retains draft and original bytes (${compact ? "compact" : "wide"})`, async ({
     page,
   }, testInfo) => {
     if (compact) await page.setViewportSize({ width: 390, height: 844 });

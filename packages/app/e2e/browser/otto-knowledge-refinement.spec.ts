@@ -37,7 +37,7 @@ function record() {
   return `---\nid: reviewed-page\nkind: requirement\ntitle: Reviewed page\nstatus: confirmed\ntags: []\ncreated_at: "2026-01-01T00:00:00.000Z"\nupdated_at: "2026-01-01T00:00:00.000Z"\nfuture: retained\n---\n# Reviewed page\n\n<!-- compiled_truth -->\n\n${original}\n\n## Timeline\n\n- time: "2026-01-01T00:00:00.000Z"\n  kind: evidence\n  summary: Original evidence\n`;
 }
 for (const compact of [false, true]) {
-  test(`Project Knowledge reviews rendered passages and applies only kept revision-pinned changes (${compact ? "compact" : "wide"})`, async ({
+  test(`Knowledge reviews rendered passages and applies only kept revision-pinned changes (${compact ? "compact" : "wide"})`, async ({
     page,
   }, testInfo) => {
     if (compact) await page.setViewportSize({ width: 390, height: 844 });

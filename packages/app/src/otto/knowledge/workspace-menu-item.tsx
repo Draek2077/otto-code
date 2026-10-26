@@ -42,12 +42,12 @@ export function KnowledgeWorkspaceMenuItem({
   if (surface === "context")
     return (
       <ContextMenuItem onSelect={open} leading={leading}>
-        Open Project Knowledge
+        Open Knowledge
       </ContextMenuItem>
     );
   return (
     <DropdownMenuItem onSelect={open} leading={leading}>
-      Open Project Knowledge
+      Open Knowledge
     </DropdownMenuItem>
   );
 }

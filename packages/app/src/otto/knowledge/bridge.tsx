@@ -18,11 +18,11 @@ const Screen = lazy(async () => ({
 const Settings = lazy(async () => ({
   default: (await import("./plugin-ui")).ProjectKnowledgeSettings,
 }));
-const loading = <SettingsRow label="Loading Project Knowledge..." />;
+const loading = <SettingsRow label="Loading Knowledge..." />;
 function Available({ hostId, children }: { hostId: string; children: ReactNode }) {
   // COMPAT(ottoKnowledge): added v0.10.0; remove after 2027-04-25 when host floor >= v0.10.0.
   const available = useHostFeature(hostId, "ottoKnowledge");
-  return available ? children : <SettingsRow label="Update the host to use Project Knowledge." />;
+  return available ? children : <SettingsRow label="Update the host to use Knowledge." />;
 }
 export function ProjectKnowledgeWorkspace(props: PluginWorkspacePanelProps) {
   return (

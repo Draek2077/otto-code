@@ -59,6 +59,10 @@ Authoritative terminology. UI label wins. Don't invent synonyms; use what's here
 - **Conflict** — Two distinct senses; do NOT use the bare word in UI copy without qualifying which: (a) **stale-write conflict** on `paseo.json` ("Config changed on disk", code `stale_project_config`, `packages/app/src/screens/project-settings-screen.tsx:593`); (b) **git merge conflict** (no current UI string).
 - **Product discussion** — Where non-bug product talk goes: [GitHub Discussions](https://github.com/getpaseo/paseo/discussions) and `#product` in Discord. Covers workflows, features, and product direction. The container term; the ask inside it is always a **workflow** — what you're doing, how you do it today, where Paseo gets in the way. Issues are bugs only. Forbidden: "Feature request" as a Paseo surface, label, or invitation; the phrase is only used when answering someone who arrived with it. Don't invent "feature discussion", "idea", or "workflow thread" as synonyms. See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
+<!-- OTTO(knowledge): product label; stable API and storage identifiers remain unchanged. -->
+
+- **Knowledge**: The project-scoped Markdown records, roots, review tools, and settings. Use "Knowledge" in navigation, headings, workspace actions, and commands; use "Open Knowledge" for its opening action. Internal `otto-project-knowledge` identifiers and existing storage paths remain unchanged.
+
 ## Inconsistencies (documented, not papered over)
 
 - CLI `--host <host>` description `"Daemon host target"` (`packages/cli/src/utils/command-options.ts:5`) blurs daemon/host; the app keeps them distinct.

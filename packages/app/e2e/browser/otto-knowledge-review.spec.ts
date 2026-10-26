@@ -30,7 +30,7 @@ function article(input: {
   return `---\n${header}\n---\n# ${meta.title}\n\n<!-- compiled_truth -->\n\n${input.statement}\n\n## Timeline\n\n- time: "2000-01-01T00:00:00.000Z"\n  kind: evidence\n  summary: Original canonical markdown evidence\n`;
 }
 for (const compact of [false, true]) {
-  test(`Project Knowledge counted article Review signals stay read-only (${compact ? "compact" : "wide"})`, async ({
+  test(`Knowledge counted article Review signals stay read-only (${compact ? "compact" : "wide"})`, async ({
     page,
   }, testInfo) => {
     if (compact) await page.setViewportSize({ width: 390, height: 844 });
