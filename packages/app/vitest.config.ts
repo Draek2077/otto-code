@@ -79,6 +79,8 @@ export default defineConfig({
   // so it scans the native files and dies on imports react-native-web has no answer for.
   // Unbundled, the same imports go through the resolver below and land on the web files.
   optimizeDeps: {
+    // OTTO(browser-actions): crawl rendered fixtures before execution; late CJS discovery reloads running tests.
+    entries: ["src/**/*.browser.{test,spec}.{ts,tsx}"],
     // Bundle the CJS dependencies of the excluded gesture-handler package for the browser.
     include: [
       "react/jsx-runtime",

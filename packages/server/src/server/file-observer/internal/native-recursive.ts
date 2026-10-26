@@ -716,7 +716,9 @@ class NativeRecursiveBackend implements ObservationBackend {
       })
       .catch((error: unknown) => {
         if (isMissingPathError(error)) {
-          this.host.queueEvent("delete", path);
+          // OTTO(observer-delete): consume the same inventory as audits. Otherwise a missing
+          // classification reports a delete but leaves the next shallow scan to report it again.
+          this.removeSubtree(path, true);
           return;
         }
         this.host.fail(toError(error));

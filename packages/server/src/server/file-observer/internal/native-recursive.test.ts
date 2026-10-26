@@ -80,6 +80,60 @@ test.each(["existing", "new"])(
   },
 );
 
+// OTTO(observer-delete): classification and audit must consume one shared deletion identity.
+test("a missing classification consumes inventory before a later shallow deletion scan", async () => {
+  const root = await mkdtemp(join(tmpdir(), "native-delete-once-"));
+  const file = join(root, "tracked.txt");
+  await writeFile(file, "before");
+  const paths = createObserverPaths(process.platform);
+  const notifications = new EventEmitter();
+  const events: FileChange[] = [];
+  let active = true;
+  const observer = createFileObserver();
+  const backend = createNativeRecursiveBackend(
+    {
+      root,
+      metrics: observer.getDiagnostics(),
+      isActive: () => active,
+      isIgnored: () => false,
+      isPathInside: paths.isInside,
+      queueEvent: (type, path) => events.push({ type, path }),
+      fail: (error) => {
+        throw error;
+      },
+    },
+    paths,
+    (_root, listener) => {
+      notifications.on("change", listener);
+      return {
+        close: () => notifications.removeAllListeners(),
+        on: (event, onError) => notifications.on(event, onError),
+      };
+    },
+  );
+  try {
+    await backend.start();
+    await rm(file);
+    notifications.emit("change", "rename", file);
+    await expect
+      .poll(() => events.filter((event) => event.type === "delete"))
+      .toEqual([{ type: "delete", path: file }]);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    notifications.emit("change", "change", root);
+    await vi.advanceTimersByTimeAsync(8000);
+    vi.useRealTimers();
+    expect(events.filter((event) => event.type === "delete")).toEqual([
+      { type: "delete", path: file },
+    ]);
+  } finally {
+    vi.useRealTimers();
+    active = false;
+    await backend.close();
+    await observer.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a file announced only as changed remains visible to coalesced deletion scans", async () => {
   const root = await mkdtemp(join(tmpdir(), "native-change-only-"));
   const directory = join(root, "nested");
