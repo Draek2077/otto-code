@@ -1,4 +1,5 @@
 import { stat } from "node:fs/promises";
+import { ottoBrowserCapabilities } from "./otto/browser/capabilities.js"; // OTTO(browser-history)
 // OTTO(protocol): preserve Otto 0.9 clients without renaming Paseo internals.
 import {
   encodeOttoServerMessage,
@@ -1821,6 +1822,7 @@ export class VoiceAssistantWebSocketServer {
         ottoKanban: this.pluginRuntime?.supportsBuiltinRpc?.("otto-kanban") === true, // OTTO(kanban)
         ottoKnowledge: knowledgeAvailable, // OTTO(knowledge)
         ottoContextManagement: knowledgeAvailable, // OTTO(context-management): daemon-owned inspection and conditional edits.
+        ...ottoBrowserCapabilities(this.pluginRuntime), // OTTO(browser-history)
         ottoKnowledgeRefinement: knowledgeAvailable, // OTTO(knowledge)
         usageSources: true,
         ownedSubscriptions: true,

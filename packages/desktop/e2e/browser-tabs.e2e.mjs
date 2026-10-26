@@ -14,6 +14,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { chromium } from "playwright";
 import { runAppearanceFontSizeRegression } from "./appearance-font-size.electron.mjs";
 import { runSettingsMemoryRegression } from "./settings-memory.electron.mjs";
+import { runBrowserHistoryRegression } from "./otto-browser-history.electron.mjs"; // OTTO(browser-history): real guest, daemon, native confirmation and persistent history.
 
 import { seedPluginLinks, runPluginLinksRegression } from "./plugin-links.electron.mjs";
 
@@ -1237,8 +1238,23 @@ async function main() {
       typingAgent,
       artifactDir,
     });
+    const history = await runBrowserHistoryRegression({
+      page,
+      execute: (name, args) => callBrowserTool(client, name, args),
+      browserId: report.browserId,
+      targetUrl: target.url,
+      home: paseoHome,
+      projectId: `project-${workspaceIds[0]}`,
+      inspectorPort,
+      artifactDir,
+    }); // OTTO(browser-history)
     const pluginLinks = await checkPluginLinks();
-    writeJson(path.join(artifactDir, "result.json"), { ...report, settingsMemory, pluginLinks });
+    writeJson(path.join(artifactDir, "result.json"), {
+      ...report,
+      settingsMemory,
+      pluginLinks,
+      history,
+    });
     console.log(
       `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, inactive capture, focus continuity, list, snapshot, click, local-page selectors passed.`,
     );

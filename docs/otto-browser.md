@@ -67,3 +67,24 @@ The pure action/search fixtures run without a browser. The separate
 actual UI and guest DOM in Chromium; the external-opener port is injected so
 those tests never open an operating-system browser. Real Electron focus,
 compositor and external-opener acceptance remain separate boundaries.
+
+## Browsing history
+
+Desktop address fields suggest up to ten matching URLs or titles from this
+project on the selected host. Arrow keys choose a suggestion, Enter navigates,
+and Escape dismisses it while preserving the address draft. Completed top-level
+page state records a visit; iframe navigation does not replace the address.
+Hidden browser surfaces do not keep suggestion overlays mounted.
+
+The daemon resolves the project from the workspace and owns the history file.
+Its `browser-history/<SHA-256 project id>.json` path and record format preserve
+Otto 0.9 history. Each project retains at most 1,000 distinct HTTP(S) URLs in
+most-recent order. URL credentials are stripped. Unknown stored fields survive
+updates but are not returned to clients. Corrupt or oversized files are reported
+and preserved instead of reset. Writes and clear operations serialize per file.
+
+More offers Clear browsing history with an explicit project/host confirmation.
+Cookies and sign-in sessions remain in the existing browser profile. Failure is
+visible, and a new explicit attempt can recover; there is no automatic clear
+retry. A failed visit write also exposes an explicit retry. History requires the
+host's `ottoBrowserHistory` capability and uses authenticated plugin RPCs.

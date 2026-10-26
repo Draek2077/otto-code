@@ -36,6 +36,7 @@ import * as Clipboard from "expo-clipboard";
 import { Button } from "@/components/ui/button";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useOttoBrowserActions } from "@/otto/browser/actions.electron"; // OTTO(browser-actions)
+import { useOttoBrowserHistory } from "@/otto/browser/history.electron"; // OTTO(browser-history)
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import {
@@ -780,6 +781,7 @@ export function BrowserPane({
       syncNavigationState();
     };
     const handleNavigate = (event: Event) => {
+      if ((event as Event & { isMainFrame?: boolean }).isMainFrame === false) return; // OTTO(browser-history): iframe changes cannot become top-level visits or address-bar state.
       const nextUrl =
         typeof (event as Event & { url?: unknown }).url === "string"
           ? ((event as Event & { url?: string }).url ?? "")
@@ -1425,12 +1427,22 @@ export function BrowserPane({
   }, []);
 
   // OTTO(browser-actions): missing actions use the existing pane's retained guest.
+  const history = useOttoBrowserHistory({
+    serverId,
+    workspaceId,
+    page: browser,
+    query: draftUrl,
+    inputRef: urlInputRef,
+    active: isPresented && Boolean(isInteractive),
+    onNavigate: navigate,
+  }); // OTTO(browser-history): native and SPA visits share the canonical browser state.
   const ottoActions = useOttoBrowserActions({
     browserId,
     pageUrl: browser?.url ?? null,
     active: isPresented && Boolean(isInteractive),
     guestRef: webviewRef,
     triggerStyle: baseIconButtonStyle,
+    extraActions: history.menuItem, // OTTO(browser-history)
   });
 
   if (!isElectronRuntime()) {
@@ -1488,6 +1500,9 @@ export function BrowserPane({
             style={urlInputStyle}
             initialValue={draftUrl}
           />
+          {
+            history.suggestions /* OTTO(browser-history): existing address input, shared overlay primitives. */
+          }
         </View>
         <View style={styles.chromeRight}>
           <DeviceSizeMenu
@@ -1541,6 +1556,7 @@ export function BrowserPane({
       </View>
       {ottoActions.findBar}
       {ottoActions.error}
+      {history.feedback /* OTTO(browser-history) */}
       {browser?.lastError ? (
         <View style={styles.errorRow}>
           <Text numberOfLines={1} style={errorTextStyle}>

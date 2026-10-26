@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+  type ReactNode,
+} from "react";
 import { Text, type StyleProp, type ViewStyle } from "react-native";
 import { Ellipsis, ExternalLink, Search } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -33,12 +41,14 @@ export function useOttoBrowserActions({
   active,
   guestRef,
   triggerStyle,
+  extraActions,
 }: {
   browserId: string;
   pageUrl: string | null;
   active: boolean;
   guestRef: RefObject<ActionsGuest | null>;
   triggerStyle: (state: { hovered?: boolean; pressed?: boolean }) => StyleProp<ViewStyle>;
+  extraActions?: ReactNode;
 }) {
   const [findOpen, setFindOpen] = useState(false),
     [focusRequest, setFocusRequest] = useState(0);
@@ -129,6 +139,7 @@ export function useOttoBrowserActions({
             Find in page
           </DropdownMenuItem>
           <ExternalBrowserAction url={url} opening={opening} opened={opened} onSelect={external} />
+          {extraActions}
         </DropdownMenuContent>
       </DropdownMenu>
     ),

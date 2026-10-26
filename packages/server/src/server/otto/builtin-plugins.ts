@@ -5,4 +5,5 @@ export const ottoBuiltinPlugins = [
   "otto-kanban",
   "otto-integrations",
   "otto-project-knowledge",
+  "otto-browser",
 ] as const;

@@ -329,6 +329,15 @@ controller fixtures cover debounce, queued navigation and hidden replies;
 desktop keyboard fixtures retain guest-to-owning-window routing. These fixtures
 do not establish native Electron focus or mobile Host Browser streaming.
 
+Browser history's store, host-scope and UI-state fixtures cover legacy storage,
+limits, corrupt-file preservation, host/project admission, stale searches,
+serialized writes, confirmation and explicit recovery. The real-Electron
+`browser-tabs.e2e.mjs` journey also exercises address suggestions and keyboard
+selection, cancellation/acceptance of the native clear dialog, visible failure
+with an isolated corrupt history file, explicit recovery, and cookie retention.
+Its native-dialog driver targets only that journey's private Xvfb display.
+These checks run in CI; pure model tests alone do not establish native acceptance.
+
 Use the test as your debugging ground:
 
 1. Add temporary logging to the code under test

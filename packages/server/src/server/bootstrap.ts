@@ -245,6 +245,7 @@ import { createHostIntegrations } from "../services/otto/integrations/host.js"; 
 import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OTTO(knowledge)
 import { contextAgents } from "./otto/context-management/agents.js"; // OTTO(context-management)
 import { ContextManagementService } from "./otto/context-management/host.js"; // OTTO(context-management)
+import { BrowserHistoryHost } from "./otto/browser/history-host.js"; // OTTO(browser-history): canonical workspace/project scope.
 import { createContextTextGeneration } from "./otto/context-management/text-generation.js"; // OTTO(context-compaction): provider-owned, tool-free generation only.
 import { createNativeContextGeneration } from "./otto/context-management/native-generation.js"; // OTTO(context-generation): native enforcement, no AgentManager chat registration.
 import { resolveStructuredGenerationProviders } from "./agent/structured-generation-providers.js"; // OTTO(context-compaction): reuse canonical model selection without launching a normal agent.
@@ -644,6 +645,7 @@ export async function createPaseoDaemon(
   let ottoKanban: KanbanDaemonService | null = null; // OTTO(kanban): bound after registry/server identity creation, before plugins start.
   let ottoIntegrations: ReturnType<typeof createHostIntegrations> | null = null; // OTTO(integration)
   let ottoContext: ContextManagementService | null = null; // OTTO(context-management): composed after AgentManager.
+  let ottoBrowserHistory: BrowserHistoryHost | null = null; // OTTO(browser-history): no startup reads or writes.
   let ottoKnowledge: KnowledgeDaemonService | null = null; // OTTO(knowledge)
   const pluginRuntime: PluginService = new PluginService(
     logger,
@@ -664,11 +666,13 @@ export async function createPaseoDaemon(
       ottoRpc: {
         has: (pluginId) =>
           pluginId === "otto-brain" ||
+          (pluginId === "otto-browser" && ottoBrowserHistory !== null) || // OTTO(browser-history)
           (pluginId === "otto-kanban" && ottoKanban !== null) ||
           (pluginId === "otto-integrations" && ottoIntegrations !== null) ||
           (pluginId === "otto-project-knowledge" && ottoKnowledge !== null), // OTTO(knowledge)
         invoke: (pluginId, method, input, clientId) => {
           if (pluginId === "otto-brain") return ottoBrain.invoke(method, input, clientId);
+          if (pluginId === "otto-browser") return ottoBrowserHistory?.invoke(method, input); // OTTO(browser-history)
           if (pluginId === "otto-kanban") return ottoKanban?.invoke(method, input, clientId); // OTTO(kanban)
           if (pluginId === "otto-integrations") return ottoIntegrations?.rpc.invoke(method, input); // OTTO(integration)
           if (pluginId === "otto-project-knowledge")
@@ -953,6 +957,11 @@ export async function createPaseoDaemon(
     workspaceRegistry,
   });
   const github = createGitHubService();
+  ottoBrowserHistory = new BrowserHistoryHost({
+    home: config.paseoHome,
+    hostId: serverId,
+    workspaces: workspaceRegistry,
+  }); // OTTO(browser-history): inert until an authenticated workspace request.
   const knowledgeGeneration = createKnowledgeGenerationSource(); // OTTO(knowledge): inert until AgentManager composition below.
   ottoKnowledge = new KnowledgeDaemonService({
     hostId: serverId,
