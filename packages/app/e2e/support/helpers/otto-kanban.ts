@@ -1,5 +1,7 @@
 /** Real isolated daemon; tracker responses stay inside the local-fixture gh adapter. */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { z } from "zod";
 import path from "node:path";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
@@ -19,6 +21,7 @@ interface KanbanFixture {
   write(target: ProjectConfiguration["target"]): Promise<ProjectConfiguration>;
   setProviderError(error: "scope" | "after-write" | null): Promise<void>;
   requests(): Promise<Array<{ operation: string; cursor: string }>>;
+  changeProviderTitle(cardId: string, title: string): Promise<void>;
 }
 
 export const test = base.extend<{ kanban: KanbanFixture; kanbanWithBoard: boolean }>({
@@ -59,6 +62,29 @@ export const test = base.extend<{ kanban: KanbanFixture; kanbanWithBoard: boolea
         project,
         read,
         setProviderError,
+        changeProviderTitle: async (cardId, title) => {
+          const state = z
+            .object({
+              version: z.number().optional(),
+              cards: z
+                .array(z.object({ id: z.string(), title: z.string() }).passthrough())
+                .optional(),
+            })
+            .passthrough()
+            .parse(JSON.parse(await readFile(path.join(directory, "state.json"), "utf8")));
+          const initialize: (record: Record<string, unknown>) => void = createRequire(
+            path.join(__dirname, "otto-kanban-gh.cjs"),
+          )("./otto-kanban-gh-board.cjs").initialize;
+          initialize(state);
+          const card = state.cards?.find((entry) => entry.id === cardId);
+          if (!card) throw new Error("Synthetic provider card is missing");
+          card.title = title;
+          // Deliberately keep the project's provider change marker unchanged.
+          // An underlying issue edit must still converge through full reads.
+          const staged = path.join(directory, "external-state.next");
+          await writeFile(staged, JSON.stringify(state));
+          await rename(staged, path.join(directory, "state.json"));
+        },
         requests: async () => {
           const text = await readFile(path.join(directory, "requests.jsonl"), "utf8");
           return text

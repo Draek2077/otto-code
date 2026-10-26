@@ -56,6 +56,11 @@ for (const compact of [false, true]) {
       );
     await page.screenshot({ path: testInfo.outputPath("kanban-configured-board.png") });
 
+    await kanban.changeProviderTitle("draft-2", "Changed outside Otto");
+    await expect(
+      page.getByTestId("kanban-card-draft-2").getByText("Changed outside Otto", { exact: true }),
+    ).toBeVisible({ timeout: 45_000 });
+
     await kanban.setProviderError("scope");
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(

@@ -662,7 +662,7 @@ export async function createPaseoDaemon(
           (pluginId === "otto-project-knowledge" && ottoKnowledge !== null), // OTTO(knowledge)
         invoke: (pluginId, method, input, clientId) => {
           if (pluginId === "otto-brain") return ottoBrain.invoke(method, input, clientId);
-          if (pluginId === "otto-kanban") return ottoKanban?.invoke(method, input); // OTTO(kanban)
+          if (pluginId === "otto-kanban") return ottoKanban?.invoke(method, input, clientId); // OTTO(kanban)
           if (pluginId === "otto-integrations") return ottoIntegrations?.rpc.invoke(method, input); // OTTO(integration)
           if (pluginId === "otto-project-knowledge")
             return ottoKnowledge?.invoke(method, input, clientId); // OTTO(knowledge)
@@ -670,6 +670,7 @@ export async function createPaseoDaemon(
         },
         releaseClient: (clientId) => {
           ottoBrain.releaseClient(clientId);
+          ottoKanban?.releaseClient(clientId); // OTTO(kanban): stop polling after paired-session teardown.
           void ottoKnowledge
             ?.releaseClient(clientId)
             .catch((error) => logger.warn({ err: error }, "Knowledge observation cleanup failed")); // OTTO(knowledge)
@@ -1884,6 +1885,7 @@ export async function createPaseoDaemon(
       await pluginRuntime.stopAllPlugins().catch(() => undefined);
       await ottoBrain.close(); // OTTO(brain-host): release waits/feed; never stop independent host jobs.
       await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
+      await ottoKanban?.close(); // OTTO(kanban): no polling survives daemon startup failure.
       await serviceProxy.stopStandalone().catch(() => undefined);
       await agentProviderRuntime.shutdown().catch(() => undefined);
       if (mainStarted) {
@@ -1921,6 +1923,7 @@ export async function createPaseoDaemon(
     await pluginRuntime.stopAllPlugins();
     await ottoBrain.close(); // OTTO(brain-host)
     await ottoKnowledge?.close(); // OTTO(knowledge)
+    await ottoKanban?.close(); // OTTO(kanban)
     terminalManager.killAll();
     await speechService.stop();
     await scheduleService.stop().catch(() => undefined);

@@ -66,7 +66,11 @@ export interface PluginScreenLocation {
   params: PluginScreenParams;
 }
 
-export interface PluginSurfaceProps extends PluginNavigableHostProps {}
+export interface PluginSurfaceProps extends PluginNavigableHostProps {
+  /** OTTO(plugin-activity): app visibility and retained-panel activity, owned by the app. */
+  // COMPAT(pluginSurfaceActivity): added in v0.10.0; remove optional after 2027-04-25.
+  readonly active?: boolean;
+}
 
 export interface PluginScreenProps extends PluginSurfaceProps {
   /** The params the screen was opened with; `{}` when none. */

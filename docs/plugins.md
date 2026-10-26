@@ -249,6 +249,15 @@ Plugin UI runs on desktop and mobile across multiple themes: color every `Text` 
 `theme.colors.foreground` or `theme.colors.foregroundMuted`, and size layout from `layout.compact`.
 See `public-docs/plugins/reference.md`.
 
+<!-- OTTO(plugin-activity): preserve app-owned visibility at plugin demand boundaries. -->
+
+Screen surface props include optional `active`, supplied by the app from its
+existing visibility and retained-panel owners. A plugin with background work
+retains demand only while it is true and releases it when hidden or unmounted.
+This flag controls resource lifetime, not permission or canonical data. It is
+optional for older clients; features requiring it gate that requirement once at
+their entry instead of inferring visibility from the browser or host connection.
+
 ### SDK import boundaries
 
 Classify every SDK export before adding it. All client entry points and implementations live under

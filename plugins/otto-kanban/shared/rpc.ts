@@ -3,6 +3,8 @@ export {
   getEditableBoard,
   mutateBoard,
   getJiraCreateOptions,
+  waitBoardChanges,
+  releaseBoardChanges,
   getCapabilities,
   getProjectConfiguration,
   setProjectTarget,

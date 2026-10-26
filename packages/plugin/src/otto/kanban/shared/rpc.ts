@@ -33,6 +33,7 @@ export const getCapabilities = defineRpc({
         contractVersion: z.literal(1),
         read: z.boolean(),
         configure: z.boolean(),
+        observe: z.boolean().optional(),
         providers: z.array(z.object({ id: z.string(), read: z.boolean(), mutate: z.boolean() })),
       }),
     }),

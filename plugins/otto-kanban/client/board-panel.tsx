@@ -10,10 +10,15 @@ import type { BoardActionDrafts } from "./action-drafts.js";
 import { ActionEditor, OpenCardEditor } from "./action-editor.js";
 import { BoardView } from "./board-view.js";
 import type { ProjectChoice } from "./project-selection.js";
-import { useRead } from "./use-read.js";
+import { useRead, type ReadState } from "./use-read.js";
+import { useBoardObservation } from "./use-board-observation.js";
 
 const actionsStyle = { flexDirection: "row", flexWrap: "wrap", gap: 8 } as const;
 const panelStyle = { flex: 1, gap: 12 } as const;
+function shouldPoll(active: boolean, state: ReadState<{ status: string }>) {
+  const value = state.status === "ready" ? state.value : state.previous;
+  return active && value !== undefined && value.status !== "unconfigured";
+}
 function ReadBoundary({
   loading,
   error,
@@ -50,6 +55,7 @@ export function BoardPanel({
   theme,
   navigation,
   actionDrafts,
+  active,
 }: {
   project: ProjectChoice;
   host: PluginScreenProps["host"];
@@ -57,6 +63,7 @@ export function BoardPanel({
   theme: PluginScreenProps["theme"];
   navigation: PluginScreenProps["navigation"];
   actionDrafts: BoardActionDrafts;
+  active: boolean;
 }) {
   const read = useRpc(getEditableBoard);
   const mutate = useRpc(mutateBoard);
@@ -69,12 +76,18 @@ export function BoardPanel({
   const [saved, setSaved] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const refreshBoard = useCallback(() => setRefresh((value) => value + 1), []);
+  const [pollRetry, setPollRetry] = useState(0);
+  const refreshAndReconnect = useCallback(() => {
+    refreshBoard();
+    setPollRetry((value) => value + 1);
+  }, [refreshBoard]);
   const load = useCallback(
     () => read({ binding: { hostId: host.id, projectId: project.projectId }, cardId }),
     [read, host.id, project.projectId, cardId],
   );
   const state = useRead({
     key: JSON.stringify([host.id, project.projectId, cardId, refresh]),
+    scope: JSON.stringify([host.id, project.projectId, cardId]),
     enabled: true,
     load,
     errorMessage: "The board could not be read from the selected host.",
@@ -84,6 +97,19 @@ export function BoardPanel({
     openProjectSettings?.({ serverId: host.id, projectId: project.projectId });
   }, [openProjectSettings, host.id, project.projectId]);
   const board = state.status === "ready" ? state.value : null;
+  const refreshFromPoll = useCallback(() => {
+    // A background read must not unmount an open editor or adopt a new origin.
+    // Closing/applying already rereads canonical state; writes still use CAS.
+    if (editor || cardId) return;
+    refreshBoard();
+  }, [editor, cardId, refreshBoard]);
+  const pollingFailed = useBoardObservation({
+    active: shouldPoll(active, state),
+    hostId: host.id,
+    projectId: project.projectId,
+    retry: pollRetry,
+    changed: refreshFromPoll,
+  });
   const readCreation = useCallback<ReadJiraCreation>(
     async (selection) => {
       if (board?.status !== "ready")
@@ -172,7 +198,7 @@ export function BoardPanel({
             Back to board
           </SettingsButton>
         ) : null}
-        <SettingsButton onPress={refreshBoard} disabled={state.status === "loading"}>
+        <SettingsButton onPress={refreshAndReconnect} disabled={state.status === "loading"}>
           {state.status === "loading" ? "Refreshing..." : "Refresh"}
         </SettingsButton>
         {openProjectSettings ? (
@@ -182,6 +208,12 @@ export function BoardPanel({
         ) : null}
       </View>
       {saved ? <SettingsRow label="Board action applied" /> : null}
+      {pollingFailed ? (
+        <SettingsRow
+          label="Board polling paused"
+          error="Refresh to reconnect to automatic board updates."
+        />
+      ) : null}
       <ReadBoundary
         loading={state.status === "loading"}
         error={error}

@@ -15,6 +15,8 @@ import {
   getEditableBoard,
   mutateBoard,
   getJiraCreateOptions,
+  waitBoardChanges,
+  releaseBoardChanges,
   type ProjectBinding,
   type Result,
 } from "@getpaseo/plugin/otto/kanban";
@@ -28,6 +30,7 @@ import type { GitHubProjectWrites } from "../../../services/otto/github-project-
 import { KanbanEditingHost } from "./mutations/host.js";
 import { JiraBoardHost } from "./jira/host.js";
 import type { AtlassianAccountService } from "../../../services/otto/atlassian/account.js";
+import { KanbanObservations } from "./observation.js";
 
 function projectFailure(error: unknown): ReturnType<typeof failure> {
   if (error instanceof OttoProjectMetadataError) {
@@ -49,6 +52,7 @@ export class KanbanDaemonService {
   private readonly handlers: ReturnType<typeof createKanbanHandlers>;
   private readonly editing: KanbanEditingHost;
   private readonly jira: JiraBoardHost | null;
+  private readonly observations = new KanbanObservations((binding) => this.readBoard(binding));
   constructor(
     private readonly ports: {
       hostId: string;
@@ -161,7 +165,7 @@ export class KanbanDaemonService {
       return projectFailure(error);
     }
   }
-  invoke(method: string, input: unknown): Promise<unknown> | undefined {
+  invoke(method: string, input: unknown, clientId = ""): Promise<unknown> | undefined {
     switch (method) {
       case getCapabilities.name:
         return this.capabilities(input);
@@ -177,18 +181,52 @@ export class KanbanDaemonService {
         return this.editing.mutate(input);
       case getJiraCreateOptions.name:
         return this.creation(input);
+      case waitBoardChanges.name:
+        return this.observe(input, clientId);
+      case releaseBoardChanges.name:
+        return this.releaseObservation(input, clientId);
       default:
         return undefined;
     }
   }
+  releaseClient(clientId: string) {
+    this.observations.releaseClient(clientId);
+  }
+  close() {
+    return this.observations.close();
+  }
+  private async observe(value: unknown, clientId: string) {
+    const input = waitBoardChanges.input.parse(value);
+    if (input.binding.hostId !== this.ports.hostId)
+      return failure("wrong_host", "Select this project's owning host.");
+    try {
+      return waitBoardChanges.output.parse({
+        ok: true,
+        value: await this.observations.wait(clientId, input.leaseId, input.binding, input.cursor),
+      });
+    } catch {
+      return failure(
+        "unavailable",
+        "Board polling stopped. Refresh to reconnect on the owning host.",
+      );
+    }
+  }
+  private async releaseObservation(value: unknown, clientId: string) {
+    const input = releaseBoardChanges.input.parse(value);
+    this.observations.release(clientId, input.leaseId);
+    return releaseBoardChanges.output.parse({ ok: true, value: { released: true } });
+  }
   private async capabilities(input: unknown) {
     const result = this.handlers.capabilities(getCapabilities.input.parse(input));
-    if (result.ok)
-      result.value.providers = result.value.providers.map((provider) =>
+    if (result.ok) {
+      const capability = { ...result.value, observe: true };
+      capability.providers = capability.providers.map((provider) =>
         provider.id === "github" || (provider.id === "jira" && this.jira)
           ? { ...provider, read: true, mutate: true }
           : provider,
       );
+      return getCapabilities.output.parse({ ok: true, value: capability });
+    }
     return getCapabilities.output.parse(result);
   }
   private async configuration(input: unknown) {

@@ -8,6 +8,8 @@ import {
   getProjectConfiguration,
   setProjectTarget,
   getBoard,
+  waitBoardChanges,
+  releaseBoardChanges,
 } from "@getpaseo/plugin/otto/kanban";
 import { readFieldsDocument } from "@getpaseo/plugin/server/otto-kanban";
 import {
@@ -21,6 +23,7 @@ import { evaluateBundle } from "../../plugins/bundle-evaluator.js";
 
 const parent = fileURLToPath(new URL("../../../../../../.tmp/", import.meta.url));
 const roots: string[] = [];
+const services: KanbanDaemonService[] = [];
 it("keeps the actual Kanban setup callable after eager bundle interop", async () => {
   const directory = fileURLToPath(
     new URL("../../../../../../plugins/otto-kanban/", import.meta.url),
@@ -33,6 +36,7 @@ it("keeps the actual Kanban setup callable after eager bundle interop", async ()
   expect(typeof evaluateBundle(bundles.serverBundle)).toBe("function");
 });
 afterEach(async () => {
+  for (const service of services.splice(0)) await service.close();
   for (const root of roots.splice(0)) {
     const relative = path.relative(parent, root);
     if (!relative || relative.startsWith("..") || path.isAbsolute(relative))
@@ -86,6 +90,7 @@ async function fixture(configured = true) {
     },
   });
   const binding = { hostId: "host-a", projectId: "project-a" };
+  services.push(service);
   const configuration = async () =>
     getProjectConfiguration.output.parse(
       await service.invoke(getProjectConfiguration.name, binding),
@@ -189,6 +194,39 @@ it("returns an unconfigured board without a provider request", async () => {
     status: "unconfigured",
     binding: f.binding,
   });
+  expect(f.queries).toEqual([]);
+});
+it("owns observation leases at the real paired-client service boundary", async () => {
+  const f = await fixture(false);
+  expect(await f.service.invoke(getCapabilities.name, { hostId: "host-a" })).toMatchObject({
+    ok: true,
+    value: { observe: true },
+  });
+  const request = { binding: f.binding, leaseId: "viewer", cursor: null };
+  expect(await f.service.invoke(waitBoardChanges.name, request)).toMatchObject({
+    ok: false,
+    error: { code: "unavailable" },
+  });
+  expect(
+    await f.service.invoke(
+      waitBoardChanges.name,
+      { ...request, binding: { ...f.binding, hostId: "foreign" } },
+      "client",
+    ),
+  ).toMatchObject({ ok: false, error: { code: "wrong_host" } });
+  const first = waitBoardChanges.output.parse(
+    await f.service.invoke(waitBoardChanges.name, request, "client"),
+  );
+  if (!first.ok) throw new Error(first.error.message);
+  const pending = f.service.invoke(
+    waitBoardChanges.name,
+    { ...request, cursor: first.value.cursor },
+    "client",
+  );
+  expect(
+    await f.service.invoke(releaseBoardChanges.name, { leaseId: "viewer" }, "client"),
+  ).toMatchObject({ ok: true });
+  expect(await pending).toMatchObject({ ok: false, error: { code: "unavailable" } });
   expect(f.queries).toEqual([]);
 });
 

@@ -35,6 +35,8 @@ import {
   type PluginSurfaceContributionIdentity,
 } from "./surface-contribution";
 import { resolvePluginPlatform } from "./platform";
+import { useRetainedPanelActive } from "@/components/retained-panel"; // OTTO(plugin-activity)
+import { useAppVisible } from "@/hooks/use-app-visible"; // OTTO(plugin-activity)
 
 const EMPTY_SHORTCUT_KEYS: ShortcutKey[] = [];
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -75,9 +77,18 @@ function SurfaceRenderer({
   theme: PluginTheme;
 }) {
   const navigation = usePluginHostNavigation(host.id);
+  const retained = useRetainedPanelActive(); // OTTO(plugin-activity)
+  const visible = useAppVisible(); // OTTO(plugin-activity)
   return (
     <PluginInstallationProvider plugin={plugin}>
-      <Surface theme={theme} host={host} layout={layout} navigation={navigation} params={params} />
+      <Surface
+        theme={theme}
+        host={host}
+        layout={layout}
+        navigation={navigation}
+        params={params}
+        active={retained && visible}
+      />
     </PluginInstallationProvider>
   );
 }

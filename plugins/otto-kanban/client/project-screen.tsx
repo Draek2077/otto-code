@@ -166,6 +166,7 @@ export function ProjectScreen(props: KanbanScreenProps) {
             theme={props.theme}
             navigation={props.navigation}
             actionDrafts={props.actionDrafts}
+            active={props.active === true}
           />
         ) : (
           <SettingsRow label="Choose a project to view its board." />

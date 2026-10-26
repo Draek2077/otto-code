@@ -43,5 +43,8 @@ function KanbanContent(props: KanbanScreenProps) {
     return <SettingsRow label="Kanban board reading is unavailable on this host." />;
   if (!result.value.providers.some((provider) => provider.id === "github" && provider.mutate))
     return <SettingsRow label="Update the host to use Kanban." />;
+  // COMPAT(ottoKanbanObservation): added in v0.10.0; remove gate after 2027-04-25.
+  if (!result.value.observe) return <SettingsRow label="Update the host to use Kanban." />;
+  if (props.active === undefined) return <SettingsRow label="Update Otto to use Kanban." />;
   return <ProjectScreen {...props} />;
 }

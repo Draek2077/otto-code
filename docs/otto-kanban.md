@@ -81,6 +81,29 @@ retains failed drafts. Read requests invalidate late replies on scope change.
 RPC contracts accept host/project identities and identifiers, never filesystem
 paths or credentials. Raw project records remain on the daemon.
 
+## External board changes
+
+Open configured boards retain a paired-session polling lease on the daemon. All
+viewers of the same host/project share one provider read every thirty seconds,
+with no overlapping reads. The daemon hashes the complete normalized result,
+including issue content, because a GitHub project timestamp need not change for
+an underlying issue edit. Only a digest and invalidation cursor are retained;
+notifications make the app reread its canonical board instead of patching a
+second cache. This is polling, not a webhook or realtime delivery.
+
+The app supplies surface activity from its existing visibility and retained-panel
+owners. Hidden surfaces, route departure and paired-session teardown release their
+demand; abandoned leases expire. Final release stops scheduling and ignores a
+late provider response. Provider reads already in progress retain their ordinary
+host timeout. Daemon shutdown awaits its current demanded reads. Failed provider
+reads back off to at most five minutes and a changed error/recovery invalidates
+the view. A lost observation transport pauses with an explicit Refresh recovery.
+
+Polling never rebases an open action or changes its operation ID or originating
+settings/board/card revisions. External writes can therefore update the read view
+while an older draft still requires explicit conflict reconciliation. Manual
+Refresh remains available. Unconfigured boards hold no automatic polling demand.
+
 ## Explicit GitHub actions
 
 The editing host supports draft creation, linking an existing same-host issue or
