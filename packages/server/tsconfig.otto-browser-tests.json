@@ -1,6 +1,10 @@
 {
   "extends": "./tsconfig.server.typecheck.json",
   "compilerOptions": { "noEmit": true, "types": ["node"] },
-  "include": ["src/server/otto/browser/admission.test.ts"],
+  "include": [
+    "src/server/otto/browser/admission.test.ts",
+    "src/server/otto/browser/owned-paint.test.ts",
+    "src/server/otto/browser/paint-pump.test.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

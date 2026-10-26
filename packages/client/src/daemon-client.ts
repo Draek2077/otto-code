@@ -1,4 +1,5 @@
 import { messageTooLargeError } from "./daemon-client-transport-utils.js";
+import { BrowserPaintSubscriptions, type BrowserPaintObserver } from "./otto/browser-paints.js"; // OTTO(browser-frames): source-local binary demand, never another connection.
 import { legacyUsageIcon } from "./legacy-usage-icons.js";
 import { subscribeTimeline, type TimelineMessage } from "./timeline-subscription/index.js";
 import { ProviderSnapshotUpdates } from "./provider-snapshots/index.js";
@@ -1292,6 +1293,7 @@ export class DaemonClient {
   private authFailureReasonValue: DaemonAuthFailureReason | null = null;
   private connectionState: ConnectionState = { status: "idle" };
   private readonly terminalStreams = new TerminalStreamRouter();
+  private readonly ottoBrowserPaints = new BrowserPaintSubscriptions(); // OTTO(browser-frames)
   private pendingBinaryFileReads = new Map<string, PendingBinaryFileRead>();
   private activeBinaryFileTransfers = new Map<string, BinaryFileTransferState>();
   private completedBinaryFileReads = new Map<string, FileReadResult>();
@@ -6232,6 +6234,10 @@ export class DaemonClient {
     return this.terminalStreams.onEvent(handler);
   }
 
+  observeHostBrowserPaint(ticket: string, observer: BrowserPaintObserver): () => void {
+    return this.ottoBrowserPaints.observe(ticket, observer);
+  } // OTTO(browser-frames): register before the explicit watch RPC to avoid losing its first paint.
+
   async waitForTerminalStreamEvent(
     predicate: (event: TerminalStreamEvent) => boolean,
     timeout = 5000,
@@ -6322,6 +6328,7 @@ export class DaemonClient {
 
   private disposeTransport(code = 1001, reason = "Reconnecting"): void {
     this.owned.disconnected();
+    this.ottoBrowserPaints.disconnected(); // OTTO(browser-frames): old tickets cannot follow a new source.
     this.providerSnapshotUpdates.clear();
     this.stopLivenessHeartbeat();
     this.cleanupTransport();
@@ -6476,6 +6483,7 @@ export class DaemonClient {
   }
 
   private tryHandleBinaryFrame(rawBytes: Uint8Array): boolean {
+    if (this.ottoBrowserPaints.handle(rawBytes)) return true; // OTTO(browser-frames): consume only its reserved application opcode.
     const fileFrame = decodeFileTransferFrame(rawBytes);
     if (fileFrame) {
       this.traceInstant("paseo.ws.message.inbound", {
@@ -6663,6 +6671,7 @@ export class DaemonClient {
     }
 
     this.owned.disconnected();
+    this.ottoBrowserPaints.disconnected(); // OTTO(browser-frames): release tickets on an unexpected source loss too.
     this.providerSnapshotUpdates.clear();
 
     // Clear all pending waiters and queued sends since the connection was lost

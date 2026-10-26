@@ -13,6 +13,21 @@ guest lifetime, trusted input and Electron capture remain in their existing owne
 The daemon declares Playwright core at the repository's pinned version; installing
 that library does not download a browser or launch a runtime.
 
+## Host paint transport
+
+Host paint packets use application opcode `0x20` inside the existing encrypted
+Paseo connection. A fixed, versioned header binds each bounded JPEG to its viewer
+ticket, sequence and viewport. Malformed frames, unknown tickets and old sequences
+never reach the image observer. The client drops viewer demand on disconnect.
+
+The daemon retains binary delivery through the same source ownership and proof
+checks as other session operations. A retained binary operation cannot broadcast
+to peer clients or acquire JSON reply authority. Disconnect and release invalidate
+its producer. The paint pump retains one latest JPEG, permits one unacknowledged
+packet per viewer and isolates slow viewers. Chrome acknowledgments enforce the
+idle and interactive byte budgets; capture demand stops with the last viewer.
+These primitives do not themselves launch a browser or advertise a viewer capability.
+
 ## Tab icons
 
 The tab shows a Globe while its icon is unavailable or loading. Desktop main

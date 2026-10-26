@@ -44,6 +44,10 @@ export interface OwnedOperation {
   release(): Promise<void>;
 }
 
+export interface OwnedBinaryOperation extends OwnedOperation {
+  emitBinary(frame: Uint8Array): void;
+} // OTTO(browser-frames): source-owned application frames share existing proof and teardown.
+
 export interface OwnedSubscription {
   readonly id: string;
   readonly responseId: string;
@@ -330,6 +334,19 @@ export class SessionDelivery {
     accepts: (message: SessionOutboundMessage) => boolean,
     stop: () => void | Promise<void>,
   ): OwnedOperation {
+    return this.retainOperation(accepts, stop); // OTTO(browser-frames): keep ordinary operation semantics intact.
+  }
+
+  binaryOperation(stop: () => void | Promise<void>): OwnedBinaryOperation {
+    if (!this.currentRequest?.source.modern)
+      throw new Error("Host Browser streaming requires an owned-source client.");
+    return this.retainOperation(() => false, stop);
+  } // OTTO(browser-frames): no legacy or broadcast fallback.
+
+  private retainOperation(
+    accepts: (message: SessionOutboundMessage) => boolean,
+    stop: () => void | Promise<void>,
+  ): OwnedBinaryOperation {
     const request = this.currentRequest;
     if (!request?.active || !request.source.active) throw new Error("Operation source is closed");
     const source = request.source;
@@ -350,6 +367,11 @@ export class SessionDelivery {
         if (!owner.active || !source.active || !accepts(message)) return;
         this.sendOwned(owner, message);
       },
+      emitBinary: (frame) => {
+        if (!owner.active || !source.active) return;
+        this.proofs.set(frame, owner);
+        this.sendBinary(source.socket, frame);
+      }, // OTTO(browser-frames): same proof boundary as owned subscriptions, scoped to this operation.
       release: () => this.releaseOwner(owner),
     };
   }

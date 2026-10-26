@@ -180,6 +180,8 @@ jobs:
       - name: Typecheck Otto fixture contracts
         run: |
           npm run typecheck:otto-fixtures --workspace=@getpaseo/plugin
+          npm run typecheck --workspace=@getpaseo/protocol -- -p tsconfig.otto-tests.json
+          npm run typecheck --workspace=@getpaseo/client -- -p tsconfig.otto-tests.json
           npm run typecheck --workspace=@getpaseo/brain -- -p tsconfig.tests.json
           npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-knowledge-tests.json
           npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-brain-tests.json
