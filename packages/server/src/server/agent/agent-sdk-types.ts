@@ -670,6 +670,8 @@ export interface AgentSession {
   usageSession?(): AgentUsageSession | null;
   readonly provider: AgentProvider;
   readonly id: string | null;
+  /** OTTO(context-management): active connection identity, independent of opaque persistence. */
+  readonly ottoContextSessionId?: string;
   readonly capabilities: AgentCapabilityFlags;
   readonly features?: AgentFeature[];
   /** New provider-owned rows to commit on registration. streamHistory must also

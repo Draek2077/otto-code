@@ -441,6 +441,9 @@ export function wrapSessionProvider(provider: AgentProvider, inner: AgentSession
     get id() {
       return inner.id;
     },
+    get ottoContextSessionId() {
+      return inner.ottoContextSessionId;
+    }, // OTTO(context-management): configured providers preserve the active inspection identity.
     get capabilities() {
       return inner.capabilities;
     },

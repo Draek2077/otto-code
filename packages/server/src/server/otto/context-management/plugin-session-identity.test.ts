@@ -3,6 +3,7 @@ import type { ProviderEvent, ProviderConnection } from "@getpaseo/plugin/server/
 import { PluginAgentClientRegistry } from "../../agent/plugin-provider.js";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { contextAgents } from "./agents.js";
+import { wrapSessionProvider } from "../../agent/provider-registry.js";
 
 test("Context uses the active plugin session identity without changing durable chat handles", async () => {
   let listener: ((event: ProviderEvent) => void) | undefined;
@@ -51,7 +52,8 @@ test("Context uses the active plugin session identity without changing durable c
     },
   ]);
   const client = registry.clients()["fixture-context"];
-  const session = await client.createSession({ provider: "fixture-context", cwd: "/fixture" });
+  const inner = await client.createSession({ provider: "fixture-context", cwd: "/fixture" });
+  const session = wrapSessionProvider("fixture-context", inner);
   const live = {
     id: "agent",
     provider: "fixture-context",
