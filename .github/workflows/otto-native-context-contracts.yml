@@ -6,7 +6,9 @@ on:
   workflow_dispatch:
   push:
     branches: [otto-0.10/phase-0]
-    paths: [.github/workflows/otto-native-context-contracts.yml]
+    paths:
+      - .github/workflows/otto-native-context-contracts.yml
+      - scripts/otto/native-context-contracts.mjs
 
 permissions:
   contents: read
@@ -16,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v4
       - name: Install isolated vendor tooling and capture help
         shell: bash
         run: |
@@ -34,6 +37,11 @@ jobs:
           "$HOME/bin/muse" config --help > muse-config-help.txt 2>&1
           "$HOME/bin/agy" --version > agy-version.txt 2>&1
           "$HOME/bin/agy" --help > agy-help.txt 2>&1
+      - name: Probe utility policy with local echo and isolated sentinels
+        run: node scripts/otto/native-context-contracts.mjs
+        env:
+          HOME: ${{ runner.temp }}/otto-native-context-home
+          XDG_CONFIG_HOME: ${{ runner.temp }}/otto-native-context-home/.config
       - name: Upload credential-free contract evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
