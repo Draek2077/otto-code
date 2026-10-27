@@ -127,6 +127,24 @@ await probe("muse-read-only-named-mcp", [
   "mcpServers.sentinel.enabled=false",
   "fixture",
 ]);
+await probe("muse-read-only-server-object", [
+  ...base,
+  ...policy.slice(0, -2),
+  "-c",
+  'mcpServers.sentinel={"enabled":false}',
+  "fixture",
+]);
+await probe("muse-read-only-snake-field", [
+  ...base,
+  ...policy.slice(0, -2),
+  "-c",
+  "mcp_servers.sentinel.enabled=false",
+  "fixture",
+]);
+const fixtureSettings = JSON.parse(await readFile(path.join(settings, "settings.json"), "utf8"));
+fixtureSettings.mcp_servers = {};
+await writeFile(path.join(settings, "settings.json"), JSON.stringify(fixtureSettings));
+await probe("muse-read-only-without-mcp", [...base, ...policy.slice(0, -2), "fixture"]);
 // Agent discovery is not a model turn. Check the documented empty-tool primary
 // agent format without granting access to a real project or native account.
 await mkdir(path.join(workspace, ".agents", "agents"), { recursive: true });
@@ -146,7 +164,7 @@ plugins: []
 Return only supplied prose. Do not perform actions.
 `,
 );
-const result = spawnSync(path.join(home, "bin", "agy"), ["agents"], {
+const result = spawnSync(path.join(home, "bin", "agy"), ["--add-dir", workspace, "agents"], {
   cwd: workspace,
   encoding: "utf8",
   timeout: 30000,
