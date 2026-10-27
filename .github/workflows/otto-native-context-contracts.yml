@@ -4,6 +4,9 @@ name: Otto Native Context Contracts
 # without credentials, model requests, or changes to a developer's installation.
 on:
   workflow_dispatch:
+  push:
+    branches: [otto-0.10/phase-0]
+    paths: [.github/workflows/otto-native-context-contracts.yml]
 
 permissions:
   contents: read
