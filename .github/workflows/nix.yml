@@ -42,6 +42,14 @@ jobs:
       - name: Build Nix package
         run: nix build .#default -o result
 
+      # OTTO(browser-host): prove the installed modules and immutable browser runtime together.
+      - name: Smoke packaged Host Browser
+        timeout-minutes: 3
+        run: |
+          export OTTO_HOST_BROWSER_EXECUTABLE
+          OTTO_HOST_BROWSER_EXECUTABLE="$(nix eval --raw --impure --expr 'let flake = builtins.getFlake (toString ./.); in "${flake.inputs.nixpkgs.legacyPackages.x86_64-linux.chromium}/bin/chromium"')"
+          node scripts/otto/host-browser-smoke.mjs "$(realpath result)/lib/paseo/packages/server/dist/server"
+
       - name: Smoke Nix daemon
         run: |
           set -euo pipefail

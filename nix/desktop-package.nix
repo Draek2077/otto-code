@@ -11,6 +11,7 @@
   makeDesktopItem,
   electron,
   libuv,
+  chromium, # OTTO(browser-host): the private Linux daemon inherits the immutable runtime path.
   buildVersion,
   # Reuse the daemon's prebuilt npm-deps FOD. Same lockfile, same content —
   # without this, the desktop drv produces a separately-named store path
@@ -209,7 +210,8 @@ buildNpmPackage {
         --add-flags "--no-sandbox" \
         --add-flags "--class=otto-desktop" \
         --set EXPO_DEV_URL "otto://app/" \
-        --set CHROME_DESKTOP "otto-desktop.desktop"
+        --set CHROME_DESKTOP "otto-desktop.desktop" \
+        --set-default OTTO_HOST_BROWSER_EXECUTABLE ${lib.getExe chromium}
 
       copyDesktopItems
     ''}

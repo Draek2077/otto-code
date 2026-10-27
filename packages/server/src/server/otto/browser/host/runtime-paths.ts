@@ -12,6 +12,16 @@ export function hostBrowserCandidates(input: {
   bundled: string;
 }): string[] {
   const { environment: env, platform, home, bundled } = input;
+  const configured = env.OTTO_HOST_BROWSER_EXECUTABLE;
+  if (configured !== undefined) {
+    if (!(platform === "win32" ? path.win32 : path.posix).isAbsolute(configured))
+      throw createBrowserToolsRequestError({
+        code: "browser_no_host",
+        message: "OTTO_HOST_BROWSER_EXECUTABLE must name an absolute browser executable path.",
+      });
+    // A deliberate deployment choice never silently switches to another browser/profile.
+    return [configured];
+  }
   if (platform === "win32") {
     const roots = [env.ProgramFiles, env["ProgramFiles(x86)"], env.LOCALAPPDATA].filter(
       (value): value is string => Boolean(value),
@@ -68,6 +78,8 @@ export async function resolveHostBrowser(): Promise<string> {
   throw createBrowserToolsRequestError({
     code: "browser_no_host",
     message:
-      "No supported host browser is installed. Install Microsoft Edge, Google Chrome or the repository's Chromium runtime on this host, then explicitly reopen Host Browser.",
+      process.env.OTTO_HOST_BROWSER_EXECUTABLE !== undefined
+        ? "The configured Host Browser executable is unavailable. Check OTTO_HOST_BROWSER_EXECUTABLE on the owning daemon, then explicitly reopen Host Browser."
+        : "No supported host browser is installed. Install Microsoft Edge, Google Chrome or the repository's Chromium runtime on this host, then explicitly reopen Host Browser.",
   });
 }

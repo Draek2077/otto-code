@@ -300,6 +300,10 @@ covered by the isolated Preview host fixtures. Separate Windows/Linux native hos
 acceptance verifies shared ARIA refs, native input, uploads, dialogs, screenshots,
 source-bound JPEGs and profile cookies across a final-tab close. Pure viewer fixtures
 verify late replies, hidden input, bounded queues and preserved binding data.
+The Docker and Linux Nix workflows additionally run
+`scripts/otto/host-browser-smoke.mjs` against installed server modules and each
+distribution's Chromium. This checks local-page rendering and PNG capture without
+starting an agent, model or installed user daemon.
 
 `e2e/browser/otto-context-health.spec.ts` covers the real composer pill, provider
 catalog window, mute, registered Manage navigation and persisted warning

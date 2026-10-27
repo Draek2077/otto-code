@@ -62,6 +62,10 @@ host affinity. Native manual tabs are never adopted into a hosted profile after
 a hosted runtime failure. The adapter discovers installed Edge, Chrome and the
 repository's Chromium runtime without downloading or repairing an installation.
 Its persistent profile stays under the owning daemon home.
+Deployments can set `OTTO_HOST_BROWSER_EXECUTABLE` to an absolute executable path.
+An invalid explicit path fails without switching browsers. Docker includes Debian
+Chromium; the Linux Nix daemon, CLI and desktop wrappers select their immutable
+Chromium runtime. Discovery never installs software or changes a user's PATH.
 
 Page inventory reads are inert. Explicit operations serialize per page; runtime
 admission permits four live pages and up to 256 retained tab identities. Only

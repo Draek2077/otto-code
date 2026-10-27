@@ -30,6 +30,23 @@ test("browser discovery preserves Edge, Chrome and bundled priority without comm
     }),
   ).toContain("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
 });
+test("an explicit Nix/deployment browser path is the sole candidate and cannot run shell arguments", () => {
+  const input = {
+    platform: "linux" as const,
+    environment: { OTTO_HOST_BROWSER_EXECUTABLE: "/nix/store/fixture-chromium/bin/chromium" },
+    home: "/home/user",
+    bundled: "/cache/chrome",
+  };
+  expect(hostBrowserCandidates(input)).toEqual(["/nix/store/fixture-chromium/bin/chromium"]);
+  for (const configured of ["", "chromium", "chromium --headless"])
+    expect(() =>
+      hostBrowserCandidates({
+        ...input,
+        environment: { OTTO_HOST_BROWSER_EXECUTABLE: configured },
+      }),
+    ).toThrow("absolute browser executable path");
+});
+
 test.each([
   [390, 844],
   [4096, 4096],

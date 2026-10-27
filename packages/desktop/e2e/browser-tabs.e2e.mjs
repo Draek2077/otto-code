@@ -659,8 +659,8 @@ async function runRegression({
   const originalDeck = page.getByTestId(`workspace-deck-entry-${serverId}:${originalWorkspaceId}`);
   // OTTO(browser-host): agent creates use the daemon browser. This regression
   // exercises the resident Electron guest, which manual desktop creation retains.
-  await page.getByTestId("workspace-header-menu-trigger").click();
-  await page.getByTestId("workspace-header-new-browser").click();
+  await originalDeck.getByTestId("workspace-new-tab-button").filter({ visible: true }).click();
+  await page.getByTestId("workspace-new-tab-menu-browser").click();
   // The resident guest belongs to the window's parking host, outside the deck DOM.
   const nativeGuest = page.locator("webview[data-paseo-browser-id]");
   await nativeGuest.waitFor({ state: "attached", timeout: timeoutMs });

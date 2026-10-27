@@ -9,6 +9,7 @@
   autoPatchelfHook,
   # node-pty needs libuv headers on Linux
   libuv,
+  chromium, # OTTO(browser-host): Linux daemon images include their host-owned browser runtime.
   # Exposed so downstream flakes that follow a different nixpkgs revision
   # (where `fetchNpmDeps` may produce a different hash for the same lockfile)
   # can override via `.override { npmDepsHash = "sha256-..."; }` without
@@ -138,12 +139,12 @@ buildNpmPackage rec {
     # Keep Paseo's runtime mode separate from NODE_ENV, which belongs to spawned agents.
     makeWrapper ${nodejs}/bin/node $out/bin/otto-server \
       --add-flags "$out/lib/paseo/packages/server/dist/scripts/supervisor-entrypoint.js" \
-      --set PASEO_NODE_ENV production
+      --set PASEO_NODE_ENV production${lib.optionalString stdenv.hostPlatform.isLinux " --set-default OTTO_HOST_BROWSER_EXECUTABLE ${lib.getExe chromium}"}
 
     # Create wrapper for the CLI
     makeWrapper ${nodejs}/bin/node $out/bin/otto \
       --add-flags "$out/lib/paseo/packages/cli/dist/index.js" \
-      --set NODE_PATH "$out/lib/paseo/node_modules"
+      --set NODE_PATH "$out/lib/paseo/node_modules"${lib.optionalString stdenv.hostPlatform.isLinux " --set-default OTTO_HOST_BROWSER_EXECUTABLE ${lib.getExe chromium}"}
 
     runHook postInstall
   '';

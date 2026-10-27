@@ -136,6 +136,29 @@ jobs:
           cache-from: type=gha,scope=otto
           cache-to: type=gha,scope=otto,mode=max
 
+      # OTTO(browser-host): multiarch assembly is separate from a native runtime smoke.
+      - name: Load native image for Host Browser acceptance
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/base/Dockerfile
+          platforms: linux/amd64
+          build-args: |
+            OTTO_VERSION=${{ needs.setup.outputs.install_version }}
+          tags: otto-host-browser-smoke:local
+          load: true
+          push: false
+          provenance: false
+          cache-from: type=gha,scope=otto
+
+      - name: Smoke installed Host Browser as the container user
+        timeout-minutes: 3
+        run: |
+          docker run --rm --user 1000:1000 --env CI=true --env RUNNER_TEMP=/tmp \
+            --volume "$GITHUB_WORKSPACE/scripts/otto/host-browser-smoke.mjs:/opt/otto-host-browser-smoke.mjs:ro" \
+            --entrypoint node otto-host-browser-smoke:local \
+            /opt/otto-host-browser-smoke.mjs /usr/local/lib/node_modules/@otto-code/server/dist/server
+
   publish:
     needs: setup
     if: needs.setup.outputs.publish == 'true'

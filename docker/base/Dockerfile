@@ -29,6 +29,7 @@ ENV HOME=/home/otto \
     OTTO_WEB_UI_ENABLED=true \
     OTTO_LOG_FORMAT=json \
     OTTO_LOG_LEVEL=info \
+    OTTO_HOST_BROWSER_EXECUTABLE=/usr/bin/chromium \
     CLAUDE_CONFIG_DIR=/home/otto/.claude \
     CODEX_HOME=/home/otto/.codex \
     XDG_CONFIG_HOME=/home/otto/.config \
@@ -42,6 +43,9 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
       bash \
       ca-certificates \
+      chromium \
+      fonts-liberation \
+      fonts-noto-color-emoji \
       curl \
       git \
       gosu \
