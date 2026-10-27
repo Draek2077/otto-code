@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
+import { inspectMuseSettings } from "./muse-settings-contract.mjs";
 
 // CI-only native evidence. Echo is local: no credentials or model request.
 if (process.env.CI !== "true") throw new Error("Native contract probes run only in CI.");
@@ -39,7 +40,7 @@ await writeFile(
     hooks: hook(marker),
     managed_hooks_path: managed,
     mcp_servers: {
-      sentinel: {
+      otto_context_fixture: {
         transport: "stdio",
         command: process.execPath,
         args: [sentinel, mcpMarker],
@@ -124,27 +125,28 @@ await probe("muse-read-only-named-mcp", [
   ...base,
   ...policy.slice(0, -2),
   "-c",
-  "mcpServers.sentinel.enabled=false",
+  "mcpServers.otto_context_fixture.enabled=false",
   "fixture",
 ]);
 await probe("muse-read-only-server-object", [
   ...base,
   ...policy.slice(0, -2),
   "-c",
-  'mcpServers.sentinel={"enabled":false}',
+  'mcpServers.otto_context_fixture={"enabled":false}',
   "fixture",
 ]);
 await probe("muse-read-only-snake-field", [
   ...base,
   ...policy.slice(0, -2),
   "-c",
-  "mcp_servers.sentinel.enabled=false",
+  "mcp_servers.otto_context_fixture.enabled=false",
   "fixture",
 ]);
 const fixtureSettings = JSON.parse(await readFile(path.join(settings, "settings.json"), "utf8"));
 fixtureSettings.mcp_servers = {};
 await writeFile(path.join(settings, "settings.json"), JSON.stringify(fixtureSettings));
 await probe("muse-read-only-without-mcp", [...base, ...policy.slice(0, -2), "fixture"]);
+await inspectMuseSettings({ binary, workspace, root });
 // Agent discovery is not a model turn. Check the documented empty-tool primary
 // agent format without granting access to a real project or native account.
 await mkdir(path.join(workspace, ".agents", "agents"), { recursive: true });

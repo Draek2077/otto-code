@@ -286,6 +286,14 @@ live-provider or physical-device acceptance.
 
 ## Context Management acceptance
 
+`Otto Native Context Contracts` inspects installed Muse and Antigravity CLIs on
+disposable Linux runners with a fresh home and no account credentials. It captures
+versions/help and uses Muse's local echo provider with owned hook/MCP sentinels
+to distinguish rejected configuration from effective isolation. Antigravity
+agent discovery does not submit a model turn. The artifacts contain the command
+outcomes, not a claim that a generation adapter is implemented or that a live
+model works. This workflow never runs a developer's installed CLI or Otto home.
+
 <!-- OTTO(preview): provider-neutral host lifecycle and workspace entry points. -->
 
 Preview Servers: `e2e/browser/otto-preview.spec.ts` exercises the single gutter play

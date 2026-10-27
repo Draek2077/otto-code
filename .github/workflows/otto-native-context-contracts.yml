@@ -9,6 +9,7 @@ on:
     paths:
       - .github/workflows/otto-native-context-contracts.yml
       - scripts/otto/native-context-contracts.mjs
+      - scripts/otto/muse-settings-contract.mjs
 
 permissions:
   contents: read
