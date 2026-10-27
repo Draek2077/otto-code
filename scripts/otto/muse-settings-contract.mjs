@@ -68,7 +68,7 @@ export async function inspectMuseSettings({ binary, workspace, root }) {
     id: 1,
     method: "initialize",
     params: {
-      clientInfo: { name: "otto-context-contract", version: "1" },
+      clientInfo: { name: "otto_context_contract", version: "1" },
       capabilities: { experimentalApi: true },
     },
   });

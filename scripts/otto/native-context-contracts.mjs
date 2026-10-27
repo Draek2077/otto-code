@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
+import assert from "node:assert/strict";
 import { inspectMuseSettings } from "./muse-settings-contract.mjs";
 
 // CI-only native evidence. Echo is local: no credentials or model request.
@@ -118,34 +119,31 @@ async function probe(name, args) {
     );
   }
   await writeFile(path.join(root, `${name}.json`), JSON.stringify({ args, ...result }, null, 2));
+  return result;
 }
-await probe("muse-configured-control", [...base, "fixture"]);
+const control = await probe("muse-configured-control", [...base, "fixture"]);
+assert.deepEqual(control.effects, { userHook: true, managedHook: true, mcp: true });
 await probe("muse-read-only-empty", [...base, ...policy, "fixture"]);
-await probe("muse-read-only-named-mcp", [
-  ...base,
-  ...policy.slice(0, -2),
-  "-c",
-  "mcpServers.otto_context_fixture.enabled=false",
-  "fixture",
-]);
-await probe("muse-read-only-server-object", [
-  ...base,
-  ...policy.slice(0, -2),
-  "-c",
-  'mcpServers.otto_context_fixture={"enabled":false}',
-  "fixture",
-]);
-await probe("muse-read-only-snake-field", [
-  ...base,
-  ...policy.slice(0, -2),
-  "-c",
-  "mcp_servers.otto_context_fixture.enabled=false",
-  "fixture",
-]);
 const fixtureSettings = JSON.parse(await readFile(path.join(settings, "settings.json"), "utf8"));
 fixtureSettings.mcp_servers = {};
 await writeFile(path.join(settings, "settings.json"), JSON.stringify(fixtureSettings));
-await probe("muse-read-only-without-mcp", [...base, ...policy.slice(0, -2), "fixture"]);
+const isolated = await probe("muse-read-only-without-mcp", [
+  ...base,
+  ...policy.slice(0, -2),
+  "fixture",
+]);
+assert.equal(isolated.code, 0);
+assert.deepEqual(isolated.effects, { userHook: false, managedHook: false, mcp: false });
+assert.ok(
+  isolated.stdout
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .some(
+      (frame) =>
+        frame.payload_type === "run.terminal.completed" && frame.payload?.text === "echo: fixture",
+    ),
+);
 await inspectMuseSettings({ binary, workspace, root });
 // Agent discovery is not a model turn. Check the documented empty-tool primary
 // agent format without granting access to a real project or native account.
@@ -180,3 +178,5 @@ const agents = {
   failed: Boolean(result.error),
 };
 await writeFile(path.join(root, "agy-agents.json"), JSON.stringify(agents, null, 2));
+assert.equal(agents.code, 0);
+assert.ok(agents.stdout.split(/\r?\n/u).includes("otto-context-proposal"));
