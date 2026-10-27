@@ -17,6 +17,7 @@ import { glob, readFile, readdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { includeTracedNativeFile } from "./otto/trace-native-files.mjs"; // OTTO(nix-native): exclude only an unreachable libc variant.
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
@@ -186,6 +187,14 @@ for (const pattern of additionalInputs) {
 }
 
 // Emit sorted, deduplicated.
+// OTTO(nix-native): nft sees both branches of extract-zip's generated libc selector.
+const nativePlatform = {
+  platform: process.platform,
+  glibcVersion:
+    process.platform === "linux"
+      ? process.report.getReport().header.glibcVersionRuntime
+      : undefined,
+};
 for (const p of [...expanded].sort()) {
-  console.log(p);
+  if (includeTracedNativeFile(p, nativePlatform)) console.log(p);
 }
