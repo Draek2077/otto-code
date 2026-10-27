@@ -1,0 +1,41 @@
+name: Otto Native Context Contracts
+
+# OTTO(context-generation): inspect vendor CLI contracts on disposable runners,
+# without credentials, model requests, or changes to a developer's installation.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install isolated vendor tooling and capture help
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/otto-native-context-home"
+          export XDG_CONFIG_HOME="$HOME/.config"
+          export MUSE_INSTALL_DIR="$HOME/bin"
+          mkdir -p "$HOME" "$RUNNER_TEMP/native-context-contracts"
+          cd "$RUNNER_TEMP/native-context-contracts"
+          curl --fail --location --silent --show-error https://dev.meta.ai/install.sh -o muse-install.sh
+          curl --fail --location --silent --show-error https://antigravity.google/cli/install.sh -o agy-install.sh
+          bash muse-install.sh > muse-install.log 2>&1
+          bash agy-install.sh --dir "$HOME/bin" > agy-install.log 2>&1
+          "$HOME/bin/muse" --version > muse-version.txt 2>&1
+          "$HOME/bin/muse" exec --help > muse-exec-help.txt 2>&1
+          "$HOME/bin/muse" config --help > muse-config-help.txt 2>&1
+          "$HOME/bin/agy" --version > agy-version.txt 2>&1
+          "$HOME/bin/agy" --help > agy-help.txt 2>&1
+      - name: Upload credential-free contract evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-context-contracts
+          path: ${{ runner.temp }}/native-context-contracts
+          retention-days: 7
+          if-no-files-found: error
