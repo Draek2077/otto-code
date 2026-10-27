@@ -643,11 +643,16 @@ async function runRegression({
     document.body.appendChild(overlayRoot);
   });
 
-  const created = await callBrowserTool(client, "browser_new_tab", { url: targetUrl });
-  const browserId = created.browserId;
-  assert(typeof browserId === "string", "browser_new_tab returned no browserId");
-
   const originalDeck = page.getByTestId(`workspace-deck-entry-${serverId}:${originalWorkspaceId}`);
+  // OTTO(browser-host): agent creates use the daemon browser. This regression
+  // exercises the resident Electron guest, which manual desktop creation retains.
+  await page.getByTestId("workspace-header-menu-trigger").click();
+  await page.getByTestId("workspace-header-new-browser").click();
+  const nativeGuest = originalDeck.locator("[data-paseo-browser-id]");
+  await nativeGuest.waitFor({ state: "attached", timeout: timeoutMs });
+  const browserId = await nativeGuest.getAttribute("data-paseo-browser-id");
+  assert(typeof browserId === "string" && browserId.length > 0, "No native browser was created");
+  await callBrowserTool(client, "browser_navigate", { browserId, url: targetUrl });
   await originalDeck.getByTestId(`workspace-tab-browser_${browserId}`).click();
   await page.waitForFunction(
     (id) => {
