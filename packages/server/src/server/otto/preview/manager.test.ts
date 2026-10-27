@@ -109,6 +109,28 @@ test("list adopts configured listening servers, refreshes URL and never acquires
   f.listening.clear();
   expect((await f.manager.list(f.cwd))[0].status).toBe("stopped");
 });
+test("a cold manager reuses a listener without inheriting the old manager's stop authority", async () => {
+  const f = await fixture();
+  const original = await f.manager.start(f.start);
+  f.listening.add(8200);
+  const recovered = new PreviewManager({
+    probe: async (port) => f.listening.has(port),
+    spawn: f.spawn,
+    protectedPorts: new Set(),
+  });
+  managers.push(recovered);
+  expect(await recovered.list(f.cwd)).toMatchObject([
+    { id: "ext:8200", managed: false, pid: null, status: "ready" },
+  ]);
+  const reused = await recovered.start(f.start);
+  expect(reused).toMatchObject({ reused: true, server: { id: "ext:8200", managed: false } });
+  expect(reused.server.id).not.toBe(original.server.id);
+  await expect(recovered.stop(f.cwd, reused.server.id)).rejects.toThrow("did not start");
+  await recovered.close();
+  expect(f.spawn).toHaveBeenCalledTimes(1);
+  expect(f.processes[0].stop).not.toHaveBeenCalled();
+});
+
 test("command edits require approval of the exact current execution identity", async () => {
   const f = await fixture();
   await writeFile(

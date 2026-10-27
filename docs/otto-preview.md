@@ -32,7 +32,9 @@ Readiness times out after 60 seconds. A timeout or failed stop keeps ownership
 and blocks another launch until an explicit stop succeeds. Output retains up to
 2,000 lines, each bounded to 1,000 characters, with tail, search and error filters.
 Each log response also has a 128 KiB encoded budget. Only explicit lifecycle actions invoke the process adapter. Shutdown stops owned
-processes and leaves adopted servers alone.
+processes and leaves adopted servers alone. After an interrupted daemon, a configured
+listener is recovered as an external server. Its port does not prove process identity,
+so recovery reuses the listener without acquiring stop authority or starting a duplicate.
 The host retains at most 256 server records. Only confirmed-stopped or
 never-started historical records yield space; active or uncertain ownership is
 never evicted to admit another process.
