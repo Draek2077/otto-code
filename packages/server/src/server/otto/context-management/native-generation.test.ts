@@ -3,6 +3,7 @@ import type { AgentClient, AgentSession, AgentStreamEvent } from "../../agent/ag
 import type { AgentSessionConfig } from "../../agent/agent-sdk-types.js";
 import { createNativeContextGeneration, nativeGenerationFamily } from "./native-generation.js";
 import { NATIVE_CONTEXT_OUTPUT_LIMIT } from "./native-generation-policy.js";
+import { ContextGenerationIsolationUnavailable } from "./generation-isolation.js";
 
 const capabilities = {
   supportsStreaming: true,
@@ -74,6 +75,24 @@ const input = {
   cwd: "/fixture",
   prompt: "Supplied prose only",
 };
+test.each(["muse", "antigravity", "codex", "opencode"])(
+  "isolated Context generation rejects %s before launching a normal session",
+  async (provider) => {
+    const f = fixture();
+    const state = {
+      providerDefinitions: {
+        [provider]: { enabled: true, derivedFromProviderId: null, applyToolPolicy },
+      },
+      clients: { [provider]: f.client },
+    };
+    await expect(
+      createNativeContextGeneration(() => state)({ ...input, provider }),
+    ).rejects.toBeInstanceOf(ContextGenerationIsolationUnavailable);
+    expect(f.createSession).not.toHaveBeenCalled();
+    expect(f.session.run).not.toHaveBeenCalled();
+    expect(f.close).not.toHaveBeenCalled();
+  },
+);
 test("configured aliases use their canonical client in an unregistered, nonpersistent read-only session", async () => {
   const f = fixture();
   await expect(createNativeContextGeneration(() => f.state)(input)).resolves.toBe(

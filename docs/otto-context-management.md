@@ -261,12 +261,10 @@ chat, instruction resolver, native tool executor, MCP client or session archive.
 Requests contain no tool definitions; returned tool calls are rejected. Explicit
 model selection never falls through to a different provider.
 
-Native Claude, Codex, Copilot, OpenCode, Pi and OMP use fresh provider-owned utility
-sessions with enforced restrictions, outside the normal chat manager. Claude has
-an empty tool/MCP catalog and disabled hooks; Codex requires an acknowledged
-read-only sandbox and disables discovered MCP servers; OpenCode denies tools at
-session creation. Pi and OMP launch without tools, executable extensions or
-skills. Copilot uses the native SDK stdio protocol with an explicit empty tool
+Native Claude, Pi and OMP use fresh provider-owned utility sessions outside the
+normal chat manager. Claude has an empty tool/MCP catalog and disabled hooks.
+Pi and OMP launch without tools, executable extensions or skills.
+Copilot uses the native SDK stdio protocol with an explicit empty tool
 allowlist and denied permission/tool requests. Its one temporary native session
 is removed afterward; existing native chats are never enumerated or changed.
 Configured aliases retain the owning command, environment and selected model.
@@ -274,6 +272,18 @@ Unrecognized native execution contracts fail visibly rather than running an
 ordinary writable chat. Utility output and time are bounded, and provider stderr
 is never included in recovery messages. These restrictions concern proposal
 generation only; ordinary chat compaction and provider sessions are unchanged.
+
+Context proposals require the isolated utility policy. Otto does not relax that
+policy to admit normal startup automations. A selected provider without a verified
+policy reports that isolated, read-only proposals are unavailable and asks the
+user to choose another provider for this action. This is distinct from a missing
+API key or a failed model request. The selection is not retried through a normal
+chat or changed to a different provider. Codex and OpenCode retain native
+read-only policies in their adapters, but these policies alone do not establish
+startup-hook/plugin isolation; their ordinary session paths are not admitted to
+isolated proposals. Muse and Antigravity currently have no registered utility
+adapter. Normal chats remain available for all four. Provider support for ordinary
+coding sessions does not establish this separate capability.
 
 Generating a proposal writes nothing. Every hunk starts dropped. Keep/Drop changes
 the local kept result, with original and kept text side by side on wide screens

@@ -2,6 +2,10 @@ import { expect, test } from "vitest";
 import { z } from "zod";
 import { generateProviderContextText } from "@getpaseo/plugin/server/otto-openai";
 import { createContextTextGeneration, type ContextTextGenerationPorts } from "./text-generation.js";
+import {
+  CONTEXT_GENERATION_ISOLATION_MESSAGE,
+  ContextGenerationIsolationUnavailable,
+} from "./generation-isolation.js";
 
 const request = {
   cwd: "/fixture",
@@ -102,5 +106,35 @@ test("an explicit native selection uses only its enforced read-only operation an
   ).resolves.toEqual({ text: "native proposal" });
   expect(nativeCalls).toHaveLength(2);
   expect(nativeCalls[1]).toContain("Previous response was invalid");
+  expect(calls).toHaveLength(0);
+});
+
+test("isolated Context generation explains a missing policy without retrying or changing providers", async () => {
+  const { ports, calls } = fixture();
+  let attempts = 0;
+  ports.candidates = async () => {
+    throw Error("Explicit selection must not consult defaults");
+  };
+  ports.native = async () => {
+    attempts++;
+    const error = new ContextGenerationIsolationUnavailable();
+    error.message = "private native diagnostics must not cross the boundary";
+    throw error;
+  };
+  await expect(
+    createContextTextGeneration(ports, { provider: "muse", model: "selected" }).generate(request),
+  ).rejects.toThrow(CONTEXT_GENERATION_ISOLATION_MESSAGE);
+  expect(attempts).toBe(1);
+  expect(calls).toHaveLength(0);
+});
+
+test("isolated Context generation never forwards an untyped native failure as a policy message", async () => {
+  const { ports, calls } = fixture();
+  ports.native = async () => {
+    throw Error(`${CONTEXT_GENERATION_ISOLATION_MESSAGE} private native diagnostics`);
+  };
+  await expect(
+    createContextTextGeneration(ports, { provider: "muse", model: "selected" }).generate(request),
+  ).rejects.toThrow(/^Read-only proposal generation is unavailable/);
   expect(calls).toHaveLength(0);
 });

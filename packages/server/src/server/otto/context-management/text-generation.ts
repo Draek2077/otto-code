@@ -1,6 +1,10 @@
 import { generateProviderContextText } from "@getpaseo/plugin/server/otto-openai";
 import { getStructuredAgentResponse } from "../../agent/agent-response-loop.js";
 import type { StructuredTextGeneration } from "../../session/checkout/git-metadata-generator.js";
+import {
+  CONTEXT_GENERATION_ISOLATION_MESSAGE,
+  ContextGenerationIsolationUnavailable,
+} from "./generation-isolation.js";
 
 export interface ContextTextGenerationPorts {
   providerOwner(provider: string): string | undefined;
@@ -47,7 +51,11 @@ export function createContextTextGeneration(
               return result.value.text;
             },
           });
-        } catch {
+        } catch (error) {
+          if (selection && error instanceof ContextGenerationIsolationUnavailable)
+            throw new ContextTextGenerationUnavailable(CONTEXT_GENERATION_ISOLATION_MESSAGE, {
+              cause: error,
+            });
           /* The caller receives bounded recovery copy, never provider stderr or credentials. */
         }
       }

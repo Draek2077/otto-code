@@ -1,6 +1,7 @@
 import type { AgentClient, AgentSession, AgentStreamEvent } from "../../agent/agent-sdk-types.js";
 import type { AgentManagerProviderState } from "../../agent/provider-snapshot-manager.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
+import { ContextGenerationIsolationUnavailable } from "./generation-isolation.js";
 import {
   NATIVE_CONTEXT_OUTPUT_LIMIT,
   NATIVE_CONTEXT_TIMEOUT_MS,
@@ -13,7 +14,10 @@ interface Candidate {
   cwd: string;
   prompt: string;
 }
-const SESSION_FAMILIES = new Set(["claude", "codex", "opencode", "pi", "omp"]);
+// A read-only tool policy alone does not isolate provider startup customizations.
+// Codex/OpenCode retain their policies for future dedicated utility adapters;
+// their ordinary session path is not admitted to isolated Context generation.
+const ISOLATED_SESSION_FAMILIES = new Set(["claude", "pi", "omp"]);
 
 /** Resolve only declared aliases. No ID substring, native chat resume, or parallel provider registry. */
 export function nativeGenerationFamily(
@@ -51,8 +55,7 @@ export function createNativeContextGeneration(readState: () => AgentManagerProvi
         ),
       );
     }
-    if (!SESSION_FAMILIES.has(family))
-      throw new Error("This provider has no enforced read-only Context generation contract.");
+    if (!ISOLATED_SESSION_FAMILIES.has(family)) throw new ContextGenerationIsolationUnavailable();
     return runReadOnlySession(client, family, candidate);
   };
 }
