@@ -243,6 +243,19 @@ async function callBrowserTool(client, name, args = {}) {
   return mcpPayload(await client.callTool({ name, args }), name);
 }
 
+async function waitForListedBrowser(client, browserId, workspaceId) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const inventory = await callBrowserTool(client, "browser_list_tabs");
+    if (
+      inventory.tabs.some((tab) => tab.browserId === browserId && tab.workspaceId === workspaceId)
+    )
+      return;
+    await delay(50);
+  }
+  throw new Error("The manually created browser did not register with its owning host");
+}
+
 async function waitForGuestSelector(client, browserId) {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
@@ -648,10 +661,12 @@ async function runRegression({
   // exercises the resident Electron guest, which manual desktop creation retains.
   await page.getByTestId("workspace-header-menu-trigger").click();
   await page.getByTestId("workspace-header-new-browser").click();
-  const nativeGuest = originalDeck.locator("[data-paseo-browser-id]");
+  // The resident guest belongs to the window's parking host, outside the deck DOM.
+  const nativeGuest = page.locator("webview[data-paseo-browser-id]");
   await nativeGuest.waitFor({ state: "attached", timeout: timeoutMs });
   const browserId = await nativeGuest.getAttribute("data-paseo-browser-id");
   assert(typeof browserId === "string" && browserId.length > 0, "No native browser was created");
+  await waitForListedBrowser(client, browserId, originalWorkspaceId);
   await callBrowserTool(client, "browser_navigate", { browserId, url: targetUrl });
   await originalDeck.getByTestId(`workspace-tab-browser_${browserId}`).click();
   await page.waitForFunction(
