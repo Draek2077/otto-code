@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
@@ -120,6 +120,13 @@ async function probe(name, args) {
 }
 await probe("muse-configured-control", [...base, "fixture"]);
 await probe("muse-read-only-empty", [...base, ...policy, "fixture"]);
+await probe("muse-read-only-named-mcp", [
+  ...base,
+  ...policy.slice(0, -2),
+  "-c",
+  "mcpServers.sentinel.enabled=false",
+  "fixture",
+]);
 // Agent discovery is not a model turn. Check the documented empty-tool primary
 // agent format without granting access to a real project or native account.
 await mkdir(path.join(workspace, ".agents", "agents"), { recursive: true });
@@ -139,23 +146,17 @@ plugins: []
 Return only supplied prose. Do not perform actions.
 `,
 );
-let agents;
-try {
-  agents = {
-    code: 0,
-    stdout: execFileSync(path.join(home, "bin", "agy"), ["agents"], {
-      cwd: workspace,
-      encoding: "utf8",
-      timeout: 30000,
-      maxBuffer: 1048576,
-      stdio: ["ignore", "pipe", "pipe"],
-    }),
-  };
-} catch (error) {
-  agents = {
-    code: error.status,
-    stdout: String(error.stdout ?? ""),
-    stderr: String(error.stderr ?? ""),
-  };
-}
+const result = spawnSync(path.join(home, "bin", "agy"), ["agents"], {
+  cwd: workspace,
+  encoding: "utf8",
+  timeout: 30000,
+  maxBuffer: 1048576,
+  stdio: ["ignore", "pipe", "pipe"],
+});
+const agents = {
+  code: result.status,
+  stdout: result.stdout,
+  stderr: result.stderr,
+  failed: Boolean(result.error),
+};
 await writeFile(path.join(root, "agy-agents.json"), JSON.stringify(agents, null, 2));
