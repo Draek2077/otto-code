@@ -2,6 +2,13 @@ const { WebSocket } = require("ws");
 const { once } = require("node:events");
 const { setTimeout: delay } = require("node:timers/promises");
 
+function isLostDiscoveryTarget(error) {
+  return (
+    (error.code === -32001 && error.detail === "Session with given id not found.") ||
+    (error.code === -32602 && error.detail === "No target with given id found")
+  );
+}
+
 // Playwright's CDP frame tree omits custom-scheme OOPIFs in packaged Electron.
 // Inspect the actual renderer targets, without weakening the app's isolation.
 async function connectArtifactInspector(port, { discoveryTimeoutMs = 2000 } = {}) {
@@ -179,7 +186,7 @@ async function connectArtifactInspector(port, { discoveryTimeoutMs = 2000 } = {}
           // Discovery is a read. A target may detach between getTargets and
           // getFrameTree; discard its stale session and reacquire next poll.
           // Selected-frame actions and security assertions never use this catch.
-          if (error.code === -32001 && error.detail === "Session with given id not found.") {
+          if (isLostDiscoveryTarget(error)) {
             forgetSession(sessionId);
             continue;
           }

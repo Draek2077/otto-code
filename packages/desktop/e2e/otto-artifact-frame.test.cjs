@@ -5,10 +5,31 @@ const { once } = require("node:events");
 const { WebSocketServer } = require("ws");
 const { connectArtifactInspector } = require("./otto-artifact-frame.cjs");
 
+function emitDefaultContext(socket, request, parentContext) {
+  if (
+    request.method === "Runtime.enable" &&
+    (request.sessionId !== "parent" || parentContext !== 0)
+  )
+    socket.send(
+      JSON.stringify({
+        sessionId: request.sessionId,
+        method: "Runtime.executionContextCreated",
+        params: {
+          context: {
+            id: 100,
+            uniqueId: request.sessionId + ":default",
+            auxData: { frameId: request.sessionId, isDefault: true },
+          },
+        },
+      }),
+    );
+}
+
 // Protocol fixtures exercise the observer, not the app's preview sandbox.
 async function fixture(t, parentContext, options = {}) {
   const calls = [];
   let frameTreeError = options.frameTreeError;
+  let attachError = options.attachError;
   let stallParentEvaluation = options.stallParentEvaluation;
   const server = createServer((_request, response) => {
     response.setHeader("Content-Type", "application/json");
@@ -30,8 +51,13 @@ async function fixture(t, parentContext, options = {}) {
             { targetId: "child", type: "iframe" },
           ],
         };
-      if (request.method === "Target.attachToTarget")
+      if (request.method === "Target.attachToTarget") {
         result = { sessionId: request.params.targetId };
+        if (request.params.targetId === "parent" && attachError) {
+          error = attachError;
+          attachError = null;
+        }
+      }
       if (request.method === "Page.getFrameTree") {
         result = { frameTree: { frame: { id: request.sessionId } } };
         if (request.sessionId === "parent" && frameTreeError) {
@@ -39,23 +65,7 @@ async function fixture(t, parentContext, options = {}) {
           frameTreeError = null;
         }
       }
-      if (
-        request.method === "Runtime.enable" &&
-        (request.sessionId !== "parent" || parentContext !== 0)
-      )
-        socket.send(
-          JSON.stringify({
-            sessionId: request.sessionId,
-            method: "Runtime.executionContextCreated",
-            params: {
-              context: {
-                id: 100,
-                uniqueId: request.sessionId + ":default",
-                auxData: { frameId: request.sessionId, isDefault: true },
-              },
-            },
-          }),
-        );
+      emitDefaultContext(socket, request, parentContext);
       if (request.method === "Page.createIsolatedWorld") {
         result = { executionContextId: request.sessionId === "parent" ? parentContext : 17 };
         if (result.executionContextId)
@@ -203,5 +213,19 @@ test("a selected frame's assertion timeout remains a failure and is not replayed
       (call) => call.method === "Runtime.evaluate" && call.params.expression === "observer-stall",
     ).length,
     1,
+  );
+});
+
+test("a target disappearing before attachment is rediscovered instead of cached as a failed session", async (t) => {
+  const { inspector, calls } = await fixture(t, 1, {
+    attachError: { code: -32602, message: "No target with given id found" },
+  });
+  assert.ok((await inspector.frames()).content);
+  assert.ok((await inspector.frames()).content);
+  assert.equal(
+    calls.filter(
+      (call) => call.method === "Target.attachToTarget" && call.params.targetId === "parent",
+    ).length,
+    2,
   );
 });
