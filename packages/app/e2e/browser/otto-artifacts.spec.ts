@@ -109,8 +109,9 @@ test("a real Schedule creates an Artifact with an exact inspectable source run",
       .poll(async () => (await client.scheduleInspect({ id })).schedule?.runs[0]?.status, {
         timeout: 60000,
       })
-      .toBe("succeeded");
+      .not.toBe("running");
     const run = (await client.scheduleInspect({ id })).schedule!.runs[0];
+    expect({ status: run.status, error: run.error }).toEqual({ status: "succeeded", error: null });
     await expect
       .poll(
         async () => {
@@ -152,6 +153,30 @@ test("a real Schedule creates an Artifact with an exact inspectable source run",
     await expect(
       surface.getByTestId("artifact-detail").getByLabel("Artifact data (JSON)"),
     ).toHaveValue('{"value":1}');
+  } catch (error) {
+    const state = testInfo.outputPath("artifact-schedule-state.json");
+    await writeFile(
+      state,
+      JSON.stringify(
+        {
+          schedule: scheduleId ? await client.scheduleInspect({ id: scheduleId }) : null,
+          requests: ottoProvider.requests,
+        },
+        null,
+        2,
+      ),
+    );
+    await testInfo.attach("artifact-schedule-state", {
+      path: state,
+      contentType: "application/json",
+    });
+    const home = process.env.E2E_PASEO_HOME;
+    if (home && path.basename(home).startsWith("paseo-e2e-worker-")) {
+      const log = testInfo.outputPath("artifact-schedule-daemon.log");
+      await writeFile(log, (await readFile(path.join(home, "daemon.log"), "utf8")).slice(-128000));
+      await testInfo.attach("artifact-schedule-daemon", { path: log, contentType: "text/plain" });
+    }
+    throw error;
   } finally {
     if (scheduleId) await client.scheduleDelete({ id: scheduleId });
     await client.close();
