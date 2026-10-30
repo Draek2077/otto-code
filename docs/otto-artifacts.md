@@ -36,6 +36,14 @@ Discovery reports changing or unreadable records as diagnostics without failing 
 rest of the library. Direct reads and writes still enforce their file-identity and
 revision checks; discovery does not retry a mutation.
 
+Windows may deny an atomic rename with `EPERM` while a file is temporarily held.
+After staging is synced and closed, that syscall has at most three additional
+attempts with 10/25/50 ms waits. Each requires unchanged destination bytes and the
+complete original staging bytes; missing, changed or unreadable files stop recovery.
+Other errors and platforms retain one attempt. This never unlinks the destination,
+changes permissions, replays generation or retries an unknown write outcome. The
+external-editor compare/publish boundary above still applies.
+
 ## Generation and recovery
 
 Creation returns a durable `generating` record immediately. A fresh, nonpersistent

@@ -1,6 +1,8 @@
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, rename, unlink, rmdir, open } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
+import { replaceStagedArtifact } from "./atomic-replace.js";
 
 export class ArtifactError extends Error {
   constructor(
@@ -108,7 +110,12 @@ export async function publish(file: string, text: string): Promise<void> {
         },
         () => handle.close(),
       );
-      await rename(temporary, file);
+      await replaceStagedArtifact(temporary, file, text, {
+        windows: process.platform === "win32",
+        read: (target) => readBounded(target, Math.max(2000000, Buffer.byteLength(text))),
+        rename,
+        wait: delay,
+      });
     },
     async () => {
       await unlink(temporary).catch((error) => {
