@@ -63,6 +63,11 @@ Published admissions remain owned while their startup read completes; library re
 cannot classify them as interrupted, and shutdown prevents a pending admission from
 starting its provider session.
 
+Shutdown revokes pending provider publication authority, then waits for admitted
+record/HTML/snapshot transactions and their lock cleanup. A ready record alone does
+not prove the final snapshot has flushed. Shutdown does not wait for a provider
+that ignores cancellation, and a late provider result cannot begin a new commit.
+
 Regeneration is explicitly design-changing. Failed or canceled regeneration preserves
 the previous output. Interrupted records settle to a recoverable error when their
 project is next read; startup never scans or rewrites every user store. Active library

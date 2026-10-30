@@ -82,6 +82,7 @@ export interface ArtifactPorts {
 /** One daemon owner for UI, MCP and future Schedule/Workflow trigger adapters. No work on construction. */
 export class ArtifactDaemonService {
   private readonly jobs = new Map<string, GenerationJob>();
+  private readonly publications = new Set<Promise<void>>();
   // Durable publication precedes the async read that starts a job. Readers must
   // not mistake that admitted interval for an interrupted generation.
   private readonly preparing = new Set<string>();
@@ -346,7 +347,20 @@ export class ArtifactDaemonService {
         "No retained generation log is available for this legacy artifact.",
     };
   }
-  private async commit(entry: ArtifactEntry, record: StoredArtifact, html?: string): Promise<void> {
+  private commit(entry: ArtifactEntry, record: StoredArtifact, html?: string): Promise<void> {
+    if (this.closed)
+      return Promise.reject(
+        new ArtifactError("unavailable", "The host is shutting down; publication did not start."),
+      );
+    const publication = this.commitRecord(entry, record, html);
+    this.publications.add(publication);
+    return publication.finally(() => this.publications.delete(publication));
+  }
+  private async commitRecord(
+    entry: ArtifactEntry,
+    record: StoredArtifact,
+    html?: string,
+  ): Promise<void> {
     await safeDirectory(entry.store.boundary, entry.store.directory, true);
     await exclusive(entry.store.directory, entry.record.id, async () => {
       const current = await readArtifactAt(entry.store, entry.record.id);
@@ -887,5 +901,8 @@ export class ArtifactDaemonService {
     }
     // Removing authority prevents late responses from publishing during shutdown.
     this.jobs.clear();
+    // A ready record can precede its last-good snapshot and lock cleanup. Drain
+    // those admitted filesystem transactions, not unresponsive provider calls.
+    await Promise.allSettled(this.publications);
   }
 }

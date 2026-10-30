@@ -4,6 +4,7 @@ import path from "node:path";
 import { ArtifactDaemonService } from "./service.js";
 import * as storage from "./storage.js";
 import { ArtifactError } from "./files.js";
+import * as artifactFiles from "./files.js";
 import { artifactData } from "./content.js";
 import { createArtifactTools } from "./tools.js";
 import type { ArtifactSchedulePort } from "./sources.js";
@@ -213,6 +214,44 @@ test("independent generations publish concurrently while library reads observe b
       ],
       diagnostics: [],
     });
+});
+
+test("shutdown drains a ready record's final snapshot and lock cleanup", async () => {
+  const f = await fixture();
+  const created = await f.create();
+  const publish = artifactFiles.publish;
+  let entered!: () => void, release!: () => void;
+  const paused = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const resume = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const intercepted = vi.spyOn(artifactFiles, "publish").mockImplementation(async (file, text) => {
+    if (file.endsWith(".last-good")) {
+      entered();
+      await resume;
+    }
+    return publish(file, text);
+  });
+  let closing: Promise<void> | undefined;
+  const closed = vi.fn();
+  try {
+    f.resolve();
+    await paused;
+    expect((await f.service.read(f.ref(created.id))).artifact.status).toBe("ready");
+    closing = f.service.close().then(closed);
+    await Promise.resolve();
+    expect(closed).not.toHaveBeenCalled();
+  } finally {
+    release();
+    await closing;
+    intercepted.mockRestore();
+  }
+  const names = await readdir(path.join(f.repo, ".otto", "artifacts"));
+  expect(names).toContain(`${created.id}.json.last-good`);
+  expect(names.some((name) => name.endsWith(".lock") || name.endsWith(".tmp"))).toBe(false);
+  expect(closed).toHaveBeenCalledTimes(1);
 });
 function sourceSchedule(): StoredSchedule {
   return {
