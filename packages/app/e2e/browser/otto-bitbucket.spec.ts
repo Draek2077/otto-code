@@ -66,11 +66,11 @@ for (const compact of [false, true]) {
       await expect(
         page.getByRole("button", { name: "Save connection", exact: true }),
       ).toBeDisabled();
+      page.once("dialog", (dialog) => void dialog.dismiss());
       await page.getByRole("button", { name: "Reload", exact: true }).click();
-      await page.getByRole("button", { name: "Keep editing", exact: true }).click();
       await expect(name).toHaveValue("Local work account");
+      page.once("dialog", (dialog) => void dialog.accept());
       await page.getByRole("button", { name: "Reload", exact: true }).click();
-      await page.getByRole("button", { name: "Discard and reload", exact: true }).click();
       await expect(name).toHaveValue("");
       await expect(token).toHaveValue("");
       await expect(
