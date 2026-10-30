@@ -68,7 +68,16 @@ test("a real Schedule creates an Artifact with an exact inspectable source run",
         )
       )
         return JSON.stringify({ title: "Scheduled report", branch: "scheduled-report" });
-      if (!body.tools?.length)
+      if (
+        !body.tools?.length ||
+        body.messages.some(
+          (message) =>
+            typeof message.content === "string" &&
+            message.content.startsWith(
+              "Return a single self-contained interactive HTML document as JSON",
+            ),
+        )
+      )
         return JSON.stringify({
           html: artifactTemplate.replace("ARTIFACT_NAVIGATION_PROBE", "about:blank"),
         });
