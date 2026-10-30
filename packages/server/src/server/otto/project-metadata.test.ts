@@ -78,7 +78,7 @@ it("refuses an Artifacts host directory already bound to an archived peer withou
     f.metadata.update({
       projectId: "project-1",
       expectedRevision: origin.revision,
-      patch: { artifactDirectoryName: "OWNED-artifacts" },
+      patch: { artifactDirectoryName: "owned-artifacts" },
     }),
   ).rejects.toThrow("Artifacts directory");
   expect(await f.bytes()).toBe(before);

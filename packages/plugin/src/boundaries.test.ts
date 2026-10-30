@@ -20,6 +20,7 @@ const entries = {
   "./server/otto-preview": "server", // OTTO(preview): shared daemon/provider launch parser remains Node-only.
   "./server/otto-browser": "server", // OTTO(browser-host): shared snapshot/ref engine, never a UI module.
   "./otto/preview": "shared", // OTTO(preview): structural RPC data contains no Node imports.
+  "./otto/artifacts": "shared", // OTTO(artifacts): bounded structural contracts only.
   "./otto/host-browser": "shared", // OTTO(browser-host): structural viewer/command contracts, no runtime code.
   "./otto/kanban": "shared", // OTTO(kanban): structural RPC/model definitions only.
   "./otto/openai-settings": "shared",
@@ -34,6 +35,7 @@ const entries = {
   "./client/otto-brain": "client",
   "./client/otto-knowledge": "client", // OTTO(knowledge): app-only presentation bridge.
   "./client/otto-preview": "client", // OTTO(preview): trusted app-owned workspace controls.
+  "./client/otto-artifacts": "client", // OTTO(artifacts): app-owned presentation bridge.
 } as const;
 const uiDependency = /^(react(?:-dom|-native)?|use-sync-external-store)(\/|$)/;
 const serverModule = /^server\//;

@@ -18,6 +18,7 @@ import { getForgePresentation, normalizeForge } from "@/git/forge";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useAppSettings } from "@/hooks/use-settings";
 import { KnowledgeWorkspaceMenuItem } from "@/otto/knowledge/workspace-menu-item"; // OTTO(knowledge): native workspace panel, clicked-row identity.
+import { ArtifactWorkspaceMenuItem } from "@/otto/artifacts/workspace-menu-item"; // OTTO(artifacts): explicit clicked-workspace reachability.
 import { PreviewWorkspaceMenuItem } from "@/otto/preview/workspace-menu-item"; // OTTO(preview): clicked workspace owns server actions.
 import type { Theme } from "@/styles/theme";
 import type { ShortcutKey } from "@/utils/format-shortcut";
@@ -236,6 +237,7 @@ function SidebarWorkspaceMenuItems({
       />
       {/* OTTO(knowledge): shared by right-click and compact workspace action menus. */}
       <KnowledgeWorkspaceMenuItem surface={surface} serverId={serverId} workspaceId={workspaceId} />
+      <ArtifactWorkspaceMenuItem surface={surface} serverId={serverId} workspaceId={workspaceId} />
       <PreviewWorkspaceMenuItem
         surface={surface}
         serverId={serverId}

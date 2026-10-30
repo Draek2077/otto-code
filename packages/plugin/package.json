@@ -134,14 +134,14 @@
       "default": "./dist/server/otto-browser.js"
     },
     "./otto/artifacts": {
+      "types": "./dist/otto/artifacts.d.ts",
       "source": "./src/otto/artifacts.ts",
-      "default": "./dist/otto/artifacts.js",
-      "types": "./dist/otto/artifacts.d.ts"
+      "default": "./dist/otto/artifacts.js"
     },
     "./client/otto-artifacts": {
+      "types": "./dist/client/otto-artifacts.d.ts",
       "source": "./src/client/otto-artifacts.ts",
-      "default": "./dist/client/otto-artifacts.js",
-      "types": "./dist/client/otto-artifacts.d.ts"
+      "default": "./dist/client/otto-artifacts.js"
     }
   },
   "publishConfig": {
