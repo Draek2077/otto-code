@@ -142,16 +142,24 @@ export class ArtifactDaemonService {
       const listing = await listStore(store);
       diagnostics.push(...listing.diagnostics);
       for (const entry of listing.items) {
-        if (
-          entry.record.status === "generating" &&
-          this.ownsRecovery(entry) &&
-          !entry.metadataInvalid &&
-          !this.hasGeneration(this.key(store, entry.record.id)) &&
-          !(await inspectArtifactLock(store.directory, entry.record.id))
-        )
-          await this.recover(entry);
-        const fresh = await readArtifactAt(store, entry.record.id);
-        if (fresh) items.push(fresh);
+        try {
+          if (
+            entry.record.status === "generating" &&
+            this.ownsRecovery(entry) &&
+            !entry.metadataInvalid &&
+            !this.hasGeneration(this.key(store, entry.record.id)) &&
+            !(await inspectArtifactLock(store.directory, entry.record.id))
+          )
+            await this.recover(entry);
+          const fresh = await readArtifactAt(store, entry.record.id);
+          if (fresh) items.push(fresh);
+        } catch {
+          // Another writer can replace/unlink an entry after discovery. Keep the
+          // bounded read guards; one changing record must not hide the library.
+          diagnostics.push(
+            `Artifact ${entry.record.id} could not be refreshed consistently. Refresh this project before editing it.`,
+          );
+        }
       }
     }
     const query = (input.query ?? "").toLowerCase();

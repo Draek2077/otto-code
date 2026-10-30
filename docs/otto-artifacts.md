@@ -32,6 +32,9 @@ daemon refuses linked, oversized and nonregular artifact files. Per-artifact exc
 locks serialize cooperating writers; revision digests reject stale actions. External
 editors do not participate in that lock, so compare/publish is not a filesystem CAS
 against an uncooperative concurrent editor.
+Discovery reports changing or unreadable records as diagnostics without failing the
+rest of the library. Direct reads and writes still enforce their file-identity and
+revision checks; discovery does not retry a mutation.
 
 ## Generation and recovery
 

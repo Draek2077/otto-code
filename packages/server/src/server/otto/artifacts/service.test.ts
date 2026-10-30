@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile, rm, readdir, rename } from "node:f
 import path from "node:path";
 import { ArtifactDaemonService } from "./service.js";
 import * as storage from "./storage.js";
+import { ArtifactError } from "./files.js";
 import { artifactData } from "./content.js";
 import { createArtifactTools } from "./tools.js";
 import { OTTO_CONFIG_FILENAME } from "../config-migration.js";
@@ -520,6 +521,36 @@ test("a different daemon reading the same repository never settles another host'
   expect((await peer.read(reference)).artifact.status).toBe("generating");
   expect((await peer.list({ scope: reference.scope })).items[0].status).toBe("generating");
   expect((await f.service.read(f.ref(created.id))).artifact.status).toBe("generating");
+});
+test("a changing record is diagnosed without aborting the library or altering either deliverable", async () => {
+  const f = await fixture(),
+    created = await Promise.all([f.create(), f.create()]);
+  f.resolve();
+  await expect
+    .poll(async () => (await f.service.list({ scope: f.scope })).items.map((item) => item.status))
+    .toEqual(["ready", "ready"]);
+  const documents = await Promise.all(created.map((item) => f.service.read(f.ref(item.id)))),
+    files = documents.flatMap((doc) => [doc.path, doc.path.replace(/\.html$/, ".json")]),
+    before = await Promise.all(files.map((file) => readFile(file, "utf8"))),
+    changing = created.map((item) => item.id).sort()[0];
+  // Inject the guarded reader's observed lstat/open conflict. Stores and the
+  // deliverable bytes remain real; this avoids a timing-dependent race test.
+  const opening = vi
+    .spyOn(storage, "readArtifactAt")
+    .mockRejectedValueOnce(new ArtifactError("conflict", "Artifact changed while opening."));
+  try {
+    const result = await f.service.list({ scope: f.scope });
+    expect(opening).toHaveBeenCalled();
+    expect(result.items.map((item) => item.id)).toEqual(
+      created.filter((item) => item.id !== changing).map((item) => item.id),
+    );
+    expect(result.diagnostics).toEqual([
+      `Artifact ${changing} could not be refreshed consistently. Refresh this project before editing it.`,
+    ]);
+    expect(await Promise.all(files.map((file) => readFile(file, "utf8")))).toEqual(before);
+  } finally {
+    opening.mockRestore();
+  }
 });
 test("routine tool inspection omits presentation bytes and data has an explicit bounded read", async () => {
   const f = await fixture(),
