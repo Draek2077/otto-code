@@ -1014,6 +1014,7 @@ export async function createPaseoDaemon(
     metadata: projectRegistry.ottoMetadata,
     workspaces: workspaceRegistry,
     projects: () => projectRegistry!.list(),
+    reportGenerationError: (error) => logger.error({ err: error }, "Artifact generation failed"), // OTTO(artifacts): provider errors stay in host diagnostics, never RPC responses.
     generation: (request) =>
       createArtifactGeneration({
         providers: providerSnapshotManager,

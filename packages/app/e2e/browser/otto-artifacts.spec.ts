@@ -202,6 +202,22 @@ for (const compact of [false, true])
       await expect.poll(async () => (await listing()).items).toEqual([]);
       await expect(surface.getByText("No artifacts yet", { exact: true })).toBeVisible();
       expect(ottoProvider.requests.length).toBeGreaterThan(0);
+    } catch (error) {
+      await testInfo.attach("artifact-generation-state", {
+        body: JSON.stringify(
+          { library: await listing(), fixtureRequests: ottoProvider.requests },
+          null,
+          2,
+        ),
+        contentType: "application/json",
+      });
+      const home = process.env.E2E_PASEO_HOME;
+      if (home && path.basename(home).startsWith("paseo-e2e-worker-"))
+        await testInfo.attach("artifact-daemon-log", {
+          body: (await readFile(path.join(home, "daemon.log"), "utf8")).slice(-128000),
+          contentType: "text/plain",
+        });
+      throw error;
     } finally {
       await client.close();
       await workspace.cleanup();

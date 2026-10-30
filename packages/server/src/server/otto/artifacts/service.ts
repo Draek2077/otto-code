@@ -63,6 +63,7 @@ export interface ArtifactPorts {
     > | null>;
   };
   generation: ArtifactGeneration;
+  reportGenerationError?(error: unknown): void;
   projects(): Promise<readonly { projectId: string; archivedAt: string | null }[]>;
   now?: () => Date;
 }
@@ -443,7 +444,12 @@ export class ArtifactDaemonService {
       validateArtifactHtml(result.html);
       html = result.html;
       resolved = { provider: result.provider, model: result.model };
-    } catch {
+    } catch (generationError) {
+      try {
+        this.ports.reportGenerationError?.(generationError);
+      } catch {
+        /* Diagnostics must not prevent a durable failure state. */
+      }
       error =
         "Artifact generation failed. Check the selected provider/model and regenerate explicitly; the previous deliverable is retained.";
     }
