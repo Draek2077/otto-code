@@ -105,13 +105,25 @@ async function smokeArtifactPreview({ page, listen, daemonHome, cdpPort }) {
       () => frames.wrapper.evaluate("document.body.dataset.navigationBlocked"),
       (state) => state === "yes",
     );
-    assert.equal(
-      await preview.evaluate("document.querySelector('h1').textContent"),
-      "Interaction verified",
-    );
     assert.equal(page.url(), artifactUrl);
     assert.equal(page.context().pages().length, pageCount);
     assert.equal(requests, 0);
+    // Chromium can replace a CSP-blocked child with its error document. The
+    // original document is not a valid post-navigation execution context.
+    // Exercise the same explicit saved-output recovery as the browser journey.
+    await page
+      .getByTestId("artifact-detail")
+      .filter({ visible: true })
+      .getByRole("button", { name: "Reload saved output", exact: true })
+      .click();
+    const restored = await waitForArtifactObservation(
+      () => inspector.frames(),
+      (found) => !!found.content && !!found.wrapper,
+    );
+    assert.equal(
+      await restored.content.evaluate("document.querySelector('h1').textContent"),
+      "Packaged report",
+    );
     const artifactDir = process.env.PASEO_DESKTOP_SMOKE_ARTIFACT_DIR?.trim();
     if (artifactDir) {
       fs.mkdirSync(artifactDir, { recursive: true });
