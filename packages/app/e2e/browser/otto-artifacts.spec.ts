@@ -16,6 +16,7 @@ import { openWorkspaceContextMenu } from "../support/helpers/sidebar";
 import { getServerId } from "../support/helpers/server-id";
 import { getE2EDaemonPort } from "../support/helpers/daemon-port";
 test.use({
+  e2eInjectPaseoTools: true,
   e2eDaemonConfig: {
     pluginsEnabled: true,
     agents: {
@@ -26,7 +27,7 @@ test.use({
 const artifactTemplate =
   '<!doctype html><html><head><title>Artifact acceptance</title></head><body><h1>Interactive report</h1><button onclick="document.querySelector(\'h1\').textContent=\'Clicked\'">Interact</button><button onclick="location.href=\'ARTIFACT_NAVIGATION_PROBE\'">Navigate outside</button><script id="otto-artifact-data" type="application/json">{"value":1}</script><script>try{parent.document.body.dataset.artifactEscape="bad"}catch{document.body.dataset.isolated="yes"}fetch("https://artifact-network.invalid/leak").catch(()=>document.body.dataset.network="blocked")</script></body></html>';
 const fixtureRequest = z.object({
-  messages: z.array(z.object({ role: z.string() })),
+  messages: z.array(z.object({ role: z.string(), content: z.unknown().optional() })),
   tools: z
     .array(
       z.object({ function: z.object({ name: z.string(), description: z.string().optional() }) }),
@@ -59,6 +60,14 @@ test("a real Schedule creates an Artifact with an exact inspectable source run",
   try {
     ottoProvider.replyWith((raw) => {
       const body = fixtureRequest.parse(raw);
+      if (
+        body.messages.some(
+          (message) =>
+            typeof message.content === "string" &&
+            message.content.startsWith("Generate a title and a git branch name"),
+        )
+      )
+        return JSON.stringify({ title: "Scheduled report", branch: "scheduled-report" });
       if (!body.tools?.length)
         return JSON.stringify({
           html: artifactTemplate.replace("ARTIFACT_NAVIGATION_PROBE", "about:blank"),
@@ -96,6 +105,7 @@ test("a real Schedule creates an Artifact with an exact inspectable source run",
         config: {
           provider: "openai-compatible",
           model: "fixture",
+          modeId: "bypassPermissions",
           cwd: workspace.repoPath,
           archiveOnFinish: false,
         },

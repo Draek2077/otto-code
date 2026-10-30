@@ -354,6 +354,19 @@ async function writeSmokeArtifacts({ page, stdout, stderr, userData, daemonHome,
       path.join(artifactDir, "renderer.json"),
       `${JSON.stringify(renderer, null, 2)}\n`,
     );
+    // OTTO(artifacts): preserve child-frame state when a real preview cannot render.
+    const frames = await Promise.all(
+      page.frames().map(async (frame) => ({
+        url: frame.url(),
+        state: await frame
+          .evaluate(() => ({
+            title: document.title,
+            text: document.body?.textContent?.slice(0, 2000) ?? "",
+          }))
+          .catch((frameError) => ({ error: String(frameError) })),
+      })),
+    );
+    fs.writeFileSync(path.join(artifactDir, "frames.json"), JSON.stringify(frames, null, 2));
     await page
       .screenshot({ path: path.join(artifactDir, "renderer.png"), fullPage: true })
       .catch(() => undefined);
@@ -940,6 +953,11 @@ async function smokePackagedDesktopApp({
       deadline,
     });
     page = await waitForPackagedAppPage(browser, deadline);
+    // OTTO(artifacts): renderer/CSP diagnostics are evidence, never a smoke-only app path.
+    page.on("pageerror", (error) => stderr.push(`Renderer error: ${error.message}\n`));
+    page.on("console", (message) => {
+      if (message.type() === "error") stderr.push(`Renderer console: ${message.text()}\n`);
+    });
     await assertPackagedRendererLoaded(page, deadline);
     console.log("Packaged desktop smoke: real app renderer and preload bridge loaded");
     const status = await waitForRendererStartedDaemon({

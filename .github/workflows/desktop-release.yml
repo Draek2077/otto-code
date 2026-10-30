@@ -237,6 +237,16 @@ jobs:
           path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-mac.yml
           retention-days: 1
 
+      # OTTO(artifacts): a failed packaged renderer must retain its real frame diagnostics.
+      - name: Upload desktop smoke evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-smoke-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}
+          path: ${{ runner.temp }}/desktop-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
   build-macos-unsigned:
     needs: [create-release]
     # Unsigned macOS builds are direct-download artifacts only. They
@@ -344,6 +354,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # OTTO(artifacts): retain unsigned package runtime proof on success and failure.
+      - name: Upload desktop smoke evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-smoke-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}
+          path: ${{ runner.temp }}/desktop-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
   publish-linux:
     needs: [create-release]
     if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-linux-v')))) }}
@@ -443,6 +463,16 @@ jobs:
           path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-linux.yml
           retention-days: 1
 
+      # OTTO(artifacts): retain Linux runtime proof even when the build hook fails.
+      - name: Upload desktop smoke evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-smoke-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}
+          path: ${{ runner.temp }}/desktop-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
   publish-windows:
     needs: [create-release]
     if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-windows-v')))) }}
@@ -538,6 +568,16 @@ jobs:
           name: windows-manifest
           path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}.yml
           retention-days: 1
+
+      # OTTO(artifacts): retain Windows runtime proof even when the build hook fails.
+      - name: Upload desktop smoke evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-smoke-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}
+          path: ${{ runner.temp }}/desktop-smoke
+          if-no-files-found: ignore
+          retention-days: 7
 
   finalize-rollout:
     needs: [apple-signing-gate, publish-macos, build-macos-unsigned, publish-linux, publish-windows]
