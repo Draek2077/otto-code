@@ -139,6 +139,8 @@ test.describe("Sidebar items in Appearance settings", () => {
         { key: "schedules", visible: true },
         { key: "history", visible: false },
         { key: "search", visible: true },
+        // OTTO(artifacts): this registered row retains its own navigation preference.
+        { key: "plugin:otto-artifacts:artifacts", visible: true },
         // OTTO(kanban): the built-in contribution participates in persisted navigation preferences.
         { key: "plugin:otto-kanban:kanban", visible: true },
         { key: "plugin:otto-project-knowledge:context-management", visible: true }, // OTTO(context-management): preserve the registered navigation preference.
