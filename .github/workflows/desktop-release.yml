@@ -136,7 +136,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-15
             electron_arch: arm64
           - runner: macos-15-intel
             electron_arch: x64
@@ -257,7 +257,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-15
             electron_arch: arm64
           - runner: macos-15-intel
             electron_arch: x64
