@@ -225,6 +225,12 @@ Artifact available. It belongs to the existing all-Otto-journey CI lane. Focused
 selected-daemon routing. These deterministic checks do not prove native provider or
 device WebView behavior.
 
+The packaged desktop smoke also opens a seeded Artifact through the shipped library
+and asserts interaction plus blocked host/parent access, popups, HTTP requests and
+frame navigation. It retains `artifact-preview.json` and a screenshot for each
+packaged launch. This is an external observer of the production UI and daemon, not
+a renderer-only mount or a smoke branch in the application.
+
 <!-- OTTO(provider-tests): coverage for the independently owned provider plugin. -->
 
 `Otto App Acceptance` builds the owning server stack and app dependency, then runs

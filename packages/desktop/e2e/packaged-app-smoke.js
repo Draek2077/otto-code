@@ -8,6 +8,7 @@ const { chromium } = require("playwright");
 const { extractFile } = require("@electron/asar");
 const { WebSocket } = require("ws");
 const assert = require("node:assert/strict");
+const { smokeArtifactPreview } = require("./otto-artifacts.electron.cjs"); // OTTO(artifacts): observe the real packaged preview boundary.
 
 // OTTO(identity): verify the shipped Otto executable, CLI, origin, and pid file.
 const {
@@ -953,6 +954,7 @@ async function smokePackagedDesktopApp({
     console.log("Packaged desktop smoke: renderer-started desktop daemon reported running");
     await assertBuiltinPluginsStarted(listen);
     console.log("Packaged desktop smoke: every built-in plugin started");
+    await smokeArtifactPreview({ page, listen, daemonHome }); // OTTO(artifacts): no provider/model launches.
     await smokeCliShim({ appPath, env });
     await smokeCliTerminal({ appPath, env });
     if (expectedSandbox !== undefined) {
