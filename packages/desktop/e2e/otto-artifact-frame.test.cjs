@@ -32,8 +32,19 @@ async function fixture(t, parentContext) {
         result = { sessionId: request.params.targetId };
       if (request.method === "Page.getFrameTree")
         result = { frameTree: { frame: { id: request.sessionId } } };
-      if (request.method === "Page.createIsolatedWorld")
+      if (request.method === "Page.createIsolatedWorld") {
         result = { executionContextId: request.sessionId === "parent" ? parentContext : 17 };
+        if (result.executionContextId)
+          socket.send(
+            JSON.stringify({
+              sessionId: request.sessionId,
+              method: "Runtime.executionContextCreated",
+              params: {
+                context: { id: result.executionContextId, uniqueId: request.sessionId + ":unique" },
+              },
+            }),
+          );
+      }
       if (request.method === "Runtime.evaluate") {
         if (request.sessionId === "parent")
           error = {
@@ -79,5 +90,8 @@ test("discovery skips a destroyed context and still inspects its actual owner", 
 
 test("other evaluation failures remain failures with the protocol method", async (t) => {
   const { inspector } = await fixture(t, 2);
-  await assert.rejects(inspector.frames(), /Runtime.evaluate: Unexpected protocol error/);
+  await assert.rejects(
+    inspector.frames(),
+    /Runtime.evaluate \(-32000\): Unexpected protocol error/,
+  );
 });

@@ -15,18 +15,39 @@ async function connectArtifactInspector(port) {
   let sequence = 0;
   const pending = new Map();
   const sessions = new Map();
+  const contexts = new Map();
   socket.on("message", (bytes) => {
     const message = JSON.parse(bytes.toString());
+    if (message.method === "Runtime.executionContextCreated") {
+      let owned = contexts.get(message.sessionId);
+      if (!owned) {
+        owned = new Map();
+        contexts.set(message.sessionId, owned);
+      }
+      owned.set(message.params.context.id, message.params.context);
+      return;
+    }
+    if (message.method === "Runtime.executionContextDestroyed") {
+      contexts.get(message.sessionId)?.delete(message.params.executionContextId);
+      return;
+    }
+    if (message.method === "Runtime.executionContextsCleared") {
+      contexts.delete(message.sessionId);
+      return;
+    }
     const request = pending.get(message.id);
     if (!request) return;
     pending.delete(message.id);
     clearTimeout(request.timer);
     if (message.error)
       request.reject(
-        Object.assign(new Error(`${request.method}: ${message.error.message}`), {
-          code: message.error.code,
-          detail: message.error.message,
-        }),
+        Object.assign(
+          new Error(`${request.method} (${message.error.code}): ${message.error.message}`),
+          {
+            code: message.error.code,
+            detail: message.error.message,
+          },
+        ),
       );
     else request.resolve(message.result);
   });
@@ -41,11 +62,21 @@ async function connectArtifactInspector(port) {
       socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }
-  function frameHandle(sessionId, contextId) {
+  function frameHandle(sessionId, frameId) {
     const evaluate = async (expression) => {
+      const { executionContextId } = await call(
+        "Page.createIsolatedWorld",
+        { frameId, worldName: "otto-artifact-observer" },
+        sessionId,
+      );
+      const context = contexts.get(sessionId)?.get(executionContextId);
+      if (!context?.uniqueId)
+        throw Object.assign(new Error("Frame context is not owned by this target"), {
+          contextUnavailable: true,
+        });
       const reply = await call(
         "Runtime.evaluate",
-        { expression, contextId, returnByValue: true },
+        { expression, uniqueContextId: context.uniqueId, returnByValue: true },
         sessionId,
       );
       if (reply.exceptionDetails) throw new Error("Packaged frame inspection failed");
@@ -71,24 +102,7 @@ async function connectArtifactInspector(port) {
     };
   }
   async function inspectTree(tree, sessionId, found) {
-    let executionContextId;
-    try {
-      ({ executionContextId } = await call(
-        "Page.createIsolatedWorld",
-        { frameId: tree.frame.id, worldName: "otto-artifact-observer" },
-        sessionId,
-      ));
-    } catch (error) {
-      // A parent tree can contain an OOPIF owned by another target. That target
-      // is inspected separately; both real fixture documents are still required.
-      if (error.code === -32000) return;
-      throw error;
-    }
-    // A parent target can expose a remote-frame placeholder with context id 0.
-    // It is not an execution context in this session. Its owning iframe target
-    // must still supply the real document before the acceptance can proceed.
-    if (!executionContextId) return;
-    const handle = frameHandle(sessionId, executionContextId);
+    const handle = frameHandle(sessionId, tree.frame.id);
     let identity;
     try {
       identity = await handle.evaluate(
@@ -98,7 +112,12 @@ async function connectArtifactInspector(port) {
       // Contexts may disappear while the renderer commits its iframe document.
       // Discovery will reacquire the live context; never ignore fixture actions
       // or security assertion failures after a real document has been selected.
-      if (error.code === -32000 && error.detail === "Cannot find context with specified id") return;
+      if (
+        error.contextUnavailable ||
+        error.detail === "Cannot find context with specified id" ||
+        error.detail === "No frame for given id found"
+      )
+        return;
       throw error;
     }
     found.observed.push({ ...identity, frameId: tree.frame.id });
