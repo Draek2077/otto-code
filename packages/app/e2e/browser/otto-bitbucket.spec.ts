@@ -1,12 +1,13 @@
 import { test, expect } from "../support/fixtures";
 import { gotoAppShell, openSettings } from "../support/helpers/app";
 import { getServerId } from "../support/helpers/server-id";
+import {
+  readAtlassianAccount,
+  saveAtlassianAccount,
+} from "@getpaseo/plugin/otto/atlassian-settings";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import {
-  readBitbucketConnections,
-  writeBitbucketConnections,
-} from "@getpaseo/plugin/otto/bitbucket-connections";
+import { readBitbucketConnections } from "@getpaseo/plugin/otto/bitbucket-connections";
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
 for (const compact of [false, true]) {
   test(`Bitbucket settings expose coherent setup and retain stale drafts (${compact ? "compact" : "wide"})`, async ({
@@ -41,22 +42,42 @@ for (const compact of [false, true]) {
         .fill("fixture@example.test");
       const token = page.getByLabel("API token", { exact: true });
       await token.fill("fixture-only-never-stored");
-      // Advance metadata through the real RPC. The ensuing stale save is
-      // refused before vault access; this journey never installs credentials.
+      // Change shared account metadata through its real RPC. Distinct site
+      // values make both layouts actual peer edits, never an idempotent selection.
       const current = readBitbucketConnections.output.parse(
         await client.invokePluginRpc("otto-integrations", readBitbucketConnections.name, {
           hostId,
         }),
       );
       if (!current.ok) throw new Error(current.error.message);
-      const peer = writeBitbucketConnections.output.parse(
-        await client.invokePluginRpc("otto-integrations", writeBitbucketConnections.name, {
+      const account = readAtlassianAccount.output.parse(
+        await client.invokePluginRpc("otto-integrations", readAtlassianAccount.name, { hostId }),
+      );
+      if (!account.ok) throw new Error(account.error.message);
+      expect(account.value.credential.stored).toBe(false);
+      const peer = saveAtlassianAccount.output.parse(
+        await client.invokePluginRpc("otto-integrations", saveAtlassianAccount.name, {
           hostId,
-          expectedRevision: current.value.revision,
-          action: { kind: "select", connectionId: null },
+          expectedRevision: account.value.revision,
+          config: {
+            email: "peer-fixture@example.test",
+            siteUrl: compact ? "compact-bitbucket-fixture" : "wide-bitbucket-fixture",
+            route: { kind: "site" },
+          },
+          credential: { kind: "keep" },
         }),
       );
       expect(peer.ok).toBe(true);
+      if (!peer.ok) throw new Error(peer.error.message);
+      expect(peer.value.revision).not.toBe(account.value.revision);
+      expect(peer.value.credential.stored).toBe(false);
+      const changed = readBitbucketConnections.output.parse(
+        await client.invokePluginRpc("otto-integrations", readBitbucketConnections.name, {
+          hostId,
+        }),
+      );
+      if (!changed.ok) throw new Error(changed.error.message);
+      expect(changed.value.revision).not.toBe(current.value.revision);
       await page.getByRole("button", { name: "Save connection", exact: true }).click();
       await expect(
         page.getByText("Git connections changed. Reload before saving.", { exact: true }),

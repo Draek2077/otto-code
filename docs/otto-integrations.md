@@ -56,7 +56,8 @@ Only supported relative Jira REST paths are accepted. Responses and duration are
 bounded; redirects are refused and writes are never automatically retried. Safe
 errors distinguish unavailable credentials, scope/permission failures and unknown
 write outcomes without returning raw vendor/native errors. Jira uses this shared
-account; restoring the separate Bitbucket feature still requires its adapter.
+account. [Bitbucket connections](otto-bitbucket.md) documents its separate named
+accounts, project selection and native Cloud adapter.
 
 ## Verification boundary
 
