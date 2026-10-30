@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { legacyIntegrationAccount } from "./legacy-authorization.js";
 
 describe("preserved integration account metadata", () => {
   it("reads only the exact integration/connection label without modifying the legacy registry", async () => {
-    const home = await mkdtemp(
-      fileURLToPath(
-        new URL("../../../../../../../.tmp/connector-legacy-accounts-", import.meta.url),
-      ),
-    );
+    const scratch = fileURLToPath(new URL("../../../../../../.tmp/", import.meta.url));
+    await mkdir(scratch, { recursive: true });
+    const home = await mkdtemp(path.join(scratch, "connector-legacy-accounts-"));
     const file = path.join(home, "integration-authorizations.json");
     const bytes = JSON.stringify([
       {

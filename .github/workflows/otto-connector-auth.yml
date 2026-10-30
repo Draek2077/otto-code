@@ -9,6 +9,7 @@ on:
       [
         packages/auth-service/**,
         packages/server/src/services/otto/connectors/**,
+        scripts/otto/materialize-google-connectors.test.mjs,
         package.json,
         package-lock.json,
         .github/workflows/otto-connector-auth.yml,
@@ -18,6 +19,7 @@ on:
       [
         packages/auth-service/**,
         package.json,
+        scripts/otto/materialize-google-connectors.test.mjs,
         package-lock.json,
         .github/workflows/otto-connector-auth.yml,
       ]
@@ -59,7 +61,7 @@ jobs:
           cache: npm
       - run: node scripts/npm-retry.mjs ci
       - run: npm run typecheck --workspace=@otto-code/auth-service
-      - run: node --test packages/server/scripts/materialize-google-connectors.test.mjs
+      - run: node --test scripts/otto/materialize-google-connectors.test.mjs
       - run: npm run lint -- --threads=1 packages/auth-service/src packages/auth-service/scripts
       - run: npx vitest run packages/auth-service/src/grant.test.ts --bail=1 --maxWorkers=1
       - run: npx vitest run packages/auth-service/src/worker.test.ts --bail=1 --maxWorkers=1

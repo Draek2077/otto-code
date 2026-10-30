@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { materializeGoogleConnectors } from "./materialize-google-connectors.mjs";
+import { materializeGoogleConnectors } from "../../packages/server/scripts/materialize-google-connectors.mjs";
 
 test("ordinary development builds do not need publisher registration", () => {
   assert.equal(materializeGoogleConnectors({ env: {} }), false);
@@ -28,9 +28,9 @@ test("registration cannot be materialized outside CI", () => {
   );
 });
 test("CI emits only the expected native registration into an isolated artifact fixture", () => {
-  const folder = mkdtempSync(
-    fileURLToPath(new URL("../../../.tmp/connectors-google-artifact-", import.meta.url)),
-  );
+  const scratch = fileURLToPath(new URL("../../.tmp/", import.meta.url));
+  mkdirSync(scratch, { recursive: true });
+  const folder = mkdtempSync(path.join(scratch, "connectors-google-artifact-"));
   const destination = path.join(folder, "google", "google-oauth-client.json");
   const installed = {
     client_id: "fixture.apps.googleusercontent.com",

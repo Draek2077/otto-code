@@ -69,6 +69,10 @@ jobs:
       - name: Test Otto Metro resource policy
         run: node --test packages/app/otto/metro-resource-policy.test.cjs
 
+      # OTTO(connectors): Node fixtures stay outside Vitest's server discovery.
+      - name: Test Google Connector artifact registration
+        run: node --test scripts/otto/materialize-google-connectors.test.mjs
+
   quality:
     name: quality
     needs: changes
