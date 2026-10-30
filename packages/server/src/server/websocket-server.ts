@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import { ottoBrowserCapabilities } from "./otto/browser/capabilities.js"; // OTTO(browser-history)
 import { ottoArtifactsAvailable } from "./otto/artifacts/capabilities.js"; // OTTO(artifacts)
+import { ottoBitbucketAvailable } from "../services/otto/bitbucket/available.js"; // OTTO(bitbucket)
 // OTTO(protocol): preserve Otto 0.9 clients without renaming Paseo internals.
 import {
   encodeOttoServerMessage,
@@ -1821,6 +1822,7 @@ export class VoiceAssistantWebSocketServer {
         ottoBrainCommands: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
         ottoBrainSharing: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
         ottoKanban: this.pluginRuntime?.supportsBuiltinRpc?.("otto-kanban") === true, // OTTO(kanban)
+        ottoBitbucket: ottoBitbucketAvailable(this.pluginRuntime), // OTTO(bitbucket)
         ottoKnowledge: knowledgeAvailable, // OTTO(knowledge)
         ottoArtifacts: ottoArtifactsAvailable(this.pluginRuntime), // OTTO(artifacts)
         ottoContextManagement: knowledgeAvailable, // OTTO(context-management): daemon-owned inspection and conditional edits.

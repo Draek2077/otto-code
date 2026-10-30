@@ -4,6 +4,7 @@ import { createGitHubService, probeGitHubHost } from "./github-service.js";
 import type { ForgeService } from "./forge-service.js";
 import { createGiteaService, resolveGiteaFamilyForge } from "./gitea-service.js";
 import { createGitLabService, probeGitLabHost } from "./gitlab-service.js";
+import { createBitbucketService } from "./otto/bitbucket/service.js"; // OTTO(bitbucket): native REST adapter, no CLI sign-in.
 
 export type ForgeServiceFactory = () => ForgeService;
 
@@ -131,6 +132,10 @@ function matchesCloudHost(forgeId: string): ((host: string) => boolean) | undefi
 }
 
 export const defaultForgeRegistry = new ForgeRegistry([
+  [
+    "bitbucket-cloud",
+    { createService: createBitbucketService, matchesHost: matchesCloudHost("bitbucket-cloud") },
+  ], // OTTO(bitbucket): the daemon supplies its owning account through forgeOverrides.
   // GitHub Enterprise Server is recognized at runtime by probeHost, exactly like
   // self-hosted GitLab/Gitea: github.com short-circuits via matchHost, so the
   // probe only runs on non-cloud hosts. The PR-status poll gates on the resolver

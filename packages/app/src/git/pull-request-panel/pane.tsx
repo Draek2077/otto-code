@@ -1,4 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
+import {
+  withOttoBitbucketPrContext,
+  OttoBitbucketThreadAction,
+} from "@/otto/bitbucket/thread-actions"; // OTTO(bitbucket): isolated optional discussion controls.
 import { Image, Pressable, ScrollView, Text, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
@@ -477,7 +481,8 @@ export function PullRequestPane({
       })
     : null;
 
-  return (
+  return withOttoBitbucketPrContext(
+    { serverId, cwd, number: data.number, forge: data.forge },
     <View style={styles.root} testID="pr-pane">
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <PaneContentToolbar style={styles.toolbar} testID="pr-pane-toolbar">
@@ -617,8 +622,8 @@ export function PullRequestPane({
             : null}
         </Section>
       </ScrollView>
-    </View>
-  );
+    </View>,
+  ); // OTTO(bitbucket): preserve the canonical PR pane and refresh owner.
 }
 
 function stateLabelStyle(state: PrState) {
@@ -1108,6 +1113,7 @@ function ThreadBlock({
             brandLabel={brandLabel}
             onAddToChat={onAddToChat}
           />
+          <OttoBitbucketThreadAction thread={thread} /> {/* OTTO(bitbucket) */}
           {replies.length > 0 ? (
             <View style={styles.replyRail}>
               {replies.map((reply) => (

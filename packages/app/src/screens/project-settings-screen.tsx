@@ -39,6 +39,7 @@ import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-run
 import { useHostFeature } from "@/runtime/host-features";
 // OTTO(kanban): feature-owned section inside canonical Project Settings.
 import { OttoKanbanProjectSettings } from "@/otto/kanban/project-settings";
+import { OttoBitbucketProjectSettings } from "@/otto/bitbucket/project-settings"; // OTTO(bitbucket)
 import { OttoArtifactProjectSettings } from "@/otto/artifacts/project-settings"; // OTTO(artifacts): canonical settings placement.
 import { useToast } from "@/contexts/toast-context";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -323,6 +324,11 @@ function ProjectSettingsBody({
         showBackToProjects,
       })}
       <OttoKanbanProjectSettings
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+      />
+      {/* OTTO(bitbucket): canonical Project Settings placement; forms and account ownership remain in Otto modules. */}
+      <OttoBitbucketProjectSettings
         serverId={selectedHost.serverId}
         projectId={selectedHost.projectId}
       />

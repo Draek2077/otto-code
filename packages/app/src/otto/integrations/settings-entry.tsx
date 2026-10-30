@@ -4,6 +4,7 @@ import { SettingsCard, SettingsRow } from "@/components/settings";
 import { Button } from "@/components/ui/button";
 import { useInstalledPlugin } from "@/plugins/registry";
 import { buildPluginSettingsRoute } from "@/plugins/settings/routes";
+import { BitbucketSettingsEntry } from "../bitbucket/settings-entry";
 
 export function IntegrationSettingsEntry({ serverId }: { serverId: string }) {
   const plugin = useInstalledPlugin(serverId, "otto-integrations");
@@ -22,6 +23,7 @@ export function IntegrationSettingsEntry({ serverId }: { serverId: string }) {
           Configure Atlassian
         </Button>
       </SettingsRow>
+      <BitbucketSettingsEntry serverId={serverId} />
     </SettingsCard>
   );
 }

@@ -1,3 +1,5 @@
+import { OTTO_BITBUCKET_FORGE } from "./otto/bitbucket-forge.js"; // OTTO(bitbucket): declarative adapter registration.
+
 /**
  * Declarative manifest of the git forges Paseo knows how to present, mirroring
  * provider-manifest.ts. Pure build-time data shared by BOTH the client (icon,
@@ -56,6 +58,7 @@ export interface ForgeDefinition {
 }
 
 export const FORGE_DEFINITIONS: ForgeDefinition[] = [
+  OTTO_BITBUCKET_FORGE, // OTTO(bitbucket): implementation remains in Otto-owned modules.
   {
     id: "github",
     displayName: "GitHub",

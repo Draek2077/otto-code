@@ -212,6 +212,13 @@ Agent providers handle their own auth. Do not add auth checks, environment varia
 
 ## Otto provider coverage
 
+Bitbucket settings: `e2e/browser/otto-bitbucket.spec.ts` covers the registered
+host-settings entry, empty-form validation, a real daemon metadata conflict,
+retained local fields, declined/accepted reload, secret-draft clearing and
+repository controls on wide and compact screens. It performs no vendor request
+or native credential write. Adapter, RPC and form fixtures cover the additional
+forge and repository behaviors; these do not prove employer-account access.
+
 <!-- OTTO(artifacts): real daemon/browser acceptance complements the pure service and draft contracts. -->
 
 Artifacts: `e2e/browser/otto-artifacts.spec.ts` covers wide and compact creation through

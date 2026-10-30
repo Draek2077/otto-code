@@ -36,12 +36,10 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import {
-  applyAvailableAddProjectHosts,
   backAddProjectPage,
   chooseAddProjectHost,
   currentAddProjectPage,
   moveAddProjectSelection,
-  openAddProjectFlow,
   openDirectorySearchPage,
   openGithubLocationPage,
   openGithubSearchPage,
@@ -98,6 +96,7 @@ import type { AddProjectFlowRequest } from "@/stores/add-project-flow-store";
 import type { Theme } from "@/styles/theme";
 import { shortenPath } from "@/utils/shorten-path";
 import { buildNewWorkspaceRoute, buildSettingsAddHostRoute } from "@/utils/host-routes";
+import { createBitbucketCloneInitializer } from "@/otto/bitbucket/clone"; // OTTO(bitbucket): one initializer seam, all cloning stays in the existing flow.
 
 interface AddProjectFlowProps {
   request: AddProjectFlowRequest;
@@ -373,12 +372,10 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       stableProjectIdentityByHost,
     ],
   );
-  const [state, setState] = useState(() =>
-    openAddProjectFlow({
-      hosts: availableHosts,
-      ...(request.preferredHostId ? { preferredHostId: request.preferredHostId } : {}),
-    }),
-  );
+  const [cloneInitializer] = useState(() =>
+    createBitbucketCloneInitializer(request.preferredHostId, request.repository),
+  ); // OTTO(bitbucket)
+  const [state, setState] = useState(() => cloneInitializer.open(availableHosts)); // OTTO(bitbucket)
   const page = currentAddProjectPage(state);
   const hostId = pageHostId(page);
   const host = hostId ? state.hosts.find((candidate) => candidate.serverId === hostId) : null;
@@ -407,10 +404,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
   useEffect(() => {
-    setState((current) =>
-      applyAvailableAddProjectHosts(current, availableHosts, request.preferredHostId),
-    );
-  }, [availableHosts, request.preferredHostId]);
+    setState((current) => cloneInitializer.apply(current, availableHosts)); // OTTO(bitbucket): consume a pending clone once, without replacing an edited destination.
+  }, [availableHosts, cloneInitializer]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query), 250);

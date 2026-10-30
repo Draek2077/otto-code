@@ -63,6 +63,16 @@
       "source": "./src/otto/atlassian-settings.ts",
       "default": "./dist/otto/atlassian-settings.js"
     },
+    "./otto/bitbucket-connections": {
+      "types": "./dist/otto/bitbucket-connections.d.ts",
+      "source": "./src/otto/bitbucket-connections.ts",
+      "default": "./dist/otto/bitbucket-connections.js"
+    },
+    "./client/otto-bitbucket": {
+      "types": "./dist/client/otto-bitbucket.d.ts",
+      "source": "./src/client/otto-bitbucket.ts",
+      "default": "./dist/client/otto-bitbucket.js"
+    },
     "./otto/project-knowledge": {
       "types": "./dist/otto/project-knowledge.d.ts",
       "source": "./src/otto/project-knowledge.ts",

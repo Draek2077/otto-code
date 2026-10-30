@@ -30,11 +30,12 @@ describe("forgeForHost", () => {
     expect(forgeForHost("gitlab.com")).toBe("gitlab");
     expect(forgeForHost("gitea.com")).toBe("gitea");
     expect(forgeForHost("codeberg.org")).toBe("codeberg");
+    expect(forgeForHost("bitbucket.org")).toBe("bitbucket-cloud"); // OTTO(bitbucket)
   });
 
   it("returns null for hosts with no known adapter", () => {
     expect(forgeForHost("example.com")).toBeNull();
-    expect(forgeForHost("bitbucket.org")).toBeNull();
+    expect(forgeForHost("bitbucket.example.org")).toBeNull(); // OTTO(bitbucket): Data Center uses a different API.
     expect(forgeForHost("gitlab.example.com")).toBeNull();
     expect(forgeForHost("forgejo.example.org")).toBeNull();
     expect(forgeForHost("notgitlab.example.org")).toBeNull();
@@ -308,6 +309,7 @@ describe("createForgeResolver", () => {
     ["gitlab", "git@gitlab.com:group/repo.git", "gitlab.com"],
     ["gitea", "git@gitea.com:owner/repo.git", "gitea.com"],
     ["codeberg", "git@codeberg.org:owner/repo.git", "codeberg.org"],
+    ["bitbucket-cloud", "git@bitbucket.org:owner/repo.git", "bitbucket.org"], // OTTO(bitbucket)
   ])("resolves the %s cloud host without probing CLI auth", async (forge, remoteUrl, host) => {
     const probeForge = vi.fn(async () => {
       throw new Error("cloud host should not probe");
@@ -324,7 +326,7 @@ describe("createForgeResolver", () => {
   it("returns null and probes a foreign host only once", async () => {
     const probeForge = vi.fn(async () => null);
     const resolver = createForgeResolver({
-      resolveRemoteUrl: async () => "git@bitbucket.org:owner/repo.git",
+      resolveRemoteUrl: async () => "git@foreign-forge.example:owner/repo.git", // OTTO(bitbucket): Cloud is now registered.
       probeForge,
       resolveSshHostname: resolveSshHostnameAsLiteralHost,
     });

@@ -11,6 +11,7 @@ import * as ottoKanbanRuntime from "@getpaseo/plugin/server/otto-kanban"; // OTT
 import * as ottoKanbanShared from "@getpaseo/plugin/otto/kanban"; // OTTO(kanban)
 import * as ottoOpenAiSettings from "@getpaseo/plugin/otto/openai-settings";
 import * as ottoAtlassianSettings from "@getpaseo/plugin/otto/atlassian-settings"; // OTTO(integration)
+import * as ottoBitbucket from "@getpaseo/plugin/otto/bitbucket-connections"; // OTTO(bitbucket)
 import * as ottoContext from "@getpaseo/plugin/otto/context-management"; // OTTO(context-management)
 import * as ottoKnowledge from "@getpaseo/plugin/otto/project-knowledge"; // OTTO(knowledge)
 import type { PluginServerContribution } from "@getpaseo/plugin/server";
@@ -31,6 +32,7 @@ function runtimeRequire(name: string): unknown {
   if (name === "@getpaseo/plugin/otto/kanban") return ottoKanbanShared; // OTTO(kanban)
   if (name === "@getpaseo/plugin/otto/openai-settings") return ottoOpenAiSettings;
   if (name === "@getpaseo/plugin/otto/atlassian-settings") return ottoAtlassianSettings; // OTTO(integration)
+  if (name === "@getpaseo/plugin/otto/bitbucket-connections") return ottoBitbucket; // OTTO(bitbucket)
   if (name === "@getpaseo/plugin/otto/context-management") return ottoContext; // OTTO(context-management)
   if (name === "@getpaseo/plugin/otto/project-knowledge") return ottoKnowledge; // OTTO(knowledge)
   if (name === "@getpaseo/plugin/server") return pluginServerRuntime;

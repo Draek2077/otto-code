@@ -1,4 +1,5 @@
 import { readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url"; // OTTO(test-paths): URL pathname doubles drive letters on Windows.
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { CLIENT_FORGE_LOGIC_MODULES } from "./index";
@@ -13,7 +14,7 @@ import { CLIENT_FORGE_VIEW_MODULES } from "./view";
  * builders, merge-capability, native checks, and the Node e2e harness) free of
  * the client rendering stack.
  */
-const forgesDir = path.dirname(new URL(import.meta.url).pathname);
+const forgesDir = path.dirname(fileURLToPath(import.meta.url)); // OTTO(test-paths)
 const dirEntries = readdirSync(forgesDir);
 
 const logicModuleIds = dirEntries

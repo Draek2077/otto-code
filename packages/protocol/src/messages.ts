@@ -3578,6 +3578,7 @@ export const ServerInfoStatusPayloadSchema = z
         ottoBrainCommands: z.boolean().optional(),
         ottoBrainSharing: z.boolean().optional(),
         ottoKanban: z.boolean().optional(), // OTTO(kanban): additive built-in host bridge capability.
+        ottoBitbucket: z.boolean().optional(), // OTTO(bitbucket): named accounts and native REST forge integration.
         ottoKnowledge: z.boolean().optional(), // OTTO(knowledge): daemon-owned Knowledge bridge.
         ottoArtifacts: z.boolean().optional(), // OTTO(artifacts): daemon-owned library, generation and recovery.
         ottoContextManagement: z.boolean().optional(), // OTTO(context-management): additive host capability.

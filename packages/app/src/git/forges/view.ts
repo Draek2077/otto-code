@@ -4,6 +4,7 @@ import { forgejoForgeView } from "./forgejo.view";
 import { giteaForgeView } from "./gitea.view";
 import { githubForgeView } from "./github.view";
 import { gitlabForgeView } from "./gitlab.view";
+import { bitbucketCloudForgeView } from "./bitbucket-cloud.view"; // OTTO(bitbucket)
 
 /**
  * View registry: brand marks, brand colors, and PR-pane render contributions.
@@ -11,6 +12,7 @@ import { gitlabForgeView } from "./gitlab.view";
  * client rendering stack, so logic paths must use the logic registry instead.
  */
 export const CLIENT_FORGE_VIEW_MODULES: readonly ClientForgeViewModule[] = [
+  bitbucketCloudForgeView, // OTTO(bitbucket)
   githubForgeView,
   gitlabForgeView,
   giteaForgeView,

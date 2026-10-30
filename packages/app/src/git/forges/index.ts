@@ -4,6 +4,7 @@ import { forgejoForgeLogic } from "./forgejo";
 import { giteaForgeLogic } from "./gitea";
 import { githubForgeLogic } from "./github";
 import { gitlabForgeLogic } from "./gitlab";
+import { bitbucketCloudForgeLogic } from "./bitbucket-cloud"; // OTTO(bitbucket)
 
 /**
  * Pure logic registry. Import this (never the view registry) from URL builders,
@@ -12,6 +13,7 @@ import { gitlabForgeLogic } from "./gitlab";
  * client rendering stack (react-native, react-native-svg, unistyles).
  */
 export const CLIENT_FORGE_LOGIC_MODULES: readonly ClientForgeLogicModule[] = [
+  bitbucketCloudForgeLogic, // OTTO(bitbucket)
   githubForgeLogic,
   gitlabForgeLogic,
   giteaForgeLogic,

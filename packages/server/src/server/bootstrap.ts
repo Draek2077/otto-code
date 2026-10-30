@@ -244,6 +244,7 @@ import { BrainDaemonService } from "./otto/brain/service.js"; // OTTO(brain-host
 import { KanbanDaemonService } from "./otto/kanban/service.js"; // OTTO(kanban): host-owned projects and forge transport.
 import { createRetainedKanbanToolPolicy } from "./otto/kanban/tool-policy.js"; // OTTO(kanban): inert, read-only retained tool ceilings.
 import { createHostIntegrations } from "../services/otto/integrations/host.js"; // OTTO(integration): shared daemon-owned credentials.
+import { bitbucketProjectForCwd } from "../services/otto/bitbucket/project.js"; // OTTO(bitbucket)
 import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OTTO(knowledge)
 import { contextAgents } from "./otto/context-management/agents.js"; // OTTO(context-management)
 import { ContextManagementService } from "./otto/context-management/host.js"; // OTTO(context-management)
@@ -721,7 +722,17 @@ export async function createPaseoDaemon(
   );
 
   const serverId = getOrCreateServerId(config.paseoHome, { logger });
-  ottoIntegrations = createHostIntegrations(config.paseoHome, serverId); // OTTO(integration): no keyring access or migration at startup.
+  ottoIntegrations = createHostIntegrations(config.paseoHome, serverId, {
+    exists: async (id) => (await projectRegistry.get(id)) !== null,
+    forCwd: async (cwd) => {
+      if (!workspaceRegistry) throw new Error("The owning workspace registry is unavailable.");
+      return bitbucketProjectForCwd(
+        cwd,
+        await workspaceRegistry.list(),
+        await projectRegistry.list(),
+      );
+    },
+  }); // OTTO(integration): closures remain inert until the registries exist; no keyring access or migration at startup. // OTTO(bitbucket)
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);
   const managedProcesses = createBootstrapManagedProcessRegistry(config, logger);
   // Reconcile the helper-process ledger in the background so it never blocks the
@@ -1047,7 +1058,10 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
     deps: {
-      forgeOverrides: { github },
+      forgeOverrides: {
+        github,
+        "bitbucket-cloud": ottoIntegrations.bitbucket,
+      }, // OTTO(bitbucket): reuse private owning-host credentials; registration performs no reads or requests.
     },
   });
   workspaceRegistry.subscribeToMutations((mutation) => {
@@ -2006,6 +2020,7 @@ export async function createPaseoDaemon(
       await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
       await ottoArtifacts?.close(); // OTTO(artifacts): revoke late generation publication.
       await ottoKanban?.close(); // OTTO(kanban): no polling survives daemon startup failure.
+      ottoIntegrations?.close(); // OTTO(bitbucket): release demand-owned forge polls.
       await ottoHostBrowser
         ?.close()
         .catch((cleanupError) =>
@@ -2055,6 +2070,7 @@ export async function createPaseoDaemon(
     await ottoKnowledge?.close(); // OTTO(knowledge)
     await ottoArtifacts?.close(); // OTTO(artifacts)
     await ottoKanban?.close(); // OTTO(kanban)
+    ottoIntegrations?.close(); // OTTO(bitbucket)
     await ottoHostBrowser
       ?.close()
       .catch((error) => logger.error({ err: error }, "Host Browser cleanup failed")); // OTTO(browser-host)
