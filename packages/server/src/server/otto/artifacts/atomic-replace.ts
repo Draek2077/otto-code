@@ -14,7 +14,7 @@ export async function replaceStagedArtifact(
   text: string,
   ports: ReplacementPorts,
 ): Promise<void> {
-  const previous = await ports.read(destination);
+  const previous = ports.windows ? await ports.read(destination) : null;
   for (let attempt = 0; ; attempt++) {
     const failure = await ports.rename(source, destination).then(
       () => null,
@@ -32,10 +32,15 @@ export async function replaceStagedArtifact(
     await ports.wait([10, 25, 50][attempt]!);
     // Missing staging bytes, a changed destination, links or unreadable files
     // leave the original failure intact. No target unlink or ACL changes.
-    const unchanged = await Promise.all([ports.read(source), ports.read(destination)]).then(
-      ([staged, current]) => staged === text && current === previous,
-      () => false,
-    );
+    // Sequential reads also finish their handle cleanup before a rejected read
+    // can return to publish's staging cleanup.
+    const unchanged = await ports
+      .read(source)
+      .then(async (staged) => {
+        if (staged !== text) return false;
+        return (await ports.read(destination)) === previous;
+      })
+      .catch(() => false);
     if (!unchanged) throw failure.error;
   }
 }

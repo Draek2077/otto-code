@@ -71,5 +71,6 @@ it.each(["non-Windows", "other-error"])(
     await expect(f.run()).rejects.toBe(f.denied);
     expect(f.rename).toHaveBeenCalledTimes(1);
     expect(f.wait).not.toHaveBeenCalled();
+    if (kind === "non-Windows") expect(f.read).not.toHaveBeenCalled();
   },
 );
