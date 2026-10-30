@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ArtifactDraft, ArtifactCreateDraft } from "./model";
+import { ArtifactDraft, ArtifactCreateDraft, artifactDraftFor } from "./model";
 import { ArtifactStorageForm } from "./storage-model";
 import type { ArtifactDocument } from "@getpaseo/plugin/otto/artifacts";
 const document = (revision = "original"): ArtifactDocument => ({
@@ -35,6 +35,20 @@ const command = {
   description: "Original",
   starred: false,
 };
+test("bounded draft retention never evicts an active or retained subscribed editor", () => {
+  const owner = {},
+    active = artifactDraftFor(owner, "active", document()),
+    retained = artifactDraftFor(owner, "retained", document());
+  active.activate();
+  retained.subscribe(() => {});
+  for (let index = 0; index < 55; index++) artifactDraftFor(owner, `hidden-${index}`, document());
+  active.edit("name", "Keep active");
+  retained.edit("name", "Keep retained");
+  expect(artifactDraftFor(owner, "active", document())).toBe(active);
+  expect(artifactDraftFor(owner, "retained", document())).toBe(retained);
+  expect(active.getSnapshot().fields.name).toBe("Keep active");
+  expect(retained.getSnapshot().fields.name).toBe("Keep retained");
+});
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (error: Error) => void;
   const promise = new Promise<T>((accept, deny) => {

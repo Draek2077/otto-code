@@ -81,6 +81,15 @@ export class ArtifactDraft {
       : { provider, model, providerLabel: provider, modelLabel: model };
   }
   getSnapshot = () => this.state;
+  canEvict() {
+    return (
+      !this.active &&
+      !this.listeners.size &&
+      !this.state.dirty &&
+      !this.state.busy &&
+      !this.state.blocked
+    );
+  }
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -240,9 +249,8 @@ export function artifactDraftFor(owner: object, key: string, document: ArtifactD
   let draft = scope.get(key);
   if (!draft) {
     for (const [oldKey, candidate] of scope) {
-      const snapshot = candidate.getSnapshot();
       if (scope.size < 50) break;
-      if (!snapshot.dirty && !snapshot.busy && !snapshot.blocked) scope.delete(oldKey);
+      if (candidate.canEvict()) scope.delete(oldKey);
     }
     if (scope.size >= 50)
       throw new Error("Close or discard existing artifact drafts before opening more.");
