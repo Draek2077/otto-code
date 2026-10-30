@@ -16,8 +16,18 @@ async function connectArtifactInspector(port) {
   const pending = new Map();
   const sessions = new Map();
   const contexts = new Map();
+  function forgetSession(sessionId) {
+    contexts.delete(sessionId);
+    for (const [targetId, current] of sessions) {
+      if (current === sessionId) sessions.delete(targetId);
+    }
+  }
   socket.on("message", (bytes) => {
     const message = JSON.parse(bytes.toString());
+    if (message.method === "Target.detachedFromTarget") {
+      forgetSession(message.params.sessionId);
+      return;
+    }
     if (message.method === "Runtime.executionContextCreated") {
       let owned = contexts.get(message.sessionId);
       if (!owned) {
@@ -145,17 +155,28 @@ async function connectArtifactInspector(port) {
       const found = { observed: [] };
       for (const target of targets) {
         let sessionId = sessions.get(target.targetId);
-        if (!sessionId) {
-          const attached = await call("Target.attachToTarget", {
-            targetId: target.targetId,
-            flatten: true,
-          });
-          sessionId = attached.sessionId;
-          sessions.set(target.targetId, sessionId);
-          await call("Runtime.enable", {}, sessionId);
+        try {
+          if (!sessionId) {
+            const attached = await call("Target.attachToTarget", {
+              targetId: target.targetId,
+              flatten: true,
+            });
+            sessionId = attached.sessionId;
+            sessions.set(target.targetId, sessionId);
+            await call("Runtime.enable", {}, sessionId);
+          }
+          const { frameTree } = await call("Page.getFrameTree", {}, sessionId);
+          await inspectTree(frameTree, sessionId, found);
+        } catch (error) {
+          // Discovery is a read. A target may detach between getTargets and
+          // getFrameTree; discard its stale session and reacquire next poll.
+          // Selected-frame actions and security assertions never use this catch.
+          if (error.code === -32001 && error.detail === "Session with given id not found.") {
+            forgetSession(sessionId);
+            continue;
+          }
+          throw error;
         }
-        const { frameTree } = await call("Page.getFrameTree", {}, sessionId);
-        await inspectTree(frameTree, sessionId, found);
       }
       return found;
     },

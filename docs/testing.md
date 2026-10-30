@@ -241,7 +241,9 @@ selected-daemon routing. These deterministic checks do not prove native provider
 device WebView behavior.
 
 The packaged desktop smoke also opens a seeded Artifact through the shipped library
-and asserts interaction plus blocked host/parent access, popups, HTTP requests and
+and reacquires detached CDP sessions during read-only frame discovery. Selected-frame
+actions and sandbox/security assertions still fail normally on protocol errors. It
+asserts interaction plus blocked host/parent access, popups, HTTP requests and
 frame navigation. It retains `artifact-preview.json` and a screenshot for each
 packaged launch. This is an external observer of the production UI and daemon, not
 a renderer-only mount or a smoke branch in the application.

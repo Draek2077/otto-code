@@ -6,8 +6,9 @@ const { WebSocketServer } = require("ws");
 const { connectArtifactInspector } = require("./otto-artifact-frame.cjs");
 
 // Protocol fixtures exercise the observer, not the app's preview sandbox.
-async function fixture(t, parentContext) {
+async function fixture(t, parentContext, options = {}) {
   const calls = [];
+  let frameTreeError = options.frameTreeError;
   const server = createServer((_request, response) => {
     response.setHeader("Content-Type", "application/json");
     response.end(
@@ -30,8 +31,13 @@ async function fixture(t, parentContext) {
         };
       if (request.method === "Target.attachToTarget")
         result = { sessionId: request.params.targetId };
-      if (request.method === "Page.getFrameTree")
+      if (request.method === "Page.getFrameTree") {
         result = { frameTree: { frame: { id: request.sessionId } } };
+        if (request.sessionId === "parent" && frameTreeError) {
+          error = frameTreeError;
+          frameTreeError = null;
+        }
+      }
       if (
         request.method === "Runtime.enable" &&
         (request.sessionId !== "parent" || parentContext !== 0)
@@ -85,7 +91,14 @@ async function fixture(t, parentContext) {
     await new Promise((resolve) => sockets.close(resolve));
     await new Promise((resolve) => server.close(resolve));
   });
-  return { inspector, calls };
+  return {
+    inspector,
+    calls,
+    detach(sessionId) {
+      for (const socket of sockets.clients)
+        socket.send(JSON.stringify({ method: "Target.detachedFromTarget", params: { sessionId } }));
+    },
+  };
 }
 
 test("a remote parent placeholder cannot hide the actual iframe target", async (t) => {
@@ -120,4 +133,38 @@ test("other evaluation failures remain failures with the protocol method", async
     inspector.frames(),
     /Runtime.evaluate \(-32000\): Unexpected protocol error/,
   );
+});
+
+test("discovery evicts a detached session and reacquires it without skipping the actual iframe", async (t) => {
+  const { inspector, calls } = await fixture(t, 1, {
+    frameTreeError: { code: -32001, message: "Session with given id not found." },
+  });
+  assert.ok((await inspector.frames()).content);
+  assert.ok((await inspector.frames()).content);
+  assert.equal(
+    calls.filter(
+      (call) => call.method === "Target.attachToTarget" && call.params.targetId === "parent",
+    ).length,
+    2,
+  );
+});
+
+test("detach events retire the cached session before the next discovery", async (t) => {
+  const { inspector, calls, detach } = await fixture(t, 1);
+  assert.ok((await inspector.frames()).content);
+  detach("parent");
+  assert.ok((await inspector.frames()).content);
+  assert.equal(
+    calls.filter(
+      (call) => call.method === "Target.attachToTarget" && call.params.targetId === "parent",
+    ).length,
+    2,
+  );
+});
+
+test("other frame-tree errors still fail discovery", async (t) => {
+  const { inspector } = await fixture(t, 1, {
+    frameTreeError: { code: -32001, message: "Unexpected protocol error" },
+  });
+  await assert.rejects(inspector.frames(), /Page.getFrameTree.*Unexpected protocol error/);
 });
