@@ -251,6 +251,9 @@ The observer uses CDP renderer targets for opaque child frames: Playwright's nor
 frame tree omits those frames under the packaged desktop URL scheme. It reads the
 fixture's real DOM and dispatches pointer input; it does not replace the renderer or
 relax its sandbox.
+Initial identity reads have a two-second timeout and may be reacquired inside the
+existing observation deadline. Selected-frame evaluations and input retain their
+normal timeout, propagate failures, and are never replayed.
 
 <!-- OTTO(provider-tests): coverage for the independently owned provider plugin. -->
 

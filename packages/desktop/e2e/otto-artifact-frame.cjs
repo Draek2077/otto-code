@@ -4,7 +4,7 @@ const { setTimeout: delay } = require("node:timers/promises");
 
 // Playwright's CDP frame tree omits custom-scheme OOPIFs in packaged Electron.
 // Inspect the actual renderer targets, without weakening the app's isolation.
-async function connectArtifactInspector(port) {
+async function connectArtifactInspector(port, { discoveryTimeoutMs = 2000 } = {}) {
   const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
     signal: AbortSignal.timeout(10000),
   });
@@ -61,23 +61,24 @@ async function connectArtifactInspector(port) {
       );
     else request.resolve(message.result);
   });
-  function call(method, params = {}, sessionId) {
+  function call(method, params = {}, sessionId, timeoutMs = 10000) {
     const id = ++sequence;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new Error(`Packaged CDP timed out: ${method}`));
-      }, 10000);
+        reject(Object.assign(new Error(`Packaged CDP timed out: ${method}`), { cdpTimeout: true }));
+      }, timeoutMs);
       pending.set(id, { resolve, reject, timer, method });
       socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }
   function frameHandle(sessionId, frameId) {
-    const evaluate = async (expression) => {
+    const evaluate = async (expression, timeoutMs = 10000) => {
       const { executionContextId } = await call(
         "Page.createIsolatedWorld",
         { frameId, worldName: "otto-artifact-observer" },
         sessionId,
+        timeoutMs,
       );
       const context = contexts.get(sessionId)?.get(executionContextId);
       if (!context?.uniqueId)
@@ -88,6 +89,7 @@ async function connectArtifactInspector(port) {
         "Runtime.evaluate",
         { expression, uniqueContextId: context.uniqueId, returnByValue: true },
         sessionId,
+        timeoutMs,
       );
       if (reply.exceptionDetails) throw new Error("Packaged frame inspection failed");
       return reply.result.value;
@@ -127,8 +129,14 @@ async function connectArtifactInspector(port) {
     try {
       identity = await handle.evaluate(
         "({title:document.title,wrapper:!!document.querySelector('iframe[title=\"Artifact content\"]')})",
+        discoveryTimeoutMs,
       );
     } catch (error) {
+      if (error.cdpTimeout) {
+        forgetSession(sessionId);
+        found.observed.push({ frameId: tree.frame.id, unavailable: "identity-timeout" });
+        return;
+      }
       // Contexts may disappear while the renderer commits its iframe document.
       // Discovery will reacquire the live context; never ignore fixture actions
       // or security assertion failures after a real document has been selected.

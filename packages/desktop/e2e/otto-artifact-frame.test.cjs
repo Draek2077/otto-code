@@ -9,6 +9,7 @@ const { connectArtifactInspector } = require("./otto-artifact-frame.cjs");
 async function fixture(t, parentContext, options = {}) {
   const calls = [];
   let frameTreeError = options.frameTreeError;
+  let stallParentEvaluation = options.stallParentEvaluation;
   const server = createServer((_request, response) => {
     response.setHeader("Content-Type", "application/json");
     response.end(
@@ -69,6 +70,11 @@ async function fixture(t, parentContext, options = {}) {
           );
       }
       if (request.method === "Runtime.evaluate") {
+        if (request.params.expression === options.stallExpression) return;
+        if (request.sessionId === "parent" && stallParentEvaluation) {
+          stallParentEvaluation = false;
+          return;
+        }
         if (request.sessionId === "parent")
           error = {
             code: -32000,
@@ -84,7 +90,9 @@ async function fixture(t, parentContext, options = {}) {
   );
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
-  const inspector = await connectArtifactInspector(server.address().port);
+  const inspector = await connectArtifactInspector(server.address().port, {
+    discoveryTimeoutMs: 200,
+  });
   t.after(async () => {
     inspector.close();
     for (const socket of sockets.clients) socket.terminate();
@@ -167,4 +175,33 @@ test("other frame-tree errors still fail discovery", async (t) => {
     frameTreeError: { code: -32001, message: "Unexpected protocol error" },
   });
   await assert.rejects(inspector.frames(), /Page.getFrameTree.*Unexpected protocol error/);
+});
+
+test("an identity timeout retires only discovery's session and leaves actual frame proof required", async (t) => {
+  const { inspector, calls } = await fixture(t, 1, { stallParentEvaluation: true });
+  const first = await inspector.frames();
+  assert.ok(first.content);
+  assert.ok(first.observed.some((frame) => frame.unavailable === "identity-timeout"));
+  assert.ok((await inspector.frames()).content);
+  assert.equal(
+    calls.filter(
+      (call) => call.method === "Target.attachToTarget" && call.params.targetId === "parent",
+    ).length,
+    2,
+  );
+});
+
+test("a selected frame's assertion timeout remains a failure and is not replayed", async (t) => {
+  const { inspector, calls } = await fixture(t, 0, { stallExpression: "observer-stall" });
+  const found = await inspector.frames();
+  await assert.rejects(
+    found.content.evaluate("observer-stall", 200),
+    /Packaged CDP timed out: Runtime.evaluate/,
+  );
+  assert.equal(
+    calls.filter(
+      (call) => call.method === "Runtime.evaluate" && call.params.expression === "observer-stall",
+    ).length,
+    1,
+  );
 });
