@@ -23,7 +23,7 @@ function ContextSidebar({ currentScreen, openScreen }: PluginSidebarItemProps) {
   return (
     <SidebarRow
       icon="Layers"
-      label="Context Management"
+      label="Context"
       active={currentScreen?.screenId === "context-management"}
       onPress={open}
     />
@@ -37,7 +37,7 @@ function registerContext(client: PluginClientContext) {
   return [
     client.addSidebarHeaderItem({
       id: "context-management",
-      title: "Context Management",
+      title: "Context",
       Component: ContextSidebar,
     }),
     client.addWorkspacePanel({
