@@ -230,6 +230,10 @@ and asserts interaction plus blocked host/parent access, popups, HTTP requests a
 frame navigation. It retains `artifact-preview.json` and a screenshot for each
 packaged launch. This is an external observer of the production UI and daemon, not
 a renderer-only mount or a smoke branch in the application.
+The observer uses CDP renderer targets for opaque child frames: Playwright's normal
+frame tree omits those frames under the packaged desktop URL scheme. It reads the
+fixture's real DOM and dispatches pointer input; it does not replace the renderer or
+relax its sandbox.
 
 <!-- OTTO(provider-tests): coverage for the independently owned provider plugin. -->
 

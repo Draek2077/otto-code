@@ -972,7 +972,7 @@ async function smokePackagedDesktopApp({
     console.log("Packaged desktop smoke: renderer-started desktop daemon reported running");
     await assertBuiltinPluginsStarted(listen);
     console.log("Packaged desktop smoke: every built-in plugin started");
-    await smokeArtifactPreview({ page, listen, daemonHome }); // OTTO(artifacts): no provider/model launches.
+    await smokeArtifactPreview({ page, listen, daemonHome, cdpPort }); // OTTO(artifacts): no provider/model launches.
     await smokeCliShim({ appPath, env });
     await smokeCliTerminal({ appPath, env });
     if (expectedSandbox !== undefined) {

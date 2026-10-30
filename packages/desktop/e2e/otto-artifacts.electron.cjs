@@ -4,11 +4,15 @@ const path = require("node:path");
 const { createServer } = require("node:http");
 const { once } = require("node:events");
 const { WebSocket } = require("ws");
+const {
+  connectArtifactInspector,
+  waitForArtifactObservation,
+} = require("./otto-artifact-frame.cjs");
 
 /** Observe the packaged renderer and its normally started daemon. No app-only
  * test branch, synthetic renderer, model launch, or provider credentials.
  */
-async function smokeArtifactPreview({ page, listen, daemonHome }) {
+async function smokeArtifactPreview({ page, listen, daemonHome, cdpPort }) {
   const { DaemonClient } = await import("@getpaseo/client/internal/daemon-client");
   const client = new DaemonClient({
     url: `ws://${listen}/ws`,
@@ -26,6 +30,7 @@ async function smokeArtifactPreview({ page, listen, daemonHome }) {
   const address = probe.address();
   assert.ok(address && typeof address !== "string");
   const url = `http://127.0.0.1:${address.port}/escape`;
+  let inspector;
   try {
     await client.connect();
     const root = path.join(daemonHome, "artifact-preview-project");
@@ -35,7 +40,7 @@ async function smokeArtifactPreview({ page, listen, daemonHome }) {
     const projectId = added.project.projectId;
     const directory = path.join(root, ".otto", "artifacts");
     fs.mkdirSync(directory, { recursive: true });
-    const html = `<!doctype html><html><head><title>Packaged Artifact</title></head><body><h1>Packaged report</h1><button onclick="document.querySelector('h1').textContent='Interaction verified'">Interact</button><button onclick="location.href='${url}'">Navigate outside</button><script id="otto-artifact-data" type="application/json">{"value":1}</script><script>try{parent.document.body.dataset.artifactEscape='bad'}catch{document.body.dataset.isolated='yes'}document.body.dataset.host=typeof window.paseoDesktop+','+typeof require+','+typeof process;document.body.dataset.popup=window.open('${url}')===null?'blocked':'escaped';fetch('${url}').catch(()=>document.body.dataset.network='blocked')</script></body></html>`;
+    const html = `<!doctype html><html><head><title>Packaged Artifact</title></head><body><h1>Packaged report</h1><button onclick="document.querySelector('h1').textContent='Interaction verified'">Interact</button><button onclick="location.href='${url}'">Navigate outside</button><button onclick="try{document.body.dataset.popup=window.open('${url}')===null?'blocked':'escaped'}catch{document.body.dataset.popup='blocked'}">Open popup</button><script id="otto-artifact-data" type="application/json">{"value":1}</script><script>try{parent.document.body.dataset.artifactEscape='bad'}catch{document.body.dataset.isolated='yes'}document.body.dataset.host=typeof window.paseoDesktop+','+typeof require+','+typeof process;fetch('${url}').catch(()=>document.body.dataset.network='blocked')</script></body></html>`;
     const id = "packaged-preview-proof";
     const now = new Date().toISOString();
     // Seed a durable document; the shipped service validates and projects it.
@@ -68,21 +73,42 @@ async function smokeArtifactPreview({ page, listen, daemonHome }) {
       .getByRole("button", { name: "Open artifact", exact: true })
       .click();
     const artifactUrl = page.url();
-    const outer = page.frameLocator('iframe[title="Artifact preview"]').last();
-    const preview = outer.frameLocator('iframe[title="Artifact content"]');
-    await preview.getByRole("heading", { name: "Packaged report", exact: true }).waitFor();
-    await preview.getByRole("button", { name: "Interact", exact: true }).click();
-    await preview.getByRole("heading", { name: "Interaction verified", exact: true }).waitFor();
-    await preview
-      .locator('body[data-isolated="yes"][data-network="blocked"][data-popup="blocked"]')
-      .waitFor();
+    await page.locator('iframe[title="Artifact preview"]').last().scrollIntoViewIfNeeded();
+    inspector = await connectArtifactInspector(cdpPort);
+    const frames = await waitForArtifactObservation(
+      () => inspector.frames(),
+      (found) => !!found.content && !!found.wrapper,
+    );
+    const preview = frames.content;
     assert.equal(
-      await preview.locator("body").getAttribute("data-host"),
+      await preview.evaluate("document.querySelector('h1').textContent"),
+      "Packaged report",
+    );
+    await preview.click("Interact");
+    await waitForArtifactObservation(
+      () => preview.evaluate("document.querySelector('h1').textContent"),
+      (text) => text === "Interaction verified",
+    );
+    await preview.click("Open popup");
+    await waitForArtifactObservation(
+      () => preview.evaluate("({...document.body.dataset})"),
+      (state) =>
+        state.isolated === "yes" && state.network === "blocked" && state.popup === "blocked",
+    );
+    assert.equal(
+      await preview.evaluate("document.body.dataset.host"),
       "undefined,undefined,undefined",
     );
     assert.equal(await page.locator("body").getAttribute("data-artifact-escape"), null);
-    await preview.getByRole("button", { name: "Navigate outside", exact: true }).click();
-    await outer.locator('body[data-navigation-blocked="yes"]').waitFor();
+    await preview.click("Navigate outside");
+    await waitForArtifactObservation(
+      () => frames.wrapper.evaluate("document.body.dataset.navigationBlocked"),
+      (state) => state === "yes",
+    );
+    assert.equal(
+      await preview.evaluate("document.querySelector('h1').textContent"),
+      "Interaction verified",
+    );
     assert.equal(page.url(), artifactUrl);
     assert.equal(page.context().pages().length, pageCount);
     assert.equal(requests, 0);
@@ -115,6 +141,7 @@ async function smokeArtifactPreview({ page, listen, daemonHome }) {
       "Packaged Artifact preview: interaction passed; host/parent access, popups, navigation and network blocked",
     );
   } finally {
+    inspector?.close();
     // The outer smoke owns and removes daemonHome after capturing its renderer.
     // Unregistering here would replace a failed preview with a missing-project
     // error before that screenshot and child-frame evidence could be collected.

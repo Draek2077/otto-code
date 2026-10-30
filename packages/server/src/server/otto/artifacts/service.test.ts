@@ -651,12 +651,36 @@ test("a different daemon reading the same repository never settles another host'
   expect((await f.service.read(f.ref(created.id))).artifact.status).toBe("generating");
 });
 test("a changing record is diagnosed without aborting the library or altering either deliverable", async () => {
-  const f = await fixture(),
-    created = await Promise.all([f.create(), f.create()]);
-  f.resolve();
-  await expect
-    .poll(async () => (await f.service.list({ scope: f.scope })).items.map((item) => item.status))
-    .toEqual(["ready", "ready"]);
+  const f = await fixture();
+  // This case observes settled documents. Do not race background publication
+  // merely to arrange the unrelated guarded-read conflict under test.
+  const created = [];
+  for (const id of ["one", "two"]) {
+    const directory = path.join(f.repo, ".otto", "artifacts");
+    await mkdir(directory, { recursive: true });
+    const record = {
+      id,
+      name: id,
+      description: "Settled report",
+      projectId: "project",
+      status: "ready" as const,
+      starred: false,
+      createdAt: "2026-10-30T00:00:00Z",
+      updatedAt: "2026-10-30T00:00:00Z",
+      generationProvider: "fixture",
+      generationModel: "fixture-model",
+      errorMessage: null,
+      lastGoodHtml: html,
+      runs: [],
+    } satisfies storage.StoredArtifact;
+    await writeFile(path.join(directory, `${id}.json`), JSON.stringify(record));
+    await writeFile(path.join(directory, `${id}.html`), html);
+    created.push((await f.service.read(f.ref(id))).artifact);
+  }
+  expect((await f.service.list({ scope: f.scope })).items.map((item) => item.status)).toEqual([
+    "ready",
+    "ready",
+  ]);
   const documents = await Promise.all(created.map((item) => f.service.read(f.ref(item.id)))),
     files = documents.flatMap((doc) => [doc.path, doc.path.replace(/\.html$/, ".json")]),
     before = await Promise.all(files.map((file) => readFile(file, "utf8"))),
