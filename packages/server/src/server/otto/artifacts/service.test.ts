@@ -1,7 +1,8 @@
-import { expect, test, afterEach } from "vitest";
+import { expect, test, afterEach, vi } from "vitest";
 import { mkdir, mkdtemp, readFile, writeFile, rm, readdir, rename } from "node:fs/promises";
 import path from "node:path";
 import { ArtifactDaemonService } from "./service.js";
+import * as storage from "./storage.js";
 import { artifactData } from "./content.js";
 import { createArtifactTools } from "./tools.js";
 import { OTTO_CONFIG_FILENAME } from "../config-migration.js";
@@ -196,6 +197,50 @@ test("create settles into durable output and reopening a new owner preserves dat
   expect(doc.runs.map((run) => run.status)).toEqual(["succeeded"]);
   expect(doc.html).toContain("Content-Security-Policy");
 });
+test.each([false, true])(
+  "published admission stays generating while its startup read is paused (shutdown=%s)",
+  async (shutdown) => {
+    const f = await fixture(),
+      read = storage.readArtifactAt;
+    let entered!: () => void, release!: () => void;
+    const paused = new Promise<void>((resolve) => {
+        entered = resolve;
+      }),
+      resume = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    const intercepted = vi
+      .spyOn(storage, "readArtifactAt")
+      .mockImplementationOnce(async (...args) => {
+        entered();
+        await resume;
+        return read(...args);
+      });
+    const creating = f.create();
+    try {
+      await paused;
+      const listed = await f.service.list({ scope: f.scope });
+      expect(listed.items).toHaveLength(1);
+      expect(listed.items[0].status).toBe("generating");
+      const doc = await f.service.read(f.ref(listed.items[0].id));
+      expect(doc.artifact.status).toBe("generating");
+      expect(doc.runs[0].status).toBe("running");
+      if (shutdown) await f.service.close();
+    } finally {
+      release();
+      intercepted.mockRestore();
+    }
+    if (shutdown) {
+      await expect(creating).rejects.toThrow("shutting down");
+    } else {
+      const created = await creating;
+      f.resolve();
+      await expect
+        .poll(async () => (await f.service.read(f.ref(created.id))).artifact.status)
+        .toBe("ready");
+    }
+  },
+);
 test("revision-pinned data update preserves raw design and stale writes do nothing", async () => {
   const f = await fixture(),
     created = await f.create();

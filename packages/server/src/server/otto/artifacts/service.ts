@@ -70,6 +70,9 @@ export interface ArtifactPorts {
 /** One daemon owner for UI, MCP and future Schedule/Workflow trigger adapters. No work on construction. */
 export class ArtifactDaemonService {
   private readonly jobs = new Map<string, GenerationJob>();
+  // Durable publication precedes the async read that starts a job. Readers must
+  // not mistake that admitted interval for an interrupted generation.
+  private readonly preparing = new Set<string>();
   private closed = false;
   private inFlight = 0;
   private admissions = 0;
@@ -143,7 +146,7 @@ export class ArtifactDaemonService {
           entry.record.status === "generating" &&
           this.ownsRecovery(entry) &&
           !entry.metadataInvalid &&
-          !this.jobs.has(this.key(store, entry.record.id)) &&
+          !this.hasGeneration(this.key(store, entry.record.id)) &&
           !(await inspectArtifactLock(store.directory, entry.record.id))
         )
           await this.recover(entry);
@@ -256,6 +259,9 @@ export class ArtifactDaemonService {
       entry.record.generationHostId === this.ports.hostId
     );
   }
+  private hasGeneration(key: string) {
+    return this.jobs.has(key) || this.preparing.has(key);
+  }
   private summary(entry: ArtifactEntry) {
     if (entry.metadataInvalid && !this.jobs.has(this.key(entry.store, entry.record.id)))
       return { ...entry.summary, status: "error" as const };
@@ -267,7 +273,7 @@ export class ArtifactDaemonService {
       entry.record.status === "generating" &&
       this.ownsRecovery(entry) &&
       !entry.metadataInvalid &&
-      !this.jobs.has(this.key(entry.store, input.id)) &&
+      !this.hasGeneration(this.key(entry.store, input.id)) &&
       !(await inspectArtifactLock(entry.store.directory, input.id))
     ) {
       await this.recover(entry);
@@ -377,18 +383,29 @@ export class ArtifactDaemonService {
       transcript: `Create: ${input.description}`,
     };
     record.runs = this.run(record, "create", true);
-    await exclusive(store.directory, id, () =>
-      publish(files.record, JSON.stringify(record, null, 2)),
-    );
-    const entry = (await readArtifactAt(store, id))!;
-    this.generate(entry, input.description, input.selection);
-    return entry.summary;
+    const key = this.key(store, id);
+    this.preparing.add(key);
+    try {
+      await exclusive(store.directory, id, () =>
+        publish(files.record, JSON.stringify(record, null, 2)),
+      );
+      const entry = (await readArtifactAt(store, id))!;
+      this.generate(entry, input.description, input.selection);
+      return entry.summary;
+    } finally {
+      this.preparing.delete(key);
+    }
   }
   private generate(
     entry: ArtifactEntry,
     instruction: string,
     selection?: z.infer<typeof ArtifactSelection>,
   ) {
+    if (this.closed)
+      throw new ArtifactError(
+        "unavailable",
+        "The host is shutting down; generation did not start.",
+      );
     const key = this.key(entry.store, entry.record.id),
       token = randomUUID();
     const timer = setTimeout(() => {
@@ -515,6 +532,11 @@ export class ArtifactDaemonService {
       throw new ArtifactError("conflict", "Artifact changed. Reload before applying this action.");
     const command = input.command,
       key = this.key(entry.store, input.id);
+    if (this.preparing.has(key))
+      throw new ArtifactError(
+        "busy",
+        "Wait for the admitted generation to start before changing it.",
+      );
     if (command.type === "recover_lock") {
       if (this.jobs.has(key))
         throw new ArtifactError("busy", "A generation in this daemon still owns this artifact.");
@@ -537,6 +559,7 @@ export class ArtifactDaemonService {
       if (this.inFlight + this.admissions >= 8 || this.closed)
         throw new ArtifactError("busy", "Generation capacity is unavailable.");
       this.admissions++;
+      this.preparing.add(key);
     }
     try {
       await this.apply(entry, command);
@@ -547,7 +570,10 @@ export class ArtifactDaemonService {
         this.generate(current, command.instruction, command.selection);
       return { artifact: current.summary };
     } finally {
-      if (command.type === "regenerate") this.admissions--;
+      if (command.type === "regenerate") {
+        this.admissions--;
+        this.preparing.delete(key);
+      }
     }
   }
   private async apply(

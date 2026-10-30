@@ -48,6 +48,9 @@ not silently spend on another model. Successful output records the actual select
 provider/model. Cancel, timeout and daemon close interrupt and close the owned session
 and revoke late publication. At most eight generations, including unresolved canceled
 requests and pending admissions, can occupy the daemon. Timeout is three minutes.
+Published admissions remain owned while their startup read completes; library reads
+cannot classify them as interrupted, and shutdown prevents a pending admission from
+starting its provider session.
 
 Regeneration is explicitly design-changing. Failed or canceled regeneration preserves
 the previous output. Interrupted records settle to a recoverable error when their
