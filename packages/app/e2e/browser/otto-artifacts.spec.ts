@@ -1,8 +1,11 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import { promisify } from "node:util";
 import path from "node:path";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { PersistedConfig } from "../../../server/src/server/persisted-config";
 import { listArtifacts, readArtifact } from "@getpaseo/plugin/otto/artifacts";
 import { test, expect } from "../support/helpers/otto-provider-settings";
 import { seedWorkspace } from "../support/helpers/seed-client";
@@ -14,11 +17,40 @@ import { getE2EDaemonPort } from "../support/helpers/daemon-port";
 test.use({
   e2eDaemonConfig: {
     pluginsEnabled: true,
-    metadataGeneration: { providers: [{ provider: "openai-compatible", model: "fixture" }] },
-  },
+    agents: {
+      metadataGeneration: { providers: [{ provider: "openai-compatible", model: "fixture" }] },
+    },
+  } satisfies Pick<PersistedConfig, "pluginsEnabled" | "agents">,
 });
-const html =
-  '<!doctype html><html><head><title>Artifact acceptance</title></head><body><h1>Interactive report</h1><button onclick="document.querySelector(\'h1\').textContent=\'Clicked\'">Interact</button><script id="otto-artifact-data" type="application/json">{"value":1}</script><script>try{parent.document.body.dataset.artifactEscape="bad"}catch{document.body.dataset.isolated="yes"}fetch("https://artifact-network.invalid/leak").catch(()=>document.body.dataset.network="blocked")</script></body></html>';
+const artifactTemplate =
+  '<!doctype html><html><head><title>Artifact acceptance</title></head><body><h1>Interactive report</h1><button onclick="document.querySelector(\'h1\').textContent=\'Clicked\'">Interact</button><button onclick="location.href=\'ARTIFACT_NAVIGATION_PROBE\'">Navigate outside</button><script id="otto-artifact-data" type="application/json">{"value":1}</script><script>try{parent.document.body.dataset.artifactEscape="bad"}catch{document.body.dataset.isolated="yes"}fetch("https://artifact-network.invalid/leak").catch(()=>document.body.dataset.network="blocked")</script></body></html>';
+async function navigationProbe() {
+  let requests = 0;
+  const server = createServer((_request, response) => {
+    requests++;
+    response.end("Navigation escaped");
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Missing navigation probe address");
+  return {
+    url: `http://127.0.0.1:${address.port}/navigation-leak`,
+    requests: () => requests,
+    close: async () => {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        }),
+      );
+    },
+  };
+}
 for (const compact of [false, true])
   test(`Artifacts creation, safe preview, data-only update, repair and reopen (${compact ? "compact" : "wide"})`, async ({
     page,
@@ -38,8 +70,8 @@ for (const compact of [false, true])
       hostId: getServerId(),
       target: { kind: "workspace" as const, id: workspace.workspaceId },
     };
-    ottoProvider.replyWith(() => JSON.stringify({ html }));
-    await ottoProvider.refreshCatalog();
+    const probe = await navigationProbe(),
+      html = artifactTemplate.replace("ARTIFACT_NAVIGATION_PROBE", probe.url);
     const listing = async () => {
       const result = listArtifacts.output.parse(
         await client.invokePluginRpc("otto-artifacts", listArtifacts.name, { scope }),
@@ -48,6 +80,8 @@ for (const compact of [false, true])
       return result.value;
     };
     try {
+      ottoProvider.replyWith(() => JSON.stringify({ html }));
+      await ottoProvider.refreshCatalog();
       await gotoAppShell(page);
       if (compact) {
         await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
@@ -70,13 +104,19 @@ for (const compact of [false, true])
       await surface.getByRole("button", { name: "Reload saved output", exact: true }).click();
       const detail = surface.getByTestId("artifact-detail");
       await expect(detail.getByLabel("Artifact data (JSON)")).toHaveValue('{"value":1}');
-      const preview = page.frameLocator('iframe[title="Artifact preview"]').last();
+      const container = page.frameLocator('iframe[title="Artifact preview"]').last();
+      const preview = container.frameLocator('iframe[title="Artifact content"]');
       await expect(preview.getByRole("heading", { name: "Interactive report" })).toBeVisible();
       await preview.getByRole("button", { name: "Interact", exact: true }).click();
       await expect(preview.getByRole("heading", { name: "Clicked" })).toBeVisible();
       await expect(preview.locator("body")).toHaveAttribute("data-isolated", "yes");
       await expect(preview.locator("body")).toHaveAttribute("data-network", "blocked");
       expect(await page.locator("body").getAttribute("data-artifact-escape")).toBeNull();
+      await preview.getByRole("button", { name: "Navigate outside", exact: true }).click();
+      await expect(container.locator("body")).toHaveAttribute("data-navigation-blocked", "yes");
+      expect(probe.requests()).toBe(0);
+      await detail.getByRole("button", { name: "Reload saved output", exact: true }).click();
+      await expect(preview.getByRole("heading", { name: "Interactive report" })).toBeVisible();
       const item = (await listing()).items[0];
       const cli = await promisify(execFile)(
         process.execPath,
@@ -203,22 +243,34 @@ for (const compact of [false, true])
       await expect(surface.getByText("No artifacts yet", { exact: true })).toBeVisible();
       expect(ottoProvider.requests.length).toBeGreaterThan(0);
     } catch (error) {
-      await testInfo.attach("artifact-generation-state", {
-        body: JSON.stringify(
+      const statePath = testInfo.outputPath("artifact-generation-state.json");
+      await writeFile(
+        statePath,
+        JSON.stringify(
           { library: await listing(), fixtureRequests: ottoProvider.requests },
           null,
           2,
         ),
+      );
+      await testInfo.attach("artifact-generation-state", {
+        path: statePath,
         contentType: "application/json",
       });
       const home = process.env.E2E_PASEO_HOME;
-      if (home && path.basename(home).startsWith("paseo-e2e-worker-"))
+      if (home && path.basename(home).startsWith("paseo-e2e-worker-")) {
+        const logPath = testInfo.outputPath("artifact-daemon.log");
+        await writeFile(
+          logPath,
+          (await readFile(path.join(home, "daemon.log"), "utf8")).slice(-128000),
+        );
         await testInfo.attach("artifact-daemon-log", {
-          body: (await readFile(path.join(home, "daemon.log"), "utf8")).slice(-128000),
+          path: logPath,
           contentType: "text/plain",
         });
+      }
       throw error;
     } finally {
+      await probe.close();
       await client.close();
       await workspace.cleanup();
     }

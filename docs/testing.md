@@ -216,7 +216,7 @@ Agent providers handle their own auth. Do not add auth checks, environment varia
 
 Artifacts: `e2e/browser/otto-artifacts.spec.ts` covers wide and compact creation through
 the configured deterministic HTTP provider, rendered sandbox interactivity and blocked
-parent/network access, data-only byte preservation, repair decline/accept and tab
+parent/network access (including a real HTTP navigation trap), data-only byte preservation, repair decline/accept and tab
 reopening. It belongs to the existing all-Otto-journey CI lane. Focused
 `otto/artifacts/{content,service,generation}.test.ts`, app `model.test.ts` and CLI
 `commands.test.ts` cover persistence, failure/revision authority, cancellation and

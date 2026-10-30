@@ -451,7 +451,9 @@ export class ArtifactDaemonService {
         /* Diagnostics must not prevent a durable failure state. */
       }
       error =
-        "Artifact generation failed. Check the selected provider/model and regenerate explicitly; the previous deliverable is retained.";
+        generationError instanceof ArtifactError
+          ? generationError.message
+          : "Artifact generation failed. Check the selected provider/model and regenerate explicitly; the previous deliverable is retained.";
     }
     if (this.jobs.get(this.key(entry.store, entry.record.id))?.token !== token) return;
     const record: StoredArtifact = {

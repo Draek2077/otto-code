@@ -148,6 +148,16 @@ test("a pre-aborted request never discovers providers or opens a session", async
   expect(f.candidates).not.toHaveBeenCalled();
   expect(f.createSession).not.toHaveBeenCalled();
 });
+test("an unconfigured default gives an actionable model-selection error without starting a provider", async () => {
+  const f = fixture();
+  f.candidates.mockResolvedValueOnce([]);
+  await expect(f.generate(f.request)).rejects.toMatchObject({
+    code: "unavailable",
+    message:
+      "Choose a generation model on the artifact form. This host has no usable generation default.",
+  });
+  expect(f.createSession).not.toHaveBeenCalled();
+});
 test("permissions are denied without prompting or granting broader tools", async () => {
   const f = fixture();
   f.run.mockImplementationOnce(async () => {

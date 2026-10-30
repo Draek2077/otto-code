@@ -6,7 +6,7 @@ import {
   type StructuredGenerationProvider,
 } from "../../agent/agent-response-loop.js";
 import type { ArtifactSelection } from "@getpaseo/plugin/otto/artifacts";
-import { cleanupArtifactOperation } from "./files.js";
+import { cleanupArtifactOperation, ArtifactError } from "./files.js";
 
 export interface ArtifactGenerationRequest {
   cwd: string;
@@ -68,7 +68,12 @@ export function createArtifactGeneration(ports: {
       const result = await runArtifactSession(session, request);
       return { ...result, provider: candidate.provider, model: config.model ?? null };
     }
-    throw new Error("No configured Artifact generation provider is available.");
+    throw new ArtifactError(
+      "unavailable",
+      request.selection
+        ? "The selected generation provider is unavailable. Choose an available provider and model on the artifact form."
+        : "Choose a generation model on the artifact form. This host has no usable generation default.",
+    );
   };
 }
 

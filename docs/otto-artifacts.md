@@ -71,7 +71,9 @@ updates and hidden panels. Unknown write outcomes require an explicit reload.
 
 The preview uses an Otto-owned CSP with no network, frames, external fonts, external
 images, objects or forms. Inline CSS, scripts and data/blob images remain available.
-Web and desktop use a sandboxed opaque-origin iframe with scripts only, no parent
+Web and desktop use nested sandboxed opaque-origin frames. The trusted outer
+document owns the child-frame navigation policy, so an artifact cannot relax it
+with its own markup. Inline interaction remains available without parent
 DOM/storage access, popups, downloads or top navigation. Native uses a private WebView
 with shared cookies, DOM storage and file access disabled, and rejects external
 navigation. Export and Copy HTML are explicit device-side actions. Export does not

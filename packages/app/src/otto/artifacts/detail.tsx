@@ -405,7 +405,7 @@ function ArtifactDetailBody(props: DetailProps & { document: ArtifactDocument })
       ) : null}
       {saved.html ? (
         <View style={styles.preview}>
-          <ArtifactHtmlView html={saved.html} />
+          <ArtifactHtmlView key={state.epoch} html={saved.html} />
         </View>
       ) : (
         <Text style={styles.muted}>No safe preview is available.</Text>
