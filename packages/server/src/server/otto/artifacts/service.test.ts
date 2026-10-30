@@ -6,6 +6,9 @@ import * as storage from "./storage.js";
 import { ArtifactError } from "./files.js";
 import { artifactData } from "./content.js";
 import { createArtifactTools } from "./tools.js";
+import type { ArtifactSchedulePort } from "./sources.js";
+import type { StoredSchedule } from "@getpaseo/protocol/schedule/types";
+import { ScheduleNotFoundError } from "../../schedule/service.js";
 import { OTTO_CONFIG_FILENAME } from "../config-migration.js";
 import {
   artifactHostDefaults,
@@ -92,7 +95,7 @@ test("an inspected empty lock requires current identity and explicit recovery, n
   });
   expect((await f.service.read(f.ref(created.id))).lock).toBeNull();
 });
-async function fixture() {
+async function fixture(schedules?: ArtifactSchedulePort) {
   const base = path.resolve(import.meta.dirname, "../../../../../../.tmp");
   await mkdir(base, { recursive: true });
   const root = await mkdtemp(path.join(base, "artifact-fixture-")),
@@ -117,6 +120,7 @@ async function fixture() {
     record: records[id],
   });
   const ports = {
+    schedules,
     home,
     hostId: "host",
     generation: async () => ({ ...(await pending), provider: "fixture", model: "fixture-model" }),
@@ -181,6 +185,130 @@ async function fixture() {
     project,
   };
 }
+function sourceSchedule(): StoredSchedule {
+  return {
+    id: "schedule",
+    name: "Daily report",
+    prompt: "Refresh report",
+    cadence: { type: "every", everyMs: 60000 },
+    target: { type: "new-agent", config: { provider: "fixture", cwd: "/project" } },
+    status: "active",
+    createdAt: "now",
+    updatedAt: "now",
+    nextRunAt: null,
+    lastRunAt: "now",
+    pausedAt: null,
+    expiresAt: null,
+    maxRuns: null,
+    runs: [
+      {
+        id: "run",
+        status: "running",
+        agentId: "agent",
+        workspaceId: "workspace",
+        scheduledFor: "now",
+        startedAt: "now",
+        endedAt: null,
+        output: "Refresh accepted",
+        error: null,
+      },
+    ],
+  };
+}
+test("Schedule tool writes persist exact source and manual data refresh replaces stale attribution", async () => {
+  const schedule = sourceSchedule();
+  const f = await fixture({ inspect: async () => schedule });
+  const tools = createArtifactTools({
+    host: f.service,
+    policy: async () => true,
+    caller: () => ({
+      workspaceId: "workspace",
+      agentId: "agent",
+      labels: {
+        "paseo.schedule-id": "schedule",
+        "paseo.schedule-run": "run",
+      },
+    }),
+  });
+  const create = tools.find((tool) => tool.name === "create_artifact")!;
+  const result = await create.handler(
+    { name: "Scheduled report", description: "Create report" },
+    {},
+  );
+  expect(result.isError).toBeUndefined();
+  const listed = await f.service.list({ scope: f.scope });
+  const ref = f.ref(listed.items[0].id);
+  f.resolve();
+  await expect.poll(async () => (await f.service.read(ref)).artifact.status).toBe("ready");
+  const original = await f.service.read(ref);
+  expect(original.artifact.source).toEqual({
+    kind: "schedule",
+    scheduleId: "schedule",
+    runId: "run",
+  });
+  const update = tools.find((tool) => tool.name === "update_artifact_data")!;
+  const input = {
+    artifactId: ref.id,
+    location: ref.location,
+    expectedRevision: original.artifact.revision,
+    json: '{"value":2}',
+  };
+  expect((await update.handler(input, {})).isError).toBeUndefined();
+  const refreshed = await f.service.read(ref);
+  expect(refreshed.artifact.source).toEqual(original.artifact.source);
+  expect(refreshed.html!.replace(/\{\s*"value": 2\s*\}/, "DATA")).toBe(
+    original.html!.replace('{"value":1}', "DATA"),
+  );
+  expect((await update.handler(input, {})).isError).toBe(true);
+  expect((await f.service.read(ref)).artifact.revision).toBe(refreshed.artifact.revision);
+  schedule.runs[0].status = "succeeded";
+  expect(
+    (
+      await update.handler(
+        { ...input, expectedRevision: refreshed.artifact.revision, json: '{"value":3}' },
+        {},
+      )
+    ).isError,
+  ).toBeUndefined();
+  expect((await f.service.read(ref)).artifact.source).toEqual({ kind: "chat", agentId: "agent" });
+});
+test("Schedule source inspection resolves only the exact same-project run and retains unavailable sources", async () => {
+  const schedule = sourceSchedule();
+  let deleted = false;
+  const f = await fixture({
+    inspect: async () => {
+      if (deleted) throw new ScheduleNotFoundError("schedule");
+      return schedule;
+    },
+  });
+  const created = await f.service.create(
+    { scope: f.scope, name: "Source report", description: "Report" },
+    { kind: "schedule", scheduleId: "schedule", runId: "run" },
+  );
+  const ref = f.ref(created.id);
+  expect(await f.service.readSource(ref)).toMatchObject({
+    kind: "schedule",
+    name: "Daily report",
+    run: { id: "run", output: "Refresh accepted" },
+  });
+  f.ports.workspaces.get = async () => ({
+    workspaceId: "workspace",
+    projectId: "peer",
+    cwd: f.peer,
+    archivedAt: null,
+    createdAt: "",
+    updatedAt: "",
+    name: "",
+  });
+  expect(await f.service.readSource(ref)).toMatchObject({ kind: "unavailable" });
+  deleted = true;
+  expect(await f.service.readSource(ref)).toMatchObject({ kind: "unavailable" });
+  expect((await f.service.read(ref)).artifact.source).toEqual({
+    kind: "schedule",
+    scheduleId: "schedule",
+    runId: "run",
+  });
+});
 test("create settles into durable output and reopening a new owner preserves data and provenance", async () => {
   const f = await fixture(),
     created = await f.create();

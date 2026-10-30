@@ -4,9 +4,10 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import { promisify } from "node:util";
 import path from "node:path";
+import { z } from "zod";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { PersistedConfig } from "../../../server/src/server/persisted-config";
-import { listArtifacts, readArtifact } from "@getpaseo/plugin/otto/artifacts";
+import { listArtifacts, readArtifact, aggregateArtifacts } from "@getpaseo/plugin/otto/artifacts";
 import { test, expect } from "../support/helpers/otto-provider-settings";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
@@ -24,6 +25,139 @@ test.use({
 });
 const artifactTemplate =
   '<!doctype html><html><head><title>Artifact acceptance</title></head><body><h1>Interactive report</h1><button onclick="document.querySelector(\'h1\').textContent=\'Clicked\'">Interact</button><button onclick="location.href=\'ARTIFACT_NAVIGATION_PROBE\'">Navigate outside</button><script id="otto-artifact-data" type="application/json">{"value":1}</script><script>try{parent.document.body.dataset.artifactEscape="bad"}catch{document.body.dataset.isolated="yes"}fetch("https://artifact-network.invalid/leak").catch(()=>document.body.dataset.network="blocked")</script></body></html>';
+const fixtureRequest = z.object({
+  messages: z.array(z.object({ role: z.string() })),
+  tools: z
+    .array(
+      z.object({ function: z.object({ name: z.string(), description: z.string().optional() }) }),
+    )
+    .optional(),
+});
+test("a real Schedule creates an Artifact with an exact inspectable source run", async ({
+  page,
+  ottoProvider,
+}, testInfo) => {
+  test.setTimeout(120000);
+  const workspace = await seedWorkspace({
+    repoPrefix: "otto-artifact-schedule-",
+    title: "Scheduled Artifact",
+    git: false,
+  });
+  const client = await connectDaemonClient<
+    Pick<
+      DaemonClient,
+      | "connect"
+      | "close"
+      | "invokePluginRpc"
+      | "scheduleCreate"
+      | "scheduleRunOnce"
+      | "scheduleInspect"
+      | "scheduleDelete"
+    >
+  >({ clientIdPrefix: "artifact-schedule-proof" });
+  let scheduleId: string | null = null;
+  try {
+    ottoProvider.replyWith((raw) => {
+      const body = fixtureRequest.parse(raw);
+      if (!body.tools?.length)
+        return JSON.stringify({
+          html: artifactTemplate.replace("ARTIFACT_NAVIGATION_PROBE", "about:blank"),
+        });
+      if (body.messages.some((message) => message.role === "tool"))
+        return "Scheduled artifact created.";
+      const create = body.tools.find((tool) =>
+        tool.function.description?.includes(
+          "Create a durable self-contained interactive HTML deliverable",
+        ),
+      );
+      if (!create) throw new Error("The scheduled provider did not receive the real Artifact tool");
+      return {
+        toolCalls: [
+          {
+            id: "create-scheduled-report",
+            name: create.function.name,
+            arguments: JSON.stringify({
+              name: "Scheduled report",
+              description: "Create a report with refreshable data",
+            }),
+          },
+        ],
+      };
+    });
+    await ottoProvider.refreshCatalog();
+    const created = await client.scheduleCreate({
+      name: "Artifact source proof",
+      prompt: "Create one scheduled report using create_artifact.",
+      cadence: { type: "cron", expression: "0 0 1 1 *" },
+      runOnCreate: false,
+      maxRuns: 1,
+      target: {
+        type: "new-agent",
+        config: {
+          provider: "openai-compatible",
+          model: "fixture",
+          cwd: workspace.repoPath,
+          archiveOnFinish: false,
+        },
+      },
+    });
+    if (!created.schedule) throw new Error(created.error ?? "Schedule creation failed");
+    scheduleId = created.schedule.id;
+    await client.scheduleRunOnce({ id: scheduleId });
+    const id = scheduleId;
+    await expect
+      .poll(async () => (await client.scheduleInspect({ id })).schedule?.runs[0]?.status, {
+        timeout: 60000,
+      })
+      .toBe("succeeded");
+    const run = (await client.scheduleInspect({ id })).schedule!.runs[0];
+    await expect
+      .poll(
+        async () => {
+          const result = aggregateArtifacts.output.parse(
+            await client.invokePluginRpc("otto-artifacts", aggregateArtifacts.name, {
+              hostId: getServerId(),
+            }),
+          );
+          if (!result.ok) throw new Error(result.error.message);
+          return result.value.items.find((item) => item.name === "Scheduled report")?.status;
+        },
+        { timeout: 60000 },
+      )
+      .toBe("ready");
+    await gotoAppShell(page);
+    await page.getByTestId("plugin-sidebar-otto-artifacts-artifacts").click();
+    const surface = page.getByTestId("otto-artifacts-page").filter({ visible: true });
+    const card = surface
+      .locator('[data-testid^="artifact-card-"]')
+      .filter({ hasText: "Scheduled report" });
+    await card.getByRole("button", { name: "Open artifact", exact: true }).click();
+    await surface.getByRole("button", { name: "Inspect source Schedule", exact: true }).click();
+    const source = surface.getByTestId("artifact-schedule-source");
+    await expect(source.getByText(`Schedule ${id} · Run ${run.id}`, { exact: true })).toBeVisible();
+    await expect(source.getByText("Run succeeded", { exact: false })).toBeVisible();
+    await expect(
+      source.getByRole("button", { name: "Open Schedule run chat", exact: true }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath("artifact-schedule-source.png"),
+      fullPage: true,
+    });
+    await client.scheduleDelete({ id });
+    scheduleId = null;
+    await source.getByRole("button", { name: "Refresh source", exact: true }).click();
+    await expect(
+      source.getByText("The exact source is unavailable", { exact: false }),
+    ).toBeVisible();
+    await expect(
+      surface.getByTestId("artifact-detail").getByLabel("Artifact data (JSON)"),
+    ).toHaveValue('{"value":1}');
+  } finally {
+    if (scheduleId) await client.scheduleDelete({ id: scheduleId });
+    await client.close();
+    await workspace.cleanup();
+  }
+});
 async function navigationProbe() {
   let requests = 0;
   const server = createServer((_request, response) => {

@@ -137,6 +137,14 @@ export` warnings and pollutes the route tree.
 Put shared route policy in `src/navigation`, `src/utils`, stores, or another
 non-route directory.
 
+<!-- OTTO(typed-route-boundary): prevent monorepo watcher events from becoming routes on Windows. -->
+
+The Windows typed-route watcher normalizes separators before checking whether an
+event is inside the route root. Metro also watches sibling packages. The pinned
+`expo-router` patch prevents their file-add events from entering `.expo/types/router.d.ts`
+as `../` routes and normalizes add/delete keys to match initial enumeration.
+`otto/typed-route-policy.test.cjs` exercises Windows and POSIX handlers without Metro.
+
 ## Native Stack
 
 Keep workspace identity and retention outside native-stack `getId` and

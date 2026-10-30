@@ -25,6 +25,7 @@ import {
 } from "./model";
 import { styles } from "./styles";
 import { ReviewModelPicker } from "../knowledge/review-model-picker";
+import { ArtifactSourceDisclosure } from "./source";
 
 const textArea = { minHeight: 100, textAlignVertical: "top" } as const;
 export function ArtifactTextField({
@@ -345,13 +346,6 @@ function ArtifactDetailBody(props: DetailProps & { document: ArtifactDocument })
       setFeedback("Export is unavailable on this device. You can copy the HTML instead.");
     }
   }, [saved.html, artifact.id]);
-  const openSource = useCallback(() => {
-    if (artifact.source?.kind === "chat" && props.navigation)
-      props.navigation.openAgent({
-        agentId: artifact.source.agentId,
-        serverId: props.reference.scope.hostId,
-      });
-  }, [artifact.source, props.navigation, props.reference.scope.hostId]);
   return (
     <View style={styles.content} testID="artifact-detail">
       <Text style={styles.title}>{artifact.name}</Text>
@@ -389,23 +383,19 @@ function ArtifactDetailBody(props: DetailProps & { document: ArtifactDocument })
         <Button variant="outline" size="sm" disabled={!saved.html} onPress={download}>
           Export HTML
         </Button>
-        {artifact.source?.kind === "chat" && props.navigation ? (
-          <Button variant="outline" size="sm" onPress={openSource}>
-            Open source chat
-          </Button>
-        ) : null}
       </View>
       {feedback ? (
         <Text accessibilityLiveRegion="polite" style={styles.muted}>
           {feedback}
         </Text>
       ) : null}
-      {artifact.source && artifact.source.kind !== "chat" ? (
-        <Text style={styles.muted}>
-          Source identifiers are retained. Open the owning Workflow or Schedule when that module is
-          available.
-        </Text>
-      ) : null}
+      <ArtifactSourceDisclosure
+        source={artifact.source}
+        reference={props.reference}
+        revision={artifact.revision}
+        active={props.active}
+        navigation={props.navigation}
+      />
       {saved.html ? (
         <View style={styles.preview}>
           <ArtifactHtmlView key={state.epoch} html={saved.html} />

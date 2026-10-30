@@ -1025,6 +1025,7 @@ export async function createPaseoDaemon(
             daemonConfig: { metadataGeneration: daemonConfigStore.get().metadataGeneration },
           }),
       })(request),
+    schedules: { inspect: (id) => scheduleService.inspect(id) }, // OTTO(artifacts): provenance reads the owning scheduler, never prompt-derived labels alone.
   }); // OTTO(artifacts): one cancellable owner, no startup work or Context isolation changes.
   ottoKnowledge = new KnowledgeDaemonService({
     hostId: serverId,

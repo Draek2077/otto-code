@@ -21,10 +21,11 @@ type SettingsClient = Pick<
   DaemonClient,
   "connect" | "close" | "invokePluginRpc" | "refreshProvidersSnapshot" | "getProvidersSnapshot"
 >;
+type FixtureReply = string | { toolCalls: { id: string; name: string; arguments: string }[] };
 
 async function createProviderFixture() {
   const requests: unknown[] = [];
-  let reply: (body: unknown) => string = () => "Done.";
+  let reply: (body: unknown) => FixtureReply = () => "Done.";
   let modelContextWindow: number | undefined;
   async function complete(request: IncomingMessage, response: ServerResponse) {
     try {
@@ -39,9 +40,20 @@ async function createProviderFixture() {
       const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       requests.push(body);
       const content = reply(body);
+      const delta =
+        typeof content === "string"
+          ? { content }
+          : {
+              tool_calls: content.toolCalls.map((tool, index) => ({
+                index,
+                id: tool.id,
+                type: "function",
+                function: { name: tool.name, arguments: tool.arguments },
+              })),
+            };
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.end(
-        `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+        `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: typeof content === "string" ? "stop" : "tool_calls" }] })}\n\ndata: [DONE]\n\n`,
       );
     } catch {
       response.writeHead(500);
@@ -132,7 +144,7 @@ async function createProviderFixture() {
     setContextWindow: (tokens: number) => {
       modelContextWindow = tokens;
     },
-    replyWith: (generate: (body: unknown) => string) => {
+    replyWith: (generate: (body: unknown) => FixtureReply) => {
       reply = generate;
     },
     read,

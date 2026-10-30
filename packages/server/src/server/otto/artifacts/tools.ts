@@ -9,6 +9,7 @@ import type { ArtifactDaemonService } from "./service.js";
 import type { PaseoToolDefinition } from "../../agent/tools/types.js";
 import type { RetainedToolPolicy } from "../retained-tool-policy.js";
 import type { AgentManager } from "../../agent/agent-manager.js";
+import type { ArtifactCaller } from "./sources.js";
 
 /** Small composition adapter keeps branching and identity resolution out of Paseo's catalog. */
 export function artifactCatalogTools(ports: {
@@ -28,6 +29,7 @@ export function artifactCatalogTools(ports: {
         workspaceId: agent?.workspaceId ?? null,
         agentId: callerAgentId ?? undefined,
         provider: agent?.provider,
+        labels: agent?.labels,
       };
     },
   });
@@ -36,7 +38,7 @@ export function artifactCatalogTools(ports: {
 export function createArtifactTools(ports: {
   host: ArtifactDaemonService;
   policy: RetainedToolPolicy;
-  caller(): { workspaceId: string | null; agentId?: string; provider?: string };
+  caller(): ArtifactCaller;
 }): PaseoToolDefinition[] {
   const reference = z.object({ artifactId: ArtifactId, location: ArtifactLocation });
   const write = reference.extend({ expectedRevision: z.string().regex(/^[a-f0-9]{64}$/) });
@@ -44,7 +46,7 @@ export function createArtifactTools(ports: {
     name: string,
     description: string,
     inputSchema: S,
-    run: (input: z.infer<S>, workspaceId: string, agentId?: string) => Promise<unknown>,
+    run: (input: z.infer<S>, workspaceId: string, caller: ArtifactCaller) => Promise<unknown>,
   ): PaseoToolDefinition => ({
     name,
     description,
@@ -75,7 +77,7 @@ export function createArtifactTools(ports: {
           !(await ports.policy(name, caller.provider))
         )
           throw new Error("Unavailable");
-        const result = await run(input, workspaceId, caller.agentId);
+        const result = await run(input, workspaceId, caller);
         if (Buffer.byteLength(JSON.stringify(result)) > 400000)
           throw new Error("Result exceeds the tool budget");
         return { content: [], structuredContent: result };
@@ -119,10 +121,10 @@ export function createArtifactTools(ports: {
           selection: ArtifactSelection.optional(),
         })
         .strict(),
-      (input, workspaceId, agentId) =>
+      async (input, workspaceId, caller) =>
         ports.host.create(
           { ...input, scope: ports.host.workspaceScope(workspaceId) },
-          agentId ? { kind: "chat", agentId } : undefined,
+          await ports.host.callerSource(caller),
         ),
     ),
     tool(
@@ -153,23 +155,31 @@ export function createArtifactTools(ports: {
       "update_artifact_data",
       "Replace ONLY the otto-artifact-data JSON block, preserving every presentation byte outside it. Inspect first and supply expectedRevision. Missing data contracts require explicit regeneration; never use regeneration as a data update fallback.",
       write.extend({ json: z.string().max(100000) }).strict(),
-      (input, workspaceId) =>
-        ports.host.change({
-          ...ref(input, workspaceId),
-          expectedRevision: input.expectedRevision,
-          command: { type: "data", json: input.json },
-        }),
+      async (input, workspaceId, caller) =>
+        ports.host.change(
+          {
+            ...ref(input, workspaceId),
+            expectedRevision: input.expectedRevision,
+            command: { type: "data", json: input.json },
+          },
+          await ports.host.callerSource(caller),
+        ),
     ),
     tool(
       "change_artifact",
       "Explicit revision-pinned metadata, cancel, repair, delete, move or design-changing regeneration. Destructive commands require their advertised literal userApproved fields; obtain user consent first. Cancellation interrupts/closes the owned session and revokes publication; provider shutdown is not a guarantee about billing. Moves stay within the same project and never overwrite a destination.",
       write.extend({ command: ArtifactCommand }).strict(),
-      (input, workspaceId) =>
-        ports.host.change({
-          ...ref(input, workspaceId),
-          expectedRevision: input.expectedRevision,
-          command: input.command,
-        }),
+      async (input, workspaceId, caller) =>
+        ports.host.change(
+          {
+            ...ref(input, workspaceId),
+            expectedRevision: input.expectedRevision,
+            command: input.command,
+          },
+          input.command.type === "regenerate" || input.command.type === "data"
+            ? await ports.host.callerSource(caller)
+            : undefined,
+        ),
     ),
   ];
 }

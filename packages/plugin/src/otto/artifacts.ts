@@ -150,6 +150,31 @@ export const readArtifact = defineRpc({
   input: ArtifactRef,
   output: result(ArtifactDocument),
 });
+export const ArtifactSourceDetails = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("unavailable"), message: z.string().max(2000) }),
+  z.object({ kind: z.literal("chat"), agentId: z.string().max(512) }),
+  z.object({
+    kind: z.literal("schedule"),
+    scheduleId: z.string().max(512),
+    name: z.string().max(500).nullable(),
+    run: z.object({
+      id: z.string().max(512),
+      status: z.enum(["running", "succeeded", "failed"]),
+      startedAt: z.string(),
+      endedAt: z.string().nullable(),
+      agentId: z.string().nullable(),
+      workspaceId: z.string().nullable(),
+      output: z.string().max(8000).nullable(),
+      error: z.string().max(2000).nullable(),
+    }),
+  }),
+]);
+export type ArtifactSourceDetails = z.infer<typeof ArtifactSourceDetails>;
+export const readArtifactSource = defineRpc({
+  name: "artifacts.source.read.request",
+  input: ArtifactRef,
+  output: result(ArtifactSourceDetails),
+});
 export const createArtifact = defineRpc({
   name: "artifacts.document.create.request",
   input: z.object({

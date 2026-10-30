@@ -86,6 +86,10 @@ jobs:
         id: install
         run: node scripts/npm-retry.mjs ci
 
+      # OTTO(typed-route-boundary): exercise the installed dependency patch after npm ci.
+      - name: Test Expo route watcher ownership
+        run: node --test packages/app/otto/typed-route-policy.test.cjs
+
       # Explicit status checks keep independent domains running after a failure.
       # A failed step still fails quality; no continue-on-error or success shim.
       - name: Check formatting

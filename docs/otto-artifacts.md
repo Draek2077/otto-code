@@ -96,9 +96,19 @@ HTML and data unless explicitly requested, keeping routine model context small.
 A chat is bound to its own workspace;
 an outside-chat caller must supply an explicit workspace ID. Tools return bounded
 metadata/results and never choose a different project after failure. Source chat
-identity is retained when creation originates in a chat. Workflow and Schedule source
-references are structural contracts for their owning modules, not substitute trigger
-implementations in Artifacts.
+identity is retained when creation originates in a chat. New-chat Schedule runs use
+the scheduler's exact durable active run, agent and workspace to attribute creation,
+data updates and regeneration. Labels alone never grant source identity. Later manual
+work in a reused scheduled chat returns to Chat attribution after that run settles.
+Existing-chat Schedule targets remain Chat-attributed until the scheduler owns a
+per-turn execution identity; Artifact code does not alter persistent chat labels.
+
+**Inspect source Schedule** opens the exact retained run beside the Artifact, including
+its outcome and run chat. Deleted, expired-history or cross-project sources show an
+unavailable state without hiding the deliverable or selecting another run. Source
+reads never start a Schedule. Workflows remain a separate integration with their own
+runtime prerequisites. The source adapter does not implement a typed scheduled
+data-refresh target or authorize a regeneration as a data-only refresh.
 
 `otto artifact --help` lists creation, inspection, metadata/data updates, cancellation,
 regeneration, repair, deletion, moves and storage preferences. Commands connect through

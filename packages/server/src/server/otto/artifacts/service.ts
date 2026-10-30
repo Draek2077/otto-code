@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   listArtifacts,
   readArtifact,
+  readArtifactSource,
   createArtifact,
   changeArtifact,
   setArtifactStorage,
@@ -18,6 +19,7 @@ import {
   ArtifactSource,
   type ArtifactSelection,
   type ArtifactDocument,
+  type ArtifactSourceDetails,
 } from "@getpaseo/plugin/otto/artifacts";
 import type { OttoProjectMetadata } from "../project-metadata.js";
 import type { WorkspaceRegistry } from "../../workspace-registry.js";
@@ -43,12 +45,21 @@ import {
 } from "./storage.js";
 import { OTTO_CONFIG_FILENAME } from "../config-migration.js";
 import { inspectArtifactLock, recoverArtifactLock } from "./locks.js";
+import {
+  artifactCallerSource,
+  readArtifactSchedule,
+  type ArtifactCaller,
+  type ArtifactSchedulePort,
+} from "./sources.js";
 
 interface GenerationJob {
   controller: AbortController;
   token: string;
   timer: ReturnType<typeof setTimeout>;
   done: Promise<void>;
+}
+function withArtifactSource(record: StoredArtifact, source?: z.infer<typeof ArtifactSource>) {
+  return source ? { ...record, source: ArtifactSource.parse(source) } : record;
 }
 export interface ArtifactPorts {
   home: string;
@@ -63,6 +74,7 @@ export interface ArtifactPorts {
     > | null>;
   };
   generation: ArtifactGeneration;
+  schedules?: ArtifactSchedulePort;
   reportGenerationError?(error: unknown): void;
   projects(): Promise<readonly { projectId: string; archivedAt: string | null }[]>;
   now?: () => Date;
@@ -82,6 +94,41 @@ export class ArtifactDaemonService {
   }
   workspaceScope(workspaceId: string): ArtifactScope {
     return { hostId: this.ports.hostId, target: { kind: "workspace", id: workspaceId } };
+  }
+  callerSource(caller: ArtifactCaller) {
+    return artifactCallerSource(caller, this.ports.schedules);
+  }
+  async readSource(input: ArtifactRef): Promise<ArtifactSourceDetails> {
+    const entry = await this.locate(input);
+    const source = entry.summary.source;
+    const unavailable = {
+      kind: "unavailable" as const,
+      message: "The exact source is unavailable on this host. The Artifact remains available.",
+    };
+    if (!source) return unavailable;
+    if (source.kind === "chat") return source;
+    if (source.kind !== "schedule" || !this.ports.schedules) return unavailable;
+    const schedule = await readArtifactSchedule(this.ports.schedules, source.scheduleId);
+    if (!schedule || schedule.id !== source.scheduleId) return unavailable;
+    const run = schedule.runs.find((item) => item.id === source.runId);
+    if (!run?.workspaceId) return unavailable;
+    const workspace = await this.ports.workspaces.get(run.workspaceId);
+    if (workspace?.projectId !== entry.store.project.projectId) return unavailable;
+    return {
+      kind: "schedule",
+      scheduleId: schedule.id,
+      name: schedule.name?.slice(0, 500) ?? null,
+      run: {
+        id: run.id,
+        status: run.status,
+        startedAt: run.startedAt,
+        endedAt: run.endedAt,
+        agentId: run.agentId,
+        workspaceId: run.workspaceId,
+        output: run.output?.slice(0, 8000) ?? null,
+        error: run.error?.slice(0, 2000) ?? null,
+      },
+    };
   }
   async project(scope: ArtifactScope): Promise<ArtifactProject> {
     if (scope.hostId !== this.ports.hostId)
@@ -534,7 +581,10 @@ export class ArtifactDaemonService {
       ),
     });
   }
-  async change(input: z.infer<typeof changeArtifact.input>) {
+  async change(
+    input: z.infer<typeof changeArtifact.input>,
+    source?: z.infer<typeof ArtifactSource>,
+  ) {
     const entry = await this.locate(input);
     if (entry.revision !== input.expectedRevision)
       throw new ArtifactError("conflict", "Artifact changed. Reload before applying this action.");
@@ -570,7 +620,7 @@ export class ArtifactDaemonService {
       this.preparing.add(key);
     }
     try {
-      await this.apply(entry, command);
+      await this.apply(entry, command, source);
       if (command.type === "delete") return { artifact: null };
       const location = command.type === "move" ? command.destination : input.location;
       const current = await this.locate({ ...input, location });
@@ -587,6 +637,7 @@ export class ArtifactDaemonService {
   private async apply(
     entry: ArtifactEntry,
     command: Exclude<ArtifactCommand, { type: "cancel" | "recover_lock" }>,
+    source?: z.infer<typeof ArtifactSource>,
   ) {
     if (entry.metadataInvalid && command.type !== "repair" && command.type !== "delete")
       throw new ArtifactError(
@@ -610,7 +661,7 @@ export class ArtifactDaemonService {
         return this.commit(
           entry,
           {
-            ...record,
+            ...withArtifactSource(record, source),
             lastGoodHtml: html,
             status: "ready",
             errorMessage: null,
@@ -623,7 +674,7 @@ export class ArtifactDaemonService {
         return this.repair(entry);
       case "regenerate": {
         const selectedRecord = {
-          ...record,
+          ...withArtifactSource(record, source),
           generationHostId: this.ports.hostId,
           generationProvider: command.selection?.provider ?? null,
           generationModel: command.selection?.model ?? null,
@@ -741,6 +792,8 @@ export class ArtifactDaemonService {
         return this.guard(() => this.aggregate(aggregateArtifacts.input.parse(value)));
       case readArtifact.name:
         return this.guard(() => this.read(readArtifact.input.parse(value)));
+      case readArtifactSource.name:
+        return this.guard(() => this.readSource(readArtifactSource.input.parse(value)));
       case createArtifact.name:
         return this.guard(() => this.create(createArtifact.input.parse(value)));
       case changeArtifact.name:

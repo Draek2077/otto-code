@@ -1,0 +1,16 @@
+diff --git a/node_modules/expo-router/build/typed-routes/index.js b/node_modules/expo-router/build/typed-routes/index.js
+--- a/node_modules/expo-router/build/typed-routes/index.js
++++ b/node_modules/expo-router/build/typed-routes/index.js
+@@ -28,8 +28,10 @@ function getWatchHandler(outputDir, { ctx = defaultCtx, regenerateFn = exports.rege
+         if (!process.env.EXPO_ROUTER_APP_ROOT)
+             return;
+         let shouldRegenerate = false;
+-        let relativePath = node_path_1.default.relative(process.env.EXPO_ROUTER_APP_ROOT, filePath);
+-        const isInsideAppRoot = !relativePath.startsWith('../');
++        // OTTO(typed-route-boundary): Metro watches the monorepo; Windows paths must
++        // not admit sibling packages or other drives as application routes.
++        let relativePath = node_path_1.default.relative(process.env.EXPO_ROUTER_APP_ROOT, filePath).split(node_path_1.default.sep).join('/');
++        const isInsideAppRoot = relativePath !== '..' && !relativePath.startsWith('../') && !node_path_1.default.isAbsolute(relativePath);
+         const basename = node_path_1.default.basename(relativePath);
+         if (!isInsideAppRoot)
+             return;
