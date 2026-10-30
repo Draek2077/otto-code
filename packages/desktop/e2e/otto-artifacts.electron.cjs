@@ -26,14 +26,13 @@ async function smokeArtifactPreview({ page, listen, daemonHome }) {
   const address = probe.address();
   assert.ok(address && typeof address !== "string");
   const url = `http://127.0.0.1:${address.port}/escape`;
-  let projectId = null;
   try {
     await client.connect();
     const root = path.join(daemonHome, "artifact-preview-project");
     fs.mkdirSync(root);
     const added = await client.addProject(root);
     assert.ok(added.project, added.error ?? "No project returned");
-    projectId = added.project.projectId;
+    const projectId = added.project.projectId;
     const directory = path.join(root, ".otto", "artifacts");
     fs.mkdirSync(directory, { recursive: true });
     const html = `<!doctype html><html><head><title>Packaged Artifact</title></head><body><h1>Packaged report</h1><button onclick="document.querySelector('h1').textContent='Interaction verified'">Interact</button><button onclick="location.href='${url}'">Navigate outside</button><script id="otto-artifact-data" type="application/json">{"value":1}</script><script>try{parent.document.body.dataset.artifactEscape='bad'}catch{document.body.dataset.isolated='yes'}document.body.dataset.host=typeof window.paseoDesktop+','+typeof require+','+typeof process;document.body.dataset.popup=window.open('${url}')===null?'blocked':'escaped';fetch('${url}').catch(()=>document.body.dataset.network='blocked')</script></body></html>`;
@@ -116,21 +115,20 @@ async function smokeArtifactPreview({ page, listen, daemonHome }) {
       "Packaged Artifact preview: interaction passed; host/parent access, popups, navigation and network blocked",
     );
   } finally {
-    try {
-      if (projectId) await client.removeProject(projectId);
-    } finally {
-      await client.close();
-      probe.closeAllConnections();
-      await new Promise((resolve, reject) =>
-        probe.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve();
-        }),
-      );
-    }
+    // The outer smoke owns and removes daemonHome after capturing its renderer.
+    // Unregistering here would replace a failed preview with a missing-project
+    // error before that screenshot and child-frame evidence could be collected.
+    await client.close();
+    probe.closeAllConnections();
+    await new Promise((resolve, reject) =>
+      probe.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      }),
+    );
   }
 }
 module.exports = { smokeArtifactPreview };
