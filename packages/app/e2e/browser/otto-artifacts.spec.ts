@@ -24,6 +24,7 @@ for (const compact of [false, true])
     page,
     ottoProvider,
   }, testInfo) => {
+    test.setTimeout(120000);
     if (compact) await page.setViewportSize({ width: 390, height: 844 });
     const workspace = await seedWorkspace({
       repoPrefix: "otto-artifacts-",
@@ -133,6 +134,73 @@ for (const compact of [false, true])
         path: testInfo.outputPath(`artifacts-${compact ? "compact" : "wide"}.png`),
         fullPage: true,
       });
+      const reopened = surface.getByTestId("artifact-detail");
+      // A real external writer, not an RPC mock, produces the stale-revision UX.
+      await reopened.getByLabel("Artifact name", { exact: true }).fill("My local title");
+      const metadataPath = original.path.replace(/\.html$/, ".json");
+      const peer = JSON.parse(await readFile(metadataPath, "utf8"));
+      await writeFile(metadataPath, JSON.stringify({ ...peer, name: "Peer title" }));
+      await reopened.getByRole("button", { name: "Save details", exact: true }).click();
+      await expect(
+        reopened.getByText("The host could not acknowledge this action.", { exact: false }),
+      ).toBeVisible();
+      await expect(reopened.getByLabel("Artifact name", { exact: true })).toHaveValue(
+        "My local title",
+      );
+      page.once("dialog", (dialog) => void dialog.accept());
+      await reopened.getByRole("button", { name: "Reload saved output", exact: true }).click();
+      await expect(reopened.getByLabel("Artifact name", { exact: true })).toHaveValue("Peer title");
+      await reopened.getByLabel("Artifact name", { exact: true }).fill("Renamed report");
+      await reopened.getByRole("button", { name: "Save details", exact: true }).click();
+      await expect.poll(async () => (await read()).artifact.name).toBe("Renamed report");
+      await reopened.getByRole("button", { name: "Star", exact: true }).click();
+      await expect.poll(async () => (await read()).artifact.starred).toBe(true);
+      const downloadPromise = page.waitForEvent("download");
+      await reopened.getByRole("button", { name: "Export HTML", exact: true }).click();
+      const download = await downloadPromise;
+      expect(download.suggestedFilename()).toBe(`otto-artifact-${item.id}.html`);
+      const downloaded = await download.path();
+      expect(await readFile(downloaded!, "utf8")).toBe((await read()).html);
+      page.once("dialog", (dialog) => void dialog.accept());
+      await reopened.getByRole("button", { name: "Move to host", exact: true }).click();
+      await expect(surface.getByText(/ready · host ·/)).toBeVisible();
+      await surface.getByRole("button", { name: "Open artifact", exact: true }).click();
+      const moved = surface.getByTestId("artifact-detail");
+      const readMoved = async () => {
+        const result = readArtifact.output.parse(
+          await client.invokePluginRpc("otto-artifacts", readArtifact.name, {
+            ...ref,
+            location: "host",
+          }),
+        );
+        if (!result.ok) throw new Error(result.error.message);
+        return result.value;
+      };
+      const movedPath = (await readMoved()).path;
+      expect(await readFile(movedPath, "utf8")).toBe(updated);
+      await moved.getByLabel("Regeneration instructions").fill("Change the design explicitly");
+      page.once("dialog", (dialog) => void dialog.dismiss());
+      await moved.getByRole("button", { name: "Regenerate design", exact: true }).click();
+      expect(await readFile(movedPath, "utf8")).toBe(updated);
+      ottoProvider.replyWith(() =>
+        JSON.stringify({ html: html.replace("Interactive report", "New design") }),
+      );
+      page.once("dialog", (dialog) => void dialog.accept());
+      await moved.getByRole("button", { name: "Regenerate design", exact: true }).click();
+      await expect.poll(async () => await readFile(movedPath, "utf8")).toContain("New design");
+      await expect.poll(async () => (await readMoved()).artifact.status).toBe("ready");
+      page.once("dialog", (dialog) => void dialog.accept());
+      await moved.getByRole("button", { name: "Reload saved output", exact: true }).click();
+      await expect(
+        moved.getByRole("button", { name: "Reload saved output", exact: true }),
+      ).toBeEnabled();
+      page.once("dialog", (dialog) => void dialog.dismiss());
+      await moved.getByRole("button", { name: "Delete artifact", exact: true }).click();
+      expect((await listing()).items).toHaveLength(1);
+      page.once("dialog", (dialog) => void dialog.accept());
+      await moved.getByRole("button", { name: "Delete artifact", exact: true }).click();
+      await expect.poll(async () => (await listing()).items).toEqual([]);
+      await expect(surface.getByText("No artifacts yet", { exact: true })).toBeVisible();
       expect(ottoProvider.requests.length).toBeGreaterThan(0);
     } finally {
       await client.close();
