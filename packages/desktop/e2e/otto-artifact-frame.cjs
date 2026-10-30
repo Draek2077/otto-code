@@ -22,7 +22,12 @@ async function connectArtifactInspector(port) {
     pending.delete(message.id);
     clearTimeout(request.timer);
     if (message.error)
-      request.reject(Object.assign(new Error(message.error.message), { code: message.error.code }));
+      request.reject(
+        Object.assign(new Error(`${request.method}: ${message.error.message}`), {
+          code: message.error.code,
+          detail: message.error.message,
+        }),
+      );
     else request.resolve(message.result);
   });
   function call(method, params = {}, sessionId) {
@@ -32,7 +37,7 @@ async function connectArtifactInspector(port) {
         pending.delete(id);
         reject(new Error(`Packaged CDP timed out: ${method}`));
       }, 10000);
-      pending.set(id, { resolve, reject, timer });
+      pending.set(id, { resolve, reject, timer, method });
       socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }
@@ -79,10 +84,23 @@ async function connectArtifactInspector(port) {
       if (error.code === -32000) return;
       throw error;
     }
+    // A parent target can expose a remote-frame placeholder with context id 0.
+    // It is not an execution context in this session. Its owning iframe target
+    // must still supply the real document before the acceptance can proceed.
+    if (!executionContextId) return;
     const handle = frameHandle(sessionId, executionContextId);
-    const identity = await handle.evaluate(
-      "({title:document.title,wrapper:!!document.querySelector('iframe[title=\"Artifact content\"]')})",
-    );
+    let identity;
+    try {
+      identity = await handle.evaluate(
+        "({title:document.title,wrapper:!!document.querySelector('iframe[title=\"Artifact content\"]')})",
+      );
+    } catch (error) {
+      // Contexts may disappear while the renderer commits its iframe document.
+      // Discovery will reacquire the live context; never ignore fixture actions
+      // or security assertion failures after a real document has been selected.
+      if (error.code === -32000 && error.detail === "Cannot find context with specified id") return;
+      throw error;
+    }
     found.observed.push({ ...identity, frameId: tree.frame.id });
     if (identity.title === "Packaged Artifact") found.content = handle;
     if (identity.wrapper) found.wrapper = handle;
@@ -105,6 +123,7 @@ async function connectArtifactInspector(port) {
           });
           sessionId = attached.sessionId;
           sessions.set(target.targetId, sessionId);
+          await call("Runtime.enable", {}, sessionId);
         }
         const { frameTree } = await call("Page.getFrameTree", {}, sessionId);
         await inspectTree(frameTree, sessionId, found);

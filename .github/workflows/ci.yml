@@ -379,6 +379,10 @@ jobs:
       - name: Run desktop tests
         run: npm run test --workspace=@getpaseo/desktop
 
+      # OTTO(artifacts): protocol-only observer regressions launch no Electron process.
+      - name: Verify packaged Artifact observer protocol
+        run: node --test packages/desktop/e2e/otto-artifact-frame.test.cjs
+
       # OTTO(preview): production process-tree ownership is proved on Linux and Windows, never the installed app.
       - name: Verify native Preview process ownership
         run: npm run test:e2e:otto-preview --workspace=@getpaseo/server
