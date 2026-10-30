@@ -32,6 +32,23 @@ async function fixture(t, parentContext) {
         result = { sessionId: request.params.targetId };
       if (request.method === "Page.getFrameTree")
         result = { frameTree: { frame: { id: request.sessionId } } };
+      if (
+        request.method === "Runtime.enable" &&
+        (request.sessionId !== "parent" || parentContext !== 0)
+      )
+        socket.send(
+          JSON.stringify({
+            sessionId: request.sessionId,
+            method: "Runtime.executionContextCreated",
+            params: {
+              context: {
+                id: 100,
+                uniqueId: request.sessionId + ":default",
+                auxData: { frameId: request.sessionId, isDefault: true },
+              },
+            },
+          }),
+        );
       if (request.method === "Page.createIsolatedWorld") {
         result = { executionContextId: request.sessionId === "parent" ? parentContext : 17 };
         if (result.executionContextId)
@@ -81,6 +98,15 @@ test("a remote parent placeholder cannot hide the actual iframe target", async (
     calls.some((call) => call.method === "Runtime.evaluate" && call.sessionId === "parent"),
     false,
   );
+  assert.equal(
+    calls.some((call) => call.method === "Page.createIsolatedWorld" && call.sessionId === "parent"),
+    false,
+  );
+  const evaluation = calls.find(
+    (call) => call.method === "Runtime.evaluate" && call.sessionId === "child",
+  );
+  assert.equal(evaluation.params.uniqueContextId, "child:unique");
+  assert.equal(evaluation.params.contextId, undefined);
 });
 
 test("discovery skips a destroyed context and still inspects its actual owner", async (t) => {

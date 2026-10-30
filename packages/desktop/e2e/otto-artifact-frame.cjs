@@ -102,6 +102,16 @@ async function connectArtifactInspector(port) {
     };
   }
   async function inspectTree(tree, sessionId, found) {
+    const local = [...(contexts.get(sessionId)?.values() ?? [])].some(
+      (context) => context.auxData?.frameId === tree.frame.id,
+    );
+    // Page.getFrameTree includes remote placeholders. Some Chromium builds
+    // return context 0 for them; others never complete createIsolatedWorld.
+    // Runtime.enable identifies the actual frame owner before we request a world.
+    if (!local) {
+      for (const child of tree.childFrames ?? []) await inspectTree(child, sessionId, found);
+      return;
+    }
     const handle = frameHandle(sessionId, tree.frame.id);
     let identity;
     try {
