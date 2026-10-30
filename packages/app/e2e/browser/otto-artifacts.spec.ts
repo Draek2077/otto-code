@@ -157,7 +157,11 @@ for (const compact of [false, true])
       expect(await readFile(original.path, "utf8")).toBe(html);
       await detail.getByLabel("Artifact data (JSON)").fill('{"value":2}');
       await detail.getByRole("button", { name: "Update data only", exact: true }).click();
-      await expect.poll(async () => (await read()).data).toContain('"value": 2');
+      // A guarded read can overlap atomic publication. Repeat only observation,
+      // never a user mutation, until its acknowledged outcome is stable.
+      await expect(async () => {
+        expect((await read()).data).toContain('"value": 2');
+      }).toPass({ timeout: 15000 });
       const updated = await readFile(original.path, "utf8");
       expect(updated.replace(/\{\s*"value": 2\s*\}/, "DATA")).toBe(
         html.replace('{"value":1}', "DATA"),
@@ -199,9 +203,13 @@ for (const compact of [false, true])
       await expect(reopened.getByLabel("Artifact name", { exact: true })).toHaveValue("Peer title");
       await reopened.getByLabel("Artifact name", { exact: true }).fill("Renamed report");
       await reopened.getByRole("button", { name: "Save details", exact: true }).click();
-      await expect.poll(async () => (await read()).artifact.name).toBe("Renamed report");
+      await expect(async () => {
+        expect((await read()).artifact.name).toBe("Renamed report");
+      }).toPass({ timeout: 15000 });
       await reopened.getByRole("button", { name: "Star", exact: true }).click();
-      await expect.poll(async () => (await read()).artifact.starred).toBe(true);
+      await expect(async () => {
+        expect((await read()).artifact.starred).toBe(true);
+      }).toPass({ timeout: 15000 });
       const downloadPromise = page.waitForEvent("download");
       await reopened.getByRole("button", { name: "Export HTML", exact: true }).click();
       const download = await downloadPromise;
@@ -235,7 +243,9 @@ for (const compact of [false, true])
       page.once("dialog", (dialog) => void dialog.accept());
       await moved.getByRole("button", { name: "Regenerate design", exact: true }).click();
       await expect.poll(async () => await readFile(movedPath, "utf8")).toContain("New design");
-      await expect.poll(async () => (await readMoved()).artifact.status).toBe("ready");
+      await expect(async () => {
+        expect((await readMoved()).artifact.status).toBe("ready");
+      }).toPass({ timeout: 15000 });
       page.once("dialog", (dialog) => void dialog.accept());
       await moved.getByRole("button", { name: "Reload saved output", exact: true }).click();
       await expect(
