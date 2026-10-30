@@ -1,0 +1,87 @@
+name: Otto Connector Authentication
+
+# OTTO(connectors): preserve the publisher service independently of Paseo.
+# Verification never needs vendor bindings; deployment is an explicit manual action.
+on:
+  push:
+    branches: [otto-0.10/phase-0]
+    paths:
+      [
+        packages/auth-service/**,
+        packages/server/src/services/otto/connectors/**,
+        package.json,
+        package-lock.json,
+        .github/workflows/otto-connector-auth.yml,
+      ]
+  pull_request:
+    paths:
+      [
+        packages/auth-service/**,
+        package.json,
+        package-lock.json,
+        .github/workflows/otto-connector-auth.yml,
+      ]
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: Exact reviewed source to verify
+        type: string
+        required: false
+      deploy_production:
+        description: Deploy this reviewed service to the existing production Worker
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: otto-connector-auth-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ONNXRUNTIME_NODE_INSTALL: skip
+  GOMAXPROCS: "2"
+  RAYON_NUM_THREADS: "1"
+  CLOUDFLARE_SEND_METRICS: "false"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: node scripts/npm-retry.mjs ci
+      - run: npm run typecheck --workspace=@otto-code/auth-service
+      - run: node --test packages/server/scripts/materialize-google-connectors.test.mjs
+      - run: npm run lint -- --threads=1 packages/auth-service/src packages/auth-service/scripts
+      - run: npx vitest run packages/auth-service/src/grant.test.ts --bail=1 --maxWorkers=1
+      - run: npx vitest run packages/auth-service/src/worker.test.ts --bail=1 --maxWorkers=1
+      - run: npm run build:production --workspace=@otto-code/auth-service
+      - run: npm run test:runtime --workspace=@otto-code/auth-service
+  deploy:
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_production == true && vars.AUTH_SERVICE_DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: node scripts/npm-retry.mjs ci --workspace=@otto-code/auth-service --include-workspace-root --ignore-scripts
+      - name: Deploy reviewed service without replacing its secrets or bindings
+        run: npm run deploy:production --workspace=@otto-code/auth-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Check deployed health
+        run: curl --fail --silent --show-error https://auth.otto-code.me/health

@@ -3362,7 +3362,12 @@ test("uses each provider's current policy for new sessions and snapshots it by a
   );
 
   expect(policyInputs).toEqual([
-    { callerAgentId: codexAgent.id, paseoToolPolicy: { disabledTools: ["list_agents"] } },
+    {
+      callerAgentId: codexAgent.id,
+      paseoToolPolicy: { disabledTools: ["list_agents"] },
+      callerCwd: workdir,
+      callerPurpose: "interactive",
+    }, // OTTO(connectors): native launch scope exists before agent registration.
   ]);
   expect(codex.launchContexts[0]?.paseoTools).toBe(paseoTools);
   expect(claude.launchContexts[0]?.paseoTools).toBeUndefined();
@@ -3387,10 +3392,17 @@ test("uses each provider's current policy for new sessions and snapshots it by a
     disabledTools: ["create_agent"],
   });
   expect(policyInputs).toEqual([
-    { callerAgentId: codexAgent.id, paseoToolPolicy: { disabledTools: ["list_agents"] } },
+    {
+      callerAgentId: codexAgent.id,
+      paseoToolPolicy: { disabledTools: ["list_agents"] },
+      callerCwd: workdir,
+      callerPurpose: "interactive",
+    },
     {
       callerAgentId: nextCodexAgent.id,
       paseoToolPolicy: { disabledTools: ["create_agent"] },
+      callerCwd: workdir,
+      callerPurpose: "interactive",
     },
   ]);
 

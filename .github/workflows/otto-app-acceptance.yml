@@ -71,6 +71,8 @@ jobs:
       - name: Install browser
         timeout-minutes: 10
         run: npx playwright install chromium
+      - name: Install isolated credential test dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends dbus-x11 gnome-keyring libsecret-1-0
       - name: Build server stack
         run: npm run build:server
       - name: Verify OS credential binding without accessing entries
@@ -79,6 +81,11 @@ jobs:
         run: npm run build --workspace=@getpaseo/expo-two-way-audio
       - name: Verify Otto app journeys
         run: |
+          dbus-run-session -- bash -e <<'ACCEPTANCE'
+          # OTTO(connectors): test-only OS vault in the disposable CI workspace.
+          export XDG_DATA_HOME="$GITHUB_WORKSPACE/.tmp/acceptance-keyring"
+          mkdir -p "$XDG_DATA_HOME"
+          printf '%s' 'otto-acceptance-fixture' | gnome-keyring-daemon --unlock --components=secrets
           case "$OTTO_ACCEPTANCE_JOURNEY" in
             all)
               npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1
@@ -100,6 +107,7 @@ jobs:
               ;;
             *) echo "Unknown diagnostic journey" >&2; exit 1 ;;
           esac
+          ACCEPTANCE
         env:
           E2E_WORKERS: "1"
           OTTO_ACCEPTANCE_JOURNEY: ${{ github.event_name == 'workflow_dispatch' && inputs.journey || 'all' }}

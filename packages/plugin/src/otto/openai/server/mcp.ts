@@ -151,10 +151,16 @@ async function listTools(
   const tools: Array<z.infer<typeof toolSchema>> = [];
   const seen = new Set<string>();
   let cursor: string | undefined;
+  let bytes = 0;
   do {
     const page = z
       .object({ tools: z.array(toolSchema), nextCursor: z.string().optional() })
       .parse(await client.request("tools/list", cursor ? { cursor } : {}, signal));
+    bytes += Buffer.byteLength(JSON.stringify(page.tools));
+    if (bytes > 4 * 1024 * 1024)
+      throw new Error(
+        "This MCP catalog exceeds 4 MiB. Limit the configured tool scope before connecting.",
+      );
     tools.push(...page.tools);
     if (tools.length > 1024)
       throw new Error(

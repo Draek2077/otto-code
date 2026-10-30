@@ -2,12 +2,16 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { createDaemonCredentialVault, type CredentialVault } from "./credential-vault.js";
 import { FileIntegrationRegistry } from "./registry.js";
+import { IntegrationAuthorizationSecrets } from "./authorization-secrets.js";
 import { IntegrationAccountRpc } from "./rpc.js";
 import { AtlassianAccountService } from "../atlassian/account.js";
 import { BitbucketConnectionsStore, BitbucketConnectionError } from "../bitbucket/connections.js";
 import { BitbucketConnectionsRpc } from "../bitbucket/rpc.js";
 import { createBitbucketService } from "../bitbucket/service.js";
 import { saveAtlassianAccount } from "@getpaseo/plugin/otto/atlassian-settings";
+import type { ConnectorsSnapshot } from "@getpaseo/plugin/otto/connectors";
+import { ConnectorHost } from "../connectors/host.js";
+import { legacyIntegrationAccount } from "./legacy-authorization.js";
 
 /** Inert daemon composition, shared by Jira and future Atlassian consumers. */
 export function createHostIntegrations(
@@ -17,9 +21,39 @@ export function createHostIntegrations(
     exists: (id: string) => Promise<boolean>;
     forCwd: (cwd: string) => Promise<string | undefined>;
   },
+  connectorProviders: () => ConnectorsSnapshot["providers"] = () => [],
 ) {
   let vault: Promise<CredentialVault> | null = null;
   const registry = new FileIntegrationRegistry(path.join(home, "integrations", "accounts.json"));
+  // Token refresh has its own revision domain. It must not invalidate an open
+  // Jira/Bitbucket settings draft or publish OAuth material into user config.
+  const authorization = new IntegrationAuthorizationSecrets({
+    hostId,
+    registry: new FileIntegrationRegistry(path.join(home, "integrations", "authorization.json")),
+    vault: () => (vault ??= createDaemonCredentialVault()),
+  });
+  const connectors = new ConnectorHost({
+    hostId,
+    cwd: home,
+    registry: new FileIntegrationRegistry(path.join(home, "integrations", "connectors.json")),
+    authorization,
+    providers: connectorProviders,
+    legacy: async () => {
+      try {
+        return await readFile(path.join(home, "otto-config.json"), "utf8");
+      } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+          return null;
+        throw new Error("Preserved connector settings could not be read.", { cause: error });
+      }
+    },
+    legacyCredential: async (integrationId, connectionId) =>
+      (vault ??= createDaemonCredentialVault()).then((value) =>
+        value.get({ hostId, integrationId, connectionId }),
+      ),
+    legacyAccount: (integrationId, connectionId) =>
+      legacyIntegrationAccount(home, integrationId, connectionId),
+  });
   const atlassian = new AtlassianAccountService({
     hostId,
     registry,
@@ -81,14 +115,19 @@ export function createHostIntegrations(
     },
   );
   return {
+    authorization,
+    connectors,
     atlassian,
     connections,
     bitbucket,
-    close() {
+    async close() {
       bitbucket.dispose?.();
+      await connectors.close();
     },
     rpc: {
       invoke(method: string, input: unknown) {
+        const connector = connectors.invoke(method, input);
+        if (connector) return connector;
         const owned = bitbucketRpc.invoke(method, input);
         if (owned) return owned;
         const shared = accounts.invoke(method, input);

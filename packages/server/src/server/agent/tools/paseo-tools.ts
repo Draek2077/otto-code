@@ -2,6 +2,7 @@ import { AgentDirectory } from "../directory.js";
 import { stat } from "node:fs/promises";
 import { z } from "zod";
 import { artifactCatalogTools } from "../../otto/artifacts/tools.js"; // OTTO(artifacts): shared project-bound tool surface.
+import { registerConnectorTools } from "../../../services/otto/connectors/catalog.js"; // OTTO(connectors)
 import type { ArtifactDaemonService } from "../../otto/artifacts/service.js"; // OTTO(artifacts)
 import { ensureValidJson } from "../../json-utils.js";
 import type { Logger } from "pino";
@@ -120,6 +121,7 @@ import type { PreviewHost } from "../../otto/preview/host.js"; // OTTO(preview)
 import type { RetainedToolPolicy } from "../../otto/retained-tool-policy.js"; // OTTO(preview)
 
 export interface PaseoToolHostDependencies {
+  ottoConnectorTools?: readonly PaseoToolDefinition[]; // OTTO(connectors): daemon-prepared, bound interactive catalog only.
   ottoPreview?: PreviewHost; // OTTO(preview): shared app/provider process and browser ownership.
   previewToolPolicy?: RetainedToolPolicy; // OTTO(preview): preserve existing host/provider ceilings.
   ottoKnowledge?: KnowledgeDaemonService; // OTTO(knowledge): one provider-neutral canonical host service.
@@ -3371,6 +3373,14 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     if (isPaseoToolEnabled(options.paseoToolPolicy, tool.name)) tools.set(tool.name, tool);
   });
   // OTTO(artifacts): normal catalog only, preserving voice-only early return and upstream permissions.
+  // OTTO(connectors): external integrations keep their own per-tool switches;
+  // upstream master and direct tool policy remain authoritative.
+  registerConnectorTools({
+    tools,
+    definitions: options.ottoConnectorTools,
+    callerAgentId,
+    policy: options.paseoToolPolicy,
+  });
   return toCatalog();
 }
 

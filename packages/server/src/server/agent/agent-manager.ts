@@ -5404,6 +5404,8 @@ export class AgentManager {
       context.paseoTools = await this.paseoToolCatalogFactory({
         callerAgentId: agentId,
         paseoToolPolicy,
+        callerCwd: cwd, // OTTO(connectors): use the actual new-session scope before registry publication.
+        callerPurpose: opening?.purpose ?? "interactive", // OTTO(connectors)
       });
     }
     return context;

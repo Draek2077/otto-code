@@ -3,6 +3,8 @@ import * as kanban from "@getpaseo/plugin/otto/kanban";
 import * as atlassian from "@getpaseo/plugin/otto/atlassian-settings";
 import * as bitbucket from "@getpaseo/plugin/otto/bitbucket-connections";
 import * as bitbucketUi from "./bitbucket/bridge";
+import * as connectors from "@getpaseo/plugin/otto/connectors";
+import * as connectorUi from "./connectors/bridge";
 import * as knowledge from "@getpaseo/plugin/otto/project-knowledge";
 import * as context from "@getpaseo/plugin/otto/context-management";
 import * as knowledgeUi from "./knowledge/bridge";
@@ -13,6 +15,7 @@ import * as artifacts from "@getpaseo/plugin/otto/artifacts";
 import * as artifactUi from "./artifacts/bridge";
 
 const shared = new Map<string, unknown>([
+  ["@getpaseo/plugin/otto/connectors", connectors],
   ["@getpaseo/plugin/otto/artifacts", artifacts],
   ["@getpaseo/plugin/otto/preview", preview],
   ["@getpaseo/plugin/otto/host-browser", hostBrowser],
@@ -28,6 +31,8 @@ const knowledgeModules = new Map<string, unknown>([
 ]);
 /** Public structural contracts are shared; private UI bridges are built-in-only. */
 export function ottoClientModule(pluginId: string, name: string): unknown {
+  if (pluginId === "otto-integrations" && name === "@getpaseo/plugin/client/otto-connectors")
+    return connectorUi;
   if (pluginId === "otto-integrations" && name === "@getpaseo/plugin/client/otto-bitbucket")
     return bitbucketUi;
   if (pluginId === "otto-artifacts" && name === "@getpaseo/plugin/client/otto-artifacts")

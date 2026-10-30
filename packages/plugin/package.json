@@ -73,6 +73,11 @@
       "source": "./src/client/otto-bitbucket.ts",
       "default": "./dist/client/otto-bitbucket.js"
     },
+    "./client/otto-connectors": {
+      "types": "./dist/client/otto-connectors.d.ts",
+      "source": "./src/client/otto-connectors.ts",
+      "default": "./dist/client/otto-connectors.js"
+    },
     "./otto/project-knowledge": {
       "types": "./dist/otto/project-knowledge.d.ts",
       "source": "./src/otto/project-knowledge.ts",
@@ -142,6 +147,11 @@
       "types": "./dist/server/otto-browser.d.ts",
       "source": "./src/server/otto-browser.ts",
       "default": "./dist/server/otto-browser.js"
+    },
+    "./otto/connectors": {
+      "types": "./dist/otto/connectors.d.ts",
+      "source": "./src/otto/connectors.ts",
+      "default": "./dist/otto/connectors.js"
     },
     "./otto/artifacts": {
       "types": "./dist/otto/artifacts.d.ts",

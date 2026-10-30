@@ -192,7 +192,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
-          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: "1"
           PASEO_DESKTOP_SMOKE: "1"
           PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
         run: |
@@ -308,7 +308,7 @@ jobs:
           EP_GH_IGNORE_TIME: true
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
-          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: "1"
           PASEO_DESKTOP_SMOKE: "1"
           PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
         run: |
@@ -418,7 +418,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
           OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
-          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: "1"
           PASEO_DESKTOP_SMOKE: "1"
           PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
         run: |
@@ -524,7 +524,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
           OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
-          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: "1"
           PASEO_DESKTOP_SMOKE: "1"
           PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
         run: |

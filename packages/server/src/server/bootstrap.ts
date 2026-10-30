@@ -244,6 +244,7 @@ import { BrainDaemonService } from "./otto/brain/service.js"; // OTTO(brain-host
 import { KanbanDaemonService } from "./otto/kanban/service.js"; // OTTO(kanban): host-owned projects and forge transport.
 import { createRetainedKanbanToolPolicy } from "./otto/kanban/tool-policy.js"; // OTTO(kanban): inert, read-only retained tool ceilings.
 import { createHostIntegrations } from "../services/otto/integrations/host.js"; // OTTO(integration): shared daemon-owned credentials.
+import { prepareConnectorTools } from "../services/otto/connectors/catalog.js"; // OTTO(connectors)
 import { bitbucketProjectForCwd } from "../services/otto/bitbucket/project.js"; // OTTO(bitbucket)
 import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OTTO(knowledge)
 import { contextAgents } from "./otto/context-management/agents.js"; // OTTO(context-management)
@@ -722,17 +723,42 @@ export async function createPaseoDaemon(
   );
 
   const serverId = getOrCreateServerId(config.paseoHome, { logger });
-  ottoIntegrations = createHostIntegrations(config.paseoHome, serverId, {
-    exists: async (id) => (await projectRegistry.get(id)) !== null,
-    forCwd: async (cwd) => {
-      if (!workspaceRegistry) throw new Error("The owning workspace registry is unavailable.");
-      return bitbucketProjectForCwd(
-        cwd,
-        await workspaceRegistry.list(),
-        await projectRegistry.list(),
-      );
+  ottoIntegrations = createHostIntegrations(
+    config.paseoHome,
+    serverId,
+    {
+      exists: async (id) => (await projectRegistry.get(id)) !== null,
+      forCwd: async (cwd) => {
+        if (!workspaceRegistry) throw new Error("The owning workspace registry is unavailable.");
+        return bitbucketProjectForCwd(
+          cwd,
+          await workspaceRegistry.list(),
+          await projectRegistry.list(),
+        );
+      },
     },
-  }); // OTTO(integration): closures remain inert until the registries exist; no keyring access or migration at startup. // OTTO(bitbucket)
+    () => {
+      const mcp = daemonConfigStore.get().mcp;
+      const enabled = mcp.enabled !== false && mcp.injectIntoAgents !== false;
+      return Object.entries(
+        providerSnapshotManager.getAgentManagerProviderState().providerDefinitions,
+      ).flatMap(([id, definition]) => {
+        if (!definition) return [];
+        const available =
+          enabled &&
+          definition.enabled &&
+          resolvePaseoToolPolicy(id, daemonConfigStore.get().providers)?.enabled !== false;
+        return [
+          {
+            id,
+            label: providerSnapshotManager.getProviderLabel(id),
+            available,
+            reason: available ? null : "Enable this provider and its Otto tools to use Connectors.",
+          },
+        ];
+      });
+    },
+  ); // OTTO(integration): closures remain inert until the registries exist; no keyring access or migration at startup. // OTTO(bitbucket,connectors)
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);
   const managedProcesses = createBootstrapManagedProcessRegistry(config, logger);
   // Reconcile the helper-process ledger in the background so it never blocks the
@@ -1662,10 +1688,29 @@ export async function createPaseoDaemon(
     resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
     logger,
   });
-  const createAgentToolCatalog = (runtime: PaseoToolRuntimeContext) =>
-    createPaseoToolCatalog(createAgentToolHostDependencies(runtime));
+  // OTTO(connectors): both native tool loops and CLI MCP use the same prepared
+  // catalog. Unbound control-plane/voice/generation contexts receive no connectors.
+  const prepareAgentToolDependencies = async (runtime: PaseoToolRuntimeContext) => {
+    const toolHost = createAgentToolHostDependencies(runtime);
+    const caller = runtime.callerAgentId ? agentManager.getAgent(runtime.callerAgentId) : null;
+    const enabled =
+      daemonConfigStore.get().mcp.enabled !== false &&
+      daemonConfigStore.get().mcp.injectIntoAgents !== false &&
+      toolHost.paseoToolPolicy?.enabled !== false;
+    const ottoConnectorTools = await prepareConnectorTools({
+      host: ottoIntegrations!.connectors,
+      runtime,
+      cwd: runtime.callerCwd ?? caller?.cwd,
+      enabled,
+    });
+    return { ...toolHost, ottoConnectorTools };
+  };
+  const createAgentToolCatalog = async (runtime: PaseoToolRuntimeContext) =>
+    createPaseoToolCatalog(await prepareAgentToolDependencies(runtime));
   const setAgentProviderToolsEnabled = (enabled: boolean) => {
-    agentProviderRuntime.setPaseoToolCatalog(enabled ? createAgentToolCatalog({}) : null);
+    agentProviderRuntime.setPaseoToolCatalog(
+      enabled ? createPaseoToolCatalog(createAgentToolHostDependencies({})) : null,
+    );
   };
   agentManager.setPaseoToolCatalogFactory(createAgentToolCatalog);
   agentManager.setPaseoToolsEnabled(config.mcpInjectIntoAgents !== false);
@@ -1678,7 +1723,7 @@ export async function createPaseoDaemon(
 
     const createAgentMcpSession = async (callerAgentId?: string) => {
       const agentMcpServer = await createAgentMcpServer(
-        createAgentToolHostDependencies({
+        await prepareAgentToolDependencies({
           callerAgentId,
           paseoToolPolicy: callerAgentId
             ? agentManager.getPaseoToolPolicy(callerAgentId)
@@ -2020,7 +2065,7 @@ export async function createPaseoDaemon(
       await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
       await ottoArtifacts?.close(); // OTTO(artifacts): revoke late generation publication.
       await ottoKanban?.close(); // OTTO(kanban): no polling survives daemon startup failure.
-      ottoIntegrations?.close(); // OTTO(bitbucket): release demand-owned forge polls.
+      await ottoIntegrations?.close(); // OTTO(bitbucket,connectors): release polls, clients and callback listeners.
       await ottoHostBrowser
         ?.close()
         .catch((cleanupError) =>
@@ -2070,7 +2115,7 @@ export async function createPaseoDaemon(
     await ottoKnowledge?.close(); // OTTO(knowledge)
     await ottoArtifacts?.close(); // OTTO(artifacts)
     await ottoKanban?.close(); // OTTO(kanban)
-    ottoIntegrations?.close(); // OTTO(bitbucket)
+    await ottoIntegrations?.close(); // OTTO(bitbucket,connectors)
     await ottoHostBrowser
       ?.close()
       .catch((error) => logger.error({ err: error }, "Host Browser cleanup failed")); // OTTO(browser-host)

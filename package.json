@@ -25,6 +25,7 @@
     "packages/expo-two-way-audio",
     "packages/highlight",
     "packages/otto-brain",
+    "packages/auth-service",
     "packages/plugin",
     "packages/protocol",
     "packages/client",

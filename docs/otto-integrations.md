@@ -1,6 +1,7 @@
 # Shared host integration accounts
 
-`otto-integrations` contributes the host's **Atlassian account** settings page.
+`otto-integrations` contributes the host's **Atlassian account**, **Bitbucket
+connections** and **Connectors** settings pages.
 The entry appears under the existing host Plugins settings page. Paseo's
 `PageLayout` owns its scroll area, gutters and centered content frame. Registered
 screen titles own the page heading; internal plugin identifiers are not headings.
@@ -60,6 +61,11 @@ account. [Bitbucket connections](otto-bitbucket.md) documents its separate named
 accounts, project selection and native Cloud adapter.
 
 ## Verification boundary
+
+[Connectors](otto-connectors.md) reuse this host's lazy vault and authorization
+registry. Their OAuth grants have independent connection revisions, so token
+renewal does not invalidate account settings. The original publisher identities,
+callbacks, hosted bindings and legacy credential tuples are preserved.
 
 Focused fixtures exercise metadata preservation, stale revisions, secret
 redaction, credential rotation/removal, unknown publication outcomes, legacy

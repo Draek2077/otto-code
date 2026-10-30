@@ -25,6 +25,7 @@ export interface PaseoToolResult {
 }
 
 export interface PaseoToolConfig {
+  annotations?: { readOnlyHint?: boolean }; // OTTO(connectors): preserve vendor/native read-only hints through the shared MCP bridge.
   title?: string;
   description?: string;
   inputSchema?: z.ZodRawShape | z.ZodType;
@@ -48,6 +49,8 @@ export interface PaseoToolCatalog {
 }
 
 export interface PaseoToolRuntimeContext {
+  callerCwd?: string; // OTTO(connectors): trusted launch scope exists before the new agent is registered.
+  callerPurpose?: "interactive" | "history"; // OTTO(connectors): history hydration does not acquire account tools.
   callerAgentId?: string;
   paseoToolPolicy?: ProviderPaseoToolsPolicy;
   enableVoiceTools?: boolean;
