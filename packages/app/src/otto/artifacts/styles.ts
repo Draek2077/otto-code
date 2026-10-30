@@ -1,0 +1,45 @@
+import { StyleSheet } from "react-native-unistyles";
+export const styles = StyleSheet.create((theme) => ({
+  page: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface0 },
+  toolbar: {
+    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
+    paddingVertical: theme.spacing[4],
+    gap: theme.spacing[3],
+  },
+  actions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: theme.spacing[2] },
+  columns: {
+    flex: 1,
+    minHeight: 0,
+    flexDirection: "row",
+    gap: theme.spacing[4],
+    paddingHorizontal: theme.spacing[4],
+  },
+  column: { flex: 1, minHeight: 0 },
+  list: { width: 300, minHeight: 0 },
+  content: { gap: theme.spacing[4], padding: theme.spacing[4], paddingBottom: theme.spacing[8] },
+  card: {
+    gap: theme.spacing[2],
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing[4],
+    backgroundColor: theme.colors.surface1,
+  },
+  title: { color: theme.colors.foreground, fontSize: theme.fontSize.base, fontWeight: "600" },
+  text: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
+  muted: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  preview: {
+    height: 440,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    overflow: "hidden",
+  },
+  settings: {
+    width: "100%",
+    maxWidth: 720,
+    alignSelf: "center",
+    padding: theme.spacing[4],
+    gap: theme.spacing[4],
+  },
+}));

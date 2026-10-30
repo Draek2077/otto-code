@@ -1,6 +1,8 @@
 import { AgentDirectory } from "../directory.js";
 import { stat } from "node:fs/promises";
 import { z } from "zod";
+import { artifactCatalogTools } from "../../otto/artifacts/tools.js"; // OTTO(artifacts): shared project-bound tool surface.
+import type { ArtifactDaemonService } from "../../otto/artifacts/service.js"; // OTTO(artifacts)
 import { ensureValidJson } from "../../json-utils.js";
 import type { Logger } from "pino";
 
@@ -121,6 +123,8 @@ export interface PaseoToolHostDependencies {
   ottoPreview?: PreviewHost; // OTTO(preview): shared app/provider process and browser ownership.
   previewToolPolicy?: RetainedToolPolicy; // OTTO(preview): preserve existing host/provider ceilings.
   ottoKnowledge?: KnowledgeDaemonService; // OTTO(knowledge): one provider-neutral canonical host service.
+  ottoArtifacts?: ArtifactDaemonService; // OTTO(artifacts)
+  artifactToolPolicy?: RetainedToolPolicy; // OTTO(artifacts)
   ottoKanban?: KanbanDaemonService; // OTTO(kanban): UI and every provider share durable board admission.
   kanbanToolPolicy?: KanbanToolPolicy; // OTTO(kanban): preserve retained group/provider ceilings.
   agentManager: AgentManager;
@@ -3358,6 +3362,15 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     // OTTO(kanban): after the voice-only return; existing per-provider tool policy remains authoritative.
     if (isPaseoToolEnabled(options.paseoToolPolicy, tool.name)) tools.set(tool.name, tool);
   }
+  artifactCatalogTools({
+    host: options.ottoArtifacts,
+    policy: options.artifactToolPolicy,
+    manager: agentManager,
+    callerAgentId,
+  }).forEach((tool) => {
+    if (isPaseoToolEnabled(options.paseoToolPolicy, tool.name)) tools.set(tool.name, tool);
+  });
+  // OTTO(artifacts): normal catalog only, preserving voice-only early return and upstream permissions.
   return toCatalog();
 }
 

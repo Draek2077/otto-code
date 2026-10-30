@@ -30,6 +30,7 @@
     "@clack/prompts": "^1.0.0",
     "@getpaseo/brain": "0.9.35",
     "@getpaseo/client": "0.9.35",
+    "@getpaseo/plugin": "^0.9.35",
     "@getpaseo/protocol": "0.9.35",
     "@getpaseo/server": "0.9.35",
     "chalk": "^5.3.0",

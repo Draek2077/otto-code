@@ -57,6 +57,32 @@ it("keeps the original registry when final storage ownership validation fails", 
   ).rejects.toThrow("Ownership marker changed");
   expect(await f.bytes()).toBe(before);
 });
+it("refuses an Artifacts host directory already bound to an archived peer without rewriting the registry", async () => {
+  const f = await fixture();
+  await writeFile(
+    f.file,
+    JSON.stringify([
+      f.record,
+      {
+        ...f.record,
+        projectId: "archived-peer",
+        rootPath: path.join(f.record.rootPath, "peer"),
+        archivedAt: "2026-01-01T00:00:00Z",
+        artifactDirectoryName: "owned-artifacts",
+      },
+    ]),
+  );
+  const origin = await f.metadata.read("project-1"),
+    before = await f.bytes();
+  await expect(
+    f.metadata.update({
+      projectId: "project-1",
+      expectedRevision: origin.revision,
+      patch: { artifactDirectoryName: "OWNED-artifacts" },
+    }),
+  ).rejects.toThrow("Artifacts directory");
+  expect(await f.bytes()).toBe(before);
+});
 
 it("keeps initialized inherited stores, including archived projects, under the project queue through default publication", async () => {
   const f = await fixture();

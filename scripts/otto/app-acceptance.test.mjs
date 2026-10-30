@@ -38,7 +38,12 @@ test("Otto acceptance remains read-only CI over an exact source with retained su
 
 test("manual diagnostics stay bounded while every push and pull request retains the full gate", () => {
   assert.ok(
-    source.includes("options: [all, knowledge, brain-cancellation, context-health, preview]"),
+    source.includes(
+      "options: [all, knowledge, brain-cancellation, context-health, preview, artifacts]",
+    ),
+  );
+  assert.ok(
+    source.includes("e2e/browser/otto-artifacts.spec.ts --workers=1 --retries=0 --max-failures=1"),
   );
   assert.ok(
     source.includes("e2e/browser/otto-preview.spec.ts --workers=1 --retries=0 --max-failures=1"),

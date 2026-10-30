@@ -3579,6 +3579,7 @@ export const ServerInfoStatusPayloadSchema = z
         ottoBrainSharing: z.boolean().optional(),
         ottoKanban: z.boolean().optional(), // OTTO(kanban): additive built-in host bridge capability.
         ottoKnowledge: z.boolean().optional(), // OTTO(knowledge): daemon-owned Knowledge bridge.
+        ottoArtifacts: z.boolean().optional(), // OTTO(artifacts): daemon-owned library, generation and recovery.
         ottoContextManagement: z.boolean().optional(), // OTTO(context-management): additive host capability.
         ottoContextStarter: z.boolean().optional(), // OTTO(context-starter): reviewed creation is separately gated.
         ottoBrowserHistory: z.boolean().optional(), // OTTO(browser-history): additive, no history payload in core framing.

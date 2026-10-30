@@ -212,6 +212,17 @@ Agent providers handle their own auth. Do not add auth checks, environment varia
 
 ## Otto provider coverage
 
+<!-- OTTO(artifacts): real daemon/browser acceptance complements the pure service and draft contracts. -->
+
+Artifacts: `e2e/browser/otto-artifacts.spec.ts` covers wide and compact creation through
+the configured deterministic HTTP provider, rendered sandbox interactivity and blocked
+parent/network access, data-only byte preservation, repair decline/accept and tab
+reopening. It belongs to the existing all-Otto-journey CI lane. Focused
+`otto/artifacts/{content,service,generation}.test.ts`, app `model.test.ts` and CLI
+`commands.test.ts` cover persistence, failure/revision authority, cancellation and
+selected-daemon routing. These deterministic checks do not prove native provider or
+device WebView behavior.
+
 <!-- OTTO(provider-tests): coverage for the independently owned provider plugin. -->
 
 `Otto App Acceptance` builds the owning server stack and app dependency, then runs

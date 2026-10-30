@@ -29,6 +29,14 @@ function bundle(body: string): string {
 }
 
 describe("evaluatePluginClientBundle", () => {
+  it("keeps Artifacts preview and forms lazy and built-in-only", () => {
+    const source = bundle(
+      'const ui=require("@getpaseo/plugin/client/otto-artifacts");const rpc=require("@getpaseo/plugin/otto/artifacts");rpc.aggregateArtifacts.input.parse({hostId:"host"});plugin.addScreen({id:"artifacts",title:"Artifacts",Component:ui.ArtifactsScreen});',
+    );
+    const plugin = evaluatePluginClientBundle("otto-artifacts", source);
+    expect(plugin.surfaces.map((screen) => screen.id)).toContain("artifacts");
+    expect(() => evaluatePluginClientBundle("untrusted-artifacts", source)).toThrow();
+  }); // OTTO(artifacts)
   it("keeps Preview UI lazy and built-in-only while exposing structural RPC contracts", () => {
     const source = bundle(
       `const ui=require("@getpaseo/plugin/client/otto-preview"); const rpc=require("@getpaseo/plugin/otto/preview"); rpc.readPreviewConfig.input.parse({hostId:"host",workspaceId:"workspace"}); plugin.addWorkspacePanel({id:"preview",title:"Preview Servers",icon:"MonitorPlay",context:"workspace",Component:ui.PreviewWorkspace});`,

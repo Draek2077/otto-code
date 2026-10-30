@@ -39,6 +39,7 @@ import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-run
 import { useHostFeature } from "@/runtime/host-features";
 // OTTO(kanban): feature-owned section inside canonical Project Settings.
 import { OttoKanbanProjectSettings } from "@/otto/kanban/project-settings";
+import { OttoArtifactProjectSettings } from "@/otto/artifacts/project-settings"; // OTTO(artifacts): canonical settings placement.
 import { useToast } from "@/contexts/toast-context";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
@@ -157,6 +158,7 @@ function NoEditableTarget({
   return (
     <View style={styles.noTargetContainer}>
       {showBackToProjects ? <BackToProjectsButton onPress={onBackToProjects} /> : null}
+
       <Text style={styles.noTargetText}>{t("settings.project.noEditableTarget")}</Text>
       {showBackToProjects ? (
         <Button
@@ -270,7 +272,6 @@ function ProjectSettingsBody({
   return (
     <View role="main" style={styles.body}>
       {showBackToProjects ? <BackToProjectsButton onPress={onBackToProjects} /> : null}
-
       <View style={styles.headerBlock}>
         <View style={styles.titleRow}>
           <ProjectTitleIcon
@@ -322,6 +323,11 @@ function ProjectSettingsBody({
         showBackToProjects,
       })}
       <OttoKanbanProjectSettings
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+      />
+      {/* OTTO(artifacts): feature-owned controls in canonical Project Settings. */}
+      <OttoArtifactProjectSettings
         serverId={selectedHost.serverId}
         projectId={selectedHost.projectId}
       />

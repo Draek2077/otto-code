@@ -3,7 +3,13 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { writeJsonFileAtomic } from "../atomic-file.js";
 
-const FIELDS = new Set(["kanban", "knowledgeLocation", "knowledgeDirectoryName"]);
+const FIELDS = new Set([
+  "kanban",
+  "knowledgeLocation",
+  "knowledgeDirectoryName",
+  "artifactLocation",
+  "artifactDirectoryName",
+]);
 export interface OttoProjectSnapshot {
   projectId: string;
   rootPath: string;
@@ -87,23 +93,25 @@ export class OttoProjectMetadata {
         );
       const record = { ...current.snapshot.record, ...input.patch };
       this.ports.parse(record);
-      const directory = input.patch.knowledgeDirectoryName;
-      if (
-        typeof directory === "string" &&
-        current.records.some((row) => {
-          const identity = this.ports.parse(row);
-          const bound = object(row).knowledgeDirectoryName;
-          return (
-            identity.projectId !== input.projectId &&
-            typeof bound === "string" &&
-            directoryKey(bound) === directoryKey(directory)
+      for (const field of ["knowledgeDirectoryName", "artifactDirectoryName"] as const) {
+        const directory = input.patch[field];
+        if (
+          typeof directory === "string" &&
+          current.records.some((row) => {
+            const identity = this.ports.parse(row);
+            const bound = object(row)[field];
+            return (
+              identity.projectId !== input.projectId &&
+              typeof bound === "string" &&
+              directoryKey(bound) === directoryKey(directory)
+            );
+          })
+        )
+          throw new OttoProjectMetadataError(
+            "conflict",
+            `This ${field === "knowledgeDirectoryName" ? "Knowledge" : "Artifacts"} directory is already bound to another project, including archived projects.`,
           );
-        })
-      )
-        throw new OttoProjectMetadataError(
-          "conflict",
-          "This Knowledge directory is already bound to another project, including archived projects.",
-        );
+      }
       await input.beforePublish?.();
       // Also reject edits outside this daemon's queue observed before publication.
       // External editors do not participate in the queue; this is not a cross-process lock.

@@ -189,6 +189,7 @@ jobs:
           npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-preview-tests.json
           npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-browser-tests.json
           npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-context-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-artifacts-tests.json
           npm run typecheck --workspace=@getpaseo/builtin-plugins -- -p otto-kanban/tsconfig.tests.json
 
       - name: Run website tests

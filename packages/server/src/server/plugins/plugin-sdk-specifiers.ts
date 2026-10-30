@@ -7,6 +7,7 @@ export const PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS = [
   "@getpaseo/plugin/client/otto-brain",
   "@getpaseo/plugin/client/otto-knowledge", // OTTO(knowledge): app-owned Markdown/editor only.
   "@getpaseo/plugin/client/otto-preview", // OTTO(preview): trusted app-owned workspace controls.
+  "@getpaseo/plugin/client/otto-artifacts", // OTTO(artifacts): app-owned isolated preview.
 ] as const;
 
 const PLUGIN_SERVER_ONLY_SDK_SPECIFIERS = [
@@ -30,6 +31,7 @@ export const PLUGIN_SDK_SPECIFIERS = [
   "@getpaseo/plugin/otto/atlassian-settings", // OTTO(integration): account status/explicit write intents only.
   "@getpaseo/plugin/otto/project-knowledge", // OTTO(knowledge): client-safe scoped contracts.
   "@getpaseo/plugin/otto/preview", // OTTO(preview): structural requests and responses only.
+  "@getpaseo/plugin/otto/artifacts", // OTTO(artifacts): structural library and mutation contracts.
   "@getpaseo/plugin/otto/host-browser", // OTTO(browser-host): scoped structural viewer contracts.
   ...PLUGIN_SERVER_ONLY_SDK_SPECIFIERS,
   ...PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS,

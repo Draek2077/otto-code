@@ -132,6 +132,16 @@
       "types": "./dist/server/otto-browser.d.ts",
       "source": "./src/server/otto-browser.ts",
       "default": "./dist/server/otto-browser.js"
+    },
+    "./otto/artifacts": {
+      "source": "./src/otto/artifacts.ts",
+      "default": "./dist/otto/artifacts.js",
+      "types": "./dist/otto/artifacts.d.ts"
+    },
+    "./client/otto-artifacts": {
+      "source": "./src/client/otto-artifacts.ts",
+      "default": "./dist/client/otto-artifacts.js",
+      "types": "./dist/client/otto-artifacts.d.ts"
     }
   },
   "publishConfig": {

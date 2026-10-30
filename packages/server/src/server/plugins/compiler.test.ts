@@ -12,6 +12,15 @@ import {
 
 const asarEsbuildDir = path.join("Resources", "app.asar", "node_modules", "esbuild");
 const temporaryDirectories: string[] = [];
+it("compiles the actual Artifacts navigation, workspace and settings contributions", async () => {
+  const client = fileURLToPath(
+    new URL("../../../../../plugins/otto-artifacts/index.client.tsx", import.meta.url),
+  );
+  const result = await compilePlugin({ client, server: null });
+  expect(result.clientBundle).toContain("@getpaseo/plugin/client/otto-artifacts");
+  expect(result.clientBundle).toContain("Open Artifacts");
+  expect(result.serverBundle).toBeNull();
+}); // OTTO(artifacts)
 
 it("compiles the real Preview built-in client with its host-provided UI bridge", async () => {
   const client = fileURLToPath(
