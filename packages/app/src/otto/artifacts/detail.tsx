@@ -18,6 +18,7 @@ import { ArtifactHtmlView } from "./html-view";
 import { exportArtifact } from "./export";
 import {
   artifactDraftFor,
+  artifactEditorKey,
   releaseArtifactDraft,
   type ArtifactDraft,
   type ArtifactFields,
@@ -104,6 +105,7 @@ function consent(command: ArtifactCommand) {
 }
 interface DetailProps {
   reference: ArtifactRef;
+  draftSurface: string;
   projectLabel?: string;
   active: boolean;
   changed(): void;
@@ -139,7 +141,7 @@ function useArtifactActions(props: DetailProps & { document: ArtifactDocument })
   const owner = usePaseo(),
     write = useRpc(changeArtifact),
     read = useRpc(readArtifact);
-  const key = JSON.stringify(props.reference);
+  const key = artifactEditorKey(props.draftSurface, props.reference);
   const draft = useMemo(
     () => artifactDraftFor(owner, key, props.document),
     [owner, key, props.document],

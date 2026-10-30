@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ArtifactDraft, ArtifactCreateDraft, artifactDraftFor } from "./model";
+import { ArtifactDraft, ArtifactCreateDraft, artifactDraftFor, artifactEditorKey } from "./model";
 import { ArtifactStorageForm } from "./storage-model";
 import type { ArtifactDocument } from "@getpaseo/plugin/otto/artifacts";
 const document = (revision = "original"): ArtifactDocument => ({
@@ -35,6 +35,35 @@ const command = {
   description: "Original",
   starred: false,
 };
+test("independent library and workspace surfaces retain separate draft lifecycle authority", async () => {
+  const owner = {},
+    reference = {
+      scope: { hostId: "host", target: { kind: "project" as const, id: "project" } },
+      id: "report",
+      location: "repository" as const,
+    };
+  const workspaceKey = artifactEditorKey("workspace:one", reference),
+    libraryKey = artifactEditorKey("library", reference),
+    workspace = artifactDraftFor(owner, workspaceKey, document()),
+    library = artifactDraftFor(owner, libraryKey, document());
+  const hideWorkspace = workspace.activate(),
+    hideLibrary = library.activate();
+  try {
+    workspace.edit("name", "Workspace draft");
+    library.edit("name", "Library draft");
+    hideLibrary();
+    expect(workspace.getSnapshot().fields.name).toBe("Workspace draft");
+    expect(library.getSnapshot().fields.name).toBe("Library draft");
+    const write = async () => document("acknowledged");
+    expect(await workspace.execute(command, { confirm: async () => true, write })).toBe(true);
+    expect(workspace.getSnapshot().document.artifact.revision).toBe("acknowledged");
+    expect(library.getSnapshot().document.artifact.revision).toBe("original");
+    expect(artifactDraftFor(owner, libraryKey, document("peer"))).toBe(library);
+    expect(library.getSnapshot().fields.name).toBe("Library draft");
+  } finally {
+    hideWorkspace();
+  }
+});
 test("bounded draft retention never evicts an active or retained subscribed editor", () => {
   const owner = {},
     active = artifactDraftFor(owner, "active", document()),

@@ -69,7 +69,9 @@ is renamed and retained. Recovery does not retry the failed write.
 contents of `<script id="otto-artifact-data" type="application/json">`, escape `<`
 and preserve every byte outside that span. An artifact without that seam needs
 explicit regeneration to introduce one. Metadata, data and lifecycle actions use the
-revision returned by inspection. Local form drafts retain their origin across peer
+revision returned by inspection. Each library or workspace surface owns its editor
+draft independently, so closing another view cannot release its lifecycle authority.
+Local form drafts retain their origin across peer
 updates and hidden panels. Unknown write outcomes require an explicit reload.
 
 The preview uses an Otto-owned CSP with no network, frames, external fonts, external

@@ -4,7 +4,14 @@ import {
   type ArtifactCommand,
   type ArtifactScope,
   type ArtifactSummary,
+  type ArtifactRef,
 } from "@getpaseo/plugin/otto/artifacts";
+
+/** One draft per contributed surface and artifact. The plugin's Paseo API is
+ * shared by every surface, so it cannot identify an editor's lifetime alone. */
+export function artifactEditorKey(surface: string, reference: ArtifactRef) {
+  return JSON.stringify([surface, reference]);
+}
 
 export interface ArtifactModelSelection {
   provider: string;

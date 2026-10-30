@@ -28,6 +28,7 @@ import { styles } from "./styles";
 type Navigation = PluginSurfaceProps["navigation"];
 interface LibraryProps {
   hostId: string;
+  draftSurface: string;
   scope: ArtifactScope | null;
   active: boolean;
   navigation: Navigation;
@@ -243,6 +244,7 @@ function ArtifactLibrary(props: LibraryProps) {
         <ArtifactDetail
           key={JSON.stringify(reference)}
           reference={reference}
+          draftSurface={props.draftSurface}
           projectLabel={selected ? projectNames.get(selected.projectId) : undefined}
           active={props.active}
           changed={refresh}
@@ -361,6 +363,7 @@ function ProjectDirectory({
       {!settings ? (
         <ArtifactLibrary
           key={`${hostId}/${projectId}`}
+          draftSurface="library"
           hostId={hostId}
           scope={scope}
           active={active}
@@ -405,6 +408,7 @@ export function ArtifactsWorkspace(props: PluginWorkspacePanelProps) {
   return (
     <ArtifactLibrary
       hostId={props.host.id}
+      draftSurface={`workspace:${props.workspaceId}`}
       scope={scope}
       active={retained && visible}
       navigation={props.navigation}
