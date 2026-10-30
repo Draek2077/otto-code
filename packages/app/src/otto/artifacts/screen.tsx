@@ -32,12 +32,25 @@ interface LibraryProps {
   active: boolean;
   navigation: Navigation;
 }
+function useArtifactProjects(hostId: string, active: boolean) {
+  const paseo = usePaseo();
+  return useFetchQuery({
+    dataShape: "value",
+    staleTimeMs: 1000,
+    queryKey: ["ottoArtifacts", hostId, "projects"],
+    enabled: active,
+    retry: false,
+    queryFn: () => paseo.projects.list(),
+  });
+}
 function LibraryItem({
   item,
+  projectLabel,
   selected,
   open,
 }: {
   item: ArtifactSummary;
+  projectLabel?: string;
   selected: boolean;
   open(item: ArtifactSummary): void;
 }) {
@@ -48,7 +61,9 @@ function LibraryItem({
       <Text numberOfLines={2} style={styles.muted}>
         {item.description}
       </Text>
-      <Text style={styles.muted}>{`${item.status} · ${item.location} · ${item.projectId}`}</Text>
+      <Text style={styles.muted}>
+        {[item.status, item.location, projectLabel].filter(Boolean).join(" · ")}
+      </Text>
       {item.error ? <Text style={styles.muted}>{item.error}</Text> : null}
       <Button variant={selected ? "secondary" : "outline"} size="sm" onPress={select}>
         Open artifact
@@ -85,6 +100,7 @@ function useLibrary(props: LibraryProps, query: string, offset: number) {
 }
 function ArtifactList({
   library,
+  projectNames,
   selected,
   setSelected,
   offset,
@@ -92,6 +108,7 @@ function ArtifactList({
   next,
 }: {
   library: ReturnType<typeof useLibrary>;
+  projectNames: ReadonlyMap<string, string>;
   selected: ArtifactSummary | null;
   setSelected(item: ArtifactSummary): void;
   offset: number;
@@ -120,6 +137,7 @@ function ArtifactList({
         <LibraryItem
           key={`${item.projectId}/${item.location}/${item.id}`}
           item={item}
+          projectLabel={projectNames.get(item.projectId)}
           selected={selected?.id === item.id && selected.location === item.location}
           open={setSelected}
         />
@@ -144,6 +162,17 @@ function ArtifactList({
   );
 }
 function ArtifactLibrary(props: LibraryProps) {
+  const projects = useArtifactProjects(props.hostId, props.active);
+  const projectNames = useMemo(
+    () =>
+      new Map(
+        (projects.data?.projects ?? []).map((project) => [
+          project.projectId,
+          project.projectDisplayName,
+        ]),
+      ),
+    [projects.data],
+  );
   const [query, setQuery] = useState(""),
     [offset, setOffset] = useState(0),
     [selected, setSelected] = useState<ArtifactSummary | null>(null),
@@ -192,6 +221,7 @@ function ArtifactLibrary(props: LibraryProps) {
   const listContent = (
     <ArtifactList
       library={library}
+      projectNames={projectNames}
       selected={selected}
       setSelected={setSelected}
       offset={offset}
@@ -213,6 +243,7 @@ function ArtifactLibrary(props: LibraryProps) {
         <ArtifactDetail
           key={JSON.stringify(reference)}
           reference={reference}
+          projectLabel={selected ? projectNames.get(selected.projectId) : undefined}
           active={props.active}
           changed={refresh}
           closed={close}
@@ -273,7 +304,9 @@ function ArtifactLibrary(props: LibraryProps) {
         </ScrollView>
       ) : (
         <View style={styles.columns}>
-          <ScrollView style={styles.list}>{listContent}</ScrollView>
+          <ScrollView style={styles.list} testID="artifact-library-list">
+            {listContent}
+          </ScrollView>
           <ScrollView style={styles.column}>{detail}</ScrollView>
         </View>
       )}
@@ -291,16 +324,8 @@ function ProjectDirectory({
   settings?: boolean;
   navigation: Navigation;
 }) {
-  const paseo = usePaseo();
   const [projectId, setProjectId] = useState("");
-  const projects = useFetchQuery({
-    dataShape: "value",
-    staleTimeMs: 1000,
-    queryKey: ["ottoArtifacts", hostId, "projects"],
-    enabled: active,
-    retry: false,
-    queryFn: () => paseo.projects.list(),
-  });
+  const projects = useArtifactProjects(hostId, active);
   const options = useMemo(
     () => [
       { value: "", label: settings ? "Choose a project" : "All projects" },

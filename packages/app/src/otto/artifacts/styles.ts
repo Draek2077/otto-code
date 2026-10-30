@@ -14,8 +14,8 @@ export const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[4],
     paddingHorizontal: theme.spacing[4],
   },
-  column: { flex: 1, minHeight: 0 },
-  list: { width: 300, minHeight: 0 },
+  column: { flex: 1, minWidth: 0, minHeight: 0 },
+  list: { width: 300, flexGrow: 0, flexShrink: 0, minHeight: 0 },
   content: { gap: theme.spacing[4], padding: theme.spacing[4], paddingBottom: theme.spacing[8] },
   card: {
     gap: theme.spacing[2],

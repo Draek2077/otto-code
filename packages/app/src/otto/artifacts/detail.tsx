@@ -104,6 +104,7 @@ function consent(command: ArtifactCommand) {
 }
 interface DetailProps {
   reference: ArtifactRef;
+  projectLabel?: string;
   active: boolean;
   changed(): void;
   closed(): void;
@@ -352,9 +353,9 @@ function ArtifactDetailBody(props: DetailProps & { document: ArtifactDocument })
   return (
     <View style={styles.content} testID="artifact-detail">
       <Text style={styles.title}>{artifact.name}</Text>
-      <Text
-        style={styles.muted}
-      >{`${artifact.status} · ${artifact.location} · ${artifact.projectId}`}</Text>
+      <Text style={styles.muted}>
+        {[artifact.status, artifact.location, props.projectLabel].filter(Boolean).join(" · ")}
+      </Text>
       <Text
         selectable
         style={styles.muted}

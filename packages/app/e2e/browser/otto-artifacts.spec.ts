@@ -103,6 +103,13 @@ for (const compact of [false, true])
       await expect.poll(async () => (await listing()).items[0]?.status).toBe("ready");
       await surface.getByRole("button", { name: "Reload saved output", exact: true }).click();
       const detail = surface.getByTestId("artifact-detail");
+      if (!compact) {
+        const listBounds = await surface.getByTestId("artifact-library-list").boundingBox(),
+          detailBounds = await detail.boundingBox();
+        expect(listBounds).not.toBeNull();
+        expect(detailBounds).not.toBeNull();
+        expect(detailBounds!.width).toBeGreaterThan(listBounds!.width);
+      }
       await expect(detail.getByLabel("Artifact data (JSON)")).toHaveValue('{"value":1}');
       const container = page.frameLocator('iframe[title="Artifact preview"]').last();
       const preview = container.frameLocator('iframe[title="Artifact content"]');
