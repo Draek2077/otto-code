@@ -112,6 +112,7 @@ async function fixture(schedules?: ArtifactSchedulePort) {
     rejectGeneration = reject;
   });
   let version = 0;
+  const generationErrors: unknown[] = [];
   const records: Record<string, Record<string, unknown>> = { project: {}, peer: {} };
   const project = (id: string) => ({
     projectId: id,
@@ -120,6 +121,9 @@ async function fixture(schedules?: ArtifactSchedulePort) {
     record: records[id],
   });
   const ports = {
+    reportGenerationError: (error: unknown) => {
+      generationErrors.push(error);
+    },
     schedules,
     home,
     hostId: "host",
@@ -183,8 +187,33 @@ async function fixture(schedules?: ArtifactSchedulePort) {
     records,
     ref: (id: string) => ({ scope, id, location: "repository" as const }),
     project,
+    generationErrors,
   };
 }
+test("independent generations publish concurrently while library reads observe both", async () => {
+  const f = await fixture();
+  await Promise.all([f.create(), f.create()]);
+  f.resolve();
+  await expect
+    .poll(async () => ({
+      items: (await f.service.list({ scope: f.scope })).items.map((item) => ({
+        status: item.status,
+        error: item.error,
+      })),
+      diagnostics: f.generationErrors.map((error) =>
+        error instanceof Error
+          ? { message: error.message, code: "code" in error ? String(error.code) : null }
+          : String(error),
+      ),
+    }))
+    .toEqual({
+      items: [
+        { status: "ready", error: null },
+        { status: "ready", error: null },
+      ],
+      diagnostics: [],
+    });
+});
 function sourceSchedule(): StoredSchedule {
   return {
     id: "schedule",

@@ -489,8 +489,16 @@ export class ArtifactDaemonService {
       clearTimeout(timer);
       if (this.jobs.get(key)?.token === token) this.jobs.delete(key);
     });
-    // Every failure is settled durably where the original revision still owns the record.
-    void job.done.catch(() => {});
+    // A failed publication is reconciled on the next scoped read. Keep its
+    // original host diagnostic; never retry a write or overwrite a peer edit.
+    void job.done.catch((error) => this.reportFailure(error));
+  }
+  private reportFailure(error: unknown) {
+    try {
+      this.ports.reportGenerationError?.(error);
+    } catch {
+      /* Diagnostics must not change publication ownership or recovery. */
+    }
   }
   private async completeGeneration(
     entry: ArtifactEntry,
@@ -517,11 +525,7 @@ export class ArtifactDaemonService {
       html = result.html;
       resolved = { provider: result.provider, model: result.model };
     } catch (generationError) {
-      try {
-        this.ports.reportGenerationError?.(generationError);
-      } catch {
-        /* Diagnostics must not prevent a durable failure state. */
-      }
+      this.reportFailure(generationError);
       error =
         generationError instanceof ArtifactError
           ? generationError.message
