@@ -127,7 +127,7 @@ for (const compact of [false, true])
           "--workspace",
           workspace.workspaceId,
           "--host",
-          `ws://127.0.0.1:${getE2EDaemonPort()}/ws`,
+          `127.0.0.1:${getE2EDaemonPort()}`,
           "--json",
         ],
         { timeout: 30000, maxBuffer: 1000000 },
