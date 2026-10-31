@@ -1,4 +1,6 @@
 import path from "node:path";
+// OTTO(speech-models): model-specific default speaker identities are stable.
+import { localTtsLayout } from "../../../otto/speech/model-catalog.js";
 
 import { z } from "zod";
 
@@ -201,8 +203,7 @@ export function resolveLocalSpeechConfig(params: {
   );
 
   const resolvedVoiceTtsSpeakerId =
-    parsed.voiceLocalTtsSpeakerId ??
-    (parsed.voiceLocalTtsModel === "kokoro-en-v0_19" ? 0 : undefined);
+    parsed.voiceLocalTtsSpeakerId ?? localTtsLayout(parsed.voiceLocalTtsModel).defaultSpeakerId; // OTTO(speech-models)
 
   return {
     sttLanguages: {

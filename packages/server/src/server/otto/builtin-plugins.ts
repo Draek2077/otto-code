@@ -7,4 +7,5 @@ export const ottoBuiltinPlugins = [
   "otto-project-knowledge",
   "otto-browser",
   "otto-artifacts",
+  "otto-speech",
 ] as const;

@@ -1,3 +1,4 @@
+// OTTO(speech): verify owning-host archive layout and Windows-safe tar arguments.
 import { describe, expect, test } from "vitest";
 import {
   mkdtempSync,
@@ -18,7 +19,7 @@ import { ensureSherpaOnnxModel, getSherpaOnnxModelDir } from "./model-downloader
 import { getSherpaOnnxModelSpec } from "./model-catalog.js";
 
 function makeTmpDir(): string {
-  return mkdtempSync(path.join(tmpdir(), "paseo-speech-models-"));
+  return mkdtempSync(path.join(tmpdir(), "paseo speech models-"));
 }
 
 const logger = pino({ level: "silent" });
@@ -38,13 +39,17 @@ describe("sherpa model downloader", () => {
       mkdirSync(sourceDir, { recursive: true });
       mkdirSync(path.dirname(archive), { recursive: true });
       writeFileSync(path.join(sourceDir, "model.onnx"), Buffer.alloc(32_768, 1));
-      execFileSync("tar", [
-        "cf",
-        archive,
-        "-C",
-        path.dirname(sourceDir),
-        `${spec.extractedDir}/model.onnx`,
-      ]);
+      execFileSync(
+        "tar",
+        [
+          "cf",
+          path.basename(archive),
+          "-C",
+          path.dirname(sourceDir),
+          `${spec.extractedDir}/model.onnx`,
+        ],
+        { cwd: path.dirname(archive) },
+      );
       truncateSync(archive, 1_024);
       await expect(ensureSherpaOnnxModel({ modelsDir, modelId: spec.id, logger })).rejects.toThrow(
         "tar exited",
@@ -76,7 +81,11 @@ describe("sherpa model downloader", () => {
         }
       }
       mkdirSync(path.dirname(archive), { recursive: true });
-      execFileSync("tar", ["cf", archive, "-C", path.dirname(sourceDir), spec.extractedDir]);
+      execFileSync(
+        "tar",
+        ["cf", path.basename(archive), "-C", path.dirname(sourceDir), spec.extractedDir],
+        { cwd: path.dirname(archive) },
+      );
       writeFileSync(path.join(modelDir, "model.onnx"), "truncated");
       await ensureSherpaOnnxModel({ modelsDir, modelId: spec.id, logger });
       expect(readFileSync(path.join(modelDir, "model.onnx"), "utf8")).toBe("complete model data");

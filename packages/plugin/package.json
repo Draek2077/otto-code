@@ -78,6 +78,16 @@
       "source": "./src/client/otto-connectors.ts",
       "default": "./dist/client/otto-connectors.js"
     },
+    "./otto/speech": {
+      "types": "./dist/otto/speech.d.ts",
+      "source": "./src/otto/speech.ts",
+      "default": "./dist/otto/speech.js"
+    },
+    "./client/otto-speech": {
+      "types": "./dist/client/otto-speech.d.ts",
+      "source": "./src/client/otto-speech.ts",
+      "default": "./dist/client/otto-speech.js"
+    },
     "./otto/project-knowledge": {
       "types": "./dist/otto/project-knowledge.d.ts",
       "source": "./src/otto/project-knowledge.ts",

@@ -200,10 +200,17 @@ export class LocalSpeechWorkerClient {
     this.forkWorker = options.forkWorker ?? forkLocalSpeechWorker;
   }
 
-  async synthesizeSpeech(text: string): Promise<SpeechStreamResult> {
+  // OTTO(speech-models): previews and read-aloud use the existing worker and IPC.
+  async synthesizeSpeech(
+    text: string,
+    overrides?: Pick<
+      Partial<LocalSpeechWorkerConfig>,
+      "voiceTtsModel" | "voiceTtsSpeakerId" | "voiceTtsSpeed"
+    >,
+  ): Promise<SpeechStreamResult> {
     const result = await this.sendRequest<LocalSpeechTtsResult>({
       type: "tts.synthesize",
-      config: this.config,
+      config: { ...this.config, ...overrides }, // OTTO(speech-models)
       text,
     });
     return {
@@ -599,8 +606,15 @@ export class LocalSpeechWorkerClient {
 export class WorkerBackedTextToSpeechProvider implements TextToSpeechProvider {
   constructor(private readonly client: LocalSpeechWorkerClient) {}
 
-  synthesizeSpeech(text: string): Promise<SpeechStreamResult> {
-    return this.client.synthesizeSpeech(text);
+  // OTTO(speech-models): previews borrow this same worker instead of loading a second model stack.
+  synthesizeSpeech(
+    text: string,
+    overrides?: Pick<
+      Partial<LocalSpeechWorkerConfig>,
+      "voiceTtsModel" | "voiceTtsSpeakerId" | "voiceTtsSpeed"
+    >,
+  ): Promise<SpeechStreamResult> {
+    return this.client.synthesizeSpeech(text, overrides);
   }
 }
 

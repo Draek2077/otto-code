@@ -19,6 +19,7 @@ decisions, and measured findings live in Otto Knowledge.
 | [otto-integrations.md](otto-integrations.md)             | Shared host accounts, OS-keyring credentials and explicit saves              |
 | [otto-bitbucket.md](otto-bitbucket.md)                   | Bitbucket Cloud accounts, forge actions, repository discovery and cloning    |
 | [otto-connectors.md](otto-connectors.md)                 | Full Connector catalog, shared provider tools and preserved authorization    |
+| [otto-speech.md](otto-speech.md)                         | Host speech settings, narration, recognition, playback and device controls   |
 | [architecture.md](architecture.md)                       | Paseo base architecture                                                      |
 | [development.md](development.md)                         | Development commands and isolation                                           |
 | [release.md](release.md)                                 | Release procedure                                                            |

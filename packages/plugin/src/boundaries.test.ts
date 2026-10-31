@@ -22,6 +22,7 @@ const entries = {
   "./otto/preview": "shared", // OTTO(preview): structural RPC data contains no Node imports.
   "./otto/artifacts": "shared", // OTTO(artifacts): bounded structural contracts only.
   "./otto/connectors": "shared", // OTTO(connectors): catalog and structural RPC only; no authorization runtime.
+  "./otto/speech": "shared", // OTTO(speech): structural selections and bounded RPC only.
   "./otto/host-browser": "shared", // OTTO(browser-host): structural viewer/command contracts, no runtime code.
   "./otto/kanban": "shared", // OTTO(kanban): structural RPC/model definitions only.
   "./otto/openai-settings": "shared",
@@ -40,6 +41,7 @@ const entries = {
   "./client/otto-artifacts": "client", // OTTO(artifacts): app-owned presentation bridge.
   "./client/otto-bitbucket": "client", // OTTO(bitbucket): app-owned settings bridge.
   "./client/otto-connectors": "client", // OTTO(connectors): app-owned Settings presentation.
+  "./client/otto-speech": "client", // OTTO(speech): app-owned Settings presentation.
 } as const;
 const uiDependency = /^(react(?:-dom|-native)?|use-sync-external-store)(\/|$)/;
 const serverModule = /^server\//;

@@ -1,4 +1,7 @@
+import { SpeechFileWatchdog, completeFilePlayback } from "@/otto/speech/file-watchdog"; // OTTO(speech): system pause/resume shares the existing file player.
 export interface FilePlaybackStatus {
+  playing?: boolean; // OTTO(speech)
+  currentTime?: number; // OTTO(speech)
   playbackState: string;
   isLoaded: boolean;
   didJustFinish: boolean;
@@ -20,34 +23,29 @@ export function playFile(player: FilePlayer, signal: AbortSignal): Promise<numbe
     let settled = false;
     // expo-audio 1.x does not report Android decoder errors. A local file that
     // never becomes loaded must still release its queue slot and temporary file.
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const watchdog = new SpeechFileWatchdog((error) => finish(error)); // OTTO(speech)
     const finish = (error?: unknown, duration = 0) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
+      watchdog.close(); // OTTO(speech)
       signal.removeEventListener("abort", abort);
-      subscription.remove();
-      player.remove();
-      if (error) reject(error);
+      const failure = completeFilePlayback(
+        error,
+        () => subscription.remove(),
+        () => player.remove(),
+      ); // OTTO(speech): cleanup cannot leave the queue promise pending.
+      if (failure) reject(failure);
       else resolve(duration);
     };
     const abort = () => finish(new Error("Playback stopped"));
-    let loaded = false;
     const subscription = player.addListener("playbackStatusUpdate", (status) => {
       if (status.playbackState === "error" || status.playbackState === "failed") {
         finish(new Error("Audio file could not be decoded"));
       } else if (status.didJustFinish) {
         finish(undefined, status.duration);
-      } else if (status.isLoaded && status.duration > 0 && !loaded) {
-        loaded = true;
-        clearTimeout(timeout);
-        timeout = setTimeout(
-          () => finish(new Error("Audio playback timed out")),
-          (status.duration + 30) * 1000,
-        );
-      }
+      } else watchdog.update(status); // OTTO(speech)
     });
-    timeout = setTimeout(() => finish(new Error("Audio file could not be loaded")), 15000);
+    watchdog.start(); // OTTO(speech)
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) abort();
     else {

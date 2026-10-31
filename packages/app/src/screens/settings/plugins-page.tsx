@@ -1,6 +1,7 @@
 import { OttoProviderSettingsMenu } from "@/otto/provider-settings-menu"; // OTTO(provider-settings)
 import { BrainSettingsEntry } from "@/otto/brain/integration/settings-entry"; // OTTO(brain-ui): built-in settings entry.
 import { IntegrationSettingsEntry } from "@/otto/integrations/settings-entry"; // OTTO(integration): shared host authorization.
+import { SpeechSettingsEntry } from "@/otto/speech/settings-entry"; // OTTO(speech)
 import { KnowledgeSettingsEntry } from "@/otto/knowledge/settings-entry"; // OTTO(knowledge): built-in settings entry.
 import { formatPluginInstallation } from "@getpaseo/protocol/plugin-source-reference";
 import { PluginSettingsMenuItems } from "@/plugins/settings";
@@ -535,6 +536,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
         <OttoProviderSettingsMenu serverId={serverId} /> {/* OTTO(provider-settings) */}
         <BrainSettingsEntry serverId={serverId} /> {/* OTTO(brain-ui) */}
         <IntegrationSettingsEntry serverId={serverId} /> {/* OTTO(integration) */}
+        <SpeechSettingsEntry serverId={serverId} /> {/* OTTO(speech) */}
         <KnowledgeSettingsEntry serverId={serverId} /> {/* OTTO(knowledge) */}
       </SettingsSection>
       {client && logsPluginId ? (

@@ -1,4 +1,6 @@
 import * as openai from "@getpaseo/plugin/otto/openai-settings";
+import * as speech from "@getpaseo/plugin/otto/speech"; // OTTO(speech)
+import * as speechUi from "./speech/bridge"; // OTTO(speech)
 import * as kanban from "@getpaseo/plugin/otto/kanban";
 import * as atlassian from "@getpaseo/plugin/otto/atlassian-settings";
 import * as bitbucket from "@getpaseo/plugin/otto/bitbucket-connections";
@@ -15,6 +17,7 @@ import * as artifacts from "@getpaseo/plugin/otto/artifacts";
 import * as artifactUi from "./artifacts/bridge";
 
 const shared = new Map<string, unknown>([
+  ["@getpaseo/plugin/otto/speech", speech],
   ["@getpaseo/plugin/otto/connectors", connectors],
   ["@getpaseo/plugin/otto/artifacts", artifacts],
   ["@getpaseo/plugin/otto/preview", preview],
@@ -31,6 +34,7 @@ const knowledgeModules = new Map<string, unknown>([
 ]);
 /** Public structural contracts are shared; private UI bridges are built-in-only. */
 export function ottoClientModule(pluginId: string, name: string): unknown {
+  if (pluginId === "otto-speech" && name === "@getpaseo/plugin/client/otto-speech") return speechUi;
   if (pluginId === "otto-integrations" && name === "@getpaseo/plugin/client/otto-connectors")
     return connectorUi;
   if (pluginId === "otto-integrations" && name === "@getpaseo/plugin/client/otto-bitbucket")

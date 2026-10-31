@@ -334,6 +334,8 @@ export interface ViewedTimelineUiBridge {
 }
 
 export interface ViewedTimelineSync extends ViewedTimelineUiBridge {
+  /** OTTO(speech): explicit background consumers share the canonical stream owner without becoming visible tabs. */
+  replaceBackgroundAgentIds(sourceId: string, agentIds: string[]): void;
   /**
    * The agent tabs that currently exist in workspace layout. This only ever *releases*
    * subscriptions: closing a tab drops its chat. It never adds one, because layout is
@@ -478,6 +480,7 @@ function sameAgentIds(left: string[], right: string[]): boolean {
 
 export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): ViewedTimelineSync {
   const sources = new Map<string, string[]>();
+  const backgroundSources = new Map<string, string[]>(); // OTTO(speech): separate demand from actual viewport visibility.
   const catchUps = new Map<string, CatchUpState>();
   const catchUpGenerations = new Map<string, number>();
   // Authoritative fetch owed but not runnable yet: disconnected, unacknowledged, or parked.
@@ -819,7 +822,13 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
   };
 
   const publishVisibleMembership = () => {
-    commitDesiredMembership(normalizeAgentIds([...openedAgentIds, ...visibleAgentIds()]));
+    commitDesiredMembership(
+      normalizeAgentIds([
+        ...openedAgentIds,
+        ...visibleAgentIds(),
+        ...[...backgroundSources.values()].flat(),
+      ]),
+    ); // OTTO(speech)
   };
 
   return {
@@ -848,6 +857,14 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
       if (normalized.length === 0) sources.delete(sourceId);
       else sources.set(sourceId, normalized);
       rememberOpenedAgentIds(normalized);
+      publishVisibleMembership();
+      startAcknowledgedCatchUps();
+    },
+    // OTTO(speech): no remember-opened side effects; releasing this source releases only its own demand.
+    replaceBackgroundAgentIds(sourceId, agentIds) {
+      const normalized = normalizeAgentIds(agentIds);
+      if (normalized.length === 0) backgroundSources.delete(sourceId);
+      else backgroundSources.set(sourceId, normalized);
       publishVisibleMembership();
       startAcknowledgedCatchUps();
     },
@@ -900,6 +917,7 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
       membershipNeedsRetry = false;
       membershipRetryDelayMs = undefined;
       sources.clear();
+      backgroundSources.clear(); // OTTO(speech)
       membershipGeneration += 1;
       for (const agentId of desired) cancelCatchUp(agentId);
       desired = [];

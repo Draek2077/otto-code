@@ -55,6 +55,7 @@ export const DAEMON_SETTING_ENV_KEYS = [
   "STT_CONFIDENCE_THRESHOLD",
   "STT_MODEL",
   "TTS_MODEL",
+  "TTS_SPEED", // OTTO(speech): speed follows the existing model/voice environment policy.
   "TTS_VOICE",
 ] as const;
 

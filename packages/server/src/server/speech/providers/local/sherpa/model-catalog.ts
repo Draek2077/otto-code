@@ -1,4 +1,6 @@
 import { z } from "zod";
+// OTTO(speech-models): compose restored models without changing upstream entries.
+import { OTTO_SPEECH_MODELS } from "../../../../otto/speech/model-catalog.js";
 
 export type SherpaOnnxModelKind = "stt-offline" | "tts";
 
@@ -14,6 +16,7 @@ interface SherpaOnnxCatalogEntry {
 }
 
 export const SHERPA_ONNX_MODEL_CATALOG = {
+  ...OTTO_SPEECH_MODELS, // OTTO(speech-models)
   "parakeet-tdt-0.6b-v2-int8": {
     kind: "stt-offline",
     archiveUrl:

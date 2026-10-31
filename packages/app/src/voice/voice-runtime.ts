@@ -62,6 +62,7 @@ export interface VoiceSessionAdapter {
 }
 
 export interface VoiceRuntimeDeps {
+  canPlayThinkingTone?(): boolean; // OTTO(speech): device preference, never microphone ownership.
   engine: AudioEngine;
   getServerInfo(serverId: string): DaemonServerInfo | null;
   activateKeepAwake(tag: string): Promise<void>;
@@ -431,6 +432,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
   function canPlayCue(): boolean {
     return (
+      deps.canPlayThinkingTone?.() !== false && // OTTO(speech)
       state.snapshot.isVoiceMode &&
       state.snapshot.phase === "waiting" &&
       !state.telemetry.isSpeaking
@@ -464,7 +466,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     cue.controller = controller;
 
     const playNext = () => {
-      if (controller.signal.aborted) {
+      if (controller.signal.aborted || !canPlayCue()) {
+        // OTTO(speech): respect a preference changed while waiting.
         return;
       }
       void deps.engine

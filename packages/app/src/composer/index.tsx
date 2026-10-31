@@ -1,3 +1,4 @@
+import { SpeechChatToggle } from "@/otto/speech/chat-toggle"; // OTTO(speech): per-chat auto-read, independent of composer delivery.
 import {
   useComposerEditingSession,
   useComposerFullscreen,
@@ -2057,16 +2058,20 @@ function ComposerContentImpl({
   const beforeVoiceContent = useMemo(
     () =>
       hasAgent ? (
-        <View style={styles.contextWindowMeterSlot}>
-          <ContextWindowMeter
-            serverId={serverId}
-            agentId={agentId}
-            maxTokens={agentState.contextWindowMaxTokens}
-            usedTokens={agentState.contextWindowUsedTokens}
-            totalCostUsd={agentState.totalCostUsd}
-            glyphSize={contextWindowMeterGlyphSize}
-          />
-        </View>
+        <>
+          {/* OTTO(speech) */}
+          <SpeechChatToggle serverId={serverId} agentId={agentId} enabled={mode.showVoice} />
+          <View style={styles.contextWindowMeterSlot}>
+            <ContextWindowMeter
+              serverId={serverId}
+              agentId={agentId}
+              maxTokens={agentState.contextWindowMaxTokens}
+              usedTokens={agentState.contextWindowUsedTokens}
+              totalCostUsd={agentState.totalCostUsd}
+              glyphSize={contextWindowMeterGlyphSize}
+            />
+          </View>
+        </>
       ) : null,
     [
       hasAgent,
@@ -2076,6 +2081,7 @@ function ComposerContentImpl({
       agentState.contextWindowUsedTokens,
       agentState.totalCostUsd,
       contextWindowMeterGlyphSize,
+      mode.showVoice, // OTTO(speech)
     ],
   );
 

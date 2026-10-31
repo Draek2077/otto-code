@@ -7,6 +7,7 @@ export interface AudioEngineCallbacks {
 }
 
 export interface AudioPlaybackSource {
+  ottoBackgroundPlayback?: boolean; // OTTO(speech): output ownership, never recording permission.
   arrayBuffer(): Promise<ArrayBuffer>;
   size: number;
   type: string;

@@ -1,3 +1,4 @@
+// OTTO(speech): background reading retains canonical timelines without opening tabs.
 import { expect, test, vi } from "vitest";
 import { DaemonClient, type DaemonTransport } from "@getpaseo/client/internal/daemon-client";
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
@@ -43,6 +44,28 @@ interface TimelineFetch {
   respond(input: { hasNewer: boolean; seq?: number }): void;
   fail(message: string): void;
 }
+
+test("explicit speech demand retains a closed chat without manufacturing a visible or remembered tab", async () => {
+  const world = new TimelineWorld();
+  world.sync.replaceVisibleAgentIds("workspace", ["visible"]);
+  world.sync.replaceBackgroundAgentIds("speech", ["spoken"]);
+  world.sync.setConnected(true);
+  const initial = await world.nextMembership();
+  expect(initial.agentIds).toEqual(["spoken", "visible"]);
+  initial.succeed();
+  (await world.nextFetch("visible")).respond({ hasNewer: false });
+  (await world.nextFetch("spoken")).respond({ hasNewer: false });
+  world.sync.replaceVisibleAgentIds("workspace", []);
+  world.sync.replaceOpenTabAgentIds([]);
+  const retained = await world.nextMembership();
+  expect(retained.agentIds).toEqual(["spoken"]);
+  retained.succeed();
+  world.sync.replaceBackgroundAgentIds("speech", []);
+  const released = await world.nextMembership();
+  expect(released.agentIds).toEqual([]);
+  released.succeed();
+  world.sync.dispose();
+});
 
 test("split panes catch up together before hidden open chats start fetching", async () => {
   const world = new TimelineWorld();

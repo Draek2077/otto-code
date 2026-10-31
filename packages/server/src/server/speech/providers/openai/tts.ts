@@ -11,6 +11,7 @@ export interface TTSConfig {
   model?: "tts-1" | "tts-1-hd" | (string & {});
   voice?: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" | (string & {});
   responseFormat?: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
+  speed?: number; // OTTO(speech): preserve speaking speed through the existing API.
 }
 
 export class OpenAITTS implements TextToSpeechProvider {
@@ -41,7 +42,10 @@ export class OpenAITTS implements TextToSpeechProvider {
     return this.config;
   }
 
-  public async synthesizeSpeech(text: string): Promise<SpeechStreamResult> {
+  public async synthesizeSpeech(
+    text: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<SpeechStreamResult> {
     if (!text || text.trim().length === 0) {
       throw new Error("Cannot synthesize empty text");
     }
@@ -49,25 +53,30 @@ export class OpenAITTS implements TextToSpeechProvider {
     const startTime = Date.now();
 
     try {
-      this.logger.debug(
-        { textLength: text.length, preview: text.substring(0, 50) },
-        "Synthesizing speech",
-      );
+      // OTTO(speech): read-aloud content is private, including in debug logs.
+      this.logger.debug({ textLength: text.length }, "Synthesizing speech");
 
-      const response = await this.openaiClient.audio.speech.create({
-        model: this.config.model!,
-        voice: this.config.voice!,
-        input: text,
-        response_format: this.config.responseFormat as
-          | "mp3"
-          | "opus"
-          | "aac"
-          | "flac"
-          | "wav"
-          | "pcm",
-      });
+      const response = await this.openaiClient.audio.speech.create(
+        {
+          model: this.config.model!,
+          voice: this.config.voice!,
+          input: text,
+          ...(this.config.speed !== undefined ? { speed: this.config.speed } : {}), // OTTO(speech)
+          response_format: this.config.responseFormat as
+            | "mp3"
+            | "opus"
+            | "aac"
+            | "flac"
+            | "wav"
+            | "pcm",
+        },
+        { signal: options?.signal },
+      ); // OTTO(speech): an explicit Stop cancels the cloud request.
 
-      const audioStream = response.body as unknown as Readable;
+      // OTTO(speech): expose a real Node stream for shared playback lifetimes,
+      // cancellation and first-chunk delivery; do not buffer the response body.
+      if (!response.body) throw new Error("Speech response did not contain audio.");
+      const audioStream = Readable.from(response.body);
 
       const duration = Date.now() - startTime;
       this.logger.debug({ duration }, "Speech synthesis stream ready");

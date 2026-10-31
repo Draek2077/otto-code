@@ -46,6 +46,7 @@ const OpenAiSttOptionsSchema = z.object({
 const OpenAiTtsOptionsSchema = z.object({
   ttsVoice: z.string().trim().default("alloy"),
   ttsModel: z.string().trim().default(DEFAULT_OPENAI_TTS_MODEL),
+  ttsSpeed: NumberLikeSchema.pipe(z.coerce.number<string | number>().min(0.25).max(4)).optional(), // OTTO(speech)
 });
 
 function isOpenAiProviderActive(provider: { enabled?: boolean; provider: string }): boolean {
@@ -100,6 +101,11 @@ function buildOpenAiTtsInput(params: {
 }): Record<string, unknown> {
   const { env, persisted, providers } = params;
   return {
+    // OTTO(speech): keep the existing host selection and environment precedence.
+    ttsSpeed: firstDefined<string | number>([
+      env.TTS_SPEED,
+      pickIfOpenAi(providers.voiceTts, persisted.features?.voiceMode?.tts?.speed),
+    ]),
     ttsVoice: firstDefined<string>([
       env.TTS_VOICE,
       pickIfOpenAi(providers.voiceTts, persisted.features?.voiceMode?.tts?.voice),
@@ -195,6 +201,7 @@ function buildTtsConfig(
     ...(baseUrl ? { baseUrl } : {}),
     voice: options.ttsVoice,
     model: options.ttsModel,
+    ...(options.ttsSpeed !== undefined ? { speed: options.ttsSpeed } : {}), // OTTO(speech)
     responseFormat: "pcm",
   };
 }

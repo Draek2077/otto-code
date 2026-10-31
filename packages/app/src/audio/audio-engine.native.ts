@@ -10,6 +10,7 @@ import { File, Paths } from "expo-file-system";
 import { createPlaybackQueue } from "./playback";
 import { playFile } from "./file-playback";
 import { playPcm16 } from "./pcm";
+import { speechBackgroundPlayer } from "@/otto/speech/native-background"; // OTTO(speech)
 
 export function createAudioEngine(
   callbacks: AudioEngineCallbacks,
@@ -125,6 +126,8 @@ export function createAudioEngine(
       await setAudioModeAsync({
         playsInSilentMode: true,
         allowsRecording: false,
+        shouldPlayInBackground: audio.ottoBackgroundPlayback === true, // OTTO(speech)
+        allowsBackgroundRecording: false, // OTTO(speech): playback cannot arm the microphone.
         interruptionMode: "duckOthers",
         interruptionModeAndroid: "duckOthers",
       });
@@ -150,7 +153,10 @@ export function createAudioEngine(
         updateInterval: 100,
         keepAudioSessionActive: refs.captureActive,
       });
-      return await playFile(player, signal);
+      return await playFile(
+        audio.ottoBackgroundPlayback ? speechBackgroundPlayer(player) : player,
+        signal,
+      ); // OTTO(speech): SDK media controls own sustained Android background playback.
     } finally {
       if (file.exists) file.delete();
     }

@@ -1,4 +1,5 @@
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { SettledMessageSpeech } from "@/otto/speech/message-button"; // OTTO(speech): settled prose uses the shared host engine.
 import { getAgentAttachmentPillContent } from "@/attachments/attachment-pill-content";
 import { AssistantForkMenu, type AssistantForkTarget } from "@/components/assistant-fork-menu";
 import { AttachmentLightbox, type ImageLightboxSource } from "@/components/attachment-lightbox";
@@ -710,6 +711,7 @@ export const LiveElapsed = memo(function LiveElapsed({
 });
 
 interface AssistantMessageProps {
+  ottoSpeechItemId?: string; // OTTO(speech): canonical item identity, independent of visual image keys.
   renderFullContent?: boolean;
   occurrenceKey: string;
   message: string;
@@ -1129,6 +1131,7 @@ function NativeShimmerPeakSvg({ gradientId }: { gradientId: string }) {
 }
 
 export const AssistantMessage = memo(function AssistantMessage({
+  ottoSpeechItemId,
   renderFullContent = false,
   occurrenceKey,
   message,
@@ -1190,6 +1193,12 @@ export const AssistantMessage = memo(function AssistantMessage({
         client={client}
         workspaceRoot={workspaceRoot}
         serverId={serverId}
+      />
+      {/* OTTO(speech): wait for both provider settlement and the visual reveal. */}
+      <SettledMessageSpeech
+        message={message}
+        itemId={ottoSpeechItemId}
+        settled={phase === "complete" && revealedMessage.length >= renderedMessage.text.length}
       />
       {fullMessageByteLength !== null ? (
         <Text

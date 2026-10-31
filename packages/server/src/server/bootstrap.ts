@@ -137,7 +137,8 @@ import { formatAttachmentContentDisposition } from "./file-download/content-disp
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
 import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
-import { createSpeechService } from "./speech/speech-runtime.js";
+import { ManagedSpeechRuntime } from "./otto/speech/managed-runtime.js"; // OTTO(speech): one shared runtime, replacement waits for active sessions.
+import { SpeechHost } from "./otto/speech/host.js"; // OTTO(speech)
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
@@ -670,6 +671,7 @@ export async function createPaseoDaemon(
   let ottoHostBrowser: ReturnType<typeof createNativeHostBrowser> | null = null; // OTTO(browser-host): composition never launches Chromium.
   let ottoKnowledge: KnowledgeDaemonService | null = null; // OTTO(knowledge)
   let ottoArtifacts: ArtifactDaemonService | null = null; // OTTO(artifacts): inert until scoped demand.
+  let ottoSpeech: SpeechHost | null = null; // OTTO(speech): authenticated host settings and playback, composed before listening.
   const pluginRuntime: PluginService = new PluginService(
     logger,
     daemonConfigStore,
@@ -688,6 +690,7 @@ export async function createPaseoDaemon(
       // OTTO(feature-host): existing authenticated plugin RPC, unchanged relay framing.
       ottoRpc: {
         has: (pluginId) =>
+          (pluginId === "otto-speech" && ottoSpeech !== null) || // OTTO(speech)
           (pluginId === "otto-artifacts" && ottoArtifacts !== null) || // OTTO(artifacts)
           pluginId === "otto-brain" ||
           (pluginId === "otto-browser" && ottoBrowserHistory !== null) || // OTTO(browser-history)
@@ -695,6 +698,7 @@ export async function createPaseoDaemon(
           (pluginId === "otto-integrations" && ottoIntegrations !== null) ||
           (pluginId === "otto-project-knowledge" && ottoKnowledge !== null), // OTTO(knowledge)
         invoke: (pluginId, method, input, clientId, source) => {
+          if (pluginId === "otto-speech") return ottoSpeech?.invoke(method, input, clientId); // OTTO(speech)
           if (pluginId === "otto-artifacts") return ottoArtifacts?.invoke(method, input); // OTTO(artifacts)
           if (pluginId === "otto-brain") return ottoBrain.invoke(method, input, clientId);
           if (pluginId === "otto-browser")
@@ -712,6 +716,7 @@ export async function createPaseoDaemon(
           return undefined;
         },
         releaseClient: (clientId) => {
+          ottoSpeech?.releaseClient(clientId); // OTTO(speech)
           ottoBrain.releaseClient(clientId);
           ottoKanban?.releaseClient(clientId); // OTTO(kanban): stop polling after paired-session teardown.
           void ottoKnowledge
@@ -1844,11 +1849,12 @@ export async function createPaseoDaemon(
     logger.info({ route: agentMcpRoute, enabled: mcpEnabled }, "Agent MCP route mounted");
   }
 
-  const speechService = createSpeechService({
+  // OTTO(speech): the wrapper composes Paseo's service, never a parallel engine.
+  const speechService = new ManagedSpeechRuntime(
+    { openai: config.openai, speech: config.speech },
     logger,
-    openaiConfig: config.openai,
-    speechConfig: config.speech,
-  });
+  );
+  ottoSpeech = SpeechHost.forDaemon(config, serverId, speechService, logger);
   logger.info({ elapsed: elapsed() }, "Speech service created");
 
   logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");
@@ -2061,6 +2067,7 @@ export async function createPaseoDaemon(
       await deleteLocalCredential(config.paseoHome);
       unsubscribePluginProviders();
       await pluginRuntime.stopAllPlugins().catch(() => undefined);
+      ottoSpeech?.close(); // OTTO(speech)
       await ottoBrain.close(); // OTTO(brain-host): release waits/feed; never stop independent host jobs.
       await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
       await ottoArtifacts?.close(); // OTTO(artifacts): revoke late generation publication.
@@ -2128,6 +2135,7 @@ export async function createPaseoDaemon(
         ),
       ); // OTTO(preview): report ownership uncertainty while continuing daemon cleanup.
     terminalManager.killAll();
+    ottoSpeech?.close(); // OTTO(speech): abort owned playback before releasing the shared engine.
     await speechService.stop();
     await scheduleService.stop().catch(() => undefined);
     await relayRuntime?.stop().catch(() => undefined);

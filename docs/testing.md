@@ -212,6 +212,17 @@ Agent providers handle their own auth. Do not add auth checks, environment varia
 
 ## Otto provider coverage
 
+<!-- OTTO(speech): real playback and chat controls use isolated HTTP audio in the existing acceptance lane. -->
+
+Speech: `e2e/browser/otto-speech.spec.ts` covers registered host settings on wide
+and compact screens, saved model/voice/speed, actual HTTP-to-WAV preview and Stop,
+visible generation failure, explicit retry and revision-conflict recovery without
+key disclosure. It also exercises completed-message Read aloud, per-chat automatic
+reading of new replies and history suppression after reload. Synthetic endpoints
+and browser audio do not establish native microphone, physical-device background
+playback or live vendor/local-model quality. Focused native-player fixtures check
+media-control cleanup and system pause/resume without launching a recorder.
+
 Connectors: `e2e/browser/otto-connectors.spec.ts` covers registered host navigation,
 all 30 catalog entries, search/clear, custom configuration, real MCP discovery,
 per-tool selection, compare-and-swap conflicts, explicit reload, disable and

@@ -7,6 +7,7 @@ const withAndroidProfileable = require("./plugins/with-android-profileable");
 const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
 const withPasteInput = require("./plugins/with-paste-input");
 const withAndroidScroll = require("./modules/paseo-scroll/app.plugin");
+const withOttoSpeechBackground = require("./plugins/with-otto-speech-background"); // OTTO(speech)
 const { getNativeReleaseVersion } = require("./native-release-version");
 const appVariant = process.env.APP_VARIANT ?? "production";
 const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
@@ -162,6 +163,7 @@ export default {
       ],
       ...buildProfile.notificationPlugins,
       "expo-audio",
+      withOttoSpeechBackground, // OTTO(speech): playback only; never enable background recording.
       [
         "expo-gradle-jvmargs",
         {

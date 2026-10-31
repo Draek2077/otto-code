@@ -64,12 +64,8 @@ function sttEngineKey(config: LocalSpeechWorkerConfig, modelId: LocalSttModelId)
 }
 
 function ttsKey(config: LocalSpeechWorkerConfig): string {
-  return [
-    config.modelsDir,
-    config.voiceTtsModel,
-    config.voiceTtsSpeakerId ?? 0,
-    config.voiceTtsSpeed ?? 1,
-  ].join(":");
+  // OTTO(speech-models): share model weights across voices and speed choices.
+  return JSON.stringify([config.modelsDir, config.voiceTtsModel]);
 }
 
 function getSttEngine(
@@ -127,8 +123,7 @@ function getTtsProvider(config: LocalSpeechWorkerConfig): SherpaOnnxTTS {
     {
       preset: ttsModelId(config),
       modelDir,
-      speakerId: config.voiceTtsSpeakerId,
-      speed: config.voiceTtsSpeed,
+      // OTTO(speech-models): voice/speed belong to the request, not the handle.
     },
     logger,
   );
@@ -280,7 +275,12 @@ function handleSessionRequest(message: LocalSpeechWorkerSessionRequest): void {
 
 async function handleRequest(message: LocalSpeechWorkerRequest): Promise<void> {
   if (message.type === "tts.synthesize") {
-    const result = await getTtsProvider(message.config).synthesizeSpeech(message.text);
+    // OTTO(speech-models): capture each request's voice rather than the cached
+    // handle's first voice. Undefined selections resolve to that model's default.
+    const result = await getTtsProvider(message.config).synthesizeSpeech(message.text, {
+      speakerId: message.config.voiceTtsSpeakerId,
+      speed: message.config.voiceTtsSpeed,
+    });
     const chunks: Buffer[] = [];
     for await (const chunk of result.stream) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));

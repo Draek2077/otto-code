@@ -187,20 +187,28 @@ describe("Otto 0.9 config migration", () => {
 });
 
 describe("Otto 0.9 speech model selections", () => {
-  it("moves an Otto-only TTS model and its speaker out so Paseo's default applies", () => {
+  it("keeps an unsupported future TTS model and its speaker dormant", () => {
     const home = homeWithConfig({
       version: 1,
       features: {
         voiceMode: {
           enabled: true,
-          tts: { provider: "local", model: "kokoro-multi-lang-v1_0", speakerId: 9, speed: 1 },
+          tts: { provider: "local", model: "kokoro-future-v9", speakerId: 9, speed: 1 },
         },
       },
     });
     const config = loadPersistedConfig(home);
     expect(config.features?.voiceMode?.tts).toEqual({ provider: "local", speed: 1 });
     expect(readJson(path.join(home, OTTO_CONFIG_FILENAME))).toEqual({
-      features: { voiceMode: { tts: { model: "kokoro-multi-lang-v1_0", speakerId: 9 } } },
+      features: { voiceMode: { tts: { model: "kokoro-future-v9", speakerId: 9 } } },
     });
   });
+  it.each(["kokoro-multi-lang-v1_0", "kokoro-int8-multi-lang-v1_0"])(
+    "keeps restored %s and its speaker in the active config",
+    (model) => {
+      const tts = { provider: "local", model, speakerId: 9, speed: 1.25 };
+      const home = homeWithConfig({ version: 1, features: { voiceMode: { tts } } });
+      expect(loadPersistedConfig(home).features?.voiceMode?.tts).toEqual(tts);
+    },
+  );
 });

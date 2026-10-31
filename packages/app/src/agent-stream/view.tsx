@@ -1,4 +1,5 @@
 import { ChatFind, ChatFindExpansion } from "@/agent-stream/chat-find";
+import { SpeechSelectionSurface } from "@/otto/speech/scope"; // OTTO(speech): composes the existing copy surface with host/chat identity only.
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, {
   forwardRef,
@@ -86,7 +87,6 @@ import {
   type BottomAnchorRouteRequest,
 } from "./bottom-anchor-controller";
 import { createAssistantImageOccurrenceKey } from "@/assistant-image/acquisition-cache";
-import { AssistantSelectionCopySurface } from "@/assistant-selection-copy/surface";
 import { AssistantFileLinkResolverProvider, createInlinePathOpener } from "@/assistant-file-links";
 import {
   createWorkspaceFileTabTarget,
@@ -706,6 +706,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             <ChatFindExpansion messageId={getStreamItemMessageId(item)}>
               {(renderFullContent) => (
                 <AssistantMessage
+                  ottoSpeechItemId={item.id} // OTTO(speech): explicit canonical identity.
                   renderFullContent={renderFullContent}
                   occurrenceKey={createAssistantImageOccurrenceKey({ agentId, itemId: item.id })}
                   message={item.text}
@@ -1089,7 +1090,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         visibleMessageIds={mountedMessageIds}
       >
         <ToolCallSheetProvider>
-          <AssistantSelectionCopySurface style={stylesheet.container}>
+          <SpeechSelectionSurface
+            serverId={resolvedServerId}
+            agentId={agentId}
+            style={stylesheet.container}
+          >
+            {/* OTTO(speech) */}
             <MessageOuterSpacingProvider disableOuterSpacing>
               {streamRenderStrategy.render({
                 agentId,
@@ -1135,7 +1141,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 </Animated.View>
               </View>
             )}
-          </AssistantSelectionCopySurface>
+          </SpeechSelectionSurface>
         </ToolCallSheetProvider>
       </ChatFind>
     );

@@ -7,6 +7,8 @@ import type pino from "pino";
 
 import { getSherpaOnnxModelSpec, type SherpaOnnxModelId } from "./model-catalog.js";
 import { spawnProcess } from "../../../../../utils/spawn.js";
+// OTTO(speech-models): keep Windows GNU tar from interpreting drives as hosts.
+import { speechArchiveCommand } from "../../../../otto/speech/archive.js";
 
 export interface EnsureSherpaOnnxModelOptions {
   modelsDir: string;
@@ -78,7 +80,10 @@ async function extractTarArchive(
   await mkdir(destDir, { recursive: true });
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawnProcess("tar", ["xf", archivePath, "-C", destDir], {
+    const command = speechArchiveCommand(archivePath, destDir); // OTTO(speech-models)
+    const child = spawnProcess("tar", command.args, {
+      cwd: command.cwd, // OTTO(speech-models)
+      shell: false, // OTTO(speech-models): tar is a native executable; paths are argv, not shell code.
       stdio: "inherit",
       signal,
     });

@@ -1,4 +1,6 @@
 import { z } from "zod";
+// OTTO(speech-models): recover only supported preserved selections, without writes.
+import { readPreservedSpeechSelection, restoreSpeechSelection } from "../otto/speech/selection.js";
 
 import type { PersistedConfig } from "../persisted-config.js";
 import type { PaseoOpenAIConfig, PaseoSpeechConfig } from "../bootstrap.js";
@@ -151,21 +153,25 @@ export function resolveSpeechConfig(params: {
   openai: PaseoOpenAIConfig | undefined;
   speech: PaseoSpeechConfig;
 } {
+  const persisted = restoreSpeechSelection(
+    params.persisted,
+    readPreservedSpeechSelection(params.paseoHome),
+  ); // OTTO(speech-models)
   const providers = resolveRequestedSpeechProviders({
     env: params.env,
-    persisted: params.persisted,
+    persisted,
   });
 
   const local = resolveLocalSpeechConfig({
     paseoHome: params.paseoHome,
     env: params.env,
-    persisted: params.persisted,
+    persisted,
     providers,
   });
 
   const openai = resolveOpenAiSpeechConfig({
     env: params.env,
-    persisted: params.persisted,
+    persisted,
     providers,
   });
 

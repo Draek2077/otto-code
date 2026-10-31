@@ -803,7 +803,8 @@ function isEnabledSpeechProvider(
   return provider.enabled !== false && provider.provider === expected;
 }
 
-function resolveSpeechOverrideControlledPaths(
+export function resolveSpeechOverrideControlledPaths(
+  // OTTO(speech): reuse the same environment ownership after a provider change.
   env: NodeJS.ProcessEnv,
   providers: RequestedSpeechProviders,
 ): string[] {
@@ -854,6 +855,7 @@ function resolveSpeechOverrideControlledPaths(
   if (isEnabledSpeechProvider(providers.voiceTts, "openai")) {
     add("TTS_MODEL", "features.voiceMode.tts.model");
     add("TTS_VOICE", "features.voiceMode.tts.voice");
+    add("TTS_SPEED", "features.voiceMode.tts.speed"); // OTTO(speech)
   }
   if (env.PASEO_DICTATION_LANGUAGE !== undefined && env.PASEO_VOICE_LANGUAGE === undefined) {
     paths.push("features.voiceMode.stt.language");

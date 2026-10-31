@@ -1,4 +1,9 @@
 import { isSyntaxThemeId, type SyntaxThemeId } from "@getpaseo/highlight";
+import {
+  speechPreferenceDefaults,
+  speechStoredPreferences,
+  type SpeechPreferences,
+} from "@/otto/speech/preferences"; // OTTO(speech): preserve existing per-device keys and units.
 import type { ActiveTurnBehavior } from "@getpaseo/protocol/messages";
 import type { QueryClient } from "@tanstack/react-query";
 import type { DesktopSettings } from "@/desktop/settings/desktop-settings";
@@ -75,7 +80,7 @@ export { DEFAULT_CONTENT_MAX_WIDTH };
 export const MIN_CONTENT_MAX_WIDTH = 600;
 export const MAX_CONTENT_MAX_WIDTH = 4000;
 
-export interface AppSettings {
+export interface AppSettings extends SpeechPreferences {
   theme: ThemePreference;
   /** Which contributed theme `theme: "plugin"` selects. */
   pluginThemeId: string | null;
@@ -137,6 +142,7 @@ export interface Settings extends AppSettings {
 }
 
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
+  ...speechPreferenceDefaults, // OTTO(speech)
   theme: DEFAULT_THEME_PREFERENCE,
   pluginThemeId: null,
   language: "system",
@@ -213,6 +219,7 @@ const DEFAULT_STORED_APP_SETTINGS = {
 
 const StoredAppSettingsSchema = z
   .looseObject({
+    ...speechStoredPreferences, // OTTO(speech)
     theme: ThemePreferenceSchema.catch(DEFAULT_THEME_PREFERENCE),
     pluginThemeId: z.string().nullable().catch(null),
     language: z
