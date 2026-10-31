@@ -50,7 +50,9 @@ const styles = StyleSheet.create((theme) => ({
     borderTopLeftRadius: theme.borderRadius.sm,
     paddingHorizontal: theme.spacing[3],
     paddingTop: theme.spacing[2],
-    // The last Markdown block already supplies the bottom inset, as in Otto 0.9.
+    // Paseo drops the last Markdown block's gap. Restore Otto's bottom inset
+    // on this frame, keeping the playback hitbox inside the rounded bubble.
+    paddingBottom: theme.spacing[3],
     alignSelf: "flex-start",
     maxWidth: "100%",
     minWidth: 0,
