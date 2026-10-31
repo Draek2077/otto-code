@@ -8,7 +8,13 @@ import { readSpeech, saveSpeech, type SpeechSnapshot } from "@getpaseo/plugin/ot
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { openAgentRoute } from "../support/helpers/mock-agent";
 
-test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
+test.use({
+  e2eDaemonConfig: {
+    pluginsEnabled: true,
+    features: { dictation: { enabled: false }, voiceMode: { enabled: false } },
+  },
+  e2eDaemonEnvironment: { PASEO_E2E_MANAGED_SPEECH: "1" },
+});
 for (const compact of [false, true]) {
   test(`Speech host settings, real playback, failure and stale-save recovery (${compact ? "compact" : "wide"})`, async ({
     page,
