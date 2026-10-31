@@ -29,6 +29,7 @@ export function openSpeechForm(initial: SpeechSnapshot, port: SpeechFormPort) {
     error: "",
     notice: "",
     generation: 0,
+    dirty: false,
   };
   let active = true;
   let closed = false;
@@ -38,12 +39,16 @@ export function openSpeechForm(initial: SpeechSnapshot, port: SpeechFormPort) {
   const publish = (patch: Partial<typeof state>) => {
     if (closed) return;
     state = { ...state, ...patch };
+    state = {
+      ...state,
+      dirty:
+        JSON.stringify(state.draft) !== JSON.stringify(state.origin.settings) ||
+        state.credentials.stt.kind !== "keep" ||
+        state.credentials.tts.kind !== "keep",
+    };
     for (const listener of listeners) listener();
   };
-  const dirty = () =>
-    JSON.stringify(state.draft) !== JSON.stringify(state.origin.settings) ||
-    state.credentials.stt.kind !== "keep" ||
-    state.credentials.tts.kind !== "keep";
+  const dirty = () => state.dirty;
   type Operation = "save" | "reload" | "refresh" | "retry";
   const isLive = (ticket: number) => ticket === authority && active && !closed;
   const saveInput = () => ({

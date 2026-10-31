@@ -62,6 +62,7 @@ for (const compact of [false, true]) {
         },
       });
       await expect.poll(async () => (await read()).readiness.tts.available).toBe(true);
+      expect((await read()).settings.voice.tts).toEqual(settings.voice.tts);
       await gotoAppShell(page);
       if (compact) {
         await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
@@ -70,12 +71,19 @@ for (const compact of [false, true]) {
       await page.getByTestId("settings-host-section-plugins").click();
       await page.getByRole("button", { name: "Configure Speech", exact: true }).click();
       await expect(page.getByText("Text to speech", { exact: true })).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "Speech model", exact: true })).toHaveValue(
+        "FixtureModel",
+      );
       const speed = page.getByRole("textbox", { name: "Speaking speed", exact: true });
       await speed.fill("0.75");
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Voice: FixtureVoice", exact: true }).click();
       await page.getByText("alloy", { exact: true }).last().click();
       await expect(page.getByRole("textbox", { name: "Custom voice ID", exact: true })).toHaveValue(
         "alloy",
+      );
+      await expect(page.getByRole("textbox", { name: "Speech model", exact: true })).toHaveValue(
+        "FixtureModel",
       );
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByText("Speech settings saved.", { exact: true })).toBeVisible();
@@ -121,6 +129,16 @@ for (const compact of [false, true]) {
         body: await page.screenshot({ fullPage: true }),
         contentType: "image/png",
       });
+    } catch (error) {
+      await read()
+        .then((snapshot) =>
+          testInfo.attach("Speech host snapshot", {
+            body: JSON.stringify(snapshot),
+            contentType: "application/json",
+          }),
+        )
+        .catch(() => undefined);
+      throw error;
     } finally {
       try {
         await client.close();

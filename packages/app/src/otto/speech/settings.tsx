@@ -135,7 +135,7 @@ function SpeechActions({ form }: { form: SpeechForm }) {
         <Button
           size="sm"
           onPress={save}
-          disabled={state.busy || state.blocked || !form.dirty()}
+          disabled={state.busy || state.blocked || !state.dirty}
           loading={state.busy}
         >
           Save

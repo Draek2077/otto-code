@@ -24,6 +24,7 @@ describe("speech settings form", () => {
   it("does not save or launch anything on construction or editing; submits the originating revision once", async () => {
     const { initial, pending, port, form, edit } = fixture();
     edit();
+    expect(form.getSnapshot().dirty).toBe(true);
     expect(port.save).not.toHaveBeenCalled();
     const saving = form.save();
     await form.save();
@@ -35,6 +36,7 @@ describe("speech settings form", () => {
     pending.resolve({ ...initial, revision: "revision-2", settings: form.getSnapshot().draft });
     await saving;
     expect(form.dirty()).toBe(false);
+    expect(form.getSnapshot().dirty).toBe(false);
     expect(form.getSnapshot().origin.revision).toBe("revision-2");
   });
   it("retains a failed draft and key without automatically retrying or adopting a new revision", async () => {
