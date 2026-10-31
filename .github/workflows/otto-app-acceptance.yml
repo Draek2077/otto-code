@@ -106,7 +106,8 @@ jobs:
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-artifacts.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             speech)
-              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-speech.spec.ts --workers=1 --retries=0 --max-failures=1
+              # Preserve existing content renderers and their lifecycle inside the inset frame.
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-speech.spec.ts e2e/browser/mermaid-fullscreen.spec.ts e2e/browser/mermaid-streaming.spec.ts e2e/browser/streaming-markdown.spec.ts e2e/browser/agent-tab-image-stability.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             *) echo "Unknown diagnostic journey" >&2; exit 1 ;;
           esac

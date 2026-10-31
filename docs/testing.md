@@ -220,8 +220,12 @@ visible generation failure, explicit retry and revision-conflict recovery withou
 key disclosure. It also exercises completed-message Read aloud, per-chat automatic
 reading of new replies and history suppression after reload. It checks the
 left-hand assistant bubble and that playback stays inside it with absolute
-positioning, without changing the bubble's height on hover. Synthetic endpoints
-and browser audio do not establish native microphone, physical-device background
+positioning, without changing the bubble's height on hover.
+The focused speech lane also runs the unchanged Mermaid fullscreen/streaming,
+streaming Markdown and assistant-image stability specs. The assistant frame must
+preserve diagram interactions, inline formatting, code/tables, image loading,
+lightboxes, tab switches, pagination and late-content selection/scroll behavior.
+Synthetic endpoints and browser audio do not establish native microphone, physical-device background
 playback or live vendor/local-model quality. Focused native-player fixtures check
 media-control cleanup and system pause/resume without launching a recorder.
 Hey Otto lifecycle, permission, handoff and silence fixtures inject detector and

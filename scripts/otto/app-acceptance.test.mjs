@@ -46,7 +46,9 @@ test("manual diagnostics stay bounded while every push and pull request retains 
     source.includes("e2e/browser/otto-artifacts.spec.ts --workers=1 --retries=0 --max-failures=1"),
   );
   assert.ok(
-    source.includes("e2e/browser/otto-speech.spec.ts --workers=1 --retries=0 --max-failures=1"),
+    source.includes(
+      "e2e/browser/otto-speech.spec.ts e2e/browser/mermaid-fullscreen.spec.ts e2e/browser/mermaid-streaming.spec.ts e2e/browser/streaming-markdown.spec.ts e2e/browser/agent-tab-image-stability.spec.ts --workers=1 --retries=0 --max-failures=1",
+    ),
   );
   assert.ok(
     source.includes("e2e/browser/otto-preview.spec.ts --workers=1 --retries=0 --max-failures=1"),

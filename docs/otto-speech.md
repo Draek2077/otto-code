@@ -70,6 +70,12 @@ so it never adds a playback row or changes message height on hover. Desktop
 reveals it on hover or keyboard focus; compact/native layouts keep it dimly
 visible, and active playback always keeps Stop visible. Paseo continues to own
 Markdown, reveal, stream spacing, scroll and the user messages. The composer exposes **Read new replies in this chat**.
+The frame defaults to the full containing-column width for streaming and
+structured content, including images, diagrams, tables, code and embedded widgets.
+Only a small, completed inline-prose paragraph opts into content sizing. Layout
+classification uses the same mdast/GFM syntax as Paseo's source adapter, runs
+outside the reveal hot path, and never changes the rendered source. Unknown
+content retains its column rather than being squeezed into a text-sized bubble.
 Automatic reading follows new completed paragraphs and the final paragraph at
 turn close. It retains demand through the existing canonical timeline owner,
 including off-screen chats, without making them visible or remembering extra
