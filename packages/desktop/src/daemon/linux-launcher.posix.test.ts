@@ -1,9 +1,18 @@
 // OTTO(identity): test the installed Otto identity.
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
 // The launcher reads Linux /proc state as well as POSIX command interfaces.
@@ -46,6 +55,13 @@ async function launch(
     }
     writeFileSync(join(app, "chrome-sandbox"), "helper");
     chmodSync(join(app, "chrome-sandbox"), 0o755);
+    // OTTO(wake-word): afterPack checks the complete packaged distribution.
+    // Supply the real offline assets without weakening the installer guard.
+    cpSync(
+      fileURLToPath(new URL("../../../expo-two-way-audio/models/wake-word", import.meta.url)),
+      join(app, "resources", "wake-word"),
+      { recursive: true },
+    );
     await afterPack({ appOutDir: app, electronPlatformName: "linux", arch: 1 });
     if (options.rerun) await afterPack({ appOutDir: app, electronPlatformName: "linux", arch: 1 });
     const executablePath = options.symlink ? join(root, "paseo") : join(app, "Otto");
