@@ -16,6 +16,13 @@ function cueState(agent: Agent) {
 }
 const sameHosts = (previous: string[], next: string[]) =>
   previous.length === next.length && previous.every((host, index) => host === next[index]);
+function canPlayHostCues(session: SessionState | undefined): session is SessionState {
+  return (
+    session?.client?.isConnected === true &&
+    session.hasHydratedAgents &&
+    session.serverInfo?.capabilities?.voice?.voice?.enabled === true
+  );
+}
 
 function ChatSpeechSource({
   serverId,
@@ -97,7 +104,9 @@ function HostVoiceCues({ serverId, playback }: { serverId: string; playback: Spe
     let lastAgents: SessionState["agents"] | null = null;
     const consume = () => {
       const session = useSessionStore.getState().sessions[serverId];
-      if (!session?.client?.isConnected || !session.hasHydratedAgents) {
+      // The module can be available while the user has disabled voice. Cues
+      // must not submit background synthesis requests in that state.
+      if (!canPlayHostCues(session)) {
         initialized = false;
         before.clear();
         lastAgents = null;

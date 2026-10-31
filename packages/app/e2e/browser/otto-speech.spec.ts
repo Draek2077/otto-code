@@ -217,7 +217,7 @@ for (const compact of [false, true]) {
         cwd: workspace.repoPath,
         workspaceId: workspace.workspaceId,
         initialPrompt: "Say the first reply.",
-        title: "Read aloud",
+        title: "Speech acceptance chat",
       });
       await workspace.client.waitForFinish(agent.id, 20000);
       await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: agent.id });
