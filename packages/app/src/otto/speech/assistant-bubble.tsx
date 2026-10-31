@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { isNative } from "@/constants/platform";
@@ -13,30 +13,20 @@ export function AssistantSpeechBubble({
   message,
   itemId,
   settled,
-  spacing,
 }: {
   children: ReactNode;
   message: string;
   itemId: string | undefined;
   settled: boolean;
-  spacing: "default" | "compactTop" | "compactBottom" | "compactBoth";
 }) {
   const [hovered, setHovered] = useState(false);
   const compact = useIsCompactFormFactor();
   const enter = useCallback(() => setHovered(true), []);
   const leave = useCallback(() => setHovered(false), []);
-  const bubbleStyle = useMemo(
-    () => [
-      styles.bubble,
-      (spacing === "compactTop" || spacing === "compactBoth") && styles.continuationTop,
-      (spacing === "compactBottom" || spacing === "compactBoth") && styles.continuationBottom,
-    ],
-    [spacing],
-  );
   return (
     <View
       testID="otto-assistant-bubble"
-      style={bubbleStyle}
+      style={styles.bubble}
       onPointerEnter={enter}
       onPointerLeave={leave}
     >
@@ -65,17 +55,5 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: "100%",
     minWidth: 0,
     overflow: "hidden",
-  },
-  continuationTop: {
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
-    paddingTop: 0,
-    alignSelf: "stretch",
-  },
-  continuationBottom: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    paddingBottom: theme.spacing[3],
-    alignSelf: "stretch",
   },
 }));

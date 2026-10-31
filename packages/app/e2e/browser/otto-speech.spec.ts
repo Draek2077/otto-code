@@ -271,10 +271,21 @@ for (const compact of [false, true]) {
               inner.bottom <= outer.bottom,
             leftCorner:
               parseFloat(style.borderTopLeftRadius) < parseFloat(style.borderTopRightRadius),
+            roundedBottom:
+              style.borderBottomLeftRadius === style.borderTopRightRadius &&
+              style.borderBottomRightRadius === style.borderTopRightRadius,
+            hugsShortReply:
+              outer.width < element.parentElement!.parentElement!.getBoundingClientRect().width,
             filled: style.backgroundColor !== "rgba(0, 0, 0, 0)",
           };
         }),
-      ).toEqual({ inside: true, leftCorner: true, filled: true });
+      ).toEqual({
+        inside: true,
+        leftCorner: true,
+        roundedBottom: true,
+        hugsShortReply: true,
+        filled: true,
+      });
       expect(fixture.requests).toHaveLength(0);
       await read.click();
       await expect.poll(() => fixture.requests.length).toBe(1);

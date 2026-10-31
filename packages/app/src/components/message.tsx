@@ -1191,7 +1191,6 @@ export const AssistantMessage = memo(function AssistantMessage({
         message={message}
         itemId={ottoSpeechItemId}
         settled={phase === "complete" && revealedMessage.length >= renderedMessage.text.length}
-        spacing={spacing}
       >
         <MarkdownRenderer
           text={revealedMessage}
