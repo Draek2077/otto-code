@@ -16,6 +16,7 @@ import { DEFAULT_RELAY_ENDPOINT } from "@getpaseo/protocol/daemon-endpoints";
 import { isOttoLegacyRelayEndpoint } from "@getpaseo/protocol/otto/legacy-relay";
 import { writePrivateFileAtomicSync } from "../private-files.js";
 import { ensureOttoHomeSnapshot } from "./home-snapshot.js";
+import { recoverLegacyApiSpeechModels } from "./speech/legacy-api-recovery.js";
 import {
   LocalSttModelIdSchema,
   LocalTtsModelIdSchema,
@@ -99,9 +100,12 @@ const SPEECH_MODEL_SETTINGS: { path: string[]; schema: z.ZodType; companions?: s
 
 function moveOttoSpeechModels(paseo: JsonObject, otto: JsonObject): void {
   for (const setting of SPEECH_MODEL_SETTINGS) {
+    // OTTO(speech): API model IDs are intentionally free-form, never local catalog entries.
+    const parent = setting.path.slice(0, -1);
+    const provider = readAt(paseo, [...parent, "provider"]);
+    if (provider !== undefined && provider !== "local") continue;
     const value = readAt(paseo, setting.path);
     if (value === undefined || setting.schema.safeParse(value).success) continue;
-    const parent = setting.path.slice(0, -1);
     for (const key of [setting.path[setting.path.length - 1], ...(setting.companions ?? [])]) {
       const target = [...parent, key];
       const moved = readAt(paseo, target);
@@ -217,14 +221,20 @@ export function migrateOttoConfig(
   persist = true,
 ): unknown {
   const split = splitOttoConfig(parsed, schema);
+  const home = path.dirname(configPath);
+  const apiModelsRecovered =
+    isObject(split.paseo) &&
+    recoverLegacyApiSpeechModels(split.paseo, {
+      backup: path.join(home, OTTO_CONFIG_BACKUP_FILENAME),
+      preserved: path.join(home, OTTO_CONFIG_FILENAME),
+    });
   const relayMoved = migrateOttoRelay(split.paseo);
   const hasOttoSettings = Object.keys(split.otto).length > 0;
   if (!persist) return split.paseo;
-  if (!relayMoved && !hasOttoSettings) return split.paseo;
+  if (!relayMoved && !hasOttoSettings && !apiModelsRecovered) return split.paseo;
   // Let Paseo report malformed configuration without rewriting it first.
   if (!schema.safeParse(split.paseo).success) return split.paseo;
 
-  const home = path.dirname(configPath);
   ensureOttoHomeSnapshot(home);
   const backupPath = path.join(home, OTTO_CONFIG_BACKUP_FILENAME);
   if (!existsSync(backupPath)) {

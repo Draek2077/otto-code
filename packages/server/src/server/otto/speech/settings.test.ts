@@ -47,6 +47,38 @@ afterEach(async () => {
 });
 
 describe("host speech settings", () => {
+  it("round-trips an enabled custom API selection through real host saves and subsequent migration reads", async () => {
+    const { host, home } = fixture({
+      features: { dictation: { enabled: false }, voiceMode: { enabled: false } },
+    });
+    const initial = await host.read();
+    const settings = structuredClone(initial.settings);
+    settings.voice = {
+      enabled: true,
+      turnDetection: "openai",
+      stt: { provider: "openai", model: "CustomWhisper", language: "en" },
+      tts: { provider: "openai", model: "FixtureModel", voice: "FixtureVoice", speed: 0.75 },
+    };
+    const saved = SpeechSnapshotSchema.parse(
+      await host.invoke(
+        saveSpeech.name,
+        {
+          hostId: "host",
+          expectedRevision: initial.revision,
+          settings,
+          credentials: {
+            stt: { kind: "replace", value: "stt-fixture" },
+            tts: { kind: "replace", value: "tts-fixture" },
+          },
+        },
+        "client",
+      ),
+    );
+    expect(saved.settings.voice).toEqual(settings.voice);
+    expect((await host.read()).settings.voice).toEqual(settings.voice);
+    expect(loadPersistedConfig(home).features?.voiceMode?.tts?.model).toBe("FixtureModel");
+    expect(JSON.stringify(saved)).not.toContain("tts-fixture");
+  });
   it("ignores blank endpoint environment placeholders exactly like the existing provider resolver", () => {
     const { home } = fixture();
     const settings = speechSettings(

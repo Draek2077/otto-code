@@ -55,6 +55,12 @@ from preserved Otto 0.9 settings only when the current configuration has not
 selected them. It does not rewrite the old file, reset preferences, move models
 or replace keys. Models remain in the owning host's `models/local-speech` store.
 
+Explicit API model IDs bypass local-model quarantine. If an early 0.10 baseline
+already displaced an API ID, recovery fills only a missing model whose explicit
+API provider and exact ID are proven by both the original config backup and
+preserved sidecar. Current selections, local-origin IDs and ambiguous/corrupt
+evidence remain untouched. The evidence files and credentials are not rewritten.
+
 ## Reading and playback
 
 Completed, visually settled assistant messages expose **Read aloud** / **Stop

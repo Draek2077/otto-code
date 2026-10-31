@@ -187,6 +187,104 @@ describe("Otto 0.9 config migration", () => {
 });
 
 describe("Otto 0.9 speech model selections", () => {
+  it("preserves free-form API recognition and speech IDs and keys without a migration rewrite", () => {
+    const original = {
+      version: 1,
+      features: {
+        dictation: { stt: { provider: "openai", model: "CustomWhisper" } },
+        voiceMode: {
+          stt: { provider: "openai", model: "CustomWhisper" },
+          tts: { provider: "openai", model: "FixtureModel", voice: "FixtureVoice", speed: 0.75 },
+        },
+      },
+      providers: { openai: { apiKey: "preserved-fixture-key" } },
+    };
+    const home = homeWithConfig(original);
+    const before = readFileSync(path.join(home, "config.json"));
+    expect(loadPersistedConfig(home)).toEqual(original);
+    expect(readFileSync(path.join(home, "config.json"))).toEqual(before);
+    expect(existsSync(path.join(home, OTTO_CONFIG_FILENAME))).toBe(false);
+  });
+  it("recovers only missing API IDs proven by both preserved data and the original API config", () => {
+    const current = {
+      version: 1,
+      features: {
+        dictation: { stt: { provider: "openai" } },
+        voiceMode: {
+          stt: { provider: "openai" },
+          tts: { provider: "openai", voice: "FixtureVoice" },
+        },
+      },
+    };
+    const home = homeWithConfig(current);
+    const original = {
+      version: 1,
+      features: {
+        dictation: { stt: { provider: "openai", model: "CustomWhisper" } },
+        voiceMode: {
+          stt: { provider: "openai", model: "CustomWhisper" },
+          tts: { provider: "openai", model: "FixtureModel", voice: "FixtureVoice" },
+        },
+      },
+    };
+    const preserved = {
+      features: {
+        dictation: { stt: { model: "CustomWhisper" } },
+        voiceMode: { stt: { model: "CustomWhisper" }, tts: { model: "FixtureModel" } },
+      },
+    };
+    const backupFile = path.join(home, OTTO_CONFIG_BACKUP_FILENAME);
+    const preservedFile = path.join(home, OTTO_CONFIG_FILENAME);
+    writeFileSync(backupFile, JSON.stringify(original));
+    writeFileSync(preservedFile, JSON.stringify(preserved));
+    const backup = readFileSync(backupFile);
+    const dormant = readFileSync(preservedFile);
+    expect(readPersistedConfig(home)).toEqual(original);
+    expect(readJson(path.join(home, "config.json"))).toEqual(current);
+    expect(loadPersistedConfig(home)).toEqual(original);
+    expect(readJson(path.join(home, "config.json"))).toEqual(original);
+    expect(readFileSync(backupFile)).toEqual(backup);
+    expect(readFileSync(preservedFile)).toEqual(dormant);
+    expect(loadPersistedConfig(home)).toEqual(original);
+  });
+  it.each(["local-provider", "mismatched-model", "malformed-backup", "explicit-current"])(
+    "refuses ambiguous preserved API recovery: %s",
+    (scenario) => {
+      const tts = {
+        provider: "openai",
+        ...(scenario === "explicit-current" ? { model: "CurrentModel" } : {}),
+      };
+      const current = { version: 1, features: { voiceMode: { tts } } };
+      const home = homeWithConfig(current);
+      const original = {
+        features: {
+          voiceMode: {
+            tts: {
+              provider: scenario === "local-provider" ? "local" : "openai",
+              model: "PriorModel",
+            },
+          },
+        },
+      };
+      writeFileSync(
+        path.join(home, OTTO_CONFIG_BACKUP_FILENAME),
+        scenario === "malformed-backup" ? "broken" : JSON.stringify(original),
+      );
+      writeFileSync(
+        path.join(home, OTTO_CONFIG_FILENAME),
+        JSON.stringify({
+          features: {
+            voiceMode: {
+              tts: { model: scenario === "mismatched-model" ? "DifferentModel" : "PriorModel" },
+            },
+          },
+        }),
+      );
+      const before = readFileSync(path.join(home, "config.json"));
+      expect(loadPersistedConfig(home)).toEqual(current);
+      expect(readFileSync(path.join(home, "config.json"))).toEqual(before);
+    },
+  );
   it("keeps an unsupported future TTS model and its speaker dormant", () => {
     const home = homeWithConfig({
       version: 1,

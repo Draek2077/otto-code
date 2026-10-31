@@ -29,7 +29,7 @@ export function openSpeechForm(initial: SpeechSnapshot, port: SpeechFormPort) {
     error: "",
     notice: "",
     generation: 0,
-    dirty: false,
+    dirty: false, // Renderers need a snapshot field; React Compiler cannot observe stable model helpers.
   };
   let active = true;
   let closed = false;
