@@ -1,6 +1,6 @@
 import type pino from "pino";
 import { OpenAI } from "openai";
-import { Readable } from "node:stream";
+import { nodeSpeechStream } from "../../../otto/speech/api-stream.js"; // OTTO(speech): one standards-based HTTP stream adapter.
 import type { SpeechStreamResult, TextToSpeechProvider } from "../../speech-provider.js";
 
 export type { SpeechStreamResult };
@@ -76,7 +76,7 @@ export class OpenAITTS implements TextToSpeechProvider {
       // OTTO(speech): expose a real Node stream for shared playback lifetimes,
       // cancellation and first-chunk delivery; do not buffer the response body.
       if (!response.body) throw new Error("Speech response did not contain audio.");
-      const audioStream = Readable.from(response.body);
+      const audioStream = nodeSpeechStream(response.body);
 
       const duration = Date.now() - startTime;
       this.logger.debug({ duration }, "Speech synthesis stream ready");

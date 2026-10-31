@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { once } from "node:events";
 import pino from "pino";
 import { OpenAITTS } from "../../speech/providers/openai/tts.js";
+import { nodeSpeechStream } from "./api-stream.js";
 
 const servers: Server[] = [];
 afterEach(async () => {
@@ -10,6 +11,26 @@ afterEach(async () => {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+});
+it("cancels a pending standard reader and releases its lock when playback stops", async () => {
+  let cancellations = 0;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array([1, 2]));
+    },
+    cancel() {
+      cancellations++;
+    },
+  });
+  const stream = nodeSpeechStream(body);
+  const first = once(stream, "data");
+  stream.resume();
+  expect(Buffer.from((await first)[0])).toEqual(Buffer.from([1, 2]));
+  const closed = once(stream, "close");
+  stream.destroy();
+  await closed;
+  expect(cancellations).toBe(1);
+  expect(body.locked).toBe(false);
 });
 it("streams the first bytes before synthesis completes and sends selected voice/model/speed", async () => {
   let finish: () => void = () => {};
