@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 import { getElectronHost } from "@/desktop/electron/host";
 import type { BrowserKeyboardPolicy } from "@/desktop/browser/shortcuts";
 import type { BrowserFaviconLookup } from "@/otto/browser/favicon-cache"; // OTTO(browser-favicon)
+import type { WakeWordBridge } from "@/otto/speech/wake/bridge"; // OTTO(wake-word)
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 type BrowserAutomationExecuteRequest = Extract<
@@ -176,6 +177,7 @@ export interface DesktopInvokeBridge {
 }
 
 export interface DesktopHostBridge {
+  wakeWord?: WakeWordBridge; // OTTO(wake-word): private device IPC, never relay identity.
   platform?: string;
   windowChromeMode?: string;
   invoke?: DesktopInvokeBridge["invoke"];

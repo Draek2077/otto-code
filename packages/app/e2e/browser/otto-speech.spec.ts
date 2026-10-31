@@ -7,6 +7,8 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { readSpeech, saveSpeech, type SpeechSnapshot } from "@getpaseo/plugin/otto/speech";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { openAgentRoute } from "../support/helpers/mock-agent";
+import type { Page } from "@playwright/test";
+const captureAttempts = new WeakMap<Page, { count: number }>();
 
 test.use({
   e2eDaemonConfig: {
@@ -17,6 +19,19 @@ test.use({
 });
 test.beforeEach(async ({ page }) => {
   page.setDefaultTimeout(30000);
+  const attempts = { count: 0 };
+  captureAttempts.set(page, attempts);
+  await page.exposeFunction("ottoSpeechCaptureAttempt", () => {
+    attempts.count++;
+  });
+  await page.addInitScript(() => {
+    if (!navigator.mediaDevices) return;
+    navigator.mediaDevices.getUserMedia = async () => {
+      const report: unknown = Reflect.get(window, "ottoSpeechCaptureAttempt");
+      if (typeof report === "function") await report();
+      throw new Error("Microphone capture is forbidden in the playback fixture.");
+    };
+  });
 });
 for (const compact of [false, true]) {
   test(`Speech host settings, real playback, failure and stale-save recovery (${compact ? "compact" : "wide"})`, async ({
@@ -73,6 +88,9 @@ for (const compact of [false, true]) {
       } else await openSettings(page);
       await page.getByTestId("settings-host-section-plugins").click();
       await page.getByRole("button", { name: "Configure Speech", exact: true }).click();
+      await expect(
+        page.getByRole("switch", { name: "Enable Hey Otto", exact: true }),
+      ).toBeDisabled();
       await expect(page.getByText("Text to speech", { exact: true })).toBeVisible();
       await expect(page.getByRole("textbox", { name: "Speech model", exact: true })).toHaveValue(
         "FixtureModel",
@@ -131,6 +149,7 @@ for (const compact of [false, true]) {
       await expect(speed).toHaveValue("1.2");
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
       expect(await page.locator("body").innerText()).not.toContain("isolated-tts-fixture-key");
+      expect(captureAttempts.get(page)?.count).toBe(0);
       const screenshot = testInfo.outputPath(`speech-${compact ? "compact" : "wide"}.png`);
       await page.screenshot({ path: screenshot, fullPage: true });
       await testInfo.attach(`Speech ${compact ? "compact" : "wide"}`, {
@@ -247,7 +266,7 @@ for (const compact of [false, true]) {
         .getByRole("textbox", { name: "Message agent...", exact: true })
         .filter({ visible: true });
       await composer.fill("Say the next reply.");
-      await composer.press("Enter");
+      await page.getByRole("button", { name: "Send message", exact: true }).click();
       await expect
         .poll(
           () =>
@@ -266,6 +285,7 @@ for (const compact of [false, true]) {
         page.getByRole("button", { name: "Stop automatic reading in this chat", exact: true }),
       ).toBeVisible();
       expect(fixture.requests).toHaveLength(count);
+      expect(captureAttempts.get(page)?.count).toBe(0);
       const screenshot = testInfo.outputPath(`speech-chat-${compact ? "compact" : "wide"}.png`);
       await page.screenshot({ path: screenshot, fullPage: true });
       await testInfo.attach(`Speech chat ${compact ? "compact" : "wide"}`, {

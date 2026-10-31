@@ -11,6 +11,7 @@ import {
   SettingsCollapsibleRow,
 } from "@/components/settings";
 import { useAppSettings } from "@/hooks/use-settings";
+import { WakeWordSettings } from "./wake/settings";
 const volumes = Array.from({ length: 11 }, (_, index) => ({
   value: String(index * 10),
   label: `${index * 10}%`,
@@ -105,6 +106,7 @@ export function SpeechDeviceSettings() {
   return (
     <QueryClientProvider client={queryClient}>
       <SpeechDeviceFields />
+      <WakeWordSettings />
     </QueryClientProvider>
   );
 }

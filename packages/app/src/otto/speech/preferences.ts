@@ -1,5 +1,10 @@
 import { z } from "zod";
-export interface SpeechPreferences {
+import {
+  wakePreferenceDefaults,
+  wakeStoredPreferences,
+  type WakePreferences,
+} from "./wake/preferences";
+export interface SpeechPreferences extends WakePreferences {
   voiceThinkingTone: boolean;
   voicePlaybackVolume: number;
   agentVoiceCues: boolean;
@@ -8,6 +13,7 @@ export interface SpeechPreferences {
   agentAutoSpeechEnabled: Record<string, boolean>;
 }
 export const speechPreferenceDefaults: SpeechPreferences = {
+  ...wakePreferenceDefaults,
   voiceThinkingTone: true,
   voicePlaybackVolume: 50,
   agentVoiceCues: true,
@@ -17,6 +23,7 @@ export const speechPreferenceDefaults: SpeechPreferences = {
 };
 // Preserve the 0.9 device keys and percent units; never turn a muted device on.
 export const speechStoredPreferences = {
+  ...wakeStoredPreferences,
   voiceThinkingTone: z.boolean().catch(true),
   voicePlaybackVolume: z.number().min(0).max(100).catch(50),
   agentVoiceCues: z.boolean().catch(true),

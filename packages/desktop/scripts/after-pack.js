@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { verifyWakeWordResources } = require("./otto/verify-wake-word"); // OTTO(wake-word)
 
 const { smokePackagedDesktopApp } = require("../e2e/packaged-app-smoke.js");
 
@@ -114,6 +115,12 @@ function fmtMB(bytes) {
 exports.default = async function afterPack(context) {
   const platform = context.electronPlatformName;
   const arch = ARCH_MAP[context.arch] || process.arch;
+  // OTTO(wake-word): fail the installer before distributing corrupt/missing models.
+  verifyWakeWordResources(
+    platform === "darwin"
+      ? path.join(context.appOutDir, `${EXECUTABLE_NAME}.app`, "Contents", "Resources")
+      : path.join(context.appOutDir, "resources"),
+  );
 
   pruneNativeModules(context.appOutDir, platform, arch);
 

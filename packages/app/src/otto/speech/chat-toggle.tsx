@@ -1,17 +1,21 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import { Alert } from "@/components/ui/alert";
 import { useSpeechPlayback } from "./playback-context";
 import { IDLE_SPEECH_PLAYBACK } from "./playback";
 import { speechStyles } from "./styles";
 import { Volume2, VolumeX } from "lucide-react-native";
 import { useAppSettings } from "@/hooks/use-settings";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
+import { withUnistyles } from "react-native-unistyles";
+import type { Theme } from "@/styles/theme";
 import { useHostFeature } from "@/runtime/host-features";
 import { speechAgentKey } from "./preferences";
 const idle = () => IDLE_SPEECH_PLAYBACK;
 const noSubscription = () => () => {};
+const Speaker = withUnistyles(Volume2),
+  MutedSpeaker = withUnistyles(VolumeX);
+const iconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 export function SpeechChatToggle({
   serverId,
   agentId,
@@ -44,20 +48,14 @@ export function SpeechChatToggle({
   const label = selected ? "Stop automatic reading in this chat" : "Read new replies in this chat";
   return (
     <View style={speechStyles.feedback}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            size="sm"
-            variant={selected ? "secondary" : "ghost"}
-            leftIcon={selected ? Volume2 : VolumeX}
-            onPress={toggle}
-            accessibilityLabel={label}
-          />
-        </TooltipTrigger>
-        <TooltipContent>
-          <Text style={speechStyles.tooltip}>{label}</Text>
-        </TooltipContent>
-      </Tooltip>
+      {/* Match the existing toolbar hitbox so first-agent hydration cannot grow the composer. */}
+      <ToolbarButton label={label} selected={selected} onPress={toggle}>
+        {selected ? (
+          <Speaker size={16} uniProps={iconColor} />
+        ) : (
+          <MutedSpeaker size={16} uniProps={iconColor} />
+        )}
+      </ToolbarButton>
       {error ? <Alert variant="error" size="sm" description={error} /> : null}
       {speech.errorKey?.startsWith(`${key}:auto:`) && speech.error ? (
         <Alert variant="error" size="sm" description={speech.error} />

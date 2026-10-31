@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { DictationStreamSender } from "@/dictation/dictation-stream-sender";
 import { useDictationAudioSource } from "@/hooks/use-dictation-audio-source";
 import { useSpeechDictationPriority } from "@/otto/speech/dictation-priority"; // OTTO(speech): microphone capture has priority over readout/cues.
+import type { WakeDictationStart } from "@/otto/speech/wake/dictation-session"; // OTTO(wake-word)
 import { generateMessageId } from "@/types/stream";
 import { AttemptGuard } from "@/utils/attempt-guard";
 import {
@@ -230,6 +231,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   const captureSource = useDictationAudioSource({
     onPcmSegment: (audioData) => {
       senderRef.current?.enqueueSegment(audioData);
+      options.ottoOnPcmSegment?.(audioData); // OTTO(wake-word): observe only active dictation for silence.
     },
     onError: (err) => {
       onErrorRef.current?.(err);
@@ -249,61 +251,65 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     audioStopRef.current = audio.stop;
   }, [audio.stop]);
 
-  const startDictation = useCallback(async () => {
-    if (
-      actionGateRef.current.starting ||
-      actionGateRef.current.confirming ||
-      actionGateRef.current.cancelling
-    ) {
-      return;
-    }
-    if (isRecordingRef.current || isProcessingRef.current) {
-      return;
-    }
-    const startAllowed = canStart ? canStart() : true;
-    if (!startAllowed) {
-      return;
-    }
-
-    actionGateRef.current.starting = true;
-    setError(null);
-    setPartialTranscript("");
-    setDuration(0);
-    setIsProcessing(false);
-    setStatus("recording");
-    clearStreamingState();
-
-    try {
-      await audio.start();
-      isRecordingRef.current = true;
-      setIsRecording(true);
-      if (enableDuration) {
-        startDurationTracking();
+  const startDictation = useCallback(
+    async (initial?: WakeDictationStart) => {
+      if (
+        actionGateRef.current.starting ||
+        actionGateRef.current.confirming ||
+        actionGateRef.current.cancelling
+      ) {
+        return;
       }
-      if (client?.isConnected) {
-        await startNewStream("start");
+      if (isRecordingRef.current || isProcessingRef.current) {
+        return;
       }
-    } catch (err) {
-      await audio.stop().catch(() => undefined);
-      stopDurationTracking();
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setStatus("idle");
-      reportError(err, "Failed to start dictation");
-    } finally {
-      actionGateRef.current.starting = false;
-    }
-  }, [
-    audio,
-    canStart,
-    clearStreamingState,
-    client,
-    enableDuration,
-    reportError,
-    startDurationTracking,
-    startNewStream,
-    stopDurationTracking,
-  ]);
+      const startAllowed = canStart ? canStart() : true;
+      if (!startAllowed) {
+        return;
+      }
+
+      actionGateRef.current.starting = true;
+      setError(null);
+      setPartialTranscript("");
+      setDuration(0);
+      setIsProcessing(false);
+      setStatus("recording");
+      clearStreamingState();
+
+      try {
+        if (initial?.initialPcm) senderRef.current?.enqueueSegment(initial.initialPcm); // OTTO(wake-word): command prefix precedes live samples.
+        await audio.start();
+        isRecordingRef.current = true;
+        setIsRecording(true);
+        if (enableDuration) {
+          startDurationTracking();
+        }
+        if (client?.isConnected) {
+          await startNewStream("start");
+        }
+      } catch (err) {
+        await audio.stop().catch(() => undefined);
+        stopDurationTracking();
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        setStatus("idle");
+        reportError(err, "Failed to start dictation");
+      } finally {
+        actionGateRef.current.starting = false;
+      }
+    },
+    [
+      audio,
+      canStart,
+      clearStreamingState,
+      client,
+      enableDuration,
+      reportError,
+      startDurationTracking,
+      startNewStream,
+      stopDurationTracking,
+    ],
+  );
 
   const cancelDictation = useCallback(async () => {
     attemptGuardRef.current.cancel();

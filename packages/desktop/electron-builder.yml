@@ -30,6 +30,9 @@ asarUnpack:
   - dist/daemon/node-entrypoint-runner.js
   - node_modules/@getpaseo/server/dist/server/terminal/shell-integration/**/*
 extraResources:
+  # OTTO(wake-word): verified offline detector, separate from daemon speech models.
+  - from: ../expo-two-way-audio/models/wake-word
+    to: wake-word
   # Preserve physical compiler inputs, including .d.ts files omitted from packaged node_modules.
   - from: ../server/dist/server/builtin-plugins
     to: builtin-plugins

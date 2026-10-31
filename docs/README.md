@@ -20,6 +20,7 @@ decisions, and measured findings live in Otto Knowledge.
 | [otto-bitbucket.md](otto-bitbucket.md)                   | Bitbucket Cloud accounts, forge actions, repository discovery and cloning    |
 | [otto-connectors.md](otto-connectors.md)                 | Full Connector catalog, shared provider tools and preserved authorization    |
 | [otto-speech.md](otto-speech.md)                         | Host speech settings, narration, recognition, playback and device controls   |
+| [otto-wake-word.md](otto-wake-word.md)                   | Opt-in Hey Otto listening, local detector ownership and command handoff      |
 | [architecture.md](architecture.md)                       | Paseo base architecture                                                      |
 | [development.md](development.md)                         | Development commands and isolation                                           |
 | [release.md](release.md)                                 | Release procedure                                                            |

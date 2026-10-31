@@ -174,6 +174,9 @@ buildNpmPackage {
       cp package.json $out/share/otto-desktop/
       mkdir -p $out/share/otto-desktop/packages/app
       cp -a packages/app/dist $out/share/otto-desktop/packages/app/
+      # OTTO(wake-word): preserve the shared offline model in the immutable store.
+      mkdir -p $out/share/otto-desktop/packages/expo-two-way-audio/models
+      cp -a packages/expo-two-way-audio/models/wake-word $out/share/otto-desktop/packages/expo-two-way-audio/models/
 
       for runtime_path in \
         packages/desktop/dist/main.js \
@@ -211,6 +214,7 @@ buildNpmPackage {
         --add-flags "--class=otto-desktop" \
         --set EXPO_DEV_URL "otto://app/" \
         --set CHROME_DESKTOP "otto-desktop.desktop" \
+        --set OTTO_WAKE_WORD_MODEL_DIR "$out/share/otto-desktop/packages/expo-two-way-audio/models/wake-word" \
         --set-default OTTO_HOST_BROWSER_EXECUTABLE ${lib.getExe chromium}
 
       copyDesktopItems

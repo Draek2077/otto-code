@@ -32,6 +32,14 @@ interface AttachedBrowserRegistration {
 }
 
 contextBridge.exposeInMainWorld("paseoDesktop", {
+  // OTTO(wake-word): sandbox-safe literals; no renderer native-module access.
+  wakeWord: {
+    capabilities: () => ipcRenderer.invoke("otto:wake-word:capabilities"),
+    start: (input: { phrase: string; sensitivity: number }) =>
+      ipcRenderer.invoke("otto:wake-word:start", input),
+    audio: (pcm: string) => ipcRenderer.invoke("otto:wake-word:audio", { pcm }),
+    stop: () => ipcRenderer.invoke("otto:wake-word:stop"),
+  },
   platform: process.platform,
   windowChromeMode: readWindowChromeMode(),
   invoke: (command: string, args?: Record<string, unknown>) =>

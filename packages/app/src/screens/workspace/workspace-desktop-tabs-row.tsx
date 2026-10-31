@@ -87,6 +87,7 @@ import {
 } from "@/components/ui/horizontal-scroll-boundary";
 import { useSessionStore } from "@/stores/session-store";
 import { PreviewGutterMenu } from "@/otto/preview/gutter-menu"; // OTTO(preview): one play menu, optional management page last.
+import { WakeWordGutter } from "@/otto/speech/wake/button"; // OTTO(wake-word)
 
 const DROPDOWN_WIDTH = 220;
 const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
@@ -1421,7 +1422,10 @@ function ResolvedWorkspaceDesktopTabsRow({
       </View>
       {/* OTTO(preview): same play menu for all servers; management is its final option. */}
       <View onLayout={handlePreviewMenuLayout}>
-        <PreviewGutterMenu serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
+        {/* OTTO(wake-word): include the optional listener control in the existing measured gutter. */}
+        <WakeWordGutter>
+          <PreviewGutterMenu serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
+        </WakeWordGutter>
       </View>
       <WorkspacePaneToolbarActions
         panePanelKinds={panePanelKinds}

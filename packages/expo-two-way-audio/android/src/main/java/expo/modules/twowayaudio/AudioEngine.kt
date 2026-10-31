@@ -75,6 +75,37 @@ class AudioEngine (context: Context) {
     var onOutputVolumeCallback: ((Float) -> Unit)? = null
     var onAudioInterruptionCallback: ((String) -> Unit)? = null
 
+    // OTTO(wake-word): one native consumer of the existing microphone tap.
+    private val wakeWord = expo.modules.twowayaudio.WakeWordCapture(context).apply {
+        onExpired = { stopRecording(); releaseAudioSession() }
+    }
+    var onWakeWordDetectedCallback: (() -> Unit)?
+        get() = wakeWord.onDetected
+        set(value) { wakeWord.onDetected = value }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun startWakeWordDetection(phrase: String, sensitivity: Double) {
+        check(!isRecording) { "Another capture already owns the microphone." }
+        isRecordingBeforePause = false
+        wakeWord.start(phrase, sensitivity)
+        captureMode = CaptureMode.DICTATION
+        try {
+            check(startRecording()) { "Microphone capture is unavailable." }
+        } catch (error: Throwable) {
+            wakeWord.stop(true)
+            stopRecording()
+            releaseAudioSession()
+            throw error
+        }
+    }
+
+    fun stopWakeWordDetection(discardHandoff: Boolean) {
+        if (wakeWord.stop(discardHandoff)) {
+            stopRecording()
+            releaseAudioSession()
+        }
+    }
+
     init {
         initializeAudio(context)
     }
@@ -372,6 +403,7 @@ class AudioEngine (context: Context) {
                     if (read < 0) throw IllegalStateException("AudioRecord read failed: $read")
                     if (read > 0 && !captureSilenced) {
                         val data = buffer.copyOf(read)
+                        if (wakeWord.accept(data)) continue // OTTO(wake-word): no idle PCM/volume bridge events.
                         micEvents += 1
                         micBytes += data.size.toLong()
                         flushBridgeStats("mic")
@@ -412,6 +444,7 @@ class AudioEngine (context: Context) {
     @RequiresApi(Build.VERSION_CODES.Q)
     fun startDictation(): Boolean {
         isRecordingBeforePause = false
+        wakeWord.claim { data -> onMicDataCallback?.invoke(data) } // OTTO(wake-word): one-shot command handoff.
         if (isRecording) return true
         captureMode = CaptureMode.DICTATION
         return startRecording()
@@ -420,6 +453,9 @@ class AudioEngine (context: Context) {
     @RequiresApi(Build.VERSION_CODES.Q)
     fun toggleRecording(value: Boolean): Boolean {
         isRecordingBeforePause = false
+        // OTTO(wake-word): explicit capture/stop revokes detector ownership.
+        if (!value) wakeWord.stop(true)
+        else wakeWord.claim { data -> onMicDataCallback?.invoke(data) }
         if (value == isRecording) return isRecording
 
         if (value) {
@@ -551,6 +587,7 @@ class AudioEngine (context: Context) {
 
     @SuppressLint("NewApi")
     fun tearDown() {
+        stopWakeWordDetection(true) // OTTO(wake-word): drop pending handoff and its deadline.
         stopRecording()
         audioTrack.stop()
         releaseCommunicationRoute()

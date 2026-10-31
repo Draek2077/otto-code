@@ -6,6 +6,7 @@ import expo.modules.core.interfaces.ReactActivityLifecycleListener
 class ExpoTwoWayAudioLifeCycleListener : ReactActivityLifecycleListener {
     override fun onPause(activity: Activity?) {
         super.onPause(activity)
+        ExpoTwoWayAudioModule.audioEngine?.stopWakeWordDetection(true) // OTTO(wake-word): foreground-only, discard pending audio.
         // At the moment background audio recording and playback is not supported
         ExpoTwoWayAudioModule.audioEngine?.pauseRecordingAndPlayer()
     }

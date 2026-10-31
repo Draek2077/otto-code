@@ -19,6 +19,7 @@ class ExpoTwoWayAudioModule : Module() {
 
     override fun definition() = ModuleDefinition {
         Name("ExpoTwoWayAudio")
+        OnDestroy { audioEngine?.stopWakeWordDetection(true) } // OTTO(wake-word): revoke idle capture on bridge teardown.
         AsyncFunction("initialize") { promise: Promise ->
             try {
                 if (audioEngine != null) {
@@ -97,6 +98,24 @@ class ExpoTwoWayAudioModule : Module() {
             throw UnsupportedOperationException("getMicrophoneModeIOS is only supported on iOS")
         }
 
+        // OTTO(wake-word): device-local capability and control, never daemon PCM.
+        Function("getWakeWordCapabilities") {
+            val available = appContext.reactContext?.let { AndroidWakeWordDetector.isAvailable(it) } ?: false
+            mapOf("available" to available, "safePhraseSupported" to available,
+                "modelVersion" to AndroidWakeWordDetector.modelVersion)
+        }
+        AsyncFunction("startWakeWordDetection") { phrase: String, sensitivity: Double ->
+            check(appContext.currentActivity?.hasWindowFocus() == true) { "Hey Otto can listen only while Otto is in the foreground." }
+            if (audioEngine == null) {
+                audioEngine = appContext.reactContext?.let { AudioEngine(it) }
+            }
+            setupCallbacks() // Also rebind after a JS bridge reload reuses the native engine.
+            checkNotNull(audioEngine) { "Audio context is unavailable." }.startWakeWordDetection(phrase, sensitivity)
+        }
+        Function("stopWakeWordDetection") { discardHandoff: Boolean ->
+            audioEngine?.stopWakeWordDetection(discardHandoff)
+        }
+
         Function ("setMicrophoneModeIOS") {
             throw UnsupportedOperationException("setMicrophoneModeIOS is only supported on iOS")
         }
@@ -123,12 +142,14 @@ class ExpoTwoWayAudioModule : Module() {
             ON_INPUT_VOLUME_LEVEL_EVENT,
             ON_OUTPUT_VOLUME_LEVEL_EVENT,
             ON_RECORDING_CHANGE_EVENT,
-            ON_AUDIO_INTERRUPTION_EVENT
+            ON_AUDIO_INTERRUPTION_EVENT,
+            "onWakeWordDetected" // OTTO(wake-word)
         )
     }
 
     private fun setupCallbacks() {
         audioEngine?.apply {
+            onWakeWordDetectedCallback = { sendEvent("onWakeWordDetected", bundleOf("data" to "Hey Otto")) } // OTTO(wake-word)
             onMicDataCallback = { data ->
                 sendEvent(ON_MIC_DATA_EVENT, bundleOf("data" to data))
             }

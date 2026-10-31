@@ -14,6 +14,7 @@ import type { AudioEngine } from "@/audio";
 import { SpeechPlaybackProvider } from "@/otto/speech/playback-context"; // OTTO(speech): shared device output and background read-aloud.
 import { speechGain } from "@/otto/speech/gain"; // OTTO(speech)
 import { speechDevicePreferences } from "@/otto/speech/device"; // OTTO(speech)
+import { wakeAwareAudioEngine } from "@/otto/speech/wake/capture-ownership"; // OTTO(wake-word)
 import {
   createVoiceRuntime,
   type VoiceRuntime,
@@ -121,7 +122,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
 
   if (!engineRef.current) {
     let runtime: VoiceRuntime | null = null;
-    const engine = createAudioEngine({
+    const captureEngine = createAudioEngine({
       onCaptureData: (pcm) => {
         runtime?.handleCapturePcm(pcm);
       },
@@ -138,6 +139,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       },
     });
 
+    const engine = wakeAwareAudioEngine(captureEngine); // OTTO(wake-word): release idle detection before live capture.
     // OTTO(speech): live voice PCM uses the existing device volume; file previews and cues apply their own channel gain.
     const play = engine.play;
     engine.play = async (source, signal) =>

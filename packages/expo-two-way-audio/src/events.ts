@@ -17,6 +17,7 @@ export interface AudioInterruptionEvent {
 }
 
 export interface ExpoTwoWayAudioEventMap {
+  onWakeWordDetected: { data: string }; // OTTO(wake-word): keyword only, never idle PCM.
   onMicrophoneData: MicrophoneDataEvent;
   onInputVolumeLevelData: VolumeLevelEvent;
   onOutputVolumeLevelData: VolumeLevelEvent;

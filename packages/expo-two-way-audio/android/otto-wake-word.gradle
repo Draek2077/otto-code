@@ -1,0 +1,41 @@
+// Otto-owned offline, checksum-pinned native keyword detector distribution.
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
+def manifest = new JsonSlurper().parse(file('../wake-word-model.json'))
+def sherpaAar = file("../${manifest.androidRuntime.file}")
+def sha256 = { File input ->
+  def digest = MessageDigest.getInstance('SHA-256')
+  input.withInputStream { stream ->
+    byte[] buffer = new byte[8192]
+    int count
+    while ((count = stream.read(buffer)) != -1) digest.update(buffer, 0, count)
+  }
+  digest.digest().collect { String.format('%02x', it) }.join()
+}
+def verifyWakeWordDistribution = tasks.register('verifyWakeWordDistribution') {
+  doLast {
+    manifest.assets.values().each { name ->
+      def asset = file("../models/wake-word/${name}")
+      if (!asset.isFile() || asset.length() != manifest.assetBytes[name] || sha256(asset) != manifest.assetSha256[name]) {
+        throw new GradleException("Wake-word asset failed verification: ${name}")
+      }
+    }
+    if (!sherpaAar.isFile() || sherpaAar.length() != manifest.androidRuntime.bytes || sha256(sherpaAar) != manifest.androidRuntime.sha256) {
+      throw new GradleException('Android Sherpa runtime failed verification')
+    }
+  }
+}
+def unpackSherpaOnnx = tasks.register('unpackSherpaOnnx', Copy) {
+  dependsOn verifyWakeWordDistribution
+  from { zipTree(sherpaAar) }
+  into file("$buildDir/generated/sherpa-onnx")
+}
+android.sourceSets.main.assets.srcDir file('../models')
+android.sourceSets.main.jniLibs.srcDir file("$buildDir/generated/sherpa-onnx/jni")
+dependencies {
+  implementation files("$buildDir/generated/sherpa-onnx/classes.jar")
+  testImplementation 'junit:junit:4.13.2'
+}
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach { dependsOn unpackSherpaOnnx }
+tasks.named('preBuild').configure { dependsOn unpackSherpaOnnx }

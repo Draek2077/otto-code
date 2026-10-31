@@ -222,6 +222,12 @@ reading of new replies and history suppression after reload. Synthetic endpoints
 and browser audio do not establish native microphone, physical-device background
 playback or live vendor/local-model quality. Focused native-player fixtures check
 media-control cleanup and system pause/resume without launching a recorder.
+Hey Otto lifecycle, permission, handoff and silence fixtures inject detector and
+capture ports. Browser playback acceptance rejects microphone requests and checks
+the unsupported plain-browser gate. The Android release lane runs native handoff
+JVM tests and verifies the actual APK/AAB model checksums and detector libraries;
+desktop afterPack verifies the copied model. None of those checks substitutes
+for physical-device detection, interruption or false-trigger measurements.
 
 Connectors: `e2e/browser/otto-connectors.spec.ts` covers registered host navigation,
 all 30 catalog entries, search/clear, custom configuration, real MCP discovery,

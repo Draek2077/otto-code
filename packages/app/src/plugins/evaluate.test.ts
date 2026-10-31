@@ -29,6 +29,14 @@ function bundle(body: string): string {
 }
 
 describe("evaluatePluginClientBundle", () => {
+  it("loads Speech settings lazily through its trusted presentation bridge", () => {
+    const source = bundle(
+      'const ui=require("@getpaseo/plugin/client/otto-speech");const rpc=require("@getpaseo/plugin/otto/speech");rpc.readSpeech.input.parse({hostId:"host"});plugin.addSettingsScreen({id:"speech",title:"Speech",icon:"Mic",Component:ui.SpeechSettings});',
+    );
+    const plugin = evaluatePluginClientBundle("otto-speech", source);
+    expect(plugin.settingsScreens.map((entry) => entry.id)).toContain("speech");
+    expect(() => evaluatePluginClientBundle("untrusted-speech", source)).toThrow();
+  }); // OTTO(speech): preserve the unit runner's classic JSX import boundary as well as Metro.
   it("keeps Artifacts preview and forms lazy and built-in-only", () => {
     const source = bundle(
       'const ui=require("@getpaseo/plugin/client/otto-artifacts");const rpc=require("@getpaseo/plugin/otto/artifacts");rpc.aggregateArtifacts.input.parse({hostId:"host"});plugin.addScreen({id:"artifacts",title:"Artifacts",Component:ui.ArtifactsScreen});',

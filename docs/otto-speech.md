@@ -91,7 +91,8 @@ Device preferences preserve the Otto 0.9 keys and 0..100 volume scale: playback
 volume, thinking tone, activity cue enable/mute/volume, and host+chat automatic
 reading. Activity cues use the original default starting/thinking/waiting/done
 lines and the host's selected voice. They are suppressed for automatically read
-chats. Agent-profile voice assignment and wake-word listening are separate work.
+chats. Agent-profile voice assignment remains separate work. Device-local opt-in
+[Hey Otto](otto-wake-word.md) hands one command to the same dictation flow.
 Device controls explicitly bind to the existing app query cache, including when
 rendered inside the plugin's separate query provider. Muting a cue updates the
 same preferences read by the speaker immediately, before leaving Settings.

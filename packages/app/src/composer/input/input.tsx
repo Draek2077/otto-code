@@ -28,6 +28,8 @@ import { useTranslation } from "react-i18next";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
 import { useDictation } from "@/hooks/use-dictation";
+import { useWakeListening } from "@/otto/speech/wake/use-listening"; // OTTO(wake-word)
+import { WakeWordButton } from "@/otto/speech/wake/button"; // OTTO(wake-word)
 import { hasFinePointer } from "@/hooks/use-fine-pointer";
 import { DictationOverlay } from "@/components/dictation-controls";
 import { RealtimeVoiceOverlay } from "@/components/realtime-voice-overlay";
@@ -1241,7 +1243,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       textReplacement,
       submitLabel,
     } = resolveMessageInputProps(props);
-    const { isPaneFocused } = useComposerKeyboardScope();
+    const { isPaneFocused, isActiveComposer } = useComposerKeyboardScope();
     const mode = resolveComposerInputMode(inputMode);
     const { t } = useTranslation();
     const isCompact = useIsCompactFormFactor();
@@ -1493,6 +1495,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       disabled,
     );
 
+    const wakePcm = useRef<((pcm: string) => void) | null>(null); // OTTO(wake-word): one active-command observer.
+    const handleWakePcm = useCallback((pcm: string) => wakePcm.current?.(pcm), []); // OTTO(wake-word)
     const {
       isRecording: isDictating,
       isRecordingActive: isDictationActive,
@@ -1508,12 +1512,35 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       retryFailedDictation,
       discardFailedDictation,
     } = useDictation({
+      ottoOnPcmSegment: handleWakePcm, // OTTO(wake-word)
       client,
       onTranscript: handleDictationTranscript,
       onError: handleDictationError,
       canStart: canStartDictation,
       canConfirm: canConfirmDictation,
       enableDuration: true,
+    });
+    // OTTO(wake-word): only the current composer can receive a detected command.
+    wakePcm.current = useWakeListening({
+      active: isActiveComposer,
+      voiceInput: mode.showVoice,
+      canStart: isDictationStartEnabled,
+      disabled,
+      liveVoice: voice?.isVoiceMode,
+      serverId: voiceServerId,
+      agentId: voiceAgentId,
+      dictation: {
+        startDictation,
+        cancelDictation,
+        confirmDictation,
+        isRecordingActive: isDictationActive,
+        isRecording: isDictating,
+        isProcessing: isDictationProcessing,
+        status: dictationStatus,
+      },
+      setAutoSend: (autoSend) => {
+        sendAfterTranscriptRef.current = autoSend;
+      },
     });
 
     const isRealtimeVoiceForCurrentAgent = computeIsRealtimeVoiceForAgent(
@@ -2067,6 +2094,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           {/* Right: voice button, contextual button (realtime/send/cancel) */}
           <View style={styles.rightButtonGroup}>
             {beforeVoiceContent}
+            {/* OTTO(wake-word): opt-in device listener alongside existing voice controls. */}
+            <WakeWordButton active={isActiveComposer && isCompact && mode.showVoice} />
             <VoiceButtonTooltip
               visible={mode.showVoice}
               onVoicePress={handleVoicePress}
@@ -2094,6 +2123,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         t,
         leftContent,
         beforeVoiceContent,
+        isActiveComposer, // OTTO(wake-word)
+        isCompact, // OTTO(wake-word): desktop uses the workspace gutter.
         mode.showVoice,
         handleVoicePress,
         isDictationStartEnabled,

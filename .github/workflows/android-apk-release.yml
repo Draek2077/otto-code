@@ -336,7 +336,8 @@ jobs:
           sampler=$!
           trap 'kill "$sampler" 2>/dev/null || true' EXIT
 
-          release_tasks=(:app:assembleRelease)
+          # OTTO(wake-word): native handoff fixtures run on the same release variant.
+          release_tasks=(:getpaseo-expo-two-way-audio:testReleaseUnitTest :app:assembleRelease)
           if [ "$INCLUDE_AAB" = "true" ]; then release_tasks+=(:app:bundleRelease); fi
           ./gradlew "${release_tasks[@]}" \
             --no-parallel --max-workers=1 \
@@ -366,7 +367,8 @@ jobs:
             exit 1
           fi
 
-          # OTTO(release): verify the base APK; Hey Otto assets return with that feature.
+          # OTTO(wake-word): verify delivered assets/JNI, not only source definitions.
+          python scripts/otto/verify-wake-android.py "$apk" apk
           unzip -Z1 "$apk" | grep -Fx AndroidManifest.xml
 
           # Fail loudly on a debug-signed APK: it would install for nobody who
@@ -401,6 +403,7 @@ jobs:
           aab="$(find packages/app/android/app/build/outputs/bundle/release -name '*.aab' | head -n 1)"
           test -n "$aab"
           unzip -Z1 "$aab" | grep -Fx base/manifest/AndroidManifest.xml
+          python scripts/otto/verify-wake-android.py "$aab" aab # OTTO(wake-word)
           jarsigner -verify -verbose "$aab" > "$RUNNER_TEMP/aab-signature.txt"
           grep -F 'jar verified.' "$RUNNER_TEMP/aab-signature.txt"
           keytool -printcert -jarfile "$aab" > "$RUNNER_TEMP/aab-certificate.txt"

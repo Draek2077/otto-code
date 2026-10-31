@@ -1,8 +1,10 @@
 import { i18n } from "@/i18n/i18next";
+import type { WakeDictationStart } from "@/otto/speech/wake/dictation-session"; // OTTO(wake-word)
 
 export type DictationStatus = "idle" | "recording" | "paused" | "uploading" | "failed";
 
 export interface UseDictationOptions {
+  ottoOnPcmSegment?: (pcm: string) => void; // OTTO(wake-word): active-command silence only; idle detector audio stays native.
   client: import("@getpaseo/client/internal/daemon-client").DaemonClient | null;
   onTranscript: (text: string, meta: { requestId: string }) => void;
   onPartialTranscript?: (text: string, meta: { requestId: string }) => void;
@@ -22,7 +24,7 @@ export interface UseDictationResult {
   duration: number;
   error: string | null;
   status: DictationStatus;
-  startDictation: () => Promise<void>;
+  startDictation: (initial?: WakeDictationStart) => Promise<void>; // OTTO(wake-word): bounded post-detection command handoff.
   cancelDictation: () => Promise<void>;
   confirmDictation: () => Promise<void>;
   retryFailedDictation: () => Promise<void>;

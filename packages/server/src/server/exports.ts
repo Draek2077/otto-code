@@ -49,6 +49,8 @@ export {
 } from "./speech/providers/local/sherpa/sherpa-runtime-env.js";
 
 // Provider binary resolution
+// OTTO(wake-word): desktop keyword spotting reuses the existing native loader.
+export { loadSherpaOnnxNode } from "./speech/providers/local/sherpa/sherpa-onnx-node-loader.js";
 export {
   type ProviderOverride,
   type ProviderProfileModel,

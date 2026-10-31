@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import React, { lazy, Suspense } from "react";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { SettingsRow } from "@/components/settings";
 import { useHostFeature } from "@/runtime/host-features";
