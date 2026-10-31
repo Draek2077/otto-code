@@ -31,5 +31,8 @@ export function nodeSpeechStream(body: ReadableStream<Uint8Array>): Readable {
     if (!complete) cancelReader();
     return destroy(error);
   };
+  // An async generator returned before its first next() never enters finally.
+  // Closing an unconsumed output still releases the response reader.
+  stream.once("close", () => reader.releaseLock());
   return stream;
 }

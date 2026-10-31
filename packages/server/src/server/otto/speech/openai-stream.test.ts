@@ -12,6 +12,14 @@ afterEach(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+it("releases an unconsumed response when stopped before its first read", async () => {
+  const body = new ReadableStream<Uint8Array>();
+  const stream = nodeSpeechStream(body);
+  const closed = once(stream, "close");
+  stream.destroy();
+  await closed;
+  expect(body.locked).toBe(false);
+});
 it("cancels a pending standard reader and releases its lock when playback stops", async () => {
   let cancellations = 0;
   const body = new ReadableStream<Uint8Array>({

@@ -67,7 +67,9 @@ reading history. Turning the preference off releases demand and queued speech.
 
 Manual playback replaces the queue. New automatic material arriving during
 manual playback is consumed without becoming a stale backlog. Live conversation
-has priority over readout and activity cues. One device queue has a 32-item bound,
+has priority over readout and activity cues. Dictation also stops output before
+requesting microphone access and keeps capture priority through a pending start
+and actual stop, so narration cannot feed back into recognition. One device queue has a 32-item bound,
 a 65,536-character reply bound and one generated segment of read-ahead. Each
 generation is bounded by the host's two-job admission limit and 8 MiB PCM limit.
 Cancellation is client-owned: it stops playback and cloud requests; pending

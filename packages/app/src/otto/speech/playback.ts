@@ -57,6 +57,8 @@ export function createSpeechPlayback(port: SpeechPlaybackPort) {
   let current: SpeechJob | null = null;
   let serial = 0;
   let closed = false;
+  let captures = 0;
+  const occupied = () => captures > 0 || port.occupied();
   const publish = (patch: Partial<typeof state>) => {
     state = { ...state, ...patch };
     for (const listener of listeners) listener();
@@ -90,7 +92,7 @@ export function createSpeechPlayback(port: SpeechPlaybackPort) {
     }
   }
   async function drain() {
-    if (closed || current || !queue.length || port.occupied()) return;
+    if (closed || current || !queue.length || occupied()) return;
     const request = queue.shift()!;
     if (!port.available(request.hostId)) {
       queue.length = 0;
@@ -113,12 +115,12 @@ export function createSpeechPlayback(port: SpeechPlaybackPort) {
       let pending = segments[0] ? generateChunk(job, segments[0]) : null;
       for (let index = 0; pending && index < segments.length; index++) {
         job.controller.signal.throwIfAborted();
-        if (port.occupied()) break;
+        if (occupied()) break;
         publish({ phase: "generating" });
         const generated = await pending;
         if (!generated.ok) throw generated.error;
         job.controller.signal.throwIfAborted();
-        if (port.occupied()) break;
+        if (occupied()) break;
         // Exactly one bounded read-ahead; its rejection is captured until it is
         // consumed, never an unhandled promise or a second playback channel.
         const next = segments[index + 1];
@@ -153,7 +155,7 @@ export function createSpeechPlayback(port: SpeechPlaybackPort) {
       };
     },
     speak(request: SpeechPlaybackRequest) {
-      if (closed || port.occupied()) return;
+      if (closed || occupied()) return;
       if (!request.text.trim() || request.text.length > 65536) {
         publish({
           error: "Choose a non-empty reply of at most 65,536 characters to read aloud.",
@@ -175,6 +177,16 @@ export function createSpeechPlayback(port: SpeechPlaybackPort) {
       void drain();
     },
     stop,
+    retainCapture() {
+      captures++;
+      stop();
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        captures--;
+      };
+    },
     cancelKey(key: string) {
       for (let index = queue.length - 1; index >= 0; index--)
         if (queue[index]?.key.startsWith(key)) queue.splice(index, 1);
@@ -196,7 +208,7 @@ export function createSpeechPlayback(port: SpeechPlaybackPort) {
       }
     },
     reconcile() {
-      if (port.occupied()) stop();
+      if (occupied()) stop();
       else if (current && !port.available(current.request.hostId)) stop();
       else void drain();
     },

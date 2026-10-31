@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { DictationStreamSender } from "@/dictation/dictation-stream-sender";
 import { useDictationAudioSource } from "@/hooks/use-dictation-audio-source";
+import { useSpeechDictationPriority } from "@/otto/speech/dictation-priority"; // OTTO(speech): microphone capture has priority over readout/cues.
 import { generateMessageId } from "@/types/stream";
 import { AttemptGuard } from "@/utils/attempt-guard";
 import {
@@ -226,7 +227,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     [reportError, stopDurationTracking],
   );
 
-  const audio = useDictationAudioSource({
+  const captureSource = useDictationAudioSource({
     onPcmSegment: (audioData) => {
       senderRef.current?.enqueueSegment(audioData);
     },
@@ -242,6 +243,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       handleDictationFailure(new Error("Dictation was interrupted by another audio source."));
     },
   });
+  const audio = useSpeechDictationPriority(captureSource); // OTTO(speech)
   const audioStopRef = useRef(audio.stop);
   useEffect(() => {
     audioStopRef.current = audio.stop;

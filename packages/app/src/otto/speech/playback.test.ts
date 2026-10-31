@@ -19,6 +19,28 @@ const settle = async () => {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 };
 describe("shared speech playback", () => {
+  it("gives all capture owners priority without saving a stale narration backlog", async () => {
+    const { playback, port, generation } = fixture();
+    playback.speak({ hostId: "host", key: "first", text: "Old speech." });
+    await settle();
+    const first = playback.retainCapture();
+    const second = playback.retainCapture();
+    expect(port.cancel).toHaveBeenCalledTimes(1);
+    generation.resolve(audio);
+    playback.speak({ hostId: "host", key: "during", text: "Do not queue.", automatic: true });
+    first();
+    first();
+    playback.speak({ hostId: "host", key: "still", text: "Still recording." });
+    await settle();
+    expect(port.synthesize).toHaveBeenCalledTimes(1);
+    expect(port.play).not.toHaveBeenCalled();
+    second();
+    playback.speak({ hostId: "host", key: "fresh", text: "Fresh speech." });
+    await settle();
+    expect(port.synthesize).toHaveBeenCalledTimes(2);
+    expect(port.play).toHaveBeenCalledTimes(1);
+    playback.close();
+  });
   it("prefetches only one segment and cancels it without playing late audio", async () => {
     const { playback, port, output } = fixture();
     const ahead = speechDeferred<typeof audio>();
