@@ -189,7 +189,7 @@ function Loaded({
       ) : null}
       <SettingsSection
         title="Speech recognition"
-        info="Dictation keeps Paseo's existing recording and composer behavior."
+        info="Choose how this host transcribes microphone recordings."
       >
         <SettingsCard>
           <SttFields form={form} role="dictation" />

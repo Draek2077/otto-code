@@ -1,7 +1,7 @@
 import { test, expect } from "../support/helpers/otto-provider-settings";
 import { gotoAppShell, openSettings } from "../support/helpers/app";
 import { getServerId } from "../support/helpers/server-id";
-import { createSpeechHttpFixture } from "../support/helpers/otto-speech";
+import { createSpeechHttpFixture, captureSpeechEvidence } from "../support/helpers/otto-speech";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { readSpeech, saveSpeech, type SpeechSnapshot } from "@getpaseo/plugin/otto/speech";
@@ -131,19 +131,14 @@ for (const compact of [false, true]) {
       await expect(speed).toHaveValue("1.2");
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
       expect(await page.locator("body").innerText()).not.toContain("isolated-tts-fixture-key");
+      const screenshot = testInfo.outputPath(`speech-${compact ? "compact" : "wide"}.png`);
+      await page.screenshot({ path: screenshot, fullPage: true });
       await testInfo.attach(`Speech ${compact ? "compact" : "wide"}`, {
-        body: await page.screenshot({ fullPage: true }),
+        path: screenshot,
         contentType: "image/png",
       });
     } catch (error) {
-      await read()
-        .then((snapshot) =>
-          testInfo.attach("Speech host snapshot", {
-            body: JSON.stringify(snapshot),
-            contentType: "application/json",
-          }),
-        )
-        .catch(() => undefined);
+      await captureSpeechEvidence(page, testInfo, read);
       throw error;
     } finally {
       try {
@@ -226,6 +221,11 @@ for (const compact of [false, true]) {
       });
       await workspace.client.waitForFinish(agent.id, 20000);
       await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: agent.id });
+      await expect(
+        page
+          .getByRole("textbox", { name: "Message agent...", exact: true })
+          .filter({ visible: true }),
+      ).toBeEditable();
       const read = page
         .getByRole("button", { name: "Read aloud", exact: true })
         .filter({ visible: true });
@@ -266,10 +266,20 @@ for (const compact of [false, true]) {
         page.getByRole("button", { name: "Stop automatic reading in this chat", exact: true }),
       ).toBeVisible();
       expect(fixture.requests).toHaveLength(count);
+      const screenshot = testInfo.outputPath(`speech-chat-${compact ? "compact" : "wide"}.png`);
+      await page.screenshot({ path: screenshot, fullPage: true });
       await testInfo.attach(`Speech chat ${compact ? "compact" : "wide"}`, {
-        body: await page.screenshot({ fullPage: true }),
+        path: screenshot,
         contentType: "image/png",
       });
+    } catch (error) {
+      await captureSpeechEvidence(page, testInfo, async () => ({
+        speech: readSpeech.output.parse(
+          await client.invokePluginRpc("otto-speech", readSpeech.name, { hostId: getServerId() }),
+        ),
+        requests: fixture.requests,
+      }));
+      throw error;
     } finally {
       await workspace.cleanup();
       await client.close();

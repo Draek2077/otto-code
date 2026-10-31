@@ -1,4 +1,29 @@
 import { createServer } from "node:http";
+import { writeFile } from "node:fs/promises";
+import type { Page, TestInfo } from "@playwright/test";
+
+/** Capture before fixture cleanup removes its project. File-backed evidence
+ * remains in the uploaded output directory, outside Playwright's hidden files.
+ */
+export async function captureSpeechEvidence(
+  page: Page,
+  info: TestInfo,
+  read: () => Promise<unknown>,
+) {
+  await page
+    .screenshot({ path: info.outputPath("speech-before-cleanup.png"), fullPage: true })
+    .catch(() => undefined);
+  await page
+    .locator("body")
+    .innerText()
+    .then((body) => writeFile(info.outputPath("speech-before-cleanup.txt"), body))
+    .catch(() => undefined);
+  await read()
+    .then((value) =>
+      writeFile(info.outputPath("speech-host-state.json"), JSON.stringify(value, null, 2)),
+    )
+    .catch(() => undefined);
+}
 /** Real HTTP boundary for CI speech acceptance. Silence is intentional: the
  * browser decodes/plays a real PCM16 WAV without a vendor account or microphone.
  */

@@ -7,7 +7,7 @@ import { editSpeechRecognition } from "./selection-policy";
 
 const providers = [
   { value: "local" as const, label: "Local (on this host)" },
-  { value: "openai" as const, label: "OpenAI-compatible API" },
+  { value: "openai" as const, label: "OpenAI Compatible API" },
 ];
 function locked(state: ReturnType<SpeechForm["getSnapshot"]>, path: string) {
   return state.busy || state.origin.overrides.includes(path);
