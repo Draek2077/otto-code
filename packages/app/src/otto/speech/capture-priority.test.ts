@@ -1,6 +1,24 @@
 import { expect, it, vi } from "vitest";
 import { createCapturePriority } from "./capture-priority";
 import { speechDeferred } from "../../../test-speech";
+it("preserves the first capture identity while its start is pending", async () => {
+  const started = speechDeferred<void>();
+  const source = {
+    start: vi.fn((_options?: { wakeWord?: boolean }) => started.promise),
+    stop: vi.fn(async () => {}),
+  };
+  const priority = createCapturePriority(
+    () => source,
+    () => () => {},
+  );
+  const first = priority.start({ wakeWord: true });
+  const second = priority.start();
+  await Promise.resolve();
+  expect(source.start).toHaveBeenCalledExactlyOnceWith({ wakeWord: true });
+  started.resolve();
+  await Promise.all([first, second]);
+  await priority.stop();
+});
 
 it("silences output before starting and holds priority through late start and actual stop", async () => {
   const started = speechDeferred<void>();

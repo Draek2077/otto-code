@@ -1495,8 +1495,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       disabled,
     );
 
-    const wakePcm = useRef<((pcm: string) => void) | null>(null); // OTTO(wake-word): one active-command observer.
-    const handleWakePcm = useCallback((pcm: string) => wakePcm.current?.(pcm), []); // OTTO(wake-word)
+    const wakePcm = useRef<ReturnType<typeof useWakeListening> | null>(null); // OTTO(wake-word): one active-command owner.
+    const handleWakePcm = useCallback((pcm: string) => wakePcm.current?.accept(pcm), []); // OTTO(wake-word)
+    const handleWakeEnd = useCallback(() => wakePcm.current?.stop(), []); // OTTO(wake-word)
     const {
       isRecording: isDictating,
       isRecordingActive: isDictationActive,
@@ -1513,6 +1514,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       discardFailedDictation,
     } = useDictation({
       ottoOnPcmSegment: handleWakePcm, // OTTO(wake-word)
+      ottoOnCaptureEnd: handleWakeEnd, // OTTO(wake-word)
       client,
       onTranscript: handleDictationTranscript,
       onError: handleDictationError,

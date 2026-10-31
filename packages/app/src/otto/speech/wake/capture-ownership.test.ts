@@ -5,6 +5,13 @@ import {
   registerWakeCaptureOwner,
 } from "./capture-ownership";
 describe("shared microphone ownership", () => {
+  it("preserves the one-shot wake handoff marker through capture arbitration", async () => {
+    const start = vi.fn(async (_options?: { wakeWord?: boolean }) => {});
+    const capture = createWakeCaptureGuard(() => ({ start, stop: async () => {} }));
+    await capture.start({ wakeWord: true });
+    expect(start).toHaveBeenCalledExactlyOnceWith({ wakeWord: true });
+    await capture.stop();
+  });
   it("awaits detector teardown before manual capture, then releases after actual stop", async () => {
     const order: string[] = [];
     const owner = {

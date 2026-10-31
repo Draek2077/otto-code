@@ -3,6 +3,7 @@ import { Buffer } from "buffer";
 import { useState } from "react";
 
 import { createAudioEngine } from "@/audio";
+import type { WakeDictationStart } from "@/otto/speech/wake/dictation-session"; // OTTO(wake-word)
 
 import type {
   DictationAudioSource,
@@ -49,11 +50,16 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
     onInterruptionRef.current = config.onInterruption;
   }, [config.onPcmSegment, config.onError, config.onInterruption]);
 
-  const start = useCallback(async () => {
-    const engine = getOrCreateEngine();
-    await engine.initialize();
-    await engine.startCapture();
-  }, [getOrCreateEngine]);
+  const start = useCallback(
+    async (initial?: WakeDictationStart) => {
+      const engine = getOrCreateEngine();
+      await engine.initialize();
+      // OTTO(wake-word): leave ordinary dictation's capture call unchanged.
+      if (initial?.wakeWord) await engine.startCapture({ ottoWakeWordHandoff: true });
+      else await engine.startCapture();
+    },
+    [getOrCreateEngine],
+  );
 
   const stop = useCallback(async () => {
     await engineRef.current?.stopCapture();

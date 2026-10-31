@@ -99,6 +99,12 @@ class AudioEngine (context: Context) {
         }
     }
 
+    fun startWakeWordDictation(): Boolean {
+        // OTTO(wake-word): a stale event cannot open a new microphone capture.
+        if (!isRecording || captureSilenced) return false
+        return wakeWord.claim(true) { data -> onMicDataCallback?.invoke(data) }
+    }
+
     fun stopWakeWordDetection(discardHandoff: Boolean) {
         if (wakeWord.stop(discardHandoff)) {
             stopRecording()

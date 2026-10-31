@@ -112,6 +112,10 @@ class ExpoTwoWayAudioModule : Module() {
             setupCallbacks() // Also rebind after a JS bridge reload reuses the native engine.
             checkNotNull(audioEngine) { "Audio context is unavailable." }.startWakeWordDetection(phrase, sensitivity)
         }
+        Function("startWakeWordDictation") {
+            if (appContext.currentActivity?.hasWindowFocus() == true) audioEngine?.startWakeWordDictation() ?: false
+            else false
+        }
         Function("stopWakeWordDetection") { discardHandoff: Boolean ->
             audioEngine?.stopWakeWordDetection(discardHandoff)
         }

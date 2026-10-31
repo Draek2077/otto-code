@@ -5,6 +5,7 @@ export type DictationStatus = "idle" | "recording" | "paused" | "uploading" | "f
 
 export interface UseDictationOptions {
   ottoOnPcmSegment?: (pcm: string) => void; // OTTO(wake-word): active-command silence only; idle detector audio stays native.
+  ottoOnCaptureEnd?: () => void; // OTTO(wake-word): revoke the automatic clock before an explicit confirm/cancel.
   client: import("@getpaseo/client/internal/daemon-client").DaemonClient | null;
   onTranscript: (text: string, meta: { requestId: string }) => void;
   onPartialTranscript?: (text: string, meta: { requestId: string }) => void;

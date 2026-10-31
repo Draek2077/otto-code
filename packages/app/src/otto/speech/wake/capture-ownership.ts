@@ -28,15 +28,15 @@ function claimCapture() {
     },
   };
 }
-export function createWakeCaptureGuard(
-  source: () => { start(): Promise<void>; stop(): Promise<void> },
+export function createWakeCaptureGuard<TArgs extends unknown[] = []>(
+  source: () => { start(...args: TArgs): Promise<void>; stop(): Promise<void> },
 ) {
   let lease: ReturnType<typeof claimCapture> | null = null;
-  return createCapturePriority(
+  return createCapturePriority<TArgs>(
     () => ({
-      async start() {
+      async start(...args: TArgs) {
         await lease?.ready;
-        await source().start();
+        await source().start(...args);
       },
       stop: () => source().stop(),
     }),
@@ -52,7 +52,7 @@ export function createWakeCaptureGuard(
 }
 export function wakeAwareAudioEngine(engine: AudioEngine): AudioEngine {
   const capture = createWakeCaptureGuard(() => ({
-    start: () => engine.startCapture(),
+    start: (...args: Parameters<AudioEngine["startCapture"]>) => engine.startCapture(...args),
     stop: () => engine.stopCapture(),
   }));
   return {

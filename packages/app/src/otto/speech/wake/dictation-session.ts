@@ -2,6 +2,7 @@ import { Buffer } from "buffer";
 import { hasPcm16VoiceActivity } from "./wake-word-audio";
 export interface WakeDictationStart {
   initialPcm?: string;
+  wakeWord?: true;
 }
 /** One foreground command, with no automatic sending until its captured policy
  * is consumed by confirmation. Silent activation cancels instead of submitting.

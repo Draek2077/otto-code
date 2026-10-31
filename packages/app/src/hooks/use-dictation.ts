@@ -38,6 +38,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   const latestPartialTranscriptRef = useRef("");
 
   const onTranscriptRef = useRef(onTranscript);
+  const onCaptureEndRef = useRef(options.ottoOnCaptureEnd); // OTTO(wake-word)
+  onCaptureEndRef.current = options.ottoOnCaptureEnd; // OTTO(wake-word)
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
   }, [onTranscript]);
@@ -278,7 +280,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
 
       try {
         if (initial?.initialPcm) senderRef.current?.enqueueSegment(initial.initialPcm); // OTTO(wake-word): command prefix precedes live samples.
-        await audio.start();
+        await audio.start(initial); // OTTO(wake-word): preserve native handoff identity.
         isRecordingRef.current = true;
         setIsRecording(true);
         if (enableDuration) {
@@ -320,6 +322,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       return;
     }
     actionGateRef.current.cancelling = true;
+    onCaptureEndRef.current?.(); // OTTO(wake-word): explicit cancellation wins over the silence timer.
     stopDurationTracking();
     setDuration(0);
     setError(null);
@@ -357,6 +360,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     }
 
     actionGateRef.current.confirming = true;
+    onCaptureEndRef.current?.(); // OTTO(wake-word): manual insert/send cannot be overridden during transcription.
     setError(null);
     stopDurationTracking();
     setIsProcessing(true);

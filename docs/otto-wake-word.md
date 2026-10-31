@@ -112,6 +112,11 @@ the same microphone capture alive. Up to two seconds of subsequent command
 audio is buffered natively and emitted only after dictation takes ownership,
 avoiding both a microphone restart gap and the loss of the first command words.
 The buffer is single-use and has a three-second handoff deadline.
+The explicit native wake claim cannot open a fresh microphone capture: an expired,
+backgrounded or already claimed handoff is rejected. The capture-priority wrappers
+retain this request identity; ordinary dictation follows its existing path.
+Explicit manual insert, send and cancel actions revoke the silence timer before
+transcription, so its captured send policy cannot override a later user choice.
 
 App backgrounding stops the detector, clears pending handoff audio, and releases
 microphone capture. Returning to the foreground restarts listening through the

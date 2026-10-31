@@ -13,11 +13,15 @@ export interface AudioPlaybackSource {
   type: string;
 }
 
+// OTTO(wake-word): a one-shot handoff cannot reopen expired capture as manual dictation.
+export interface AudioCaptureOptions {
+  ottoWakeWordHandoff?: boolean;
+}
 export interface AudioEngine {
   initialize(): Promise<void>;
   destroy(): Promise<void>;
 
-  startCapture(): Promise<void>;
+  startCapture(options?: AudioCaptureOptions): Promise<void>; // OTTO(wake-word)
   stopCapture(): Promise<void>;
   toggleMute(): boolean;
   isMuted(): boolean;

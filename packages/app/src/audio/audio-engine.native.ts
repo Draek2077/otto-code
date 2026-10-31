@@ -11,6 +11,7 @@ import { createPlaybackQueue } from "./playback";
 import { playFile } from "./file-playback";
 import { playPcm16 } from "./pcm";
 import { speechBackgroundPlayer } from "@/otto/speech/native-background"; // OTTO(speech)
+import { startNativeCapture } from "@/otto/speech/wake/native-capture"; // OTTO(wake-word)
 
 export function createAudioEngine(
   callbacks: AudioEngineCallbacks,
@@ -189,7 +190,8 @@ export function createAudioEngine(
       interruptionSubscription.remove();
     },
 
-    async startCapture() {
+    async startCapture(captureOptions) {
+      // OTTO(wake-word): distinguish an existing handoff from new manual capture.
       if (refs.captureActive) {
         return;
       }
@@ -197,10 +199,11 @@ export function createAudioEngine(
       try {
         await ensureMicrophonePermission();
         await ensureInitialized();
-        const isRecording =
-          options?.captureMode === "dictation"
-            ? native.startDictation()
-            : native.toggleRecording(true);
+        const isRecording = startNativeCapture(
+          native,
+          options?.captureMode,
+          captureOptions?.ottoWakeWordHandoff === true,
+        ); // OTTO(wake-word)
         if (!isRecording) {
           throw new Error(
             "Microphone capture could not start because Android audio focus is unavailable.",

@@ -91,7 +91,7 @@ export function useWakeListening(input: ListeningInput) {
             return false;
           command.begin({ autoSend: capturedAutoSend, silenceTimeoutMs, speechAlreadyDetected });
           if (pcm) command.accept(pcm);
-          await latest.current.dictation.startDictation({ initialPcm: pcm });
+          await latest.current.dictation.startDictation({ initialPcm: pcm, wakeWord: true });
           if (!latest.current.dictation.isRecordingActive()) {
             command.stop();
             return false;
@@ -120,9 +120,8 @@ export function useWakeListening(input: ListeningInput) {
   }, [enabled, targetKey, phrase, sensitivity, silenceTimeoutMs, autoSend, command]);
   useEffect(() => {
     if (
-      !input.dictation.isRecording &&
-      !input.dictation.isProcessing &&
-      input.dictation.status !== "recording"
+      input.dictation.isProcessing ||
+      (!input.dictation.isRecording && input.dictation.status !== "recording")
     )
       command.stop();
     void controller.current?.notifyDictation(
@@ -130,5 +129,5 @@ export function useWakeListening(input: ListeningInput) {
       input.dictation.isProcessing,
     );
   }, [input.dictation.isRecording, input.dictation.isProcessing, input.dictation.status, command]);
-  return command.accept;
+  return command;
 }

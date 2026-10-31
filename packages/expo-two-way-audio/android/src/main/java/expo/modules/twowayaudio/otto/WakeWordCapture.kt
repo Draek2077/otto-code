@@ -12,6 +12,7 @@ internal class WakeWordCapture(context: Context) {
     private val handoff = WakeWordHandoffBuffer(16000 * 2 * 2)
     private val handler = Handler(Looper.getMainLooper())
     private var detecting = false
+    private var claiming = false
     private var generation = 0
     private var timeout: Runnable? = null
     var onDetected: (() -> Unit)? = null
@@ -54,10 +55,12 @@ internal class WakeWordCapture(context: Context) {
     }
 
     @Synchronized
-    fun claim(emit: (ByteArray) -> Unit) {
+    fun claim(requirePending: Boolean = false, emit: (ByteArray) -> Unit): Boolean {
+        if (requirePending && (!handoff.isPending || claiming)) return false
         detecting = false
         detector.stop()
-        if (!handoff.isPending) return
+        if (!handoff.isPending) return true
+        claiming = true
         val authority = generation
         // Dictation installs its JS capture authority before this posted flush.
         // Keep accepting into the same bounded native buffer until then.
@@ -67,8 +70,10 @@ internal class WakeWordCapture(context: Context) {
                 timeout?.let { handler.removeCallbacks(it) }
                 timeout = null
                 handoff.drain().forEach(emit)
+                claiming = false
             }
         }
+        return true
     }
 
     /** Returns whether this detector owned capture, never another dictation. */
@@ -82,6 +87,7 @@ internal class WakeWordCapture(context: Context) {
             timeout?.let { handler.removeCallbacks(it) }
             timeout = null
             handoff.cancel()
+            claiming = false
         }
         return owned && !handoff.isPending
     }
