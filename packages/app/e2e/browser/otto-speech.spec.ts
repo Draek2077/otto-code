@@ -249,6 +249,32 @@ for (const compact of [false, true]) {
         .getByRole("button", { name: "Read aloud", exact: true })
         .filter({ visible: true });
       await expect(read).toHaveCount(1);
+      const bubble = page.getByTestId("otto-assistant-bubble").filter({ visible: true }).first();
+      const slot = bubble.getByTestId("otto-assistant-playback");
+      await expect(bubble.getByRole("button", { name: "Read aloud", exact: true })).toHaveCount(1);
+      await expect(slot).toHaveCSS("position", "absolute");
+      const beforeHover = await bubble.boundingBox();
+      expect(beforeHover).not.toBeNull();
+      await bubble.hover();
+      await expect(slot).toHaveCSS("opacity", "1");
+      expect(await bubble.boundingBox()).toEqual(beforeHover);
+      expect(
+        await slot.evaluate((element) => {
+          const outer = element.parentElement!.getBoundingClientRect();
+          const inner = element.getBoundingClientRect();
+          const style = getComputedStyle(element.parentElement!);
+          return {
+            inside:
+              inner.left >= outer.left &&
+              inner.right <= outer.right &&
+              inner.top >= outer.top &&
+              inner.bottom <= outer.bottom,
+            leftCorner:
+              parseFloat(style.borderTopLeftRadius) < parseFloat(style.borderTopRightRadius),
+            filled: style.backgroundColor !== "rgba(0, 0, 0, 0)",
+          };
+        }),
+      ).toEqual({ inside: true, leftCorner: true, filled: true });
       expect(fixture.requests).toHaveLength(0);
       await read.click();
       await expect.poll(() => fixture.requests.length).toBe(1);

@@ -34,8 +34,8 @@ def unpackSherpaOnnx = tasks.register('unpackSherpaOnnx', Copy) {
 android.sourceSets.main.assets.srcDir file('../models')
 android.sourceSets.main.jniLibs.srcDir file("$buildDir/generated/sherpa-onnx/jni")
 dependencies {
-  implementation files("$buildDir/generated/sherpa-onnx/classes.jar")
+  // Task-backed input orders Kotlin compilation across applied-script classloaders.
+  implementation files("$buildDir/generated/sherpa-onnx/classes.jar").builtBy(unpackSherpaOnnx)
   testImplementation 'junit:junit:4.13.2'
 }
-tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach { dependsOn unpackSherpaOnnx }
 tasks.named('preBuild').configure { dependsOn unpackSherpaOnnx }

@@ -1,5 +1,5 @@
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { SettledMessageSpeech } from "@/otto/speech/message-button"; // OTTO(speech): settled prose uses the shared host engine.
+import { AssistantSpeechBubble } from "@/otto/speech/assistant-bubble"; // OTTO(speech): isolated left-hand bubble and inset playback.
 import { getAgentAttachmentPillContent } from "@/attachments/attachment-pill-content";
 import { AssistantForkMenu, type AssistantForkTarget } from "@/components/assistant-fork-menu";
 import { AttachmentLightbox, type ImageLightboxSource } from "@/components/attachment-lightbox";
@@ -1187,27 +1187,28 @@ export const AssistantMessage = memo(function AssistantMessage({
       style={assistantContainerStyle}
       onLayout={measureMessage}
     >
-      <MarkdownRenderer
-        text={revealedMessage}
-        streaming={phase !== "complete" || revealedMessage.length < renderedMessage.text.length}
-        client={client}
-        workspaceRoot={workspaceRoot}
-        serverId={serverId}
-      />
-      {/* OTTO(speech): wait for both provider settlement and the visual reveal. */}
-      <SettledMessageSpeech
+      <AssistantSpeechBubble
         message={message}
         itemId={ottoSpeechItemId}
         settled={phase === "complete" && revealedMessage.length >= renderedMessage.text.length}
-      />
-      {fullMessageByteLength !== null ? (
-        <Text
-          testID="assistant-message-capped-notice"
-          style={assistantMessageStylesheet.cappedNotice}
-        >
-          {t("agentStream.messageCapped", { bytes: fullMessageByteLength })}
-        </Text>
-      ) : null}
+        spacing={spacing}
+      >
+        <MarkdownRenderer
+          text={revealedMessage}
+          streaming={phase !== "complete" || revealedMessage.length < renderedMessage.text.length}
+          client={client}
+          workspaceRoot={workspaceRoot}
+          serverId={serverId}
+        />
+        {fullMessageByteLength !== null ? (
+          <Text
+            testID="assistant-message-capped-notice"
+            style={assistantMessageStylesheet.cappedNotice}
+          >
+            {t("agentStream.messageCapped", { bytes: fullMessageByteLength })}
+          </Text>
+        ) : null}
+      </AssistantSpeechBubble>
     </View>
   );
 });

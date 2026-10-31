@@ -64,7 +64,12 @@ evidence remain untouched. The evidence files and credentials are not rewritten.
 ## Reading and playback
 
 Completed, visually settled assistant messages expose **Read aloud** / **Stop
-reading** with a tooltip. The composer exposes **Read new replies in this chat**.
+reading** with a tooltip. Assistant prose uses Otto's left-hand speech bubble;
+the play/stop control is inset at its lower-right corner with absolute positioning,
+so it never adds a playback row or changes message height on hover. Desktop
+reveals it on hover or keyboard focus; compact/native layouts keep it dimly
+visible, and active playback always keeps Stop visible. Paseo continues to own
+Markdown, reveal, stream spacing, scroll and the user messages. The composer exposes **Read new replies in this chat**.
 Automatic reading follows new completed paragraphs and the final paragraph at
 turn close. It retains demand through the existing canonical timeline owner,
 including off-screen chats, without making them visible or remembering extra

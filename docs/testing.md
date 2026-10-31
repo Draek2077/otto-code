@@ -218,7 +218,9 @@ Speech: `e2e/browser/otto-speech.spec.ts` covers registered host settings on wid
 and compact screens, saved model/voice/speed, actual HTTP-to-WAV preview and Stop,
 visible generation failure, explicit retry and revision-conflict recovery without
 key disclosure. It also exercises completed-message Read aloud, per-chat automatic
-reading of new replies and history suppression after reload. Synthetic endpoints
+reading of new replies and history suppression after reload. It checks the
+left-hand assistant bubble and that playback stays inside it with absolute
+positioning, without changing the bubble's height on hover. Synthetic endpoints
 and browser audio do not establish native microphone, physical-device background
 playback or live vendor/local-model quality. Focused native-player fixtures check
 media-control cleanup and system pause/resume without launching a recorder.

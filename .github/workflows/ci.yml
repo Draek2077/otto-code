@@ -181,6 +181,10 @@ jobs:
       - name: Verify built-in plugins from built output
         run: node --test scripts/builtin-plugins-dist.test.mjs
 
+      # OTTO(wake-word): native source consumes this workspace's generated declarations.
+      - name: Build native app dependency
+        run: npm run build --workspace=@getpaseo/expo-two-way-audio
+
       - name: Typecheck all packages
         run: npm run typecheck
 
