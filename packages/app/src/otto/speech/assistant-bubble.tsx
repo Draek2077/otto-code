@@ -49,6 +49,8 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius["2xl"],
     borderTopLeftRadius: theme.borderRadius.sm,
     paddingHorizontal: theme.spacing[3],
+    // Reserve horizontal room for the inset touch target, never another row.
+    paddingRight: theme.spacing[12],
     paddingTop: theme.spacing[2],
     // Paseo drops the last Markdown block's gap. Restore Otto's bottom inset
     // on this frame, keeping the playback hitbox inside the rounded bubble.

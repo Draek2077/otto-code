@@ -258,6 +258,13 @@ for (const compact of [false, true]) {
       await bubble.hover();
       await expect(slot).toHaveCSS("opacity", "1");
       expect(await bubble.boundingBox()).toEqual(beforeHover);
+      const textBounds = await bubble
+        .getByText("The first reply is ready to read.", { exact: true })
+        .boundingBox();
+      const playbackBounds = await slot.boundingBox();
+      expect(textBounds).not.toBeNull();
+      expect(playbackBounds).not.toBeNull();
+      expect(textBounds!.x + textBounds!.width).toBeLessThanOrEqual(playbackBounds!.x);
       expect(
         await slot.evaluate((element) => {
           const outer = element.parentElement!.getBoundingClientRect();
