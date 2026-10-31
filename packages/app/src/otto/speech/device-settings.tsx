@@ -1,4 +1,6 @@
 import { useCallback, useState } from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "@/data/query-client";
 import { Alert } from "@/components/ui/alert";
 import type { SpeechPreferences } from "./preferences";
 import {
@@ -13,7 +15,7 @@ const volumes = Array.from({ length: 11 }, (_, index) => ({
   value: String(index * 10),
   label: `${index * 10}%`,
 }));
-export function SpeechDeviceSettings() {
+function SpeechDeviceFields() {
   const { settings, updateSettings } = useAppSettings();
   const [error, setError] = useState("");
   const savePreference = useCallback(
@@ -95,5 +97,14 @@ export function SpeechDeviceSettings() {
         </SettingsCollapsibleRow>
       </SettingsCard>
     </SettingsSection>
+  );
+}
+export function SpeechDeviceSettings() {
+  // Plugin surfaces have their own query cache. Device audio preferences belong
+  // to the existing app cache read by the speaker and activity subscribers.
+  return (
+    <QueryClientProvider client={queryClient}>
+      <SpeechDeviceFields />
+    </QueryClientProvider>
   );
 }

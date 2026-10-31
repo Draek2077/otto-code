@@ -211,6 +211,9 @@ for (const compact of [false, true]) {
       await page.getByRole("button", { name: "Configure Speech", exact: true }).click();
       await page.getByText("Agent voice cues", { exact: true }).click();
       await page.getByRole("switch", { name: "Spoken activity cues", exact: true }).click();
+      await expect(
+        page.getByRole("switch", { name: "Spoken activity cues", exact: true }),
+      ).not.toBeChecked();
       ottoProvider.replyWith(() => "The first reply is ready to read.");
       await ottoProvider.refreshCatalog();
       const agent = await workspace.client.createAgent({

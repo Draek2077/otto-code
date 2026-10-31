@@ -92,6 +92,9 @@ volume, thinking tone, activity cue enable/mute/volume, and host+chat automatic
 reading. Activity cues use the original default starting/thinking/waiting/done
 lines and the host's selected voice. They are suppressed for automatically read
 chats. Agent-profile voice assignment and wake-word listening are separate work.
+Device controls explicitly bind to the existing app query cache, including when
+rendered inside the plugin's separate query provider. Muting a cue updates the
+same preferences read by the speaker immediately, before leaving Settings.
 
 ## Mobile background playback
 
