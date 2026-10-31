@@ -58,4 +58,26 @@ describe("spoken presentation", () => {
       "Next reply.",
     ]);
   });
+  it("reads a new turn delivered entirely in one canonical frame without replaying prepended history", () => {
+    const feed = createSpeechSegments();
+    const past = message("past", "Past.", "past-turn");
+    const fast = message("fast", "A fast new reply.", "fast-turn");
+    expect(feed.update([past], null)).toEqual([]);
+    expect(feed.update([past, fast], null).map((entry) => entry.text)).toEqual([
+      "A fast new reply.",
+    ]);
+    const older = message("older", "Older history.", "older-turn");
+    expect(feed.update([older, past, fast], null)).toEqual([]);
+    expect(feed.update([older, past, fast], null)).toEqual([]);
+  });
+  it("tracks a new turn before its timeline rows arrive, including a batched close", () => {
+    const feed = createSpeechSegments();
+    const past = message("past", "Past.", "past-turn");
+    const next = message("next", "The new reply.", "next-turn");
+    expect(feed.update([past], null)).toEqual([]);
+    expect(feed.update([past], "next-turn")).toEqual([]);
+    expect(feed.update([past], null)).toEqual([]);
+    expect(feed.update([past, next], null).map((entry) => entry.text)).toEqual(["The new reply."]);
+    expect(feed.update([past, next], null)).toEqual([]);
+  });
 });

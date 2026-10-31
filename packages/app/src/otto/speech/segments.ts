@@ -5,6 +5,8 @@ import type { StreamItem } from "@/types/stream";
  */
 export function createSpeechSegments() {
   let watched: string | null = null;
+  let seeded = false;
+  let latestSeen: string | null = null;
   let handled = new Set<string>();
   function finished(items: readonly StreamItem[], turnId: string, active: string | null) {
     const turn = items.filter((item) => item.turnId === turnId);
@@ -22,6 +24,17 @@ export function createSpeechSegments() {
   }
   return {
     update(items: readonly StreamItem[], activeTurnId: string | null) {
+      const latest = items.findLast((item) => item.turnId)?.turnId ?? null;
+      const appendedTurn = latest !== latestSeen;
+      latestSeen = latest;
+      if (!seeded) {
+        seeded = true;
+        watched = activeTurnId ?? latest;
+        if (watched) {
+          handled = new Set(finished(items, watched, activeTurnId).map((segment) => segment.key));
+        }
+        return [];
+      }
       const output: { key: string; text: string; itemId: string }[] = [];
       if (watched) {
         for (const segment of finished(items, watched, activeTurnId)) {
@@ -30,15 +43,17 @@ export function createSpeechSegments() {
           output.push(segment);
         }
       }
-      if (
-        activeTurnId &&
-        activeTurnId !== watched &&
-        items.some((item) => item.turnId === activeTurnId)
-      ) {
-        watched = activeTurnId;
-        handled = new Set(
-          finished(items, activeTurnId, activeTurnId).map((segment) => segment.key),
-        );
+      // The canonical reducer can commit an entire fast turn in one frame.
+      // Track the rightmost identified turn as well as liveness: prepending
+      // older history leaves that frontier unchanged and must remain silent.
+      const next = activeTurnId ?? (appendedTurn ? latest : null);
+      if (next && next !== watched) {
+        watched = next;
+        handled = new Set();
+        for (const segment of finished(items, watched, activeTurnId)) {
+          handled.add(segment.key);
+          output.push(segment);
+        }
       }
       return output;
     },

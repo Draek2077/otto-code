@@ -40,7 +40,7 @@ function ChatSpeechSource({
     if (!available || !owner) return;
     const source = `otto:speech:${agentId}`;
     const prefix = `${speechAgentKey(serverId, agentId)}:auto:`;
-    const feed = createSpeechSegments();
+    let feed = createSpeechSegments();
     let ready = false;
     let lastFeed: readonly unknown[] | null = null;
     const consume = () => {
@@ -68,6 +68,9 @@ function ChatSpeechSource({
         ...(session.agentStreamHead.get(agentId) ?? []),
       ];
       if (!ready) {
+        // Hydration/reconnect establishes a new silent frontier, including
+        // replies that completed while this timeline was unavailable.
+        feed = createSpeechSegments();
         feed.update(items, active);
         ready = true;
         return;
