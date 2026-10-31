@@ -15,6 +15,9 @@ test.use({
   },
   e2eDaemonEnvironment: { PASEO_E2E_MANAGED_SPEECH: "1" },
 });
+test.beforeEach(async ({ page }) => {
+  page.setDefaultTimeout(30000);
+});
 for (const compact of [false, true]) {
   test(`Speech host settings, real playback, failure and stale-save recovery (${compact ? "compact" : "wide"})`, async ({
     page,
@@ -120,8 +123,11 @@ for (const compact of [false, true]) {
       await expect(page.getByText(/Your edits are retained\. Reload saved settings/)).toBeVisible();
       await expect(speed).toHaveValue("0.8");
       expect((await read()).settings.voice.tts.speed).toBe(1.2);
+      page.once("dialog", (dialog) => void dialog.dismiss());
       await page.getByRole("button", { name: "Reload saved", exact: true }).click();
-      await page.getByRole("button", { name: "Discard and reload", exact: true }).click();
+      await expect(speed).toHaveValue("0.8");
+      page.once("dialog", (dialog) => void dialog.accept());
+      await page.getByRole("button", { name: "Reload saved", exact: true }).click();
       await expect(speed).toHaveValue("1.2");
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
       expect(await page.locator("body").innerText()).not.toContain("isolated-tts-fixture-key");
