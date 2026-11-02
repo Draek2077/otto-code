@@ -1,3 +1,4 @@
+import { terminalAvailable } from "./otto/terminal/capabilities.js"; // OTTO(terminal)
 import { stat } from "node:fs/promises";
 import { speechAvailable } from "./otto/speech/capabilities.js"; // OTTO(speech)
 import { ottoBrowserCapabilities } from "./otto/browser/capabilities.js"; // OTTO(browser-history)
@@ -1825,6 +1826,7 @@ export class VoiceAssistantWebSocketServer {
         ottoKanban: this.pluginRuntime?.supportsBuiltinRpc?.("otto-kanban") === true, // OTTO(kanban)
         ottoBitbucket: ottoBitbucketAvailable(this.pluginRuntime), // OTTO(bitbucket)
         ottoConnectors: ottoBitbucketAvailable(this.pluginRuntime), // OTTO(connectors): same inert built-in owner, independent feature gate.
+        ottoTerminal: terminalAvailable(this.pluginRuntime), // OTTO(terminal)
         ottoSpeech: speechAvailable(this.pluginRuntime), // OTTO(speech)
         ottoKnowledge: knowledgeAvailable, // OTTO(knowledge)
         ottoArtifacts: ottoArtifactsAvailable(this.pluginRuntime), // OTTO(artifacts)

@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react-native";
 import type { TFunction } from "i18next";
+import { OttoTerminalSettings } from "@/otto/terminal/settings"; // OTTO(terminal)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View } from "react-native";
@@ -1669,6 +1670,8 @@ export function HostTerminalsPage({ serverId }: { serverId: string }) {
         <EnableTerminalAgentHooksCard serverId={serverId} />
       </SettingsSection>
       <TerminalProfilesSection serverId={serverId} />
+      <OttoTerminalSettings serverId={serverId} />{" "}
+      {/* OTTO(terminal): extend the canonical host page, without a duplicate settings screen. */}
     </View>
   );
 }

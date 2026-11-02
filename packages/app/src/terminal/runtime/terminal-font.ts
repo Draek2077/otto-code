@@ -1,3 +1,4 @@
+import { terminalFontStack } from "../../otto/terminal/fonts"; // OTTO(terminal-fonts)
 const DEFAULT_TERMINAL_FONT_SIZE = 13;
 
 export const DEFAULT_TERMINAL_FONT_FAMILY = [
@@ -22,7 +23,7 @@ export const DEFAULT_TERMINAL_FONT_FAMILY = [
 
 export function resolveTerminalFontFamily(fontFamily: string | undefined): string {
   const trimmed = fontFamily?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : DEFAULT_TERMINAL_FONT_FAMILY;
+  return terminalFontStack(trimmed, DEFAULT_TERMINAL_FONT_FAMILY); // OTTO(terminal-fonts): custom text face stays first, bundled symbols fill missing glyphs.
 }
 
 export function resolveTerminalFontSize(fontSize: number | undefined): number {

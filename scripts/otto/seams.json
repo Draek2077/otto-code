@@ -54,6 +54,7 @@
     "fastlane/metadata/android/zh-CN/full_description.txt": "identity: Otto mobile listing text; plain store metadata cannot carry comments.",
     "fastlane/metadata/android/zh-CN/short_description.txt": "identity: Otto mobile listing text; plain store metadata cannot carry comments.",
     "CHANGELOG.md": "release: preserve Otto published release history verbatim from otto-0.9-final.",
-    "fastlane/metadata/android/en-US/images/icon.png": "identity: generated Otto mobile store icon; binary artwork cannot carry comments."
+    "fastlane/metadata/android/en-US/images/icon.png": "identity: generated Otto mobile store icon; binary artwork cannot carry comments.",
+    "packages/app/assets/fonts/LICENSE-NerdFonts.txt": "Licensed Nerd Font symbol fallback restored for terminal glyph coverage."
   }
 }

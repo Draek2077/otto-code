@@ -8,4 +8,5 @@ export const ottoBuiltinPlugins = [
   "otto-browser",
   "otto-artifacts",
   "otto-speech",
+  "otto-terminal",
 ] as const;

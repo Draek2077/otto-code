@@ -476,3 +476,12 @@ Every test in this repo lives in exactly one of these shapes:
 2. **Real end-to-end tests** — real daemon, real network, real browser (Playwright for app code) or a real isolated server instance (for daemon code). No JSDOM, no mocked transport.
 
 Anything in between — component tests in JSDOM, vitest tests that mock the module under test, tests that assert on private state — is slop on its way out.
+
+### Otto terminal restoration
+
+`e2e/browser/otto-terminal.spec.ts` covers wide and compact Host → Terminals
+settings, successful persistence, stale-save draft retention, declined/accepted
+reload, real PTY compatibility diagnostics, a stable-title process and the
+bundled symbol font in the rendered terminal. It runs in the existing serial
+Otto acceptance lane. Physical mobile glyph/input and user-configured external
+editor acceptance are separate from this browser evidence.

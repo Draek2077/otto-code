@@ -172,6 +172,11 @@
       "types": "./dist/client/otto-artifacts.d.ts",
       "source": "./src/client/otto-artifacts.ts",
       "default": "./dist/client/otto-artifacts.js"
+    },
+    "./otto/terminal": {
+      "types": "./dist/otto/terminal.d.ts",
+      "source": "./src/otto/terminal.ts",
+      "default": "./dist/otto/terminal.js"
     }
   },
   "publishConfig": {

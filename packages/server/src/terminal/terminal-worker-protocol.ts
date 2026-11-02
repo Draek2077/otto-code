@@ -19,6 +19,7 @@ export interface WorkerTerminalInfo {
 }
 
 export interface WorkerCreateTerminalOptions {
+  ottoPreferences?: import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
   id?: string;
   cwd: string;
   workspaceId?: string;

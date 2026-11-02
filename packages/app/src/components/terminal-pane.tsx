@@ -61,6 +61,7 @@ import { usePanelStore } from "@/stores/panel-store";
 import { useBlockMobilePanelOpenGestures } from "@/mobile-panels/provider";
 import { useSessionStore } from "@/stores/session-store";
 import { toXtermTheme } from "@/utils/to-xterm-theme";
+import { useTerminalFonts } from "@/otto/terminal/use-fonts"; // OTTO(terminal-fonts)
 import TerminalEmulator, { type TerminalEmulatorHandle } from "./terminal-emulator";
 import { TerminalFloatingCopyAction, TerminalPasteAction } from "./terminal-copy-paste-actions";
 import {
@@ -238,6 +239,7 @@ export function TerminalPane({
   const isAppActivelyVisible = useAppActivelyVisible();
   const { theme } = useUnistyles();
   const { settings } = useAppSettings();
+  const [terminalFontsReady, terminalFontError] = useTerminalFonts(); // OTTO(terminal-fonts)
   const xtermTheme = useMemo(() => toXtermTheme(theme.colors.terminal), [theme]);
   const terminalFontFamily = useMemo(() => {
     const trimmed = settings.monoFontFamily.trim();
@@ -1067,38 +1069,41 @@ export function TerminalPane({
     <Animated.View style={containerStyle}>
       <View style={styles.outputContainer}>
         <View style={styles.terminalGestureContainer}>
-          <TerminalEmulator
-            ref={emulatorRef}
-            dom={TERMINAL_EMULATOR_DOM_PROPS}
-            streamKey={terminalStreamKey}
-            supportsTerminalInputModeReplay={supportsTerminalInputModeReplay}
-            testId="terminal-surface"
-            xtermTheme={xtermTheme}
-            scrollbackLines={settings.terminalScrollbackLines}
-            fontFamily={terminalFontFamily}
-            fontSize={settings.codeFontSize}
-            keyboardInset={keyboardInset}
-            isKeyboardVisible={isKeyboardVisible}
-            swipeGesturesEnabled={swipeGesturesEnabled}
-            initialSnapshot={initialSnapshot}
-            onRendererReadyChange={handleRendererReadyChange}
-            onSwipeRight={handleSwipeRight}
-            onSwipeLeft={handleSwipeLeft}
-            onFindRequest={handleFindRequest}
-            onFindResult={handleFindResult}
-            onInput={handleTerminalData}
-            onFocus={handleTerminalFocus}
-            onResize={handleTerminalResize}
-            onTerminalKey={handleTerminalKey}
-            onInputModeChange={handleInputModeChange}
-            onSelectionChange={handleSelectionChange}
-            onResolveLocalFileLink={handleResolveLocalFileLink}
-            onOpenLocalFileLink={handleOpenLocalFileLink}
-            onPendingModifiersConsumed={handlePendingModifiersConsumed}
-            pendingModifiers={modifiers}
-            focusRequestToken={focusRequestToken}
-            resizeRequestToken={resizeRequestToken}
-          />
+          {/* OTTO(terminal-fonts): attach after font loading so xterm measures the final fallback. */}
+          {terminalFontsReady || terminalFontError ? (
+            <TerminalEmulator
+              ref={emulatorRef}
+              dom={TERMINAL_EMULATOR_DOM_PROPS}
+              streamKey={terminalStreamKey}
+              supportsTerminalInputModeReplay={supportsTerminalInputModeReplay}
+              testId="terminal-surface"
+              xtermTheme={xtermTheme}
+              scrollbackLines={settings.terminalScrollbackLines}
+              fontFamily={terminalFontFamily}
+              fontSize={settings.codeFontSize}
+              keyboardInset={keyboardInset}
+              isKeyboardVisible={isKeyboardVisible}
+              swipeGesturesEnabled={swipeGesturesEnabled}
+              initialSnapshot={initialSnapshot}
+              onRendererReadyChange={handleRendererReadyChange}
+              onSwipeRight={handleSwipeRight}
+              onSwipeLeft={handleSwipeLeft}
+              onFindRequest={handleFindRequest}
+              onFindResult={handleFindResult}
+              onInput={handleTerminalData}
+              onFocus={handleTerminalFocus}
+              onResize={handleTerminalResize}
+              onTerminalKey={handleTerminalKey}
+              onInputModeChange={handleInputModeChange}
+              onSelectionChange={handleSelectionChange}
+              onResolveLocalFileLink={handleResolveLocalFileLink}
+              onOpenLocalFileLink={handleOpenLocalFileLink}
+              onPendingModifiersConsumed={handlePendingModifiersConsumed}
+              pendingModifiers={modifiers}
+              focusRequestToken={focusRequestToken}
+              resizeRequestToken={resizeRequestToken}
+            />
+          ) : null}
         </View>
 
         <TerminalFind
@@ -1123,7 +1128,12 @@ export function TerminalPane({
           </View>
         ) : null}
       </View>
-
+      {/* OTTO(terminal-fonts): a failed asset does not hide the working terminal. */}
+      {terminalFontError ? (
+        <Text style={styles.statusError}>
+          Terminal symbol font could not load. Reopen this terminal to retry.
+        </Text>
+      ) : null}
       {streamError ? (
         <View style={styles.errorRow}>
           <Text style={styles.statusError} numberOfLines={2}>
@@ -1131,7 +1141,6 @@ export function TerminalPane({
           </Text>
         </View>
       ) : null}
-
       {showVirtualKeyBar ? (
         <View style={styles.keyboardContainer} testID="terminal-virtual-keyboard">
           <View

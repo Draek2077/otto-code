@@ -64,6 +64,7 @@ export interface TerminalManager {
     cols?: number;
     activityToken?: string;
     activityUrl?: string | null;
+    ottoPreferences?: import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
   }): Promise<TerminalSession>;
   registerCwdEnv(options: { cwd: string; env: Record<string, string> }): void;
   validateTerminalActivityToken(terminalId: string, token: string): "valid" | "unknown" | "invalid";
@@ -94,6 +95,7 @@ export interface TerminalManager {
 }
 
 export interface TerminalManagerOptions {
+  getOttoPreferences?: () => import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
   getTerminalActivityUrl?: () => string | null;
 }
 
@@ -321,6 +323,7 @@ export function createTerminalManager(
       cols?: number;
       activityToken?: string;
       activityUrl?: string | null;
+      ottoPreferences?: import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
     }): Promise<TerminalSession> {
       assertAbsolutePath(options.cwd);
 
@@ -356,6 +359,7 @@ export function createTerminalManager(
             ...(options.cols !== undefined ? { cols: options.cols } : {}),
             ...(mergedEnv ? { env: mergedEnv } : {}),
             activityEnv,
+            ottoPreferences: options.ottoPreferences ?? managerOptions.getOttoPreferences?.(), // OTTO(terminal)
           }),
         );
       } catch (error) {

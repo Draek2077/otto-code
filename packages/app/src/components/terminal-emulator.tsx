@@ -720,6 +720,7 @@ export default function TerminalEmulator({
       ref={rootRef}
       data-testid={testId}
       data-terminal-scrollbar-root="true"
+      data-pmono="" // OTTO(terminal-fonts): exclude DOM-rendered terminal rows from the interface font rule.
       style={rootDivStyle}
       onPointerDown={handleRootPointerDown}
       onContextMenu={handleRootContextMenu}

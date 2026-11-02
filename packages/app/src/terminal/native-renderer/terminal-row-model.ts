@@ -1,3 +1,4 @@
+import { isTerminalSymbol, TERMINAL_SYMBOL_FONT } from "../../otto/terminal/fonts"; // OTTO(terminal-fonts)
 import type { TextStyle } from "react-native";
 import type { TerminalCell } from "@getpaseo/protocol/messages";
 
@@ -214,6 +215,11 @@ function buildRowModel(input: {
         backgroundColor: selection.backgroundColor,
       });
       foregroundColor = selection.foregroundColor;
+    }
+    // OTTO(terminal-fonts): keep private-use cells in separate runs for native font fallback.
+    if (isTerminalSymbol(text)) {
+      styleKey += "|otto-symbol";
+      style = { ...style, fontFamily: TERMINAL_SYMBOL_FONT };
     }
     appendRun({
       runs,

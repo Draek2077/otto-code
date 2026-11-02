@@ -138,6 +138,8 @@ import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/confi
 import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { ManagedSpeechRuntime } from "./otto/speech/managed-runtime.js"; // OTTO(speech): one shared runtime, replacement waits for active sessions.
+import { invokeOttoBuiltin, type OttoBuiltinRoute } from "./otto/plugin-rpc.js"; // OTTO(feature-host)
+import { TerminalHost } from "./otto/terminal/host.js"; // OTTO(terminal)
 import { SpeechHost } from "./otto/speech/host.js"; // OTTO(speech)
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
@@ -671,7 +673,27 @@ export async function createPaseoDaemon(
   let ottoHostBrowser: ReturnType<typeof createNativeHostBrowser> | null = null; // OTTO(browser-host): composition never launches Chromium.
   let ottoKnowledge: KnowledgeDaemonService | null = null; // OTTO(knowledge)
   let ottoArtifacts: ArtifactDaemonService | null = null; // OTTO(artifacts): inert until scoped demand.
+  const ottoTerminal = new TerminalHost(
+    config.paseoHome,
+    () => serverId,
+    () => terminalManager,
+  ); // OTTO(terminal): inert until an explicit settings/action request.
   let ottoSpeech: SpeechHost | null = null; // OTTO(speech): authenticated host settings and playback, composed before listening.
+  // OTTO(feature-host): one registry of shared built-in owners; no dispatch growth in Paseo's session path.
+  const ottoRoutes: Readonly<Record<string, OttoBuiltinRoute>> = {
+    "otto-terminal": (method, input) => ottoTerminal.invoke(method, input),
+    "otto-speech": (method, input, clientId) => ottoSpeech?.invoke(method, input, clientId),
+    "otto-artifacts": (method, input) => ottoArtifacts?.invoke(method, input),
+    "otto-brain": (method, input, clientId) => ottoBrain.invoke(method, input, clientId),
+    "otto-browser": (method, input, _clientId, source) =>
+      ottoBrowserHistory?.invoke(method, input) ??
+      ottoPreview?.invoke(method, input) ??
+      ottoHostBrowser?.invoke(method, input, source),
+    "otto-kanban": (method, input, clientId) => ottoKanban?.invoke(method, input, clientId),
+    "otto-integrations": (method, input) => ottoIntegrations?.rpc.invoke(method, input),
+    "otto-project-knowledge": (method, input, clientId) =>
+      ottoContext?.invoke(method, input) ?? ottoKnowledge?.invoke(method, input, clientId),
+  };
   const pluginRuntime: PluginService = new PluginService(
     logger,
     daemonConfigStore,
@@ -690,6 +712,7 @@ export async function createPaseoDaemon(
       // OTTO(feature-host): existing authenticated plugin RPC, unchanged relay framing.
       ottoRpc: {
         has: (pluginId) =>
+          pluginId === "otto-terminal" || // OTTO(terminal)
           (pluginId === "otto-speech" && ottoSpeech !== null) || // OTTO(speech)
           (pluginId === "otto-artifacts" && ottoArtifacts !== null) || // OTTO(artifacts)
           pluginId === "otto-brain" ||
@@ -697,24 +720,8 @@ export async function createPaseoDaemon(
           (pluginId === "otto-kanban" && ottoKanban !== null) ||
           (pluginId === "otto-integrations" && ottoIntegrations !== null) ||
           (pluginId === "otto-project-knowledge" && ottoKnowledge !== null), // OTTO(knowledge)
-        invoke: (pluginId, method, input, clientId, source) => {
-          if (pluginId === "otto-speech") return ottoSpeech?.invoke(method, input, clientId); // OTTO(speech)
-          if (pluginId === "otto-artifacts") return ottoArtifacts?.invoke(method, input); // OTTO(artifacts)
-          if (pluginId === "otto-brain") return ottoBrain.invoke(method, input, clientId);
-          if (pluginId === "otto-browser")
-            return (
-              ottoBrowserHistory?.invoke(method, input) ??
-              ottoPreview?.invoke(method, input) ??
-              ottoHostBrowser?.invoke(method, input, source)
-            ); // OTTO(browser-host): source-bound streaming through the existing authenticated plugin transport. // OTTO(preview) // OTTO(browser-history)
-          if (pluginId === "otto-kanban") return ottoKanban?.invoke(method, input, clientId); // OTTO(kanban)
-          if (pluginId === "otto-integrations") return ottoIntegrations?.rpc.invoke(method, input); // OTTO(integration)
-          if (pluginId === "otto-project-knowledge")
-            return (
-              ottoContext?.invoke(method, input) ?? ottoKnowledge?.invoke(method, input, clientId)
-            ); // OTTO(context-management): namespaced delegation. // OTTO(knowledge)
-          return undefined;
-        },
+        invoke: (pluginId, method, input, clientId, source) =>
+          invokeOttoBuiltin(ottoRoutes, pluginId, method, input, clientId, source), // OTTO(feature-host)
         releaseClient: (clientId) => {
           ottoSpeech?.releaseClient(clientId); // OTTO(speech)
           ottoBrain.releaseClient(clientId);
@@ -801,6 +808,7 @@ export async function createPaseoDaemon(
   let workspaceRegistry: FileBackedWorkspaceRegistry | null = null;
   const terminalManager = createConfiguredTerminalManager({
     getTerminalActivityUrl: () => createTerminalActivityUrl(boundListenTarget),
+    getOttoPreferences: () => ottoTerminal.store.read().preferences, // OTTO(terminal): snapshot only when creating a new PTY.
   });
   applyTerminalAgentHookSetting({ store: daemonConfigStore, logger });
 

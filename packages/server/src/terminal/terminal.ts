@@ -12,6 +12,12 @@ import {
 } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { basename, delimiter, dirname, extname, join, resolve as resolvePath } from "node:path";
+import {
+  terminalShellOverride,
+  terminalTitleMode,
+  terminalInitialTitle,
+  terminalNextTitle,
+} from "../server/otto/terminal/launch.js"; // OTTO(terminal)
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createExternalProcessEnv } from "../server/paseo-env.js";
@@ -141,6 +147,7 @@ function parseCommandFinishedOsc(data: string): TerminalCommandFinishedInfo | nu
 }
 
 export interface CreateTerminalOptions {
+  ottoPreferences?: import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
   id?: string;
   cwd: string;
   workspaceId: string;
@@ -972,7 +979,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   const {
     cwd,
     workspaceId,
-    shell,
     env = {},
     activityEnv = {},
     rows = 24,
@@ -982,7 +988,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     command,
     args = [],
   } = options;
-  const resolvedShell = shell ?? resolveDefaultTerminalShell();
+  const resolvedShell = (await terminalShellOverride(options)) ?? resolveDefaultTerminalShell(); // OTTO(terminal): explicit commands/shells retain precedence.
 
   const id = options.id ?? randomUUID();
   const listeners = new Set<(msg: ServerMessage) => void>();
@@ -1002,7 +1008,8 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   const recentOutputChunks: string[] = [];
   let recentOutputLength = 0;
   let title: string | undefined;
-  let titleMode = resolveInitialTitleMode(presetTitle);
+  const titlePolicy = options.ottoPreferences; // OTTO(terminal): captured for this session, not changed by later settings edits.
+  let titleMode = terminalTitleMode(resolveInitialTitleMode(presetTitle), titlePolicy); // OTTO(terminal)
   let pendingTitle: string | undefined;
   let titleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingInput = "";
@@ -1098,6 +1105,13 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   if (!initialTitle && processTitle) {
     initialTitle = humanizeProcessTitle(processTitle) ?? normalizeProcessTitle(processTitle);
   }
+  initialTitle = terminalInitialTitle({
+    manual: initialManualTitle,
+    initial: initialTitle,
+    process: processTitle,
+    name,
+    preferences: titlePolicy,
+  }); // OTTO(terminal)
   emitTitleChange(initialTitle);
 
   // Respond to DA1 queries (CSI c or CSI 0 c) — apps like nvim query terminal capabilities
@@ -1146,7 +1160,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       if (disposed || killed) {
         return;
       }
-      pendingTitle = nextTitle.trim().length > 0 ? nextTitle : undefined;
+      pendingTitle = terminalNextTitle(nextTitle, titlePolicy); // OTTO(terminal)
       if (titleDebounceTimer) {
         clearTimeout(titleDebounceTimer);
       }

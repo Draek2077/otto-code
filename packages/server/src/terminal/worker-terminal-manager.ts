@@ -89,6 +89,7 @@ interface TerminalWorkerProcess {
 }
 
 interface WorkerTerminalManagerOptions {
+  getOttoPreferences?: () => import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
   requestTimeoutMs?: number;
   forkWorker?: () => TerminalWorkerProcess;
   getTerminalActivityUrl?: () => string | null;
@@ -692,6 +693,7 @@ export function createWorkerTerminalManager(
           type: "createTerminal",
           options: {
             ...options,
+            ottoPreferences: managerOptions.getOttoPreferences?.(), // OTTO(terminal)
             id: terminalId,
             activityToken,
             activityUrl: terminalActivityUrl,
