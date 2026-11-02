@@ -651,7 +651,8 @@ describe("terminal-emulator-runtime", () => {
 
     runtime.setFont({ fontFamily: "  Menlo  ", fontSize: 18 });
 
-    expect(terminal.options?.fontFamily).toBe("Menlo");
+    // OTTO(terminal-fonts): retain the selected face before the bundled symbol fallback.
+    expect(terminal.options?.fontFamily).toBe("Menlo, OttoNerdSymbols, monospace");
     expect(terminal.options?.fontSize).toBe(18);
     expect(fitAndEmitResize).toHaveBeenCalledWith({
       forceRefresh: true,
