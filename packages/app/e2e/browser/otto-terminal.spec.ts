@@ -2,7 +2,6 @@ import { test, expect } from "../support/fixtures";
 import { gotoAppShell, openSettings } from "../support/helpers/app";
 import { getServerId } from "../support/helpers/server-id";
 import { seedWorkspace } from "../support/helpers/seed-client";
-import { gotoWorkspace } from "../support/helpers/launcher";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { readTerminalSettings, saveTerminalSettings } from "@getpaseo/plugin/otto/terminal";
@@ -10,7 +9,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Page, TestInfo } from "@playwright/test";
 import { prepareDroppedPathForTerminal } from "../../src/terminal/drop/terminal-file-drop";
-import { getTerminalBufferText } from "../support/helpers/terminal-perf";
+import { buildTerminalWorkspaceUrl, getTerminalBufferText } from "../support/helpers/terminal-perf";
 
 async function terminalFontLoaded(page: Page) {
   return page.evaluate(() =>
@@ -160,22 +159,25 @@ for (const compact of [false, true]) {
         },
       );
       if (!launched.terminal) throw new Error(launched.error ?? "No terminal was created");
-      await gotoWorkspace(page, workspace.workspaceId);
-      await page
-        .getByTestId(`workspace-tab-terminal_${launched.terminal.id}`)
-        .filter({ visible: true })
-        .first()
-        .click();
+      const terminalId = launched.terminal.id;
+      await page.goto(buildTerminalWorkspaceUrl(workspace.workspaceId, terminalId));
       await expect(
         page.getByTestId("terminal-surface").filter({ visible: true }).first(),
       ).toBeVisible();
       await expect.poll(() => terminalFontLoaded(page)).toBe(true);
-      await expect(
-        page
-          .getByTestId(`workspace-tab-terminal_${launched.terminal.id}`)
-          .filter({ visible: true })
-          .first(),
-      ).toContainText("Stable terminal");
+      // Compact terminal routes intentionally omit the desktop tab strip.
+      if (!compact)
+        await expect(
+          page
+            .getByTestId(`workspace-tab-terminal_${terminalId}`)
+            .filter({ visible: true })
+            .first(),
+        ).toContainText("Stable terminal");
+      expect(
+        (await client.listTerminals(workspace.repoPath)).terminals.find(
+          (terminal) => terminal.id === terminalId,
+        )?.name,
+      ).toBe("Stable terminal");
       await page.screenshot({ path: testInfo.outputPath("terminal-symbols.png") });
       await expect.poll(() => getTerminalBufferText(page)).toContain("config.d");
       await clickTerminalDirectory(page, testInfo);
