@@ -127,6 +127,10 @@ jobs:
       - name: Run relay tests
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.relay != 'false') }}
         run: npm run test --workspace=@getpaseo/relay
+        # OTTO(ci): exercise the local relay, not the deployment's external cutover proxy.
+        env:
+          CLOUDFLARE_INCLUDE_PROCESS_ENV: "true"
+          PASEO_RELAY_UPSTREAM: ""
 
       - name: Build client dependencies
         if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}

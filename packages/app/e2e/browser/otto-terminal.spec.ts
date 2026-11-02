@@ -100,9 +100,9 @@ for (const compact of [false, true]) {
         patch: { terminalTitleIncludePaths: true },
       });
       await page.getByRole("button", { name: "Save preferences", exact: true }).click();
-      await expect(
-        page.getByText("Terminal settings changed. Reload before saving.", { exact: true }),
-      ).toBeVisible();
+      await expect(page.getByRole("alert")).toContainText(
+        "Terminal settings changed. Reload before saving.",
+      );
       await expect(automatic).toBeChecked();
       await expect(
         page.getByRole("button", { name: "Save preferences", exact: true }),

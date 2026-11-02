@@ -23,6 +23,7 @@ const entries = {
   "./otto/artifacts": "shared", // OTTO(artifacts): bounded structural contracts only.
   "./otto/connectors": "shared", // OTTO(connectors): catalog and structural RPC only; no authorization runtime.
   "./otto/speech": "shared", // OTTO(speech): structural selections and bounded RPC only.
+  "./otto/terminal": "shared", // OTTO(terminal): structural host preferences and diagnostics only.
   "./otto/host-browser": "shared", // OTTO(browser-host): structural viewer/command contracts, no runtime code.
   "./otto/kanban": "shared", // OTTO(kanban): structural RPC/model definitions only.
   "./otto/openai-settings": "shared",

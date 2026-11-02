@@ -1,10 +1,8 @@
 export class TerminalSettingsError extends Error {
-  constructor(
-    readonly kind: "conflict" | "unavailable",
-    message: string,
-    options?: ErrorOptions,
-  ) {
+  readonly kind: "conflict" | "unavailable";
+  constructor(kind: "conflict" | "unavailable", message: string, options?: ErrorOptions) {
     super(message, options);
+    this.kind = kind;
   }
 }
 export class TerminalShellUnavailableError extends Error {
