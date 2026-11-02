@@ -8,7 +8,7 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { readTerminalSettings, saveTerminalSettings } from "@getpaseo/plugin/otto/terminal";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Page } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 import { prepareDroppedPathForTerminal } from "../../src/terminal/drop/terminal-file-drop";
 import { getTerminalBufferText } from "../support/helpers/terminal-perf";
 
@@ -20,14 +20,10 @@ async function terminalFontLoaded(page: Page) {
   );
 }
 
-async function clickTerminalDirectory(page: Page) {
+async function clickTerminalDirectory(page: Page, testInfo: TestInfo) {
   const point = await page.evaluate(() => {
     const terminal = window.__paseoTerminal;
-    const surfaces = Array.from(
-      document.querySelectorAll<HTMLElement>('[data-testid="terminal-surface"]'),
-    );
-    const surface = surfaces.find((element) => element.getBoundingClientRect().height > 0);
-    const screen = surface?.querySelector(".xterm-screen");
+    const screen = terminal?.element?.querySelector(".xterm-screen");
     if (!terminal || !screen) throw new Error("Terminal renderer is unavailable");
     const rect = screen.getBoundingClientRect();
     const buffer = terminal.buffer.active;
@@ -38,14 +34,30 @@ async function clickTerminalDirectory(page: Page) {
         return {
           x: rect.left + ((col + 1.5) * rect.width) / terminal.cols,
           y: rect.top + ((row - buffer.viewportY + 0.5) * rect.height) / terminal.rows,
+          text,
+          row,
+          col,
+          rows: terminal.rows,
+          cols: terminal.cols,
+          viewportY: buffer.viewportY,
+          screen: rect.toJSON(),
         };
     }
     throw new Error("Folder link was not visible in the terminal");
   });
   await page.mouse.move(point.x, point.y);
-  await expect(
-    page.getByTestId("terminal-surface").filter({ visible: true }).locator(".xterm"),
-  ).toHaveClass(/xterm-cursor-pointer/);
+  await testInfo.attach("terminal-link-position", {
+    body: JSON.stringify(point, null, 2),
+    contentType: "application/json",
+  });
+  try {
+    await expect(
+      page.getByTestId("terminal-surface").filter({ visible: true }).locator(".xterm"),
+    ).toHaveClass(/xterm-cursor-pointer/);
+  } catch (error) {
+    await page.screenshot({ path: testInfo.outputPath("terminal-link-hover.png") });
+    throw error;
+  }
   await page.mouse.click(point.x, point.y);
 }
 
@@ -166,7 +178,7 @@ for (const compact of [false, true]) {
       ).toContainText("Stable terminal");
       await page.screenshot({ path: testInfo.outputPath("terminal-symbols.png") });
       await expect.poll(() => getTerminalBufferText(page)).toContain("config.d");
-      await clickTerminalDirectory(page);
+      await clickTerminalDirectory(page, testInfo);
       await expect(
         page.getByTestId("file-explorer-tree-scroll").getByText("guide.md", { exact: true }),
       ).toBeVisible();
