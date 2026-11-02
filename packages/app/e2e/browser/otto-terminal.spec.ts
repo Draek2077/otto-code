@@ -46,13 +46,13 @@ async function clickTerminalDirectory(page: Page, testInfo: TestInfo) {
     throw new Error("Folder link was not visible in the terminal");
   });
   await page.mouse.move(point.x, point.y);
-  await testInfo.attach("terminal-link-position", {
-    body: JSON.stringify(point, null, 2),
-    contentType: "application/json",
-  });
+  await writeFile(
+    testInfo.outputPath("terminal-link-position.json"),
+    JSON.stringify(point, null, 2),
+  );
   try {
     await expect(
-      page.getByTestId("terminal-surface").filter({ visible: true }).locator(".xterm"),
+      page.getByTestId("terminal-surface").filter({ visible: true }).locator(".xterm-screen"),
     ).toHaveClass(/xterm-cursor-pointer/);
   } catch (error) {
     await page.screenshot({ path: testInfo.outputPath("terminal-link-hover.png") });
