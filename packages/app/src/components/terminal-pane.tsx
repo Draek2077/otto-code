@@ -78,16 +78,12 @@ import {
   type TerminalRendererReadyChange,
 } from "@/utils/terminal-renderer-readiness";
 import { useAppSettings } from "@/hooks/use-settings";
-import { classifyForResolution, fetchDaemonResolution } from "@/assistant-file-links/resolver";
+import { terminalLinkCandidate, createTerminalPathOpener } from "@/otto/terminal/paths"; // OTTO(terminal-paths)
 import type {
   TerminalLocalFileLinkSource,
   TerminalLocalFileLinkTarget,
 } from "@/terminal/local-links/terminal-local-link-provider";
-import {
-  normalizeWorkspaceFileLocation,
-  type OpenFileDisposition,
-  type WorkspaceFileOpenRequest,
-} from "@/workspace/file-open";
+import { type OpenFileDisposition, type WorkspaceFileOpenRequest } from "@/workspace/file-open";
 
 interface TerminalPaneProps {
   serverId: string;
@@ -95,6 +91,7 @@ interface TerminalPaneProps {
   terminalId: string;
   isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
+  onOpenDirectory: (path: string) => void; // OTTO(terminal-paths)
   onOpenFileExplorer: () => void;
   onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => void;
 }
@@ -232,6 +229,7 @@ export function TerminalPane({
   isWorkspaceFocused,
   isPaneFocused,
   onOpenFileExplorer,
+  onOpenDirectory, // OTTO(terminal-paths)
   onOpenWorkspaceFile,
 }: TerminalPaneProps) {
   const { t } = useTranslation();
@@ -910,41 +908,38 @@ export function TerminalPane({
   const handleInputModeChange = useCallback((state: TerminalInputModeState) => {
     inputModeRef.current = state;
   }, []);
+  // OTTO(terminal-paths): reuse canonical workspace path/Explorer rules, with no filesystem lookup on hover.
+  const [terminalLinkError, setTerminalLinkError] = useState<string | null>(null);
+  const terminalPaths = useMemo(
+    () =>
+      createTerminalPathOpener({
+        root: cwd,
+        client,
+        openFile: onOpenWorkspaceFile,
+        openDirectory: onOpenDirectory,
+      }),
+    [client, cwd, onOpenDirectory, onOpenWorkspaceFile],
+  );
+  useEffect(() => {
+    if (!isTerminalPresented) terminalPaths.cancel();
+    return () => terminalPaths.cancel();
+  }, [isTerminalPresented, terminalPaths]);
   const handleResolveLocalFileLink = useCallback(
-    async (source: TerminalLocalFileLinkSource): Promise<TerminalLocalFileLinkTarget | null> => {
-      const resolution = classifyForResolution(
-        { href: source.text, text: source.text, sourceType: "inline-code" },
-        { workspaceRoot: cwd },
-      );
-      if (resolution.kind === "resolved") {
-        return resolution.value.kind === "file" ? resolution.value.target : null;
-      }
-      if (!client) {
-        return null;
-      }
-      try {
-        return await fetchDaemonResolution({
-          ambiguousQuery: resolution.ambiguousQuery,
-          token: resolution.token,
-          target: resolution.target,
-          workspaceRoot: cwd,
-          getDirectorySuggestions: (input) => client.getDirectorySuggestions(input),
-        });
-      } catch {
-        return null;
-      }
-    },
-    [client, cwd],
+    (source: TerminalLocalFileLinkSource) => Promise.resolve(terminalLinkCandidate(source, cwd)),
+    [cwd],
   );
   const handleOpenLocalFileLink = useCallback(
     (target: TerminalLocalFileLinkTarget, disposition: OpenFileDisposition) => {
-      const location = normalizeWorkspaceFileLocation(target);
-      if (!location) {
-        return;
-      }
-      onOpenWorkspaceFile({ location, disposition });
+      setTerminalLinkError(null);
+      void terminalPaths
+        .open(target, disposition)
+        .catch((error) =>
+          setTerminalLinkError(
+            error instanceof Error ? error.message : "The host could not open this terminal path.",
+          ),
+        );
     },
-    [onOpenWorkspaceFile],
+    [terminalPaths],
   );
 
   const toggleModifier = useCallback(
@@ -1134,6 +1129,8 @@ export function TerminalPane({
           Terminal symbol font could not load. Reopen this terminal to retry.
         </Text>
       ) : null}
+      {terminalLinkError ? <Text style={styles.statusError}>{terminalLinkError}</Text> : null}{" "}
+      {/* OTTO(terminal-paths) */}
       {streamError ? (
         <View style={styles.errorRow}>
           <Text style={styles.statusError} numberOfLines={2}>

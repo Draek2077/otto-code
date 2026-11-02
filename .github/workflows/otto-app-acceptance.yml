@@ -40,7 +40,8 @@ on:
         description: Manual diagnostic scope; pushes and pull requests always run all journeys
         type: choice
         default: all
-        options: [all, knowledge, brain-cancellation, context-health, preview, artifacts, speech]
+        options:
+          [all, knowledge, brain-cancellation, context-health, preview, artifacts, speech, terminal]
 
 permissions:
   contents: read
@@ -104,6 +105,9 @@ jobs:
               ;;
             artifacts)
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-artifacts.spec.ts --workers=1 --retries=0 --max-failures=1
+              ;;
+            terminal)
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-terminal.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             speech)
               # Preserve existing content renderers and their lifecycle inside the inset frame.

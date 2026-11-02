@@ -6,6 +6,48 @@ import { gotoWorkspace } from "../support/helpers/launcher";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { readTerminalSettings, saveTerminalSettings } from "@getpaseo/plugin/otto/terminal";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import type { Page } from "@playwright/test";
+import { prepareDroppedPathForTerminal } from "../../src/terminal/drop/terminal-file-drop";
+import { getTerminalBufferText } from "../support/helpers/terminal-perf";
+
+async function terminalFontLoaded(page: Page) {
+  return page.evaluate(() =>
+    Array.from(document.fonts).some(
+      (face) => face.family.replace(/^"|"$/g, "") === "OttoNerdSymbols" && face.status === "loaded",
+    ),
+  );
+}
+
+async function clickTerminalDirectory(page: Page) {
+  const point = await page.evaluate(() => {
+    const terminal = window.__paseoTerminal;
+    const surfaces = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="terminal-surface"]'),
+    );
+    const surface = surfaces.find((element) => element.getBoundingClientRect().height > 0);
+    const screen = surface?.querySelector(".xterm-screen");
+    if (!terminal || !screen) throw new Error("Terminal renderer is unavailable");
+    const rect = screen.getBoundingClientRect();
+    const buffer = terminal.buffer.active;
+    for (let row = buffer.viewportY; row < buffer.viewportY + terminal.rows; row++) {
+      const text = buffer.getLine(row)?.translateToString(true) ?? "";
+      const col = text.indexOf("config.d");
+      if (col >= 0)
+        return {
+          x: rect.left + ((col + 1.5) * rect.width) / terminal.cols,
+          y: rect.top + ((row - buffer.viewportY + 0.5) * rect.height) / terminal.rows,
+        };
+    }
+    throw new Error("Folder link was not visible in the terminal");
+  });
+  await page.mouse.move(point.x, point.y);
+  await expect(
+    page.getByTestId("terminal-surface").filter({ visible: true }).locator(".xterm"),
+  ).toHaveClass(/xterm-cursor-pointer/);
+  await page.mouse.click(point.x, point.y);
+}
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
 for (const compact of [false, true]) {
@@ -18,7 +60,12 @@ for (const compact of [false, true]) {
     const client = await connectDaemonClient<
       Pick<
         DaemonClient,
-        "connect" | "close" | "invokePluginRpc" | "createTerminal" | "listTerminals"
+        | "connect"
+        | "close"
+        | "invokePluginRpc"
+        | "createTerminal"
+        | "listTerminals"
+        | "captureTerminal"
       >
     >({ clientIdPrefix: "terminal-acceptance" });
     const hostId = getServerId();
@@ -72,6 +119,21 @@ for (const compact of [false, true]) {
       });
       await expect(page.getByTestId("terminal-check-alternate-screen")).toContainText("PASS");
       await page.screenshot({ path: testInfo.outputPath("terminal-settings.png") });
+      const droppedPath = "/tmp/a$(printf WRONG) '& #.txt";
+      const quoted = prepareDroppedPathForTerminal(droppedPath, { platform: "linux" });
+      const drop = await client.createTerminal(workspace.repoPath, "Literal filename", undefined, {
+        workspaceId: workspace.workspaceId,
+        command: "/bin/sh",
+        args: ["-c", `printf '%s\\n' ${quoted}; sleep 15`],
+      });
+      if (!drop.terminal) throw new Error(drop.error ?? "No filename probe terminal");
+      const dropId = drop.terminal.id;
+      await expect
+        .poll(async () => (await client.captureTerminal(dropId, { stripAnsi: true })).lines)
+        .toContain(droppedPath);
+      const directory = path.join(workspace.repoPath, "src/config.d");
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, "guide.md"), "# Terminal folder destination\n");
       const launched = await client.createTerminal(
         workspace.repoPath,
         "Stable terminal",
@@ -81,7 +143,7 @@ for (const compact of [false, true]) {
           command: process.execPath,
           args: [
             "-e",
-            'process.stdout.write("\\x1b]0;/some/project/ignored-title\\x07\\uf120 Terminal symbols \\ue0b0\\r\\n"); setInterval(()=>{},1000)',
+            `process.stdout.write("\\x1b]0;/some/project/ignored-title\\x07\\uf120 Terminal symbols \\ue0b0\\r\\n" + ${JSON.stringify(directory)} + "\\r\\n"); setInterval(()=>{},1000)`,
           ],
         },
       );
@@ -95,9 +157,7 @@ for (const compact of [false, true]) {
       await expect(
         page.getByTestId("terminal-surface").filter({ visible: true }).first(),
       ).toBeVisible();
-      await expect
-        .poll(() => page.evaluate(() => document.fonts.check("13px OttoNerdSymbols", "\uf120")))
-        .toBe(true);
+      await expect.poll(() => terminalFontLoaded(page)).toBe(true);
       await expect(
         page
           .getByTestId(`workspace-tab-terminal_${launched.terminal.id}`)
@@ -105,6 +165,13 @@ for (const compact of [false, true]) {
           .first(),
       ).toContainText("Stable terminal");
       await page.screenshot({ path: testInfo.outputPath("terminal-symbols.png") });
+      await expect.poll(() => getTerminalBufferText(page)).toContain("config.d");
+      await clickTerminalDirectory(page);
+      await expect(
+        page.getByTestId("file-explorer-tree-scroll").getByText("guide.md", { exact: true }),
+      ).toBeVisible();
+      await expect(page.getByText("Requested path is not a file", { exact: true })).toHaveCount(0);
+      await page.screenshot({ path: testInfo.outputPath("terminal-directory.png") });
     } finally {
       await client.close();
       await workspace.cleanup();

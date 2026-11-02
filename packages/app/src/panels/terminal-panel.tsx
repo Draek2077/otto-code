@@ -1,3 +1,4 @@
+import { useTerminalDirectory } from "@/otto/terminal/directory"; // OTTO(terminal-paths)
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -84,6 +85,12 @@ function TerminalPanel() {
   }));
   const workspaceDirectory = workspaceFields?.workspaceDirectory || null;
   const isGitCheckout = workspaceFields?.isGitCheckout ?? false;
+  const openDirectory = useTerminalDirectory({
+    serverId,
+    workspaceId,
+    root: workspaceDirectory,
+    isGit: isGitCheckout,
+  }); // OTTO(terminal-paths)
   const openCompactFileExplorer = usePanelStore((state) => state.openCompactFileExplorer);
   const handleOpenFileExplorer = useCallback(() => {
     if (!workspaceDirectory) {
@@ -108,6 +115,7 @@ function TerminalPanel() {
       terminalId={target.terminalId}
       isWorkspaceFocused={isWorkspaceFocused}
       isPaneFocused={isPaneFocused}
+      onOpenDirectory={openDirectory} // OTTO(terminal-paths)
       onOpenFileExplorer={handleOpenFileExplorer}
       onOpenWorkspaceFile={openFileInWorkspace}
     />

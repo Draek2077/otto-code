@@ -1,6 +1,5 @@
+import { quoteTerminalPath } from "../../otto/terminal/drop"; // OTTO(terminal-paths)
 import type { DesktopHostBridge } from "@/desktop/host";
-
-const DANGEROUS_NON_WINDOWS_PATH_CHARS = /[`$|&>~#!^*;<]/g;
 
 function getLegacyFilePath(file: File): string | null {
   const path = Reflect.get(file, "path");
@@ -67,20 +66,7 @@ export function extractTerminalDropPaths(
 }
 
 function escapeNonWindowsPath(path: string): string {
-  let nextPath = path;
-  if (nextPath.includes("\\")) {
-    nextPath = nextPath.replace(/\\/g, "\\\\");
-  }
-
-  nextPath = nextPath.replace(DANGEROUS_NON_WINDOWS_PATH_CHARS, "");
-
-  if (nextPath.includes("'") && nextPath.includes('"')) {
-    return `$'${nextPath.replace(/'/g, "\\'")}'`;
-  }
-  if (nextPath.includes("'")) {
-    return `'${nextPath.replace(/'/g, "\\'")}'`;
-  }
-  return `'${nextPath}'`;
+  return quoteTerminalPath(path); // OTTO(terminal-paths): preserve filenames verbatim with shell quoting.
 }
 
 function escapeWindowsPath(path: string): string {

@@ -41,6 +41,17 @@ Pass reports an observed fact. Missing optional tools are warnings. Clipboard,
 mouse, client rendering and reconnect remain unknown to a host-only check.
 `TERM_PROGRAM` alone never establishes a terminal protocol or true-color claim.
 
+## Terminal paths
+
+Terminal link recognition stays in Paseo. Otto defers host path resolution until
+activation, then reuses the shared workspace path resolver and Explorer reveal
+actions. Directories open the existing Files view on wide and compact layouts;
+file locations and side-pane intent are retained. Hidden panes invalidate late
+resolution replies. Failed resolutions remain visible in the terminal.
+
+Dropped POSIX filenames are single-quoted rather than stripped of punctuation or
+shell-looking characters. Windows drop handling stays with Paseo.
+
 ## Glyph coverage
 
 The app ships the original licensed Symbols Nerd Font Mono fallback. The user's
@@ -58,6 +69,8 @@ and terminal-profile settings remain canonical.
 | ------------------------------------------------------------------ | ------------------------------------------------------- |
 | Profiles, Find, alternate screens, resize, snapshots, mobile input | Reuse Paseo                                             |
 | Built-in editor Vim mode                                           | Reuse Paseo; no duplicate setting                       |
+| Directory links and lookup-on-activation                           | Shared path resolver and existing Explorer              |
+| POSIX filename drops                                               | Literal quoting preserves all filename characters       |
 | Nerd Font symbols                                                  | Bundled app-owned fallback                              |
 | Host compatibility diagnostics                                     | Host service, explicit action on existing settings page |
 | Automatic/default titles and path visibility                       | Host-owned launch policy                                |

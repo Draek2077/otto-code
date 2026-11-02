@@ -37,10 +37,20 @@ test("Otto acceptance remains read-only CI over an exact source with retained su
 });
 
 test("manual diagnostics stay bounded while every push and pull request retains the full gate", () => {
-  assert.ok(
-    source.includes(
-      "options: [all, knowledge, brain-cancellation, context-health, preview, artifacts, speech]",
-    ),
+  const choiceMatch = /options:\s*\[([^\]]+)\]/u.exec(source);
+  assert.ok(choiceMatch);
+  assert.deepEqual(
+    choiceMatch[1].split(",").map((value) => value.trim()),
+    [
+      "all",
+      "knowledge",
+      "brain-cancellation",
+      "context-health",
+      "preview",
+      "artifacts",
+      "speech",
+      "terminal",
+    ],
   );
   assert.ok(
     source.includes("e2e/browser/otto-artifacts.spec.ts --workers=1 --retries=0 --max-failures=1"),
@@ -63,6 +73,9 @@ test("manual diagnostics stay bounded while every push and pull request retains 
     source.includes(
       "--grep='canceling a running benchmark' --repeat-each=3 --workers=1 --retries=0 --max-failures=1",
     ),
+  );
+  assert.ok(
+    source.includes("e2e/browser/otto-terminal.spec.ts --workers=1 --retries=0 --max-failures=1"),
   );
   assert.ok(source.includes('case "$OTTO_ACCEPTANCE_JOURNEY" in'));
   assert.ok(

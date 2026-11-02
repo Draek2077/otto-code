@@ -87,14 +87,15 @@ describe("terminal file drop", () => {
     ).toEqual([]);
   });
 
-  it("prepares POSIX paths with conservative escaping", () => {
+  // OTTO(terminal-paths): shell syntax remains literal filename content.
+  it("prepares POSIX paths without changing filenames", () => {
     const bridge: DesktopHostBridge = { platform: "darwin" };
 
     expect(prepareDroppedPathForTerminal("/tmp/my image.png", bridge)).toBe("'/tmp/my image.png'");
     expect(prepareDroppedPathForTerminal("/tmp/a$(touch bad).png", bridge)).toBe(
-      "'/tmp/a(touch bad).png'",
+      "'/tmp/a$(touch bad).png'",
     );
-    expect(prepareDroppedPathForTerminal("/tmp/it's.png", bridge)).toBe("'/tmp/it\\'s.png'");
+    expect(prepareDroppedPathForTerminal("/tmp/it's.png", bridge)).toBe("'/tmp/it'\"'\"'s.png'");
   });
 
   it("prepares Windows paths with space quoting", () => {
