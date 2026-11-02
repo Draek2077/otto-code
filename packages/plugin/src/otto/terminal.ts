@@ -1,20 +1,14 @@
 import { z } from "zod";
 import { defineRpc } from "../rpc.js";
 
-export const TerminalPreferencesSchema = z
-  .object({
-    terminalTitleMode: z.enum(["auto", "default"]),
-    terminalTitleIncludePaths: z.boolean(),
-    defaultTerminalShell: z.enum([
-      "system",
-      "command-prompt",
-      "windows-powershell",
-      "powershell-7",
-    ]),
-  })
-  .strict();
+export const TerminalPreferencesSchema = z.object({
+  terminalTitleMode: z.enum(["auto", "default"]),
+  terminalTitleIncludePaths: z.boolean(),
+  defaultTerminalShell: z.enum(["system", "command-prompt", "windows-powershell", "powershell-7"]),
+});
 export type TerminalPreferences = z.infer<typeof TerminalPreferencesSchema>;
-export const TerminalPreferencesPatchSchema = TerminalPreferencesSchema.partial();
+// Reads accept future host fields; writes stay bounded to explicitly supported preferences.
+export const TerminalPreferencesPatchSchema = TerminalPreferencesSchema.partial().strict();
 const Host = z.object({ hostId: z.string().min(1).max(256) });
 export const TerminalSettingsSchema = z.object({
   revision: z.string(),

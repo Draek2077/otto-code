@@ -3,7 +3,12 @@ import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, existsSync
 import path from "node:path";
 import { TerminalSettingsStore } from "./settings.js";
 import { TerminalHost } from "./host.js";
-import { readTerminalSettings, saveTerminalSettings } from "@getpaseo/plugin/otto/terminal";
+import {
+  readTerminalSettings,
+  saveTerminalSettings,
+  TerminalPreferencesPatchSchema,
+  TerminalSettingsSchema,
+} from "@getpaseo/plugin/otto/terminal";
 
 const homes: string[] = [];
 function home() {
@@ -17,6 +22,24 @@ afterEach(() => {
   for (const directory of homes.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 describe("host terminal preferences", () => {
+  it("accepts future host preference fields without accepting unknown writes", () => {
+    const preferences = {
+      terminalTitleMode: "auto",
+      terminalTitleIncludePaths: false,
+      defaultTerminalShell: "system",
+    };
+    expect(
+      TerminalSettingsSchema.parse({
+        revision: "future-host",
+        preferences: { ...preferences, futureHostPreference: true },
+        shells: [],
+        platform: "linux",
+      }).preferences,
+    ).toEqual(preferences);
+    expect(TerminalPreferencesPatchSchema.safeParse({ futureHostPreference: true }).success).toBe(
+      false,
+    );
+  });
   it("reads defaults without creating files or launching a PTY", async () => {
     const directory = home();
     const host = new TerminalHost(
