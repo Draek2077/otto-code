@@ -1,3 +1,4 @@
+import { ottoTerminalEnvironment } from "../server/otto/terminal/environment.js"; // OTTO(terminal-environment)
 import * as pty from "node-pty";
 import xterm, { type Terminal as TerminalType } from "@xterm/headless";
 import { randomUUID } from "crypto";
@@ -539,15 +540,15 @@ export function buildTerminalEnvironment(
   );
 
   if (basename(input.shell) !== "zsh") {
-    return envWithHookCli;
+    return ottoTerminalEnvironment(envWithHookCli); // OTTO(terminal-environment)
   }
 
   const originalZdotdir = envWithHookCli.ZDOTDIR ?? "";
-  return {
+  return ottoTerminalEnvironment({
     ...envWithHookCli,
     PASEO_ZSH_ZDOTDIR: originalZdotdir,
     ZDOTDIR: prepareZshShellIntegrationRuntimeDir(input.zshShellIntegrationDir),
-  };
+  }); // OTTO(terminal-environment)
 }
 
 function injectPaseoHookCli(

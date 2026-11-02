@@ -41,6 +41,15 @@ Pass reports an observed fact. Missing optional tools are warnings. Clipboard,
 mouse, client rendering and reconnect remain unknown to a host-only check.
 `TERM_PROGRAM` alone never establishes a terminal protocol or true-color claim.
 
+## Existing shell integrations
+
+Paseo keeps its own session environment names. New PTYs also expose the Otto 0.9
+workspace, terminal, activity and hook aliases so existing user shell integrations
+keep working. Current session metadata replaces inherited parent-terminal aliases;
+unrelated user configuration is retained. The existing LF checkout policy already
+prevents the historical CRLF shell-script packaging defect, so that old patch is
+not restored.
+
 ## Terminal paths
 
 Terminal link recognition stays in Paseo. Otto defers host path resolution until
