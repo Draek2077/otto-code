@@ -53,6 +53,8 @@ describe("terminal policies", () => {
     ["C:\\Users\\phil\\project\\main.ts", "main.ts"],
     ["node /home/phil/tool.js --watch", "node tool.js --watch"],
     ["vim", "vim"],
+    ["vim src/editor.ts", "vim editor.ts"],
+    ['nvim "C:\\Program Files\\project\\main.ts"', 'nvim "main.ts"'],
     ["  ", undefined],
   ])("hides paths in automatic title %s", (value, expected) =>
     expect(terminalAutomaticTitle(value, false)).toBe(expected),

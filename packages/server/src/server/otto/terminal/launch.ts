@@ -99,8 +99,18 @@ export function terminalAutomaticTitle(value: string, includePaths: boolean): st
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   if (includePaths) return trimmed;
-  return trimmed.replace(/(?:[A-Za-z]:)?[\\/][^\s"']+/gu, (token) => {
-    const parts = token.replace(/[\\/]+$/u, "").split(/[\\/]/u);
-    return parts.at(-1) || token;
-  });
+  return trimmed.replace(/(?:[^\s"']|"[^"]*"|'[^']*')+/gu, titleToken);
+}
+
+function titleToken(token: string): string {
+  const assignment = /^([A-Za-z_][A-Za-z0-9_]*=)(.*)$/u.exec(token);
+  const prefix = assignment ? assignment[1] : "";
+  const value = assignment ? assignment[2] : token;
+  const first = value.charAt(0);
+  const isQuoted = (first === '"' || first === "'") && value.endsWith(first);
+  const quote = isQuoted ? first : "";
+  const content = isQuoted ? value.slice(1, -1) : value;
+  if (!content.includes("/") && !content.includes("\\")) return token;
+  const name = path.win32.basename(content) || content;
+  return `${prefix}${quote}${name}${quote}`;
 }
