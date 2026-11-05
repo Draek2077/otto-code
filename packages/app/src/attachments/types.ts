@@ -4,6 +4,7 @@ import type {
   UploadedFileAttachment,
 } from "@getpaseo/protocol/messages";
 import type { PluginResourceComposerAttachment } from "@/plugins/attachments";
+import type { EditorContextAttachment } from "@/otto/editor/context-attachment"; // OTTO(editor): provider-neutral workspace source context.
 
 export type AttachmentStorageType = "web-indexeddb" | "desktop-file" | "native-file";
 
@@ -121,6 +122,7 @@ export type UserComposerAttachment =
     };
 
 export type WorkspaceComposerAttachment =
+  | EditorContextAttachment // OTTO(editor)
   | {
       kind: "browser_element";
       attachment: BrowserElementAttachment;

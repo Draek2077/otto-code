@@ -1,0 +1,84 @@
+name: Otto Editor Runtime Acceptance
+
+# OTTO(editor): actual external language server and shipped offline renderer.
+on:
+  push:
+    branches: [otto-0.10/phase-0]
+    paths:
+      [
+        packages/app/**,
+        packages/server/**,
+        packages/plugin/**,
+        packages/highlight/**,
+        packages/dotnet-probe/**,
+        package-lock.json,
+        .github/workflows/otto-editor-acceptance.yml,
+      ]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: Exact source commit to verify
+        type: string
+        required: false
+
+permissions:
+  contents: read
+concurrency:
+  group: otto-editor-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  GOMAXPROCS: "2"
+  RAYON_NUM_THREADS: "2"
+  ONNXRUNTIME_NODE_INSTALL: skip
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Install repo dependencies
+        run: node scripts/npm-retry.mjs ci
+      - name: Install isolated C# language server
+        run: |
+          dotnet tool install csharp-ls --version 0.26.0 --tool-path "$RUNNER_TEMP/otto-editor-tools"
+          echo "$RUNNER_TEMP/otto-editor-tools" >> "$GITHUB_PATH"
+      - name: Build declarations and portable solution payload
+        run: npm run build:server-deps && npm run build:dotnet-probe
+      - name: Verify real C# semantic services
+        working-directory: packages/server
+        run: npx vitest run --config otto-editor-runtime.config.ts test-editor-csharp.ts --bail=1 --maxWorkers=1
+      - name: Build the shipped offline native editor
+        run: npm run build:editor-webview --workspace=@getpaseo/app
+      - name: Install isolated Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify native renderer bridge in Chromium
+        run: npm run test:browser --workspace=@getpaseo/app -- src/otto/editor/renderer/webview.browser.test.ts --bail=1 --maxWorkers=1
+      - name: Build desktop print capability
+        run: npm run build:main --workspace=@getpaseo/desktop
+      - name: Verify static PDF printing in isolated Electron
+        run: xvfb-run -a npm exec --workspace=@getpaseo/desktop -- electron --no-sandbox ../../scripts/otto/editor-print-proof.mjs
+      - name: Retain browser diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: otto-editor-runtime-proof
+          path: |
+            packages/app/.vitest-screenshots/
+            packages/app/test-results/
+            .tmp/editor-print-proof/document.pdf
+            .tmp/editor-print-proof/result.json
+          if-no-files-found: ignore
+          retention-days: 7

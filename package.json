@@ -76,6 +76,7 @@
     "format:check": "oxfmt --check .",
     "otto:seams": "node scripts/otto/seams.mjs",
     "otto:seams:check": "node scripts/otto/seams.mjs --check",
+    "build:dotnet-probe": "node scripts/otto/build-dotnet-probe.mjs",
     "format:check:files": "oxfmt --check",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",

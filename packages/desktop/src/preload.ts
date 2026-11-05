@@ -32,6 +32,7 @@ interface AttachedBrowserRegistration {
 }
 
 contextBridge.exposeInMainWorld("paseoDesktop", {
+  documentExport: { print: (html: string) => ipcRenderer.invoke("otto:editor:print", { html }) }, // OTTO(editor): sandbox-safe, static document printing only.
   // OTTO(wake-word): sandbox-safe literals; no renderer native-module access.
   wakeWord: {
     capabilities: () => ipcRenderer.invoke("otto:wake-word:capabilities"),

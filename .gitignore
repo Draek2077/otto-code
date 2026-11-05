@@ -101,3 +101,7 @@ app.json
 
 # OTTO(scratch): scratch space for agent jobs
 .tmp*/
+
+# OTTO(editor): .NET solution sidecar build outputs.
+packages/dotnet-probe/obj/
+packages/dotnet-probe/bin/

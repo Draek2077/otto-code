@@ -82,6 +82,7 @@ function areWorkspaceAttachmentsEqual(
 
 function getContextAttachmentKey(attachment: WorkspaceComposerAttachment): string | null {
   if (
+    attachment.kind !== "editor_context" && // OTTO(editor): replace only this source-context identity.
     attachment.kind !== "chat_history" &&
     attachment.kind !== "forge.change_request_comment" &&
     attachment.kind !== "forge.change_request_review" &&

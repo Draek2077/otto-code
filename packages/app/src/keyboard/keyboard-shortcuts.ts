@@ -1,3 +1,4 @@
+import { EDITOR_SHORTCUT_BINDINGS } from "@/otto/editor/shortcuts/definitions"; // OTTO(editor)
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import type {
   KeyboardActionId,
@@ -50,7 +51,14 @@ export interface KeyboardShortcutHelpRow {
   noteKey?: string;
 }
 
-export type ShortcutSectionId = "general" | "workspaces" | "tabs-panes" | "layout" | "agent-input";
+export type ShortcutSectionId =
+  | "general"
+  | "workspaces"
+  | "tabs-panes"
+  | "layout"
+  | "agent-input"
+  | "editor"
+  | "markdown-editor"; // OTTO(editor)
 
 export interface KeyboardShortcutHelpSection {
   id: ShortcutSectionId;
@@ -132,9 +140,13 @@ const SHORTCUT_HELP_SECTION_ORDER: readonly ShortcutSectionId[] = [
   "tabs-panes",
   "layout",
   "agent-input",
+  "editor",
+  "markdown-editor", // OTTO(editor)
 ];
 
 const SHORTCUT_HELP_SECTION_TITLES: Record<ShortcutSectionId, string> = {
+  editor: "File Editor",
+  "markdown-editor": "Markdown Editor", // OTTO(editor)
   general: "General",
   workspaces: "Projects & Workspaces",
   "tabs-panes": "Tabs & Panes",
@@ -143,6 +155,8 @@ const SHORTCUT_HELP_SECTION_TITLES: Record<ShortcutSectionId, string> = {
 };
 
 const SHORTCUT_HELP_SECTION_LABEL_KEYS: Record<ShortcutSectionId, string> = {
+  editor: "File Editor",
+  "markdown-editor": "Markdown Editor", // OTTO(editor)
   general: "settings.shortcuts.sections.general",
   workspaces: "settings.shortcuts.sections.workspaces",
   "tabs-panes": "settings.shortcuts.sections.tabsPanes",
@@ -154,6 +168,13 @@ const SHORTCUT_HELP_SECTION_LABEL_KEYS: Record<ShortcutSectionId, string> = {
 // this sheet to find sits at the top of its section. Every help id must appear here; the unit test
 // fails when a new shortcut is added without a place, instead of silently sinking to the bottom.
 export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[]> = {
+  // OTTO(editor): derive the order from the owned contribution, including retained 0.9 row ids.
+  editor: EDITOR_SHORTCUT_BINDINGS.flatMap((row) =>
+    "help" in row && row.help.section === "editor" ? [row.help.id] : [],
+  ),
+  "markdown-editor": EDITOR_SHORTCUT_BINDINGS.flatMap((row) =>
+    "help" in row && row.help.section === "markdown-editor" ? [row.help.id] : [],
+  ),
   general: [
     "toggle-command-center",
     "search-files",
@@ -257,6 +278,8 @@ const SHORTCUT_HELP_NOTE_KEYS: Record<string, string> = {
 // --- Binding definitions ---
 
 const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
+  ...EDITOR_SHORTCUT_BINDINGS, // OTTO(editor): focused source actions precede general actions.
+
   // --- Open project ---
   // Open project moved from Cmd+Shift+O to Cmd+O. The binding ids intentionally
   // keep their original "cmd-shift-o" / "ctrl-shift-o" names: user shortcut
@@ -1339,7 +1362,7 @@ export function matchesKeyboardShortcutContext(
   if (when.desktop !== undefined && when.desktop !== context.isDesktop) return false;
   if (
     when.editable === false &&
-    (context.focusScope === "message-input" || context.focusScope === "editable")
+    ["message-input", "editable", "code-editor", "markdown-editor"].includes(context.focusScope) // OTTO(editor)
   ) {
     return false;
   }
@@ -1348,7 +1371,8 @@ export function matchesKeyboardShortcutContext(
   if (
     when.focusScope !== undefined &&
     !(typeof when.focusScope === "string"
-      ? context.focusScope === when.focusScope
+      ? context.focusScope === when.focusScope ||
+        (context.focusScope === "markdown-editor" && when.focusScope === "code-editor") // OTTO(editor)
       : when.focusScope.includes(context.focusScope))
   ) {
     return false;

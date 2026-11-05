@@ -1,5 +1,6 @@
 import type { KeyboardShortcutPayload, MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
+import { EDITOR_SHORTCUT_COMMANDS } from "@/otto/editor/shortcuts/definitions"; // OTTO(editor)
 import { buildSettingsRoute, parseHostWorkspaceRouteFromPathname } from "@/utils/host-routes";
 import {
   getRelativeSidebarShortcutTarget,
@@ -175,6 +176,9 @@ export function routeKeyboardShortcut(
   input: ShortcutRoutingInput,
   ctx: ShortcutRoutingContext,
 ): ShortcutAction {
+  const editorCommand = EDITOR_SHORTCUT_COMMANDS[input.action]; // OTTO(editor)
+  if (editorCommand)
+    return dispatch({ id: "editor.execute", scope: "editor", command: editorCommand }); // OTTO(editor)
   const passthrough = PASSTHROUGH_DISPATCH[input.action];
   if (passthrough) {
     if (

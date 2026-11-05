@@ -2174,6 +2174,7 @@ export const en = {
       providers: "Providers",
       usage: "Usage",
       terminals: "Terminals",
+      code: "Code", // OTTO(editor)
       plugins: "Plugins",
       host: "Overview",
     },

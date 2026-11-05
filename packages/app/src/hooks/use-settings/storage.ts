@@ -1,5 +1,10 @@
 import { isSyntaxThemeId, type SyntaxThemeId } from "@getpaseo/highlight";
 import {
+  editorPreferenceDefaults,
+  editorStoredPreferences,
+  type EditorPreferences,
+} from "@/otto/editor/preferences"; // OTTO(editor)
+import {
   speechPreferenceDefaults,
   speechStoredPreferences,
   type SpeechPreferences,
@@ -80,7 +85,8 @@ export { DEFAULT_CONTENT_MAX_WIDTH };
 export const MIN_CONTENT_MAX_WIDTH = 600;
 export const MAX_CONTENT_MAX_WIDTH = 4000;
 
-export interface AppSettings extends SpeechPreferences {
+export interface AppSettings extends SpeechPreferences, EditorPreferences {
+  // OTTO(editor): recognize retained device settings through their original keys.
   theme: ThemePreference;
   /** Which contributed theme `theme: "plugin"` selects. */
   pluginThemeId: string | null;
@@ -142,6 +148,7 @@ export interface Settings extends AppSettings {
 }
 
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
+  ...editorPreferenceDefaults, // OTTO(editor)
   ...speechPreferenceDefaults, // OTTO(speech)
   theme: DEFAULT_THEME_PREFERENCE,
   pluginThemeId: null,
@@ -219,6 +226,7 @@ const DEFAULT_STORED_APP_SETTINGS = {
 
 const StoredAppSettingsSchema = z
   .looseObject({
+    ...editorStoredPreferences, // OTTO(editor)
     ...speechStoredPreferences, // OTTO(speech)
     theme: ThemePreferenceSchema.catch(DEFAULT_THEME_PREFERENCE),
     pluginThemeId: z.string().nullable().catch(null),

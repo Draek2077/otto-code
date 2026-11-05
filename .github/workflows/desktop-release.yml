@@ -181,6 +181,8 @@ jobs:
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
 
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build desktop release
         shell: bash
         env:
@@ -302,6 +304,8 @@ jobs:
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
 
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build unsigned desktop package
         shell: bash
         env:
@@ -412,6 +416,8 @@ jobs:
       - name: Install Linux smoke display
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build desktop release
         shell: bash
         env:
@@ -518,6 +524,8 @@ jobs:
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
 
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build desktop release
         shell: bash
         env:

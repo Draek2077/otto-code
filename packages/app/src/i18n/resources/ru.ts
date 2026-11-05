@@ -2144,6 +2144,7 @@ export const ru: TranslationResources = {
       providers: "Провайдеры",
       usage: "Использование",
       terminals: "Терминалы",
+      code: "Код", // OTTO(editor)
       plugins: "Плагины",
       host: "Обзор",
     },

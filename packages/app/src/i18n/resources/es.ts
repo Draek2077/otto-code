@@ -2159,6 +2159,7 @@ export const es: TranslationResources = {
       providers: "Proveedores",
       usage: "Uso",
       terminals: "Terminals",
+      code: "Código", // OTTO(editor)
       plugins: "Plugins",
       host: "Resumen",
     },

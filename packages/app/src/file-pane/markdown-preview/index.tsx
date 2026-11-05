@@ -1,6 +1,6 @@
 import { MarkdownRenderer } from "@/components/markdown/renderer";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import { useMemo } from "react";
+import { useMemo, type ComponentProps } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { parseMarkdownPreviewDocument } from "./document";
@@ -11,12 +11,14 @@ export function FileMarkdownPreview({
   workspaceRoot,
   client,
   serverId,
+  contextMenuItems, // OTTO(editor): source-backed native selection commands, absent elsewhere.
 }: {
   source: string;
   filePath: string;
   workspaceRoot?: string;
   client?: DaemonClient | null;
   serverId?: string;
+  contextMenuItems?: ComponentProps<typeof MarkdownRenderer>["contextMenuItems"]; // OTTO(editor)
 }) {
   const document = useMemo(() => parseMarkdownPreviewDocument(source), [source]);
 
@@ -50,6 +52,7 @@ export function FileMarkdownPreview({
           workspaceRoot={workspaceRoot}
           client={client}
           serverId={serverId}
+          contextMenuItems={contextMenuItems} // OTTO(editor)
         />
       </View>
     </View>

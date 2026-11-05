@@ -1,3 +1,5 @@
+import { prepareEditorBulkClose } from "@/otto/editor/bulk-close"; // OTTO(editor)
+import { WorkspaceEditorDrops } from "@/otto/editor/workspace-drops"; // OTTO(editor)
 import {
   AssistantFileLinkResolverProvider,
   createInlinePathOpener,
@@ -2106,6 +2108,7 @@ function WorkspaceScreenContent({
         workspaceId: normalizedWorkspaceId,
         tabId,
       });
+      if (attributes.beforeClose) return attributes.beforeClose(); // OTTO(editor): scoped owner handles stop confirmation before the file tab closes.
       if (!attributes.modified) return true;
       const resumePendingSave = attributes.suspendPendingSave?.();
       const confirmed = await confirmDialog({
@@ -2342,6 +2345,14 @@ function WorkspaceScreenContent({
         return false;
       }
 
+      // OTTO(editor): external file buffers have a real stop/unknown-outcome gate.
+      if (
+        !(await prepareEditorBulkClose(
+          { serverId: normalizedServerId, workspaceId: normalizedWorkspaceId },
+          tabsToClose,
+        ))
+      )
+        return false;
       await closeBulkWorkspaceTabs({
         client,
         groups,
@@ -3771,7 +3782,15 @@ function WorkspaceScreenContent({
         onOpenWorkspaceFile={openMarkdownPath}
         toast={toast}
       >
-        {renderedWorkspaceScreen}
+        <WorkspaceEditorDrops
+          serverId={normalizedServerId}
+          workspaceId={normalizedWorkspaceId}
+          active={isRouteFocused}
+          openFile={openMarkdownFile}
+        >
+          {renderedWorkspaceScreen}
+        </WorkspaceEditorDrops>
+        {/* OTTO(editor): preserve Composer and terminal drops. */}
       </AssistantFileLinkResolverProvider>
     </WorkspaceContentProviders>
   );

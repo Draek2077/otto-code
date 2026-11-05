@@ -86,6 +86,7 @@ import type {
 import { type OpenFileDisposition, type WorkspaceFileOpenRequest } from "@/workspace/file-open";
 
 interface TerminalPaneProps {
+  onExit?: () => void; // OTTO(editor): file-owned PTYs reuse this stream's exit event.
   serverId: string;
   cwd: string;
   terminalId: string;
@@ -231,6 +232,7 @@ export function TerminalPane({
   onOpenFileExplorer,
   onOpenDirectory, // OTTO(terminal-paths)
   onOpenWorkspaceFile,
+  onExit, // OTTO(editor)
 }: TerminalPaneProps) {
   const { t } = useTranslation();
   const retainedPanelActive = useRetainedPanelActive();
@@ -490,6 +492,7 @@ export function TerminalPane({
     workspaceTerminalSession.snapshots.clear({ terminalId: exitedTerminalId });
     if (terminalIdRef.current === exitedTerminalId) emulatorRef.current?.clear();
     setModifiers({ ...EMPTY_MODIFIERS });
+    if (terminalIdRef.current === exitedTerminalId) onExit?.(); // OTTO(editor)
   });
 
   useEffect(() => {

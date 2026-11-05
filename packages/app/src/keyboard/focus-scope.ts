@@ -63,6 +63,16 @@ export function resolveKeyboardFocusScope(input: {
   ) {
     return "message-input";
   }
+  // OTTO(editor): only the source content, never a toolbar/search input.
+  if (!commandCenterOpen) {
+    const editor = candidates
+      .find((element) => element.closest(".cm-content"))
+      ?.closest("[data-otto-editor-language]");
+    if (editor)
+      return editor.getAttribute("data-otto-editor-language") === "markdown"
+        ? "markdown-editor"
+        : "code-editor";
+  }
 
   if (
     candidates.some((element) => {

@@ -2110,6 +2110,7 @@ export const ar: TranslationResources = {
       providers: "مقدمي الخدمات",
       usage: "الاستخدام",
       terminals: "Terminals",
+      code: "برمجة", // OTTO(editor)
       plugins: "Plugins",
       host: "نظرة عامة",
     },

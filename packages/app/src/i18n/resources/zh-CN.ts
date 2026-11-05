@@ -2089,6 +2089,7 @@ export const zhCN: TranslationResources = {
       providers: "Providers",
       usage: "使用情况",
       terminals: "Terminals",
+      code: "代码", // OTTO(editor)
       plugins: "插件",
       host: "概览",
     },

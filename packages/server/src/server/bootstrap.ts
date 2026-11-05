@@ -140,6 +140,9 @@ import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { ManagedSpeechRuntime } from "./otto/speech/managed-runtime.js"; // OTTO(speech): one shared runtime, replacement waits for active sessions.
 import { invokeOttoBuiltin, type OttoBuiltinRoute } from "./otto/plugin-rpc.js"; // OTTO(feature-host)
 import { TerminalHost } from "./otto/terminal/host.js"; // OTTO(terminal)
+import { EditorHost } from "./otto/editor/service.js"; // OTTO(editor)
+import { TerminalEditorHost } from "./otto/editor/terminal.js"; // OTTO(editor)
+import { releaseArchivedEditorWorkspace } from "./otto/editor/workspace-lifecycle.js"; // OTTO(editor)
 import { SpeechHost } from "./otto/speech/host.js"; // OTTO(speech)
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
@@ -679,8 +682,16 @@ export async function createPaseoDaemon(
     () => terminalManager,
   ); // OTTO(terminal): inert until an explicit settings/action request.
   let ottoSpeech: SpeechHost | null = null; // OTTO(speech): authenticated host settings and playback, composed before listening.
+  const ottoEditor = new EditorHost(config.paseoHome, () => serverId, logger); // OTTO(editor): no reads or server launches during construction.
+  const ottoTerminalEditor = new TerminalEditorHost(
+    () => serverId,
+    () => terminalManager,
+    () => workspaceRegistry,
+  ); // OTTO(editor): reuse Paseo PTYs and active workspace identity.
   // OTTO(feature-host): one registry of shared built-in owners; no dispatch growth in Paseo's session path.
   const ottoRoutes: Readonly<Record<string, OttoBuiltinRoute>> = {
+    "otto-editor": (method, input, clientId) =>
+      ottoTerminalEditor.invoke(method, input) ?? ottoEditor.invoke(method, input, clientId), // OTTO(editor)
     "otto-terminal": (method, input) => ottoTerminal.invoke(method, input),
     "otto-speech": (method, input, clientId) => ottoSpeech?.invoke(method, input, clientId),
     "otto-artifacts": (method, input) => ottoArtifacts?.invoke(method, input),
@@ -712,6 +723,7 @@ export async function createPaseoDaemon(
       // OTTO(feature-host): existing authenticated plugin RPC, unchanged relay framing.
       ottoRpc: {
         has: (pluginId) =>
+          pluginId === "otto-editor" || // OTTO(editor)
           pluginId === "otto-terminal" || // OTTO(terminal)
           (pluginId === "otto-speech" && ottoSpeech !== null) || // OTTO(speech)
           (pluginId === "otto-artifacts" && ottoArtifacts !== null) || // OTTO(artifacts)
@@ -723,6 +735,9 @@ export async function createPaseoDaemon(
         invoke: (pluginId, method, input, clientId, source) =>
           invokeOttoBuiltin(ottoRoutes, pluginId, method, input, clientId, source), // OTTO(feature-host)
         releaseClient: (clientId) => {
+          void ottoEditor
+            .releaseClient(clientId)
+            .catch((error) => logger.warn({ err: error }, "Editor client cleanup failed")); // OTTO(editor)
           ottoSpeech?.releaseClient(clientId); // OTTO(speech)
           ottoBrain.releaseClient(clientId);
           ottoKanban?.releaseClient(clientId); // OTTO(kanban): stop polling after paired-session teardown.
@@ -1221,6 +1236,9 @@ export async function createPaseoDaemon(
   await workspaceLabelService.initialize();
   logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
   const teardownArchivedWorkspaceRuntime = (workspaceId: string): void => {
+    void releaseArchivedEditorWorkspace(ottoEditor, workspaceRegistry, workspaceId).catch((error) =>
+      logger.warn({ err: error, workspaceId }, "Archived editor cleanup failed"),
+    ); // OTTO(editor)
     scriptRuntimeStore.removeForWorkspace(workspaceId);
     releaseWorkspaceServicePortPlan(workspaceId);
   };
@@ -2077,6 +2095,7 @@ export async function createPaseoDaemon(
       await pluginRuntime.stopAllPlugins().catch(() => undefined);
       ottoSpeech?.close(); // OTTO(speech)
       await ottoBrain.close(); // OTTO(brain-host): release waits/feed; never stop independent host jobs.
+      await ottoEditor.close(); // OTTO(editor): bounded language-server teardown on startup failure.
       await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
       await ottoArtifacts?.close(); // OTTO(artifacts): revoke late generation publication.
       await ottoKanban?.close(); // OTTO(kanban): no polling survives daemon startup failure.
@@ -2127,6 +2146,7 @@ export async function createPaseoDaemon(
     await agentProviderRuntime.shutdown();
     await pluginRuntime.stopAllPlugins();
     await ottoBrain.close(); // OTTO(brain-host)
+    await ottoEditor.close(); // OTTO(editor): language servers and observation waits share the daemon lifetime.
     await ottoKnowledge?.close(); // OTTO(knowledge)
     await ottoArtifacts?.close(); // OTTO(artifacts)
     await ottoKanban?.close(); // OTTO(kanban)

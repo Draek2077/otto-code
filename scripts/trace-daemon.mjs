@@ -94,6 +94,17 @@ const entries = [
 // Files read at runtime via fs APIs rather than `require`. nft only
 // traces the module graph; data files have to be listed explicitly.
 const additionalInputs = [
+  // OTTO(editor): dynamic stdio entry points need their SDKs, stubs and payload.
+  "packages/server/dist/dotnet-probe/**",
+  resolvedPackageFiles(
+    "packages/server/dist/server/server/otto/editor/lsp/registry.js",
+    "typescript-language-server",
+  ),
+  resolvedPackageFiles(
+    "packages/server/dist/server/server/otto/editor/lsp/registry.js",
+    "typescript",
+  ),
+  resolvedPackageFiles("packages/server/dist/server/server/otto/editor/lsp/registry.js", "pyright"),
   // Agent orchestration skill catalog loaded through filesystem paths
   "packages/server/dist/server/skills/**",
   "packages/server/dist/server/builtin-plugins/**",

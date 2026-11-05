@@ -1,0 +1,6 @@
+{
+  "id": "otto-editor",
+  "name": "Otto File Editor",
+  "description": "Host-owned code intelligence and file editor integrations.",
+  "requirements": { "paseo": ">=0.12.0" }
+}

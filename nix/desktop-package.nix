@@ -21,6 +21,8 @@
 }:
 buildNpmPackage {
   pname = "otto-desktop";
+  # OTTO(editor): reuse the daemon's immutable, portable sidecar payload.
+  OTTO_DOTNET_PROBE_PAYLOAD = "${paseo.editorDotnetProbe}/lib/otto-dotnet-probe";
   version = (builtins.fromJSON (builtins.readFile ../package.json)).version;
 
   src = lib.cleanSourceWith {

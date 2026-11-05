@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { FileFind, FileFindModel } from "../find/index.web";
-import { Annotation, Compartment, EditorState, Transaction } from "@codemirror/state";
+import {
+  Annotation,
+  Compartment,
+  EditorState,
+  Transaction,
+  type Extension,
+} from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { getLanguageForFile } from "@getpaseo/highlight";
 import { getCM, vim } from "@replit/codemirror-vim";
@@ -8,8 +14,10 @@ import { isRenderedMarkdownFile } from "@/components/file-pane-render-mode";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { FileEditorModel } from "./model";
 import { editorBaseExtensions, editorTheme, type EditorVisualTheme } from "./extensions.web";
+import { editorLocationSelection } from "@/otto/editor/code/navigation"; // OTTO(editor)
 
 interface FileEditorViewProps {
+  ottoExtensions?: Extension; // OTTO(editor): owned semantic extensions; the Paseo model still owns the file.
   model: FileEditorModel;
   filename: string;
   location: WorkspaceFileLocation;
@@ -24,12 +32,14 @@ const languageCompartment = new Compartment();
 const wrappingCompartment = new Compartment();
 const themeCompartment = new Compartment();
 const vimCompartment = new Compartment();
+const ottoCompartment = new Compartment(); // OTTO(editor)
 
 function wrappingForFile(filename: string) {
   return isRenderedMarkdownFile(filename) ? EditorView.lineWrapping : [];
 }
 
 export function FileEditorView({
+  ottoExtensions, // OTTO(editor)
   model,
   filename,
   location,
@@ -43,7 +53,14 @@ export function FileEditorView({
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
-  const initial = useRef({ filename, model, theme, vimEnabled, content: snapshot.content });
+  const initial = useRef({
+    filename,
+    model,
+    theme,
+    vimEnabled,
+    content: snapshot.content,
+    ottoExtensions,
+  }); // OTTO(editor)
   const onCursorChangeRef = useRef(onCursorChange);
   onCursorChangeRef.current = onCursorChange;
 
@@ -56,8 +73,9 @@ export function FileEditorView({
         doc: values.content,
         extensions: [
           vimCompartment.of(values.vimEnabled ? vim() : []),
+          ottoCompartment.of(values.ottoExtensions ?? []), // OTTO(editor)
           find.extension,
-          ...editorBaseExtensions(() => void values.model.save()),
+          ...editorBaseExtensions(() => void values.model.save(), !values.ottoExtensions), // OTTO(editor)
           languageCompartment.of(getLanguageForFile(values.filename)?.extension ?? []),
           wrappingCompartment.of(wrappingForFile(values.filename)),
           themeCompartment.of(editorTheme(values.theme)),
@@ -87,6 +105,10 @@ export function FileEditorView({
   }, [find]);
 
   useEffect(() => {
+    viewRef.current?.dispatch({ effects: ottoCompartment.reconfigure(ottoExtensions ?? []) });
+  }, [ottoExtensions]); // OTTO(editor): one extension seam, no parallel document/save owner.
+
+  useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
     const document = view.state.toText(snapshot.content);
@@ -102,15 +124,23 @@ export function FileEditorView({
   useEffect(() => {
     const view = viewRef.current;
     if (!view || !location.lineStart) return;
-    const lineStart = Math.min(location.lineStart, view.state.doc.lines);
-    const lineEnd = Math.min(location.lineEnd ?? lineStart, view.state.doc.lines);
-    const from = view.state.doc.line(lineStart).from;
-    const to = view.state.doc.line(Math.max(lineStart, lineEnd)).to;
+    const selection = editorLocationSelection(view.state.doc, {
+      lineStart: location.lineStart,
+      lineEnd: location.lineEnd,
+      columnStart: location.columnStart,
+      columnEnd: location.columnEnd,
+    }); // OTTO(editor)
     view.dispatch({
-      selection: { anchor: from, head: lineEnd > lineStart ? to : from },
-      effects: EditorView.scrollIntoView(from, { y: "center" }),
+      selection,
+      effects: EditorView.scrollIntoView(selection.anchor, { y: "center" }),
     });
-  }, [location.lineEnd, location.lineStart, navigationRevision]);
+  }, [
+    location.lineEnd,
+    location.lineStart,
+    location.columnStart,
+    location.columnEnd,
+    navigationRevision,
+  ]); // OTTO(editor)
 
   useEffect(() => {
     viewRef.current?.dispatch({
@@ -148,11 +178,13 @@ export function FileEditorView({
       <div
         ref={hostRef}
         data-pmono=""
+        data-otto-editor-language={isRenderedMarkdownFile(filename) ? "markdown" : "code"} // OTTO(editor): scope registry shortcuts to the focused source content.
         data-testid="file-source-editor"
         aria-label={`Source editor for ${filename}`}
         style={HOST_STYLE}
       />
-      <FileFind model={find} editor={viewRef} />
+      <FileFind model={find} editor={viewRef} shortcutsManaged={Boolean(ottoExtensions)} />
+      {/* OTTO(editor): no hardcoded shortcut after unassignment. */}
     </div>
   );
 }

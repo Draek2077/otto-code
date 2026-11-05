@@ -55,6 +55,7 @@ function getOpenAccessibilityLabel(
   attachment: WorkspaceComposerAttachment,
   t: ReturnType<typeof useTranslation>["t"],
 ): string {
+  if (attachment.kind === "editor_context") return "Open file context"; // OTTO(editor)
   if (attachment.kind === "browser_element") {
     return t("composer.attachments.openBrowserElement");
   }
@@ -71,6 +72,7 @@ function getRemoveAccessibilityLabel(
   attachment: WorkspaceComposerAttachment,
   t: ReturnType<typeof useTranslation>["t"],
 ): string {
+  if (attachment.kind === "editor_context") return "Remove file context"; // OTTO(editor)
   if (attachment.kind === "browser_element") {
     return t("composer.attachments.removeBrowserElement");
   }
@@ -167,6 +169,7 @@ function useWorkspaceAttachmentBinding({
       if (isWorkspaceAttachment(selected)) {
         if (
           selected.kind === "browser_element" ||
+          selected.kind === "editor_context" || // OTTO(editor)
           selected.kind === "chat_history" ||
           isPullRequestContextAttachment(selected)
         ) {

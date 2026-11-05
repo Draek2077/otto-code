@@ -14,32 +14,46 @@ import { StyleSheet, UnistylesRuntime, withUnistyles } from "react-native-unisty
 import { useTranslation } from "react-i18next";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
-import { filePreviewRenderKind } from "@/components/file-pane-render-mode";
+import { editorPreviewKind as filePreviewRenderKind } from "@/otto/editor/viewers/kind"; // OTTO(editor): extend Paseo's formats without a second rendering engine.
+import { EditorDocumentPreview } from "@/otto/editor/viewers/document"; // OTTO(editor)
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
 import { getFileNameFromPath } from "@/attachments/utils";
-import { resolveFilePreviewReadTarget } from "@/file-explorer/preview-target";
+import { resolveEditorReadTarget as resolveFilePreviewReadTarget } from "@/otto/editor/read-target"; // OTTO(editor): trusted external files retain a single-file parent scope.
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppActivelyVisible } from "@/hooks/use-app-visible";
 import { isFileQueryEnabled } from "@/components/file-pane-enabled";
-import { isWeb } from "@/constants/platform";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useLiveFile } from "./live-file/hook";
 import { useFilePreview } from "./preview-lifecycle/hook";
 import { resolveFilePreviewLifecycle } from "./preview-lifecycle/model";
 import { FilePanelBar } from "./bar";
 import { FileHtmlPreview } from "./html-preview";
-import { FileMarkdownPreview } from "./markdown-preview";
+import { EditorMarkdownPreview as FileMarkdownPreview } from "@/otto/editor/markdown/preview"; // OTTO(editor): annotate only original Markdown, never converted views.
 import { FileEditorModel, getFileConflictCallout, type FileConflictCallout } from "./editor/model";
 import { createFileObservationSource } from "./editor/observation-source";
-import { FileEditorView } from "./editor/view";
-import { FileSourceView } from "./source/view";
+import { EditorRenderer } from "@/otto/editor/renderer/view"; // OTTO(editor): web keeps Paseo's renderer; native shares its model and extensions.
+import { useOttoEditor } from "@/otto/editor/use-editor"; // OTTO(editor)
+import { EditorTools } from "@/otto/editor/tools"; // OTTO(editor)
+import { EditorDocumentTools } from "@/otto/editor/document-tools"; // OTTO(editor)
+import { EditorMissingFile } from "@/otto/editor/missing-file"; // OTTO(editor)
+import { useEditorPreviewScroll } from "@/otto/editor/preview-scroll"; // OTTO(editor)
+import type { EditorScrollLink } from "@/otto/editor/scroll-link"; // OTTO(editor)
+import { EditorLayout } from "@/otto/editor/layout"; // OTTO(editor)
+import { TerminalEditorGate } from "@/otto/editor/terminal-pane"; // OTTO(editor)
+import { EditorStatus } from "@/otto/editor/status"; // OTTO(editor)
+import { EditorMarkdownToolbar } from "@/otto/editor/markdown/toolbar"; // OTTO(editor)
+import { isMarkdownPath } from "@/otto/editor/markdown/markdown-path"; // OTTO(editor)
+import { useEditorFileMode, EditorViewControls } from "@/otto/editor/view-controls"; // OTTO(editor)
+import { EditorSplitPreview } from "@/otto/editor/split-preview"; // OTTO(editor)
+import { FileSourceView } from "@/otto/editor/viewers/source"; // OTTO(editor): keep Paseo web find, restore native read-only find.
 import type { FileConflictAlertState } from "./conflict-alert";
 import type { LiveFileModel } from "./live-file/model";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { usePublishPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import type { Theme } from "@/styles/theme";
-import { ZoomableImage } from "@/components/zoomable-viewport/image";
+import { EditorImagePreview } from "@/otto/editor/viewers/image"; // OTTO(editor): preserve Paseo gestures and restore image transparency/natural size.
+import { EditorRevealFile } from "@/otto/editor/viewers/reveal"; // OTTO(editor)
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const foregroundMutedColorMapping = (theme: Theme) => ({
@@ -47,6 +61,7 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
 });
 
 interface FilePreviewBodyProps {
+  scrollLink?: EditorScrollLink; // OTTO(editor)
   preview: ExplorerFile | null;
   mode?: "preview" | "source";
   isLoading: boolean;
@@ -131,6 +146,7 @@ function TooLargeSource({ size }: { size?: number }) {
 }
 
 function FilePreviewBody({
+  scrollLink, // OTTO(editor)
   preview,
   mode,
   isLoading,
@@ -152,6 +168,7 @@ function FilePreviewBody({
       : null;
 
   const previewScrollRef = useRef<RNScrollView>(null);
+  const previewScroll = useEditorPreviewScroll(previewScrollRef, scrollLink); // OTTO(editor)
 
   if (isLoading && !preview) {
     return (
@@ -171,6 +188,18 @@ function FilePreviewBody({
   }
 
   if (preview.kind === "text") {
+    // OTTO(editor): the source/save path remains unchanged for these formats.
+    if (renderKind === "mermaid" || renderKind === "asciidoc")
+      return (
+        <EditorDocumentPreview
+          kind={renderKind}
+          source={preview.content ?? ""}
+          filePath={filePath}
+          workspaceRoot={workspaceRoot}
+          client={client}
+          serverId={serverId}
+        />
+      );
     if (renderKind === "html") {
       // The HTML document owns its own scrolling, so no ScrollView wrapper here.
       return (
@@ -184,6 +213,7 @@ function FilePreviewBody({
       return (
         <View style={styles.previewScrollContainer}>
           <RNScrollView
+            {...previewScroll} // OTTO(editor): split-only, measured proportional synchronization.
             ref={previewScrollRef}
             style={styles.previewContent}
             showsVerticalScrollIndicator
@@ -220,13 +250,14 @@ function FilePreviewBody({
       );
     }
 
-    return <ZoomableImage uri={imagePreviewUri} testID="image-file-preview" />;
+    return <EditorImagePreview key={imagePreviewUri} uri={imagePreviewUri} file={preview} />;
   }
 
   return (
     <View style={styles.centerState}>
       <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
       <Text style={styles.binaryMetaText}>{formatFileSize({ size: preview.size })}</Text>
+      <EditorRevealFile serverId={serverId} file={filePath} root={workspaceRoot} />
     </View>
   );
 }
@@ -342,10 +373,8 @@ function isEditableTextFile(input: {
   supportsEditing: boolean;
 }): boolean {
   return Boolean(
-    isWeb &&
-    input.supportsEditing &&
-    input.preview?.kind === "text" &&
-    input.preview.size <= 1024 * 1024,
+    // OTTO(editor): the native WebView edits through the same revision-checked file model.
+    input.supportsEditing && input.preview?.kind === "text" && input.preview.size <= 1024 * 1024,
   );
 }
 
@@ -406,25 +435,35 @@ function FilePanePresentation({
 
   if (editable && client && readTarget && preview?.kind === "text") {
     return (
-      <EditableFilePane
+      <TerminalEditorGate
         key={`${serverId}:${readTarget.cwd}:${readTarget.path}`}
         serverId={serverId}
-        workspaceRoot={workspaceRoot}
-        client={client}
-        cwd={readTarget.cwd}
-        path={readTarget.path}
-        preview={preview as TextExplorerFile}
-        liveFile={liveFile}
-        onRetryRead={onRetryRead}
-        retryingRead={retryingRead}
-        filename={filename}
-        mode={previewMode}
-        onModeChange={onPreviewModeChange}
-        isLoading={isLoading}
-        isMobile={isMobile}
-        location={location}
-        navigationRevision={navigationRevision}
-      />
+        root={readTarget.cwd}
+        file={readTarget.path}
+        line={location.lineStart ?? null}
+        preview={previewMode === "preview"}
+        refresh={onRetryRead}
+      >
+        <EditableFilePane
+          key={`${serverId}:${readTarget.cwd}:${readTarget.path}`}
+          serverId={serverId}
+          workspaceRoot={workspaceRoot}
+          client={client}
+          cwd={readTarget.cwd}
+          path={readTarget.path}
+          preview={preview as TextExplorerFile}
+          liveFile={liveFile}
+          onRetryRead={onRetryRead}
+          retryingRead={retryingRead}
+          filename={filename}
+          mode={previewMode}
+          onModeChange={onPreviewModeChange}
+          isLoading={isLoading}
+          isMobile={isMobile}
+          location={location}
+          navigationRevision={navigationRevision}
+        />
+      </TerminalEditorGate>
     );
   }
 
@@ -440,9 +479,19 @@ function FilePanePresentation({
       <View style={styles.container} testID="workspace-file-pane">
         <View style={styles.centerState}>
           <Text style={styles.errorText}>{errorMessage}</Text>
+          <EditorRevealFile serverId={serverId} file={location.path} root={workspaceRoot} />
           <Button variant="outline" size="sm" onPress={onRetryRead} loading={retryingRead}>
             {retryLabel}
           </Button>
+          {client && readTarget ? (
+            <EditorMissingFile
+              client={client}
+              target={readTarget}
+              model={liveFile}
+              refresh={onRetryRead}
+            />
+          ) : null}
+          {/* OTTO(editor): confirmed absence only, no overwrite fallback. */}
         </View>
       </View>
     );
@@ -549,6 +598,11 @@ function EditableFilePane({
   const theme = UnistylesRuntime.getTheme();
   const visualTheme = useMemo(
     () => ({
+      problems: {
+        error: theme.colors.statusDanger,
+        warning: theme.colors.statusWarning,
+        info: theme.colors.accent,
+      },
       colorScheme: theme.colorScheme,
       background: theme.colors.surface0,
       foreground: theme.colors.foreground,
@@ -561,6 +615,9 @@ function EditableFilePane({
       syntax: theme.colors.syntax,
     }),
     [
+      theme.colors.statusDanger,
+      theme.colors.statusWarning,
+      theme.colors.accent,
       theme.colors.border,
       theme.colors.foreground,
       theme.colors.foregroundMuted,
@@ -610,24 +667,43 @@ function EditableFilePane({
     }),
     [preview, snapshot.content, snapshot.version],
   );
-  const showSource = mode !== "preview";
-
-  return (
-    <View style={styles.container} testID="workspace-file-pane">
-      <FilePanelBar
-        size={
-          snapshot.observedVersion.status === "ready" ? snapshot.observedVersion.size : preview.size
-        }
-        lineCount={snapshot.content.split("\n").length}
-        editorStatus={snapshot.status}
-        cursor={showSource ? cursor : undefined}
-        vimMode={showSource ? vimMode : null}
-        conflict={conflict}
-        mode={mode}
-        onModeChange={onModeChange}
+  const fileView = useEditorFileMode(path, mode !== undefined, location.lineStart !== undefined); // OTTO(editor): retain the original per-workspace/file view preference.
+  const showSource = fileView.mode !== "preview";
+  const otto = useOttoEditor({
+    serverId,
+    root: cwd,
+    workspaceRoot,
+    file: path,
+    model,
+    active: showSource,
+  }); // OTTO(editor)
+  useEffect(() => otto.surface.setSplit(fileView.mode === "split"), [otto.surface, fileView.mode]); // OTTO(editor)
+  const ottoActions = useMemo(
+    () =>
+      showSource ? (
+        <EditorTools surface={otto.surface} available={otto.available} state={otto.state} />
+      ) : (
+        <EditorDocumentTools surface={otto.surface} />
+      ),
+    [showSource, otto.surface, otto.available, otto.state],
+  ); // OTTO(editor)
+  const ottoStatus = useMemo(
+    () => (
+      <EditorStatus
+        snapshot={snapshot}
+        surface={otto.surface}
+        filename={filename}
+        cursor={cursor}
+        vimMode={vimMode}
       />
-      {showSource ? (
-        <FileEditorView
+    ),
+    [snapshot, otto.surface, filename, cursor, vimMode],
+  ); // OTTO(editor): one measured footer, no duplicate cursor row.
+  const sourceBody = useMemo(
+    () => (
+      <EditorLayout surface={otto.surface} footer={ottoStatus}>
+        <EditorRenderer
+          code={otto.code}
           model={model}
           filename={filename}
           location={location}
@@ -637,22 +713,90 @@ function EditableFilePane({
           onCursorChange={setCursor}
           onVimModeChange={handleVimModeChange}
         />
-      ) : (
-        <FilePreviewBody
-          preview={renderedPreview}
-          mode={mode}
-          isLoading={isLoading}
-          isMobile={isMobile}
-          location={location}
-          navigationRevision={navigationRevision}
-          imagePreviewUri={null}
-          workspaceRoot={workspaceRoot}
-          client={client}
-          serverId={serverId}
-        />
-      )}
+      </EditorLayout>
+    ),
+    [
+      otto.surface,
+      ottoStatus,
+      otto.code,
+      model,
+      filename,
+      location,
+      navigationRevision,
+      settings.vimKeybindings,
+      visualTheme,
+      handleVimModeChange,
+    ],
+  ); // OTTO(editor): one mounted source and one shared draft in split mode.
+  const previewBody = useMemo(
+    () => (
+      <FilePreviewBody
+        scrollLink={otto.surface.scroll} // OTTO(editor)
+        preview={renderedPreview}
+        mode="preview"
+        isLoading={isLoading}
+        isMobile={isMobile}
+        location={location}
+        navigationRevision={navigationRevision}
+        imagePreviewUri={null}
+        workspaceRoot={workspaceRoot}
+        client={client}
+        serverId={serverId}
+      />
+    ),
+    [
+      renderedPreview,
+      otto.surface,
+      isLoading,
+      isMobile,
+      location,
+      navigationRevision,
+      workspaceRoot,
+      client,
+      serverId,
+    ],
+  ); // OTTO(editor)
+  const modeControl = useMemo(
+    () =>
+      mode ? <EditorViewControls mode={fileView.mode} onChange={fileView.setMode} /> : undefined,
+    [mode, fileView.mode, fileView.setMode],
+  ); // OTTO(editor)
+
+  return (
+    <View style={styles.container} testID="workspace-file-pane">
+      <FilePanelBar
+        size={
+          snapshot.observedVersion.status === "ready" ? snapshot.observedVersion.size : preview.size
+        }
+        lineCount={showSource ? undefined : snapshot.content.split(/\r\n|\r|\n/u).length}
+        editorStatus={snapshot.status}
+        showMetadata={!showSource} // OTTO(editor): the source status strip owns these facts.
+        conflict={conflict}
+        mode={mode}
+        onModeChange={onModeChange}
+        actions={ottoActions} // OTTO(editor)
+        modeControl={modeControl} // OTTO(editor)
+      />
+      {
+        showSource && isMarkdownPath(filename) ? (
+          <EditorMarkdownToolbar surface={otto.surface} />
+        ) : null /* OTTO(editor) */
+      }
+      <EditorFileBodies mode={fileView.mode} source={sourceBody} preview={previewBody} />
     </View>
   );
+}
+// OTTO(editor): keep layout selection outside Paseo's save/conflict owner.
+function EditorFileBodies({
+  mode,
+  source,
+  preview,
+}: {
+  mode: import("@/otto/editor/view-state").FileViewMode;
+  source: React.ReactNode;
+  preview: React.ReactNode;
+}) {
+  return <EditorSplitPreview mode={mode} source={source} preview={preview} />; // OTTO(editor): retain undo, selection and scroll when changing views.
 }
 
 function fileConflictAlertState(input: {

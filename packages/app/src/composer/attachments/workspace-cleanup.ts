@@ -3,6 +3,7 @@ import { useWorkspaceAttachmentsStore } from "@/attachments/workspace-attachment
 import { isPullRequestContextAttachment } from "@/attachments/workspace-attachment-utils";
 
 export function getAttachmentKey(attachment: WorkspaceComposerAttachment): string {
+  if (attachment.kind === "editor_context") return `editor:${attachment.id}`; // OTTO(editor)
   if (attachment.kind === "browser_element") {
     return JSON.stringify({
       type: "browser_element",
@@ -58,6 +59,7 @@ function isSentContextAttachment(
 ): attachment is WorkspaceComposerAttachment {
   return (
     attachment.kind === "browser_element" ||
+    attachment.kind === "editor_context" || // OTTO(editor)
     attachment.kind === "chat_history" ||
     isPullRequestContextAttachment(attachment)
   );

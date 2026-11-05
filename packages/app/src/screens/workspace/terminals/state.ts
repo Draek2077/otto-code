@@ -74,7 +74,9 @@ export function collectStandaloneTerminalIds(input: {
   scriptTerminalIds: Set<string>;
 }): string[] {
   return input.terminals
-    .filter((terminal) => !input.scriptTerminalIds.has(terminal.id))
+    .filter(
+      (terminal) => !input.scriptTerminalIds.has(terminal.id) && !isEditorTerminal(terminal.id),
+    ) // OTTO(editor): file-owned PTYs stay in their file tab.
     .map((terminal) => terminal.id);
 }
 
@@ -108,3 +110,4 @@ export function upsertCreatedTerminalPayload(input: {
     requestId: input.current?.requestId ?? `terminal-create-${input.terminal.id}`,
   };
 }
+import { isEditorTerminal } from "@getpaseo/plugin/otto/editor"; // OTTO(editor)

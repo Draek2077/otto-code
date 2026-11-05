@@ -6,6 +6,8 @@ export interface WorkspaceFileLocation {
   path: string;
   lineStart?: number;
   lineEnd?: number;
+  columnStart?: number; // OTTO(editor): one-based UTF-16 source navigation.
+  columnEnd?: number; // OTTO(editor)
 }
 
 export type WorkspaceFileTabTarget = { kind: "file" } & WorkspaceFileLocation;
@@ -33,6 +35,12 @@ export function normalizeWorkspaceFileLocation(
     path,
     ...(lineStart ? { lineStart } : {}),
     ...(lineStart && lineEnd && lineEnd >= lineStart ? { lineEnd } : {}),
+    ...(lineStart && normalizeLineNumber(location.columnStart)
+      ? { columnStart: normalizeLineNumber(location.columnStart) }
+      : {}), // OTTO(editor)
+    ...(lineStart && normalizeLineNumber(location.columnEnd)
+      ? { columnEnd: normalizeLineNumber(location.columnEnd) }
+      : {}), // OTTO(editor)
   };
 }
 
@@ -41,7 +49,11 @@ export function workspaceFileLocationsEqual(
   right: WorkspaceFileLocation,
 ): boolean {
   return (
-    left.path === right.path && left.lineStart === right.lineStart && left.lineEnd === right.lineEnd
+    left.path === right.path &&
+    left.lineStart === right.lineStart &&
+    left.lineEnd === right.lineEnd &&
+    left.columnStart === right.columnStart &&
+    left.columnEnd === right.columnEnd // OTTO(editor)
   );
 }
 

@@ -11,6 +11,7 @@ export interface PanelInstanceIdentity {
 export interface PanelInstanceAttributes {
   modified: boolean;
   suspendPendingSave?: () => () => void;
+  beforeClose?: () => Promise<boolean>; // OTTO(editor): a file-owned PTY can hold an unsaved terminal buffer.
 }
 
 const DEFAULT_ATTRIBUTES: PanelInstanceAttributes = { modified: false };
@@ -49,11 +50,12 @@ export function setPanelInstanceAttributes(
   const previous = attributesByPanel.get(key) ?? DEFAULT_ATTRIBUTES;
   if (
     previous.modified === attributes.modified &&
-    previous.suspendPendingSave === attributes.suspendPendingSave
+    previous.suspendPendingSave === attributes.suspendPendingSave &&
+    previous.beforeClose === attributes.beforeClose
   ) {
     return;
   }
-  if (attributes.modified) attributesByPanel.set(key, attributes);
+  if (attributes.modified || attributes.beforeClose) attributesByPanel.set(key, attributes);
   else attributesByPanel.delete(key);
   attributesRevision += 1;
   for (const listener of listenersByPanel.get(key) ?? []) listener();
@@ -123,9 +125,10 @@ export function usePublishPanelInstanceAttributes(attributes: PanelInstanceAttri
   const { serverId, workspaceId, tabId } = usePaneContext();
   const modified = attributes.modified;
   const suspendPendingSave = attributes.suspendPendingSave;
+  const beforeClose = attributes.beforeClose; // OTTO(editor)
   useEffect(() => {
     const identity = { serverId, workspaceId, tabId };
-    setPanelInstanceAttributes(identity, { modified, suspendPendingSave });
+    setPanelInstanceAttributes(identity, { modified, suspendPendingSave, beforeClose });
     return () => setPanelInstanceAttributes(identity, DEFAULT_ATTRIBUTES);
-  }, [modified, serverId, suspendPendingSave, tabId, workspaceId]);
+  }, [modified, serverId, suspendPendingSave, beforeClose, tabId, workspaceId]);
 }

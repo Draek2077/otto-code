@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { OttoCodeSettings } from "@/otto/editor/settings/page"; // OTTO(editor)
 import type { ComponentType, ReactNode } from "react";
 import {
   Alert,
@@ -184,7 +185,7 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     id: "editor",
     labelKey: "settings.sections.editor",
     icon: Code2,
-    webOnly: true,
+    // OTTO(editor): the offline native editor shares these device preferences.
     Content: EditorSection,
   },
   {
@@ -240,6 +241,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
   { id: "usage", labelKey: "settings.hostSections.usage", icon: Gauge },
   { id: "terminals", labelKey: "settings.hostSections.terminals", icon: SquareTerminal },
+  { id: "code", labelKey: "settings.hostSections.code", icon: Code2 }, // OTTO(editor)
   { id: "plugins", labelKey: "settings.hostSections.plugins", icon: Blocks },
 ];
 
@@ -266,6 +268,8 @@ function renderHostSettingsContent(
       return <HostUsagePage serverId={view.serverId} />;
     case "terminals":
       return <HostTerminalsPage serverId={view.serverId} />;
+    case "code":
+      return <OttoCodeSettings serverId={view.serverId} />; // OTTO(editor)
     case "plugins":
       return <HostPluginsPage serverId={view.serverId} />;
     case "host":

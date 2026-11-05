@@ -1,4 +1,7 @@
+import type { EditorShortcutActionId } from "@/otto/editor/shortcuts/definitions"; // OTTO(editor)
 export type KeyboardFocusScope =
+  | "code-editor"
+  | "markdown-editor" // OTTO(editor)
   | "terminal"
   | "message-input"
   | "command-center"
@@ -17,6 +20,7 @@ export type MessageInputKeyboardActionKind =
   | "mode-cycle";
 
 export type KeyboardActionId =
+  | EditorShortcutActionId // OTTO(editor)
   | "agent.interrupt"
   | "agent.new"
   | "workspace.tab.menu.open"

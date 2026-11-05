@@ -53,6 +53,7 @@ import { showWindowWhenReady } from "./window/show-when-ready.js";
 import { resolveDesktopWindowChromeMode, windowChromeModeArgument } from "./window/chrome.js";
 import { registerDialogHandlers } from "./features/dialogs.js";
 import { registerWakeWordHandlers } from "./otto/speech/wake-word.js"; // OTTO(wake-word)
+import { registerEditorPrint } from "./otto/editor/print.js"; // OTTO(editor)
 import {
   registerNotificationHandlers,
   ensureNotificationCenterRegistration,
@@ -1000,6 +1001,7 @@ async function bootstrap(): Promise<void> {
   registerWindowManager({ mode: DESKTOP_WINDOW_CHROME_MODE });
   registerDialogHandlers();
   registerWakeWordHandlers(); // OTTO(wake-word): device-local opt-in listener.
+  registerEditorPrint(); // OTTO(editor): explicit export, no startup child/window.
   registerNotificationHandlers();
   const openExternalUrl = createExternalUrlOpener({ open: shell.openExternal });
   ipcMain.handle("paseo:opener:openUrl", (_event, value: unknown) => openExternalUrl(value));

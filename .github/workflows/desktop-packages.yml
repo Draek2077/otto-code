@@ -57,6 +57,8 @@ jobs:
       - name: Install package smoke dependencies
         run: sudo apt-get update && sudo apt-get install -y xvfb xauth rpm
 
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build Linux desktop artifacts
         # Smoke package contents and installation without spending minutes on xz compression.
         run: |

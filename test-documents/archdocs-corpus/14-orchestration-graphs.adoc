@@ -1,0 +1,374 @@
+= Orchestration - Graph Execution
+:description: How a graph runs - DAG scheduling, edge gating, prompt assembly from templates and inputs, structured output, validation, retry and iteration.
+
+The engine is pure control flow over an injected port
+(`packages/server/src/server/orchestration/graph-engine.ts`): no daemon dependencies, unit
+testable with a fake port. It decides *what runs, in what order, with what input, and
+whether the answer counts*. Who the agent is and what it may touch is
+link:16-orchestration-agents.html[Agent Binding].
+
+== Two engines, one projection
+
+Otto runs orchestrations through two engines that share a single observable type. `Run.kind`
+discriminates them.
+
+[cols="1,1,2"]
+|===
+|`Run.kind` |Engine |Shape
+
+|absent / `phases`
+|`run-engine.ts`
+|A conductor-declared plan. Phases in declared order, typed
+(`research · plan · refactor · implement · design · verify · gate · deliver`), with fan-out
+and judging *within* a phase. Human `gate` phases pause the run.
+
+|`graph`
+|`graph-engine.ts`
+|A user-authored DAG executed exactly as drawn. Per-node authority, conditional edges,
+declared output fields, retry and time limits. No gate node.
+|===
+
+Both project into `Run` + `RunPhase[]`, so one page, one store and one client render both. A
+graph's worker nodes project as phases of type `graph-node` with edge-derived `dependsOn`,
+which is why a client that predates graphs still renders a graph run as a phase list.
+
+== Scheduling: one memoised promise per node
+
+There is no wave batching and no dispatcher rescan. Each node gets one promise, created on
+first demand and reused; a node awaits its upstream nodes' promises directly. A node whose
+inputs are ready never waits on an unrelated branch.
+
+Termination is guaranteed at build time, not run time: `buildRunFromGraph` rejects a graph
+that fails structural validation (Kahn's cycle check, exactly one Orchestrator root, edges
+resolving to known nodes) or whose edge conditions do not parse. Loops are node annotations,
+never cyclic edges.
+
+Because a node awaits *all* of its upstream promises before deciding anything, nothing it
+reads can still change by the time it decides. That is what lets conditional edges ride the
+memoised-promise model with no fixed-point pass.
+
+[mermaid]
+----
+flowchart TD
+    A[Node demanded] --> B[Await all upstream promises]
+    B --> C{Run canceled?}
+    C -->|yes| S1[skipped · canceled]
+    C -->|no| D{Any upstream failed?}
+    D -->|yes| S2[skipped · upstream-failed]
+    D -->|no| E[Resolve incoming edges]
+    E --> F{Edge verdict}
+    F -->|condition threw| X[failed]
+    F -->|no edge delivers| S3[skipped · condition<br/>or upstream-skipped]
+    F -->|delivers| G[Assemble task]
+    G --> H[Acquire semaphore · check agent cap]
+    H --> I[Spawn agent with node authority]
+    I --> J[Await, bounded by timeoutMs]
+    J --> K{Settled ok?}
+    K -->|no| R{Retry attempts left?}
+    R -->|yes| G
+    R -->|no| X
+    K -->|yes| L[Harvest output fields]
+    L --> M{Loop 'until' judge passes?}
+    M -->|no, attempts left| G
+    M -->|yes / no loop| N[done]
+----
+
+== Edge resolution - the gate before dispatch
+
+A node result is three-valued: `done`, `failed`, or `skipped`. **A skip is control flow, never
+an error**, and always carries a machine-readable reason.
+
+[cols="1,3"]
+|===
+|`RunPhase.skipReason` |Meaning
+
+|`condition` |An incoming edge's condition chose another branch.
+|`upstream-skipped` |Everything feeding this node was itself skipped.
+|`upstream-failed` |An upstream node failed.
+|`canceled` |The run was canceled before this node dispatched.
+|===
+
+The gating rule, and the reason diamonds work:
+
+[quote]
+____
+A drawn edge is a requirement. A node runs when **at least one edge delivers and none was
+ruled out by its own condition.** An upstream that was *skipped* contributes nothing and
+vetoes nothing.
+____
+
+A join below two conditional branches still runs off whichever branch executed, because the
+pruned side arrives as `upstream-skipped` rather than as a veto.
+
+Conditions are JSONata (`edge-conditions.ts`), evaluated against the upstream node's output
+fields at the top level plus `output` carrying its prose. JSONata because it is parsed and
+evaluated, never `eval`'d - **a graph is user-authored data and must never become code the
+daemon executes.** Nothing else is in scope: a condition cannot reach the filesystem, the run,
+or another node.
+
+A condition that throws **fails the node**. It is never a quiet false - a typo would otherwise
+silently prune half the graph. Syntax is checked before the run starts; the shared client
+validator stays parser-free, so expression checking is daemon-side.
+
+`GraphEdge.fields` narrows what an edge carries. Selection only, never renaming: downstream is
+a prompt, not a typed function signature.
+
+== Building the node's task
+
+A node's prompt is assembled per attempt, not stored. Three sources feed it.
+
+[mermaid]
+----
+flowchart LR
+    subgraph Base["Base prompt (one of)"]
+        T1[promptTemplate<br/>EJS + snippets]
+        T2[inline prompt<br/>+ inputs substituted]
+        T3[promptFromInput<br/>declared input value]
+    end
+    T1 -->|render fails| T2
+    Base --> ASM[Assembled task]
+    UP[Upstream material<br/>fields JSON, then prose] --> ASM
+    OUT[Output instruction<br/>from declared fields] --> ASM
+    IT[Iteration context<br/>previous output · judge feedback] --> ASM
+    ASM --> SP[Spawn]
+----
+
+=== Parameters
+
+A graph declares `inputs[]`; the New Orchestration dialog renders them as a form. Values reach
+a node three ways: `{{inputs.key}}` substitution inside the inline prompt, `promptFromInput`
+binding a whole declared input as the prompt, and template variable bindings. Validation
+rejects a graph that references an input it never declared.
+
+=== Prompt templates (EJS)
+
+Templates are host records under `$OTTO_HOME/prompt-templates/`, not files. `include("id")`
+resolves **against the store, not the filesystem**, nesting is capped at 5 to catch snippet
+cycles, and EJS output escaping is disabled because prompts are text, not markup. A template
+marked `snippet: true` is meant to be included by others.
+
+A node binds one with `{ templateId, variables }`. A variable is a literal, `$inputs.<key>`, or
+`$output.<nodeId>.<field>`. **An unresolvable reference renders empty rather than leaking its
+own syntax** - `$output.classify.missing` sitting in a prompt would read to the model as an
+instruction.
+
+**Failure degrades, never blocks.** A deleted template, a syntax error, or a host with no
+template store falls back to the node's inline prompt and logs. This is the one place in the
+engine where a fallback is correct: otherwise removing a shared snippet breaks every graph
+that referenced it.
+
+The convention the starters demonstrate: the *driver instruction* stays on the node, reusable
+*behavioural rules* live in a snippet. Repeating those rules per node is duplication paid for
+on every dispatch.
+
+[WARNING]
+====
+*EJS compiles templates to JavaScript that runs in the daemon process.* Acceptable today
+because templates are authored locally by the machine's own user - the same trust level as a
+workspace script. **The day templates become shareable or importable this is a code-execution
+vector and needs an explicit trust gate.**
+====
+
+=== Upstream material
+
+Satisfied edges contribute a labelled JSON block of carried fields **first**, then the prose.
+Fields are what a downstream node can act on without re-reading anything; the prose still
+carries the reasoning the fields deliberately don't. A skipped branch contributes nothing -
+not an empty section.
+
+Rule: **references, not contents.** Fields carry values and paths; anything large is a file the
+next node reads with its own tools.
+
+== Structured output: declare, submit, validate, harvest
+
+A node declares `output.fields` - plain JSON descriptors (`key`, `type`, `description?`,
+`required?`), never a serialized Zod schema, because the same descriptor must be wire-safe,
+renderable as a designer form, and compilable to both Zod and JSON Schema. `type` is an open
+vocabulary: **an unknown type validates as "anything" rather than failing**, so an old daemon
+meeting a new type degrades to accepting the value. Absent `required` means required.
+
+`node-output.ts` is the only module that compiles descriptors, and it compiles them three ways:
+to Zod for validation, to a JSON Schema input shape for the tool, and to the short prose
+instruction appended to the task.
+
+[mermaid]
+----
+sequenceDiagram
+    participant E as Graph engine
+    participant D as Daemon tool catalog
+    participant A as Node agent
+    participant S as NodeOutputStore
+
+    E->>D: spawn with output-fields label
+    D->>A: register submit_output (this agent only)
+    A->>D: submit_output({...})
+    D->>D: validate against compiled Zod
+    alt invalid
+        D-->>A: isError + precise message
+        A->>D: submit_output({corrected})
+    end
+    D->>S: record(agentId, value)
+    A-->>E: agent settles
+    E->>S: take(agentId)
+    S-->>E: fields, or null → prose scan → fail
+----
+
+Two details are load-bearing and easy to undo by accident:
+
+* **The advertised tool input schema is permissive.** The catalog parses a tool's input before
+  the handler runs and *throws* on failure, so a strict shape would turn the most common
+  mistake - a missing field - into a thrown parse error instead of a correctable tool error.
+  Every field is advertised optional; requiredness is enforced in the handler.
+* **`submit_output` is registered past the group and policy gates.** Those gates decide which
+  Otto *capabilities* a node may use. This is not a capability - it is the node's own
+  deliverable channel, and a deterministic node (the kind most likely to declare fields) would
+  otherwise have it stripped along with the `agents` group.
+
+This is why structured output is provider-neutral: MCP-capable seats reach the tool through the
+daemon's MCP server, openai-compat seats through the daemon-owned tool loop, local models get
+the identical contract. **No provider branch exists anywhere in the engine.**
+
+**Harvest order on settle:** the tool call, then a JSON object recovered from the final message,
+then failure. The prose fallback exists because small local models often write correct JSON
+instead of calling the tool, and discarding that work would be the wrong kind of strict. A node
+that declares fields and delivers neither fails, naming the contract.
+
+The submitted-value store is in-memory by design - an entry is meaningful only between
+submission and harvest moments later. The durable copy is the phase candidate's `outputFields`
+on the Run record.
+
+== The node is a mini-orchestrator
+
+A node is not a model call. It is a bounded orchestration of its own: the engine runs a nested
+envelope of counters around one or more real agents, and only the outermost result crosses the
+node boundary.
+
+[mermaid]
+----
+flowchart TB
+    subgraph RETRY["Retry envelope - maxAttempts · backoff · every attempt charged to run caps"]
+        subgraph LOOP["Loop envelope - times N, or until + max"]
+            W["Worker agent<br/>seat · authority · task"] --> H["Harvest:<br/>tool → prose → fail"]
+            H --> J{"until?<br/>Judge agent grades"}
+            J -->|"fail - feedback forward"| W
+        end
+        F["Attempt threw"] -->|"backoff, re-enter from the top"| W
+    end
+    H -->|"failed"| F
+    J -->|"pass, or times exhausted"| OUT["Node result:<br/>declared fields + prose"]
+----
+
+Reading the envelope from the inside out:
+
+* **One iteration** spawns a worker with the node's seat, authority and assembled task, awaits
+  it (bounded by `timeoutMs`, which really cancels), and harvests its output. Under `until`, a
+  separate judge agent grades the output against the declared criteria; the judge is spawned
+  with no workspace reach of its own - it grades output, it does not need the node's authority.
+* **The loop** is quality: `times` re-runs work that succeeded, feeding each iteration the
+  previous output; `until` re-runs until the judge passes, feeding the failure reasoning
+  forward. Self-grading is not an exit test.
+* **Retry** is resilience: it wraps the whole loop and re-enters only from the top - never from
+  the failure path - with every attempt charged to the run's caps.
+
+What crosses the boundary is deliberately small: in, the material carried by satisfied edges
+(fields first, prose second); out, the declared fields and the final prose. Iterations, judge
+feedback, retries and timeouts stay inside - downstream nodes never see a node's drafts.
+
+This is also the right mental model for designing new node kinds: a kind is a different
+*envelope* (a gate waits for a human instead of a worker; a check runs a command instead of a
+model; a map multiplies the envelope per item), not a different scheduler.
+
+== Iteration and resilience
+
+Three separate mechanisms, deliberately not one:
+
+[cols="1,1,2"]
+|===
+|Mechanism |Declared |What it re-runs
+
+|**Loop**
+|`loop.times`
+|Fixed repeat. Every iteration runs, last output wins. Each iteration receives the previous
+one's output.
+
+|**Loop**
+|`loop.until`
+|Quality iteration. A structured judge grades each iteration against declared criteria; a pass
+ends the loop, a fail feeds its reasoning into the next attempt. Never passing within `max`
+fails the node - self-grading is not an exit test.
+
+|**Retry**
+|`retry`
+|Resilience. Work that never completed. Wraps the whole node *including* its loop, with backoff
+`backoffMs × multiplier^(attempt-1)`, ending early if the run is canceled.
+|===
+
+Two invariants protect the counters:
+
+* **One loop, one counter.** Retry is never re-entered from the failure path. The prior art this
+  design studied re-enters its executor from its own catch block with a fresh allowance at every
+  level, so a persistently failing step retries forever.
+* **Every attempt is charged to the run.** Retries and judges spawn through the same capped path
+  as any other agent, counting against `maxAgents` and the concurrency semaphore. A retry is
+  never a private allowance.
+
+**Time limit** (`timeoutMs`) must *cancel*, not merely stop waiting - an abandoned agent keeps
+running and keeps spending. On expiry the engine calls the port's `cancelAgent`, marks
+`RunPhase.timedOut`, and fails the node; its retry policy may then catch it, and independent
+branches finish normally. Otto can do this because node agents are managed processes.
+
+== Caps and settlement
+
+`maxConcurrency` bounds simultaneous agents through a semaphore; `maxAgents` is a hard run-wide
+ceiling that stops the run rather than letting it sprawl; loop and retry bounds are per node.
+
+A run settles `canceled` if the signal aborted, `failed` on the first node failure, otherwise
+`done`. Failure does not stop independent branches already in flight. The wrap-up names every
+skipped node and its reason, and the graph's *deliverables* - nodes nothing else consumes -
+carry their full output into it.
+
+[IMPORTANT]
+====
+*Not built here.* Graph runs have no human gate node (gates exist only on phase runs), no
+per-node candidate fan-out (parallelism is drawn nodes), no per-node turn limit or token/cost ceiling
+per node, no per-node worktree isolation (parallel writing nodes share one tree), no cross-node
+shared state, and no resume: a graph run in flight when the daemon stops is marked failed on
+restart. `GraphEdge.fromPort` / `toPort` are reserved in the schema and unused.
+
+Three review-found holes were **fixed 2026-07-25**: cancel now cascades - aborting a run
+really cancels its in-flight children on both engines, not just the awaits; and the cast and
+the prompt templates are **snapshotted at run start**, so a mid-run team or template edit
+cannot re-cast or reword a running orchestration (see
+link:16-orchestration-agents.html[Agent Binding]).
+
+Shipped per-node behaviour and its gotchas: `docs/orchestration-node-capabilities.md` - that
+page owns the subsystem detail; this one owns the flow.
+====
+
+== Invariants
+
+. A skip is never an error, and always carries a machine-readable reason.
+. A run never reports done while silently omitting part of the graph.
+. A node decides only after every upstream promise has settled.
+. A condition that cannot be evaluated fails its node; it is never a quiet false.
+. An unknown output-field type accepts; it never fails a run.
+. `submit_output` reaches every provider through the per-agent Otto tool catalog - no provider
+  branch in the engine.
+. Validation failure is a correctable tool error, not a thrown parse error.
+. A template that cannot render degrades to the inline prompt; nothing else in the engine
+  falls back.
+. Retry is one bounded loop, never re-entered from the failure path, always charged to the
+  run's caps.
+. A time limit cancels the agent; it never just stops awaiting it.
+. Graph structure and condition syntax are validated before the run starts, never during it.
+
+== Change checklist
+
+* Added a node or edge property? Confirm it survives the designer round-trip
+  (`graph-doc.test.ts`) - a property in the canvas-owned set with no control is **deleted on
+  save**.
+* Changed harvest, validation, or the tool's advertised shape? Re-check that a missing field is
+  still a *correctable tool error* on every provider, not a thrown parse error.
+* Added a fallback? Justify it against invariant 8 - the template path is the only sanctioned
+  one.
+* Added a spawn path? It must go through the semaphore and the agent cap.

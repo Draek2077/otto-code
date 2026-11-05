@@ -2144,6 +2144,7 @@ export const ptBR: TranslationResources = {
       providers: "Provedores",
       usage: "Uso",
       terminals: "Terminais",
+      code: "Código", // OTTO(editor)
       plugins: "Plugins",
       host: "Visão geral",
     },

@@ -2,11 +2,21 @@
 # OTTO(identity): preserve Otto container paths, environment, and exposed port.
 
 ARG NODE_IMAGE=node:24-bookworm-slim
+# OTTO(editor): portable solution payload is compiled with pinned NuGet inputs.
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim AS editor-dotnet-probe
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 MSBUILDDISABLENODEREUSE=1 DOTNET_PROCESSOR_COUNT=2
+WORKDIR /src
+COPY packages/dotnet-probe/ ./
+RUN dotnet restore OttoDotnetProbe.csproj --locked-mode --disable-parallel --nologo && \
+    dotnet publish OttoDotnetProbe.csproj -c Release -o /payload --no-restore --nologo -m:1 -p:UseSharedCompilation=false
+
 FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS source-pack
 
 ARG OTTO_VERSION
 
 ENV ONNXRUNTIME_NODE_INSTALL=skip
+ENV OTTO_DOTNET_PROBE_PAYLOAD=/tmp/otto-dotnet-probe
+COPY --from=editor-dotnet-probe /payload /tmp/otto-dotnet-probe
 
 WORKDIR /tmp/paseo-src
 COPY . .

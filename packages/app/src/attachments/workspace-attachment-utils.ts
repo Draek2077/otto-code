@@ -5,6 +5,7 @@ import type {
   WorkspaceComposerAttachment,
 } from "@/attachments/types";
 import type { AgentAttachment } from "@getpaseo/protocol/messages";
+import { editorContextText } from "@/otto/editor/context-attachment"; // OTTO(editor)
 
 export function isPullRequestContextAttachment(
   attachment: ComposerAttachment | undefined,
@@ -24,6 +25,7 @@ export function isWorkspaceAttachment(
 ): attachment is WorkspaceComposerAttachment {
   return (
     attachment?.kind === "review" ||
+    attachment?.kind === "editor_context" || // OTTO(editor)
     attachment?.kind === "browser_element" ||
     attachment?.kind === "chat_history" ||
     isPullRequestContextAttachment(attachment)
@@ -36,6 +38,7 @@ export function userAttachmentsOnly(
   return attachments.filter(
     (attachment): attachment is UserComposerAttachment =>
       attachment.kind !== "review" &&
+      attachment.kind !== "editor_context" && // OTTO(editor)
       attachment.kind !== "browser_element" &&
       attachment.kind !== "chat_history" &&
       !isPullRequestContextAttachment(attachment),
@@ -45,6 +48,7 @@ export function userAttachmentsOnly(
 export function workspaceAttachmentToSubmitAttachment(
   attachment: ComposerAttachment,
 ): AgentAttachment | null {
+  if (attachment.kind === "editor_context") return editorContextText(attachment); // OTTO(editor)
   if (attachment.kind === "browser_element") {
     return {
       type: "text",

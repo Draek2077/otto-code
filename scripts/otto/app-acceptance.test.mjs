@@ -40,7 +40,10 @@ test("manual diagnostics stay bounded while every push and pull request retains 
   const choiceMatch = /options:\s*\[([^\]]+)\]/u.exec(source);
   assert.ok(choiceMatch);
   assert.deepEqual(
-    choiceMatch[1].split(",").map((value) => value.trim()),
+    choiceMatch[1]
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
     [
       "all",
       "knowledge",
@@ -50,6 +53,7 @@ test("manual diagnostics stay bounded while every push and pull request retains 
       "artifacts",
       "speech",
       "terminal",
+      "editor",
     ],
   );
   assert.ok(

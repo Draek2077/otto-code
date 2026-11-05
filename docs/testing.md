@@ -485,3 +485,22 @@ reload, real PTY compatibility diagnostics, a stable-title process and the
 bundled symbol font in the rendered terminal. It runs in the existing serial
 Otto acceptance lane. Physical mobile glyph/input and user-configured external
 editor acceptance are separate from this browser evidence.
+
+### Otto editor restoration
+
+<!-- OTTO(editor): editor acceptance uses the same isolated daemon/browser lane. -->
+
+| Surface                                                                               | Behavioral coverage                                                                                                                                                         |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace content search, semantic navigation, reviewed rename/undo and replacement   | `e2e/browser/otto-editor.spec.ts`, wide and compact; real daemon, TypeScript server and filesystem                                                                          |
+| Markdown source/split/preview, retained undo, review notes and host-owned HTML export | The same editor journey, including attachment removal and source/output checks                                                                                              |
+| Actual Vim, Neovim and custom file editors                                            | Three real PTY journeys in the same spec; literal paths with spaces, saved bytes, declined/accepted close and returning to Otto                                             |
+| Offline native editor protocol                                                        | `src/otto/editor/renderer/webview.browser.test.ts`, executing the shipped HTML in Chromium, including older acknowledgments and Vim state                                   |
+| External C# server and evaluated solution membership                                  | `Otto Editor Runtime Acceptance` installs isolated pinned `csharp-ls` with .NET 10; server fixtures use actual LSP and MSBuild                                              |
+| Static PDF export                                                                     | The same runtime workflow executes the desktop print module in isolated Electron, checks PDF bytes and rejects script/network activity                                      |
+| Safety and lifecycle                                                                  | Colocated focused fixtures cover leases, pending demand, dirty peer drafts, CAS settings, bounded search, reviewed write/undo conflicts, exclusive exports and image assets |
+
+These are defined acceptance checks, not claims that a particular commit passed.
+Physical mobile IME/keyboard behavior and user-specific editor plugins require
+their own device/environment review. No editor check starts the installed Otto
+daemon or reads its settings.

@@ -177,6 +177,7 @@ export interface DesktopInvokeBridge {
 }
 
 export interface DesktopHostBridge {
+  documentExport?: { print(html: string): Promise<string> }; // OTTO(editor): optional only until the desktop shell is updated.
   wakeWord?: WakeWordBridge; // OTTO(wake-word): private device IPC, never relay identity.
   platform?: string;
   windowChromeMode?: string;

@@ -1,9 +1,11 @@
-export type KeyboardActionScope = "global" | "message-input" | "sidebar" | "workspace";
+import type { EditorKeyAction } from "@/otto/editor/shortcuts/contracts"; // OTTO(editor)
+export type KeyboardActionScope = "global" | "message-input" | "sidebar" | "workspace" | "editor"; // OTTO(editor)
 
 export type WorkspacePanelTarget = "changes" | "files" | "pull-request";
 export type WorkspacePanelPlacement = "supporting" | "side-pane" | "focused-pane";
 
 export type KeyboardActionId =
+  | "editor.execute" // OTTO(editor)
   | "agent.interrupt"
   | "message-input.focus"
   | "message-input.send"
@@ -57,6 +59,7 @@ export type KeyboardActionId =
   | "workspace.setup.show";
 
 export type KeyboardActionDefinition =
+  | { id: "editor.execute"; scope: "editor"; command: EditorKeyAction } // OTTO(editor)
   | { id: "agent.interrupt"; scope: KeyboardActionScope }
   | { id: "message-input.focus"; scope: KeyboardActionScope }
   | { id: "message-input.send"; scope: KeyboardActionScope }

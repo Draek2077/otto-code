@@ -1,0 +1,8 @@
+name: Otto editor build SDK
+description: Build the portable read-only solution sidecar using its locked NuGet inputs.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+      with:
+        dotnet-version: 8.0.x

@@ -177,6 +177,26 @@
       "types": "./dist/otto/terminal.d.ts",
       "source": "./src/otto/terminal.ts",
       "default": "./dist/otto/terminal.js"
+    },
+    "./otto/editor-solution": {
+      "types": "./dist/otto/editor-solution.d.ts",
+      "source": "./src/otto/editor-solution.ts",
+      "default": "./dist/otto/editor-solution.js"
+    },
+    "./otto/editor": {
+      "types": "./dist/otto/editor.d.ts",
+      "source": "./src/otto/editor.ts",
+      "default": "./dist/otto/editor.js"
+    },
+    "./otto/editor-links": {
+      "types": "./dist/otto/editor-links.d.ts",
+      "source": "./src/otto/editor-links.ts",
+      "default": "./dist/otto/editor-links.js"
+    },
+    "./otto/editor-images": {
+      "types": "./dist/otto/editor-images.d.ts",
+      "source": "./src/otto/editor-images.ts",
+      "default": "./dist/otto/editor-images.js"
     }
   },
   "publishConfig": {

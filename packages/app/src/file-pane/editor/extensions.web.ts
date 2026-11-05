@@ -27,7 +27,8 @@ export interface EditorVisualTheme {
   syntax: Record<HighlightStyle, string>;
 }
 
-export function editorBaseExtensions(onSave: () => void) {
+export function editorBaseExtensions(onSave: () => void, manageSaveKey = true) {
+  // OTTO(editor): owned renderers take every rebindable key from the registry.
   return [
     lineNumbers(),
     history(),
@@ -37,7 +38,9 @@ export function editorBaseExtensions(onSave: () => void) {
     highlightActiveLine(),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     keymap.of([
-      { key: "Mod-s", preventDefault: true, run: () => (onSave(), true) },
+      ...(manageSaveKey
+        ? [{ key: "Mod-s", preventDefault: true, run: () => (onSave(), true) }]
+        : []), // OTTO(editor)
       indentWithTab,
       ...defaultKeymap,
       ...historyKeymap,

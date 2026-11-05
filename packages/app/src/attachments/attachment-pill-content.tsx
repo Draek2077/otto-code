@@ -112,6 +112,13 @@ export function getWorkspaceAttachmentPillContent(
   attachment: WorkspaceComposerAttachment,
   t: TFunction,
 ): AttachmentPillContent {
+  // OTTO(editor): the existing workspace-context pill owns removal and submit.
+  if (attachment.kind === "editor_context")
+    return {
+      icon: attachmentFileIcon,
+      title: attachment.file.split(/[\\/]/u).at(-1) ?? attachment.file,
+      subtitle: attachment.note ? "File review note" : "File context",
+    };
   if (attachment.kind === "browser_element") {
     return {
       icon: attachmentBrowserIcon,

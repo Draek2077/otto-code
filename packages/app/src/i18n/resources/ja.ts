@@ -2132,6 +2132,7 @@ export const ja: TranslationResources = {
       providers: "プロバイダー",
       usage: "使用状況",
       terminals: "ターミナル",
+      code: "コード", // OTTO(editor)
       plugins: "プラグイン",
       host: "概要",
     },

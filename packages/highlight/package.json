@@ -10,10 +10,20 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./otto/symbols": {
+      "types": "./dist/otto/symbols.d.ts",
+      "source": "./src/otto/symbols.ts",
+      "default": "./dist/otto/symbols.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "source": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./otto/headings": {
+      "types": "./dist/otto/headings.d.ts",
+      "source": "./src/otto/headings.ts",
+      "default": "./dist/otto/headings.js"
     }
   },
   "publishConfig": {

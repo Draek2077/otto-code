@@ -1,4 +1,5 @@
 import { Text, View } from "react-native";
+import type { ReactNode } from "react"; // OTTO(editor)
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -20,6 +21,9 @@ export function FilePanelBar({
   cursor,
   vimMode,
   conflict,
+  actions, // OTTO(editor)
+  showMetadata = true, // OTTO(editor): source metadata lives in its responsive status strip.
+  modeControl, // OTTO(editor): owned three-mode control; unchanged fallback for read-only previews.
 }: {
   size: number;
   lineCount?: number;
@@ -29,6 +33,9 @@ export function FilePanelBar({
   cursor?: { line: number; column: number };
   vimMode?: string | null;
   conflict?: FileConflictAlertState;
+  actions?: ReactNode; // OTTO(editor): owned toolbar contribution, no extra row.
+  showMetadata?: boolean; // OTTO(editor)
+  modeControl?: ReactNode; // OTTO(editor)
 }) {
   const { t } = useTranslation();
   const previewModes = [
@@ -44,19 +51,25 @@ export function FilePanelBar({
       <PaneContentToolbar testID="file-panel-bar">
         <View style={styles.row}>
           <View style={styles.metadata}>
-            <Text
-              style={styles.whisper}
-              accessibilityLabel={t("panels.file.editor.fileSize", { size: formatFileSize(size) })}
-            >
-              {formatFileSize(size)}
-            </Text>
-            {lineCount !== undefined ? (
-              <Text
-                style={styles.whisper}
-                accessibilityLabel={t("panels.file.editor.lines", { count: lineCount })}
-              >
-                {t("panels.file.editor.lines", { count: lineCount })}
-              </Text>
+            {showMetadata ? (
+              <>
+                <Text
+                  style={styles.whisper}
+                  accessibilityLabel={t("panels.file.editor.fileSize", {
+                    size: formatFileSize(size),
+                  })}
+                >
+                  {formatFileSize(size)}
+                </Text>
+                {lineCount !== undefined ? (
+                  <Text
+                    style={styles.whisper}
+                    accessibilityLabel={t("panels.file.editor.lines", { count: lineCount })}
+                  >
+                    {t("panels.file.editor.lines", { count: lineCount })}
+                  </Text>
+                ) : null}
+              </>
             ) : null}
           </View>
           <View
@@ -99,15 +112,17 @@ export function FilePanelBar({
               </Text>
             ) : null}
           </View>
-          {mode && onModeChange ? (
-            <SegmentedControl
-              size="xs"
-              value={mode}
-              onValueChange={onModeChange}
-              testID="file-preview-mode"
-              options={previewModes}
-            />
-          ) : null}
+          {actions /* OTTO(editor) */}
+          {modeControl ??
+            (mode && onModeChange ? (
+              <SegmentedControl
+                size="xs"
+                value={mode}
+                onValueChange={onModeChange}
+                testID="file-preview-mode"
+                options={previewModes}
+              />
+            ) : null)}
         </View>
       </PaneContentToolbar>
       {conflict ? <FileConflictAlert state={conflict} /> : null}

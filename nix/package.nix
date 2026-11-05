@@ -1,6 +1,7 @@
 # OTTO(identity): keep source package paths, expose Otto commands and metadata.
 {
   lib,
+  callPackage, # OTTO(editor)
   stdenv,
   buildNpmPackage,
   nodejs_22,
@@ -21,8 +22,11 @@
   npmDepsHash ? lib.fileContents ./npm-deps.hash,
 }:
 
+let editorDotnetProbe = callPackage ./dotnet-probe.nix { }; in
 buildNpmPackage rec {
   pname = "otto";
+  passthru.editorDotnetProbe = editorDotnetProbe; # OTTO(editor): reused by desktop without rebuilding NuGet inputs.
+  OTTO_DOTNET_PROBE_PAYLOAD = "${editorDotnetProbe}/lib/otto-dotnet-probe";
   version = (builtins.fromJSON (builtins.readFile ../package.json)).version;
 
   src = lib.cleanSourceWith {

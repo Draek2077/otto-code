@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { useEditorExplorerSearch } from "@/otto/editor/explorer-search"; // OTTO(editor): workspace search does not require an open source file.
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -29,6 +30,7 @@ import { isWeb } from "@/constants/platform";
 import * as Clipboard from "expo-clipboard";
 import { ChevronDown, Eye, EyeOff, FilePlus, FolderPlus, RotateCw } from "lucide-react-native";
 import { MaterialFileIcon } from "@/components/material-file-icon";
+import { useOttoSolutionExplorer } from "@/otto/editor/solution/explorer"; // OTTO(editor): read-only Solution Files lens, inside the existing Files pane.
 import {
   TreeChevron,
   treeRowPaddingLeft,
@@ -415,6 +417,8 @@ export function FileExplorerPane({
 }: FileExplorerPaneProps) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
+  const ottoSolution = useOttoSolutionExplorer({ serverId, workspaceRoot, onOpenFile }); // OTTO(editor)
+  const ottoSearch = useEditorExplorerSearch({ serverId, workspaceRoot, workspaceId, onOpenFile }); // OTTO(editor)
 
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
   const workspaceStateKey = useMemo(
@@ -1058,6 +1062,10 @@ export function FileExplorerPane({
       style={styles.container}
     >
       <FileExplorerPaneContent
+        ottoSearchControl={ottoSearch.control} // OTTO(editor)
+        ottoSearchContent={ottoSearch.content} // OTTO(editor)
+        ottoSolutionControl={ottoSolution.control}
+        ottoSolutionContent={ottoSolution.content}
         error={error}
         isCompact={isCompact}
         showInitialLoading={showInitialLoading}
@@ -1132,6 +1140,10 @@ function RootCreationContextTarget({
 }
 
 interface FileExplorerPaneContentProps {
+  ottoSearchControl?: ReactNode; // OTTO(editor)
+  ottoSearchContent?: ReactNode; // OTTO(editor)
+  ottoSolutionControl?: ReactNode; // OTTO(editor)
+  ottoSolutionContent?: ReactNode; // OTTO(editor)
   error: string | null;
   isCompact: boolean;
   showInitialLoading: boolean;
@@ -1190,6 +1202,9 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
     ? t("workspace.fileExplorer.empty.noFiles")
     : t("workspace.fileExplorer.empty.noVisibleFiles");
 
+  if (props.ottoSearchContent) return props.ottoSearchContent; // OTTO(editor): keep search on the left and opened source on the right.
+  if (props.ottoSolutionContent) return props.ottoSolutionContent; // OTTO(editor): alternate lens owns its content and keeps Files navigation in the same toolbar.
+
   if (error) {
     return (
       <View style={styles.centerState}>
@@ -1226,6 +1241,9 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
         ]}
         testID="files-pane-header"
       >
+        {props.ottoSolutionControl}
+        {props.ottoSearchControl}
+        {/* OTTO(editor) */}
         <Pressable
           onPress={handleSortCycle}
           style={sortTriggerStyleProp}

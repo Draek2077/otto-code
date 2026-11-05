@@ -2407,6 +2407,7 @@ function ComposerContentImpl({
         isMessageInputFocused={isMessageInputFocused}
       />
       <View
+        testID="otto-composer-drop-target" // OTTO(editor): retain Composer attachment semantics here.
         style={
           isFullscreen ? animatedStaticStyles.fullscreenContainer : animatedStaticStyles.container
         }

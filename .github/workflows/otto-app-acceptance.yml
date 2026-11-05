@@ -41,7 +41,17 @@ on:
         type: choice
         default: all
         options:
-          [all, knowledge, brain-cancellation, context-health, preview, artifacts, speech, terminal]
+          [
+            all,
+            knowledge,
+            brain-cancellation,
+            context-health,
+            preview,
+            artifacts,
+            speech,
+            terminal,
+            editor,
+          ]
 
 permissions:
   contents: read
@@ -73,7 +83,9 @@ jobs:
         timeout-minutes: 10
         run: npx playwright install chromium
       - name: Install isolated credential test dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends dbus-x11 gnome-keyring libsecret-1-0
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends dbus-x11 gnome-keyring libsecret-1-0 vim neovim
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build server stack
         run: npm run build:server
       - name: Verify OS credential binding without accessing entries
@@ -108,6 +120,9 @@ jobs:
               ;;
             terminal)
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-terminal.spec.ts --workers=1 --retries=0 --max-failures=1
+              ;;
+            editor)
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-editor.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             speech)
               # Preserve existing content renderers and their lifecycle inside the inset frame.

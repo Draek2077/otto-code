@@ -74,18 +74,18 @@ and terminal-profile settings remain canonical.
 
 ## Scope comparison
 
-| Previous Otto behavior                                             | Paseo 0.12 / restoration decision                       |
-| ------------------------------------------------------------------ | ------------------------------------------------------- |
-| Profiles, Find, alternate screens, resize, snapshots, mobile input | Reuse Paseo                                             |
-| Built-in editor Vim mode                                           | Reuse Paseo; no duplicate setting                       |
-| Directory links and lookup-on-activation                           | Shared path resolver and existing Explorer              |
-| POSIX filename drops                                               | Literal quoting preserves all filename characters       |
-| Nerd Font symbols                                                  | Bundled app-owned fallback                              |
-| Host compatibility diagnostics                                     | Host service, explicit action on existing settings page |
-| Automatic/default titles and path visibility                       | Host-owned launch policy                                |
-| Windows default shell                                              | Discovered on the actual owning host                    |
-| Terminal-backed file editor and Otto-specific Vim leader mappings  | Separate deferred File Editor scope                     |
-| Direct Neovim UI embedding                                         | Remains deferred by the recorded product decision       |
+| Previous Otto behavior                                             | Paseo 0.12 / restoration decision                                     |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| Profiles, Find, alternate screens, resize, snapshots, mobile input | Reuse Paseo                                                           |
+| Built-in editor Vim mode                                           | Reuse Paseo; no duplicate setting                                     |
+| Directory links and lookup-on-activation                           | Shared path resolver and existing Explorer                            |
+| POSIX filename drops                                               | Literal quoting preserves all filename characters                     |
+| Nerd Font symbols                                                  | Bundled app-owned fallback                                            |
+| Host compatibility diagnostics                                     | Host service, explicit action on existing settings page               |
+| Automatic/default titles and path visibility                       | Host-owned launch policy                                              |
+| Windows default shell                                              | Discovered on the actual owning host                                  |
+| Terminal-backed file editor and Otto-specific Vim leader mappings  | Owned by [File Editor](otto-editor.md), using these same PTY surfaces |
+| Direct Neovim UI embedding                                         | Remains deferred by the recorded product decision                     |
 
 The real-daemon wide/compact journey is `otto-terminal.spec.ts`. Pure fixtures
 cover settings continuity, stale writes, retained drafts, lifecycle and glyph

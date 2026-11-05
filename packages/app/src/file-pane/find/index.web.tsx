@@ -22,9 +22,11 @@ export { FileFindModel } from "./model.web";
 export function FileFind({
   model,
   editor,
+  shortcutsManaged = false, // OTTO(editor): registry + owned keymap already handle the focused source.
 }: {
   model: FileFindModel;
   editor: RefObject<EditorView | null>;
+  shortcutsManaged?: boolean; // OTTO(editor)
 }) {
   const { t } = useTranslation();
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
@@ -37,7 +39,7 @@ export function FileFind({
     [model],
   );
   useEffect(() => {
-    if (!isInteractive || !active) return;
+    if (!isInteractive || !active || shortcutsManaged) return; // OTTO(editor)
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || hasActiveWebOverlay() || isImeComposingKeyboardEvent(event))
         return;
@@ -49,7 +51,7 @@ export function FileFind({
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [active, editor, isInteractive, model]);
+  }, [active, editor, isInteractive, model, shortcutsManaged]); // OTTO(editor)
 
   const replace = useMemo(
     () =>

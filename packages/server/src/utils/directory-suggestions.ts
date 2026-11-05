@@ -222,6 +222,47 @@ async function searchCandidates(input: SearchInput): Promise<RankedEntry[]> {
   return searchTree(input, typedParent);
 }
 
+/** OTTO(editor): index discovery shares Paseo's gitignore, symlink, hidden
+ * directory and bounded round-robin traversal policy, without ranking or the
+ * interactive search result cap. No second filesystem walker. */
+export async function walkWorkspaceSourceFiles(
+  rootPath: string,
+  onFile: (absolute: string, relative: string) => Promise<void>,
+  limits: { files: number; entries: number },
+) {
+  const root = await resolveDirectory(rootPath);
+  if (!root) throw new Error("Workspace directory is unavailable.");
+  const input = buildSearchInput(
+    {
+      root,
+      query: "",
+      blankQueryBehavior: "children",
+      includeFiles: true,
+      includeDirectories: false,
+      pathFormat: "relative",
+      maxDepth: 32,
+      respectGitIgnore: true,
+      traversableHiddenDirectoryNames: WORKSPACE_SEARCH_HIDDEN_DIRECTORIES,
+    },
+    root,
+    await loadGitIgnoredPaths(root),
+    new Set(),
+  );
+  if (!input) throw new Error("Workspace discovery is unavailable.");
+  const visited = new Set([root]);
+  let files = 0;
+  let entries = 0;
+  for await (const entry of roundRobin(
+    walkChildren({ parent: { visiblePath: root, resolvedPath: root }, depth: 1, input, visited }),
+  )) {
+    if (++entries > limits.entries) return { truncated: true };
+    if (entry.kind !== "file") continue;
+    if (++files > limits.files) return { truncated: true };
+    await onFile(entry.resolvedPath, normalizeRelativePath(root, entry.visiblePath));
+  }
+  return { truncated: false };
+}
+
 // Only a rooted query under the rooted policy names a location. Under the slashes policy a query
 // with a slash is still a fragment that may match anywhere in the tree.
 function resolvesTypedPath(input: SearchInput): boolean {

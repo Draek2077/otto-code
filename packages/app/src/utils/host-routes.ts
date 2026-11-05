@@ -521,6 +521,7 @@ export const HOST_SECTION_SLUGS = [
   "providers",
   "usage",
   "terminals",
+  "code", // OTTO(editor): canonical host-scoped language-server settings.
   "plugins",
   "host",
 ] as const;
