@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import React, { lazy, Suspense, type ReactNode } from "react";
 import type {
   PluginScreenProps,
   PluginWorkspacePanelProps,
