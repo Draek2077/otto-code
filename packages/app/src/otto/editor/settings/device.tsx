@@ -50,9 +50,9 @@ function Mapping({
   );
 }
 function DeviceForm({ model }: { model: DeviceEditorForm }) {
+  const { settings } = useAppSettings();
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const draft = state.draft;
-  const vim = useCallback((vimKeybindings: boolean) => model.edit({ vimKeybindings }), [model]);
   const ruler = useCallback((rulerEnabled: boolean) => model.edit({ rulerEnabled }), [model]);
   const column = useCallback(
     (value: string) => model.edit({ rulerColumn: Number(value) }),
@@ -73,7 +73,7 @@ function DeviceForm({ model }: { model: DeviceEditorForm }) {
   const save = useCallback(() => void model.save(), [model]);
   const reset = useCallback(() => model.resetMappings(), [model]);
   return (
-    <SettingsSection title="Editor">
+    <SettingsSection title="File editor">
       <SettingsCard>
         <SettingsSelect
           label="File editor"
@@ -94,12 +94,7 @@ function DeviceForm({ model }: { model: DeviceEditorForm }) {
           value={draft.alwaysUseOttoEditorForMarkdown}
           onValueChange={markdown}
         />
-        <SettingsSwitch
-          label="Vim keybindings in Otto"
-          value={draft.vimKeybindings}
-          onValueChange={vim}
-        />
-        {draft.vimKeybindings && (
+        {settings.vimKeybindings && (
           <SettingsCollapsibleRow label="Vim leader mappings">
             {VIM_ACTIONS.map((action) => (
               <Mapping

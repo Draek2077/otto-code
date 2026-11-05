@@ -82,7 +82,11 @@ export function EditorStatus({
           —
         </Text>
       )}
-      {vimMode && <Text style={styles.text}>{vimMode}</Text>}
+      {vimMode && (
+        <Text style={styles.text} accessibilityLabel={`Vim mode ${vimMode}`}>
+          {vimMode}
+        </Text>
+      )}
       <Text
         style={styles.cursor}
         accessibilityLabel={`Line ${cursor.line}, column ${cursor.column}`}

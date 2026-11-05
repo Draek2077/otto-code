@@ -40,6 +40,7 @@ export type EditorPanel =
   | "definitions"
   | "workspaceSymbols"
   | "outline"
+  | "hover"
   | "diagnostics"
   | "rename";
 interface Snapshot {
@@ -455,7 +456,7 @@ export class EditorSurface {
     return result;
   }
   async run(
-    action: "definition" | "references" | "symbols" | "diagnostics" | "workspaceSymbols",
+    action: "definition" | "references" | "symbols" | "diagnostics" | "workspaceSymbols" | "hover",
     query?: string,
   ) {
     if (this.snapshot.busy) return;
@@ -596,8 +597,9 @@ export class EditorSurface {
   }
 }
 function panelFor(
-  action: "definition" | "references" | "symbols" | "workspaceSymbols",
+  action: "definition" | "references" | "symbols" | "workspaceSymbols" | "hover",
 ): EditorPanel {
+  if (action === "hover") return "hover";
   if (action === "workspaceSymbols") return "workspaceSymbols";
   if (action === "definition") return "definitions";
   return action === "symbols" ? "outline" : "references";

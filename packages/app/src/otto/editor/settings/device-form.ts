@@ -6,9 +6,7 @@ import {
   type VimAction,
 } from "../preferences";
 
-export interface DeviceEditorDraft extends EditorPreferences {
-  vimKeybindings: boolean;
-}
+export type DeviceEditorDraft = EditorPreferences;
 interface State {
   draft: DeviceEditorDraft;
   dirty: boolean;
@@ -29,7 +27,6 @@ export class DeviceEditorForm {
     private readonly write: (patch: DeviceEditorDraft) => Promise<unknown>,
   ) {
     const {
-      vimKeybindings,
       vimMappings,
       fileEditorMode,
       fileEditorCustomCommand,
@@ -39,7 +36,6 @@ export class DeviceEditorForm {
     } = initial;
     this.state = {
       draft: {
-        vimKeybindings,
         vimMappings,
         fileEditorMode,
         fileEditorCustomCommand,

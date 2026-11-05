@@ -76,6 +76,24 @@ function fixture(route: (method: string, input: unknown) => Promise<unknown>) {
 afterEach(() => vi.useRealTimers());
 
 describe("editor presentation lifecycle", () => {
+  it("exposes symbol information through the same explicit action on touch clients", async () => {
+    const f = fixture(async (method, input) => {
+      if (method === queryBoundEditor.name) return { state: "needsSync" };
+      if (method !== queryEditor.name) return { released: true };
+      const request = queryEditor.input.parse(input);
+      return { ...result(request.action), hover: "```ts\nconst value: 1\n```" };
+    });
+    try {
+      await f.surface.run("hover");
+      expect(f.surface.getSnapshot()).toMatchObject({
+        panel: "hover",
+        result: { hover: "```ts\nconst value: 1\n```" },
+      });
+    } finally {
+      f.close();
+      f.model.dispose();
+    }
+  });
   it("keeps unsupported background diagnostics quiet while showing an explicit failed action", async () => {
     const f = fixture(async (method, input) => {
       if (method === queryBoundEditor.name) return { state: "needsSync" };

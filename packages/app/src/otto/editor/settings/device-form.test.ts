@@ -22,9 +22,10 @@ describe("device editor settings", () => {
     };
     const model = new DeviceEditorForm(initial, write);
     model.activate();
-    model.edit({ vimKeybindings: true });
+    model.edit({ fileEditorMode: "vim" });
     const saving = model.save();
     expect(write.mock.calls[0]?.[0]).not.toHaveProperty("unrelated");
+    expect(write.mock.calls[0]?.[0]).not.toHaveProperty("vimKeybindings");
     model.edit({ rulerEnabled: false });
     await model.save();
     expect(write).toHaveBeenCalledTimes(1);
@@ -40,10 +41,7 @@ describe("device editor settings", () => {
     const write = vi.fn(async () => {
       throw new Error("storage unavailable");
     });
-    const model = new DeviceEditorForm(
-      { ...editorPreferenceDefaults, vimKeybindings: true },
-      write,
-    );
+    const model = new DeviceEditorForm(editorPreferenceDefaults, write);
     model.activate();
     model.mapping("find", "s");
     await model.save();

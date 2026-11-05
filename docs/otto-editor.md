@@ -22,8 +22,10 @@ Hub identities are unchanged.
 | Actual Vim, Neovim or a custom command in a file-owned PTY                                | Otto lifecycle adapter over Paseo terminals                 |
 | Evaluated read-only .NET solution membership                                              | Otto's portable SDK sidecar                                 |
 
-Editor actions are in the source toolbar's **Code intelligence** menu. Document
-exports are also available from **Document tools** in Markdown Preview. Tools
+Editor actions are in the source toolbar's **Code intelligence** menu.
+**Inspect symbol** exposes hover information without requiring a mouse, including
+on compact and native clients.
+Document exports are also available from **Document tools** in Markdown Preview. Tools
 stay within the workspace pane. Results occupy the right inspector on wide
 layouts and a stacked panel on compact layouts. Rename and replacement share a
 file-list/diff review sheet, with individual operation outcomes and safe undo.
@@ -63,6 +65,9 @@ home. Saving preserves unknown fields. On the first read, an absent owned file
 projects the previous Otto `daemon.lsp` and solution settings without rewriting
 the legacy file. Device settings preserve the previous editor, custom command,
 Markdown exception, Vim leader mappings, and ruler keys.
+Paseo's existing Vim-keybindings switch retains its immediate-save behavior.
+The separate File editor form saves only Otto-owned options and cannot overwrite
+that switch with a stale form value.
 
 The name index is a bounded source-name fallback, not a semantic language
 server. A valid empty semantic result stays empty. The index shares Paseo's
@@ -120,6 +125,12 @@ activation and range remain valid. Images are limited to 2 MB each and eight
 per gesture. A late write is reported without inserting into a new activation.
 
 Mermaid documents and AsciiDoc use the existing diagram and Markdown engines.
+Read-only source keeps Paseo's web CodeMirror Find and adds bounded, explicit
+Find/next/previous to the native token viewer. Image previews retain Paseo's
+pinch/wheel/pan stack, with header-derived dimensions, natural-size fit and an
+image-only transparency checker. Binary/error views can reveal actual local
+files through the existing desktop file-manager bridge; remote paths never go
+to the client filesystem.
 AsciiDoc conversion does not execute includes or fetch external files. Converted
 documents do not receive invented source locators. Original Markdown headings
 can contribute workspace review notes; removing the Composer pill removes the

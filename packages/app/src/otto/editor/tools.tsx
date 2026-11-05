@@ -63,6 +63,9 @@ export function EditorTools({
   const references = useCallback(() => {
     void surface.run("references");
   }, [surface]);
+  const inspect = useCallback(() => {
+    void surface.run("hover");
+  }, [surface]);
   const outline = useCallback(() => {
     void surface.run("symbols");
   }, [surface]);
@@ -127,6 +130,9 @@ export function EditorTools({
           <DropdownMenuItem onSelect={redo}>Redo</DropdownMenuItem>
           <EditorExportItems surface={surface} />
           {!available ? <DropdownMenuHint>{tooltip}</DropdownMenuHint> : null}
+          <DropdownMenuItem onSelect={inspect} disabled={busy}>
+            Inspect symbol
+          </DropdownMenuItem>
           <EditorShortcutMenuItem
             onSelect={definition}
             disabled={busy}

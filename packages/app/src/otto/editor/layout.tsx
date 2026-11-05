@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   FlatList,
+  ScrollView,
   Text,
   View,
   type LayoutChangeEvent,
@@ -12,8 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { PaneContentToolbar } from "@/components/ui/pane-content-toolbar";
 import { EditorRenameReview } from "./rename-review";
-import type { EditorSurface, CodeLocation } from "./surface";
+import type { EditorSurface, CodeLocation, EditorPanel } from "./surface";
 import { EditorSearchPane } from "./search-pane";
+import { MarkdownRenderer } from "@/components/markdown/renderer";
 
 interface Row {
   id: string;
@@ -21,6 +23,16 @@ interface Row {
   detail: string;
   location: CodeLocation;
 }
+const panelTitles: Record<EditorPanel, string> = {
+  none: "",
+  references: "References",
+  definitions: "Definitions",
+  workspaceSymbols: "Workspace symbols",
+  outline: "Outline",
+  diagnostics: "Problems",
+  rename: "Reviewed edits",
+  hover: "Symbol information",
+};
 function ResultRow({ item, surface }: { item: Row; surface: EditorSurface }) {
   const open = useCallback(() => surface.navigate(item.location), [surface, item.location]);
   return (
@@ -74,9 +86,7 @@ function CodeResults({ surface }: { surface: EditorSurface }) {
   return (
     <View style={styles.results} testID="editor-code-results">
       <PaneContentToolbar>
-        <Text style={styles.heading}>
-          {state.panel === "workspaceSymbols" ? "Workspace symbols" : state.panel}
-        </Text>
+        <Text style={styles.heading}>{panelTitles[state.panel]}</Text>
         <Button variant="ghost" size="xs" onPress={close}>
           Close
         </Button>
@@ -87,12 +97,23 @@ function CodeResults({ surface }: { surface: EditorSurface }) {
           {state.result.truncated ? " Results are limited." : ""}
         </Text>
       )}
-      <FlatList
-        data={rows}
-        renderItem={render}
-        keyExtractor={keyForRow}
-        ListEmptyComponent={emptyResults}
-      />
+      {state.panel === "hover" ? (
+        <ScrollView>
+          <MarkdownRenderer
+            text={state.result?.hover ?? "No symbol information at the caret."}
+            compact
+            filePath={surface.file}
+            serverId={surface.contextScope.hostId}
+          />
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={rows}
+          renderItem={render}
+          keyExtractor={keyForRow}
+          ListEmptyComponent={emptyResults}
+        />
+      )}
     </View>
   );
 }

@@ -61,6 +61,12 @@ for (const compact of [false, true]) {
     await editor.press("ControlOrMeta+Home");
     await editor.press("ArrowRight", { delay: 10 });
     for (let index = 0; index < 13; index++) await editor.press("ArrowRight");
+    await page.getByTestId("editor-code-menu").click();
+    await page.getByRole("menuitem", { name: "Inspect symbol", exact: true }).click();
+    const inspection = page.getByTestId("editor-code-results");
+    await expect(inspection).toContainText("count");
+    await inspection.getByRole("button", { name: "Close", exact: true }).click();
+    await editor.focus();
     await editor.press("F2");
     const rename = page.getByTestId("editor-rename-symbol");
     await rename.getByRole("textbox").fill("total");
