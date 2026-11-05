@@ -24,6 +24,10 @@ const entries = {
   "./otto/connectors": "shared", // OTTO(connectors): catalog and structural RPC only; no authorization runtime.
   "./otto/speech": "shared", // OTTO(speech): structural selections and bounded RPC only.
   "./otto/terminal": "shared", // OTTO(terminal): structural host preferences and diagnostics only.
+  "./otto/editor": "shared", // OTTO(editor): bounded structural editor RPCs.
+  "./otto/editor-solution": "shared", // OTTO(editor): read-only solution DTOs, no SDK/runtime imports.
+  "./otto/editor-links": "shared", // OTTO(editor): pure host-relative path formatting.
+  "./otto/editor-images": "shared", // OTTO(editor): pure image asset naming and link formatting.
   "./otto/host-browser": "shared", // OTTO(browser-host): structural viewer/command contracts, no runtime code.
   "./otto/kanban": "shared", // OTTO(kanban): structural RPC/model definitions only.
   "./otto/openai-settings": "shared",

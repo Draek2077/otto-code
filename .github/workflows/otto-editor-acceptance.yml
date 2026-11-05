@@ -69,6 +69,7 @@ jobs:
       - name: Build desktop print capability
         run: npm run build:main --workspace=@getpaseo/desktop
       - name: Verify static PDF printing in isolated Electron
+        timeout-minutes: 2
         run: xvfb-run -a npm exec --workspace=@getpaseo/desktop -- electron --no-sandbox ../../scripts/otto/editor-print-proof.mjs
       - name: Retain browser diagnostics
         uses: actions/upload-artifact@v4

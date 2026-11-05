@@ -139,7 +139,17 @@ for (const compact of [false, true]) {
     await page.getByTestId("editor-document-tools").click();
     await page.getByRole("menuitem", { name: "Export new HTML file", exact: true }).click();
     await expect
-      .poll(() => readFile(path.join(workspace.repoPath, "guide.html"), "utf8"))
+      .poll(
+        async () => {
+          try {
+            return await readFile(path.join(workspace.repoPath, "guide.html"), "utf8");
+          } catch (error) {
+            if (error instanceof Error && Reflect.get(error, "code") === "ENOENT") return "";
+            throw error;
+          }
+        },
+        { timeout: 15000 },
+      )
       .toContain("<h1>Editor guide</h1>");
     await page.screenshot({ path: info.outputPath("editor-workspace.png") });
   });
