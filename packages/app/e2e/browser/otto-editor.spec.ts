@@ -31,6 +31,7 @@ for (const compact of [false, true]) {
     withWorkspace,
   }, info) => {
     test.setTimeout(150000);
+    page.setDefaultTimeout(30000);
     const workspace = await withWorkspace({ prefix: "otto-editor-" });
     const source = "export const count = 1;\nconsole.log(count);\n";
     const file = path.join(workspace.repoPath, "editor.ts");
@@ -93,9 +94,8 @@ for (const compact of [false, true]) {
     await inspection.getByRole("button", { name: "Close", exact: true }).click();
     await editor.focus();
     await editor.press("F2");
-    const rename = page.getByTestId("editor-rename-symbol");
-    await rename.getByRole("textbox").fill("total");
-    await rename.getByRole("button", { name: "Preview rename", exact: true }).click();
+    await page.getByTestId("editor-rename-symbol-input").fill("total");
+    await page.getByTestId("editor-rename-symbol-submit").click();
     const review = editorDialog(page, "editor-rename-review", compact);
     await expect(review).toContainText("total");
     page.once("dialog", (dialog) => void dialog.accept());
