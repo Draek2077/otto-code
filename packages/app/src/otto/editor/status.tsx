@@ -64,7 +64,12 @@ export function EditorStatus({
     [snapshot.content],
   );
   return (
-    <View style={styles.bar} onLayout={measure} testID="editor-status-bar">
+    <View
+      style={styles.bar}
+      onLayout={measure}
+      testID="editor-status-bar"
+      accessibilityLabel={t("panels.file.editor.editorStatus", { status: snapshot.status })}
+    >
       <Text style={styles.language} numberOfLines={1}>
         {language}
       </Text>

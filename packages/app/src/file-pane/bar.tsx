@@ -75,7 +75,7 @@ export function FilePanelBar({
           <View
             style={styles.status}
             accessibilityLabel={
-              editorStatus
+              editorStatus && showMetadata // OTTO(editor): the source footer owns its status label.
                 ? t("panels.file.editor.editorStatus", { status: editorStatus })
                 : undefined
             }
