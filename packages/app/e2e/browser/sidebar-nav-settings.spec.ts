@@ -145,6 +145,7 @@ test.describe("Sidebar items in Appearance settings", () => {
         { key: "plugin:otto-kanban:kanban", visible: true },
         { key: "plugin:otto-project-knowledge:context-management", visible: true }, // OTTO(context-management): preserve the registered navigation preference.
         { key: "plugin:otto-project-knowledge:knowledge", visible: true }, // OTTO(knowledge): persisted built-in navigation row.
+        { key: "plugin:otto-workflows:workflows", visible: true }, // OTTO(workflows): the new contribution retains its own preference without changing the Paseo rows.
       ]);
 
       await leaveSettings(page);
