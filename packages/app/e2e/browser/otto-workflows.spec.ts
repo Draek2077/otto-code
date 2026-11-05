@@ -368,7 +368,7 @@ test("real Graph workers, gates, ordinary chats and Artifact provenance use the 
 test("AI clarification stays in Planning, explicit confirmation admits workers and gate rejection cancels", async ({
   page,
   ottoProvider,
-}) => {
+}, info) => {
   test.setTimeout(90000);
   const workspace = await seedWorkspace({
     repoPrefix: "otto-workflow-ai-",
@@ -386,7 +386,8 @@ test("AI clarification stays in Planning, explicit confirmation admits workers a
     if (content.includes("Generate a title and a git branch name"))
       return JSON.stringify({ title: "AI Workflow", branch: "ai-workflow" });
     const declare = body.tools?.find((tool) =>
-      tool.function.description?.startsWith("Declare the AI Workflow plan once."),
+      // The MCP adapter prefixes descriptions with the owning server/tool name.
+      tool.function.description?.includes("Declare the AI Workflow plan once."),
     );
     if (!declared && declare && content.includes("Proceed with the plan")) {
       declared = true;
@@ -480,6 +481,22 @@ test("AI clarification stays in Planning, explicit confirmation admits workers a
       .poll(async () => (await call(workflows.workflowRead, start.ref)).document.value.status)
       .toBe("canceled");
     running = null;
+  } catch (error) {
+    // Capture while the owned chats/workspace still exist; finally deliberately removes them.
+    await page.screenshot({
+      path: info.outputPath("workflow-ai-before-cleanup.png"),
+      fullPage: true,
+    });
+    await writeFile(
+      info.outputPath("workflow-ai-provider-requests.json"),
+      JSON.stringify(ottoProvider.requests, null, 2),
+    );
+    if (running)
+      await writeFile(
+        info.outputPath("workflow-ai-run.json"),
+        JSON.stringify(await call(workflows.workflowRead, running), null, 2),
+      );
+    throw error;
   } finally {
     if (running) {
       const entry = await call(workflows.workflowRead, running);

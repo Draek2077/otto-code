@@ -192,6 +192,7 @@ test("Workflow CLI exposes full structural discovery plus focused library and ex
     "operations",
     "ls",
     "inspect",
+    "follow",
     "save",
     "validate",
     "review",

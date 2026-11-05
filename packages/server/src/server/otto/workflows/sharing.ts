@@ -37,6 +37,8 @@ interface ImportReview {
 }
 const receiptSchema = z.object({
   scope: WorkflowScope,
+  recordedAt: z.string().optional(),
+  actorHostId: z.string().optional(),
   tokenHash: z.string(),
   destination: WorkflowRef,
   destinationHash: z.string(),
@@ -260,6 +262,8 @@ export class WorkflowSharing {
       this.reviews.delete(token);
       const receipt: Receipt = {
         scope,
+        recordedAt: new Date().toISOString(),
+        actorHostId: this.library.ports.stores.ports.hostId,
         tokenHash: workflowDigest(token),
         destination: review.destination,
         destinationHash: review.destinationHash,
@@ -331,6 +335,8 @@ export class WorkflowSharing {
       receiptId: operationId,
       scope,
       revision,
+      recordedAt: receipt.recordedAt,
+      actorHostId: receipt.actorHostId,
       status: receipt.status,
       destination: receipt.destination,
       destinationHash: receipt.destinationHash,

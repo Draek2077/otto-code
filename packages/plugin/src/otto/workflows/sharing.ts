@@ -71,6 +71,8 @@ export const workflowImportCommit = workflowRpc({
 });
 export const WorkflowImportInspection = z.object({
   receiptId: WorkflowId,
+  recordedAt: z.string().optional(),
+  actorHostId: z.string().optional(),
   scope: WorkflowScope,
   revision: z.string(),
   status: z.enum(["committed", "reconciliation_required"]),

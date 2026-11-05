@@ -25,6 +25,7 @@ describe("explicit Workflow transfer and recovery", () => {
       operationId: "copy-1",
     });
     expect(receipt.status).toBe("committed");
+    expect(receipt).toMatchObject({ recordedAt: expect.any(String), actorHostId: f.scope.hostId });
     expect(await f.library.read(original.ref)).toEqual(original);
     expect((await f.library.read(receipt.destination)).document.value).toMatchObject({
       future: { retained: true },

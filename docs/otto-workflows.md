@@ -129,7 +129,9 @@ current and snapshot digests. External editors are outside the cooperating lock;
 no automatic retry can erase that boundary.
 
 Explicit copy/move verifies the destination before retiring a source into
-recovery. Receipts retain operation identity and proof. Unknown outcomes are
+recovery. Receipts retain operation identity, the performing daemon's host identity,
+timestamp and content proof. Import receipts retain the same host/time audit stamp.
+These stamps identify the performing daemon, not an authenticated human author. Unknown outcomes are
 inspected, never blindly replayed. Reconciliation can keep a verified copy or
 complete an originally authorized move only while the source still matches.
 Changed destination/result blobs refuse reconciliation. Lock recovery requires
@@ -154,7 +156,10 @@ Hidden surfaces do not renew it; inactive Workflows install no transcript watche
 operation's schema. `ls`, `inspect`, `save`, `validate`, `review`, `start`, `control`,
 `delete`, `export`, `storage` and `call` use the selected daemon. Inputs require an
 explicit project and exact record origin where applicable. Export refuses an
-existing output file. Run `otto workflow <command> --help` for argument contracts.
+existing output file. `follow <id>` uses the same versioned long poll and emits
+changed run revisions as JSON lines until terminal. Ctrl+C closes only that
+observation connection; explicit `control --action cancel` stops the run.
+Run `otto workflow <command> --help` for argument contracts.
 Revisioned `save` uses `--origin <file>` containing the exact captured `WorkflowRef`;
 the CLI checks its host and project before submitting the update.
 

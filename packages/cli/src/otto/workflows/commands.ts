@@ -20,12 +20,9 @@ import type { PluginRpcContract } from "@getpaseo/plugin";
 import { connectToDaemon } from "../../utils/client.js";
 import type { DaemonTarget } from "../../utils/daemon-target.js";
 import { withOutput, type SingleResult, type CommandOptions } from "../../output/index.js";
-import { addJsonAndDaemonHostOptions } from "../../utils/command-options.js";
-interface Client {
-  getLastServerInfoMessage(): { serverId: string; features?: { ottoWorkflows?: boolean } } | null;
-  invokePluginRpc(id: string, method: string, input: unknown): Promise<unknown>;
-  close(): Promise<void>;
-}
+import { addJsonAndDaemonHostOptions, withGlobalOptions } from "../../utils/command-options.js";
+import { workflowCliHostId, type WorkflowCliClient as Client } from "./connection.js";
+import { followWorkflow } from "./follow.js";
 interface Request {
   contract: PluginRpcContract;
   input: unknown;
@@ -43,11 +40,7 @@ export async function runWorkflowRequest(
 ) {
   const client = await connect(target);
   try {
-    const info = client.getLastServerInfoMessage();
-    // COMPAT(ottoWorkflowsCli): added v0.10.0; remove after 2027-05-05 when host floor >= v0.10.0.
-    if (!info?.features?.ottoWorkflows)
-      throw new Error("Update the selected host to use Workflows.");
-    const request = await build(info.serverId),
+    const request = await build(workflowCliHostId(client)),
       input = request.contract.input.parse(request.input);
     const value = result.parse(
       request.contract.output.parse(
@@ -96,9 +89,9 @@ function ref(command: Command, hostId: string) {
     ...(text(command, "storeKey") ? { storeKey: text(command, "storeKey") } : {}),
   };
 }
-function referenceOptions(command: Command) {
+function referenceOptions(command: Command, kind = "graph") {
   return command
-    .option("--kind <kind>", "ai, graph, template or run", "graph")
+    .option("--kind <kind>", "ai, graph, template or run", kind)
     .option("--location <location>", "repository, host or legacy", "repository")
     .option("--store-key <key>", "Exact retained origin key from ls");
 }
@@ -158,6 +151,36 @@ export function createWorkflowCommand(run: RequestRunner = runWorkflowRequest) {
     contract: workflowRead,
     input: ref(command, hostId),
   }));
+  addJsonAndDaemonHostOptions(
+    referenceOptions(
+      root
+        .command("follow <id>")
+        .description(
+          "Follow run revisions as JSON lines; Ctrl+C stops observation, not the Workflow",
+        ),
+      "run",
+    ),
+  )
+    .requiredOption("--project <id>", "Owning canonical project")
+    .action(
+      withGlobalOptions(async (options: CommandOptions, command: Command) => {
+        const controller = new AbortController(),
+          stop = () => controller.abort();
+        process.once("SIGINT", stop);
+        try {
+          await followWorkflow(
+            options.daemonTarget,
+            (hostId) => WorkflowRef.parse(ref(command, hostId)),
+            (entry) => {
+              process.stdout.write(JSON.stringify(entry) + "\n");
+            },
+            controller.signal,
+          );
+        } finally {
+          process.removeListener("SIGINT", stop);
+        }
+      }),
+    );
   register(
     root
       .command("save")
@@ -227,7 +250,7 @@ export function createWorkflowCommand(run: RequestRunner = runWorkflowRequest) {
     }),
   );
   register(
-    referenceOptions(root.command("control <id>"))
+    referenceOptions(root.command("control <id>"), "run")
       .requiredOption("--revision <sha>")
       .requiredOption("--action <action>", "approve, reject or cancel")
       .option("--phase <id>")

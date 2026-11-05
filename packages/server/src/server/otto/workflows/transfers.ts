@@ -83,6 +83,8 @@ export class WorkflowTransfers {
     };
     const receipt: WorkflowReceipt = {
       id: input.operationId,
+      recordedAt: new Date().toISOString(),
+      actorHostId: this.library.ports.stores.ports.hostId,
       source: source.entry.ref,
       destination,
       operation: input.operation,

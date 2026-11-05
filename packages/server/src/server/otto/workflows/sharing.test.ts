@@ -40,6 +40,10 @@ describe("reviewed portable Workflow copies", () => {
     expect(review.warnings.join(" ")).toContain("do not prove authorship");
     const imported = await sharing.commit(f.scope, review.token, "import");
     expect(imported.status).toBe("committed");
+    expect(await sharing.inspect(f.scope, "import")).toMatchObject({
+      recordedAt: expect.any(String),
+      actorHostId: f.scope.hostId,
+    });
     expect(f.agents.size).toBe(0);
     expect(await f.library.read(entry.ref)).toEqual(entry);
     expect(await sharing.commit(f.scope, review.token, "import")).toEqual(

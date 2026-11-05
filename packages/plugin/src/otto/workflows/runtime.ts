@@ -247,6 +247,8 @@ export const WorkflowStorage = z.object({
 export type WorkflowStorage = z.infer<typeof WorkflowStorage>;
 export const WorkflowReceipt = z.object({
   id: WorkflowId,
+  recordedAt: z.string().optional(),
+  actorHostId: z.string().optional(),
   source: WorkflowRef,
   destination: WorkflowRef,
   operation: z.enum(["copy", "move"]),
