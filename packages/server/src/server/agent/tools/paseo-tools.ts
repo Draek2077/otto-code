@@ -119,8 +119,10 @@ import type { KanbanToolPolicy } from "../../otto/kanban/tool-policy.js"; // OTT
 import { registerPreviewTools } from "../../otto/preview/catalog.js"; // OTTO(preview)
 import type { PreviewHost } from "../../otto/preview/host.js"; // OTTO(preview)
 import type { RetainedToolPolicy } from "../../otto/retained-tool-policy.js"; // OTTO(preview)
+import { registerWorkflowTools, type WorkflowToolPorts } from "../../otto/workflows/tools.js"; // OTTO(workflows): private execution tools and access ceilings stay feature-owned.
 
 export interface PaseoToolHostDependencies {
+  ottoWorkflows?: WorkflowToolPorts; // OTTO(workflows): canonical host binding; absent leaves Paseo catalogs unchanged.
   ottoConnectorTools?: readonly PaseoToolDefinition[]; // OTTO(connectors): daemon-prepared, bound interactive catalog only.
   ottoPreview?: PreviewHost; // OTTO(preview): shared app/provider process and browser ownership.
   previewToolPolicy?: RetainedToolPolicy; // OTTO(preview): preserve existing host/provider ceilings.
@@ -3381,6 +3383,10 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     callerAgentId,
     policy: options.paseoToolPolicy,
   });
+  // OTTO(workflows): normal catalogs only; reserve first, recheck live authority on every invocation.
+  registerWorkflowTools(tools, options.ottoWorkflows, (name) =>
+    isPaseoToolEnabled(options.paseoToolPolicy, name),
+  );
   return toCatalog();
 }
 

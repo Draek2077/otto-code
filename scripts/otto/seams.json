@@ -2,6 +2,7 @@
   "files": {
     "packages/app/public/manifest.json": "identity: Otto web app name and short name.",
     ".oxfmtrc.json": "Formatter skips the Otto Knowledge store (.otto/).",
+    ".oxlintrc.json": "workflows: exclude only the unchanged third-party Drawflow minified vendor file; owned canvas wrappers retain all lint rules.",
     "LICENSE": "Otto distribution license (AGPL-3.0); Paseo's text is preserved in LICENSE-Paseo.",
     "package-lock.json": "Lockfile follows Otto's workspace versions.",
     "nix/npm-deps.hash": "build: verified dependency hash for Otto's lockfile; the hash format cannot contain a comment.",

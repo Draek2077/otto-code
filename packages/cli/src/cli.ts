@@ -44,6 +44,7 @@ import { OTTO_CLI_COMMAND, OTTO_PRODUCT_NAME } from "@getpaseo/protocol/otto/ide
 // OTTO(brain-cli): effects stay behind the selected daemon's existing plugin RPC channel.
 import { createOttoBrainCommand } from "./otto/brain/commands.js";
 import { createArtifactsCommand } from "./otto/artifacts/commands.js"; // OTTO(artifacts): explicit selected-daemon commands.
+import { createWorkflowCommand } from "./otto/workflows/commands.js"; // OTTO(workflows): same scoped daemon owner as app/MCP.
 
 const VERSION = resolveCliVersion();
 
@@ -159,6 +160,7 @@ export function createCli(): Command {
   // OTTO(brain-cli)
   program.addCommand(createOttoBrainCommand());
   program.addCommand(createArtifactsCommand()); // OTTO(artifacts)
+  program.addCommand(createWorkflowCommand()); // OTTO(workflows)
 
   // Speech model commands
   program.addCommand(createSpeechCommand());

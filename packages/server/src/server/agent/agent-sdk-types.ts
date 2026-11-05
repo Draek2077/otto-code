@@ -616,6 +616,8 @@ export interface AgentSessionConfig {
 }
 
 export interface AgentLaunchContext {
+  /** OTTO(workflows): runtime-only ceiling for an explicitly owned Workflow session. */
+  ottoWorkflowPolicy?: { access: "write" | "read" | "none" };
   /** OTTO(context-generation): runtime-only restriction for fresh reviewed-prose utility sessions. */
   ottoReadOnlyGeneration?: true;
   agentId?: string;

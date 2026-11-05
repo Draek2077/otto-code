@@ -665,6 +665,7 @@ export class PluginService {
           description: provider.description,
           command: provider.command,
           requiresConfiguration: provider.requiresConfiguration,
+          ottoWorkflowReadMode: provider.ottoWorkflowReadMode, // OTTO(workflows): do not infer tool authority from provider names.
           status: provider.hasStatus
             ? (request) => {
                 if (!this.runtime.getProviderStatus)

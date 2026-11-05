@@ -17,6 +17,7 @@ import type { ConnectionSettings } from "../shared/settings.js";
 import { streamCompletion, type ToolCall } from "./completions.js";
 import { endpoint } from "./http.js";
 import { boundedResult, nativeTools, type AgentTool } from "./tools.js";
+import { workflowNativeTools } from "./workflow-access.js";
 import { loadMcpTools } from "./mcp.js";
 import {
   prepareContent,
@@ -156,7 +157,12 @@ export class OpenAiSession {
       options.profileId,
     );
     this.cacheKey = previousCacheKey ?? randomUUID();
-    this.tools = new Map(nativeTools(config).map((tool) => [tool.definition.function.name, tool]));
+    this.tools = new Map(
+      workflowNativeTools(config, nativeTools(config)).map((tool) => [
+        tool.definition.function.name,
+        tool,
+      ]),
+    );
     this.closeUnansweredTools();
     this.flushToolImages();
     // COMPAT(providerHistory): v0.10.0, remove after 2027-04-22. Earlier plugin

@@ -212,6 +212,19 @@ Agent providers handle their own auth. Do not add auth checks, environment varia
 
 ## Otto provider coverage
 
+<!-- OTTO(workflows): real daemon and provider tool-loop journeys preserve the ordinary chat boundary. -->
+
+Workflows: `e2e/browser/otto-workflows.spec.ts` covers wide/compact library creation,
+the original graph canvas, saved edits, CAS conflicts and explicit reload. Its
+runtime journeys use the real agent manager and loopback OpenAI-compatible tool
+loop for Graph workers/gates, ordinary chat sending while a gate waits, worker
+composer restrictions, Artifact provenance, AI clarification/Planning, explicit
+plan confirmation and canceled gate rejection. These run only in the existing
+all-Otto CI lane or its `workflows` diagnostic. Focused host, engine, storage,
+provider-policy, template, draft and transfer fixtures remain separate; synthetic
+HTTP responses do not prove live provider quality, native CLI startup-hook
+isolation or physical mobile interactions.
+
 <!-- OTTO(speech): real playback and chat controls use isolated HTTP audio in the existing acceptance lane. -->
 
 Speech: `e2e/browser/otto-speech.spec.ts` covers registered host settings on wide

@@ -41,6 +41,57 @@ async function fixture() {
   return { file, record, registry, metadata: registry.ottoMetadata, bytes };
 }
 
+it("adds independent Workflow fields without rewriting other Otto settings", async () => {
+  const f = await fixture();
+  const before = await f.metadata.read("project-1");
+  const saved = await f.metadata.update({
+    projectId: "project-1",
+    expectedRevision: before.revision,
+    patch: { workflowLocation: "host", workflowDirectoryName: "workflow-owner" },
+  });
+  expect(saved.record).toMatchObject({
+    ...f.record,
+    workflowLocation: "host",
+    workflowDirectoryName: "workflow-owner",
+  });
+  const disk = JSON.parse(await f.bytes());
+  expect(disk[0].futureField).toEqual(f.record.futureField);
+  expect(disk[0].knowledgeDirectoryName).toBe("preserved-directory");
+  await expect(
+    f.metadata.update({
+      projectId: "project-1",
+      expectedRevision: before.revision,
+      patch: { workflowLocation: "repository" },
+    }),
+  ).rejects.toMatchObject({ kind: "conflict" });
+});
+it("refuses a Workflow directory bound to an archived project", async () => {
+  const f = await fixture();
+  await writeFile(
+    f.file,
+    JSON.stringify([
+      f.record,
+      {
+        ...f.record,
+        projectId: "archived-workflow-peer",
+        rootPath: path.join(f.record.rootPath, "peer"),
+        archivedAt: "2026-01-01T00:00:00Z",
+        workflowDirectoryName: "shared-workflows",
+      },
+    ]),
+  );
+  const before = await f.metadata.read("project-1");
+  const bytes = await f.bytes();
+  await expect(
+    f.metadata.update({
+      projectId: "project-1",
+      expectedRevision: before.revision,
+      patch: { workflowDirectoryName: "shared-workflows" },
+    }),
+  ).rejects.toThrow("Workflows directory");
+  expect(await f.bytes()).toBe(bytes);
+});
+
 it("keeps the original registry when final storage ownership validation fails", async () => {
   const f = await fixture();
   const origin = await f.metadata.read("project-1");

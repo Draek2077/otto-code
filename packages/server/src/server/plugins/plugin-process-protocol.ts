@@ -14,6 +14,7 @@ import {
 import { z } from "zod";
 
 export interface PluginProviderMetadata {
+  ottoWorkflowReadMode?: "plan"; // OTTO(workflows): matches the additive runtime schema below.
   requiresConfiguration?: boolean;
   hasCatalogCacheKey?: boolean;
   hasStatus?: boolean;
@@ -114,6 +115,7 @@ const providerMetadataSchema = z
     description: z.string().optional(),
     iconPath: z.string().optional(),
     requiresConfiguration: z.boolean().optional(),
+    ottoWorkflowReadMode: z.literal("plan").optional(), // OTTO(workflows): additive trusted-provider metadata.
     hasCatalogCacheKey: z.boolean().optional(),
     hasStatus: z.boolean().optional(),
     command: z.tuple([z.string().min(1)], z.string()).optional(),

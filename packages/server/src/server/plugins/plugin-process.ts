@@ -159,6 +159,7 @@ export function createPluginWorker(options: {
       description: provider.description,
       iconPath: provider.icon,
       requiresConfiguration: provider.requiresConfiguration,
+      ottoWorkflowReadMode: provider.ottoWorkflowReadMode, // OTTO(workflows): preserve an explicit harness contract across its process boundary.
       hasCatalogCacheKey: provider.getCatalogCacheKey !== undefined,
       hasStatus: provider.status !== undefined,
       command: provider.command,

@@ -261,6 +261,8 @@ import { PreviewManager } from "./otto/preview/manager.js"; // OTTO(preview)
 import { createPreviewProcessPorts, previewProtectedPorts } from "./otto/preview/process-ports.js"; // OTTO(preview)
 import { createRetainedToolPolicy } from "./otto/retained-tool-policy.js"; // OTTO(preview)
 import { ArtifactDaemonService } from "./otto/artifacts/service.js"; // OTTO(artifacts): one daemon owner for UI and tools.
+import { createWorkflowComposition } from "./otto/workflows/composition.js"; // OTTO(workflows): isolated owner over existing Paseo sessions.
+import { createWorkflowArtifactPort } from "./otto/workflows/artifact-source.js"; // OTTO(workflows): live ownership, not editable labels.
 import { BrowserAdmissions } from "./otto/browser/admission.js"; // OTTO(browser-admission)
 import { lookup as lookupBrowserDestination } from "node:dns/promises"; // OTTO(browser-admission): only explicit navigation resolves DNS.
 import { createContextTextGeneration } from "./otto/context-management/text-generation.js"; // OTTO(context-compaction): provider-owned, tool-free generation only.
@@ -676,6 +678,7 @@ export async function createPaseoDaemon(
   let ottoHostBrowser: ReturnType<typeof createNativeHostBrowser> | null = null; // OTTO(browser-host): composition never launches Chromium.
   let ottoKnowledge: KnowledgeDaemonService | null = null; // OTTO(knowledge)
   let ottoArtifacts: ArtifactDaemonService | null = null; // OTTO(artifacts): inert until scoped demand.
+  let ottoWorkflows: ReturnType<typeof createWorkflowComposition> | null = null; // OTTO(workflows)
   const ottoTerminal = new TerminalHost(
     config.paseoHome,
     () => serverId,
@@ -690,6 +693,7 @@ export async function createPaseoDaemon(
   ); // OTTO(editor): reuse Paseo PTYs and active workspace identity.
   // OTTO(feature-host): one registry of shared built-in owners; no dispatch growth in Paseo's session path.
   const ottoRoutes: Readonly<Record<string, OttoBuiltinRoute>> = {
+    "otto-workflows": (method, input) => ottoWorkflows?.invoke(method, input), // OTTO(workflows)
     "otto-editor": (method, input, clientId) =>
       ottoTerminalEditor.invoke(method, input) ?? ottoEditor.invoke(method, input, clientId), // OTTO(editor)
     "otto-terminal": (method, input) => ottoTerminal.invoke(method, input),
@@ -723,6 +727,7 @@ export async function createPaseoDaemon(
       // OTTO(feature-host): existing authenticated plugin RPC, unchanged relay framing.
       ottoRpc: {
         has: (pluginId) =>
+          (pluginId === "otto-workflows" && ottoWorkflows !== null) || // OTTO(workflows)
           pluginId === "otto-editor" || // OTTO(editor)
           pluginId === "otto-terminal" || // OTTO(terminal)
           (pluginId === "otto-speech" && ottoSpeech !== null) || // OTTO(speech)
@@ -1091,6 +1096,10 @@ export async function createPaseoDaemon(
           }),
       })(request),
     schedules: { inspect: (id) => scheduleService.inspect(id) }, // OTTO(artifacts): provenance reads the owning scheduler, never prompt-derived labels alone.
+    workflows: createWorkflowArtifactPort(
+      () => ottoWorkflows?.service.host ?? null,
+      () => ottoWorkflows?.service.library ?? null,
+    ), // OTTO(workflows): lazy cross-feature adapter.
   }); // OTTO(artifacts): one cancellable owner, no startup work or Context isolation changes.
   ottoKnowledge = new KnowledgeDaemonService({
     hostId: serverId,
@@ -1235,6 +1244,20 @@ export async function createPaseoDaemon(
   });
   await workspaceLabelService.initialize();
   logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
+  // OTTO(workflows): no ordinary chat subscriptions, provider launches or history scans.
+  ottoWorkflows = createWorkflowComposition({
+    home: config.paseoHome,
+    hostId: serverId,
+    hostLabel: serverId,
+    logger,
+    metadata: projectRegistry.ottoMetadata,
+    workspaces: { get: (id) => workspaceRegistry!.get(id) },
+    agents: agentManager,
+    storage: agentStorage,
+    providers: providerSnapshotManager,
+    readConfig: () => daemonConfigStore.get(),
+  });
+  await ottoWorkflows.initialize();
   const teardownArchivedWorkspaceRuntime = (workspaceId: string): void => {
     void releaseArchivedEditorWorkspace(ottoEditor, workspaceRegistry, workspaceId).catch((error) =>
       logger.warn({ err: error, workspaceId }, "Archived editor cleanup failed"),
@@ -1644,6 +1667,7 @@ export async function createPaseoDaemon(
   const createAgentToolHostDependencies = (
     runtime: PaseoToolRuntimeContext,
   ): PaseoToolHostDependencies => ({
+    ottoWorkflows: ottoWorkflows?.tools(runtime.callerAgentId), // OTTO(workflows): caller-bound authority, shared app/CLI/MCP owner.
     ottoPreview: ottoPreview ?? undefined, // OTTO(preview)
     previewToolPolicy: createRetainedToolPolicy("preview", config.paseoHome, () =>
       daemonConfigStore.get(),
@@ -2098,6 +2122,7 @@ export async function createPaseoDaemon(
       await ottoEditor.close(); // OTTO(editor): bounded language-server teardown on startup failure.
       await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
       await ottoArtifacts?.close(); // OTTO(artifacts): revoke late generation publication.
+      await ottoWorkflows?.close(); // OTTO(workflows): settle owned sessions before provider teardown.
       await ottoKanban?.close(); // OTTO(kanban): no polling survives daemon startup failure.
       await ottoIntegrations?.close(); // OTTO(bitbucket,connectors): release polls, clients and callback listeners.
       await ottoHostBrowser
@@ -2133,6 +2158,7 @@ export async function createPaseoDaemon(
     scriptHealthMonitor.stop();
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();
+    await ottoWorkflows?.close(); // OTTO(workflows): close only owned runs before Paseo takes its agent shutdown snapshot.
     agentManager.prepareForShutdown();
     await closeAllAgents(logger, agentManager);
     await withTimeout({

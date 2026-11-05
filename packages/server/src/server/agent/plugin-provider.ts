@@ -906,6 +906,7 @@ interface PendingChild {
 }
 
 class PluginAgentClient implements AgentClient {
+  private readonly ottoWorkflowReadMode?: "plan"; // OTTO(workflows): provider-advertised contract, never ID/name inference.
   readonly provider: string;
   private readonly ottoContext?: OttoProviderContext; // OTTO(provider-history)
   private readonly runtime: ProviderRuntime;
@@ -915,6 +916,7 @@ class PluginAgentClient implements AgentClient {
   readonly getCatalogCacheKey?: AgentClient["getCatalogCacheKey"];
 
   constructor(registration: ProviderRegistration, runtimeSettings?: ProviderRuntimeSettings) {
+    this.ottoWorkflowReadMode = registration.ottoWorkflowReadMode; // OTTO(workflows)
     this.provider = registration.id;
     this.ottoContext = ottoProviderContext(registration); // OTTO(provider-history)
     this.runtime = new ProviderRuntime(registration, runtimeSettings);
@@ -924,7 +926,10 @@ class PluginAgentClient implements AgentClient {
   }
 
   get capabilities(): AgentCapabilityFlags {
-    return agentCapabilities(this.runtime.negotiatedCapabilities);
+    return {
+      ...agentCapabilities(this.runtime.negotiatedCapabilities),
+      supportsOttoWorkflowReadMode: this.ottoWorkflowReadMode === "plan",
+    }; // OTTO(workflows): exact trusted harness capability.
   }
 
   async createSession(

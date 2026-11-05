@@ -21,6 +21,8 @@ const entries = {
   "./server/otto-browser": "server", // OTTO(browser-host): shared snapshot/ref engine, never a UI module.
   "./otto/preview": "shared", // OTTO(preview): structural RPC data contains no Node imports.
   "./otto/artifacts": "shared", // OTTO(artifacts): bounded structural contracts only.
+  "./otto/workflows": "shared", // OTTO(workflows): documents and scoped RPC only; no engine/agent runtime.
+  "./otto/workflows/judge-verdict": "shared", // OTTO(workflows): structured verdict declarations and pure interpretation.
   "./otto/connectors": "shared", // OTTO(connectors): catalog and structural RPC only; no authorization runtime.
   "./otto/speech": "shared", // OTTO(speech): structural selections and bounded RPC only.
   "./otto/terminal": "shared", // OTTO(terminal): structural host preferences and diagnostics only.
@@ -44,6 +46,7 @@ const entries = {
   "./client/otto-knowledge": "client", // OTTO(knowledge): app-only presentation bridge.
   "./client/otto-preview": "client", // OTTO(preview): trusted app-owned workspace controls.
   "./client/otto-artifacts": "client", // OTTO(artifacts): app-owned presentation bridge.
+  "./client/otto-workflows": "client", // OTTO(workflows): trusted presentation bridge.
   "./client/otto-bitbucket": "client", // OTTO(bitbucket): app-owned settings bridge.
   "./client/otto-connectors": "client", // OTTO(connectors): app-owned Settings presentation.
   "./client/otto-speech": "client", // OTTO(speech): app-owned Settings presentation.
@@ -115,7 +118,8 @@ describe("plugin SDK import boundaries", () => {
         specifier === "."
           ? "index"
           : specifier.slice(2) +
-            (specifier === "./client" || specifier === "./server" ? "/index" : "");
+            // OTTO(workflows): this multi-file structural entry has its own index.
+            (["./client", "./server", "./otto/workflows"].includes(specifier) ? "/index" : "");
       expect(boundaryViolations(path.join(sourceDirectory, `${name}.ts`), runtime)).toEqual([]);
     },
   );

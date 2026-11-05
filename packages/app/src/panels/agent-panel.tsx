@@ -27,6 +27,7 @@ import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { RetainedChatContent } from "./retained-chat-content";
 import { Composer } from "@/composer";
+import { WorkflowComposerBoundary } from "@/otto/workflows/chat-boundary"; // OTTO(workflows): only explicitly owned chats replace their composer; ordinary Paseo session behavior is unchanged.
 import {
   useComposerEditingSession,
   useComposerFullscreen,
@@ -1491,7 +1492,16 @@ const AgentStreamSection = memo(function AgentStreamSection({
   );
 });
 
-const AgentComposerSection = memo(function AgentComposerSection({
+const AgentComposerSection = memo(function WorkflowAwareComposer(
+  props: React.ComponentProps<typeof AgentComposerContent>,
+) {
+  return (
+    <WorkflowComposerBoundary serverId={props.serverId} agentId={props.agentId}>
+      <AgentComposerContent {...props} />
+    </WorkflowComposerBoundary>
+  );
+}); // OTTO(workflows)
+const AgentComposerContent = memo(function AgentComposerContent({
   agentId,
   serverId,
   isPaneFocused,

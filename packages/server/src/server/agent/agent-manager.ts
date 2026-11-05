@@ -63,6 +63,15 @@ import { toStoredAgentRecord } from "./agent-projections.js";
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
 import type { AgentOwner } from "./agent-owner.js";
 import {
+  prepareWorkflowLaunch,
+  isControlledWorkflowConductor,
+} from "../otto/workflows/provider-policy.js"; // OTTO(workflows): captured launch identity and final runtime ceiling.
+import {
+  assertWorkflowTurn,
+  assertWorkflowInteractiveControl,
+  assertWorkflowConfigurationChange,
+} from "../otto/workflows/turn-authority.js"; // OTTO(workflows): runtime-only ownership fence; ordinary sessions pass unchanged.
+import {
   InMemoryAgentTimelineStore,
   type SeedAgentTimelineOptions,
 } from "./agent-timeline-store.js";
@@ -1559,6 +1568,7 @@ export class AgentManager {
   ): Promise<ManagedAgent> {
     this.assertAcceptingAgentRegistrations();
     let existing = this.requireSessionAgent(agentId);
+    assertWorkflowConfigurationChange(existing); // OTTO(workflows): reload cannot remove a captured run's launch ceiling.
     if (this.hasInFlightRun(agentId)) {
       await this.cancelAgentRunBefore(agentId, "reload");
       existing = this.requireSessionAgent(agentId);
@@ -2030,6 +2040,7 @@ export class AgentManager {
 
   async setAgentMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null> {
     const agent = this.requireSessionAgent(agentId);
+    assertWorkflowConfigurationChange(agent); // OTTO(workflows): preserve the reviewed permission ceiling.
     const notice = (await agent.session.setMode(modeId)) ?? null;
     await this.drainSessionEvents(agentId);
     const currentMode = (await agent.session.getCurrentMode()) ?? modeId;
@@ -2046,6 +2057,7 @@ export class AgentManager {
 
   async setAgentModel(agentId: string, modelId: string | null): Promise<void> {
     const agent = this.requireSessionAgent(agentId);
+    assertWorkflowConfigurationChange(agent); // OTTO(workflows): model seats are immutable for the run.
     const normalizedModelId =
       typeof modelId === "string" && modelId.trim().length > 0 ? modelId : null;
 
@@ -2068,6 +2080,7 @@ export class AgentManager {
     thinkingOptionId: string | null,
   ): Promise<AgentProviderNotice | null> {
     const agent = this.requireSessionAgent(agentId);
+    assertWorkflowConfigurationChange(agent); // OTTO(workflows): preserve the captured model configuration.
     const normalizedThinkingOptionId =
       typeof thinkingOptionId === "string" && thinkingOptionId.trim().length > 0
         ? thinkingOptionId
@@ -2099,6 +2112,7 @@ export class AgentManager {
 
   async setAgentFeature(agentId: string, featureId: string, value: unknown): Promise<void> {
     const agent = this.requireAgent(agentId);
+    assertWorkflowConfigurationChange(agent); // OTTO(workflows): features may widen native tool authority.
 
     if (!agent.session.setFeature) {
       throw new Error("Agent session does not support setting features");
@@ -2468,6 +2482,7 @@ export class AgentManager {
    */
   tryRunOutOfBand(agentId: string, prompt: AgentPromptInput, options?: AgentRunOptions): boolean {
     const agent = this.requireSessionAgent(agentId);
+    assertWorkflowInteractiveControl(agent, isControlledWorkflowConductor(this, agent.id)); // OTTO(workflows): no side-effect command can bypass run ownership.
     // Providers parse slash commands from the raw text, so a command another agent sent
     // must reach them without its sender envelope.
     const agentMessage = typeof prompt === "string" ? parseAgentMessage(prompt) : null;
@@ -2597,6 +2612,12 @@ export class AgentManager {
     options?: AgentRunOptions,
   ): AsyncGenerator<AgentStreamEvent> {
     const existingAgent = this.requireSessionAgent(agentId);
+    assertWorkflowTurn(
+      existingAgent,
+      options,
+      "admit",
+      isControlledWorkflowConductor(this, agentId),
+    ); // OTTO(workflows): consume the host's private one-use admission.
     this.logger.trace(
       {
         agentId,
@@ -2633,6 +2654,13 @@ export class AgentManager {
     const pendingRun = this.runs.createPendingRun(agentId);
 
     const streamForwarder = async function* streamForwarder(this: AgentManager) {
+      // OTTO(workflows): revoke late consumption and release only the pending run this iterator owns.
+      try {
+        assertWorkflowTurn(agent, options, "execute", isControlledWorkflowConductor(this, agentId));
+      } catch (error) {
+        this.runs.settleForegroundRun(agentId, pendingRun.token);
+        throw error;
+      }
       let turnId: string;
       let turnStream: ReturnType<AgentRunState["createTurnStream"]> | null = null;
       turnId = await this.startPendingForegroundTurn({
@@ -2794,6 +2822,7 @@ export class AgentManager {
     options?: AgentRunOptions,
   ): Promise<AsyncGenerator<AgentStreamEvent>> {
     const snapshot = this.requireAgent(agentId);
+    assertWorkflowInteractiveControl(snapshot, isControlledWorkflowConductor(this, agentId)); // OTTO(workflows): replacement would bypass worker settlement/caps.
     if (
       snapshot.lifecycle !== "running" &&
       !snapshot.activeForegroundTurnId &&
@@ -2826,6 +2855,7 @@ export class AgentManager {
     options?: AgentSteerOptions,
   ): Promise<SteerResult> {
     const agent = this.requireSessionAgent(agentId);
+    assertWorkflowInteractiveControl(agent, isControlledWorkflowConductor(this, agentId)); // OTTO(workflows): only the owning engine may continue a worker.
     const expectedTurnId = agent.activeForegroundTurnId ?? agent.activeTurnId;
     if (!expectedTurnId || !agent.session.steerActiveTurn) {
       return { status: "unavailable" };
@@ -2854,6 +2884,7 @@ export class AgentManager {
     options?: AgentSteerOptions,
   ): Promise<ActiveTurnSteerDispatchResult> {
     const agent = this.requireSessionAgent(agentId);
+    assertWorkflowInteractiveControl(agent, isControlledWorkflowConductor(this, agentId)); // OTTO(workflows): enforce the same fence for direct steering callers.
     const expectedTurnId = agent.activeForegroundTurnId ?? agent.activeTurnId;
     if (!expectedTurnId) {
       return { status: "inactive" };
@@ -5415,7 +5446,11 @@ export class AgentManager {
     launchConfig: AgentSessionConfig,
     launchContext: AgentLaunchContext,
   ): AgentSessionConfig {
-    return launchContext.paseoTools ? stripInternalPaseoMcpServer(launchConfig) : launchConfig;
+    return prepareWorkflowLaunch(
+      this,
+      launchContext.paseoTools ? stripInternalPaseoMcpServer(launchConfig) : launchConfig,
+      launchContext,
+    ); // OTTO(workflows): ordinary sessions keep the same object and path.
   }
 
   private async requireAvailableClient(options: { provider: AgentProvider }): Promise<AgentClient> {

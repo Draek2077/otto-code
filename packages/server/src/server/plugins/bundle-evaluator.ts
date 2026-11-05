@@ -15,6 +15,7 @@ import * as ottoBitbucket from "@getpaseo/plugin/otto/bitbucket-connections"; //
 import * as ottoConnectors from "@getpaseo/plugin/otto/connectors"; // OTTO(connectors)
 import * as ottoContext from "@getpaseo/plugin/otto/context-management"; // OTTO(context-management)
 import * as ottoKnowledge from "@getpaseo/plugin/otto/project-knowledge"; // OTTO(knowledge)
+import * as ottoWorkflows from "@getpaseo/plugin/otto/workflows"; // OTTO(workflows)
 import type { PluginServerContribution } from "@getpaseo/plugin/server";
 import * as zod from "zod";
 import { isPluginClientOnlySdkSpecifier } from "./plugin-sdk-specifiers.js";
@@ -37,6 +38,7 @@ function runtimeRequire(name: string): unknown {
   if (name === "@getpaseo/plugin/otto/connectors") return ottoConnectors; // OTTO(connectors)
   if (name === "@getpaseo/plugin/otto/context-management") return ottoContext; // OTTO(context-management)
   if (name === "@getpaseo/plugin/otto/project-knowledge") return ottoKnowledge; // OTTO(knowledge)
+  if (name === "@getpaseo/plugin/otto/workflows") return ottoWorkflows; // OTTO(workflows)
   if (name === "@getpaseo/plugin/server") return pluginServerRuntime;
   if (name === "@getpaseo/plugin/server/provider") return pluginProviderRuntime;
   if (name === "@getpaseo/plugin/server/acp") return pluginAcpRuntime;

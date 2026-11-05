@@ -4,6 +4,7 @@ import type { ProviderMcpServerConfig } from "../../../server/provider.js";
 import { readBody, requireOk, serverEvents } from "./http.js";
 import { boundedResult, type AgentTool, type ToolOutput } from "./tools.js";
 import { DuplexMcpClient } from "./mcp-duplex.js";
+import { workflowMcpAccess } from "./workflow-access.js";
 
 interface McpClient {
   request(method: string, params: unknown, signal: AbortSignal): Promise<unknown>;
@@ -202,7 +203,11 @@ export async function loadMcpTools(
   config: Readonly<Record<string, ProviderMcpServerConfig>>,
   timeoutMs: number,
   signal: AbortSignal,
-  context: { cwd: string; env: Readonly<Record<string, string>> },
+  context: {
+    cwd: string;
+    env: Readonly<Record<string, string>>;
+    providerOptions?: Readonly<Record<string, unknown>>;
+  },
 ) {
   const clients: McpClient[] = [];
   const tools: AgentTool[] = [];
@@ -224,7 +229,12 @@ export async function loadMcpTools(
         if (tools.some((existing) => existing.definition.function.name === name))
           throw new Error(`Duplicate MCP tool: ${server}/${tool.name}`);
         tools.push({
-          access: tool.annotations?.readOnlyHint ? "read" : "unknown",
+          access: workflowMcpAccess(
+            context,
+            server,
+            tool.name,
+            tool.annotations?.readOnlyHint === true,
+          ),
           definition: {
             type: "function",
             function: {

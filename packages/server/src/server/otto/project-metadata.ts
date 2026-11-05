@@ -9,7 +9,14 @@ const FIELDS = new Set([
   "knowledgeDirectoryName",
   "artifactLocation",
   "artifactDirectoryName",
+  "workflowLocation",
+  "workflowDirectoryName",
 ]);
+const directoryLabels = {
+  knowledgeDirectoryName: "Knowledge",
+  artifactDirectoryName: "Artifacts",
+  workflowDirectoryName: "Workflows",
+};
 export interface OttoProjectSnapshot {
   projectId: string;
   rootPath: string;
@@ -93,7 +100,11 @@ export class OttoProjectMetadata {
         );
       const record = { ...current.snapshot.record, ...input.patch };
       this.ports.parse(record);
-      for (const field of ["knowledgeDirectoryName", "artifactDirectoryName"] as const) {
+      for (const field of [
+        "knowledgeDirectoryName",
+        "artifactDirectoryName",
+        "workflowDirectoryName",
+      ] as const) {
         const directory = input.patch[field];
         if (
           typeof directory === "string" &&
@@ -109,7 +120,7 @@ export class OttoProjectMetadata {
         )
           throw new OttoProjectMetadataError(
             "conflict",
-            `This ${field === "knowledgeDirectoryName" ? "Knowledge" : "Artifacts"} directory is already bound to another project, including archived projects.`,
+            `This ${directoryLabels[field]} directory is already bound to another project, including archived projects.`,
           );
       }
       await input.beforePublish?.();

@@ -26,6 +26,8 @@ export const PROVIDER_CAPABILITIES = [
 export type ProviderCapability = (typeof PROVIDER_CAPABILITIES)[number];
 
 export interface ProviderRegistration {
+  /** OTTO(workflows): trusted harness contract. Plan offers reads only; providerOptions.ottoWorkflowWorkspaceAccess="none" withholds native tools. Neither may delegate native children. The daemon separately filters its MCP catalog. */
+  ottoWorkflowReadMode?: "plan";
   /** Activate only while agents.providers contains this provider ID, independently of enabled. */
   requiresConfiguration?: boolean;
   /** Equal keys share discovery within this provider. Include effective configuration and execution environment. */

@@ -2,6 +2,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
 import { z } from "zod";
+import { workflowArtifactSource } from "@getpaseo/plugin/otto/workflows";
 import {
   listArtifacts,
   readArtifact,
@@ -50,6 +51,7 @@ import {
   readArtifactSchedule,
   type ArtifactCaller,
   type ArtifactSchedulePort,
+  type ArtifactWorkflowPort,
 } from "./sources.js";
 
 interface GenerationJob {
@@ -75,6 +77,7 @@ export interface ArtifactPorts {
   };
   generation: ArtifactGeneration;
   schedules?: ArtifactSchedulePort;
+  workflows?: ArtifactWorkflowPort;
   reportGenerationError?(error: unknown): void;
   projects(): Promise<readonly { projectId: string; archivedAt: string | null }[]>;
   now?: () => Date;
@@ -96,8 +99,27 @@ export class ArtifactDaemonService {
   workspaceScope(workspaceId: string): ArtifactScope {
     return { hostId: this.ports.hostId, target: { kind: "workspace", id: workspaceId } };
   }
-  callerSource(caller: ArtifactCaller) {
-    return artifactCallerSource(caller, this.ports.schedules);
+  async callerSource(caller: ArtifactCaller) {
+    return (
+      (await this.ports.workflows?.caller(caller)) ??
+      artifactCallerSource(caller, this.ports.schedules)
+    );
+  }
+  private async workflowSource(input: ArtifactRef) {
+    const entry = await this.locate(input),
+      source = entry.summary.source;
+    const unavailable = {
+      kind: "unavailable" as const,
+      message:
+        "The exact Workflow source is missing or ambiguous on this host. The Artifact is unchanged.",
+    };
+    if (source?.kind !== "workflow" || !this.ports.workflows) return unavailable;
+    return (
+      (await this.ports.workflows.read(
+        { hostId: this.ports.hostId, projectId: entry.store.project.projectId },
+        source.runId,
+      )) ?? unavailable
+    );
   }
   async readSource(input: ArtifactRef): Promise<ArtifactSourceDetails> {
     const entry = await this.locate(input);
@@ -803,6 +825,8 @@ export class ArtifactDaemonService {
     );
   }
   invoke(method: string, value: unknown): Promise<unknown> | undefined {
+    if (method === workflowArtifactSource.name)
+      return this.guard(() => this.workflowSource(workflowArtifactSource.input.parse(value)));
     switch (method) {
       case listArtifacts.name:
         return this.guard(() => this.list(listArtifacts.input.parse(value)));

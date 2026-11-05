@@ -11,5 +11,12 @@
   "arrowParens": "always",
   "bracketSameLine": false,
   "bracketSpacing": true,
-  "ignorePatterns": ["*.lock", "**/*.gen.ts", "**/*.gen.tsx", ".otto/**", "test-documents/**"]
+  "ignorePatterns": [
+    "*.lock",
+    "**/*.gen.ts",
+    "**/*.gen.tsx",
+    ".otto/**",
+    "test-documents/**",
+    "packages/app/src/otto/workflows/canvas/vendor/drawflow.min.js"
+  ]
 }

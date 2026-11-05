@@ -197,6 +197,21 @@
       "types": "./dist/otto/editor-images.d.ts",
       "source": "./src/otto/editor-images.ts",
       "default": "./dist/otto/editor-images.js"
+    },
+    "./otto/workflows": {
+      "types": "./dist/otto/workflows/index.d.ts",
+      "source": "./src/otto/workflows/index.ts",
+      "default": "./dist/otto/workflows/index.js"
+    },
+    "./otto/workflows/judge-verdict": {
+      "types": "./dist/otto/workflows/judge-verdict.d.ts",
+      "source": "./src/otto/workflows/judge-verdict.ts",
+      "default": "./dist/otto/workflows/judge-verdict.js"
+    },
+    "./client/otto-workflows": {
+      "default": "./dist/client/otto-workflows.js",
+      "source": "./src/client/otto-workflows.ts",
+      "types": "./dist/client/otto-workflows.d.ts"
     }
   },
   "publishConfig": {

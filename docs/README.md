@@ -15,6 +15,7 @@ decisions, and measured findings live in Otto Knowledge.
 | [otto-browser.md](otto-browser.md)                       | Browser extension boundary and bounded tab favicon resolution                                                                    |
 | [otto-preview.md](otto-preview.md)                       | Workspace Preview launch configuration and owned process lifecycle                                                               |
 | [otto-artifacts.md](otto-artifacts.md)                   | Durable project HTML deliverables, storage, generation, recovery and preview                                                     |
+| [otto-workflows.md](otto-workflows.md)                   | AI and Graph orchestration, owned sessions, gates, authoring, storage, recovery, CLI and MCP                                     |
 | [otto-kanban.md](otto-kanban.md)                         | Project-bound Kanban UI, host operations and provider boundaries                                                                 |
 | [otto-integrations.md](otto-integrations.md)             | Shared host accounts, OS-keyring credentials and explicit saves                                                                  |
 | [otto-bitbucket.md](otto-bitbucket.md)                   | Bitbucket Cloud accounts, forge actions, repository discovery and cloning                                                        |

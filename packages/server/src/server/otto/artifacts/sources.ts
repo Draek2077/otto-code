@@ -2,6 +2,15 @@ import type { z } from "zod";
 import type { ArtifactSource } from "@getpaseo/plugin/otto/artifacts";
 import type { StoredSchedule } from "@getpaseo/protocol/schedule/types";
 import { ScheduleNotFoundError } from "../../schedule/service.js";
+import type { workflowArtifactSource, WorkflowScope } from "@getpaseo/plugin/otto/workflows";
+
+export interface ArtifactWorkflowPort {
+  caller(caller: ArtifactCaller): Promise<z.infer<typeof ArtifactSource> | undefined>;
+  read(
+    scope: WorkflowScope,
+    runId: string,
+  ): Promise<Extract<z.infer<typeof workflowArtifactSource.output>, { ok: true }>["value"] | null>;
+}
 
 export interface ArtifactCaller {
   workspaceId: string | null;

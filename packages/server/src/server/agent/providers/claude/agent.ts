@@ -1,4 +1,8 @@
 import { validateProviderOptions } from "../../provider-options.js";
+import {
+  workflowClaudeOptions,
+  type WorkflowLaunchPolicy,
+} from "../../../otto/workflows/provider-policy.js"; // OTTO(workflows): last-applied, owned-session tool ceiling.
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -469,6 +473,7 @@ interface ClaudeAgentClientOptions {
 }
 
 interface ClaudeAgentSessionOptions {
+  ottoWorkflowPolicy?: WorkflowLaunchPolicy; // OTTO(workflows)
   ottoReadOnlyGeneration?: true; // OTTO(context-generation)
   defaults?: { agents?: Record<string, AgentDefinition> };
   runtimeSettings?: ProviderRuntimeSettings;
@@ -1604,6 +1609,7 @@ export class ClaudeAgentClient implements AgentClient {
       launchEnv: launchContext?.env,
       persistSession: options?.persistSession,
       ottoReadOnlyGeneration: launchContext?.ottoReadOnlyGeneration, // OTTO(context-generation)
+      ottoWorkflowPolicy: launchContext?.ottoWorkflowPolicy, // OTTO(workflows)
       logger: this.logger,
       queryFactory: this.queryFactory,
       resolveBinary: this.resolveBinary,
@@ -2199,6 +2205,7 @@ class ClaudeAgentSession implements AgentSession {
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly persistSession?: boolean;
   private readonly ottoReadOnlyGeneration?: true; // OTTO(context-generation)
+  private readonly ottoWorkflowPolicy?: WorkflowLaunchPolicy; // OTTO(workflows)
   private readonly logger: Logger;
   private readonly queryFactory?: ClaudeQueryFactory;
   private readonly resolveBinary: () => Promise<string>;
@@ -2312,6 +2319,7 @@ class ClaudeAgentSession implements AgentSession {
     this.harnessEnvironment = this.buildSdkEnv();
     this.persistSession = options.persistSession;
     this.ottoReadOnlyGeneration = options.ottoReadOnlyGeneration; // OTTO(context-generation)
+    this.ottoWorkflowPolicy = options.ottoWorkflowPolicy; // OTTO(workflows)
     this.logger = options.logger.child({ agentId: this.agentId });
     this.queryFactory = options.queryFactory;
     this.resolveBinary = options.resolveBinary;
@@ -3591,7 +3599,9 @@ class ClaudeAgentSession implements AgentSession {
         ...this.runtimeSettings.disallowedTools,
       ];
     }
-    return this.ottoReadOnlyGeneration ? readOnlyClaudeOptions(base) : base; // OTTO(context-generation): apply after all ordinary options.
+    return this.ottoReadOnlyGeneration
+      ? readOnlyClaudeOptions(base)
+      : workflowClaudeOptions(base, this.ottoWorkflowPolicy); // OTTO(context-generation) OTTO(workflows): both policies apply after ordinary options and remain separate.
   }
 
   private buildSettingsOptions(

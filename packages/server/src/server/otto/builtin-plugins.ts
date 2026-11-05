@@ -10,4 +10,5 @@ export const ottoBuiltinPlugins = [
   "otto-speech",
   "otto-terminal",
   "otto-editor",
+  "otto-workflows",
 ] as const;

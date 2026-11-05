@@ -10,6 +10,7 @@ import { useFetchQuery } from "@/data/query";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { styles } from "./styles";
+import { ArtifactWorkflowSource } from "../workflows/artifact-source";
 interface SourceProps {
   reference: ArtifactRef;
   revision: string;
@@ -35,11 +36,7 @@ export function ArtifactSourceDisclosure(
         Open source chat
       </Button>
     ) : null;
-  return (
-    <Text style={styles.muted}>
-      Workflow source identifiers are retained. The owning Workflow is unavailable on this host.
-    </Text>
-  );
+  return <ArtifactWorkflowSource {...props} />;
 }
 
 /** Exact source inspection stays beside the deliverable, including on compact layouts. */

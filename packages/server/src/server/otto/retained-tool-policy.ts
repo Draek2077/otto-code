@@ -31,6 +31,8 @@ const retained = z
   .passthrough();
 
 function groupEnabled(group: string, v2?: string[], legacy?: string[]) {
+  // COMPAT(otto09WorkflowGroupSplit): added v0.10.0; remove after 2027-05-05 after explicit tool-group saves. Legacy agents included orchestration; v2 remains authoritative.
+  if (v2 === undefined && group === "orchestration" && legacy?.includes("agents")) return true;
   const selected = v2 ?? legacy;
   return selected === undefined || selected.includes(group);
 }
