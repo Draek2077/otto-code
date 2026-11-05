@@ -10,13 +10,15 @@ for (const compact of [false, true]) {
     withWorkspace,
   }, info) => {
     test.setTimeout(150000);
-    if (compact) await page.setViewportSize({ width: 390, height: 844 });
     const workspace = await withWorkspace({ prefix: "otto-editor-" });
     const source = "export const count = 1;\nconsole.log(count);\n";
     const file = path.join(workspace.repoPath, "editor.ts");
     await writeFile(file, source);
     await writeFile(path.join(workspace.repoPath, "guide.md"), "# Editor guide\n\nA paragraph.\n");
     await workspace.navigateTo();
+    // The shared setup helper selects the seeded workspace through the desktop
+    // sidebar. Exercise the actual editor journey at the compact size afterward.
+    if (compact) await page.setViewportSize({ width: 390, height: 844 });
     await openFileExplorer(page);
     await page.getByTestId("files-search-contents").click();
     const initialSearch = page.getByTestId("editor-project-search");
