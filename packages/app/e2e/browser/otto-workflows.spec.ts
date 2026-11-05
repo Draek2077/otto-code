@@ -33,9 +33,9 @@ type Result<T> =
       };
     };
 function caller(client: Client) {
-  return async <T>(
-    definition: { name: string; output: { parse(value: unknown): Result<T> } },
-    input: unknown,
+  return async <I extends z.ZodType, T>(
+    definition: { name: string; input: I; output: { parse(value: unknown): Result<T> } },
+    input: z.input<NoInfer<I>>,
   ): Promise<T> =>
     workflows.unwrapWorkflowResult(
       definition.output.parse(
@@ -107,6 +107,12 @@ for (const compact of [false, true])
       await openLibrary(page, workspace);
       const surface = page.getByTestId("otto-workflows-page").filter({ visible: true });
       await surface.getByRole("button", { name: "New Graph", exact: true }).click();
+      if (!compact) {
+        const listPane = await surface.getByTestId("workflow-library-list").boundingBox(),
+          detailPane = await surface.getByTestId("workflow-library-detail").boundingBox();
+        expect(listPane?.width).toBeLessThanOrEqual(300);
+        expect(detailPane?.width).toBeGreaterThan(400);
+      }
       await surface.getByLabel("Graph name", { exact: true }).fill("Reviewed visual graph");
       await surface.getByRole("button", { name: "Add agent", exact: true }).click();
       await expect(surface.locator(".drawflow-node")).toHaveCount(2);
@@ -118,6 +124,7 @@ for (const compact of [false, true])
       const list = await call(workflows.workflowList, { scope: scope(workspace), kind: "graph" });
       expect(list.items).toHaveLength(1);
       const original = await call(workflows.workflowRead, list.items[0].ref);
+      if (original.document.kind !== "graph") throw new Error("Expected saved Graph");
       expect(original.document.value.nodes).toEqual(
         expect.arrayContaining([expect.objectContaining({ title: "Canvas worker" })]),
       );
@@ -255,7 +262,6 @@ test("real Graph workers, gates, ordinary chats and Artifact provenance use the 
       scope: project,
       token: review.token,
       operationId: "runtime-proof",
-      confirmed: true,
     });
     running = started.ref;
     await expect
@@ -330,7 +336,7 @@ test("real Graph workers, gates, ordinary chats and Artifact provenance use the 
     const provenance = workflows.unwrapWorkflowResult(
       workflows.workflowArtifactSource.output.parse(
         await client.invokePluginRpc("otto-artifacts", workflows.workflowArtifactSource.name, {
-          scope: project,
+          scope: { hostId: project.hostId, target: { kind: "project", id: project.projectId } },
           id: artifact.id,
           location: artifact.location,
         }),
@@ -429,7 +435,6 @@ test("AI clarification stays in Planning, explicit confirmation admits workers a
       scope: project,
       token: review.token,
       operationId: "ai-proof",
-      confirmed: true,
     });
     running = start.ref;
     if (start.document.kind !== "run" || !start.document.value.conductorAgentId)

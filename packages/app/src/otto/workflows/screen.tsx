@@ -756,8 +756,12 @@ function LibraryBody({
     );
   return (
     <View style={styles.columns}>
-      <ScrollView style={styles.list}>{list}</ScrollView>
-      <ScrollView style={styles.column}>{detail}</ScrollView>
+      <ScrollView testID="workflow-library-list" style={styles.list}>
+        {list}
+      </ScrollView>
+      <ScrollView testID="workflow-library-detail" style={styles.column}>
+        {detail}
+      </ScrollView>
     </View>
   );
 }
