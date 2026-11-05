@@ -501,6 +501,18 @@ editor acceptance are separate from this browser evidence.
 | Safety and lifecycle                                                                  | Colocated focused fixtures cover leases, pending demand, dirty peer drafts, CAS settings, bounded search, reviewed write/undo conflicts, exclusive exports and image assets |
 
 These are defined acceptance checks, not claims that a particular commit passed.
+The manual `editor` diagnostic runs the Otto editor spec together with Paseo's
+`pane-find.spec.ts` and `file-editing.spec.ts`. Both this lane and the full
+browser matrix install Vim and Neovim on their disposable CI runners; a missing
+editor is a fixture setup failure, not a reason to skip the real PTY checks.
+
+`AdaptiveModalSheet` places its `testID` on the full desktop overlay but only on
+the compact header. Scope compact body and footer controls through the visible
+accessible sheet or their own stable test IDs, rather than the header's
+descendants. Markdown source also stays mounted while Preview is visible to
+retain undo. Assert rendered headings or the preview boundary instead of a
+generic text selector that also matches hidden CodeMirror text.
+
 Physical mobile IME/keyboard behavior and user-specific editor plugins require
 their own device/environment review. No editor check starts the installed Otto
 daemon or reads its settings.
