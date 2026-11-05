@@ -72,7 +72,7 @@ for (const compact of [false, true]) {
     await initialSearch.getByRole("button", { name: "Close", exact: true }).click();
     await openFileFromExplorer(page, "editor.ts");
     const editor = page
-      .getByTestId("file-source-editor")
+      .getByLabel("Source editor for editor.ts", { exact: true })
       .filter({ visible: true })
       .locator(".cm-content");
     await expect(editor).toContainText("count");
@@ -139,32 +139,39 @@ for (const compact of [false, true]) {
     await openEditorExplorer(page, compact);
     await openFileFromExplorer(page, "guide.md");
     await page.getByTestId("file-mode-source").filter({ visible: true }).click();
-    await expect(editor).toContainText("Editor guide");
-    await editor.press("ControlOrMeta+End");
-    await editor.press("Enter");
-    await editor.pressSequentially("Retained edit");
-    await page.getByTestId("file-mode-split").click();
-    await expect(page.getByTestId("editor-split-preview")).toBeVisible();
-    await expect(page.getByTestId("file-split-preview")).toContainText("Retained edit");
-    await page.getByTestId("file-mode-preview").click();
-    await page.getByTestId("file-mode-source").filter({ visible: true }).click();
-    await expect(editor).toContainText("Retained edit");
-    await editor.focus();
-    await editor.press("ControlOrMeta+z");
-    await expect(editor).not.toContainText("Retained edit");
-    await page.getByTestId("file-mode-preview").click();
-    await page.getByRole("button", { name: "Comment on heading", exact: true }).click();
+    const guide = page.getByTestId("workspace-file-pane").filter({
+      has: page.getByLabel("Source editor for guide.md", { exact: true }),
+      visible: true,
+    });
+    const markdownEditor = guide.getByTestId("file-source-editor").locator(".cm-content");
+    await expect(markdownEditor).toContainText("Editor guide");
+    await markdownEditor.press("ControlOrMeta+End");
+    await markdownEditor.press("Enter");
+    await markdownEditor.pressSequentially("Retained edit");
+    await guide.getByTestId("file-mode-split").click();
+    await expect(guide.getByTestId("file-split-editor")).toBeVisible();
+    await expect(guide.getByTestId("file-split-preview")).toBeVisible();
+    await expect(guide.getByTestId("file-split-preview")).toContainText("Retained edit");
+    await page.screenshot({ path: info.outputPath("editor-split.png") });
+    await guide.getByTestId("file-mode-preview").click();
+    await guide.getByTestId("file-mode-source").click();
+    await expect(markdownEditor).toContainText("Retained edit");
+    await markdownEditor.focus();
+    await markdownEditor.press("ControlOrMeta+z");
+    await expect(markdownEditor).not.toContainText("Retained edit");
+    await guide.getByTestId("file-mode-preview").click();
+    await guide.getByRole("button", { name: "Comment on heading", exact: true }).click();
     const note = editorDialog(page, "editor-document-note", compact);
     await note
       .getByRole("textbox", { name: "Document review note", exact: true })
       .fill("Keep this heading source-backed");
     await note.getByRole("button", { name: "Save note", exact: true }).click();
-    await page.getByRole("button", { name: "Edit document note", exact: true }).click();
+    await guide.getByRole("button", { name: "Edit document note", exact: true }).click();
     await note.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(
-      page.getByRole("button", { name: "Comment on heading", exact: true }),
+      guide.getByRole("button", { name: "Comment on heading", exact: true }),
     ).toBeVisible();
-    await page.getByTestId("editor-document-tools").click();
+    await guide.getByTestId("editor-document-tools").click();
     await page.getByRole("menuitem", { name: "Export new HTML file", exact: true }).click();
     await expect
       .poll(

@@ -512,6 +512,9 @@ accessible sheet or their own stable test IDs, rather than the header's
 descendants. Markdown source also stays mounted while Preview is visible to
 retain undo. Assert rendered headings or the preview boundary instead of a
 generic text selector that also matches hidden CodeMirror text.
+Compact file sheets can cover a retained editor whose CSS remains visible.
+Scope file actions by the editor's accessible filename and its containing file
+pane, rather than treating every CSS-visible editor as the active file.
 
 Physical mobile IME/keyboard behavior and user-specific editor plugins require
 their own device/environment review. No editor check starts the installed Otto
