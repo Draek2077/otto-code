@@ -9,6 +9,9 @@ const root = new URL("../../.tmp/editor-print-proof/", import.meta.url);
 mkdirSync(root, { recursive: true });
 mkdirSync(new URL("profile/", root), { recursive: true });
 app.setPath("userData", fileURLToPath(new URL("profile/", root)));
+// printEditorPdf destroys its hidden window. Keep the harness alive until its
+// awaited artifact writes finish instead of Electron's default last-window quit.
+app.on("window-all-closed", () => {});
 // Let the ESM entry finish loading before waiting for Electron readiness.
 // No product startup runs, and the profile is set synchronously before ready.
 const watchdog = setTimeout(() => {

@@ -70,7 +70,9 @@ jobs:
         run: npm run build:main --workspace=@getpaseo/desktop
       - name: Verify static PDF printing in isolated Electron
         timeout-minutes: 2
-        run: xvfb-run -a npm exec --workspace=@getpaseo/desktop -- electron --no-sandbox ../../scripts/otto/editor-print-proof.mjs
+        run: |
+          xvfb-run -a npm exec --workspace=@getpaseo/desktop -- electron --no-sandbox ../../scripts/otto/editor-print-proof.mjs
+          node --input-type=module -e 'import assert from "node:assert/strict"; import { readFileSync } from "node:fs"; const proof = JSON.parse(readFileSync(".tmp/editor-print-proof/result.json", "utf8")); const pdf = readFileSync(".tmp/editor-print-proof/document.pdf"); assert.equal(proof.networkRequests, 0); assert.equal(proof.bytes, pdf.length); assert.ok(pdf.length > 1000); assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");'
       - name: Retain browser diagnostics
         uses: actions/upload-artifact@v4
         if: always()
