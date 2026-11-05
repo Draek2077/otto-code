@@ -122,7 +122,10 @@ jobs:
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-terminal.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             editor)
-              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-editor.spec.ts e2e/browser/pane-find.spec.ts e2e/browser/file-editing.spec.ts --workers=1 --retries=0 --max-failures=1
+              # Exercise the changed flow first; retain every baseline gate and its proof.
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-editor.spec.ts --output=test-results/editor-flow --workers=1 --retries=0 --max-failures=1
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/pane-find.spec.ts --output=test-results/paseo-find --workers=1 --retries=0 --max-failures=1
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/file-editing.spec.ts --output=test-results/paseo-files --workers=1 --retries=0 --max-failures=1
               ;;
             speech)
               # Preserve existing content renderers and their lifecycle inside the inset frame.

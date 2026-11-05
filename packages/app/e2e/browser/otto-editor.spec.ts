@@ -8,7 +8,10 @@ function editorDialog(page: Page, testId: string, compact: boolean) {
   // AdaptiveModalSheet's testID labels only the header on compact screens;
   // the accessible sheet owns its body and footer as siblings of that header.
   return compact
-    ? page.getByRole("slider", { name: "Bottom Sheet", exact: true }).filter({ visible: true })
+    ? page.getByRole("slider", { name: "Bottom Sheet", exact: true }).filter({
+        visible: true,
+        has: page.getByTestId(testId),
+      })
     : page.getByTestId(testId);
 }
 
