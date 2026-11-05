@@ -4,6 +4,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 
+function editorDialog(page: Page, testId: string, compact: boolean) {
+  // AdaptiveModalSheet's testID labels only the header on compact screens;
+  // the accessible sheet owns its body and footer as siblings of that header.
+  return compact
+    ? page.getByRole("slider", { name: "Bottom Sheet", exact: true }).filter({ visible: true })
+    : page.getByTestId(testId);
+}
+
 async function openEditorExplorer(page: Page, compact: boolean) {
   if (!compact) return openFileExplorer(page);
   const files = page.getByTestId("explorer-tab-files").filter({ visible: true });
@@ -49,7 +57,7 @@ for (const compact of [false, true]) {
       .getByRole("button", { name: "Comment on result", exact: true })
       .first()
       .click();
-    const searchNote = page.getByTestId("editor-document-note");
+    const searchNote = editorDialog(page, "editor-document-note", compact);
     await searchNote
       .getByRole("textbox", { name: "Document review note", exact: true })
       .fill("Review this use of count");
@@ -88,7 +96,7 @@ for (const compact of [false, true]) {
     const rename = page.getByTestId("editor-rename-symbol");
     await rename.getByRole("textbox").fill("total");
     await rename.getByRole("button", { name: "Preview rename", exact: true }).click();
-    const review = page.getByTestId("editor-rename-review");
+    const review = editorDialog(page, "editor-rename-review", compact);
     await expect(review).toContainText("total");
     page.once("dialog", (dialog) => void dialog.accept());
     await review.getByRole("button", { name: "Apply reviewed edits", exact: true }).click();
@@ -99,7 +107,7 @@ for (const compact of [false, true]) {
     await review.getByTestId("editor-review-close").click();
     await page.getByTestId("editor-code-menu").click();
     await page.getByRole("menuitem", { name: "Refactor with AI", exact: true }).click();
-    const refactor = page.getByTestId("editor-refactor");
+    const refactor = editorDialog(page, "editor-refactor", compact);
     await refactor
       .getByRole("textbox", { name: "Refactor instruction", exact: true })
       .fill("Extract a small helper");
@@ -143,7 +151,7 @@ for (const compact of [false, true]) {
     await expect(editor).not.toContainText("Retained edit");
     await page.getByTestId("file-mode-preview").click();
     await page.getByRole("button", { name: "Comment on heading", exact: true }).click();
-    const note = page.getByTestId("editor-document-note");
+    const note = editorDialog(page, "editor-document-note", compact);
     await note
       .getByRole("textbox", { name: "Document review note", exact: true })
       .fill("Keep this heading source-backed");
