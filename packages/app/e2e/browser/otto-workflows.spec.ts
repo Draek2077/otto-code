@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { z } from "zod";
-import type { Page } from "@playwright/test";
+import type { Page, Locator } from "@playwright/test";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import * as workflows from "@getpaseo/plugin/otto/workflows";
 import { aggregateArtifacts } from "@getpaseo/plugin/otto/artifacts";
@@ -45,6 +45,15 @@ function caller(client: Client) {
 }
 function scope(workspace: SeededWorkspace) {
   return { hostId: getServerId(), projectId: workspace.projectId };
+}
+async function confirmAction(page: Page, button: Locator, expected: string) {
+  const waiting = page.waitForEvent("dialog");
+  const clicked = button.click();
+  const dialog = await waiting;
+  expect(dialog.type()).toBe("confirm");
+  expect(dialog.message()).toContain(expected);
+  await dialog.accept();
+  await clicked;
 }
 async function openLibrary(page: Page, workspace: SeededWorkspace, run?: workflows.WorkflowRef) {
   await page.goto(
@@ -131,8 +140,11 @@ for (const compact of [false, true])
       await expect(surface.getByLabel("Graph name", { exact: true })).toHaveValue(
         "Local unsaved edit",
       );
-      await surface.getByRole("button", { name: "Reload saved", exact: true }).click();
-      await page.getByRole("button", { name: "Reload", exact: true }).click();
+      await confirmAction(
+        page,
+        surface.getByRole("button", { name: "Reload saved", exact: true }),
+        "Reload saved Workflow?",
+      );
       await expect(surface.getByLabel("Graph name", { exact: true })).toHaveValue(
         "Peer saved graph",
       );
@@ -287,8 +299,11 @@ test("real Graph workers, gates, ordinary chats and Artifact provenance use the 
     await openLibrary(page, workspace, started.ref);
     const surface = page.getByTestId("otto-workflows-page").filter({ visible: true });
     await expect(surface.getByRole("button", { name: "Approve gate", exact: true })).toBeVisible();
-    await surface.getByRole("button", { name: "Approve gate", exact: true }).click();
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await confirmAction(
+      page,
+      surface.getByRole("button", { name: "Approve gate", exact: true }),
+      "Workflow decision",
+    );
     await expect
       .poll(
         async () => {
@@ -440,16 +455,22 @@ test("AI clarification stays in Planning, explicit confirmation admits workers a
       .toBe(true);
     await openLibrary(page, workspace, start.ref);
     const surface = page.getByTestId("otto-workflows-page").filter({ visible: true });
-    await surface.getByRole("button", { name: "Start declared plan", exact: true }).click();
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await confirmAction(
+      page,
+      surface.getByRole("button", { name: "Start declared plan", exact: true }),
+      "Workflow decision",
+    );
     await expect(surface.getByRole("button", { name: "Reject gate", exact: true })).toBeVisible({
       timeout: 30000,
     });
     await expect(
       surface.getByRole("button", { name: "Start declared plan", exact: true }),
     ).toHaveCount(0);
-    await surface.getByRole("button", { name: "Reject gate", exact: true }).click();
-    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await confirmAction(
+      page,
+      surface.getByRole("button", { name: "Reject gate", exact: true }),
+      "Workflow decision",
+    );
     await expect
       .poll(async () => (await call(workflows.workflowRead, start.ref)).document.value.status)
       .toBe("canceled");
