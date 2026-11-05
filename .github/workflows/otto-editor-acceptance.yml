@@ -55,8 +55,8 @@ jobs:
         run: |
           dotnet tool install csharp-ls --version 0.26.0 --tool-path "$RUNNER_TEMP/otto-editor-tools"
           echo "$RUNNER_TEMP/otto-editor-tools" >> "$GITHUB_PATH"
-      - name: Build declarations and portable solution payload
-        run: npm run build:server-deps && npm run build:dotnet-probe
+      - name: Build server declarations and portable solution payload
+        run: npm run build:server
       - name: Verify real C# semantic services
         working-directory: packages/server
         run: npx vitest run --config otto-editor-runtime.config.ts test-editor-csharp.ts --bail=1 --maxWorkers=1

@@ -171,6 +171,9 @@ const styles = StyleSheet.create((theme) => ({
   editor: { flex: 1, minWidth: 0, minHeight: 0 },
   inspector: {
     width: 300,
+    minHeight: 0,
+    flexShrink: 0,
+    overflow: "hidden",
     borderLeftWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,

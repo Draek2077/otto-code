@@ -1,4 +1,4 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useState, useSyncExternalStore, useMemo } from "react";
 import { FlatList, Text, View, type ListRenderItemInfo } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { FormTextInput } from "@/components/ui/form-field";
@@ -7,6 +7,7 @@ import type { EditorSearchResult } from "@getpaseo/plugin/otto/editor";
 import { EditorSearchForm } from "./search-form";
 import type { EditorSearchPort } from "./workspace-ports";
 import { EditorSearchNote } from "./search-note";
+import { PaneContentToolbar } from "@/components/ui/pane-content-toolbar";
 
 type Match = EditorSearchResult["matches"][number];
 function MatchRow({
@@ -47,8 +48,13 @@ function MatchRow({
     </View>
   );
 }
-export function EditorSearchPane({ surface }: { surface: EditorSearchPort }) {
-  const [model] = useState(() => new EditorSearchForm());
+function SearchControls({
+  surface,
+  model,
+}: {
+  surface: EditorSearchPort;
+  model: EditorSearchForm;
+}) {
   const draft = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const state = useSyncExternalStore(surface.subscribe, surface.getSnapshot);
   const query = useCallback((value: string) => model.edit({ query: value }), [model]);
@@ -67,38 +73,19 @@ export function EditorSearchPane({ surface }: { surface: EditorSearchPort }) {
     () => model.edit({ regexp: !model.getSnapshot().options.regexp }),
     [model],
   );
-  const close = useCallback(() => surface.toggleSearch(), [surface]);
   const search = useCallback(async () => {
     const options = model.getSnapshot().options;
     await surface.searchFiles(options);
     if (!surface.getSnapshot().error) model.searched(options);
   }, [surface, model]);
-  const replaceFile = useCallback(
-    (file: string) => {
-      if (!model.stale) void surface.planReplace(model.getSnapshot().replacement, [file]);
-    },
-    [surface, model],
-  );
   const replaceAll = useCallback(() => {
     if (!model.stale)
       void surface.planReplace(model.getSnapshot().replacement, [
         ...new Set(surface.getSnapshot().search?.matches.map((match) => match.file)),
       ]);
   }, [surface, model]);
-  const render = useCallback(
-    ({ item }: ListRenderItemInfo<Match>) => (
-      <MatchRow item={item} surface={surface} replace={replaceFile} />
-    ),
-    [surface, replaceFile],
-  );
   return (
-    <View style={styles.frame} testID="editor-project-search">
-      <View style={styles.row}>
-        <Text style={styles.heading}>Search in files</Text>
-        <Button variant="ghost" size="xs" onPress={close}>
-          Close
-        </Button>
-      </View>
+    <View style={styles.controls}>
       <FormTextInput
         initialValue={draft.options.query}
         onChangeText={query}
@@ -160,7 +147,46 @@ export function EditorSearchPane({ surface }: { surface: EditorSearchPort }) {
           {model.stale ? " · Search again to use these options" : ""}
         </Text>
       ) : null}
-      <FlatList data={state.search?.matches ?? EMPTY} keyExtractor={matchKey} renderItem={render} />
+    </View>
+  );
+}
+/** One bounded scrolling surface for the form and virtualized matches. In a
+ * stacked pane the form must scroll, never spill into the source below it. */
+export function EditorSearchPane({ surface }: { surface: EditorSearchPort }) {
+  const [model] = useState(() => new EditorSearchForm());
+  const state = useSyncExternalStore(surface.subscribe, surface.getSnapshot);
+  const close = useCallback(() => surface.toggleSearch(), [surface]);
+  const replaceFile = useCallback(
+    (file: string) => {
+      if (!model.stale) void surface.planReplace(model.getSnapshot().replacement, [file]);
+    },
+    [surface, model],
+  );
+  const render = useCallback(
+    ({ item }: ListRenderItemInfo<Match>) => (
+      <MatchRow item={item} surface={surface} replace={replaceFile} />
+    ),
+    [surface, replaceFile],
+  );
+  const header = useMemo(
+    () => <SearchControls surface={surface} model={model} />,
+    [surface, model],
+  );
+  return (
+    <View style={styles.frame} testID="editor-project-search">
+      <PaneContentToolbar>
+        <Text style={styles.heading}>Search in files</Text>
+        <Button variant="ghost" size="xs" onPress={close}>
+          Close
+        </Button>
+      </PaneContentToolbar>
+      <FlatList
+        contentContainerStyle={styles.content}
+        data={state.search?.matches ?? EMPTY}
+        keyExtractor={matchKey}
+        renderItem={render}
+        ListHeaderComponent={header}
+      />
     </View>
   );
 }
@@ -172,10 +198,11 @@ const styles = StyleSheet.create((theme) => ({
   frame: {
     flex: 1,
     minHeight: 0,
-    gap: theme.spacing[2],
-    padding: theme.spacing[3],
+    overflow: "hidden",
     backgroundColor: theme.colors.surface0,
   },
+  content: { padding: theme.spacing[3] },
+  controls: { gap: theme.spacing[2], paddingBottom: theme.spacing[3] },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: theme.spacing[1] },
   heading: { flex: 1, color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   text: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },

@@ -13,7 +13,7 @@
 // node_modules populated (the Nix build invokes this post-configHook).
 
 import { nodeFileTrace } from "@vercel/nft";
-import { glob, readFile, readdir } from "node:fs/promises";
+import { glob, readFile, readdir, lstat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -189,7 +189,11 @@ for (const w of warnings) {
 const expanded = new Set(fileList);
 for (const pattern of additionalInputs) {
   if (pattern.includes("*")) {
+    // OTTO(editor): emit files once, not directories plus their descendants.
+    // Nix payload files retain read-only modes; a second directory/file copy
+    // would attempt to overwrite the already-copied immutable file.
     for await (const file of glob(pattern, { cwd: REPO_ROOT })) {
+      if ((await lstat(path.resolve(REPO_ROOT, file))).isDirectory()) continue;
       expanded.add(path.relative(REPO_ROOT, path.resolve(REPO_ROOT, file)));
     }
   } else {
