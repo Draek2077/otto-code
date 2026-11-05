@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Text, View, type LayoutChangeEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { getLanguageForFile } from "@getpaseo/highlight";
+import { useTranslation } from "react-i18next";
 import type { FileEditorSnapshot, FileLineSeparator } from "@/file-pane/editor/model";
 import type { EditorSurface } from "./surface";
 import { editorStatusLayout } from "./status-layout";
@@ -41,6 +42,7 @@ export function EditorStatus({
   cursor: { line: number; column: number };
   vimMode: string | null;
 }) {
+  const { t } = useTranslation();
   const [width, setWidth] = useState(0);
   const measure = useCallback((event: LayoutChangeEvent) => {
     if (event.nativeEvent.layout.width > 0) setWidth(event.nativeEvent.layout.width);
@@ -56,12 +58,32 @@ export function EditorStatus({
   }, [state.observation]);
   const eol = endings[snapshot.lineSeparator];
   const size = snapshot.observedVersion.status === "ready" ? snapshot.observedVersion.size : null;
+  // Retain Paseo's buffer count without recounting on cursor/diagnostic updates.
+  const lines = useMemo(
+    () => (snapshot.content.match(/\r\n|\r|\n/gu)?.length ?? 0) + 1,
+    [snapshot.content],
+  );
   return (
     <View style={styles.bar} onLayout={measure} testID="editor-status-bar">
       <Text style={styles.language} numberOfLines={1}>
         {language}
       </Text>
-      {layout.fileSize && size !== null && <Text style={styles.text}>{fileSize(size)}</Text>}
+      {layout.fileSize && size !== null && (
+        <Text
+          style={styles.text}
+          accessibilityLabel={t("panels.file.editor.fileSize", { size: fileSize(size) })}
+        >
+          {fileSize(size)}
+        </Text>
+      )}
+      {layout.lineCount && (
+        <Text
+          style={styles.text}
+          accessibilityLabel={t("panels.file.editor.lines", { count: lines })}
+        >
+          {t("panels.file.editor.lines", { count: lines })}
+        </Text>
+      )}
       {layout.eol && <Text style={styles.text}>{eol}</Text>}
       {layout.encoding && <Text style={styles.text}>UTF-8</Text>}
       <View style={styles.spacer} />

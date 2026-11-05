@@ -550,6 +550,10 @@ jobs:
         timeout-minutes: 10
         run: npx playwright install chromium
 
+      # OTTO(editor): the shared browser matrix also exercises real file-owned PTYs.
+      - name: Install editor fixture tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim neovim
+
       # OTTO(editor): every server/desktop artifact includes the portable solution payload.
       - uses: ./.github/actions/otto-editor-dotnet
       - name: Build server stack

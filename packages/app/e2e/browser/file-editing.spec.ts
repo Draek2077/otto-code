@@ -695,17 +695,23 @@ test.describe("CodeMirror workspace file editing", () => {
     await openWorkspaceFile(page, "notes.md");
 
     const visibleFilePane = page.getByTestId("workspace-file-pane").filter({ visible: true });
-    await expect(visibleFilePane.getByText("First heading", { exact: true })).toBeVisible();
+    await expect(
+      visibleFilePane.getByRole("heading", { name: "First heading", exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole("button", { name: "Preview", exact: true })).toBeVisible();
     await writeFile(markdownPath, "# Updated heading\n", "utf8");
-    await expect(visibleFilePane.getByText("Updated heading", { exact: true })).toBeVisible();
+    await expect(
+      visibleFilePane.getByRole("heading", { name: "Updated heading", exact: true }),
+    ).toBeVisible();
 
     await selectFileView(page, "Source");
     await expect(page.getByTestId("file-source-editor")).toBeVisible();
     await replaceEditorText(page, "# Saved from source\n");
     await expect.poll(() => readFile(markdownPath, "utf8")).toBe("# Saved from source\n");
     await selectFileView(page, "Preview");
-    await expect(visibleFilePane.getByText("Saved from source", { exact: true })).toBeVisible();
+    await expect(
+      visibleFilePane.getByRole("heading", { name: "Saved from source", exact: true }),
+    ).toBeVisible();
 
     await openWorkspaceFile(page, "pixel.png");
     const image = visibleFilePane.locator("img");

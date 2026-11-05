@@ -6,6 +6,7 @@ export function editorStatusLayout(width: number) {
   else if (width >= 440) severities = [1, 2, 3];
   return {
     fileSize: width >= 440,
+    lineCount: width >= 440,
     eol: width >= 440,
     encoding: width >= 640,
     selection: width >= 640,

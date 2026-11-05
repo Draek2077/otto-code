@@ -5,6 +5,7 @@ describe("editor status geometry", () => {
     for (const width of [0, 320, 439])
       expect(editorStatusLayout(width)).toEqual({
         fileSize: false,
+        lineCount: false,
         eol: false,
         encoding: false,
         selection: false,
@@ -14,6 +15,7 @@ describe("editor status geometry", () => {
   it("restores metadata and advisory diagnostics only when there is room", () => {
     expect(editorStatusLayout(440)).toEqual({
       fileSize: true,
+      lineCount: true,
       eol: true,
       encoding: false,
       selection: false,
@@ -21,6 +23,7 @@ describe("editor status geometry", () => {
     });
     expect(editorStatusLayout(640)).toEqual({
       fileSize: true,
+      lineCount: true,
       eol: true,
       encoding: true,
       selection: true,
