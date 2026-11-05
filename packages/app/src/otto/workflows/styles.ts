@@ -1,5 +1,6 @@
 import { StyleSheet } from "react-native-unistyles";
 export const styles = StyleSheet.create((theme) => ({
+  runGraph: { height: 350, minHeight: 200 },
   contentGap: { gap: theme.spacing[3] },
   hidden: { display: "none" },
   page: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface0 },

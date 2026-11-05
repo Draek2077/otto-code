@@ -125,6 +125,7 @@ function TransferForm({ reference, active }: { reference: WorkflowRef; active: b
       />
       <TextField
         label="Operation receipt ID"
+        epoch={state.epoch}
         value={state.operationId}
         onChange={id}
         disabled={state.busy}

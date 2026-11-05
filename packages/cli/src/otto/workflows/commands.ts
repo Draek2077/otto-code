@@ -13,6 +13,7 @@ import {
   workflowDelete,
   workflowExport,
   workflowReadStorage,
+  WorkflowRef,
   type WorkflowScope,
 } from "@getpaseo/plugin/otto/workflows";
 import type { PluginRpcContract } from "@getpaseo/plugin";
@@ -101,22 +102,24 @@ function referenceOptions(command: Command) {
     .option("--location <location>", "repository, host or legacy", "repository")
     .option("--store-key <key>", "Exact retained origin key from ls");
 }
-function register(
-  command: Command,
-  build: (command: Command, hostId: string) => Promise<Request> | Request,
-) {
+type RequestRunner = (
+  target: DaemonTarget,
+  build: (hostId: string) => Promise<Request>,
+) => Promise<unknown>;
+type RequestBuilder = (command: Command, hostId: string) => Promise<Request> | Request;
+function registerConnected(command: Command, build: RequestBuilder, run: RequestRunner) {
   addJsonAndDaemonHostOptions(command)
     .requiredOption("--project <id>", "Owning canonical project on the selected daemon")
     .allowExcessArguments(false)
     .action(function (this: Command) {
       return withOutput(async (options: CommandOptions, _command: Command) =>
-        output(
-          await runWorkflowRequest(options.daemonTarget, async (hostId) => build(this, hostId)),
-        ),
+        output(await run(options.daemonTarget, async (hostId) => build(this, hostId))),
       )(this.opts(), this);
     });
 }
-export function createWorkflowCommand() {
+export function createWorkflowCommand(run: RequestRunner = runWorkflowRequest) {
+  const register = (command: Command, build: RequestBuilder) =>
+    registerConnected(command, build, run);
   const root = new Command("workflow").description(
     "Durable AI/Graph Workflows over the selected Otto daemon",
   );
@@ -160,16 +163,28 @@ export function createWorkflowCommand() {
       .command("save")
       .requiredOption("--input <file>", "Authored {kind,value} JSON")
       .option("--revision <sha>", "Expected current revision, omit only for create")
+      .option("--origin <file>", "Exact WorkflowRef JSON from inspect; required for updates")
       .option("--location <location>", "repository or host"),
-    async (command, hostId) => ({
-      contract: workflowSave,
-      input: {
-        scope: scope(command, hostId),
-        document: await json(text(command, "input")),
-        expectedRevision: text(command, "revision") || null,
-        ...(text(command, "location") ? { location: text(command, "location") } : {}),
-      },
-    }),
+    async (command, hostId) => {
+      const revision = text(command, "revision"),
+        origin = text(command, "origin");
+      if (revision && !origin)
+        throw new Error(
+          "Updating a Workflow requires --origin with the exact captured WorkflowRef.",
+        );
+      const reference = origin ? WorkflowRef.parse(await json(origin)) : undefined;
+      if (reference) assertScope({ scope: reference.scope }, scope(command, hostId));
+      return {
+        contract: workflowSave,
+        input: {
+          scope: scope(command, hostId),
+          document: await json(text(command, "input")),
+          expectedRevision: revision || null,
+          ...(reference ? { ref: reference } : {}),
+          ...(text(command, "location") ? { location: text(command, "location") } : {}),
+        },
+      };
+    },
   );
   register(
     root.command("validate").requiredOption("--input <file>", "Graph JSON"),
@@ -225,6 +240,7 @@ export function createWorkflowCommand() {
         action: text(command, "action"),
         phaseId: text(command, "phase") || undefined,
         note: text(command, "note") || undefined,
+        confirmed: true,
       },
     }),
   );

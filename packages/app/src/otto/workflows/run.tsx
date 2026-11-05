@@ -18,6 +18,7 @@ import { workflowQueryRoot } from "./data";
 import { Recovery } from "./recovery";
 import { TextField } from "./fields";
 import { styles } from "./styles";
+import { WorkflowRunGraph } from "./run-graph";
 type Navigation = PluginSurfaceProps["navigation"];
 function OpenChat({
   id,
@@ -306,26 +307,7 @@ function RunTopology({ entry }: { entry: WorkflowEntry }) {
   const run = entry.document.value,
     graph = run.graphSnapshot;
   if (!graph) return null;
-  return (
-    <View style={styles.card}>
-      <Text style={styles.title}>Graph execution</Text>
-      {graph.nodes.map((node) => {
-        const phase = run.phases.find((item) => item.id === node.id);
-        return (
-          <Text
-            key={node.id}
-            style={styles.text}
-          >{`${node.title} · ${phase?.status ?? (node.kind === "orchestrator" ? "conductor" : "not dispatched")}`}</Text>
-        );
-      })}
-      {(graph.edges ?? []).map((edge, index) => (
-        <Text
-          key={edge.id ?? `${edge.from}/${edge.to}/${index}`}
-          style={styles.muted}
-        >{`${edge.from} → ${edge.to}${edge.when ? " · conditional" : ""}`}</Text>
-      ))}
-    </View>
-  );
+  return <WorkflowRunGraph graph={graph} run={run} />;
 }
 
 function RunErrors({ run }: { run: import("@getpaseo/plugin/otto/workflows").WorkflowRunRecord }) {

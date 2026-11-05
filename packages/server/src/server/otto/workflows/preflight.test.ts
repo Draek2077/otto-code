@@ -9,6 +9,27 @@ describe("Workflow authority preflight", () => {
   afterEach(async () => {
     await f.cleanup();
   });
+  test("gate-only AI plans cannot bypass the phase budget without spawning workers", async () => {
+    await expect(
+      validatePlan(
+        f.ports,
+        {
+          launch: f.ai,
+          workspace: { workspaceId: "workspace-1", projectId: f.scope.projectId, cwd: f.repo },
+        },
+        {
+          title: "Oversized",
+          phases: Array.from({ length: 65 }, (_, index) => ({
+            id: `gate-${index}`,
+            type: "gate",
+            title: "Gate",
+            task: "Review",
+          })),
+        },
+      ),
+    ).rejects.toThrow("64 phases");
+    expect(f.agents.size).toBe(0);
+  });
   test("graph input defaults are explicit launch data; required blanks still reject", async () => {
     const graph = structuredClone(f.graph);
     if (graph.kind !== "graph") throw new Error("Fixture");

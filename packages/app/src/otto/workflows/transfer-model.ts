@@ -20,6 +20,7 @@ export class WorkflowTransferForm {
     error: string;
     message: string;
     inspection: Inspection | null;
+    epoch: number;
   };
   constructor(readonly reference: WorkflowRef) {
     this.state = {
@@ -31,6 +32,7 @@ export class WorkflowTransferForm {
       error: "",
       message: "",
       inspection: null,
+      epoch: 0,
     };
   }
   private nextId() {
@@ -93,6 +95,7 @@ export class WorkflowTransferForm {
       if ((await confirm()) && current())
         this.publish({
           operationId: this.nextId(),
+          epoch: this.state.epoch + 1,
           attempted: false,
           inspection: null,
           error: "",

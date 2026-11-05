@@ -155,6 +155,8 @@ operation's schema. `ls`, `inspect`, `save`, `validate`, `review`, `start`, `con
 `delete`, `export`, `storage` and `call` use the selected daemon. Inputs require an
 explicit project and exact record origin where applicable. Export refuses an
 existing output file. Run `otto workflow <command> --help` for argument contracts.
+Revisioned `save` uses `--origin <file>` containing the exact captured `WorkflowRef`;
+the CLI checks its host and project before submitting the update.
 
 MCP uses the compact `workflow_catalog` and `workflow_operation` entry points.
 Only reserved members receive private plan/status/output/delegation controls.
