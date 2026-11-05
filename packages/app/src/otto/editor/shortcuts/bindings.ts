@@ -38,12 +38,17 @@ function codeMirrorKeyName(combo: KeyCombo): string | null {
  * order does not matter - CM6 normalizes the name it is given - but the
  * modifiers themselves must survive, `Mod` included: it means the same
  * Cmd-on-mac/Ctrl-elsewhere thing in both systems, which is what keeps a single
- * registry row from having to split into a per-platform pair.
+ * registry row from having to split into a per-platform pair. When the app
+ * supplies its platform policy, resolve Mod explicitly so an embedded document
+ * or browser platform string cannot disagree with the app dispatcher.
  *
  * Returns null for anything untranslatable, so a corrupt stored override drops
  * that one binding rather than breaking the whole keymap.
  */
-export function comboStringToCodeMirrorKey(comboString: string): string | null {
+export function comboStringToCodeMirrorKey(
+  comboString: string,
+  platform?: { isMac: boolean },
+): string | null {
   let combo: KeyCombo;
   try {
     combo = parseShortcutString(comboString);
@@ -55,7 +60,10 @@ export function comboStringToCodeMirrorKey(comboString: string): string | null {
     return null;
   }
   const parts: string[] = [];
-  if (combo.mod) parts.push("Mod");
+  if (combo.mod) {
+    if (platform) parts.push(platform.isMac ? "Meta" : "Ctrl");
+    else parts.push("Mod");
+  }
   if (combo.ctrl) parts.push("Ctrl");
   if (combo.meta) parts.push("Meta");
   if (combo.alt) parts.push("Alt");
@@ -72,6 +80,7 @@ export function comboStringToCodeMirrorKey(comboString: string): string | null {
  */
 export function buildEditorKeyBindings(
   bindings: readonly ParsedShortcutBinding[] = DEFAULT_BINDINGS,
+  platform?: { isMac: boolean },
 ): EditorKeyBinding[] {
   const result: EditorKeyBinding[] = [];
   for (const binding of bindings) {
@@ -80,7 +89,7 @@ export function buildEditorKeyBindings(
       continue;
     }
     if (!binding.parsedChord.length) continue;
-    const keys = binding.combo.split(" ").map(comboStringToCodeMirrorKey);
+    const keys = binding.combo.split(" ").map((step) => comboStringToCodeMirrorKey(step, platform));
     if (keys.some((key) => key === null)) continue;
     const key = keys.join(" ");
     result.push({ action, key });

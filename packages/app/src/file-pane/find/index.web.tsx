@@ -33,6 +33,9 @@ export function FileFind({
   const widget = useRef<PaneFindHandle>(null);
   const { isInteractive } = usePaneFocus();
   const active = useRetainedPanelActive();
+  useEffect(() => {
+    if (state.open) widget.current?.focus();
+  }, [state.open, state.focusRevision]); // OTTO(editor): commands can reopen an already visible query.
   // RN Web hands the underlying DOM element to a View ref; the model measures it.
   const setWidgetNode = useCallback(
     (node: ViewInstance | null) => model.setWidgetNode(node as unknown as HTMLElement | null),

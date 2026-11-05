@@ -124,7 +124,7 @@ export const EDITOR_SHORTCUT_BINDINGS = [
   {
     id: "editor-go-to-line-mod-g",
     action: "editor.goToLine",
-    combo: "Mod+G",
+    combo: "Alt+G", // Preserve Paseo's Mod+G Find-next; keep the persisted binding identity.
     when: { focusScope: "code-editor" },
     help: { id: "editor-go-to-line", section: "editor", label: "Go to line" },
   },

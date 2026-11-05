@@ -2,6 +2,19 @@ import { test, expect } from "../support/fixtures";
 import { openFileExplorer, openFileFromExplorer } from "../support/helpers/file-explorer";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { Page } from "@playwright/test";
+
+async function openEditorExplorer(page: Page, compact: boolean) {
+  if (!compact) return openFileExplorer(page);
+  const files = page.getByTestId("explorer-tab-files").filter({ visible: true });
+  if (!(await files.isVisible()))
+    await page.getByTestId("workspace-explorer-toggle").first().click();
+  await expect(files).toBeVisible();
+  await files.click();
+  await expect(
+    page.getByTestId("file-explorer-tree-scroll").filter({ visible: true }),
+  ).toBeVisible();
+}
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
 for (const compact of [false, true]) {
@@ -16,10 +29,12 @@ for (const compact of [false, true]) {
     await writeFile(file, source);
     await writeFile(path.join(workspace.repoPath, "guide.md"), "# Editor guide\n\nA paragraph.\n");
     await workspace.navigateTo();
-    // The shared setup helper selects the seeded workspace through the desktop
-    // sidebar. Exercise the actual editor journey at the compact size afterward.
-    if (compact) await page.setViewportSize({ width: 390, height: 844 });
     await openFileExplorer(page);
+    await openFileFromExplorer(page, "editor.ts");
+    // Seed the file route through the shared desktop setup helper, then use the
+    // compact Explorer overlay and editor controls throughout the mobile journey.
+    if (compact) await page.setViewportSize({ width: 390, height: 844 });
+    await openEditorExplorer(page, compact);
     await page.getByTestId("files-search-contents").click();
     const initialSearch = page.getByTestId("editor-project-search");
     await initialSearch
@@ -95,7 +110,7 @@ for (const compact of [false, true]) {
         .filter({ visible: true }),
     ).toHaveValue(/Instruction: Extract a small helper/);
     expect(await readFile(file, "utf8")).toBe(source);
-    await openFileExplorer(page);
+    await openEditorExplorer(page, compact);
     await openFileFromExplorer(page, "editor.ts");
     await page.getByTestId("editor-code-menu").click();
     await page.getByRole("menuitem", { name: "Search and replace in files", exact: true }).click();
@@ -110,7 +125,7 @@ for (const compact of [false, true]) {
     await review.getByTestId("editor-review-close").click();
     await search.getByRole("button", { name: "Close", exact: true }).click();
     expect(await readFile(file, "utf8")).toBe(source);
-    await openFileExplorer(page);
+    await openEditorExplorer(page, compact);
     await openFileFromExplorer(page, "guide.md");
     await page.getByTestId("file-mode-source").filter({ visible: true }).click();
     await expect(editor).toContainText("Editor guide");

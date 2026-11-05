@@ -15,6 +15,7 @@ import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { FileEditorModel } from "./model";
 import { editorBaseExtensions, editorTheme, type EditorVisualTheme } from "./extensions.web";
 import { editorLocationSelection } from "@/otto/editor/code/navigation"; // OTTO(editor)
+import { editorFindTarget } from "@/otto/editor/code/find-bridge"; // OTTO(editor)
 
 interface FileEditorViewProps {
   ottoExtensions?: Extension; // OTTO(editor): owned semantic extensions; the Paseo model still owns the file.
@@ -75,6 +76,10 @@ export function FileEditorView({
           vimCompartment.of(values.vimEnabled ? vim() : []),
           ottoCompartment.of(values.ottoExtensions ?? []), // OTTO(editor)
           find.extension,
+          editorFindTarget.of((editor) => {
+            find.open(editor);
+            return true;
+          }), // OTTO(editor): registry commands use Paseo's query and focus owner.
           ...editorBaseExtensions(() => void values.model.save(), !values.ottoExtensions), // OTTO(editor)
           languageCompartment.of(getLanguageForFile(values.filename)?.extension ?? []),
           wrappingCompartment.of(wrappingForFile(values.filename)),

@@ -4,7 +4,8 @@ import { autocompletion, completionKeymap, type Completion } from "@codemirror/a
 import { lintGutter, setDiagnostics, type Diagnostic } from "@codemirror/lint";
 import type { EditorQueryResult } from "@getpaseo/plugin/otto/editor";
 import type { CodePort, CodePosition } from "./port";
-import { openSearchPanel, gotoLine } from "@codemirror/search";
+import { gotoLine } from "@codemirror/search";
+import { openEditorFind } from "./find-bridge";
 import { undo, redo, toggleComment } from "@codemirror/commands";
 import type { CodeCommand } from "./port";
 import { vimLeader } from "./vim-leader";
@@ -35,7 +36,7 @@ const commands: Readonly<
     (view: EditorView) => boolean
   >
 > = {
-  find: openSearchPanel,
+  find: openEditorFind,
   goToLine: gotoLine,
   undo,
   redo,

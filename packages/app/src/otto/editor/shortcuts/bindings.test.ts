@@ -44,4 +44,18 @@ describe("editor shortcuts through the existing Settings registry", () => {
     expect(keys).toContainEqual({ action: "save", key: "Mod-b x" });
     expect(keys.some((binding) => binding.key === "Mod-b")).toBe(false);
   });
+  it("uses the app platform for Mod and leaves Paseo Find-next available", () => {
+    const mac = buildEditorKeyBindings(undefined, { isMac: true });
+    const other = buildEditorKeyBindings(undefined, { isMac: false });
+    expect(mac).toContainEqual({ action: "find", key: "Meta-f" });
+    expect(mac.some((binding) => binding.key === "Ctrl-f")).toBe(false);
+    expect(other).toContainEqual({ action: "find", key: "Ctrl-f" });
+    expect(other).toContainEqual({ action: "goToLine", key: "Alt-g" });
+    expect(other.some((binding) => binding.key === "Ctrl-g")).toBe(false);
+    expect(
+      buildEditorKeyBindings(buildEffectiveBindings({ "editor-find-mod-f": "Ctrl+F" }), {
+        isMac: true,
+      }),
+    ).toContainEqual({ action: "find", key: "Ctrl-f" });
+  });
 });

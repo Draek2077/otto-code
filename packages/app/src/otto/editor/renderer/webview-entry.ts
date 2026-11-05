@@ -159,10 +159,7 @@ function makeEditor(config: z.infer<typeof NativeEditorConfig>) {
         }, false),
         search(),
         keymap.of(
-          searchKeymap.filter(
-            (binding) =>
-              binding.key !== "Mod-f" && binding.key !== "Mod-g" && binding.key !== "Alt-g",
-          ),
+          searchKeymap.filter((binding) => binding.key !== "Mod-f" && binding.key !== "Alt-g"),
         ),
         codeFeatures.of(
           codeExtensions(

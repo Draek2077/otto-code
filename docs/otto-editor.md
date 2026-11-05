@@ -115,6 +115,10 @@ as zero problems. The overview lane marks diagnostics, selections, search hits
 and the viewport. The ruler and Vim leader mappings remain device preferences.
 Editor and Markdown shortcuts use the existing shortcut Settings registry,
 including reassignment, chords and unassignment.
+Web Find commands delegate to Paseo's floating query owner, including refocusing
+an already open query. The default keeps Mod+G for Find next and Alt+G for Go to
+line. Serialized shortcuts use the app's platform policy, so Control+F remains
+a text-editing key on macOS unless the user explicitly reassigns it.
 
 Markdown source uses marker-based live formatting, link/heading completion,
 HTML-to-Markdown paste, table operations and a horizontally scrolling formatting

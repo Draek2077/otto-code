@@ -35,6 +35,7 @@ export class FileFindModel {
     total: 0,
     limited: false,
     readOnly: true,
+    focusRevision: 0, // OTTO(editor): repeated owned commands refocus the floating widget.
   };
   readonly subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -69,7 +70,12 @@ export class FileFindModel {
   ];
 
   readonly open = (view = this.view) => {
-    if (view) openSearchPanel(view);
+    if (view) {
+      openSearchPanel(view);
+      // OTTO(editor): opening an existing CM panel does not refocus its React sibling.
+      this.snapshot = { ...this.snapshot, focusRevision: this.snapshot.focusRevision + 1 };
+      this.publish();
+    }
   };
   readonly close = () => {
     if (this.view) {
