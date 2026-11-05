@@ -186,5 +186,7 @@ editor fixture runs the shipped WebView document in Chromium. App acceptance
 exercises wide/compact UI and real file-owned Vim/Neovim/custom PTYs. Browser
 bridge proof does not claim physical Android/iOS keyboard or IME acceptance.
 
-AI refactor generation and the separate CLI-isolation investigation remain
-parked. This editor restoration does not reopen those product decisions.
+**Refactor with AI** opens a scoped, prefilled chat draft through the existing
+Composer store. The user reviews the provider/model and sends it normally. The
+editor does not launch an agent or generate/apply a patch itself. Direct editor
+generation and the separate CLI-isolation investigation remain parked.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractSymbols } from "./symbols.js";
+import { extractSymbols } from "../symbols.js";
 
 describe("extractSymbols", () => {
   it("returns an empty list for unsupported languages", () => {

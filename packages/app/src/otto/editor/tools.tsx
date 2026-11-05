@@ -16,6 +16,7 @@ import { EditorShortcutMenuItem } from "./shortcuts/menu-item";
 import { EditorExportItems } from "./document-tools";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
+import { useEditorRefactor } from "./refactor";
 
 const Icon = withUnistyles(Code2);
 const iconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -35,6 +36,7 @@ export function EditorTools({
   const retained = useRetainedPanelActive(),
     visible = useAppVisible();
   const canShowDialog = dialogsAvailable(available, retained, visible);
+  const refactor = useEditorRefactor(surface, retained && visible);
   const [dismissed, setDismissed] = useState(0);
   const [searching, setSearching] = useState(false);
   const openSymbols = useCallback(() => setSearching(true), []);
@@ -106,6 +108,7 @@ export function EditorTools({
           {surface.workspaceOwned ? (
             <>
               <DropdownMenuItem onSelect={attachFile}>Add file to chat</DropdownMenuItem>
+              <DropdownMenuItem onSelect={refactor.open}>Refactor with AI</DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={attachSelection}
                 disabled={!snapshot.selection.characters}
@@ -163,6 +166,7 @@ export function EditorTools({
           {snapshot.error ? <DropdownMenuHint>{snapshot.error}</DropdownMenuHint> : null}
         </DropdownMenuContent>
       </DropdownMenu>
+      {refactor.dialog}
       <AdaptiveRenameModal
         visible={canShowDialog && snapshot.renameRequested > dismissed}
         title="Rename symbol"

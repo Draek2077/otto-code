@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractMarkdownHeadings } from "./headings.js";
+import { extractMarkdownHeadings } from "../headings.js";
 
 describe("extractMarkdownHeadings", () => {
   it("returns ATX headings in document order with their levels", () => {

@@ -75,6 +75,21 @@ for (const compact of [false, true]) {
     await expect.poll(() => readFile(file, "utf8")).toBe(source);
     await review.getByTestId("editor-review-close").click();
     await page.getByTestId("editor-code-menu").click();
+    await page.getByRole("menuitem", { name: "Refactor with AI", exact: true }).click();
+    const refactor = page.getByTestId("editor-refactor");
+    await refactor
+      .getByRole("textbox", { name: "Refactor instruction", exact: true })
+      .fill("Extract a small helper");
+    await refactor.getByRole("button", { name: "Open request draft", exact: true }).click();
+    await expect(
+      page
+        .getByRole("textbox", { name: "Message agent...", exact: true })
+        .filter({ visible: true }),
+    ).toHaveValue(/Instruction: Extract a small helper/);
+    expect(await readFile(file, "utf8")).toBe(source);
+    await openFileExplorer(page);
+    await openFileFromExplorer(page, "editor.ts");
+    await page.getByTestId("editor-code-menu").click();
     await page.getByRole("menuitem", { name: "Search and replace in files", exact: true }).click();
     const search = page.getByTestId("editor-project-search");
     await search.getByRole("textbox", { name: "Find in workspace", exact: true }).fill("count");

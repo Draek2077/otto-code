@@ -44,6 +44,33 @@ function makeDeps(
 }
 
 describe("loadAppSettingsFromStorage", () => {
+  // OTTO(editor): adding editor fields must not invalidate the existing device record.
+  it.each([undefined, null])(
+    "preserves settings and unknown data when legacy Vim mappings are %s",
+    async (vimMappings) => {
+      const stored = {
+        theme: "light",
+        uiBaseFontSize: 16,
+        contentFontSize: 18,
+        sidebarRowItems: { host: false },
+        futureSetting: { enabled: true },
+        vimMappings,
+      };
+      const bytes = JSON.stringify(stored);
+      const deps = makeDeps({
+        storage: createInMemoryKeyValueStorage({ [APP_SETTINGS_KEY]: bytes }),
+      });
+      const settings = await loadAppSettingsFromStorage(deps);
+      expect(settings).toMatchObject({
+        theme: "light",
+        uiBaseFontSize: 16,
+        contentFontSize: 18,
+        sidebarRowItems: { host: false },
+        vimMappings: { leader: "Space" },
+      });
+      expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(bytes);
+    },
+  );
   it("preserves a persisted steer send behavior", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({

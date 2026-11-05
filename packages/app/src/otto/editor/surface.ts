@@ -1,5 +1,7 @@
 import type { z } from "zod";
 import { v4 as uuid } from "uuid";
+import { sourceExcerpt } from "./context-attachment";
+import type { RefactorScope } from "./refactor-prompt";
 import {
   queryEditor,
   queryBoundEditor,
@@ -96,6 +98,16 @@ export class EditorSurface {
     return this.options.workspaceOwned !== false;
   }
   private selectedRange: { start: Position; end: Position } | null = null;
+  refactorScope(): RefactorScope | null {
+    if (!this.workspaceOwned) return null;
+    const range = this.selectedRange;
+    return {
+      path: this.options.file,
+      lineStart: range ? range.start.line + 1 : null,
+      lineEnd: range ? range.end.line + 1 : null,
+      selectedCode: range ? sourceExcerpt(this.options.model.getSnapshot().content, range) : null,
+    };
+  }
   addToChat(selection: boolean) {
     if (!this.workspaceOwned || !this.options.attach) return;
     this.options.attach(selection ? this.selectedRange : null);

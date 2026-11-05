@@ -76,7 +76,9 @@ export const editorPreferenceDefaults: EditorPreferences = {
 // These are device persistence adapters, not protocol schemas. The existing
 // settings owner retains unknown keys while projecting supported 0.9 fields.
 export const editorStoredPreferences = {
-  vimMappings: z.unknown().transform(normalizeVimMappings),
+  // Older device settings omit this key. Without explicit optional input Zod
+  // rejects the entire settings record before normalizing its default value.
+  vimMappings: z.unknown().optional().transform(normalizeVimMappings),
   fileEditorMode: z.enum(["off", "vim", "neovim", "custom"]).catch("off"),
   fileEditorCustomCommand: z.string().catch(""),
   alwaysUseOttoEditorForMarkdown: z.boolean().catch(false),
