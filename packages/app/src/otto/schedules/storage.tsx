@@ -63,13 +63,10 @@ export function ScheduleStorage({
     <View style={styles.contentGap}>
       <SettingsSection title="Schedules storage">
         <SettingsCard>
-          <SettingsRow label="New schedules only">
-            <Text style={styles.muted}>
-              Schedules has its own default and project override. Repository schedules belong to the
-              project; host-local schedules remain and execute on this owning host. Changing a
-              setting never moves existing records.
-            </Text>
-          </SettingsRow>
+          <SettingsRow
+            label="New schedules only"
+            hint="Schedules has its own default and project override. Repository schedules belong to the project; host-local schedules remain and execute on this owning host. Changing a setting never moves existing records."
+          />
         </SettingsCard>
       </SettingsSection>
       {state.defaults && showDefault ? (
