@@ -25,6 +25,14 @@ test.use({
 });
 type Client = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">;
 type ScheduleApi = Awaited<ReturnType<typeof scheduleApi>>;
+class ScheduleProbeError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 function scheduleApi(client: Client) {
   // Load after the built daemon client initializes protocol ESM, using the same
   // CommonJS mode as this file's Artifact/Workflow helpers. Playwright shares its
@@ -37,7 +45,9 @@ function scheduleApi(client: Client) {
       name: string;
       input: I;
       output: {
-        parse(value: unknown): { ok: true; value: T } | { ok: false; error: { message: string } };
+        parse(
+          value: unknown,
+        ): { ok: true; value: T } | { ok: false; error: { code: string; message: string } };
       };
     },
     input: z.input<NoInfer<I>>,
@@ -45,7 +55,7 @@ function scheduleApi(client: Client) {
     const result = contract.output.parse(
       await client.invokePluginRpc("otto-schedules", contract.name, contract.input.parse(input)),
     );
-    if (!result.ok) throw new Error(result.error.message);
+    if (!result.ok) throw new ScheduleProbeError(result.error.code, result.error.message);
     rpc.assertScheduleAcknowledgement(contract.name, input, result.value);
     return result.value;
   }
@@ -145,11 +155,31 @@ async function savedByName(api: ScheduleApi, workspace: SeededWorkspace, name: s
   if (!row) throw new Error(`Missing saved Schedule ${name}`);
   return api.read(row.ref);
 }
+async function historyDuringSettlement(api: ScheduleApi, ref: ScheduleRef) {
+  try {
+    return await api.history({ ref, offset: 0 });
+  } catch (error) {
+    // Only a busy read observation may be polled again. No launch, approval,
+    // control, save or other mutation is replayed, and origin conflicts still fail.
+    if (error instanceof ScheduleProbeError && error.code === "busy") return null;
+    throw error;
+  }
+}
 async function terminal(api: ScheduleApi, ref: ScheduleRef) {
+  const observed: { history: Awaited<ReturnType<ScheduleApi["history"]>> | null } = {
+    history: null,
+  };
   await expect
-    .poll(async () => (await api.history({ ref, offset: 0 })).runs[0]?.status, { timeout: 60000 })
+    .poll(
+      async () => {
+        observed.history = await historyDuringSettlement(api, ref);
+        return observed.history?.runs[0]?.status;
+      },
+      { timeout: 60000 },
+    )
     .toBe("succeeded");
-  const history = await api.history({ ref, offset: 0 });
+  const history = observed.history;
+  if (!history) throw new Error("Missing observed Schedule history");
   expect(history.total).toBe(1);
   return history.runs[0];
 }
@@ -500,9 +530,12 @@ for (const kind of ["graph", "ai"] as const) {
         "Run Schedule once?",
       );
       await expect
-        .poll(async () => (await api.history({ ref: saved.ref })).runs[0]?.otto?.result?.kind, {
-          timeout: 60000,
-        })
+        .poll(
+          async () => (await historyDuringSettlement(api, saved.ref))?.runs[0]?.otto?.result?.kind,
+          {
+            timeout: 60000,
+          },
+        )
         .toBe("workflow");
       const history = await api.history({ ref: saved.ref }),
         result = history.runs[0].otto?.result;
@@ -545,9 +578,12 @@ for (const kind of ["graph", "ai"] as const) {
           "Cancel Schedule run?",
         );
         await expect
-          .poll(async () => (await api.history({ ref: saved.ref })).runs[0]?.otto?.disposition, {
-            timeout: 30000,
-          })
+          .poll(
+            async () => (await historyDuringSettlement(api, saved.ref))?.runs[0]?.otto?.disposition,
+            {
+              timeout: 30000,
+            },
+          )
           .toBe("canceled");
         await expect(surface.getByText("canceled", { exact: true })).toBeVisible();
       }

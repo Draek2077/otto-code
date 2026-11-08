@@ -37,6 +37,15 @@ interface Located {
   schedule: StoredSchedule;
   revision: string;
 }
+/** A bounded filesystem observation raced an atomic replacement. This is not
+ * evidence of a missing/corrupt record and must not erase the discovery index. */
+class ScheduleObservationConflict extends ScheduleError {
+  constructor(cause: unknown) {
+    super("busy", "Schedule storage changed during inspection. Refresh its current state.", {
+      cause,
+    });
+  }
+}
 export interface ScheduleTransferEntry extends Located {
   ref: ScheduleRef;
   bytes: string;
@@ -89,6 +98,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
   private diagnostics: ScheduleStorageDiagnostic[] = [];
   private refreshedAt = -Infinity;
   private refreshing: Promise<void> | null = null;
+  private publicationVersion = 0;
   private queues = new Map<string, Promise<unknown>>();
   constructor(readonly ports: ScheduleRegistryPorts) {}
   private async serial<T>(key: string, operation: () => Promise<T>): Promise<T> {
@@ -118,13 +128,19 @@ export class ScheduleRegistry implements ScheduleStorePort {
       );
   }
   private async read(origin: ScheduleOrigin, id: string) {
-    if (!(await scheduleDirectory(origin.boundary, origin.directory))) return null;
-    const bytes = await readScheduleFile(this.file(origin, id));
-    if (bytes === null) return null;
-    const schedule = parseOttoStoredSchedule(JSON.parse(bytes));
-    this.validate(schedule, origin, id);
-    await new ScheduleHistory(origin, id).validate(schedule.otto?.history);
-    return { schedule, bytes };
+    try {
+      if (!(await scheduleDirectory(origin.boundary, origin.directory))) return null;
+      const bytes = await readScheduleFile(this.file(origin, id));
+      if (bytes === null) return null;
+      const schedule = parseOttoStoredSchedule(JSON.parse(bytes));
+      this.validate(schedule, origin, id);
+      await new ScheduleHistory(origin, id).validate(schedule.otto?.history);
+      return { schedule, bytes };
+    } catch (error) {
+      if (error instanceof ScheduleError && error.kind === "conflict")
+        throw new ScheduleObservationConflict(error);
+      throw error;
+    }
   }
   private async scan(
     origin: ScheduleOrigin,
@@ -152,6 +168,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
         rows.push({ origin, schedule: found.schedule, revision: scheduleRevision(found.schedule) });
         index.set(id, rows);
       } catch (error) {
+        if (error instanceof ScheduleObservationConflict) throw error;
         diagnostics.push({
           ref,
           code: "record_unavailable",
@@ -173,6 +190,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
     }
   }
   private async discover() {
+    const publicationVersion = this.publicationVersion;
     const index = new Map<string, Located[]>();
     const diagnostics: ScheduleStorageDiagnostic[] = [];
     const origins = [this.ports.stores.legacy()];
@@ -217,6 +235,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
       try {
         await this.scan(origin, index, diagnostics);
       } catch (error) {
+        if (error instanceof ScheduleObservationConflict) throw error;
         diagnostics.push({
           ref: null,
           code: "store_unavailable",
@@ -231,6 +250,12 @@ export class ScheduleRegistry implements ScheduleStorePort {
           code: "duplicate_id",
           message: `Schedule ${id} exists in multiple stores. Execution is blocked until an explicit repair.`,
         });
+    // An owned write can finish after its file was scanned. Keep its newer
+    // remembered state, and invalidate discovery instead of publishing stale rows.
+    if (publicationVersion !== this.publicationVersion) {
+      this.refreshedAt = -Infinity;
+      return;
+    }
     this.publishDiscovery(index, diagnostics);
     this.index = index;
     this.diagnostics = diagnostics;
@@ -309,9 +334,16 @@ export class ScheduleRegistry implements ScheduleStorePort {
         "Schedule storage binding changed. Refresh and review its origin before execution.",
       );
   }
-  private async locate(id: string, mutation?: ScheduleMutation): Promise<Located | null> {
+  private async locate(
+    id: string,
+    mutation?: ScheduleMutation,
+    ownedMutation = false,
+  ): Promise<Located | null> {
     assertScheduleId(id);
-    await this.refresh();
+    // A known record's serialized owner must not depend on a concurrent library
+    // scan. Discovery belongs to list/refresh; every mutation still checks this
+    // exact origin, canonical binding and current file bytes under its ID queue.
+    if (!ownedMutation || !this.index.has(id)) await this.refresh();
     const rows = this.index.get(id) ?? [];
     if (rows.length > 1)
       throw new ScheduleError(
@@ -458,6 +490,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
     );
     if (remaining.length) this.index.set(entry.schedule.id, remaining);
     else this.index.delete(entry.schedule.id);
+    this.publicationVersion++;
     this.ports.changed?.(entry.origin.scope);
   }
   async get(id: string) {
@@ -472,7 +505,10 @@ export class ScheduleRegistry implements ScheduleStorePort {
       (row) => row.origin.storeKey !== origin.storeKey,
     );
     this.index.set(schedule.id, [...rows, { origin, schedule, revision }]);
-    if (previous?.revision !== revision) this.ports.changed?.(origin.scope);
+    if (previous?.revision !== revision) {
+      this.publicationVersion++;
+      this.ports.changed?.(origin.scope);
+    }
   }
   private async originFor(schedule: Omit<StoredSchedule, "id">) {
     const meta = schedule.otto;
@@ -550,11 +586,12 @@ export class ScheduleRegistry implements ScheduleStorePort {
     mutation?: ScheduleMutation,
   ): Promise<StoredSchedule | null> {
     return this.serial(id, async () => {
-      const found = await this.locate(id, mutation);
+      const found = await this.locate(id, mutation, true);
       if (!found) return null;
       const current = await this.read(found.origin, id);
       if (!current) {
         this.index.delete(id);
+        this.publicationVersion++;
         this.ports.changed?.(found.origin.scope);
         return null;
       }
@@ -649,7 +686,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
   }
   async delete(id: string, mutation?: ScheduleMutation): Promise<void> {
     await this.serial(id, async () => {
-      const found = await this.locate(id, mutation);
+      const found = await this.locate(id, mutation, true);
       if (!found) return;
       const current = await this.read(found.origin, id);
       if (!current) return;
@@ -664,6 +701,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
         );
       await retireScheduleFile(this.file(found.origin, id), scheduleDigest(current.bytes));
       this.index.delete(id);
+      this.publicationVersion++;
       this.ports.changed?.(found.origin.scope);
     });
   }

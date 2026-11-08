@@ -10,7 +10,8 @@ import {
 import { ScheduleStores, type ScheduleOrigin } from "./stores.js";
 import { ScheduleRegistry } from "./registry.js";
 import type { StoredSchedule } from "./types.js";
-import { scheduleDigest } from "./files.js";
+import { scheduleDigest, ScheduleError } from "./files.js";
+import { ScheduleHistory } from "./history.js";
 import { deferred } from "../workflows/test-utils/host-fixture.js";
 const parent = fileURLToPath(new URL("../../../../../../.tmp/", import.meta.url));
 const roots: string[] = [];
@@ -119,6 +120,59 @@ test("existing-clock discovery notifies external file changes once and ignores i
   expect(changed).toHaveBeenCalledExactlyOnceWith(f.scope);
   await f.registry.refresh(true);
   expect(changed).toHaveBeenCalledTimes(1);
+});
+
+test("an atomic-read conflict does not publish a discovery snapshot missing a valid Schedule", async () => {
+  const f = await fixture();
+  const created = await f.registry.create(draft(f.origin));
+  const before = await f.registry.entry(created.id);
+  if (!before) throw new Error("Missing Schedule fixture");
+  const validation = vi
+    .spyOn(ScheduleHistory.prototype, "validate")
+    .mockRejectedValueOnce(
+      new ScheduleError("conflict", "Schedule file changed during its bounded read."),
+    );
+  try {
+    await expect(f.registry.refresh(true)).rejects.toMatchObject({ kind: "busy" });
+  } finally {
+    validation.mockRestore();
+  }
+  expect((await f.registry.inspectOrigin(before.ref))?.schedule.id).toBe(created.id);
+  expect(await f.registry.problems()).toEqual([]);
+});
+
+test("discovery cannot overwrite an owned publication with an earlier file snapshot", async () => {
+  const f = await fixture();
+  const created = await f.registry.create(draft(f.origin));
+  const updaterEntered = deferred<void>(),
+    allowWrite = deferred<void>();
+  const scanEntered = deferred<void>(),
+    allowScan = deferred<void>();
+  const updating = f.registry.update(created.id, async (row) => {
+    updaterEntered.resolve();
+    await allowWrite.promise;
+    return { ...row, prompt: "New publication" };
+  });
+  await updaterEntered.promise;
+  const validation = vi
+    .spyOn(ScheduleHistory.prototype, "validate")
+    .mockImplementationOnce(async () => {
+      scanEntered.resolve();
+      await allowScan.promise;
+    });
+  try {
+    const scanning = f.registry.refresh(true);
+    await scanEntered.promise;
+    allowWrite.resolve();
+    await updating;
+    allowScan.resolve();
+    await scanning;
+  } finally {
+    allowWrite.resolve();
+    allowScan.resolve();
+    validation.mockRestore();
+  }
+  expect((await f.registry.catalog())[0]?.schedule.prompt).toBe("New publication");
 });
 test("new project records retain exact origin while changing defaults selects future creates", async () => {
   const f = await fixture();

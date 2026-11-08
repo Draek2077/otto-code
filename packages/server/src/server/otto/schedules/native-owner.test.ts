@@ -47,7 +47,7 @@ async function fixture() {
     hostLabel: "Fixture",
     metadata: f.metadata,
   });
-  const registry = new ScheduleRegistry({
+  const registry: ScheduleRegistry = new ScheduleRegistry({
     stores,
     projects: async () => [{ projectId: f.scope.projectId }],
     executionHeld: (scheduleId) => runtime.ownsExecution(scheduleId),
