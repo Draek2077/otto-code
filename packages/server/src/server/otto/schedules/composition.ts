@@ -23,11 +23,11 @@ export interface ScheduleCompositionPorts extends ScheduleStorePorts {
 export function createScheduleComposition(ports: ScheduleCompositionPorts) {
   const stores = new ScheduleStores(ports);
   const changes = new ScheduleChanges(ports.hostId);
-  const registry = new ScheduleRegistry({
+  const registry: ScheduleRegistry = new ScheduleRegistry({
     stores,
     projects: ports.projects,
     changed: (scope) => changes.publish(scope),
-    executionHeld: (scheduleId) => runtime.ownsExecution(scheduleId),
+    executionHeld: (scheduleId): boolean => runtime.ownsExecution(scheduleId),
   });
   const workflows = new SavedWorkflowScheduleAdapter(ports.workflows);
   const artifacts = new ArtifactScheduleAdapter({
