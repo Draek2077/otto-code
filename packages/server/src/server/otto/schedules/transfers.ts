@@ -7,6 +7,8 @@ import type {
   ScheduleTransferLockRecovery,
 } from "@getpaseo/plugin/otto/schedules";
 import { inspectScheduleTransferLocks, scheduleTransferLockFiles } from "./transfer-locks.js";
+import { ScheduleHistoryObjects } from "./history-objects.js";
+import { ScheduleHistoryTransfer } from "./history-transfer.js";
 import type { ScheduleRegistry, ScheduleTransferEntry } from "./registry.js";
 import type { ProjectScheduleScope } from "./stores.js";
 import {
@@ -232,6 +234,12 @@ export class ScheduleTransfers {
         record.proof.originalSource,
       );
       this.assertOpen();
+      if (input.operation === "move")
+        await new ScheduleHistoryTransfer(
+          new ScheduleHistoryObjects(source.origin, source.ref.id),
+          new ScheduleHistoryObjects(pinned, plan.destinationRef.id),
+          () => this.assertOpen(),
+        ).verify(source.schedule.otto?.history);
       await this.registry.publishTransfer(pinned, plan.pendingDestination, null);
       await this.commit(file, { record, revision }, plan);
     } catch {
@@ -261,6 +269,11 @@ export class ScheduleTransfers {
       )
     )
       throw new ScheduleError("conflict", "Destination no longer matches the transfer proof.");
+    await new ScheduleHistoryTransfer(
+      new ScheduleHistoryObjects(current.destination.origin, current.destination.ref.id),
+      null,
+      () => this.assertOpen(),
+    ).verify(current.destination.schedule.otto?.history);
     if (record.input.operation === "move") await this.retireSource(record, current.source);
     else if (
       !current.source ||

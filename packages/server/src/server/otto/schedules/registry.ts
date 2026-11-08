@@ -30,6 +30,7 @@ import { normalizePathForIdentity } from "../../../utils/path.js";
 import { nameTargetIdentityKey } from "../../schedule/store.js";
 import { preserveScheduleDiskRecord } from "./persistence.js";
 import { reviewScheduleRepair } from "./lifecycle.js";
+import { ScheduleHistory } from "./history.js";
 
 interface Located {
   origin: ScheduleOrigin;
@@ -120,6 +121,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
     if (bytes === null) return null;
     const schedule = parseOttoStoredSchedule(JSON.parse(bytes));
     this.validate(schedule, origin, id);
+    await new ScheduleHistory(origin, id).validate(schedule.otto?.history);
     return { schedule, bytes };
   }
   private async scan(
@@ -428,6 +430,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
     const schedule = parseOttoStoredSchedule(JSON.parse(bytes));
     await this.verifyOrigin({ origin, schedule, revision: scheduleRevision(schedule) });
     this.validate(schedule, origin, schedule.id);
+    await new ScheduleHistory(origin, schedule.id).validate(schedule.otto?.history);
     await scheduleDirectory(origin.boundary, origin.directory, true);
     await publishScheduleFile(this.file(origin, schedule.id), bytes, expectedDigest);
     this.remember(origin, schedule);
@@ -525,13 +528,16 @@ export class ScheduleRegistry implements ScheduleStorePort {
         (origin.location === "legacy" ? randomBytes(4).toString("hex") : randomUUID()),
     });
     this.validate(schedule, origin, schedule.id);
+    const saved = await new ScheduleHistory(origin, schedule.id).compact(schedule);
+    const retained = OttoStoredSchedule.parse(saved);
+    this.validate(retained, origin, retained.id);
     await publishScheduleFile(
       this.file(origin, schedule.id),
-      JSON.stringify(schedule, null, 2) + "\n",
+      JSON.stringify(saved, null, 2) + "\n",
       null,
     );
-    this.remember(origin, schedule);
-    return schedule;
+    this.remember(origin, retained);
+    return retained;
   }
   async update(
     id: string,
@@ -587,13 +593,16 @@ export class ScheduleRegistry implements ScheduleStorePort {
         current.schedule,
         schedule,
       );
+      const compacted = await new ScheduleHistory(found.origin, id).compact(saved);
+      const retained = OttoStoredSchedule.parse(compacted);
+      this.validate(retained, found.origin, id);
       await publishScheduleFile(
         this.file(found.origin, id),
-        JSON.stringify(saved, null, 2) + "\n",
+        JSON.stringify(compacted, null, 2) + "\n",
         scheduleDigest(current.bytes),
       );
-      this.remember(found.origin, schedule);
-      return schedule;
+      this.remember(found.origin, retained);
+      return retained;
     });
   }
   async upsertByNameAndTarget(name: string, target: ScheduleTarget, options: ScheduleUpsert) {

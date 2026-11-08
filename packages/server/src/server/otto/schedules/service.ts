@@ -3,7 +3,8 @@ import type { PluginRpcContract } from "@getpaseo/plugin";
 import * as rpc from "@getpaseo/plugin/otto/schedules";
 import { ScheduleError } from "./files.js";
 import type { ScheduleRegistry } from "./registry.js";
-import { scheduleDocument, scheduleListItem, scheduleRunSummary } from "./projection.js";
+import { scheduleDocument, scheduleListItem } from "./projection.js";
+import { ScheduleHistory } from "./history.js";
 import { ScheduleNotFoundError, ScheduleStateConflictError } from "../../schedule/service.js";
 import { awaitScheduleEffect } from "./runtime.js";
 import type { ScheduleChanges } from "./changes.js";
@@ -92,6 +93,8 @@ export class ScheduleDaemonService {
         return this.history(rpc.readScheduleHistory.input.parse(value));
       case rpc.readScheduleRun.name:
         return this.run(rpc.readScheduleRun.input.parse(value));
+      case rpc.readScheduleRunPart.name:
+        return this.part(rpc.readScheduleRunPart.input.parse(value));
       case rpc.createSchedule.name:
         return this.actions.create(rpc.createSchedule.input.parse(value));
       case rpc.updateSchedule.name:
@@ -152,7 +155,16 @@ export class ScheduleDaemonService {
     const offset = input.offset ?? 0,
       diagnosticOffset = input.diagnosticOffset ?? 0;
     return {
-      items: entries.slice(offset, offset + 50).map(scheduleListItem),
+      items: await Promise.all(
+        entries.slice(offset, offset + 50).map(async (entry) => {
+          let archivedLast: rpc.ScheduleRunSummary | undefined;
+          if (!entry.schedule.runs.length && entry.schedule.otto?.history) {
+            const history = await this.historyFor(entry.ref);
+            archivedLast = await history.last(entry);
+          }
+          return scheduleListItem(entry, archivedLast);
+        }),
+      ),
       total: entries.length,
       diagnostics: diagnostics.slice(diagnosticOffset, diagnosticOffset + 50),
       diagnosticTotal: diagnostics.length,
@@ -165,23 +177,23 @@ export class ScheduleDaemonService {
   }
   private async history(input: z.infer<typeof rpc.readScheduleHistory.input>) {
     const entry = await this.entry(input.ref);
-    const runs = entry.schedule.runs.toSorted((a, b) => b.startedAt.localeCompare(a.startedAt));
-    const offset = input.offset ?? 0;
-    return {
-      runs: runs.slice(offset, offset + 50).map(scheduleRunSummary),
-      total: runs.length,
-      revision: entry.revision,
-    };
+    return (await this.historyFor(input.ref)).page(entry, input.offset ?? 0);
+  }
+  private async historyFor(ref: rpc.ScheduleRef) {
+    return new ScheduleHistory(await this.registry.transferOrigin(ref), ref.id);
   }
   private async run(input: z.infer<typeof rpc.readScheduleRun.input>) {
     const entry = await this.entry(input.ref);
-    const run = entry.schedule.runs.find((item) => item.id === input.runId);
-    if (!run)
-      throw new ScheduleError(
-        "invalid",
-        "This exact Schedule run is unavailable in retained history.",
-      );
-    return { run, revision: entry.revision };
+    return (await this.historyFor(input.ref)).run(entry, input.runId);
+  }
+  private async part(input: z.infer<typeof rpc.readScheduleRunPart.input>) {
+    const entry = await this.entry(input.ref);
+    return (await this.historyFor(input.ref)).part(
+      entry,
+      input.runId,
+      input.contentRevision,
+      input.part,
+    );
   }
   private async readStorage(scope: z.infer<typeof rpc.readScheduleStorage.input>) {
     await this.scope(scope);

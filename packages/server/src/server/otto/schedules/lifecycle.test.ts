@@ -63,6 +63,32 @@ test("target repair remains paused even after ordinary final-run completion", ()
   expect(next.nextRunAt).toBeNull();
   expect(next.otto?.repairReason).toBe("Review changed authority");
 });
+
+test("repair review retains the exact last run identity after its large result was archived", () => {
+  const before = record();
+  if (!before.otto) throw new Error("Missing fixture origin");
+  before.runs = [];
+  before.otto = {
+    ...before.otto,
+    repairReason: "Inspect archived result",
+    history: { root: "a".repeat(64), count: 1, height: 0, lastRunId: "archived-run" },
+  };
+  const reviewed = reviewScheduleRepair(
+    before,
+    { ...before, status: "active" },
+    {
+      ref: { id: before.id, ...before.otto },
+      expectedRevision: "b".repeat(64),
+      repairReviewed: true,
+    },
+    "reviewed",
+  );
+  expect(reviewed.otto?.lastRepairReview).toEqual({
+    at: "reviewed",
+    runId: "archived-run",
+    reason: "Inspect archived result",
+  });
+});
 test("restart preserves history and pauses unknown effects instead of replaying", () => {
   const next = recoverScheduleTarget(record(), 0, hooks(), "restart");
   expect(next.status).toBe("paused");

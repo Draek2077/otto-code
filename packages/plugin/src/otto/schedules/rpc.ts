@@ -56,6 +56,9 @@ export const ScheduleTargetSummary = z.discriminatedUnion("type", [
 ]);
 export type ScheduleTargetSummary = z.infer<typeof ScheduleTargetSummary>;
 const runAudit = OttoScheduleRun.shape.otto.unwrap().omit({ requestedTarget: true }).strip();
+export const SchedulePublicRun = OttoScheduleRun.extend({
+  otto: OttoScheduleRun.shape.otto.unwrap().strip().optional(),
+}).strip();
 export const ScheduleRunSummary = OttoScheduleRun.omit({ otto: true })
   .extend({
     requestedTarget: ScheduleTargetSummary.nullable(),
@@ -138,11 +141,33 @@ export const readScheduleHistory = rpc(
 export const readScheduleRun = rpc(
   "schedules.history.read.request",
   z.object({ ref: ScheduleRef, runId: z.string().min(1).max(512) }),
+  z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("inline"), run: SchedulePublicRun, revision: ScheduleDigest }),
+    z.object({
+      kind: z.literal("stored"),
+      summary: ScheduleRunSummary,
+      content: z.object({
+        revision: ScheduleDigest,
+        bytes: z.number().int().positive(),
+        parts: z.number().int().positive().max(4096),
+      }),
+      revision: ScheduleDigest,
+    }),
+  ]),
+);
+export const readScheduleRunPart = rpc(
+  "schedules.history.part.read.request",
   z.object({
-    run: OttoScheduleRun.extend({
-      otto: OttoScheduleRun.shape.otto.unwrap().strip().optional(),
-    }).strip(),
+    ref: ScheduleRef,
+    runId: z.string().min(1).max(512),
+    contentRevision: ScheduleDigest,
+    part: z.number().int().min(0).max(4095),
+  }),
+  z.object({
+    data: z.string().max(360000),
     revision: ScheduleDigest,
+    part: z.number().int().nonnegative(),
+    parts: z.number().int().positive().max(4096),
   }),
 );
 export const createSchedule = rpc(
@@ -268,6 +293,7 @@ export const scheduleOperations = [
   readSchedule,
   readScheduleHistory,
   readScheduleRun,
+  readScheduleRunPart,
   createSchedule,
   updateSchedule,
   controlSchedule,

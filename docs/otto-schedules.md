@@ -117,6 +117,35 @@ inspected revision and explicit confirmation that other owning-host writers stop
 before receipt publication permits inspection of packet locks only, without guessing a source
 or destination. These contracts do not by themselves register app transfer controls.
 
+## Retained history
+
+The owning registry keeps at most fifty recent terminal attempts in the primary record and
+archives finished prefixes sooner when the primary exceeds 768,000 bytes. Active attempts
+remain in the primary. Compaction preserves all archived attempts and their original fields;
+it never resets the lifetime count used by `maxRuns` or deletes older results.
+
+Archives live under the same store's `.otto-history/<scheduleId>/`. Immutable, content-addressed
+index nodes permit bounded pages without scanning every older run. Root metadata records the
+archived count and latest archived identity. Pages show latest claims first, including runs
+whose full results have moved out of the primary. Repair receipts retain that run identity.
+
+Large results use immutable 256 KiB parts. The explicit run read returns an inline result when
+small, or a stored-content descriptor when large; subsequent reads validate the selected run,
+content revision and part number. Private unknown fields remain in the original archive but
+are excluded from the public projection and its parts. A client cannot request an arbitrary
+archive object by digest. Each manifest represents at most 4,096 parts.
+
+Archive objects are published before primary byte-CAS. An external edit can therefore leave
+unreachable objects, but cannot be overwritten by compaction or make those objects current
+history. Missing or corrupt root objects exclude the record from discovery. No read repairs
+or rewrites that data. Moves copy and verify every object referenced by the captured history
+root before retiring the source. Copy settings creates empty history instead.
+
+The filesystem publisher's record-size bound still applies to a non-archivable oversized
+record. Its original bytes remain available for explicit owning-host inspection. The original
+Paseo transport retains its native target schema and recent-history contract; the owned API
+provides complete archive paging and large-result reads.
+
 ## Claims, effects, and cancellation
 
 A durable running claim also fences later automatic and manual attempts if publishing its

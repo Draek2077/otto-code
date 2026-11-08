@@ -50,7 +50,10 @@ export function scheduleTransferPlan(
     },
   });
   const destinationMetadata = { ...metadata };
-  if (input.operation === "copy") delete destinationMetadata.creation;
+  if (input.operation === "copy") {
+    delete destinationMetadata.creation;
+    delete destinationMetadata.history;
+  }
   const rawDestination = {
     ...original,
     ...(input.operation === "copy" ? { runs: [], lastRunAt: null, createdAt: at } : {}),

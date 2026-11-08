@@ -170,7 +170,10 @@ function normalizeMaxRuns(value: number | null | undefined): number | null {
 }
 
 function countCompletedRuns(schedule: StoredSchedule): number {
-  return schedule.runs.filter((run) => run.status !== "running").length;
+  return (
+    (schedule.otto?.history?.count ?? 0) +
+    schedule.runs.filter((run) => run.status !== "running").length
+  ); // OTTO(schedules): archived terminal attempts still consume the lifetime run limit.
 }
 
 function shouldArchiveScheduleRunWorkspace(input: {

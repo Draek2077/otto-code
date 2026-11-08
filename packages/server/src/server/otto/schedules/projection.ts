@@ -58,7 +58,10 @@ export function scheduleDocument(entry: ScheduleEntry): ScheduleDocument {
   const { runs: _history, ...head } = entry.schedule;
   return { ref: entry.ref, revision: entry.revision, schedule: head };
 }
-export function scheduleListItem(entry: ScheduleEntry & { ambiguous: boolean }): ScheduleListItem {
+export function scheduleListItem(
+  entry: ScheduleEntry & { ambiguous: boolean },
+  archivedLast?: ScheduleRunSummary,
+): ScheduleListItem {
   const schedule = entry.schedule;
   const last = schedule.runs.at(-1);
   return {
@@ -73,8 +76,8 @@ export function scheduleListItem(entry: ScheduleEntry & { ambiguous: boolean }):
     lastRunAt: schedule.lastRunAt,
     maxRuns: schedule.maxRuns,
     expiresAt: schedule.expiresAt,
-    runCount: schedule.runs.length,
-    lastRun: last ? scheduleRunSummary(last) : null,
+    runCount: (schedule.otto?.history?.count ?? 0) + schedule.runs.length,
+    lastRun: last ? scheduleRunSummary(last) : (archivedLast ?? null),
     transfer: schedule.otto?.transfer ?? null,
     repairReason: entry.ambiguous
       ? "Duplicate Schedule identity. Inspect both origins and reconcile storage before running."

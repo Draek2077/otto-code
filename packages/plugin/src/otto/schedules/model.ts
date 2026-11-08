@@ -32,6 +32,13 @@ export const ScheduleTransferMarker = z.object({
   phase: z.enum(["pending", "committed"]),
   peer: ScheduleRef,
 });
+export const ScheduleHistoryState = z.object({
+  root: ScheduleDigest,
+  count: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  height: z.number().int().min(0).max(8),
+  lastRunId: z.string().optional(),
+});
+export type ScheduleHistoryState = z.infer<typeof ScheduleHistoryState>;
 export const ScheduledWorkflow = z.object({
   type: z.literal("workflow"),
   source: WorkflowRef.extend({ kind: z.enum(["ai", "graph"]) }),
@@ -102,6 +109,7 @@ const KnownStoredSchedule = StoredScheduleSchema.extend({
       storeKey: z.string().min(1).max(1500),
       creation: z.object({ operationId: ScheduleId, fingerprint: ScheduleDigest }).optional(),
       transfer: ScheduleTransferMarker.optional(),
+      history: ScheduleHistoryState.optional(),
       repairReason: z.string().max(2000).optional(),
       lastRepairReview: z
         .object({ at: z.string(), runId: z.string().nullable(), reason: z.string().max(2000) })

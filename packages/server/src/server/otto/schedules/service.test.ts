@@ -112,7 +112,7 @@ test("list and history disclose bounded previews while exact detail keeps actual
       id: "historical",
       status: "succeeded" as const,
       scheduledFor: "now",
-      startedAt: "now",
+      startedAt: "2026-11-08T00:01:00.000Z",
       endedAt: "then",
       agentId: null,
       error: null,
@@ -125,8 +125,13 @@ test("list and history disclose bounded previews while exact detail keeps actual
       prompt: "p".repeat(1000),
       futureHead: "disk only",
       runs: [
+        ...Array.from({ length: 50 }, (_, i) => ({
+          ...run,
+          startedAt: "2026-11-08T00:00:00.000Z",
+          id: `other-${i}`,
+          otto: undefined,
+        })),
         run,
-        ...Array.from({ length: 50 }, (_, i) => ({ ...run, id: `other-${i}`, otto: undefined })),
       ],
     }));
     const head = readSchedule.output.parse(await f.api.invoke(readSchedule.name, saved.ref));
@@ -150,6 +155,8 @@ test("list and history disclose bounded previews while exact detail keeps actual
       await f.api.invoke(readScheduleRun.name, { ref: saved.ref, runId: "historical" }),
     );
     if (!exact.ok) throw new Error(exact.error.message);
+    expect(exact.value.kind).toBe("inline");
+    if (exact.value.kind !== "inline") throw new Error("Expected inline history fixture");
     expect(exact.value.run.output).toHaveLength(4000);
     expect(exact.value.run.otto?.requestedTarget).toEqual(priorTarget);
     expect(exact.value.run).not.toHaveProperty("futureRun");

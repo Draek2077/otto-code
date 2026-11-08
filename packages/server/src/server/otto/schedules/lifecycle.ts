@@ -46,7 +46,14 @@ export function reviewScheduleRepair(
   return {
     ...after,
     updatedAt: at,
-    otto: { ...origin, lastRepairReview: { at, runId: before.runs.at(-1)?.id ?? null, reason } },
+    otto: {
+      ...origin,
+      lastRepairReview: {
+        at,
+        runId: before.runs.at(-1)?.id ?? before.otto?.history?.lastRunId ?? null,
+        reason,
+      },
+    },
   };
 }
 
