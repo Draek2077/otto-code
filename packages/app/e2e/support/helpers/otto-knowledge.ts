@@ -1,8 +1,9 @@
-import { expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { callAgentMcp } from "./agent-mcp";
 import { gotoAppShell } from "./app";
 import { getServerId } from "./server-id";
 import { openWorkspaceContextMenu } from "./sidebar";
+import { waitForOttoSurface } from "./otto-surfaces";
 
 export async function callKnowledgeMcp(name: string, args: Record<string, unknown>) {
   return callAgentMcp(name, args, "json");
@@ -21,7 +22,5 @@ export async function openWorkspaceKnowledge(input: {
       .click();
   } else await openWorkspaceContextMenu(input.page, input.workspaceId);
   await input.page.getByText("Open Knowledge", { exact: true }).click();
-  const surface = input.page.getByTestId("otto-knowledge-page").filter({ visible: true });
-  await expect(surface).toBeVisible();
-  return surface;
+  return waitForOttoSurface(input.page, "otto-knowledge-page");
 }

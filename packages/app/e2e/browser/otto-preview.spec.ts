@@ -2,7 +2,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createServer } from "node:net";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import { readPreviewConfig, stopPreviewServer } from "@getpaseo/plugin/otto/preview";
+import {
+  readPreviewConfig,
+  readPreviewLogs,
+  stopPreviewServer,
+} from "@getpaseo/plugin/otto/preview";
 import { z } from "zod";
 import { test, expect } from "../support/fixtures";
 import { seedWorkspace } from "../support/helpers/seed-client";
@@ -10,6 +14,7 @@ import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import { gotoAppShell } from "../support/helpers/app";
 import { openWorkspaceContextMenu } from "../support/helpers/sidebar";
 import { getServerId } from "../support/helpers/server-id";
+import { waitForOttoSurface } from "../support/helpers/otto-surfaces";
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
 async function freePort(): Promise<number> {
@@ -80,7 +85,7 @@ for (const compact of [false, true]) {
           .click();
       } else await openWorkspaceContextMenu(page, workspace.workspaceId);
       await page.getByText("Manage Preview servers", { exact: true }).click();
-      const surface = page.getByTestId("otto-preview-servers").filter({ visible: true });
+      const surface = await waitForOttoSurface(page, "otto-preview-servers");
       const start = surface.getByRole("button", { name: "Start or reuse", exact: true });
       await expect(start).toBeVisible();
       expect((await inspect()).servers).toEqual([]);
@@ -123,6 +128,13 @@ for (const compact of [false, true]) {
       await expect(
         surface.getByText("[stdout] PREVIEW_READY_PROOF", { exact: false }),
       ).toBeVisible();
+      // A listening socket alone does not prove this fixture is serving its page.
+      await expect
+        .poll(async () => {
+          const response = await page.request.get(`http://127.0.0.1:${port}/`, { timeout: 1000 });
+          return response.text();
+        })
+        .toContain("<title>Preview fixture</title>");
       // Open reveals the daemon's designated page in an ordinary workspace tab.
       await surface.getByRole("button", { name: "Open browser", exact: true }).click();
       const hosted = page.getByTestId("otto-host-browser").filter({ visible: true });
@@ -170,6 +182,10 @@ for (const compact of [false, true]) {
           y: (box.height - geometry.height * scale) / 2 + geometry.y * scale,
         },
       });
+      // Observe the remote pointer acknowledgment, not just the local streamed surface's focus.
+      await expect
+        .poll(() => evaluate("() => document.activeElement === document.querySelector('input')"))
+        .toBe(true);
       await page.keyboard.type("Otto");
       await expect
         .poll(() => evaluate("() => document.querySelector('input').value"), { timeout: 10_000 })
@@ -204,7 +220,26 @@ for (const compact of [false, true]) {
       });
     } catch (error) {
       // Keep the actual panel before fixture cleanup removes its workspace route.
-      await page.screenshot({ path: testInfo.outputPath("preview-before-cleanup.png") });
+      await Promise.allSettled([
+        page.screenshot({ path: testInfo.outputPath("preview-before-cleanup.png") }),
+        (async () => {
+          const snapshot = await inspect();
+          const logs = await Promise.all(
+            snapshot.servers.map(async (server) => ({
+              serverId: server.id,
+              logs: await client.invokePluginRpc("otto-browser", readPreviewLogs.name, {
+                ...scope,
+                serverId: server.id,
+                lines: 50,
+              }),
+            })),
+          );
+          await testInfo.attach("preview-host-state", {
+            body: JSON.stringify({ snapshot, logs }, null, 2),
+            contentType: "application/json",
+          });
+        })(),
+      ]);
       throw error;
     } finally {
       // Only this fixture's exact host-owned records can be stopped; no PID/port guessing.

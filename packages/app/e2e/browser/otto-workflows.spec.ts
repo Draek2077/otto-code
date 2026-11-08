@@ -9,6 +9,7 @@ import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-cli
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import { getServerId } from "../support/helpers/server-id";
 import { gotoAppShell } from "../support/helpers/app";
+import { waitForOttoSurface } from "../support/helpers/otto-surfaces";
 import { openAgentRoute } from "../support/helpers/mock-agent";
 import { submitMessageWithButton } from "../support/helpers/composer";
 import { buildPluginSurfaceRoute } from "../../src/plugins/routes";
@@ -69,7 +70,7 @@ async function openLibrary(page: Page, workspace: SeededWorkspace, run?: workflo
       },
     ),
   );
-  await expect(page.getByTestId("otto-workflows-page").filter({ visible: true })).toBeVisible();
+  await waitForOttoSurface(page, "otto-workflows-page");
 }
 const request = z.object({
   messages: z.array(z.object({ role: z.string(), content: z.unknown().optional() })),

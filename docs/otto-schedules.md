@@ -75,6 +75,15 @@ refresh at a later fire, while topology, access, seats, limits, unknown authorit
 and approved executable-template revisions require another review. Saved AI approval intent
 is preserved. A per-active-run settlement owner waits through AI Planning and human gates
 until cleanup completes, with abortable demand and no polling.
+Human approval gates retain their normal Workflow approval controls; scheduling does not
+approve them automatically or require an automatic-only Workflow. Saved autopilot and other
+execution authority remain subject to explicit target review and the authority fingerprint.
+
+Failed attempts do not retry between scheduled fires. Proven pre-effect busy/unavailable
+outcomes settle as failed and leave the existing cadence responsible for the next attempt.
+Known execution failures likewise retain their audit and wait for the next fire. Uncertain
+outcomes pause for inspection; missing targets and changed authority pause for explicit repair.
+No error condition silently replays an admitted operation.
 
 Artifact scheduling changes only the validated `otto-artifact-data` JSON span. Design identity
 excludes that span and includes every other presentation byte. Instruction updates use an

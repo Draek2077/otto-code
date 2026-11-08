@@ -71,12 +71,11 @@ function fixture() {
       release,
     }),
   );
-  const transientFailure = vi.fn(() => "next_fire" as const);
-  const runtime = new ScheduleRuntime({ prepare, transientFailure });
+  const runtime = new ScheduleRuntime({ prepare });
   const stamp = vi.fn(async (_audit: Partial<ScheduleAudit>) => {});
   const legacy = vi.fn(async () => ({ agentId: null, output: "Legacy" }));
   const input = { schedule: record(), runId: "run", stamp, legacy };
-  return { runtime, release, execute, prepare, transientFailure, stamp, legacy, input };
+  return { runtime, release, execute, prepare, stamp, legacy, input };
 }
 test("native schedules retain their existing runner and do not consume extended capacity", async () => {
   const f = fixture();
@@ -128,22 +127,32 @@ test("resolved identity precedes the effect and accepted result audit is stamped
   expect(f.stamp.mock.calls[1][0]).toEqual({ disposition: "succeeded", executor: "data-only" });
   expect(f.release).toHaveBeenCalledTimes(1);
 });
-test("only a proven pre-effect transient failure uses the selected next-fire policy", async () => {
-  const f = fixture();
-  f.prepare.mockRejectedValueOnce(new ScheduleError("busy", "Target owner is busy"));
-  const failure = await f.runtime.execute(f.input).catch((error) => error);
-  expect(failure).toMatchObject({ disposition: "failed", repairReason: undefined });
-  expect(f.transientFailure).toHaveBeenCalledTimes(1);
-  expect(f.stamp).not.toHaveBeenCalled();
-  const run = record().runs[0];
-  expect(f.runtime.settle(record(), run, { error: failure }).pauseReason).toBeUndefined();
-});
-test("unknown outcomes after admission always require repair without invoking retry policy", async () => {
+test.each(["busy", "unavailable"] as const)(
+  "pre-effect %s waits for the next cadence without retries",
+  async (kind) => {
+    const f = fixture();
+    vi.useFakeTimers();
+    try {
+      f.prepare.mockRejectedValueOnce(new ScheduleError(kind, "Target owner is unavailable"));
+      const failure = await f.runtime.execute(f.input).catch((error) => error);
+      expect(failure).toMatchObject({ disposition: "failed", repairReason: undefined });
+      expect(f.stamp).not.toHaveBeenCalled();
+      const run = record().runs[0];
+      expect(f.runtime.settle(record(), run, { error: failure }).pauseReason).toBeUndefined();
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+      expect(f.prepare).toHaveBeenCalledTimes(1);
+      expect(f.execute).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+test("unknown outcomes after admission always pause for inspection", async () => {
   const f = fixture();
   f.execute.mockRejectedValueOnce(new Error("Uncertain publication"));
   const failure = await f.runtime.execute(f.input).catch((error) => error);
   expect(failure).toMatchObject({ disposition: "unknown" });
-  expect(f.transientFailure).not.toHaveBeenCalled();
   const settled = f.runtime.settle(record(), record().runs[0], { error: failure });
   expect(settled.run.otto?.disposition).toBe("unknown");
   expect(settled.pauseReason).toContain("Inspect this run");

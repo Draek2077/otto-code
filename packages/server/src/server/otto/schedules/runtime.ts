@@ -32,8 +32,6 @@ export class ScheduleExecutionError extends Error {
 }
 export interface ScheduleRuntimePorts {
   prepare(schedule: StoredSchedule, runId: string): Promise<PreparedScheduleTarget>;
-  /** Only proven pre-effect transient failures reach this product policy. Never invoked after admission. */
-  transientFailure(error: ScheduleError): "next_fire" | "repair_required";
 }
 interface Active {
   scheduleId: string;
@@ -163,9 +161,9 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
     if (
       stage === "preflight" &&
       error instanceof ScheduleError &&
-      (error.kind === "busy" || error.kind === "unavailable") &&
-      this.ports.transientFailure(error) === "next_fire"
+      (error.kind === "busy" || error.kind === "unavailable")
     )
+      // Explicit product policy: no retry timer or new attempt. Paseo owns the next cadence fire.
       return new ScheduleExecutionError(message, "failed", { failureCode: error.kind }, undefined, {
         cause: error,
       });
