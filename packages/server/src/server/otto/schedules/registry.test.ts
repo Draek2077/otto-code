@@ -305,6 +305,49 @@ test("concurrent legacy upserts serialize the same canonical identity", async ()
   expect(await f.registry.list()).toHaveLength(1);
 });
 
+test("unknown nested legacy fields survive edits while deliberate known removals and retargeting still apply", async () => {
+  const f = await fixture();
+  const created = await f.registry.create({
+    ...draft(f.origin),
+    target: {
+      type: "new-agent",
+      config: { provider: "fixture", cwd: f.projectRoot, systemPrompt: "Known prompt" },
+    },
+  });
+  if (created.target.type !== "new-agent") throw new Error("Expected new-agent fixture");
+  const file = path.join(f.origin.directory, `${created.id}.json`);
+  await writeFile(
+    file,
+    JSON.stringify({
+      ...created,
+      target: {
+        ...created.target,
+        futureTarget: { keep: true },
+        config: { ...created.target.config, futureConfig: { keep: true } },
+      },
+    }),
+  );
+  await f.registry.update(created.id, (row) => {
+    if (row.target.type !== "new-agent") throw new Error("Expected new-agent fixture");
+    const config = { ...row.target.config };
+    delete config.systemPrompt;
+    return { ...row, name: "Edited", target: { ...row.target, config } };
+  });
+  const edited = JSON.parse(await readFile(file, "utf8"));
+  expect(edited.target.config.futureConfig).toEqual({ keep: true });
+  expect(edited.target.futureTarget).toEqual({ keep: true });
+  expect(edited.target.config).not.toHaveProperty("systemPrompt");
+  await f.registry.update(created.id, (row) => ({
+    ...row,
+    target: { type: "agent", agentId: "00000000-0000-4000-8000-000000000001" },
+  }));
+  const retargeted = JSON.parse(await readFile(file, "utf8"));
+  expect(retargeted.target).toEqual({
+    type: "agent",
+    agentId: "00000000-0000-4000-8000-000000000001",
+  });
+});
+
 test("a changed canonical project root cannot redirect a cached Schedule claim", async () => {
   const f = await fixture();
   const created = await f.registry.create(draft(f.origin));

@@ -28,6 +28,7 @@ import {
 import { assertScheduleMutation, scheduleRevision } from "./legacy.js";
 import { normalizePathForIdentity } from "../../../utils/path.js";
 import { nameTargetIdentityKey } from "../../schedule/store.js";
+import { preserveScheduleDiskRecord } from "./persistence.js";
 
 interface Located {
   origin: ScheduleOrigin;
@@ -349,9 +350,14 @@ export class ScheduleRegistry implements ScheduleStorePort {
       }
       const schedule = OttoStoredSchedule.parse(next);
       this.validate(schedule, found.origin, id);
+      const saved = preserveScheduleDiskRecord(
+        JSON.parse(current.bytes),
+        current.schedule,
+        schedule,
+      );
       await publishScheduleFile(
         this.file(found.origin, id),
-        JSON.stringify(schedule, null, 2) + "\n",
+        JSON.stringify(saved, null, 2) + "\n",
         scheduleDigest(current.bytes),
       );
       this.remember(found.origin, schedule);

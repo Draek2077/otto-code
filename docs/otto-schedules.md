@@ -21,7 +21,10 @@ They never translate a Workflow or Artifact update into an agent prompt. Legacy 
 requests carry a guard into the store's serialized update, so a stale client cannot edit a
 record after its target changes to an extended target.
 
-The persisted format retains unknown record, origin, and audit fields. Unsupported Otto 0.9
+The persisted format retains unknown record, origin, and audit fields. Nested legacy target/config
+fields are merged back only at disk publication, never added to execution DTOs. An explicit
+target-kind replacement removes the replaced target rather than transplanting its private fields.
+Unsupported Otto 0.9
 provider/profile policies remain dormant with their original bytes intact. They are not
 silently stripped to obtain an executable record.
 

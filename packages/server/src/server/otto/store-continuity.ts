@@ -23,7 +23,8 @@ export function normalizeOttoWorkspaceRecord(value: unknown): unknown {
   };
 }
 
-function preserveUnknownFields(original: unknown, parsed: unknown, next: unknown): unknown {
+/** Pure disk-boundary merge. Unknown fields are retained here, never added to execution DTOs. */
+export function preserveUnknownFields(original: unknown, parsed: unknown, next: unknown): unknown {
   if (Array.isArray(original) && Array.isArray(parsed) && Array.isArray(next)) {
     return next.map((item: unknown) => {
       if (!isObject(item) || typeof item.id !== "string") return item;
