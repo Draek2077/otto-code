@@ -25,6 +25,7 @@ import {
 import type { OttoProjectMetadata } from "../project-metadata.js";
 import type { WorkspaceRegistry } from "../../workspace-registry.js";
 import type { ArtifactGeneration } from "./generation.js";
+import type { ScheduleRun } from "../schedules/types.js";
 import {
   artifactData,
   artifactPreview,
@@ -121,6 +122,29 @@ export class ArtifactDaemonService {
       )) ?? unavailable
     );
   }
+  private async scheduleOwnsArtifact(
+    run: ScheduleRun,
+    artifact: ArtifactRef,
+    projectId: string,
+  ): Promise<boolean> {
+    // The claimed run, not an editable current target, owns a direct data update.
+    const target = run.otto?.requestedTarget;
+    if (target?.type === "artifact-update") {
+      if (
+        target.source.scope.hostId !== this.ports.hostId ||
+        target.source.id !== artifact.id ||
+        target.source.location !== artifact.location ||
+        run.otto?.resolved?.kind !== "artifact" ||
+        run.otto.resolved.id !== artifact.id
+      )
+        return false;
+      const owner = await this.project(target.source.scope);
+      return owner.projectId === projectId;
+    }
+    if (!run.workspaceId) return false;
+    const workspace = await this.ports.workspaces.get(run.workspaceId);
+    return workspace?.projectId === projectId;
+  }
   async readSource(input: ArtifactRef): Promise<ArtifactSourceDetails> {
     const entry = await this.locate(input);
     const source = entry.summary.source;
@@ -134,9 +158,8 @@ export class ArtifactDaemonService {
     const schedule = await readArtifactSchedule(this.ports.schedules, source.scheduleId);
     if (!schedule || schedule.id !== source.scheduleId) return unavailable;
     const run = schedule.runs.find((item) => item.id === source.runId);
-    if (!run?.workspaceId) return unavailable;
-    const workspace = await this.ports.workspaces.get(run.workspaceId);
-    if (workspace?.projectId !== entry.store.project.projectId) return unavailable;
+    if (!run || !(await this.scheduleOwnsArtifact(run, input, entry.store.project.projectId)))
+      return unavailable;
     return {
       kind: "schedule",
       scheduleId: schedule.id,
@@ -147,7 +170,7 @@ export class ArtifactDaemonService {
         startedAt: run.startedAt,
         endedAt: run.endedAt,
         agentId: run.agentId,
-        workspaceId: run.workspaceId,
+        workspaceId: run.workspaceId ?? null,
         output: run.output?.slice(0, 8000) ?? null,
         error: run.error?.slice(0, 2000) ?? null,
       },

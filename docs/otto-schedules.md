@@ -81,6 +81,10 @@ excludes that span and includes every other presentation byte. Instruction updat
 explicit provider/model in a fresh, nonpersistent JSON-only completion session; they cannot
 fall back to HTML regeneration. The Artifact owner commits against the revision captured
 before generation, preserving peer edits and durable Schedule attribution.
+Artifact source inspection resolves these runs from the claimed target and resolved artifact
+identity, including canonical project and storage location. It does not require a chat workspace
+or reinterpret an edited current Schedule target. Missing or mismatched evidence leaves the
+Artifact available and marks its source unavailable.
 
 HTML generation and data-only completion share one session lifecycle. No Otto tool catalog
 is attached and every surfaced permission is denied. Native provider startup customizations

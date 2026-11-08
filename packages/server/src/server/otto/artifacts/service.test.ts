@@ -8,7 +8,7 @@ import * as artifactFiles from "./files.js";
 import { artifactData } from "./content.js";
 import { createArtifactTools } from "./tools.js";
 import type { ArtifactSchedulePort } from "./sources.js";
-import type { StoredSchedule } from "@getpaseo/protocol/schedule/types";
+import type { StoredSchedule } from "../schedules/types.js";
 import { ScheduleNotFoundError } from "../../schedule/service.js";
 import { OTTO_CONFIG_FILENAME } from "../config-migration.js";
 import {
@@ -377,6 +377,81 @@ test("Schedule source inspection resolves only the exact same-project run and re
     runId: "run",
   });
 });
+
+test("direct Schedule data-update provenance uses its pinned run and canonical artifact owner without a chat", async () => {
+  const schedule = sourceSchedule();
+  const f = await fixture({ inspect: async () => schedule });
+  const created = await f.service.create(
+    { scope: f.scope, name: "Scheduled data", description: "Report" },
+    { kind: "schedule", scheduleId: schedule.id, runId: "run" },
+  );
+  const ref = f.ref(created.id);
+  const requestedTarget = {
+    type: "artifact-update" as const,
+    source: ref,
+    designFingerprint: "a".repeat(64),
+    update: { type: "data" as const, json: "{}" },
+  };
+  const run = schedule.runs[0];
+  run.agentId = null;
+  run.workspaceId = null;
+  run.otto = {
+    requestedTarget,
+    resolved: { kind: "artifact", id: ref.id, title: "Scheduled data", revision: "b".repeat(64) },
+  };
+  // Current target edits cannot rewrite historical attribution.
+  schedule.target = { type: "agent", agentId: "unrelated" };
+  const workspaceRead = vi.spyOn(f.ports.workspaces, "get");
+  expect(await f.service.readSource(ref)).toMatchObject({
+    kind: "schedule",
+    run: { id: "run", agentId: null, workspaceId: null },
+  });
+  requestedTarget.source = { ...ref, scope: f.service.workspaceScope("workspace") };
+  expect(await f.service.readSource(ref)).toMatchObject({ kind: "schedule" });
+  expect(workspaceRead).toHaveBeenCalledTimes(1);
+  run.status = "succeeded";
+  expect(await f.service.readSource(ref)).toMatchObject({ kind: "schedule" });
+});
+
+test.each(["host", "project", "artifact", "location", "resolution", "audit"])(
+  "direct Schedule source refuses mismatched %s without substituting the current target",
+  async (mismatch) => {
+    const schedule = sourceSchedule();
+    const f = await fixture({ inspect: async () => schedule });
+    const created = await f.service.create(
+      { scope: f.scope, name: "Scheduled data", description: "Report" },
+      { kind: "schedule", scheduleId: schedule.id, runId: "run" },
+    );
+    const ref = f.ref(created.id);
+    const target = {
+      type: "artifact-update" as const,
+      source: ref,
+      designFingerprint: "a".repeat(64),
+      update: { type: "data" as const, json: "{}" },
+    };
+    schedule.target = target;
+    const run = schedule.runs[0];
+    run.workspaceId = null;
+    run.otto = {
+      requestedTarget: structuredClone(target),
+      resolved: { kind: "artifact", id: ref.id, title: "Report" },
+    };
+    const claimed = run.otto.requestedTarget;
+    if (claimed.type !== "artifact-update") throw new Error("Unexpected fixture target");
+    if (mismatch === "host") claimed.source.scope.hostId = "peer";
+    if (mismatch === "project") claimed.source.scope.target = { kind: "project", id: "peer" };
+    if (mismatch === "artifact") claimed.source.id = "peer";
+    if (mismatch === "location") claimed.source.location = "host";
+    if (mismatch === "resolution") run.otto.resolved = undefined;
+    if (mismatch === "audit") run.otto = undefined;
+    expect(await f.service.readSource(ref)).toMatchObject({ kind: "unavailable" });
+    expect((await f.service.read(ref)).artifact.source).toEqual({
+      kind: "schedule",
+      scheduleId: schedule.id,
+      runId: "run",
+    });
+  },
+);
 test("create settles into durable output and reopening a new owner preserves data and provenance", async () => {
   const f = await fixture(),
     created = await f.create();
