@@ -53,6 +53,7 @@ export function scheduleTransferPlan(
   if (input.operation === "copy") {
     delete destinationMetadata.creation;
     delete destinationMetadata.history;
+    delete destinationMetadata.lastRepairReview;
   }
   const rawDestination = {
     ...original,

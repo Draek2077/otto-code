@@ -436,3 +436,24 @@ test("changed retained backup bytes prevent reconciliation and leave both fenced
   expect(await f.registry.transferBytes(pending.destination)).toBe(destination);
   expect(await readFile(backup, "utf8")).toBe("malformed retained backup");
 });
+
+test("copy settings does not claim the source's create or run-repair receipts as its own", async () => {
+  const f = await fixture();
+  await f.registry.update(f.entry.ref.id, (row) => ({
+    ...row,
+    otto: {
+      ...row.otto!,
+      creation: { operationId: "source-create", fingerprint: "a".repeat(64) },
+      lastRepairReview: { at: "before", runId: "old-run", reason: "Source result inspected" },
+    },
+  }));
+  const source = await f.registry.entry(f.entry.ref.id);
+  if (!source) throw new Error("Missing reviewed source fixture");
+  const before = await readFile(f.sourceFile, "utf8");
+  const result = await f.transfers.transfer({ ...f.input, expectedRevision: source.revision });
+  const destination = await f.registry.transferEntry(result.destination);
+  expect(destination?.schedule.otto).not.toHaveProperty("creation");
+  expect(destination?.schedule.otto).not.toHaveProperty("lastRepairReview");
+  expect(destination?.schedule.runs).toEqual([]);
+  expect(await readFile(f.sourceFile, "utf8")).toBe(before);
+});
