@@ -227,7 +227,7 @@ export class ScheduleDaemonService {
   }
   private async history(input: z.infer<typeof rpc.readScheduleHistory.input>) {
     const entry = await this.entry(input.ref);
-    return (await this.historyFor(input.ref)).page(entry, input.offset ?? 0);
+    return (await this.historyFor(input.ref)).page(entry, input.offset ?? 0, input.limit);
   }
   private async historyFor(ref: rpc.ScheduleRef) {
     return new ScheduleHistory(await this.registry.transferOrigin(ref), ref.id);

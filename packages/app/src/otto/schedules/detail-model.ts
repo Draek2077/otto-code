@@ -17,6 +17,7 @@ export class ScheduleDetailModel {
     history: ScheduleRunSummary[];
     total: number;
     offset: number;
+    pageSize: number;
     selectedRun: Run | null;
     selectedRunId: string | null;
     part: Part | null;
@@ -27,6 +28,7 @@ export class ScheduleDetailModel {
     history: [],
     total: 0,
     offset: 0,
+    pageSize: 25,
     selectedRun: null,
     selectedRunId: null,
     part: null,
@@ -57,7 +59,11 @@ export class ScheduleDetailModel {
       inspected: !!confirm,
       operation: async () => ({
         document: await this.api.read(this.ref),
-        history: await this.api.history({ ref: this.ref, offset: this.state.offset }),
+        history: await this.api.history({
+          ref: this.ref,
+          offset: this.state.offset,
+          limit: this.state.pageSize,
+        }),
       }),
       apply: (result) =>
         this.publish({
@@ -69,8 +75,16 @@ export class ScheduleDetailModel {
   }
   async page(offset: number) {
     await this.lane.run({
-      operation: () => this.api.history({ ref: this.ref, offset }),
+      operation: () => this.api.history({ ref: this.ref, offset, limit: this.state.pageSize }),
       apply: (history) => this.publish({ history: history.runs, total: history.total, offset }),
+    });
+  }
+  async pageSize(limit: number) {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) return;
+    await this.lane.run({
+      operation: () => this.api.history({ ref: this.ref, offset: 0, limit }),
+      apply: (history) =>
+        this.publish({ history: history.runs, total: history.total, offset: 0, pageSize: limit }),
     });
   }
   async control(command: Command, confirm: () => Promise<boolean>) {

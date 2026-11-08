@@ -223,3 +223,20 @@ test("run admission uses captured origin/revision and unknown outcomes require i
   await model.refresh(async () => true);
   expect(model.lane.getSnapshot().blocked).toBe(false);
 });
+
+test("history page-size selection is an acknowledged read and preserves the prior page on failure", async () => {
+  const f = fixture(),
+    model = new ScheduleDetailModel(f.api, document.ref);
+  model.activate();
+  await idle(model.lane);
+  await model.pageSize(5);
+  expect(f.invoke.mock.calls.at(-1)?.[2]).toEqual({ ref: document.ref, offset: 0, limit: 5 });
+  expect(model.getSnapshot()).toMatchObject({ pageSize: 5, offset: 0 });
+  await model.page(5);
+  expect(f.invoke.mock.calls.at(-1)?.[2]).toEqual({ ref: document.ref, offset: 5, limit: 5 });
+  f.invoke.mockRejectedValueOnce(new Error("read disconnected"));
+  await model.pageSize(10);
+  expect(model.getSnapshot()).toMatchObject({ pageSize: 5, offset: 5 });
+  expect(model.lane.getSnapshot()).toMatchObject({ blocked: false, busy: false });
+  expect(model.lane.getSnapshot().error).toContain("owning host");
+});

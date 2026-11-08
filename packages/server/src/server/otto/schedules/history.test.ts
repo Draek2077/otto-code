@@ -54,6 +54,15 @@ test("older runs remain paged and readable while archived attempts still consume
     expect(older.value.runs.map((run) => run.id)).toEqual(
       Array.from({ length: 10 }, (_, index) => `run-${9 - index}`),
     );
+    const smaller = readScheduleHistory.output.parse(
+      await f.api.invoke(readScheduleHistory.name, { ref: entry.ref, offset: 49, limit: 2 }),
+    );
+    if (!smaller.ok) throw new Error(smaller.error.message);
+    expect(smaller.value.runs.map((run) => run.id)).toEqual(["run-10", "run-9"]);
+    expect(smaller.value.total).toBe(60);
+    expect(
+      await f.api.invoke(readScheduleHistory.name, { ref: entry.ref, limit: 0 }),
+    ).toMatchObject({ ok: false, error: { code: "invalid" } });
     expect(
       await f.api.invoke(readScheduleRun.name, { ref: entry.ref, runId: "run-0" }),
     ).toMatchObject({

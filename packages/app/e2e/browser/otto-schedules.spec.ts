@@ -1,6 +1,5 @@
 import { z } from "zod";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import type { Locator, Page } from "@playwright/test";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import * as workflows from "@getpaseo/plugin/otto/workflows";
@@ -25,13 +24,13 @@ test.use({
 });
 type Client = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">;
 type ScheduleApi = Awaited<ReturnType<typeof scheduleApi>>;
-async function scheduleApi(client: Client) {
-  // Match the daemon client's native-ESM boundary. Loading app TS here mixes
-  // Playwright's CJS transform with already-built protocol ESM modules.
-  const moduleUrl = pathToFileURL(
-    path.resolve(__dirname, "../../../plugin/dist/otto/schedules/index.js"),
-  ).href;
-  const rpc: typeof import("@getpaseo/plugin/otto/schedules") = await import(moduleUrl);
+function scheduleApi(client: Client) {
+  // Load after the built daemon client initializes protocol ESM, using the same
+  // CommonJS mode as this file's Artifact/Workflow helpers. Playwright shares its
+  // transform cache with its ESM loader; mixing these modes loses named exports.
+  const rpc: typeof import("@getpaseo/plugin/otto/schedules") = createRequire(__filename)(
+    "@getpaseo/plugin/otto/schedules",
+  );
   async function call<I extends z.ZodType, T>(
     contract: {
       name: string;
@@ -189,7 +188,7 @@ for (const compact of [false, true]) {
       title: "Scheduled report",
     });
     const client = await connectDaemonClient<Client>({ clientIdPrefix: "schedule-artifact" }),
-      api = await scheduleApi(client);
+      api = scheduleApi(client);
     try {
       ottoProvider.replyWith(reply);
       await ottoProvider.refreshCatalog();
@@ -300,7 +299,7 @@ for (const kind of ["agent", "new-agent"] as const) {
       title: "Native Schedule",
     });
     const client = await connectDaemonClient<Client>({ clientIdPrefix: "schedule-native" }),
-      api = await scheduleApi(client);
+      api = scheduleApi(client);
     try {
       ottoProvider.replyWith(reply);
       await ottoProvider.refreshCatalog();
@@ -398,7 +397,7 @@ for (const kind of ["graph", "ai"] as const) {
       title: `Scheduled ${kind}`,
     });
     const client = await connectDaemonClient<Client>({ clientIdPrefix: `schedule-${kind}` }),
-      api = await scheduleApi(client);
+      api = scheduleApi(client);
     let scheduled: ScheduleRef | null = null;
     try {
       ottoProvider.replyWith(reply);

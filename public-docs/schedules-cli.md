@@ -93,4 +93,35 @@ Use `--every <duration>` for intervals and `--cron "<expr>"` for 5-field cron. C
 
 Interval schedules run once immediately by default; pass `--no-run-now` to wait for the first interval. Cron schedules wait for the next matching time; pass `--run-now` to fire once immediately.
 
-Start the command with `paseo --host <target> schedule create ...` when targeting a remote daemon. Pass `--cwd`; your local working directory may not exist on the remote machine.
+Start the command with `otto --host <target> schedule create ...` when targeting a remote daemon. Pass `--cwd`; your local working directory may not exist on the remote machine.
+
+## Project targets, storage, and recovery
+
+`otto schedule targets` exposes the project-owned API for agents, saved AI/Graph Workflows, Artifact data updates, history, independent storage settings, and transfer recovery. The selected host must support the target-aware Schedule capability. The native commands above remain available.
+
+Discover operation names, then inspect the schema for one operation:
+
+```bash
+otto schedule targets operations
+otto schedule targets operations schedules.cadence.preview.request
+```
+
+Named commands read an exact JSON request from `--input`. For example, save this cadence-preview request as `preview.json`, using the IDs of the actual owning host and project:
+
+```json
+{
+  "scope": { "hostId": "HOST_ID", "projectId": "PROJECT_ID" },
+  "cadence": { "type": "cron", "expression": "0 9 * * 1-5", "timezone": "America/New_York" }
+}
+```
+
+```bash
+otto schedule targets preview --input preview.json --json
+otto schedule targets history --input history-request.json --json
+otto schedule targets create --input reviewed-create-request.json --approved
+otto schedule targets transfer-inspect --input inspection-request.json --json
+```
+
+Use `operations` to obtain each command's schema before constructing its request. History accepts `offset` and an optional `limit` from 1 through 50. Writes require `--approved` for the exact action. They also retain the owning origin, revision, and creation or transfer operation ID. The CLI sends one request and never retries an unconfirmed write. Reconnect and inspect its saved record or operation receipt before another write.
+
+Run once acknowledges admission, including a Workflow that is still waiting for human approval. It does not mean that the work is complete. Failed attempts wait for the next scheduled time; uncertain outcomes pause for inspection.

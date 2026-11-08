@@ -148,6 +148,9 @@ chat/Workflow/Artifact result links. The Artifact link retains project or worksp
 and original location; malformed or cross-host links never choose another collection.
 Run once acknowledges admission rather than waiting for a Workflow gate. Cancellation
 requests the exact run and retains ownership until its actual target settles.
+History defaults to 25 runs per app page and accepts an explicit limit from 1 through 50
+in the shared API. Smaller pages preserve every retained attempt while keeping large
+results within the transport or tool response budget.
 
 ## CLI and MCP
 

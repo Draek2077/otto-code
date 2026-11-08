@@ -17,6 +17,12 @@ import { ScheduleDetailModel } from "./detail-model";
 import { ScheduleResultLink } from "./result-link";
 import { styles } from "./styles";
 import { useScheduleActivity } from "./activity";
+import { ScheduleChoice } from "./fields";
+
+const HISTORY_PAGE_SIZES = [5, 10, 25, 50].map((size) => ({
+  value: String(size),
+  label: String(size),
+}));
 
 function confirmation(title: string, message: string, destructive = false) {
   return () => confirmDialog({ title, message, destructive, confirmLabel: "Continue" });
@@ -306,10 +312,14 @@ export function ScheduleDetail({
     void model.refresh();
   }, [model, active, lane.busy, refreshSignal]);
   const previous = useCallback(
-    () => model.page(Math.max(0, state.offset - 50)),
-    [model, state.offset],
+    () => model.page(Math.max(0, state.offset - state.pageSize)),
+    [model, state.offset, state.pageSize],
   );
-  const next = useCallback(() => model.page(state.offset + 50), [model, state.offset]);
+  const next = useCallback(
+    () => model.page(state.offset + state.pageSize),
+    [model, state.offset, state.pageSize],
+  );
+  const pageSize = useCallback((value: string) => model.pageSize(Number(value)), [model]);
   const document = state.document;
   return (
     <ScrollView style={styles.pane} contentContainerStyle={styles.content}>
@@ -336,6 +346,13 @@ export function ScheduleDetail({
         </View>
       ) : null}
       <Text style={styles.title}>{`Run history · ${state.total}`}</Text>
+      <ScheduleChoice
+        label="Runs per page"
+        value={String(state.pageSize)}
+        options={HISTORY_PAGE_SIZES}
+        change={pageSize}
+        disabled={lane.busy}
+      />
       {state.history.map((run) => (
         <RunRow key={run.id} model={model} run={run} disabled={lane.busy || lane.blocked} />
       ))}
@@ -352,7 +369,7 @@ export function ScheduleDetail({
           variant="outline"
           size="sm"
           onPress={next}
-          disabled={lane.busy || state.offset + 50 >= state.total}
+          disabled={lane.busy || state.offset + state.pageSize >= state.total}
         >
           More runs
         </Button>

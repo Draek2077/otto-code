@@ -150,6 +150,7 @@ export const readScheduleHistory = rpc(
   z.object({
     ref: ScheduleRef,
     offset: z.number().int().nonnegative().optional(),
+    limit: z.number().int().min(1).max(50).optional(),
   }),
   z.object({
     runs: z.array(ScheduleRunSummary).max(50),

@@ -71,14 +71,18 @@ export class ScheduleHistory {
     }
     return raw;
   }
-  async page(entry: ScheduleEntry, offset: number) {
+  async page(entry: ScheduleEntry, offset: number, limit = 50) {
     const recent = entry.schedule.runs.toReversed();
     const state = entry.schedule.otto?.history;
     const total = (state?.count ?? 0) + recent.length;
-    const runs = recent.slice(offset, offset + 50).map(scheduleRunSummary);
+    const runs = recent.slice(offset, offset + limit).map(scheduleRunSummary);
     const cache = new Map<string, HistoryNode>();
     if (state) {
-      for (let position = offset + runs.length; position < Math.min(offset + 50, total); position++)
+      for (
+        let position = offset + runs.length;
+        position < Math.min(offset + limit, total);
+        position++
+      )
         runs.push(
           (await this.index.at(state, state.count - 1 - (position - recent.length), cache)).summary,
         );
