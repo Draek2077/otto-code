@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ScrollView, View, Text } from "react-native";
+import { Buffer } from "buffer";
 import type {
   ScheduleDocument,
   ScheduleRef,
@@ -96,6 +97,10 @@ function RunRow({
 function RunContent({ model }: { model: ScheduleDetailModel }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const lane = useSyncExternalStore(model.lane.subscribe, model.lane.getSnapshot);
+  const preview = useMemo(
+    () => (state.part ? Buffer.from(state.part.data, "base64").toString("utf8") : ""),
+    [state.part],
+  );
   const first = useCallback(() => model.part(0), [model]);
   const next = useCallback(() => {
     if (state.part) void model.part(state.part.part + 1);
@@ -129,9 +134,9 @@ function RunContent({ model }: { model: ScheduleDetailModel }) {
         <>
           <Text
             style={styles.muted}
-          >{`Lossless Base64 · part ${state.part.part + 1} of ${state.part.parts}`}</Text>
+          >{`UTF-8 preview · part ${state.part.part + 1} of ${state.part.parts}. Part boundaries may split characters; Base64 copy preserves every byte.`}</Text>
           <Text selectable numberOfLines={15} style={styles.code}>
-            {state.part.data}
+            {preview}
           </Text>
           <View style={styles.actions}>
             <Button
@@ -151,7 +156,7 @@ function RunContent({ model }: { model: ScheduleDetailModel }) {
               Next part
             </Button>
             <Button variant="outline" size="sm" onPress={copy}>
-              Copy complete part
+              Copy lossless Base64 part
             </Button>
           </View>
         </>
@@ -278,11 +283,13 @@ export function ScheduleDetail({
   reference,
   edit,
   transferred,
+  refreshSignal,
 }: {
   api: ScheduleApi;
   reference: ScheduleRef;
   edit(document: ScheduleDocument): void;
   transferred(document: ScheduleDocument): void;
+  refreshSignal: number;
 }) {
   const active = useScheduleActivity();
   const [model] = useState(() => new ScheduleDetailModel(api, reference));
@@ -291,6 +298,13 @@ export function ScheduleDetail({
   useEffect(() => {
     if (active) return model.activate();
   }, [model, active]);
+  const observed = useRef(refreshSignal);
+  useEffect(() => {
+    if (!active || lane.busy || observed.current === refreshSignal) return;
+    observed.current = refreshSignal;
+    // A read cannot acknowledge an uncertain write or authorize replay.
+    void model.refresh();
+  }, [model, active, lane.busy, refreshSignal]);
   const previous = useCallback(
     () => model.page(Math.max(0, state.offset - 50)),
     [model, state.offset],

@@ -23,6 +23,8 @@ export const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[4],
   },
   list: { width: 280, flexShrink: 0, minHeight: 0 },
+  listFrame: { width: 280, minHeight: 0, flexShrink: 0 },
+  hidden: { display: "none" },
   pane: { flex: 1, minWidth: 0, minHeight: 0 },
   content: { padding: theme.spacing[4], paddingBottom: theme.spacing[8], gap: theme.spacing[4] },
   card: {

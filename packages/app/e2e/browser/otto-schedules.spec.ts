@@ -70,13 +70,12 @@ async function begin(page: Page, surface: Locator, name: string, kind: string) {
   const editor = surface.getByTestId("schedule-editor");
   await editor.getByTestId("schedule-name-input").fill(name);
   await editor.getByTestId("schedule-prompt-input").fill("Scheduled acceptance proof");
-  // A future absolute calendar date cannot race the explicit Run once action.
-  const tomorrow = new Date(Date.now() + 86400000);
+  // Keep automatic firing safely after the journey while bounding the existing
+  // minute-scanning cron preview to daily, rather than annual, matches.
+  const later = new Date(Date.now() + 2 * 60 * 60 * 1000);
   await editor
     .getByTestId("cadence-cron-expression")
-    .fill(
-      `${tomorrow.getUTCMinutes()} ${tomorrow.getUTCHours()} ${tomorrow.getUTCDate()} ${tomorrow.getUTCMonth() + 1} *`,
-    );
+    .fill(`${later.getUTCMinutes()} ${later.getUTCHours()} * * *`);
   await editor.getByTestId("schedule-target-kind").click();
   await page.getByText(kind, { exact: true }).filter({ visible: true }).last().click();
   return editor;
@@ -226,9 +225,6 @@ for (const compact of [false, true]) {
       );
       expect(JSON.parse(after.data ?? "null")).toEqual({ value: 2 });
       expect(ottoProvider.requests).toHaveLength(requests);
-      await surface
-        .getByRole("button", { name: "Refresh Schedule and history", exact: true })
-        .click();
       await expect(surface.getByText("Run history · 1", { exact: true })).toBeVisible();
       await page.screenshot({
         path: info.outputPath(`schedule-artifact-${compact ? "compact" : "wide"}.png`),

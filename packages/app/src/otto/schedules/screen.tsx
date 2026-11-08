@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import { ScrollView, View, Text } from "react-native";
 import { ScheduleSummarySchema } from "@getpaseo/protocol/schedule/types";
 import type {
@@ -103,6 +103,7 @@ function HostList({
   status,
   connected,
   open,
+  changed,
 }: {
   binding: Binding;
   projectId: string | null;
@@ -110,6 +111,7 @@ function HostList({
   status: "active" | "paused" | "completed" | undefined;
   connected: boolean;
   open(ref: ScheduleRef): void;
+  changed(hostId: string): void;
 }) {
   if (!connected)
     return (
@@ -124,6 +126,7 @@ function HostList({
       query={query}
       status={status}
       open={open}
+      changed={changed}
     />
   );
 }
@@ -133,6 +136,7 @@ function ConnectedHostList({
   query,
   status,
   open,
+  changed,
 }: Omit<Parameters<typeof HostList>[0], "connected">) {
   const [cursor, setCursor] = useState({ query, status, offset: 0 }),
     [diagnosticOffset, setDiagnosticOffset] = useState(0);
@@ -146,6 +150,10 @@ function ConnectedHostList({
     [query, status, offset, diagnosticOffset],
   );
   const { page, watchError, refresh } = useScheduleLibrary(binding.api, scope, input);
+  const version = page.data?.version;
+  useEffect(() => {
+    if (version !== undefined) changed(binding.serverId);
+  }, [version, changed, binding.serverId]);
   const previous = useCallback(
     () => setCursor({ query, status, offset: Math.max(0, offset - 50) }),
     [query, status, offset],
@@ -300,6 +308,14 @@ function ScheduleDirectory({
     [status, setStatus] = useState<"active" | "paused" | "completed" | undefined>();
   const [selection, setSelection] = useState<Selection>(null),
     [error, setError] = useState("");
+  const [refreshSignal, setRefreshSignal] = useState(0);
+  const selectedHost = selectionHost(selection);
+  const changed = useCallback(
+    (hostId: string) => {
+      if (hostId === selectedHost) setRefreshSignal((value) => value + 1);
+    },
+    [selectedHost],
+  );
   const [legacyEdit, setLegacyEdit] = useState<{
     serverId: string;
     document: ScheduleDocument;
@@ -449,6 +465,7 @@ function ScheduleDirectory({
   }, [projectChoice, host, bindings, guard]);
   const closeLegacy = useCallback(() => setLegacyEdit(null), []);
   const selectedHostId = selectionHost(selection);
+  const listFrameStyle = compact ? styles.pane : styles.listFrame;
   const selectedBinding = bindings.find((row) => row.serverId === selectedHostId);
   const selectedAgents = useMemo(
     () =>
@@ -511,7 +528,9 @@ function ScheduleDirectory({
         {error ? <Alert variant="error" description={error} /> : null}
       </View>
       <View style={styles.columns}>
-        {!compact || !selection ? (
+        {/* The page retains its one scoped library observer while a compact
+            detail consumes its change signal. There is no second watch loop. */}
+        <View style={compact && selection ? styles.hidden : listFrameStyle}>
           <ScrollView
             style={compact ? styles.pane : styles.list}
             contentContainerStyle={styles.content}
@@ -525,6 +544,7 @@ function ScheduleDirectory({
                 status={status}
                 connected={statuses.get(binding.serverId) === "online"}
                 open={open}
+                changed={changed}
               />
             ))}
             {oldHosts.length ? (
@@ -534,7 +554,7 @@ function ScheduleDirectory({
               />
             ) : null}
           </ScrollView>
-        ) : null}
+        </View>
         {selection && selectedBinding ? (
           <SelectedContent
             key={JSON.stringify(selection)}
@@ -545,6 +565,7 @@ function ScheduleDirectory({
             transferred={transferred}
             saved={saved}
             close={close}
+            refreshSignal={refreshSignal}
           />
         ) : null}
         {!selection && !compact ? (
@@ -575,6 +596,7 @@ function SelectedContent({
   transferred,
   saved,
   close,
+  refreshSignal,
 }: {
   selection: NonNullable<Selection>;
   binding: Binding;
@@ -583,6 +605,7 @@ function SelectedContent({
   transferred(document: ScheduleDocument): void;
   saved(document: ScheduleDocument): void;
   close(): void;
+  refreshSignal: number;
 }) {
   switch (selection.kind) {
     case "detail":
@@ -592,6 +615,7 @@ function SelectedContent({
           reference={selection.ref}
           edit={edit}
           transferred={transferred}
+          refreshSignal={refreshSignal}
         />
       );
     case "edit":
