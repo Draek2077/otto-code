@@ -5,7 +5,7 @@ import test from "node:test";
 const root = new URL("../../", import.meta.url);
 const source = readFileSync(new URL(".github/workflows/otto-app-acceptance.yml", root), "utf8");
 
-test("Otto acceptance builds fresh owning declarations and exercises every Otto browser spec serially", () => {
+test("Otto acceptance builds fresh declarations and partitions every Otto spec with one worker per shard", () => {
   const command =
     "npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-.*\\.spec\\.ts$' --workers=1 --retries=0 --max-failures=1";
   assert.ok(source.includes(command));
@@ -13,6 +13,15 @@ test("Otto acceptance builds fresh owning declarations and exercises every Otto 
   assert.ok(source.indexOf("run: npm run build:server") < source.indexOf(command));
   assert.ok(source.includes("run: npm run build --workspace=@getpaseo/expo-two-way-audio"));
   assert.match(source, /E2E_WORKERS: "1"/);
+  assert.ok(source.includes('--shard="$OTTO_ACCEPTANCE_SHARD/2"'));
+  assert.ok(
+    source.includes(
+      "shard: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.journey != 'all' && '[1]' || '[1,2]') }}",
+    ),
+  );
+  assert.match(source, /max-parallel: 2/);
+  assert.match(source, /fail-fast: false/);
+  assert.ok(source.includes("name: otto-app-acceptance-${{ matrix.shard }}"));
   const specs = new Set(
     readdirSync(new URL("packages/app/e2e/browser/", root)).filter((name) =>
       /^otto-.*\.spec\.ts$/.test(name),

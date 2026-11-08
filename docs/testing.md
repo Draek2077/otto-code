@@ -294,7 +294,9 @@ normal timeout, propagate failures, and are never replayed.
 <!-- OTTO(provider-tests): coverage for the independently owned provider plugin. -->
 
 `Otto App Acceptance` builds the owning server stack and app dependency, then runs
-every `e2e/browser/otto-*.spec.ts` with one browser worker and no retries. It runs on
+every `e2e/browser/otto-*.spec.ts` across two bounded CI shards, each with one browser
+worker and no retries. Playwright partitions the complete spec selection; neither shard
+is an optional subset. It runs on
 the restoration branch and relevant pull requests; manual dispatch can pin an exact
 source commit. These journeys use isolated test daemons and synthetic endpoints,
 with no provider API keys, native model launches or publishing. Operational Brain
@@ -346,7 +348,8 @@ packaging remains a build gate.
 
 The Otto App Acceptance workflow always runs all Otto journeys for pushes and pull
 requests. Manual dispatch accepts an exact `checkout_ref` and a bounded `journey`
-selection: `all`, `knowledge`, or `brain-cancellation`. The cancellation diagnostic
+selection: `all` or one named journey from the workflow's choices. A single-journey
+diagnostic uses one job. The cancellation diagnostic
 repeats that exact journey three times, serially, without retries. A diagnostic
 subset does not replace the full acceptance gate. Failure evidence is retained;
 diagnostics use a separate concurrency group so they cannot cancel that gate.

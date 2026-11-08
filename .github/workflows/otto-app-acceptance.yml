@@ -68,8 +68,16 @@ env:
 
 jobs:
   acceptance:
+    name: acceptance (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        # Full coverage uses Playwright's own partitioning. Manual single-journey
+        # diagnostics retain one serial job and never cancel a full gate.
+        shard: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.journey != 'all' && '[1]' || '[1,2]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,7 +110,7 @@ jobs:
           printf '%s' 'otto-acceptance-fixture' | gnome-keyring-daemon --unlock --components=secrets
           case "$OTTO_ACCEPTANCE_JOURNEY" in
             all)
-              npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1
+              npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1 --shard="$OTTO_ACCEPTANCE_SHARD/2"
               ;;
             knowledge)
               npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-knowledge.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1
@@ -141,11 +149,12 @@ jobs:
         env:
           E2E_WORKERS: "1"
           OTTO_ACCEPTANCE_JOURNEY: ${{ github.event_name == 'workflow_dispatch' && inputs.journey || 'all' }}
+          OTTO_ACCEPTANCE_SHARD: ${{ matrix.shard }}
       - name: Retain screenshots and traces
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: otto-app-acceptance
+          name: otto-app-acceptance-${{ matrix.shard }}
           path: |
             packages/app/test-results/
             packages/app/playwright-report/
