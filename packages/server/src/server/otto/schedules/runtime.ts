@@ -90,8 +90,9 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
     return { requestedTarget: structuredClone(schedule.target) };
   }
   acquire(schedule: StoredSchedule): (() => void) | null {
+    if (this.closed) return null;
     if (isPaseoSchedule(schedule)) return () => {};
-    if (this.closed || this.admitted >= 5) return null;
+    if (this.admitted >= 5) return null;
     this.admitted++;
     let released = false;
     return () => {
@@ -103,7 +104,6 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
   async execute(
     input: Parameters<ScheduleRuntimeHooks["execute"]>[0],
   ): Promise<ScheduleExecutionResult> {
-    if (isPaseoSchedule(input.schedule)) return input.legacy();
     if (this.closed)
       throw new ScheduleExecutionError(
         "Schedule target host is stopping.",
@@ -111,6 +111,7 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
         {},
         "Review this Schedule after host shutdown.",
       );
+    if (isPaseoSchedule(input.schedule)) return input.legacy();
     let settle!: () => void;
     const done = new Promise<void>((resolve) => {
       settle = resolve;

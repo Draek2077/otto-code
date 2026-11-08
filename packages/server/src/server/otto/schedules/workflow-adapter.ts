@@ -1,9 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  isTerminalRunStatus,
-  type WorkflowEntry,
-  type WorkflowLaunch,
-} from "@getpaseo/plugin/otto/workflows";
+import { isTerminalRunStatus, type WorkflowEntry } from "@getpaseo/plugin/otto/workflows";
 import { WorkflowScheduleAdapter } from "../workflows/schedule-adapter.js";
 import { WorkflowError } from "../workflows/files.js";
 import type { ScheduleTarget, ScheduleAudit } from "./types.js";
@@ -17,12 +13,7 @@ interface Identity {
   runId: string;
 }
 export class SavedWorkflowScheduleAdapter {
-  constructor(
-    readonly ports: {
-      adapter: WorkflowScheduleAdapter;
-      validateApproval(launch: WorkflowLaunch): void;
-    },
-  ) {}
+  constructor(readonly adapter: WorkflowScheduleAdapter) {}
   /** Resolve the current saved definition without starting it; callers explicitly approve this target. */
   async review(target: Target, scope: ProjectScheduleScope): Promise<Target> {
     const loaded = await this.load(target, scope, { scheduleId: "review", runId: randomUUID() });
@@ -45,8 +36,8 @@ export class SavedWorkflowScheduleAdapter {
         "Select a saved Workflow on this Schedule's owning host and project.",
       );
     try {
-      const entry = await this.ports.adapter.host.library.read(target.source);
-      const prepared = await this.ports.adapter.prepare({
+      const entry = await this.adapter.host.library.read(target.source);
+      const prepared = await this.adapter.prepare({
         source: entry.ref,
         expectedRevision: entry.revision,
         workspaceId: target.workspaceId,
@@ -58,7 +49,8 @@ export class SavedWorkflowScheduleAdapter {
         scheduleSource: { scheduleId: identity.scheduleId, scheduleRunId: identity.runId },
       });
       try {
-        this.ports.validateApproval(prepared.launch);
+        // Human gates remain ordinary Workflow gates. Host review enforces seats/caps,
+        // and the saved authority fingerprint requires explicit review of autopilot changes.
         const kind = prepared.entry.document.kind;
         if ((kind !== "ai" && kind !== "graph") || kind !== target.source.kind)
           throw new ScheduleError(
@@ -114,13 +106,13 @@ export class SavedWorkflowScheduleAdapter {
       cancel: async () => {
         if (!started) return "not_started";
         const run = await started;
-        const current = await this.ports.adapter.host.library.read(run.ref);
+        const current = await this.adapter.host.library.read(run.ref);
         if (current.document.kind === "run" && isTerminalRunStatus(current.document.value.status))
           return "settled";
         try {
-          await this.ports.adapter.cancel(run.ref);
+          await this.adapter.cancel(run.ref);
         } catch (error) {
-          const final = await this.ports.adapter.host.library.read(run.ref);
+          const final = await this.adapter.host.library.read(run.ref);
           if (final.document.kind !== "run" || !isTerminalRunStatus(final.document.value.status))
             throw error;
         }
@@ -136,7 +128,7 @@ export class SavedWorkflowScheduleAdapter {
           disposition: "running",
         };
         await stamp(audit);
-        const final = await this.ports.adapter.host.waitForSettlement(admitted.ref, signal);
+        const final = await this.adapter.host.waitForSettlement(admitted.ref, signal);
         if (final.document.kind !== "run")
           throw new ScheduleExecutionError(
             "Workflow run identity is unavailable.",

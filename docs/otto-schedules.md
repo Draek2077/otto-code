@@ -8,6 +8,10 @@ The optional ports and all target-specific policy live in
 `packages/server/src/server/otto/schedules/`. Edits in Paseo's scheduler, store, native tools,
 and session boundary carry `OTTO(schedules)` markers. Workflow and Artifact operations use
 their existing daemon owners; they do not construct providers or reuse ordinary user chats.
+The daemon bootstrap composes these ports before starting Paseo's original clock. Shutdown
+stops admission and revokes target waits before Workflow, Artifact and provider teardown.
+The native runner remains Paseo-owned. Composition alone does not expose a new editor or
+advertise a target capability.
 
 ## Internal records and the legacy transport
 

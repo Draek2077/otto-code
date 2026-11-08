@@ -102,6 +102,20 @@ test("five extended reservations are bounded and each release is idempotent", ()
   expect(f.runtime.acquire(record())).toBeTypeOf("function");
   expect(f.runtime.acquire(record())).toBeNull();
 });
+
+test("shutdown revokes new native admissions without changing their normal runner", async () => {
+  const f = fixture();
+  const schedule: StoredSchedule = {
+    ...record(),
+    target: { type: "agent", agentId: "00000000-0000-4000-8000-000000000001" },
+  };
+  await f.runtime.stop();
+  expect(f.runtime.acquire(schedule)).toBeNull();
+  await expect(f.runtime.execute({ ...f.input, schedule })).rejects.toMatchObject({
+    disposition: "unknown",
+  });
+  expect(f.legacy).not.toHaveBeenCalled();
+});
 test("pre-effect audit is durable before execution and a failed stamp admits no target", async () => {
   const f = fixture();
   f.stamp.mockRejectedValueOnce(new Error("Store publication failed"));

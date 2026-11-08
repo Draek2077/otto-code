@@ -262,6 +262,7 @@ import { createPreviewProcessPorts, previewProtectedPorts } from "./otto/preview
 import { createRetainedToolPolicy } from "./otto/retained-tool-policy.js"; // OTTO(preview)
 import { ArtifactDaemonService } from "./otto/artifacts/service.js"; // OTTO(artifacts): one daemon owner for UI and tools.
 import { createWorkflowComposition } from "./otto/workflows/composition.js"; // OTTO(workflows): isolated owner over existing Paseo sessions.
+import { createScheduleComposition } from "./otto/schedules/composition.js"; // OTTO(schedules): target/storage ports for Paseo's single scheduler.
 import { createWorkflowArtifactPort } from "./otto/workflows/artifact-source.js"; // OTTO(workflows): live ownership, not editable labels.
 import { BrowserAdmissions } from "./otto/browser/admission.js"; // OTTO(browser-admission)
 import { lookup as lookupBrowserDestination } from "node:dns/promises"; // OTTO(browser-admission): only explicit navigation resolves DNS.
@@ -271,6 +272,8 @@ import { resolveStructuredGenerationProviders } from "./agent/structured-generat
 import { nativeContextInspector } from "./otto/context-management/native-host.js"; // OTTO(context-management): read-only native conventions.
 import { createKnowledgeGenerationSource } from "./otto/project-knowledge/generation.js"; // OTTO(knowledge): use the existing provider-neutral generation boundary.
 import { createArtifactGeneration } from "./otto/artifacts/generation.js"; // OTTO(artifacts): cancellable provider-owned utility sessions.
+import { createArtifactDataGeneration } from "./otto/artifacts/data-generation.js"; // OTTO(schedules): JSON-only updates, never HTML regeneration.
+import type { ArtifactCompletionPorts } from "./otto/artifacts/completion.js";
 import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
 
@@ -1078,6 +1081,16 @@ export async function createPaseoDaemon(
   }); // OTTO(browser-host): profile/process resources remain lazy until explicit page creation.
   ottoHostBrowser.register(); // OTTO(browser-host)
   const knowledgeGeneration = createKnowledgeGenerationSource(); // OTTO(knowledge): inert until AgentManager composition below.
+  // OTTO(artifacts,schedules): both utility formats share provider selection without sharing sessions.
+  const artifactCompletion = (): ArtifactCompletionPorts => ({
+    providers: providerSnapshotManager,
+    candidates: (cwd) =>
+      resolveStructuredGenerationProviders({
+        cwd,
+        providerSnapshotManager,
+        daemonConfig: { metadataGeneration: daemonConfigStore.get().metadataGeneration },
+      }),
+  });
   ottoArtifacts = new ArtifactDaemonService({
     hostId: serverId,
     home: config.paseoHome,
@@ -1085,16 +1098,7 @@ export async function createPaseoDaemon(
     workspaces: workspaceRegistry,
     projects: () => projectRegistry!.list(),
     reportGenerationError: (error) => logger.error({ err: error }, "Artifact generation failed"), // OTTO(artifacts): provider errors stay in host diagnostics, never RPC responses.
-    generation: (request) =>
-      createArtifactGeneration({
-        providers: providerSnapshotManager,
-        candidates: (cwd) =>
-          resolveStructuredGenerationProviders({
-            cwd,
-            providerSnapshotManager,
-            daemonConfig: { metadataGeneration: daemonConfigStore.get().metadataGeneration },
-          }),
-      })(request),
+    generation: (request) => createArtifactGeneration(artifactCompletion())(request),
     schedules: { inspect: (id) => scheduleService.inspect(id) }, // OTTO(artifacts): provenance reads the owning scheduler, never prompt-derived labels alone.
     workflows: createWorkflowArtifactPort(
       () => ottoWorkflows?.service.host ?? null,
@@ -1634,6 +1638,16 @@ export async function createPaseoDaemon(
       },
     );
   };
+  const scheduleTargets = createScheduleComposition({
+    home: config.paseoHome,
+    hostId: serverId,
+    hostLabel: serverId,
+    metadata: projectRegistry.ottoMetadata,
+    projects: () => projectRegistry!.list(),
+    workflows: ottoWorkflows.schedules,
+    artifacts: ottoArtifacts,
+    generateData: createArtifactDataGeneration(artifactCompletion()),
+  }); // OTTO(schedules): owners are ready before the original clock starts.
   const scheduleService = new ScheduleService({
     paseoHome: config.paseoHome,
     logger,
@@ -1643,6 +1657,8 @@ export async function createPaseoDaemon(
     createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
     createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
+    store: scheduleTargets.registry, // OTTO(schedules): includes retained legacy and independently resolved project stores.
+    otto: scheduleTargets.runtime, // OTTO(schedules): same claim/admission/settlement owner.
   });
   await scheduleService.start();
   agentManager.setAgentArchivedCallback(async (agentId) => {
@@ -2121,6 +2137,9 @@ export async function createPaseoDaemon(
       await ottoBrain.close(); // OTTO(brain-host): release waits/feed; never stop independent host jobs.
       await ottoEditor.close(); // OTTO(editor): bounded language-server teardown on startup failure.
       await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
+      await scheduleService
+        .stop()
+        .catch((cleanupError) => logger.warn({ err: cleanupError }, "Schedule cleanup failed")); // OTTO(schedules): revoke target waits before their owning services stop.
       await ottoArtifacts?.close(); // OTTO(artifacts): revoke late generation publication.
       await ottoWorkflows?.close(); // OTTO(workflows): settle owned sessions before provider teardown.
       await ottoKanban?.close(); // OTTO(kanban): no polling survives daemon startup failure.
@@ -2158,6 +2177,9 @@ export async function createPaseoDaemon(
     scriptHealthMonitor.stop();
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();
+    await scheduleService
+      .stop()
+      .catch((error) => logger.warn({ err: error }, "Schedule cleanup failed")); // OTTO(schedules): stop the clock and revoke publication before target/provider teardown.
     await ottoWorkflows?.close(); // OTTO(workflows): close only owned runs before Paseo takes its agent shutdown snapshot.
     agentManager.prepareForShutdown();
     await closeAllAgents(logger, agentManager);
@@ -2191,7 +2213,6 @@ export async function createPaseoDaemon(
     terminalManager.killAll();
     ottoSpeech?.close(); // OTTO(speech): abort owned playback before releasing the shared engine.
     await speechService.stop();
-    await scheduleService.stop().catch(() => undefined);
     await relayRuntime?.stop().catch(() => undefined);
     if (wsServer) {
       await wsServer.close();

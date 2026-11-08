@@ -3,17 +3,13 @@ import { workflowHostFixture, deferred } from "../workflows/test-utils/host-fixt
 import { WorkflowScheduleAdapter } from "../workflows/schedule-adapter.js";
 import { SavedWorkflowScheduleAdapter } from "./workflow-adapter.js";
 import type { ScheduleTarget, ScheduleAudit } from "./types.js";
-import { ScheduleError } from "./files.js";
 
 test("a future fire resolves latest saved payload and stamps its exact revision before starting", async () => {
   const f = await workflowHostFixture();
   try {
     if (f.graph.kind !== "graph") throw new Error("Expected Graph");
     const source = await f.library.write(f.scope, { kind: "graph", value: f.graph.graph }, null);
-    const adapter = new SavedWorkflowScheduleAdapter({
-      adapter: new WorkflowScheduleAdapter(f.host),
-      validateApproval: () => {},
-    });
+    const adapter = new SavedWorkflowScheduleAdapter(new WorkflowScheduleAdapter(f.host));
     const target: Extract<ScheduleTarget, { type: "workflow" }> = {
       type: "workflow",
       source: { ...source.ref, kind: "graph" },
@@ -68,10 +64,7 @@ test("changed saved authority blocks before any provider session and releases it
   try {
     if (f.graph.kind !== "graph") throw new Error("Expected Graph");
     const source = await f.library.write(f.scope, { kind: "graph", value: f.graph.graph }, null);
-    const adapter = new SavedWorkflowScheduleAdapter({
-      adapter: new WorkflowScheduleAdapter(f.host),
-      validateApproval: () => {},
-    });
+    const adapter = new SavedWorkflowScheduleAdapter(new WorkflowScheduleAdapter(f.host));
     const target: Extract<ScheduleTarget, { type: "workflow" }> = {
       type: "workflow",
       source: { ...source.ref, kind: "graph" },
@@ -118,10 +111,7 @@ test("scheduled AI remains pending through Planning and exact-owner cancellation
       { kind: "ai", value: { ...f.ai.definition, autopilot: false } },
       null,
     );
-    const adapter = new SavedWorkflowScheduleAdapter({
-      adapter: new WorkflowScheduleAdapter(f.host),
-      validateApproval: () => {},
-    });
+    const adapter = new SavedWorkflowScheduleAdapter(new WorkflowScheduleAdapter(f.host));
     const target: Extract<ScheduleTarget, { type: "workflow" }> = {
       type: "workflow",
       source: { ...source.ref, kind: "ai" },
@@ -165,18 +155,12 @@ test("scheduled AI remains pending through Planning and exact-owner cancellation
     await f.cleanup();
   }
 });
-test("approval policy is an explicit owning input and cannot be bypassed by Schedule review", async () => {
+test("changed saved autopilot requires explicit target review before another fire", async () => {
   const f = await workflowHostFixture();
   try {
     if (f.ai.kind !== "ai") throw new Error("Expected AI");
     const source = await f.library.write(f.scope, { kind: "ai", value: f.ai.definition }, null);
-    const validation = vi.fn(() => {
-      throw new ScheduleError("unsupported", "Approval policy has not been selected");
-    });
-    const adapter = new SavedWorkflowScheduleAdapter({
-      adapter: new WorkflowScheduleAdapter(f.host),
-      validateApproval: validation,
-    });
+    const adapter = new SavedWorkflowScheduleAdapter(new WorkflowScheduleAdapter(f.host));
     const target: Extract<ScheduleTarget, { type: "workflow" }> = {
       type: "workflow",
       source: { ...source.ref, kind: "ai" },
@@ -190,8 +174,22 @@ test("approval policy is an explicit owning input and cannot be bypassed by Sche
         allowQueryEffects: false,
       },
     };
-    await expect(adapter.review(target, f.scope)).rejects.toMatchObject({ kind: "unsupported" });
-    expect(validation).toHaveBeenCalledTimes(1);
+    const reviewed = await adapter.review(target, f.scope);
+    await f.library.write(
+      f.scope,
+      {
+        kind: "ai",
+        value: { ...f.ai.definition, autopilot: !f.ai.definition.autopilot },
+      },
+      source.revision,
+      source.ref,
+    );
+    await expect(
+      adapter.prepare(reviewed, f.scope, {
+        scheduleId: "schedule",
+        runId: "next-fire",
+      }),
+    ).rejects.toThrow("authority changed");
     expect(f.agents.size).toBe(0);
     await expect(adapter.review(target, { ...f.scope, hostId: "foreign" })).rejects.toMatchObject({
       kind: "invalid",
