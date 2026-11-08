@@ -22,6 +22,7 @@ const entries = {
   "./otto/preview": "shared", // OTTO(preview): structural RPC data contains no Node imports.
   "./otto/artifacts": "shared", // OTTO(artifacts): bounded structural contracts only.
   "./otto/workflows": "shared", // OTTO(workflows): documents and scoped RPC only; no engine/agent runtime.
+  "./otto/schedules": "shared", // OTTO(schedules): structural targets/origins/audit, never scheduler or provider execution.
   "./otto/workflows/judge-verdict": "shared", // OTTO(workflows): structured verdict declarations and pure interpretation.
   "./otto/connectors": "shared", // OTTO(connectors): catalog and structural RPC only; no authorization runtime.
   "./otto/speech": "shared", // OTTO(speech): structural selections and bounded RPC only.
@@ -87,6 +88,7 @@ function boundaryViolations(entry: string, runtime: "shared" | "server" | "clien
         if (
           specifier !== "zod" &&
           specifier !== "@getpaseo/protocol/agent-types" &&
+          specifier !== "@getpaseo/protocol/schedule/types" && // OTTO(schedules): reviewed pure Zod DTOs and provider manifest types.
           specifier !== "@getpaseo/protocol/browser-automation/rpc-schemas"
         )
           violations.push(label);
@@ -118,8 +120,10 @@ describe("plugin SDK import boundaries", () => {
         specifier === "."
           ? "index"
           : specifier.slice(2) +
-            // OTTO(workflows): this multi-file structural entry has its own index.
-            (["./client", "./server", "./otto/workflows"].includes(specifier) ? "/index" : "");
+            // OTTO(schedules): multi-file structural entries keep explicit runtime-boundary classification.
+            (["./client", "./server", "./otto/workflows", "./otto/schedules"].includes(specifier)
+              ? "/index"
+              : "");
       expect(boundaryViolations(path.join(sourceDirectory, `${name}.ts`), runtime)).toEqual([]);
     },
   );

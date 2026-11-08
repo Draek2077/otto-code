@@ -5901,7 +5901,7 @@ describe("heartbeat ownership MCP tools", () => {
 
     await registeredTool(server, "delete_heartbeat").handler({ id: heartbeat.id });
 
-    expect(deleteSchedule).toHaveBeenCalledWith(heartbeat.id);
+    expect(deleteSchedule).toHaveBeenCalledWith(heartbeat.id, { legacyOnly: true }); // OTTO(schedules): retain caller checks and queued legacy-target authority.
   });
 
   it("rejects another agent's heartbeat", async () => {
@@ -5987,6 +5987,7 @@ describe("update_schedule MCP tool", () => {
 
     expect(update).toHaveBeenCalledWith({
       id: "schedule-1",
+      mutation: { legacyOnly: true },
       name: "updated name",
       prompt: "new prompt",
     });
@@ -6012,6 +6013,7 @@ describe("update_schedule MCP tool", () => {
 
     expect(update).toHaveBeenCalledWith({
       id: "schedule-1",
+      mutation: { legacyOnly: true },
       cadence: { type: "cron", expression: "*/10 * * * *" },
     });
   });
@@ -6037,6 +6039,7 @@ describe("update_schedule MCP tool", () => {
 
     expect(update).toHaveBeenCalledWith({
       id: "schedule-1",
+      mutation: { legacyOnly: true },
       cadence: {
         type: "cron",
         expression: "0 9 * * 1-5",
@@ -6066,6 +6069,7 @@ describe("update_schedule MCP tool", () => {
 
     expect(update).toHaveBeenCalledWith({
       id: "schedule-1",
+      mutation: { legacyOnly: true },
       cadence: { type: "cron", expression: "*/10 * * * *" },
     });
   });
@@ -6103,6 +6107,7 @@ describe("update_schedule MCP tool", () => {
 
     expect(update).toHaveBeenCalledWith({
       id: "schedule-1",
+      mutation: { legacyOnly: true },
       cadence,
     });
   });
@@ -6232,6 +6237,7 @@ describe("update_schedule MCP tool", () => {
 
     expect(update).toHaveBeenCalledWith({
       id: "schedule-1",
+      mutation: { legacyOnly: true },
       maxRuns: null,
       expiresAt: null,
       newAgentConfig: {

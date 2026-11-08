@@ -141,6 +141,8 @@ test("stable host binding is pinned once before writing and survives project lab
   expect(pinned.record.scheduleDirectoryName).toBe(path.basename(origin.directory));
   expect((await f.stores.pin(await f.stores.selected(f.scope))).storeKey).toBe(origin.storeKey);
   expect((await f.metadata.read("project")).revision).toBe(pinned.revision);
+  await writeFile(f.file, JSON.stringify([{ ...pinned.record, customName: "Renamed project" }]));
+  expect((await f.stores.selected(f.scope)).storeKey).toBe(origin.storeKey);
 });
 test("host binding collision includes archived projects and preserves registry bytes", async () => {
   const f = await fixture();
@@ -153,7 +155,7 @@ test("host binding collision includes archived projects and preserves registry b
         projectId: "peer",
         rootPath: path.join(f.root, "peer"),
         archivedAt: "then",
-        scheduleDirectoryName: "Reserved",
+        scheduleDirectoryName: "reserved",
       },
     ]),
   );
