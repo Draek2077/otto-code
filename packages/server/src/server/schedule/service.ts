@@ -636,7 +636,10 @@ export class ScheduleService {
       if (schedule.status !== "active" || !schedule.nextRunAt) {
         continue;
       }
-      if (this.runningScheduleIds.has(schedule.id)) {
+      if (
+        this.runningScheduleIds.has(schedule.id) ||
+        (this.otto && schedule.runs.some((run) => run.status === "running")) // OTTO(schedules): a retained claim may have an unpersisted outcome; never replay it.
+      ) {
         continue;
       }
       if (shouldCompleteSchedule(schedule, now)) {
@@ -863,6 +866,7 @@ export class ScheduleService {
     const updatedSchedule = await this.store.update(scheduleId, (schedule) => {
       if (
         (this.otto && !sameScheduleTarget(schedule.target, admittedTarget)) || // OTTO(schedules): retargeting cannot bypass the appropriate executor's admission.
+        (this.otto && schedule.runs.some((run) => run.status === "running")) || // OTTO(schedules): recheck durable claims inside the store queue.
         schedule.status !== "active" ||
         !schedule.nextRunAt ||
         shouldCompleteSchedule(schedule, now) ||
@@ -918,6 +922,12 @@ export class ScheduleService {
     const updated = await this.store.update(
       scheduleId,
       (schedule) => {
+        // OTTO(schedules): memory ownership can end before a failed settlement
+        // publication is repaired. A new manual run cannot bypass that claim.
+        if (this.otto && schedule.runs.some((run) => run.status === "running"))
+          throw new ScheduleStateConflictError(
+            "Inspect and settle the retained Schedule attempt before starting another run.",
+          );
         if (this.otto && !sameScheduleTarget(schedule.target, admittedTarget))
           throw new ScheduleStateConflictError(
             "Schedule target changed before admission. Refresh and review this run.",

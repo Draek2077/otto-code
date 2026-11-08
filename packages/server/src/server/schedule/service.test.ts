@@ -45,6 +45,22 @@ interface ScheduleServiceInternals {
   executeSchedule(schedule: StoredSchedule, runId: string): Promise<ScheduleExecutionResult>;
 }
 
+// OTTO(schedules): injected storage failure retains the real persisted claim.
+function rejectSettlementUpdates(store: ScheduleStore): ScheduleStore["update"] {
+  const update = store.update.bind(store);
+  return (id, updater, mutation) =>
+    update(
+      id,
+      async (current) => {
+        const next = await updater(current);
+        if (next.runs.some((run) => run.status !== "running"))
+          throw new Error("Settlement publication unavailable");
+        return next;
+      },
+      mutation,
+    );
+}
+
 class OverlappingTickRunner {
   private resolveFirstRunStarted: () => void = () => {};
   private resolveFirstRunBlocked: () => void = () => {};
@@ -425,6 +441,46 @@ describe("ScheduleService", () => {
   });
 
   // OTTO(schedules): extended executors must share the durable claim/finish path.
+  test("a failed settlement publication fences later automatic and manual runs", async () => {
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
+    const execute = vi.fn(async () => ({ agentId: null, output: "Effect completed" }));
+    const hooks: ScheduleRuntimeHooks = {
+      requested: (schedule) => ({ requestedTarget: schedule.target }),
+      acquire: () => () => {},
+      execute,
+      settle: (_schedule, run) => ({ run }),
+      recover: (_schedule, run) => ({ run }),
+      stop: async () => {},
+    };
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      store,
+      otto: hooks,
+    });
+    const created = await service.create({
+      prompt: "One effect",
+      cadence: { type: "every", everyMs: 60000 },
+      target: { type: "agent", agentId: "00000000-0000-4000-8000-000000000001" },
+    });
+    const rejectSettlement = rejectSettlementUpdates(store);
+    vi.spyOn(store, "update").mockImplementation(rejectSettlement);
+    now = new Date("2026-01-01T00:01:00.000Z");
+    await expect(service.tick()).rejects.toThrow("Settlement publication unavailable");
+    const retained = await service.inspect(created.id);
+    expect(retained.runs).toHaveLength(1);
+    expect(retained.runs[0].status).toBe("running");
+    now = new Date("2026-01-01T00:03:00.000Z");
+    await service.tick();
+    await expect(service.runOnce(created.id)).rejects.toThrow("retained Schedule attempt");
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect((await service.inspect(created.id)).runs).toEqual(retained.runs);
+  });
+
   test("retargeting between list and claim cannot bypass target admission", async () => {
     const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
     const execute = vi.fn(async () => ({ agentId: null, output: "Completed" }));

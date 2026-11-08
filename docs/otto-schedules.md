@@ -92,6 +92,11 @@ active runs.
 
 ## Claims, effects, and cancellation
 
+A durable running claim also fences later automatic and manual attempts if publishing its
+settlement fails. Releasing an in-memory reservation does not prove that effects did not occur.
+Restart recovery retains that attempt and pauses it for inspection; it never infers success or
+replays the work to reconstruct an outcome.
+
 A claim captures the requested target before resolution. The target adapter stamps its
 resolved identity and exact content revision durably before starting effects. Run audit is
 additive; cancellation and uncertain outcomes use audit dispositions while the old run

@@ -4,6 +4,53 @@ import { WorkflowScheduleAdapter } from "../workflows/schedule-adapter.js";
 import { SavedWorkflowScheduleAdapter } from "./workflow-adapter.js";
 import type { ScheduleTarget, ScheduleAudit } from "./types.js";
 
+test.each(["seats", "limits"] as const)(
+  "saved AI %s changes require fresh approval even with explicit Schedule overrides",
+  async (field) => {
+    const f = await workflowHostFixture();
+    try {
+      if (f.ai.kind !== "ai") throw new Error("Expected AI");
+      const definition = f.ai.definition;
+      const source = await f.library.write(f.scope, { kind: "ai", value: definition }, null);
+      const adapter = new SavedWorkflowScheduleAdapter(new WorkflowScheduleAdapter(f.host));
+      const target: Extract<ScheduleTarget, { type: "workflow" }> = {
+        type: "workflow",
+        source: { ...source.ref, kind: "ai" },
+        workspaceId: "workspace-1",
+        seats: definition.seats,
+        limits: definition.limits,
+        inputs: {},
+        approval: {
+          policyFingerprint: "a".repeat(64),
+          allowTemplateCode: false,
+          allowQueryEffects: false,
+        },
+      };
+      const approved = await adapter.review(target, f.scope);
+      await f.library.write(
+        f.scope,
+        {
+          kind: "ai",
+          value: {
+            ...definition,
+            ...(field === "seats"
+              ? { seats: { ...definition.seats, worker: { provider: "changed", model: "other" } } }
+              : { limits: { ...definition.limits, maxAgents: definition.limits.maxAgents + 1 } }),
+          },
+        },
+        source.revision,
+        source.ref,
+      );
+      await expect(
+        adapter.prepare(approved, f.scope, { scheduleId: "schedule", runId: "next-fire" }),
+      ).rejects.toThrow("authority changed");
+      expect(f.agents.size).toBe(0);
+    } finally {
+      await f.cleanup();
+    }
+  },
+);
+
 test("a future fire resolves latest saved payload and stamps its exact revision before starting", async () => {
   const f = await workflowHostFixture();
   try {

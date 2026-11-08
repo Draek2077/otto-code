@@ -48,7 +48,12 @@ afterEach(() => {
   process.env.PATH = originalEnv.PATH;
   process.env.PATHEXT = originalEnv.PATHEXT;
   for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
+    // OTTO(ci): Windows can briefly retain the executed fixture image after its
+    // probe exits. Retry only fixture disposal, never executable discovery.
+    const relative = path.relative(os.tmpdir(), dir);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative))
+      throw new Error("Unexpected executable fixture cleanup path");
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
 
