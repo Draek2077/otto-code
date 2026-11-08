@@ -44,6 +44,16 @@ function caller(client: Client) {
       ),
     );
 }
+// A run is atomically replaced while phases settle. A read conflict is an
+// observation for the existing bounded poll, not a mutation to replay. Other
+// host errors and invalid responses still fail the journey immediately.
+async function pollWorkflow(client: Client, ref: workflows.WorkflowRef) {
+  const response = workflows.workflowRead.output.parse(
+    await client.invokePluginRpc("otto-workflows", workflows.workflowRead.name, ref),
+  );
+  if (!response.ok && response.error.code === "conflict") return null;
+  return workflows.unwrapWorkflowResult(response);
+}
 function scope(workspace: SeededWorkspace) {
   return { hostId: getServerId(), projectId: workspace.projectId };
 }
@@ -268,8 +278,8 @@ test("real Graph workers, gates, ordinary chats and Artifact provenance use the 
     await expect
       .poll(
         async () => {
-          const entry = await call(workflows.workflowRead, started.ref);
-          return entry.document.kind === "run"
+          const entry = await pollWorkflow(client, started.ref);
+          return entry?.document.kind === "run"
             ? (entry.document.value.phases ?? []).find((phase) => phase.id === "approval")?.status
             : null;
         },
@@ -314,8 +324,8 @@ test("real Graph workers, gates, ordinary chats and Artifact provenance use the 
     await expect
       .poll(
         async () => {
-          const entry = await call(workflows.workflowRead, started.ref);
-          return entry.document.value.status;
+          const entry = await pollWorkflow(client, started.ref);
+          return entry?.document.value.status;
         },
         { timeout: 30000 },
       )
