@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import type { AgentClient, AgentSession, AgentStreamEvent } from "../../agent/agent-sdk-types.js";
 import { createArtifactGeneration } from "./generation.js";
+import { createArtifactDataGeneration } from "./data-generation.js";
 import { cleanupArtifactOperation } from "./files.js";
 const html = "<html><head><title>Report</title></head><body>Report</body></html>";
 const capabilities = {
@@ -62,7 +63,7 @@ function fixture() {
     featureValues: undefined,
   }));
   const candidates = vi.fn(async () => [{ provider: "fixture", model: "configured" }]);
-  const generate = createArtifactGeneration({
+  const ports = {
     providers: {
       getAgentManagerProviderState: () => ({
         clients: { fixture: client },
@@ -71,12 +72,15 @@ function fixture() {
       resolveCreateConfig,
     },
     candidates,
-  });
+  };
+  const generate = createArtifactGeneration(ports);
+  const generateData = createArtifactDataGeneration(ports);
   const controller = new AbortController();
   const request = { cwd: "/fixture", prompt: "Create a report", signal: controller.signal };
   return {
     session,
     generate,
+    generateData,
     request,
     controller,
     run,
@@ -192,4 +196,58 @@ test("failure retains both operation and cleanup errors without a silent model f
   await expect(f.generate(f.request)).rejects.toBe(primary);
   expect(f.run).toHaveBeenCalledTimes(1);
   expect(f.close).toHaveBeenCalledTimes(1);
+});
+
+test("data generation uses an explicit model, accepts only JSON and never returns HTML", async () => {
+  const f = fixture();
+  f.run.mockResolvedValueOnce({
+    sessionId: "fixture",
+    finalText: JSON.stringify({ json: ' {"value": 2} ' }),
+    timeline: [],
+  });
+  const result = await f.generateData({
+    ...f.request,
+    selection: { provider: "fixture", model: "selected" },
+  });
+  expect(result).toEqual({ json: '{"value":2}', provider: "fixture", model: "selected" });
+  expect(f.candidates).not.toHaveBeenCalled();
+  expect(f.createSession).toHaveBeenCalledWith(
+    expect.objectContaining({
+      title: "Artifact data update",
+      model: "selected",
+      mcpServers: {},
+      internal: true,
+    }),
+    {},
+    { persistSession: false },
+  );
+  expect(f.close).toHaveBeenCalledTimes(1);
+});
+test("HTML output cannot be accepted as a data update", async () => {
+  const f = fixture();
+  await expect(
+    f.generateData({ ...f.request, selection: { provider: "fixture", model: "selected" } }),
+  ).rejects.toThrow();
+  expect(f.candidates).not.toHaveBeenCalled();
+  expect(f.close).toHaveBeenCalledTimes(1);
+});
+test("a data-only response must contain valid JSON before it can reach publication", async () => {
+  const f = fixture();
+  f.run.mockResolvedValueOnce({
+    sessionId: "fixture",
+    finalText: JSON.stringify({ json: "{invalid" }),
+    timeline: [],
+  });
+  await expect(
+    f.generateData({ ...f.request, selection: { provider: "fixture", model: "selected" } }),
+  ).rejects.toBeInstanceOf(SyntaxError);
+  expect(f.close).toHaveBeenCalledTimes(1);
+});
+test("an unavailable explicit data model cannot fall through to the configured default", async () => {
+  const f = fixture();
+  await expect(
+    f.generateData({ ...f.request, selection: { provider: "missing", model: "selected" } }),
+  ).rejects.toMatchObject({ code: "unavailable" });
+  expect(f.candidates).not.toHaveBeenCalled();
+  expect(f.createSession).not.toHaveBeenCalled();
 });

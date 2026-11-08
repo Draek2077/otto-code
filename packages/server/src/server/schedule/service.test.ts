@@ -39,6 +39,7 @@ import {
 } from "./service.js";
 import { ScheduleStore } from "./store.js";
 import type { ScheduleExecutionResult, StoredSchedule } from "@getpaseo/protocol/schedule/types";
+import type { ScheduleRuntimeHooks } from "../otto/schedules/types.js"; // OTTO(schedules): injected lifecycle coverage, no provider processes.
 
 interface ScheduleServiceInternals {
   executeSchedule(schedule: StoredSchedule, runId: string): Promise<ScheduleExecutionResult>;
@@ -374,6 +375,205 @@ describe("ScheduleService", () => {
       output: "ran:Review new PRs",
     });
     expect(inspected.nextRunAt).toBe("2026-01-01T00:02:00.000Z");
+  });
+
+  // OTTO(schedules): extended executors must share the durable claim/finish path.
+  test("retargeting between list and claim cannot bypass target admission", async () => {
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
+    const execute = vi.fn(async () => ({ agentId: null, output: "Completed" }));
+    const hooks: ScheduleRuntimeHooks = {
+      requested: (schedule) => ({ requestedTarget: schedule.target }),
+      acquire: () => () => {},
+      execute,
+      settle: (_schedule, run) => ({ run }),
+      recover: (_schedule, run) => ({ run }),
+      stop: async () => {},
+    };
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      store,
+      otto: hooks,
+    });
+    const created = await service.create({
+      prompt: "Refresh",
+      cadence: { type: "every", everyMs: 60000 },
+      target: { type: "agent", agentId: "00000000-0000-4000-8000-000000000001" },
+    });
+    const list = store.list.bind(store);
+    const retarget: Parameters<ScheduleStore["update"]>[1] = (row) => ({
+      ...row,
+      target: {
+        type: "artifact-update",
+        source: {
+          scope: { hostId: "host", target: { kind: "project", id: "project" } },
+          id: "artifact",
+          location: "repository",
+        },
+        designFingerprint: "a".repeat(64),
+        update: { type: "data", json: "{}" },
+      },
+    });
+    vi.spyOn(store, "list").mockImplementationOnce(async () => {
+      const snapshot = await list();
+      await store.update(created.id, retarget);
+      return snapshot;
+    });
+    await service.tick();
+    expect(execute).not.toHaveBeenCalled();
+    expect((await service.inspect(created.id)).runs).toEqual([]);
+    await service.tick();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect((await service.inspect(created.id)).runs[0].otto?.requestedTarget.type).toBe(
+      "artifact-update",
+    );
+  });
+
+  test("stamps resolved target before effects and preserves repair after the final run", async () => {
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
+    const release = vi.fn();
+    const hooks: ScheduleRuntimeHooks = {
+      requested: (schedule) => ({ requestedTarget: schedule.target }),
+      acquire: () => release,
+      execute: async (input) => {
+        expect((await store.get(input.schedule.id))?.runs[0].otto?.requestedTarget).toEqual(
+          input.schedule.target,
+        );
+        await input.stamp({
+          resolved: { kind: "artifact", id: "artifact", title: "Report", revision: "a".repeat(64) },
+        });
+        expect((await store.get(input.schedule.id))?.runs[0].otto?.resolved?.revision).toBe(
+          "a".repeat(64),
+        );
+        throw new Error("Reviewed design changed");
+      },
+      settle: (_schedule, run, outcome) => {
+        expect(outcome.error).toBeInstanceOf(Error);
+        return {
+          run: {
+            ...run,
+            otto: { requestedTarget: run.otto!.requestedTarget, disposition: "repair_required" },
+          },
+          pauseReason: "Review the design",
+        };
+      },
+      recover: (_schedule, run) => ({ run }),
+      stop: async () => {},
+    };
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      store,
+      otto: hooks,
+    });
+    const created = await service.create({
+      prompt: "Update report data",
+      cadence: { type: "every", everyMs: 60000 },
+      maxRuns: 1,
+      target: {
+        type: "artifact-update",
+        source: {
+          scope: { hostId: "host", target: { kind: "project", id: "project" } },
+          id: "artifact",
+          location: "repository",
+        },
+        designFingerprint: "a".repeat(64),
+        update: { type: "data", json: "{}" },
+      },
+      otto: {
+        version: 1,
+        scope: { hostId: "host", projectId: "project" },
+        location: "repository",
+        storeKey: "store",
+      },
+    });
+    now = new Date("2026-01-01T00:01:00.000Z");
+    await service.tick();
+    const inspected = await service.inspect(created.id);
+    expect(inspected.status).toBe("paused");
+    expect(inspected.nextRunAt).toBeNull();
+    expect(inspected.otto?.repairReason).toBe("Review the design");
+    expect(inspected.runs[0]).toMatchObject({
+      status: "failed",
+      error: "Reviewed design changed",
+      otto: { disposition: "repair_required" },
+    });
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  test("recovery hook pauses interrupted extended work without replaying effects", async () => {
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
+    const execute = vi.fn(async () => ({ agentId: null, output: "must not run" }));
+    const hooks: ScheduleRuntimeHooks = {
+      requested: (schedule) => ({ requestedTarget: schedule.target }),
+      acquire: () => () => {},
+      execute,
+      settle: (_schedule, run) => ({ run }),
+      recover: (_schedule, run) => ({
+        run: {
+          ...run,
+          otto: { requestedTarget: run.otto!.requestedTarget, disposition: "unknown" },
+        },
+        pauseReason: "Inspect the interrupted run",
+      }),
+      stop: async () => {},
+    };
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      store,
+      otto: hooks,
+    });
+    const created = await service.create({
+      prompt: "Review",
+      cadence: { type: "every", everyMs: 60000 },
+      maxRuns: 1,
+      target: {
+        type: "artifact-update",
+        source: {
+          scope: { hostId: "host", target: { kind: "project", id: "project" } },
+          id: "artifact",
+          location: "repository",
+        },
+        designFingerprint: "a".repeat(64),
+        update: { type: "data", json: "{}" },
+      },
+    });
+    await store.update(created.id, (row) => ({
+      ...row,
+      runs: [
+        {
+          id: "interrupted",
+          scheduledFor: now.toISOString(),
+          startedAt: now.toISOString(),
+          endedAt: null,
+          status: "running",
+          agentId: null,
+          output: null,
+          error: null,
+          otto: { requestedTarget: row.target },
+        },
+      ],
+    }));
+    await service.start();
+    await service.stop();
+    await service.tick();
+    const inspected = await service.inspect(created.id);
+    expect(inspected.status).toBe("paused");
+    expect(inspected.runs[0]).toMatchObject({ status: "failed", otto: { disposition: "unknown" } });
+    expect(execute).not.toHaveBeenCalled();
   });
 
   test.each(["new-agent", "agent", "maxRuns: 1"] as const)(

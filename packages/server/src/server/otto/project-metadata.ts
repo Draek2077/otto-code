@@ -11,11 +11,14 @@ const FIELDS = new Set([
   "artifactDirectoryName",
   "workflowLocation",
   "workflowDirectoryName",
+  "scheduleLocation",
+  "scheduleDirectoryName",
 ]);
 const directoryLabels = {
   knowledgeDirectoryName: "Knowledge",
   artifactDirectoryName: "Artifacts",
   workflowDirectoryName: "Workflows",
+  scheduleDirectoryName: "Schedules",
 };
 export interface OttoProjectSnapshot {
   projectId: string;
@@ -104,6 +107,7 @@ export class OttoProjectMetadata {
         "knowledgeDirectoryName",
         "artifactDirectoryName",
         "workflowDirectoryName",
+        "scheduleDirectoryName",
       ] as const) {
         const directory = input.patch[field];
         if (

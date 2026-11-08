@@ -22,30 +22,56 @@ export interface WorkflowScheduleInvocation {
 export class WorkflowScheduleAdapter {
   constructor(readonly host: WorkflowHost) {}
   async start(input: WorkflowScheduleInvocation) {
+    return (await this.prepare(input)).start();
+  }
+  /** Review/resolve before the scheduler stamps its durable audit. Starting is an explicit later effect. */
+  async prepare(input: WorkflowScheduleInvocation) {
     const entry = await this.host.library.read(input.source);
-    if (entry.document.kind !== "graph" || entry.revision !== input.expectedRevision)
+    if (
+      (entry.document.kind !== "graph" && entry.document.kind !== "ai") ||
+      entry.revision !== input.expectedRevision
+    )
       throw new WorkflowError(
         "conflict",
-        "Scheduled Graph changed. Review and save its schedule target again.",
+        "Scheduled Workflow changed. Review and save its schedule target again.",
       );
     const operationId = `schedule-${workflowDigest(JSON.stringify(input.scheduleSource)).slice(0, 40)}`;
     const review = await this.host.review(
       input.source.scope,
       input.workspaceId,
-      {
-        kind: "graph",
-        graph: entry.document.value,
-        source: { ref: entry.ref, revision: entry.revision },
-        seats: input.seats,
-        limits: input.limits,
-        inputs: input.inputs,
-        allowTemplateCode: input.allowTemplateCode,
-        allowQueryEffects: input.allowQueryEffects,
-      },
+      entry.document.kind === "ai"
+        ? {
+            kind: "ai",
+            definition: entry.document.value,
+            source: { ref: entry.ref, revision: entry.revision },
+            seats: input.seats,
+            limits: input.limits,
+          }
+        : {
+            kind: "graph",
+            graph: entry.document.value,
+            source: { ref: entry.ref, revision: entry.revision },
+            seats: input.seats,
+            limits: input.limits,
+            inputs: input.inputs,
+            allowTemplateCode: input.allowTemplateCode,
+            allowQueryEffects: input.allowQueryEffects,
+          },
       operationId,
       input.scheduleSource,
     );
-    return this.host.start(input.source.scope, review.token, operationId);
+    return {
+      entry,
+      launch: review.launch,
+      release: () => this.host.discardReview(input.source.scope, review.token),
+      start: async () => {
+        try {
+          return await this.host.start(input.source.scope, review.token, operationId);
+        } finally {
+          this.host.discardReview(input.source.scope, review.token);
+        }
+      },
+    };
   }
   async cancel(ref: WorkflowRef, note = "Canceled by the owning Schedule.") {
     const entry = await this.host.library.read(ref);

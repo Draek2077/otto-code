@@ -97,6 +97,6 @@ it("leaves dormant workflow schedules byte-identical", async () => {
   });
   await writeFile(file, raw);
   expect(await store.list()).toEqual([]);
-  await expect(store.get(schedule.id)).rejects.toThrow("awaiting restoration");
+  await expect(store.get(schedule.id)).rejects.toThrow("explicitly select its saved target");
   expect(await readFile(file, "utf8")).toBe(raw);
 });

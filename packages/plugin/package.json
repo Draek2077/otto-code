@@ -198,6 +198,11 @@
       "source": "./src/otto/editor-images.ts",
       "default": "./dist/otto/editor-images.js"
     },
+    "./otto/schedules": {
+      "types": "./dist/otto/schedules/index.d.ts",
+      "source": "./src/otto/schedules/index.ts",
+      "default": "./dist/otto/schedules/index.js"
+    },
     "./otto/workflows": {
       "types": "./dist/otto/workflows/index.d.ts",
       "source": "./src/otto/workflows/index.ts",

@@ -2,11 +2,10 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "pino";
-import {
-  StoredScheduleSchema,
-  type ScheduleTarget,
-  type StoredSchedule,
-} from "@getpaseo/protocol/schedule/types";
+// OTTO(schedules): internal extended records never change the legacy wire target union.
+import { OttoStoredSchedule as StoredScheduleSchema } from "@getpaseo/plugin/otto/schedules";
+import type { ScheduleTarget, StoredSchedule, ScheduleMutation } from "../otto/schedules/types.js";
+import { assertScheduleMutation } from "../otto/schedules/legacy.js";
 // OTTO(store-continuity): preserve dormant schedule fields and skip unsupported saved targets.
 import { parseOttoStoredSchedule, writeOttoStoredSchedule } from "../otto/schedule-continuity.js";
 
@@ -60,13 +59,17 @@ function targetIdentity(target: ScheduleTarget): unknown {
     };
   }
 
+  // OTTO(schedules): keep each explicit non-agent target's complete identity.
+  if (target.type !== "new-agent") return target;
+
   return {
     type: target.type,
     config: target.config,
   };
 }
 
-function nameTargetIdentityKey(name: string, target: ScheduleTarget): string {
+export function nameTargetIdentityKey(name: string, target: ScheduleTarget): string {
+  // OTTO(schedules): share Paseo's existing upsert identity with the project registry.
   return JSON.stringify(
     canonicalize({
       name: normalizeScheduleName(name),
@@ -167,12 +170,18 @@ export class ScheduleStore {
     return created;
   }
 
-  async update(id: string, updater: ScheduleUpdater): Promise<StoredSchedule | null> {
+  async update(
+    id: string,
+    updater: ScheduleUpdater,
+    mutation?: ScheduleMutation,
+  ): Promise<StoredSchedule | null> {
+    // OTTO(schedules): optional revision/legacy-bound mutation.
     return this.serializeScheduleMutation(id, async () => {
       const current = await this.get(id);
       if (!current) {
         return null;
       }
+      assertScheduleMutation(current, mutation); // OTTO(schedules)
       const next = await updater(current);
       if (next === current) {
         return current;
@@ -222,8 +231,15 @@ export class ScheduleStore {
     await writeOttoStoredSchedule(this.filePath(schedule.id), schedule); // OTTO(store-continuity)
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, mutation?: ScheduleMutation): Promise<void> {
+    // OTTO(schedules)
     await this.serializeScheduleMutation(id, async () => {
+      if (mutation) {
+        // OTTO(schedules): guard before deleting; no extra read on the original path.
+        const current = await this.get(id);
+        if (!current) throw new Error("Schedule no longer exists.");
+        assertScheduleMutation(current, mutation);
+      }
       await this.ensureDir();
       await rm(this.filePath(id), { force: true });
     });

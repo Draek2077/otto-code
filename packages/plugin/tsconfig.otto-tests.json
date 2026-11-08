@@ -6,6 +6,7 @@
     "src/otto/kanban/**/*.test.ts",
     "src/otto/preview/**/*.test.ts",
     "src/otto/workflows/**/*.test.ts",
+    "src/otto/schedules/**/*.test.ts",
     "src/otto/openai/server/preview.test.ts",
     "src/otto/openai/server/workflow-access.test.ts"
   ],

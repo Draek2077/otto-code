@@ -1,4 +1,7 @@
-import { StoredScheduleSchema, type StoredSchedule } from "@getpaseo/protocol/schedule/types";
+import {
+  OttoStoredSchedule as StoredScheduleSchema,
+  type OttoStoredSchedule as StoredSchedule,
+} from "@getpaseo/plugin/otto/schedules";
 import { writeOttoAgentRecord as preserveRecordWrite } from "./store-continuity.js";
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -12,8 +15,10 @@ function record(value: unknown): value is Record<string, unknown> {
 export function parseOttoStoredSchedule(value: unknown): StoredSchedule {
   if (record(value) && record(value.target)) {
     const target = value.target;
-    if (target.type === "workflow") {
-      throw new Error("This saved Otto schedule uses Workflows, a feature awaiting restoration.");
+    if (target.type === "workflow" && !record(target.source)) {
+      throw new Error(
+        "Review this legacy Workflow schedule and explicitly select its saved target before enabling it.",
+      );
     }
     if (target.type === "new-agent" && record(target.config)) {
       const config = target.config;

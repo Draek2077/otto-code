@@ -7,6 +7,7 @@ import type {
 import type { WorkflowWorkspace, WorkflowAgentBinding } from "./runtime-ports.js";
 import type { RunEngineAwaitResult, RunEngineGateDecision } from "./workflow-engine.js";
 import type { WorkflowTurnLease } from "./turn-lease.js";
+import type { WorkflowSettlement } from "./settlement.js";
 
 export interface ActiveWorkflow {
   entry: WorkflowEntry;
@@ -16,6 +17,7 @@ export interface ActiveWorkflow {
   abort: AbortController;
   plan?: RunPlan;
   engine: Promise<void> | null;
+  settlement: WorkflowSettlement;
   publications: Promise<void>;
   failure: unknown;
   cancelRequested: boolean;

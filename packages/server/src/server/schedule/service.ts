@@ -22,8 +22,25 @@ import type {
   ScheduleTarget,
   StoredSchedule,
   UpdateScheduleInput,
+} from "../otto/schedules/types.js"; // OTTO(schedules): internal targets; old wire schemas stay unchanged.
+import type {
   UpdateScheduleNewAgentConfig,
+  StoredSchedule as PaseoSchedule,
+  ScheduleExecutionResult as PaseoExecutionResult,
 } from "@getpaseo/protocol/schedule/types";
+import type {
+  ScheduleStorePort,
+  ScheduleRuntimeHooks,
+  ScheduleMutation,
+  ScheduleSettlement,
+} from "../otto/schedules/types.js";
+import { requirePaseoSchedule } from "../otto/schedules/legacy.js"; // OTTO(schedules): preserve the legacy runner contract.
+import {
+  stampScheduleRun,
+  recoverScheduleTarget,
+  settleScheduleTarget,
+  sameScheduleTarget,
+} from "../otto/schedules/lifecycle.js"; // OTTO(schedules): target audit/recovery logic stays owned.
 import type { FirstAgentContext } from "@getpaseo/protocol/messages";
 
 const SCHEDULE_TICK_INTERVAL_MS = 1000;
@@ -262,11 +279,14 @@ export interface ScheduleServiceOptions {
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
   archiveWorkspace: (workspaceId: string) => Promise<void>;
   now?: () => Date;
-  runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;
+  runner?: (schedule: PaseoSchedule, runId: string) => Promise<PaseoExecutionResult>;
+  store?: ScheduleStorePort; // OTTO(schedules): trusted internal storage adapter.
+  otto?: ScheduleRuntimeHooks; // OTTO(schedules): target adapters share this scheduler's lifecycle.
 }
 
 export class ScheduleService {
-  private readonly store: ScheduleStore;
+  private readonly store: ScheduleStorePort; // OTTO(schedules): injected project/legacy registry, same lifecycle.
+  private readonly otto?: ScheduleRuntimeHooks; // OTTO(schedules)
   private readonly logger: Logger;
   private readonly agentManager: ScheduleAgentManager;
   private readonly agentStorage: AgentStorage;
@@ -288,7 +308,9 @@ export class ScheduleService {
 
   constructor(options: ScheduleServiceOptions) {
     this.logger = options.logger.child({ module: "schedule-service" });
-    this.store = new ScheduleStore(join(options.paseoHome, "schedules"), this.logger);
+    this.store =
+      options.store ?? new ScheduleStore(join(options.paseoHome, "schedules"), this.logger); // OTTO(schedules)
+    this.otto = options.otto; // OTTO(schedules)
     this.agentManager = options.agentManager;
     this.agentStorage = options.agentStorage;
     this.createAgent = options.createAgent;
@@ -296,7 +318,19 @@ export class ScheduleService {
     this.createPaseoWorktreeWorkspace = options.createPaseoWorktreeWorkspace;
     this.archiveWorkspace = options.archiveWorkspace;
     this.now = options.now ?? (() => new Date());
-    this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
+    const legacyRunner = options.runner; // OTTO(schedules): no extended target enters a legacy fixture runner.
+    this.runner = legacyRunner
+      ? (schedule, runId) => legacyRunner(requirePaseoSchedule(schedule), runId)
+      : (schedule, runId) =>
+          this.otto
+            ? this.otto.execute({
+                // OTTO(schedules): target dispatch reuses this scheduler's durable claim/finish.
+                schedule,
+                runId,
+                legacy: () => this.executeSchedule(schedule, runId),
+                stamp: (audit) => stampScheduleRun(this.store, schedule.id, runId, audit, this.now),
+              })
+            : this.executeSchedule(schedule, runId);
   }
 
   async start(): Promise<void> {
@@ -319,6 +353,7 @@ export class ScheduleService {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
     }
+    await this.otto?.stop(); // OTTO(schedules): revoke owned target work after stopping the single clock.
   }
 
   async create(input: CreateScheduleInput): Promise<StoredSchedule> {
@@ -359,6 +394,7 @@ export class ScheduleService {
       expiresAt: input.expiresAt ?? null,
       maxRuns: normalizeMaxRuns(input.maxRuns),
       runs: [],
+      ...(input.otto ? { otto: input.otto } : {}), // OTTO(schedules): trusted resolved store context.
     };
   }
 
@@ -414,93 +450,112 @@ export class ScheduleService {
     return [...schedule.runs].sort((left, right) => left.startedAt.localeCompare(right.startedAt));
   }
 
-  async pause(id: string): Promise<StoredSchedule> {
-    const paused = await this.store.update(id, (schedule) => {
-      if (schedule.status === "completed") {
-        throw new ScheduleStateConflictError(`Schedule ${id} is already completed`);
-      }
-      if (schedule.status === "paused") {
-        return schedule;
-      }
-      const now = this.now();
-      return {
-        ...schedule,
-        status: "paused" as const,
-        nextRunAt: null,
-        pausedAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      };
-    });
+  async pause(id: string, mutation?: ScheduleMutation): Promise<StoredSchedule> {
+    // OTTO(schedules)
+    const paused = await this.store.update(
+      id,
+      (schedule) => {
+        if (schedule.status === "completed") {
+          throw new ScheduleStateConflictError(`Schedule ${id} is already completed`);
+        }
+        if (schedule.status === "paused") {
+          return schedule;
+        }
+        const now = this.now();
+        return {
+          ...schedule,
+          status: "paused" as const,
+          nextRunAt: null,
+          pausedAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+        };
+      },
+      mutation,
+    );
     return requireSchedule(paused, id);
   }
 
-  async resume(id: string): Promise<StoredSchedule> {
-    const resumed = await this.store.update(id, (schedule) => {
-      if (schedule.status === "completed") {
-        throw new ScheduleStateConflictError(`Schedule ${id} is already completed`);
-      }
-      if (schedule.status === "active") {
-        return schedule;
-      }
-      const now = this.now();
-      return {
-        ...schedule,
-        status: "active" as const,
-        pausedAt: null,
-        nextRunAt: computeNextRunAt(schedule.cadence, now).toISOString(),
-        updatedAt: now.toISOString(),
-      };
-    });
+  async resume(id: string, mutation?: ScheduleMutation): Promise<StoredSchedule> {
+    // OTTO(schedules)
+    const resumed = await this.store.update(
+      id,
+      (schedule) => {
+        if (schedule.status === "completed") {
+          throw new ScheduleStateConflictError(`Schedule ${id} is already completed`);
+        }
+        if (schedule.status === "active") {
+          return schedule;
+        }
+        const now = this.now();
+        return {
+          ...schedule,
+          status: "active" as const,
+          pausedAt: null,
+          nextRunAt: computeNextRunAt(schedule.cadence, now).toISOString(),
+          updatedAt: now.toISOString(),
+        };
+      },
+      mutation,
+    );
     return requireSchedule(resumed, id);
   }
 
   async update(input: UpdateScheduleInput): Promise<StoredSchedule> {
-    const next = await this.store.update(input.id, async (schedule) => {
-      const now = this.now();
-      let updated: StoredSchedule = schedule;
+    const next = await this.store.update(
+      input.id,
+      async (schedule) => {
+        const now = this.now();
+        let updated: StoredSchedule = schedule;
 
-      if (input.prompt !== undefined) {
-        updated = { ...updated, prompt: normalizePrompt(input.prompt) };
-      }
-
-      if (input.name !== undefined) {
-        updated = { ...updated, name: trimOptionalName(input.name) };
-      }
-
-      if (input.cadence !== undefined) {
-        const cadence = mergeScheduleCadenceTimezone(updated.cadence, input.cadence);
-        validateScheduleCadence(cadence);
-        const nextRunAt =
-          updated.status === "active" ? computeNextRunAt(cadence, now).toISOString() : null;
-        updated = { ...updated, cadence, nextRunAt };
-      }
-
-      if (input.newAgentConfig !== undefined) {
-        if (updated.target.type !== "new-agent") {
-          throw new Error("new-agent config updates are only valid for new-agent target schedules");
+        if (input.prompt !== undefined) {
+          updated = { ...updated, prompt: normalizePrompt(input.prompt) };
         }
-        const patchedTarget = applyNewAgentConfig(updated.target, input.newAgentConfig);
-        updated = {
-          ...updated,
-          target: patchedTarget,
-        };
-      }
 
-      if (input.maxRuns !== undefined) {
-        updated = { ...updated, maxRuns: normalizeMaxRuns(input.maxRuns) };
-      }
+        if (input.name !== undefined) {
+          updated = { ...updated, name: trimOptionalName(input.name) };
+        }
 
-      if (input.expiresAt !== undefined) {
-        updated = { ...updated, expiresAt: input.expiresAt };
-      }
+        if (input.cadence !== undefined) {
+          const cadence = mergeScheduleCadenceTimezone(updated.cadence, input.cadence);
+          validateScheduleCadence(cadence);
+          const nextRunAt =
+            updated.status === "active" ? computeNextRunAt(cadence, now).toISOString() : null;
+          updated = { ...updated, cadence, nextRunAt };
+        }
 
-      return { ...updated, updatedAt: now.toISOString() };
-    });
+        if (input.newAgentConfig !== undefined) {
+          if (updated.target.type !== "new-agent") {
+            throw new Error(
+              "new-agent config updates are only valid for new-agent target schedules",
+            );
+          }
+          const patchedTarget = applyNewAgentConfig(updated.target, input.newAgentConfig);
+          updated = {
+            ...updated,
+            target: patchedTarget,
+          };
+        }
+
+        if (input.target !== undefined) updated = { ...updated, target: input.target }; // OTTO(schedules): explicit target repair, never inferred from prompt.
+
+        if (input.maxRuns !== undefined) {
+          updated = { ...updated, maxRuns: normalizeMaxRuns(input.maxRuns) };
+        }
+
+        if (input.expiresAt !== undefined) {
+          updated = { ...updated, expiresAt: input.expiresAt };
+        }
+
+        return { ...updated, updatedAt: now.toISOString() };
+      },
+      input.mutation,
+    );
     return requireSchedule(next, input.id);
   }
 
-  async delete(id: string): Promise<void> {
-    await this.store.delete(id);
+  async delete(id: string, mutation?: ScheduleMutation): Promise<void> {
+    // OTTO(schedules)
+    await this.store.delete(id, mutation);
   }
 
   async completeForAgent(agentId: string): Promise<number> {
@@ -554,7 +609,8 @@ export class ScheduleService {
     return completed;
   }
 
-  async runOnce(id: string): Promise<StoredSchedule> {
+  async runOnce(id: string, mutation?: ScheduleMutation): Promise<StoredSchedule> {
+    // OTTO(schedules)
     const schedule = await this.inspect(id);
     if (schedule.status === "completed") {
       throw new ScheduleStateConflictError(`Schedule ${id} is already completed`);
@@ -562,7 +618,7 @@ export class ScheduleService {
     if (this.runningScheduleIds.has(id)) {
       throw new ScheduleStateConflictError(`Schedule ${id} is already running`);
     }
-    await this.runSchedule(schedule, this.now(), { manual: true });
+    await this.runSchedule(schedule, this.now(), { manual: true, mutation }); // OTTO(schedules)
     return this.inspect(id);
   }
 
@@ -663,6 +719,8 @@ export class ScheduleService {
         dirty = true;
       }
 
+      if (this.otto && runningIndex !== -1)
+        updated = recoverScheduleTarget(updated, runningIndex, this.otto, now.toISOString()); // OTTO(schedules): preserve repair even after expiry/max-run handling.
       if (dirty) {
         return { ...updated, updatedAt: now.toISOString() };
       }
@@ -713,12 +771,21 @@ export class ScheduleService {
   private async runSchedule(
     schedule: StoredSchedule,
     now: Date,
-    options?: { manual?: boolean },
+    options?: { manual?: boolean; mutation?: ScheduleMutation }, // OTTO(schedules)
   ): Promise<void> {
     const manual = options?.manual === true;
     // Reserve before store I/O; persisted history cannot prove a run is still alive.
     this.runningScheduleIds.add(schedule.id);
+    let release: (() => void) | null = null; // OTTO(schedules)
     try {
+      if (this.otto) {
+        // OTTO(schedules): bounded target admission before a durable claim/effect.
+        release = this.otto.acquire(schedule);
+        if (!release) {
+          if (manual) throw new ScheduleStateConflictError("Schedule execution capacity is full.");
+          return;
+        }
+      }
       let runId: string;
       let scheduleWithRun: StoredSchedule;
       if (manual) {
@@ -733,9 +800,14 @@ export class ScheduleService {
           output: null,
           error: null,
         };
-        scheduleWithRun = await this.appendRunningRun(schedule.id, runningRun);
+        scheduleWithRun = await this.appendRunningRun(
+          schedule.id,
+          runningRun,
+          schedule.target,
+          options?.mutation,
+        ); // OTTO(schedules)
       } else {
-        const claimed = await this.claimDueRun(schedule.id, now);
+        const claimed = await this.claimDueRun(schedule.id, now, schedule.target); // OTTO(schedules): bind admission to the target claimed under the store queue.
         if (!claimed) {
           return;
         }
@@ -753,6 +825,7 @@ export class ScheduleService {
           error: null,
           targetGone: false,
           manual,
+          outcome: { result }, // OTTO(schedules)
         });
       } catch (error) {
         await this.finishRun({
@@ -764,9 +837,11 @@ export class ScheduleService {
           error: error instanceof Error ? error.message : String(error),
           targetGone: error instanceof ScheduleTargetGoneError,
           manual,
+          outcome: { error }, // OTTO(schedules)
         });
       }
     } finally {
+      release?.(); // OTTO(schedules)
       this.runningScheduleIds.delete(schedule.id);
     }
   }
@@ -774,10 +849,12 @@ export class ScheduleService {
   private async claimDueRun(
     scheduleId: string,
     now: Date,
+    admittedTarget: ScheduleTarget, // OTTO(schedules)
   ): Promise<{ schedule: StoredSchedule; runId: string } | null> {
     let claimed: { schedule: StoredSchedule; runId: string } | null = null;
     const updatedSchedule = await this.store.update(scheduleId, (schedule) => {
       if (
+        (this.otto && !sameScheduleTarget(schedule.target, admittedTarget)) || // OTTO(schedules): retargeting cannot bypass the appropriate executor's admission.
         schedule.status !== "active" ||
         !schedule.nextRunAt ||
         shouldCompleteSchedule(schedule, now) ||
@@ -809,6 +886,7 @@ export class ScheduleService {
         agentId: null,
         output: null,
         error: null,
+        ...(this.otto ? { otto: this.otto.requested(schedule) } : {}), // OTTO(schedules): snapshot before target resolution.
       };
       const updated: StoredSchedule = {
         ...schedule,
@@ -826,12 +904,27 @@ export class ScheduleService {
   private async appendRunningRun(
     scheduleId: string,
     runningRun: ScheduleRun,
+    admittedTarget: ScheduleTarget, // OTTO(schedules)
+    mutation?: ScheduleMutation, // OTTO(schedules)
   ): Promise<StoredSchedule> {
-    const updated = await this.store.update(scheduleId, (schedule) => ({
-      ...schedule,
-      updatedAt: runningRun.startedAt,
-      runs: [...schedule.runs, runningRun],
-    }));
+    const updated = await this.store.update(
+      scheduleId,
+      (schedule) => {
+        if (this.otto && !sameScheduleTarget(schedule.target, admittedTarget))
+          throw new ScheduleStateConflictError(
+            "Schedule target changed before admission. Refresh and review this run.",
+          ); // OTTO(schedules)
+        return {
+          ...schedule,
+          updatedAt: runningRun.startedAt,
+          runs: [
+            ...schedule.runs,
+            { ...runningRun, ...(this.otto ? { otto: this.otto.requested(schedule) } : {}) },
+          ], // OTTO(schedules): capture the current target inside the claim queue.
+        };
+      },
+      mutation,
+    );
     return requireSchedule(updated, scheduleId);
   }
 
@@ -844,6 +937,7 @@ export class ScheduleService {
     error: string | null;
     targetGone: boolean;
     manual: boolean;
+    outcome?: ScheduleSettlement; // OTTO(schedules)
   }): Promise<void> {
     const updatedSchedule = await this.store.update(params.scheduleId, (schedule) => {
       const now = this.now();
@@ -896,6 +990,14 @@ export class ScheduleService {
         };
       }
 
+      if (this.otto && params.outcome)
+        updated = settleScheduleTarget(
+          updated,
+          params.runId,
+          this.otto,
+          params.outcome,
+          now.toISOString(),
+        ); // OTTO(schedules): target repair decisions follow ordinary cadence bookkeeping.
       return updated;
     });
     requireSchedule(updatedSchedule, params.scheduleId);

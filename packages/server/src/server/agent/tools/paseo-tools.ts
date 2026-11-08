@@ -120,6 +120,7 @@ import { registerPreviewTools } from "../../otto/preview/catalog.js"; // OTTO(pr
 import type { PreviewHost } from "../../otto/preview/host.js"; // OTTO(preview)
 import type { RetainedToolPolicy } from "../../otto/retained-tool-policy.js"; // OTTO(preview)
 import { registerWorkflowTools, type WorkflowToolPorts } from "../../otto/workflows/tools.js"; // OTTO(workflows): private execution tools and access ceilings stay feature-owned.
+import { requirePaseoSchedule } from "../../otto/schedules/legacy.js"; // OTTO(schedules): preserve the legacy tool response contract.
 
 export interface PaseoToolHostDependencies {
   ottoWorkflows?: WorkflowToolPorts; // OTTO(workflows): canonical host binding; absent leaves Paseo catalogs unchanged.
@@ -2732,7 +2733,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
 
       return {
         content: [],
-        structuredContent: ensureValidJson(toScheduleSummary(schedule)),
+        structuredContent: ensureValidJson(toScheduleSummary(requirePaseoSchedule(schedule))), // OTTO(schedules)
       };
     },
   );
@@ -2783,7 +2784,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
 
       return {
         content: [],
-        structuredContent: ensureValidJson(toScheduleSummary(schedule)),
+        structuredContent: ensureValidJson(toScheduleSummary(requirePaseoSchedule(schedule))), // OTTO(schedules)
       };
     },
   );
@@ -2801,7 +2802,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         throw new Error("Schedule service is not configured");
       }
       await requireCallerHeartbeat(id);
-      await scheduleService.delete(id);
+      await scheduleService.delete(id, { legacyOnly: true }); // OTTO(schedules)
       return {
         content: [],
         structuredContent: ensureValidJson({ success: true }),
@@ -2826,7 +2827,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
 
       const schedules = (await scheduleService.list())
         .filter((schedule) => schedule.target.type === "new-agent")
-        .map((schedule) => toScheduleSummary(schedule));
+        .map((schedule) => toScheduleSummary(requirePaseoSchedule(schedule))); // OTTO(schedules)
       return {
         content: [],
         structuredContent: ensureValidJson({ schedules }),
@@ -2875,7 +2876,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       }
 
       await requireScheduleTarget(id, "new-agent");
-      await runScheduleAction(() => scheduleService.pause(id));
+      await runScheduleAction(() => scheduleService.pause(id, { legacyOnly: true })); // OTTO(schedules)
       return {
         content: [],
         structuredContent: ensureValidJson({ success: true }),
@@ -2901,7 +2902,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       }
 
       await requireScheduleTarget(id, "new-agent");
-      await runScheduleAction(() => scheduleService.resume(id));
+      await runScheduleAction(() => scheduleService.resume(id, { legacyOnly: true })); // OTTO(schedules)
       return {
         content: [],
         structuredContent: ensureValidJson({ success: true }),
@@ -2927,7 +2928,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       }
 
       await requireScheduleTarget(id, "new-agent");
-      await scheduleService.delete(id);
+      await scheduleService.delete(id, { legacyOnly: true }); // OTTO(schedules)
       return {
         content: [],
         structuredContent: ensureValidJson({ success: true }),
@@ -2998,7 +2999,10 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       }
 
       await requireScheduleTarget(input.id, "new-agent");
-      const schedule = await scheduleService.update(buildScheduleUpdateInput(input));
+      const schedule = await scheduleService.update({
+        ...buildScheduleUpdateInput(input),
+        mutation: { legacyOnly: true },
+      }); // OTTO(schedules)
 
       return {
         content: [],
@@ -3046,7 +3050,9 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         throw new Error("Schedule service is not configured");
       }
       await requireScheduleTarget(id, "new-agent");
-      const schedule = await runScheduleAction(() => scheduleService.runOnce(id));
+      const schedule = await runScheduleAction(() =>
+        scheduleService.runOnce(id, { legacyOnly: true }),
+      ); // OTTO(schedules)
       return {
         content: [],
         structuredContent: ensureValidJson(schedule),

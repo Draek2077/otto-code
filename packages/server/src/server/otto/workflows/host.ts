@@ -49,6 +49,7 @@ import { formatStartRunCompletionNotification } from "./workflow-start-lifecycle
 import { captureWorkflowTemplates } from "./template-snapshot.js";
 import { renderWorkflowTemplate, workflowTemplateVariables } from "./templates.js";
 import { WorkflowTurnLease } from "./turn-lease.js";
+import { WorkflowSettlement } from "./settlement.js";
 import { assertWorkflowLaunchSource } from "./launch-source.js";
 import { workflowDelegationAllowed } from "./tool-groups.js";
 import { WorkflowRunOutputs, workflowRunManifest, workflowPreview } from "./run-outputs.js";
@@ -153,8 +154,6 @@ export class WorkflowHost {
     const captured = await captureWorkflowTemplates(this.library, scope, launch);
     const review = await reviewWorkflow(this.ports, scope, workspaceId, captured, operationId);
     if (scheduleSource) {
-      if (launch.kind !== "graph")
-        throw new WorkflowError("invalid", "Schedule adapters require a saved Graph Workflow.");
       review.scheduleSource = structuredClone(scheduleSource);
       review.fingerprint = workflowDigest(JSON.stringify([review.fingerprint, scheduleSource]));
     }
@@ -234,6 +233,16 @@ export class WorkflowHost {
       this.admitting--;
     }
   }
+  /** Trusted owner cleanup; abandoning a Schedule preflight cannot retain review capacity. */
+  discardReview(scope: WorkflowScope, token: string): void {
+    const review = this.reviews.get(token);
+    if (
+      review &&
+      review.scope.hostId === scope.hostId &&
+      review.scope.projectId === scope.projectId
+    )
+      this.reviews.delete(token);
+  }
   private async admit(id: string, review: WorkflowReview): Promise<WorkflowEntry> {
     const now = this.ports.now();
     const conductorAgentId = randomUUID();
@@ -263,6 +272,7 @@ export class WorkflowHost {
           };
     const run = normalizeWorkflowRunRecord({
       ...base,
+      ...(review.scheduleSource ? { scheduleSource: review.scheduleSource } : {}),
       launch: review.launch,
       ownerInstance: this.instanceId,
       projectId: review.scope.projectId,
@@ -282,6 +292,7 @@ export class WorkflowHost {
       workspace: review.workspace,
       abort: new AbortController(),
       engine: null,
+      settlement: new WorkflowSettlement(),
       publications: Promise.resolve(),
       failure: null,
       cancelRequested: false,
@@ -850,6 +861,7 @@ export class WorkflowHost {
       .then(() => this.finish(state))
       .catch((error) => {
         state.recoveryRequired = true;
+        state.settlement.fail(error);
         this.ports.logger.error(
           { error, runId: state.run.id },
           "Workflow settlement requires recovery",
@@ -882,6 +894,7 @@ export class WorkflowHost {
     if (!state.engine)
       state.engine = this.finish(state).catch((error) => {
         state.recoveryRequired = true;
+        state.settlement.fail(error);
         this.ports.logger.error({ error, runId: id }, "Canceled Workflow requires recovery");
       });
     return structuredClone(state.entry);
@@ -920,6 +933,7 @@ export class WorkflowHost {
       if (state.deadline) clearTimeout(state.deadline);
       this.active.delete(state.run.id);
       for (const id of state.agents.keys()) this.bindings.delete(id);
+      state.settlement.complete();
     }
     if (!this.active.size) {
       this.releaseObservation?.();
@@ -929,6 +943,23 @@ export class WorkflowHost {
   }
   async settled(ref: WorkflowRef): Promise<void> {
     await this.active.get(ref.id)?.engine;
+  }
+  /** Schedule adapters wait through AI Planning and human gates, not just the current engine promise. */
+  async waitForSettlement(ref: WorkflowRef, signal?: AbortSignal): Promise<WorkflowEntry> {
+    const state = this.active.get(ref.id);
+    if (state) {
+      if (workflowRefKey(state.entry.ref) !== workflowRefKey(ref))
+        throw new WorkflowError("invalid", "Select the exact Workflow run origin.");
+      await state.settlement.wait(signal);
+    }
+    signal?.throwIfAborted();
+    const entry = await this.library.read(ref);
+    if (entry.document.kind !== "run" || !isTerminalRunStatus(entry.document.value.status))
+      throw new WorkflowError(
+        "unavailable",
+        "Workflow settlement requires recovery on its owning host.",
+      );
+    return entry;
   }
   /** Explicit settlement after a runtime/storage failure. Never resumes a provider or replays work. */
   async reconcile(ref: WorkflowRef, expectedRevision: string): Promise<WorkflowEntry> {

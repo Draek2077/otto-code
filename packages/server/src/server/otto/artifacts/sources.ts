@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type { ArtifactSource } from "@getpaseo/plugin/otto/artifacts";
-import type { StoredSchedule } from "@getpaseo/protocol/schedule/types";
+import type { StoredSchedule } from "../schedules/types.js";
 import { ScheduleNotFoundError } from "../../schedule/service.js";
 import type { workflowArtifactSource, WorkflowScope } from "@getpaseo/plugin/otto/workflows";
 
