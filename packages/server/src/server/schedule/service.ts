@@ -33,6 +33,7 @@ import type {
   ScheduleRuntimeHooks,
   ScheduleMutation,
   ScheduleSettlement,
+  ScheduleAdmission,
 } from "../otto/schedules/types.js";
 import { requirePaseoSchedule } from "../otto/schedules/legacy.js"; // OTTO(schedules): preserve the legacy runner contract.
 import {
@@ -609,7 +610,11 @@ export class ScheduleService {
     return completed;
   }
 
-  async runOnce(id: string, mutation?: ScheduleMutation): Promise<StoredSchedule> {
+  async runOnce(
+    id: string,
+    mutation?: ScheduleMutation,
+    admitted?: ScheduleAdmission,
+  ): Promise<StoredSchedule> {
     // OTTO(schedules)
     const schedule = await this.inspect(id);
     if (schedule.status === "completed") {
@@ -618,7 +623,7 @@ export class ScheduleService {
     if (this.runningScheduleIds.has(id)) {
       throw new ScheduleStateConflictError(`Schedule ${id} is already running`);
     }
-    await this.runSchedule(schedule, this.now(), { manual: true, mutation }); // OTTO(schedules)
+    await this.runSchedule(schedule, this.now(), { manual: true, mutation, admitted }); // OTTO(schedules): owned UI can acknowledge admission while a Workflow waits for approval.
     return this.inspect(id);
   }
 
@@ -771,7 +776,7 @@ export class ScheduleService {
   private async runSchedule(
     schedule: StoredSchedule,
     now: Date,
-    options?: { manual?: boolean; mutation?: ScheduleMutation }, // OTTO(schedules)
+    options?: { manual?: boolean; mutation?: ScheduleMutation; admitted?: ScheduleAdmission }, // OTTO(schedules)
   ): Promise<void> {
     const manual = options?.manual === true;
     // Reserve before store I/O; persisted history cannot prove a run is still alive.
@@ -815,6 +820,7 @@ export class ScheduleService {
       }
 
       try {
+        options?.admitted?.(scheduleWithRun, runId); // OTTO(schedules): durable run exists; no target effect has started.
         const result = await this.runner(scheduleWithRun, runId);
         await this.finishRun({
           scheduleId: schedule.id,

@@ -29,10 +29,12 @@ import { assertScheduleMutation, scheduleRevision } from "./legacy.js";
 import { normalizePathForIdentity } from "../../../utils/path.js";
 import { nameTargetIdentityKey } from "../../schedule/store.js";
 import { preserveScheduleDiskRecord } from "./persistence.js";
+import { reviewScheduleRepair } from "./lifecycle.js";
 
 interface Located {
   origin: ScheduleOrigin;
   schedule: StoredSchedule;
+  revision: string;
 }
 export interface ScheduleRegistryPorts {
   stores: ScheduleStores;
@@ -69,6 +71,9 @@ function storageMessage(error: unknown): string {
     return error.message.slice(0, 2000);
   // Parser/OS errors can contain document excerpts or unrelated host paths.
   return "Schedule storage is unreadable, invalid, or needs explicit repair. Original files are retained.";
+}
+export function scheduleCreationId(scope: ScheduleRef["scope"], operationId: string) {
+  return `schedule-${scheduleDigest(JSON.stringify([scope, operationId]))}`;
 }
 /** One storage port for Paseo's existing scheduler. No clock, provider, or second execution loop. */
 export class ScheduleRegistry implements ScheduleStorePort {
@@ -135,7 +140,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
         const found = await this.read(origin, id);
         if (!found) continue;
         const rows = index.get(id) ?? [];
-        rows.push({ origin, schedule: found.schedule });
+        rows.push({ origin, schedule: found.schedule, revision: scheduleRevision(found.schedule) });
         index.set(id, rows);
       } catch (error) {
         diagnostics.push({
@@ -228,8 +233,46 @@ export class ScheduleRegistry implements ScheduleStorePort {
   async list(): Promise<StoredSchedule[]> {
     await this.refresh();
     return [...this.index.values()]
-      .flatMap((rows) => (rows.length === 1 ? [rows[0].schedule] : []))
+      .flatMap((rows) =>
+        rows.length === 1 &&
+        !(rows[0].schedule.status === "active" && rows[0].schedule.otto?.repairReason)
+          ? [rows[0].schedule]
+          : [],
+      )
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }
+  /** Cached display catalog includes both exact origins of a duplicate. It grants
+   * no execution or mutation authority; those paths reread and reject ambiguity. */
+  async catalog(): Promise<(ScheduleEntry & { ambiguous: boolean })[]> {
+    await this.refresh();
+    return [...this.index.values()]
+      .flatMap((rows) =>
+        rows.map((row) => ({
+          ref: refFor(row.origin, row.schedule.id),
+          revision: row.revision,
+          schedule: row.schedule,
+          ambiguous: rows.length !== 1,
+        })),
+      )
+      .sort((left, right) => left.schedule.createdAt.localeCompare(right.schedule.createdAt));
+  }
+  private async verifyOrigin(found: Located) {
+    if (found.origin.location === "legacy") return;
+    const scope = found.origin.scope;
+    if (!scope.projectId)
+      throw new ScheduleError("invalid", "Project Schedule has no owning project.");
+    const current = (
+      await this.ports.stores.locations({ hostId: scope.hostId, projectId: scope.projectId })
+    ).find((origin) => sameOrigin(refFor(found.origin, found.schedule.id), origin));
+    if (
+      !current ||
+      normalizePathForIdentity(current.directory) !==
+        normalizePathForIdentity(found.origin.directory)
+    )
+      throw new ScheduleError(
+        "conflict",
+        "Schedule storage binding changed. Refresh and review its origin before execution.",
+      );
   }
   private async locate(id: string, mutation?: ScheduleMutation): Promise<Located | null> {
     assertScheduleId(id);
@@ -247,24 +290,29 @@ export class ScheduleRegistry implements ScheduleStorePort {
         "conflict",
         "Schedule storage origin changed. Reload before applying this action.",
       );
-    if (found.origin.location !== "legacy") {
-      const scope = found.origin.scope;
-      if (!scope.projectId)
-        throw new ScheduleError("invalid", "Project Schedule has no owning project.");
-      const current = (
-        await this.ports.stores.locations({ hostId: scope.hostId, projectId: scope.projectId })
-      ).find((origin) => sameOrigin(refFor(found.origin, id), origin));
-      if (
-        !current ||
-        normalizePathForIdentity(current.directory) !==
-          normalizePathForIdentity(found.origin.directory)
-      )
-        throw new ScheduleError(
-          "conflict",
-          "Schedule storage binding changed. Refresh and review its origin before execution.",
-        );
-    }
+    await this.verifyOrigin(found);
     return found;
+  }
+  /** Read-only repair inspection is pinned to an exact ref even when execution is blocked. */
+  async inspectOrigin(ref: ScheduleRef): Promise<ScheduleEntry | null> {
+    assertScheduleId(ref.id);
+    await this.refresh();
+    const rows = (this.index.get(ref.id) ?? []).filter((row) => sameOrigin(ref, row.origin));
+    if (rows.length !== 1)
+      throw new ScheduleError(
+        "conflict",
+        "This exact Schedule origin is unavailable or ambiguous. Refresh its storage diagnostics.",
+      );
+    const found = rows[0];
+    await this.verifyOrigin(found);
+    const current = await this.read(found.origin, ref.id);
+    return current
+      ? {
+          ref: refFor(found.origin, ref.id),
+          revision: scheduleRevision(current.schedule),
+          schedule: current.schedule,
+        }
+      : null;
   }
   async entry(id: string, ref?: ScheduleRef): Promise<ScheduleEntry | null> {
     const found = await this.locate(id);
@@ -286,7 +334,10 @@ export class ScheduleRegistry implements ScheduleStorePort {
     const rows = (this.index.get(schedule.id) ?? []).filter(
       (row) => row.origin.storeKey !== origin.storeKey,
     );
-    this.index.set(schedule.id, [...rows, { origin, schedule }]);
+    this.index.set(schedule.id, [
+      ...rows,
+      { origin, schedule, revision: scheduleRevision(schedule) },
+    ]);
   }
   private async originFor(schedule: Omit<StoredSchedule, "id">) {
     const meta = schedule.otto;
@@ -313,12 +364,38 @@ export class ScheduleRegistry implements ScheduleStorePort {
     return this.ports.stores.pin(origin);
   }
   async create(input: Omit<StoredSchedule, "id">): Promise<StoredSchedule> {
+    const creation = input.otto?.creation;
+    if (creation) {
+      if (!input.otto)
+        throw new ScheduleError("invalid", "Create operation needs an owning project.");
+      const id = scheduleCreationId(input.otto.scope, creation.operationId);
+      return this.serial(id, async () => {
+        // A lost response may be retried after settings changed or the host restarted.
+        // Resolve the operation identity across all stores before selecting/pinning a new one.
+        await this.refresh(true);
+        const existing = await this.get(id);
+        if (existing) {
+          if (existing.otto?.creation?.fingerprint !== creation.fingerprint)
+            throw new ScheduleError(
+              "conflict",
+              "This create operation already saved different Schedule settings. Reload the saved Schedule.",
+            );
+          return existing;
+        }
+        return this.publishNew(input, id);
+      });
+    }
     await this.refresh();
+    return this.publishNew(input);
+  }
+  private async publishNew(input: Omit<StoredSchedule, "id">, requestedId?: string) {
     const origin = await this.originFor(input);
     await scheduleDirectory(origin.boundary, origin.directory, true);
     const schedule = OttoStoredSchedule.parse({
       ...input,
-      id: origin.location === "legacy" ? randomBytes(4).toString("hex") : randomUUID(),
+      id:
+        requestedId ??
+        (origin.location === "legacy" ? randomBytes(4).toString("hex") : randomUUID()),
     });
     this.validate(schedule, origin, schedule.id);
     await publishScheduleFile(
@@ -343,7 +420,12 @@ export class ScheduleRegistry implements ScheduleStorePort {
         return null;
       }
       assertScheduleMutation(current.schedule, mutation);
-      const next = await updater(current.schedule);
+      const next = reviewScheduleRepair(
+        current.schedule,
+        await updater(current.schedule),
+        mutation,
+        new Date(this.ports.now?.() ?? Date.now()).toISOString(),
+      );
       if (next === current.schedule) {
         this.remember(found.origin, next);
         return next;

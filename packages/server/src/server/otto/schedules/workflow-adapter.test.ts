@@ -155,46 +155,55 @@ test("scheduled AI remains pending through Planning and exact-owner cancellation
     await f.cleanup();
   }
 });
-test("changed saved autopilot requires explicit target review before another fire", async () => {
-  const f = await workflowHostFixture();
-  try {
-    if (f.ai.kind !== "ai") throw new Error("Expected AI");
-    const source = await f.library.write(f.scope, { kind: "ai", value: f.ai.definition }, null);
-    const adapter = new SavedWorkflowScheduleAdapter(new WorkflowScheduleAdapter(f.host));
-    const target: Extract<ScheduleTarget, { type: "workflow" }> = {
-      type: "workflow",
-      source: { ...source.ref, kind: "ai" },
-      workspaceId: "workspace-1",
-      seats: f.ai.definition.seats,
-      limits: f.ai.definition.limits,
-      inputs: {},
-      approval: {
-        policyFingerprint: "a".repeat(64),
-        allowTemplateCode: false,
-        allowQueryEffects: false,
-      },
-    };
-    const reviewed = await adapter.review(target, f.scope);
-    await f.library.write(
-      f.scope,
-      {
-        kind: "ai",
-        value: { ...f.ai.definition, autopilot: !f.ai.definition.autopilot },
-      },
-      source.revision,
-      source.ref,
-    );
-    await expect(
-      adapter.prepare(reviewed, f.scope, {
-        scheduleId: "schedule",
-        runId: "next-fire",
-      }),
-    ).rejects.toThrow("authority changed");
-    expect(f.agents.size).toBe(0);
-    await expect(adapter.review(target, { ...f.scope, hostId: "foreign" })).rejects.toMatchObject({
-      kind: "invalid",
-    });
-  } finally {
-    await f.cleanup();
-  }
-});
+test.each([false, true])(
+  "review exposes saved autopilot=%s and changes require explicit review before another fire",
+  async (autopilot) => {
+    const f = await workflowHostFixture();
+    try {
+      if (f.ai.kind !== "ai") throw new Error("Expected AI");
+      const definition = { ...f.ai.definition, autopilot };
+      const source = await f.library.write(f.scope, { kind: "ai", value: definition }, null);
+      const adapter = new SavedWorkflowScheduleAdapter(new WorkflowScheduleAdapter(f.host));
+      const target: Extract<ScheduleTarget, { type: "workflow" }> = {
+        type: "workflow",
+        source: { ...source.ref, kind: "ai" },
+        workspaceId: "workspace-1",
+        seats: f.ai.definition.seats,
+        limits: f.ai.definition.limits,
+        inputs: {},
+        approval: {
+          policyFingerprint: "a".repeat(64),
+          allowTemplateCode: false,
+          allowQueryEffects: false,
+        },
+      };
+      const details = await adapter.reviewDetails(target, f.scope);
+      const reviewed = details.target;
+      expect(details.autopilot).toBe(autopilot);
+      expect(details.title).toBe(definition.title);
+      await f.library.write(
+        f.scope,
+        {
+          kind: "ai",
+          value: { ...definition, autopilot: !autopilot },
+        },
+        source.revision,
+        source.ref,
+      );
+      await expect(
+        adapter.prepare(reviewed, f.scope, {
+          scheduleId: "schedule",
+          runId: "next-fire",
+        }),
+      ).rejects.toThrow("authority changed");
+      expect(f.agents.size).toBe(0);
+      await expect(adapter.review(target, { ...f.scope, hostId: "foreign" })).rejects.toMatchObject(
+        {
+          kind: "invalid",
+        },
+      );
+    } finally {
+      await f.cleanup();
+    }
+  },
+);

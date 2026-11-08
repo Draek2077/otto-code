@@ -13,6 +13,21 @@ stops admission and revokes target waits before Workflow, Artifact and provider 
 The native runner remains Paseo-owned. Composition alone does not expose a new editor or
 advertise a target capability.
 
+The owned daemon API delegates create, edit, and control actions to that same scheduler.
+Its dotted contracts are internal integration points until the authenticated route and editor
+are registered. A create operation carries a stable caller nonce and payload fingerprint;
+repeating it returns the saved record even if defaults or target availability changed after
+publication. A different payload with that nonce is a conflict. Edits and controls carry the
+exact origin and content revision. Settings edits are refused inside the claim queue while a
+run is active. Run-once acknowledges the durable claim without waiting for a human Workflow gate.
+
+Library pages carry summaries and bounded output previews. Full prompts, target payloads and
+run output require explicit detail reads; unknown disk-only fields stay off this API. Duplicate
+origins remain individually inspectable, but cannot execute or mutate through an ambiguous ID.
+An uncertain outcome requires an explicit inspection acknowledgement and current target
+validation before resuming. That acknowledgement records a receipt and retains the original
+failed run and its audit.
+
 ## Internal records and the legacy transport
 
 `@getpaseo/plugin/otto/schedules` defines Otto's internal target, origin, and run-audit

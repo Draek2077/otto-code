@@ -16,11 +16,23 @@ export class SavedWorkflowScheduleAdapter {
   constructor(readonly adapter: WorkflowScheduleAdapter) {}
   /** Resolve the current saved definition without starting it; callers explicitly approve this target. */
   async review(target: Target, scope: ProjectScheduleScope): Promise<Target> {
+    return (await this.reviewDetails(target, scope)).target;
+  }
+  async reviewDetails(target: Target, scope: ProjectScheduleScope) {
     const loaded = await this.load(target, scope, { scheduleId: "review", runId: randomUUID() });
     try {
+      const document = loaded.prepared.entry.document;
+      let title = target.source.id;
+      if (document.kind === "ai") title = document.value.title;
+      if (document.kind === "graph") title = document.value.name;
       return {
-        ...loaded.canonical,
-        approval: { ...target.approval, policyFingerprint: loaded.fingerprint },
+        target: {
+          ...loaded.canonical,
+          approval: { ...target.approval, policyFingerprint: loaded.fingerprint },
+        },
+        title,
+        autopilot:
+          loaded.prepared.launch.kind === "ai" ? loaded.prepared.launch.definition.autopilot : null,
       };
     } finally {
       loaded.prepared.release();

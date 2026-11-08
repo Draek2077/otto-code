@@ -130,6 +130,98 @@ test("duplicate IDs never enter the runnable list or resolve by arbitrary store 
     expect.objectContaining({ code: "duplicate_id" }),
   );
 });
+
+test("display catalog retains duplicate origins for read-only inspection without granting mutations", async () => {
+  const f = await fixture();
+  const created = await f.registry.create(draft(f.origin));
+  const legacy = f.stores.legacy();
+  await mkdir(legacy.directory, { recursive: true });
+  await writeFile(
+    path.join(legacy.directory, `${created.id}.json`),
+    JSON.stringify({
+      ...draft(),
+      id: created.id,
+      name: "Legacy source",
+    }),
+  );
+  await f.registry.refresh(true);
+  const catalog = await f.registry.catalog();
+  expect(catalog).toHaveLength(2);
+  expect(catalog.every((entry) => entry.ambiguous)).toBe(true);
+  for (const entry of catalog) {
+    expect((await f.registry.inspectOrigin(entry.ref))?.schedule.name).toBe(entry.schedule.name);
+    await expect(
+      f.registry.update(created.id, (row) => ({ ...row, name: "Changed" }), {
+        ref: entry.ref,
+        expectedRevision: entry.revision,
+      }),
+    ).rejects.toMatchObject({ kind: "conflict" });
+  }
+  expect(await f.registry.list()).toEqual([]);
+  expect((await f.registry.catalog()).map((entry) => entry.schedule.name).sort()).toEqual([
+    "Legacy source",
+    "Review",
+  ]);
+});
+
+test("catalog reads stay cached while exact-origin inspection detects an external edit", async () => {
+  const f = await fixture();
+  const created = await f.registry.create(draft(f.origin));
+  const before = (await f.registry.catalog())[0];
+  await writeFile(
+    path.join(f.origin.directory, `${created.id}.json`),
+    JSON.stringify({ ...created, name: "Peer edit" }),
+  );
+  expect((await f.registry.catalog())[0].revision).toBe(before.revision);
+  expect(f.scans()).toBe(1);
+  const fresh = await f.registry.inspectOrigin(before.ref);
+  expect(fresh?.schedule.name).toBe("Peer edit");
+  expect(fresh?.revision).not.toBe(before.revision);
+  await expect(
+    f.registry.update(created.id, (row) => ({ ...row, name: "Stale save" }), {
+      ref: before.ref,
+      expectedRevision: before.revision,
+    }),
+  ).rejects.toThrow("Schedule changed");
+  await expect(
+    f.registry.inspectOrigin({ ...before.ref, scope: { ...before.ref.scope, hostId: "foreign" } }),
+  ).rejects.toMatchObject({ kind: "conflict" });
+});
+
+test("repair acknowledgement is committed atomically with resume and retained in the disk record", async () => {
+  const f = await fixture();
+  const initial = draft(f.origin);
+  if (!initial.otto) throw new Error("Missing fixture origin");
+  const created = await f.registry.create({
+    ...initial,
+    status: "paused",
+    otto: {
+      ...initial.otto,
+      repairReason: "Inspect uncertain work",
+    },
+  });
+  const entry = await f.registry.entry(created.id);
+  if (!entry) throw new Error("Missing fixture Schedule");
+  const mutation = { ref: entry.ref, expectedRevision: entry.revision };
+  await expect(
+    f.registry.update(created.id, (row) => ({ ...row, status: "active" }), mutation),
+  ).rejects.toMatchObject({ kind: "conflict" });
+  expect((await f.registry.entry(created.id))?.revision).toBe(entry.revision);
+  await f.registry.update(created.id, (row) => ({ ...row, status: "active" }), {
+    ...mutation,
+    repairReviewed: true,
+  });
+  const stored = JSON.parse(
+    await readFile(path.join(f.origin.directory, `${created.id}.json`), "utf8"),
+  );
+  expect(stored.status).toBe("active");
+  expect(stored.otto.repairReason).toBeUndefined();
+  expect(stored.otto.lastRepairReview).toMatchObject({
+    reason: "Inspect uncertain work",
+    runId: null,
+  });
+  expect((await f.registry.list()).map((row) => row.id)).toContain(created.id);
+});
 test("filename aliases and dormant legacy targets remain untouched diagnostic records", async () => {
   const f = await fixture();
   const legacy = f.stores.legacy();

@@ -6,11 +6,48 @@ import type {
   ScheduleStorePort,
   StoredSchedule,
   ScheduleTarget,
+  ScheduleMutation,
 } from "./types.js";
+import { ScheduleError } from "./files.js";
 
 /** Conservative admission comparison: an edited target waits for a fresh claim/admission. */
 export function sameScheduleTarget(left: ScheduleTarget, right: ScheduleTarget): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/** The action owner validates the current target and obtains explicit inspection
+ * acknowledgement. The store commits that receipt with resume/claim, never as a retry. */
+export function reviewScheduleRepair(
+  before: StoredSchedule,
+  after: StoredSchedule,
+  mutation: ScheduleMutation | undefined,
+  at: string,
+): StoredSchedule {
+  const reason = before.otto?.repairReason;
+  if (!reason) return after;
+  const reviewed = mutation && "ref" in mutation && mutation.repairReviewed;
+  if (!reviewed) {
+    const active = new Set(
+      before.runs.filter((run) => run.status === "running").map((run) => run.id),
+    );
+    if (
+      after.status === "active" ||
+      after.runs.some((run) => run.status === "running" && !active.has(run.id))
+    )
+      throw new ScheduleError(
+        "conflict",
+        "Inspect the uncertain outcome and explicitly acknowledge review before resuming or running this Schedule.",
+      );
+    return after;
+  }
+  if (!after.otto)
+    throw new ScheduleError("invalid", "Repair review must retain the Schedule's origin.");
+  const { repairReason: _reason, ...origin } = after.otto;
+  return {
+    ...after,
+    updatedAt: at,
+    otto: { ...origin, lastRepairReview: { at, runId: before.runs.at(-1)?.id ?? null, reason } },
+  };
 }
 
 function pauseForRepair(schedule: StoredSchedule, reason: string, now: string): StoredSchedule {

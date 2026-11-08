@@ -338,6 +338,53 @@ describe("ScheduleService", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
+  test("owned run-once admission is acknowledged from durable history before target settlement", async () => {
+    const held = Promise.withResolvers<void>();
+    const admitted = Promise.withResolvers<string>();
+    const runner = vi.fn(async () => {
+      await held.promise;
+      return { agentId: null, output: "Finished after approval" };
+    });
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner,
+    });
+    const created = await service.create({
+      prompt: "Run once",
+      cadence: { type: "every", everyMs: 60000 },
+      runOnCreate: false,
+      target: { type: "agent", agentId: "00000000-0000-4000-8000-000000000001" },
+    });
+    const pending = service.runOnce(created.id, undefined, (snapshot, runId) => {
+      expect(snapshot.runs.at(-1)).toMatchObject({ id: runId, status: "running" });
+      expect(runner).not.toHaveBeenCalled();
+      admitted.resolve(runId);
+    });
+    try {
+      const runId = await Promise.race([
+        admitted.promise,
+        pending.then(() => {
+          throw new Error("Run settled without its admission notification");
+        }),
+      ]);
+      expect((await service.inspect(created.id)).runs.at(-1)).toMatchObject({
+        id: runId,
+        status: "running",
+      });
+      await expect(service.runOnce(created.id)).rejects.toThrow("already running");
+      expect(runner).toHaveBeenCalledTimes(1);
+    } finally {
+      held.resolve();
+      await pending;
+    }
+    expect((await service.inspect(created.id)).runs.at(-1)?.status).toBe("succeeded");
+  });
+
   test("ticks due schedules and records run history on disk", async () => {
     const service = createScheduleService({
       paseoHome: tempDir,

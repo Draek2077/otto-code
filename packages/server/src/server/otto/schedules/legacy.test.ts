@@ -67,6 +67,24 @@ test("legacy mutation authority cannot modify an extended target", () => {
   );
   expect(() => requirePaseoSchedule(schedule)).toThrow("updated Otto client");
 });
+
+test("legacy native wire reads remain parseable but cannot bypass an explicit repair review", () => {
+  const schedule = {
+    ...record(),
+    status: "paused" as const,
+    otto: {
+      version: 1 as const,
+      scope: ref.scope,
+      location: "legacy" as const,
+      storeKey: ref.storeKey,
+      repairReason: "Inspect interrupted work",
+    },
+  };
+  expect(StoredScheduleSchema.safeParse(requirePaseoSchedule(schedule)).success).toBe(true);
+  expect(() => assertScheduleMutation(schedule, { legacyOnly: true })).toThrow(
+    "inspect and review",
+  );
+});
 test("an exact content revision cannot authorize a different owning project/store", () => {
   const schedule = {
     ...record(),

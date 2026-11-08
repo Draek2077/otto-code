@@ -25,6 +25,14 @@ export class ArtifactScheduleAdapter {
       generate: ArtifactDataGeneration;
     },
   ) {}
+  async review(target: Omit<Target, "designFingerprint">, scope: ProjectScheduleScope) {
+    const entry = await this.locate(target.source, scope);
+    if (target.update.type === "data") replaceArtifactData(entry.html, target.update.json);
+    return {
+      target: { ...target, designFingerprint: artifactDesignFingerprint(entry.html) },
+      title: entry.record.name,
+    };
+  }
   async prepare(
     target: Target,
     scope: ProjectScheduleScope,
@@ -43,19 +51,8 @@ export class ArtifactScheduleAdapter {
     scope: ProjectScheduleScope,
     identity: { scheduleId: string; runId: string },
   ): Promise<PreparedArtifactSchedule> {
-    if (target.source.scope.hostId !== scope.hostId)
-      throw new ScheduleError("invalid", "Artifact updates must run on their owning host.");
-    const entry = await this.ports.artifacts.locate(target.source);
-    if (entry.store.project.projectId !== scope.projectId)
-      throw new ScheduleError("invalid", "Select an artifact in this Schedule's owning project.");
-    if (entry.metadataInvalid || !entry.html || !entry.summary.previewAvailable)
-      throw new ScheduleError("invalid", "Repair the artifact before scheduling data updates.");
+    const entry = await this.locate(target.source, scope);
     const data = artifactData(entry.html);
-    if (data === null)
-      throw new ScheduleError(
-        "invalid",
-        "This artifact has no refreshable data contract. Scheduling never regenerates its design.",
-      );
     if (artifactDesignFingerprint(entry.html) !== target.designFingerprint)
       throw new ScheduleError(
         "conflict",
@@ -104,5 +101,21 @@ export class ArtifactScheduleAdapter {
         };
       },
     };
+  }
+  private async locate(source: Target["source"], scope: ProjectScheduleScope) {
+    if (source.scope.hostId !== scope.hostId)
+      throw new ScheduleError("invalid", "Artifact updates must run on their owning host.");
+    const entry = await this.ports.artifacts.locate(source);
+    if (entry.store.project.projectId !== scope.projectId)
+      throw new ScheduleError("invalid", "Select an artifact in this Schedule's owning project.");
+    if (entry.metadataInvalid || !entry.html || !entry.summary.previewAvailable)
+      throw new ScheduleError("invalid", "Repair the artifact before scheduling data updates.");
+    const data = artifactData(entry.html);
+    if (data === null)
+      throw new ScheduleError(
+        "invalid",
+        "This artifact has no refreshable data contract. Scheduling never regenerates its design.",
+      );
+    return { ...entry, html: entry.html };
   }
 }

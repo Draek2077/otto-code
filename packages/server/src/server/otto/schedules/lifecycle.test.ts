@@ -1,6 +1,11 @@
 import { expect, test } from "vitest";
 import type { ScheduleRuntimeHooks, StoredSchedule } from "./types.js";
-import { recoverScheduleTarget, settleScheduleTarget, stampScheduleRun } from "./lifecycle.js";
+import {
+  recoverScheduleTarget,
+  settleScheduleTarget,
+  stampScheduleRun,
+  reviewScheduleRepair,
+} from "./lifecycle.js";
 
 function record(): StoredSchedule {
   const target = { type: "agent" as const, agentId: "00000000-0000-4000-8000-000000000001" };
@@ -64,6 +69,37 @@ test("restart preserves history and pauses unknown effects instead of replaying"
   expect(next.runs).toHaveLength(1);
   expect(next.runs[0].otto?.disposition).toBe("unknown");
   expect(next.otto?.repairReason).toBe("Inspect interrupted work");
+});
+
+test("repair review is explicit and records the inspected previous run without changing run audit or status", () => {
+  const before = recoverScheduleTarget(record(), 0, hooks(), "restart");
+  const next = {
+    ...before,
+    runs: [...before.runs, { ...before.runs[0], id: "new-run", status: "running" as const }],
+  };
+  const ref = { id: before.id, ...before.otto! };
+  const mutation = { ref, expectedRevision: "a".repeat(64) };
+  expect(() => reviewScheduleRepair(before, next, mutation, "review")).toThrow(
+    "Inspect the uncertain outcome",
+  );
+  expect(reviewScheduleRepair(before, before, mutation, "review")).toBe(before);
+  const reviewed = reviewScheduleRepair(
+    before,
+    next,
+    { ...mutation, repairReviewed: true },
+    "review",
+  );
+  expect(reviewed.status).toBe("paused");
+  expect(reviewed.otto?.repairReason).toBeUndefined();
+  expect(reviewed.otto?.lastRepairReview).toEqual({
+    at: "review",
+    runId: "run",
+    reason: "Inspect interrupted work",
+  });
+  expect(reviewed.runs).toEqual(next.runs);
+  expect(
+    reviewScheduleRepair(reviewed, reviewed, { ...mutation, repairReviewed: true }, "again"),
+  ).toBe(reviewed);
 });
 test("pre-effect audit stamping pins the claimed target and rejects ended authority", async () => {
   let current = record();

@@ -5,6 +5,7 @@ import {
 } from "@getpaseo/protocol/schedule/types";
 import { isPaseoSchedule, type OttoStoredSchedule } from "@getpaseo/plugin/otto/schedules";
 import type { ScheduleMutation, ScheduleRun } from "./types.js";
+import { ScheduleError } from "./files.js";
 
 export function scheduleRevision(schedule: OttoStoredSchedule): string {
   return createHash("sha256").update(JSON.stringify(schedule)).digest("hex");
@@ -16,10 +17,21 @@ export function assertScheduleMutation(
   if (!mutation) return;
   if ("legacyOnly" in mutation) {
     requirePaseoSchedule(current);
+    // COMPAT(ottoScheduleRepairGuard): added v0.10.0; remove after 2027-05-08 with legacy Schedule mutations.
+    if (current.otto?.repairReason)
+      throw new ScheduleError(
+        "unsupported",
+        "Use an updated Otto client to inspect and review this paused Schedule before running it.",
+      );
     return;
   }
   if (current.id !== mutation.ref.id || scheduleRevision(current) !== mutation.expectedRevision)
-    throw new Error("Schedule changed. Reload before applying this action.");
+    throw new ScheduleError("conflict", "Schedule changed. Reload before applying this action.");
+  if (mutation.requireIdle && current.runs.some((run) => run.status === "running"))
+    throw new ScheduleError(
+      "busy",
+      "Wait for or cancel the active Schedule run before changing its settings.",
+    );
   const origin = current.otto;
   if (
     origin &&
@@ -28,7 +40,10 @@ export function assertScheduleMutation(
       origin.location !== mutation.ref.location ||
       origin.storeKey !== mutation.ref.storeKey)
   )
-    throw new Error("Schedule storage origin changed. Reload before applying this action.");
+    throw new ScheduleError(
+      "conflict",
+      "Schedule storage origin changed. Reload before applying this action.",
+    );
 }
 /** Protocol boundary only: never convert an extended target to a fake agent/prompt.
  * COMPAT(ottoScheduleLegacyWire): added v0.10.0; remove after 2027-05-08 when legacy Schedule RPCs retire. */

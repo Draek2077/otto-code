@@ -93,7 +93,11 @@ const KnownStoredSchedule = StoredScheduleSchema.extend({
       scope: ScheduleScope,
       location: ScheduleLocation,
       storeKey: z.string().min(1).max(1500),
+      creation: z.object({ operationId: ScheduleId, fingerprint: ScheduleDigest }).optional(),
       repairReason: z.string().max(2000).optional(),
+      lastRepairReview: z
+        .object({ at: z.string(), runId: z.string().nullable(), reason: z.string().max(2000) })
+        .optional(),
     })
     .passthrough()
     .optional(),

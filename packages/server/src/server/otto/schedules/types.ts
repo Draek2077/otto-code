@@ -15,10 +15,16 @@ import type {
 export type ScheduleTarget = OttoScheduleTarget;
 export type StoredSchedule = OttoStoredSchedule;
 export type ScheduleRun = OttoScheduleRun;
+/** Trusted in-process notification after durable claim, before target effects. Never a wire field. */
+export type ScheduleAdmission = (schedule: StoredSchedule, runId: string) => void;
 export type ScheduleAudit = z.infer<typeof ScheduleRunAudit>;
 export interface ScheduleVersionMutation {
   ref: ScheduleRef;
   expectedRevision: string;
+  /** Trusted owner sets this only after explicit inspection acknowledgement and target validation. */
+  repairReviewed?: boolean;
+  /** Reject edits/resumption inside the same claim queue while a run is active. */
+  requireIdle?: boolean;
 }
 export type ScheduleMutation = ScheduleVersionMutation | { legacyOnly: true };
 export interface CreateScheduleInput extends Omit<PaseoCreateSchedule, "target"> {
