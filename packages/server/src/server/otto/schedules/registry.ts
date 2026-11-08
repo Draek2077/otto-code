@@ -47,6 +47,8 @@ export interface ScheduleRegistryPorts {
   projects(): Promise<{ projectId: string }[]>;
   now?(): number;
   changed?(scope: ScheduleRef["scope"]): void;
+  /** Actual target-owner state, including work still settling after cancellation. */
+  executionHeld?(scheduleId: string): boolean;
 }
 export interface ScheduleStorageDiagnostic {
   ref: ScheduleRef | null;
@@ -382,7 +384,10 @@ export class ScheduleRegistry implements ScheduleStorePort {
           "conflict",
           "Schedule transfer source changed. Inspect both origins again.",
         );
-      if (entry.schedule.runs.some((run) => run.status === "running"))
+      if (
+        this.ports.executionHeld?.(ref.id) ||
+        entry.schedule.runs.some((run) => run.status === "running")
+      )
         throw new ScheduleError("busy", "An active Schedule attempt cannot be transferred.");
       const marker = entry.schedule.otto?.transfer;
       if (marker?.phase === "pending" && marker.operationId !== operationId)
@@ -554,6 +559,11 @@ export class ScheduleRegistry implements ScheduleStorePort {
         return null;
       }
       assertScheduleMutation(current.schedule, mutation);
+      if (mutation && "ref" in mutation && mutation.requireIdle && this.ports.executionHeld?.(id))
+        throw new ScheduleError(
+          "busy",
+          "The owning target is still settling this Schedule. Inspect its result and wait before editing or resuming.",
+        );
       // Normal owned writes, including restart repair, can stamp the real legacy
       // origin without inventing a project. A no-op and old-wire-only edit retain
       // their original representation and bytes.
@@ -644,7 +654,10 @@ export class ScheduleRegistry implements ScheduleStorePort {
       const current = await this.read(found.origin, id);
       if (!current) return;
       assertScheduleMutation(current.schedule, mutation);
-      if (current.schedule.runs.some((run) => run.status === "running"))
+      if (
+        this.ports.executionHeld?.(id) ||
+        current.schedule.runs.some((run) => run.status === "running")
+      )
         throw new ScheduleError(
           "busy",
           "Cancel and settle the active Schedule run before deleting.",

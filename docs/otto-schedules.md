@@ -164,6 +164,12 @@ uses the manager's atomic idle admission, so it cannot steer or replace a manual
 wins a race. Native preflight uses the current canonical project/workspace binding and provider
 catalog; unavailable providers wait for the next cadence and invalid bindings pause for repair.
 
+Cancellation can end the scheduler's wait before the target owner's underlying promise settles.
+Unfinished native and extended work retains capacity and a per-Schedule fence during that gap.
+Editing, resuming, deleting or transferring that Schedule is refused until its owner settles.
+An absent or failed cancellation confirmation is an unknown outcome that pauses for inspection;
+it is not a confirmed cancellation. Late cleanup errors reach the owning daemon's error handler.
+
 Native cancellation carries a private receipt bound to the actual provider session and turn.
 The receipt is never serialized. A pending Schedule start or conditional interrupt retains a
 per-chat fence until the actual provider promise settles, including after a timeout or an old

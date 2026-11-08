@@ -27,8 +27,16 @@ export class ScheduleNativeOwner {
   private closed = false;
   private active = new Map<string, NativeAttempt>();
   constructor(readonly ports: ScheduleNativePorts) {}
+  heldScheduleIds(): ReadonlySet<string> {
+    return new Set([...this.active.values()].map((attempt) => attempt.scheduleId));
+  }
   async execute(input: Parameters<ScheduleRuntimeHooks["execute"]>[0]) {
-    if (this.closed || this.active.size >= 5 || this.active.has(input.runId))
+    if (
+      this.closed ||
+      this.active.size >= 5 ||
+      this.active.has(input.runId) ||
+      this.heldScheduleIds().has(input.schedule.id)
+    )
       throw new ScheduleExecutionError(
         "Native Schedule capacity is unavailable. Waiting until the next scheduled time.",
         "failed",

@@ -93,14 +93,16 @@ test("native schedules retain their existing runner and do not consume extended 
 });
 test("five extended reservations are bounded and each release is idempotent", () => {
   const f = fixture();
-  const releases = Array.from({ length: 5 }, () => f.runtime.acquire(record()));
-  expect(f.runtime.acquire(record())).toBeNull();
+  const releases = Array.from({ length: 5 }, (_, index) =>
+    f.runtime.acquire({ ...record(), id: `reserved-${index}` }),
+  );
+  expect(f.runtime.acquire({ ...record(), id: "extra" })).toBeNull();
   const first = releases[0];
   if (!first) throw new Error("Missing fixture reservation");
   first();
   first();
-  expect(f.runtime.acquire(record())).toBeTypeOf("function");
-  expect(f.runtime.acquire(record())).toBeNull();
+  expect(f.runtime.acquire({ ...record(), id: "extra" })).toBeTypeOf("function");
+  expect(f.runtime.acquire({ ...record(), id: "extra-2" })).toBeNull();
 });
 
 test("shutdown revokes new native admissions without changing their normal runner", async () => {
@@ -175,6 +177,8 @@ test("canceling the exact owned run revokes late output and refuses a foreign id
   const f = fixture();
   const entered = deferred<void>(),
     finish = deferred<void>();
+  const released = deferred<void>();
+  f.release.mockImplementationOnce(() => released.resolve());
   let published = false;
   f.execute.mockImplementationOnce(async (signal) => {
     entered.resolve();
@@ -186,10 +190,11 @@ test("canceling the exact owned run revokes late output and refuses a foreign id
   const pending = f.runtime.execute(f.input).catch((error) => error);
   await entered.promise;
   await expect(f.runtime.cancel("foreign", "run")).rejects.toMatchObject({ kind: "conflict" });
-  await f.runtime.cancel("schedule", "run");
-  expect(await pending).toMatchObject({ disposition: "canceled" });
+  await expect(f.runtime.cancel("schedule", "run")).rejects.toMatchObject({ kind: "unavailable" });
+  expect(await pending).toMatchObject({ disposition: "unknown" });
+  expect(f.release).not.toHaveBeenCalled();
   finish.resolve();
-  await Promise.resolve();
+  await released.promise;
   expect(published).toBe(false);
   expect(f.release).toHaveBeenCalledTimes(1);
 });
@@ -205,12 +210,14 @@ test("stop settles its wait without depending on a noncooperative executor", asy
   await f.runtime.stop();
   expect(await pending).toMatchObject({ disposition: "unknown" });
   expect(f.runtime.acquire(record())).toBeNull();
-  expect(f.release).toHaveBeenCalledTimes(1);
+  expect(f.release).not.toHaveBeenCalled();
 });
 test("an aborted pending preflight releases its eventual token and never starts a target", async () => {
   const f = fixture();
   const entered = deferred<void>(),
     prepared = deferred<PreparedScheduleTarget>();
+  const released = deferred<void>();
+  f.release.mockImplementationOnce(() => released.resolve());
   f.prepare.mockImplementationOnce(async () => {
     entered.resolve();
     return prepared.promise;
@@ -220,11 +227,60 @@ test("an aborted pending preflight releases its eventual token and never starts 
   await f.runtime.cancel("schedule", "run");
   expect(await pending).toBeInstanceOf(ScheduleExecutionError);
   prepared.resolve({ audit: {}, execute: f.execute, release: f.release });
-  await Promise.resolve();
-  await Promise.resolve();
+  await released.promise;
   expect(f.release).toHaveBeenCalledTimes(1);
   expect(f.execute).not.toHaveBeenCalled();
   expect(f.stamp).not.toHaveBeenCalled();
+});
+
+test("unconfirmed extended work retains five global slots and fences another run of the same Schedule", async () => {
+  const f = fixture();
+  const finish = deferred<void>(),
+    released = deferred<void>();
+  let releases = 0;
+  f.release.mockImplementation(() => {
+    if (++releases === 5) released.resolve();
+  });
+  const runs: Promise<unknown>[] = [];
+  for (let index = 0; index < 5; index++) {
+    const schedule = { ...record(), id: `held-${index}` };
+    const lease = f.runtime.acquire(schedule);
+    if (!lease) throw new Error("Missing fixture lease");
+    const entered = deferred<void>();
+    f.execute.mockImplementationOnce(async () => {
+      entered.resolve();
+      await finish.promise;
+      return { agentId: null, output: "Late" };
+    });
+    runs.push(
+      f.runtime
+        .execute({ ...f.input, schedule, runId: `run-${index}` })
+        .catch((error: unknown) => error),
+    );
+    await entered.promise;
+    await expect(f.runtime.cancel(schedule.id, `run-${index}`)).rejects.toMatchObject({
+      kind: "unavailable",
+    });
+    lease();
+  }
+  expect(f.runtime.acquire({ ...record(), id: "sixth" })).toBeNull();
+  await expect(
+    f.runtime.execute({
+      ...f.input,
+      schedule: { ...record(), id: "held-0" },
+      runId: "replacement",
+    }),
+  ).rejects.toMatchObject({ disposition: "failed" });
+  expect(f.prepare).toHaveBeenCalledTimes(5);
+  expect(f.release).not.toHaveBeenCalled();
+  finish.resolve();
+  await released.promise;
+  expect((await Promise.all(runs)).every((error) => error instanceof ScheduleExecutionError)).toBe(
+    true,
+  );
+  const free = f.runtime.acquire({ ...record(), id: "sixth" });
+  expect(free).toBeTypeOf("function");
+  free?.();
 });
 test("restart and unclassified settlement failures retain audit but prohibit automatic replay", () => {
   const f = fixture();

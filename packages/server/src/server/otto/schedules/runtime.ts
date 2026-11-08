@@ -32,7 +32,9 @@ export class ScheduleExecutionError extends Error {
 }
 export interface ScheduleRuntimePorts {
   prepare(schedule: StoredSchedule, runId: string): Promise<PreparedScheduleTarget>;
+  onLateError?(scheduleId: string, runId: string, error: unknown): void;
   native?: {
+    heldScheduleIds(): ReadonlySet<string>;
     execute(
       input: Parameters<ScheduleRuntimeHooks["execute"]>[0],
     ): Promise<ScheduleExecutionResult>;
@@ -45,6 +47,9 @@ interface Active {
   prepared: PreparedScheduleTarget | null;
   done: Promise<void>;
   canceling?: Promise<void>;
+  raw: Set<Promise<unknown>>;
+  finished: boolean;
+  started: boolean;
 }
 /** Await cancellation without depending on a provider's prompt settlement. Late work retains the same
  * revoked signal and cannot publish; handlers observe eventual rejections and release late preflights. */
@@ -89,23 +94,51 @@ export function awaitScheduleEffect<T>(
 /** Bounded target work plugs into the existing scheduler; no timer, watcher, provider construction or chat state. */
 export class ScheduleRuntime implements ScheduleRuntimeHooks {
   private active = new Map<string, Active>();
-  private admitted = 0;
+  private admitted = new Map<symbol, string>();
   private closed = false;
   constructor(readonly ports: ScheduleRuntimePorts) {}
   requested(schedule: StoredSchedule): ScheduleAudit {
     return { requestedTarget: structuredClone(schedule.target) };
   }
+  private heldScheduleIds() {
+    return new Set([
+      ...this.admitted.values(),
+      ...[...this.active.values()].map((active) => active.scheduleId),
+      ...(this.ports.native?.heldScheduleIds() ?? []),
+    ]);
+  }
+  ownsExecution(scheduleId: string): boolean {
+    return (
+      [...this.active.values()].some((active) => active.scheduleId === scheduleId) ||
+      this.ports.native?.heldScheduleIds().has(scheduleId) === true
+    );
+  }
   acquire(schedule: StoredSchedule): (() => void) | null {
     if (this.closed) return null;
     if (isPaseoSchedule(schedule) && !this.ports.native) return () => {};
-    if (this.admitted >= 5) return null;
-    this.admitted++;
-    let released = false;
+    const held = this.heldScheduleIds();
+    if (held.size >= 5 || held.has(schedule.id)) return null;
+    const lease = Symbol(schedule.id);
+    this.admitted.set(lease, schedule.id);
     return () => {
-      if (released) return;
-      released = true;
-      this.admitted--;
+      this.admitted.delete(lease);
     };
+  }
+  private releaseFinished(runId: string, active: Active) {
+    if (!active.finished || active.raw.size) return;
+    if (this.active.get(runId) === active) this.active.delete(runId);
+    active.prepared?.release?.();
+  }
+  private track<T>(runId: string, active: Active, raw: Promise<T>): Promise<T> {
+    active.raw.add(raw);
+    const settled = () => {
+      active.raw.delete(raw);
+      this.releaseFinished(runId, active);
+    };
+    void raw
+      .then(settled, settled)
+      .catch((error: unknown) => this.ports.onLateError?.(active.scheduleId, runId, error));
+    return raw;
   }
   async execute(
     input: Parameters<ScheduleRuntimeHooks["execute"]>[0],
@@ -116,6 +149,18 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
         "unknown",
         {},
         "Review this Schedule after host shutdown.",
+      );
+    const held = this.heldScheduleIds();
+    const reserved = [...this.admitted.values()].includes(input.schedule.id);
+    if (
+      this.active.has(input.runId) ||
+      this.ownsExecution(input.schedule.id) ||
+      (!reserved && held.size >= 5)
+    )
+      throw new ScheduleExecutionError(
+        "Schedule capacity is retained by unfinished work. Waiting until the next scheduled time.",
+        "failed",
+        { failureCode: "busy" },
       );
     if (isPaseoSchedule(input.schedule))
       return this.ports.native ? this.ports.native.execute(input) : input.legacy();
@@ -128,12 +173,19 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
       controller: new AbortController(),
       prepared: null,
       done,
+      raw: new Set(),
+      finished: false,
+      started: false,
     };
     this.active.set(input.runId, active);
     let stage: "preflight" | "executing" = "preflight";
     try {
       const prepared = await awaitScheduleEffect(
-        this.ports.prepare(input.schedule, input.runId),
+        this.track(
+          input.runId,
+          active,
+          Promise.resolve().then(() => this.ports.prepare(input.schedule, input.runId)),
+        ),
         active.controller.signal,
         (late) => late.release?.(),
       );
@@ -142,8 +194,16 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
       await input.stamp(prepared.audit);
       active.controller.signal.throwIfAborted();
       stage = "executing";
+      active.started = true;
       const result = await awaitScheduleEffect(
-        prepared.execute(active.controller.signal, input.stamp),
+        this.track(
+          input.runId,
+          active,
+          Promise.resolve().then(() => {
+            active.controller.signal.throwIfAborted();
+            return prepared.execute(active.controller.signal, input.stamp);
+          }),
+        ),
         active.controller.signal,
       );
       if (result.audit) await input.stamp(result.audit);
@@ -153,9 +213,9 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
       if (active.controller.signal.aborted) throw active.controller.signal.reason;
       throw this.executionFailure(stage, error);
     } finally {
-      this.active.delete(input.runId);
+      active.finished = true;
       settle();
-      active.prepared?.release?.();
+      this.releaseFinished(input.runId, active);
     }
   }
   private executionFailure(
@@ -196,11 +256,15 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
   }
   private async cancelOwned(active: Active): Promise<void> {
     try {
-      const canceled = await active.prepared?.cancel?.();
+      let canceled: "settled" | "not_started" | undefined;
+      if (active.prepared?.cancel) canceled = await active.prepared.cancel();
+      else if (!active.started) canceled = "not_started";
       if (canceled === "settled") {
         await active.done;
         return;
       }
+      if (canceled !== "not_started")
+        throw new ScheduleError("unavailable", "The target owner did not confirm cancellation.");
     } catch (error) {
       const message =
         "Target cancellation could not be confirmed. Inspect the linked result before resuming this Schedule.";

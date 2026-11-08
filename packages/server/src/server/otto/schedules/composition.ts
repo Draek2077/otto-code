@@ -27,6 +27,7 @@ export function createScheduleComposition(ports: ScheduleCompositionPorts) {
     stores,
     projects: ports.projects,
     changed: (scope) => changes.publish(scope),
+    executionHeld: (scheduleId) => runtime.ownsExecution(scheduleId),
   });
   const workflows = new SavedWorkflowScheduleAdapter(ports.workflows);
   const artifacts = new ArtifactScheduleAdapter({
@@ -36,6 +37,7 @@ export function createScheduleComposition(ports: ScheduleCompositionPorts) {
   const native = ports.native ? new ScheduleNativeOwner({ ...ports.native, registry }) : undefined;
   const runtime = new ScheduleRuntime({
     native,
+    onLateError: ports.native?.onLateError,
     prepare: async (schedule, runId) => {
       const meta = schedule.otto;
       if (!meta?.scope.projectId)

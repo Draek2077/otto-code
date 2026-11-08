@@ -50,6 +50,7 @@ async function fixture() {
   const registry = new ScheduleRegistry({
     stores,
     projects: async () => [{ projectId: f.scope.projectId }],
+    executionHeld: (scheduleId) => runtime.ownsExecution(scheduleId),
   });
   const validate = vi.fn<() => Promise<void>>(async () => {});
   const lateError = vi.fn();
@@ -364,8 +365,8 @@ test("aborted non-cooperative native work retains all five reservations instead 
   const entered = Array.from({ length: 5 }, () => deferred<void>());
   const runs: Promise<unknown>[] = [];
   try {
-    const schedule = await f.create();
     for (let i = 0; i < 5; i++) {
+      const schedule = await f.create();
       const id = `held-${i}`;
       runs.push(
         f.native
@@ -384,6 +385,22 @@ test("aborted non-cooperative native work retains all five reservations instead 
       await entered[i].promise;
       await expect(f.native.cancel(schedule.id, id)).rejects.toThrow("uncertain outcome");
     }
+    const schedule = await f.create();
+    expect(
+      f.runtime.acquire({
+        ...schedule,
+        target: {
+          type: "artifact-update",
+          source: {
+            scope: { hostId: f.scope.hostId, target: { kind: "project", id: f.scope.projectId } },
+            id: "artifact",
+            location: "repository",
+          },
+          designFingerprint: "a".repeat(64),
+          update: { type: "data", json: "{}" },
+        },
+      }),
+    ).toBeNull();
     await expect(
       f.native.execute({
         schedule,
@@ -401,6 +418,60 @@ test("aborted non-cooperative native work retains all five reservations instead 
   } finally {
     held.resolve();
     await Promise.allSettled(runs);
+    await f.cleanup();
+  }
+});
+
+test("an unconfirmed native attempt fences its Schedule across new run ids, edits, deletion and transfers", async () => {
+  const f = await fixture();
+  const entered = deferred<void>(),
+    held = deferred<void>();
+  let running: Promise<unknown> | null = null;
+  try {
+    const schedule = await f.create();
+    running = f.native
+      .execute({
+        schedule,
+        runId: "held-native",
+        stamp: async () => {},
+        legacy: async () => {
+          entered.resolve();
+          await held.promise;
+          return { agentId: null, output: "Late" };
+        },
+      })
+      .catch((error: unknown) => error);
+    await entered.promise;
+    await expect(f.native.cancel(schedule.id, "held-native")).rejects.toThrow("uncertain outcome");
+    expect(await running).toBeInstanceOf(ScheduleExecutionError);
+    expect(f.runtime.ownsExecution(schedule.id)).toBe(true);
+    await f.registry.update(schedule.id, (row) => ({ ...row, status: "paused", nextRunAt: null }));
+    const current = await f.registry.entry(schedule.id);
+    if (!current) throw new Error("Missing held native fixture");
+    const mutation = { ref: current.ref, expectedRevision: current.revision, requireIdle: true };
+    await expect(
+      f.registry.update(schedule.id, (row) => ({ ...row, name: "Edited" }), mutation),
+    ).rejects.toMatchObject({ kind: "busy" });
+    await expect(f.registry.delete(schedule.id, mutation)).rejects.toMatchObject({ kind: "busy" });
+    const transfer = vi.fn(async () => {});
+    await expect(
+      f.registry.transferRecord(current.ref, current.revision, "transfer", transfer),
+    ).rejects.toMatchObject({ kind: "busy" });
+    expect(transfer).not.toHaveBeenCalled();
+    const replacement = vi.fn(async () => ({ agentId: null, output: "Wrong replacement" }));
+    await expect(
+      f.native.execute({
+        schedule,
+        runId: "different-run",
+        stamp: async () => {},
+        legacy: replacement,
+      }),
+    ).rejects.toMatchObject({ disposition: "failed" });
+    expect(replacement).not.toHaveBeenCalled();
+    expect(f.validate).toHaveBeenCalledTimes(1);
+  } finally {
+    held.resolve();
+    await Promise.allSettled([running]);
     await f.cleanup();
   }
 });
