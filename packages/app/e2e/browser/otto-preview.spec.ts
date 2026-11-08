@@ -223,19 +223,42 @@ for (const compact of [false, true]) {
       await Promise.allSettled([
         page.screenshot({ path: testInfo.outputPath("preview-before-cleanup.png") }),
         (async () => {
-          const snapshot = await inspect();
-          const logs = await Promise.all(
-            snapshot.servers.map(async (server) => ({
-              serverId: server.id,
-              logs: await client.invokePluginRpc("otto-browser", readPreviewLogs.name, {
-                ...scope,
-                serverId: server.id,
-                lines: 50,
-              }),
-            })),
+          const observations = await Promise.allSettled([
+            inspect(),
+            page.request
+              .get(`http://127.0.0.1:${port}/`, { timeout: 1000 })
+              .then(async (response) => ({
+                status: response.status(),
+                body: (await response.text()).slice(0, 500),
+              })),
+            client.invokePluginRpc("otto-browser", "browser.host.tabs.read.request", scope),
+          ]);
+          const snapshot = observations[0];
+          const logs =
+            snapshot.status === "fulfilled"
+              ? await Promise.allSettled(
+                  snapshot.value.servers.map(async (server) => ({
+                    serverId: server.id,
+                    logs: await client.invokePluginRpc("otto-browser", readPreviewLogs.name, {
+                      ...scope,
+                      serverId: server.id,
+                      lines: 50,
+                    }),
+                  })),
+                )
+              : [];
+          const diagnosticPath = testInfo.outputPath("preview-host-state.json");
+          await writeFile(
+            diagnosticPath,
+            JSON.stringify(
+              { observations, logs },
+              (_key, value) =>
+                value instanceof Error ? { name: value.name, message: value.message } : value,
+              2,
+            ),
           );
           await testInfo.attach("preview-host-state", {
-            body: JSON.stringify({ snapshot, logs }, null, 2),
+            path: diagnosticPath,
             contentType: "application/json",
           });
         })(),
