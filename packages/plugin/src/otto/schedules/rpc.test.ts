@@ -9,6 +9,8 @@ import {
   readScheduleHistory,
   reviewScheduleTarget,
   scheduleOperations,
+  transferSchedule,
+  recoverScheduleTransferLock,
 } from "./rpc.js";
 
 const scope = { hostId: "host", projectId: "project" };
@@ -184,5 +186,38 @@ test("history pages are bounded and every registered method uses a distinct dott
     scheduleOperations.length,
   );
   for (const operation of scheduleOperations)
-    expect(operation.name).toMatch(/^schedules\.[a-z]+\.[a-z-]+\.request$/);
+    expect(operation.name).toMatch(/^schedules\.(?:[a-z-]+\.)+request$/);
+});
+
+test("transfers require an explicit project, origin and digest while recovery requires stopped-writer acknowledgement", () => {
+  const transfer = {
+    scope,
+    source: ref,
+    expectedRevision: "a".repeat(64),
+    operationId: "operation",
+    operation: "copy",
+    destination: "host",
+  };
+  expect(transferSchedule.input.parse(transfer)).toEqual(transfer);
+  expect(transferSchedule.input.safeParse({ ...transfer, destination: "legacy" }).success).toBe(
+    false,
+  );
+  expect(
+    transferSchedule.input.safeParse({ ...transfer, scope: { ...scope, projectId: null } }).success,
+  ).toBe(false);
+  const recovery = {
+    scope,
+    operationId: "operation",
+    expectedRevision: "a".repeat(64),
+    kind: "source",
+    expectedLockRevision: "b".repeat(64),
+    writersStopped: true,
+  };
+  expect(recoverScheduleTransferLock.input.parse(recovery)).toEqual(recovery);
+  expect(
+    recoverScheduleTransferLock.input.safeParse({ ...recovery, writersStopped: false }).success,
+  ).toBe(false);
+  expect(
+    recoverScheduleTransferLock.input.safeParse({ ...recovery, kind: "C:/arbitrary/path" }).success,
+  ).toBe(false);
 });

@@ -90,6 +90,33 @@ filesystem boundary. There is no automatic retry after uncertain publication. Ex
 deletion retains the original record in the store's `.otto-recovery` directory and refuses
 active runs.
 
+### Explicit transfer receipts
+
+The daemon's transfer API treats copying as **Copy settings**: it creates a new paused
+identity with empty history and preserves the source's exact bytes, cadence and history.
+A move retains the identity and run history, verifies the paused destination, and retires
+the fenced source into its recovery directory. Neither operation starts a target or changes
+the project's storage preference.
+
+Transfers require an exact source origin and revision, an explicit destination and project,
+and a stable operation nonce. The owning daemon retains a byte-exact source backup and
+digest-bound receipt under `schedule-transfers/<operationId>/`. Pending markers block both
+clock claims and manual controls. The destination stays paused after commit; a copy restores
+source execution only after the committed receipt and destination have been verified.
+
+Repeating an operation reads its receipt. It never repeats publications or retires a source
+again. Interrupted operations require explicit reconciliation against inspected receipt,
+source and destination digests. Completion requires the retained proof to match. Aborting is
+allowed only before any destination exists and restores the exact unchanged source. Unknown
+or edited bytes remain untouched. A committed receipt can still need reconciliation if final
+unfencing was interrupted; historical receipts do not reject later legitimate edits.
+
+Inspection reports bounded summaries, digests and lock kinds, never backup contents or paths.
+Locks use the existing no-link publisher and recovery rules. Recovering one requires its exact
+inspected revision and explicit confirmation that other owning-host writers stopped. A crash
+before receipt publication permits inspection of packet locks only, without guessing a source
+or destination. These contracts do not by themselves register app transfer controls.
+
 ## Claims, effects, and cancellation
 
 A durable running claim also fences later automatic and manual attempts if publishing its

@@ -14,9 +14,20 @@ export function assertScheduleMutation(
   current: OttoStoredSchedule,
   mutation?: ScheduleMutation,
 ): void {
+  if (current.otto?.transfer?.phase === "pending")
+    throw new ScheduleError(
+      "busy",
+      "This Schedule has an unfinished storage transfer. Inspect its receipt and reconcile both origins before another action.",
+    );
   if (!mutation) return;
   if ("legacyOnly" in mutation) {
     requirePaseoSchedule(current);
+    // COMPAT(ottoScheduleProjectControl): added v0.10.0; remove after 2027-05-08 with legacy Schedule mutations.
+    if (current.otto?.scope.projectId)
+      throw new ScheduleError(
+        "unsupported",
+        "Use an updated Otto client to manage this project-owned Schedule at its exact origin.",
+      );
     // COMPAT(ottoScheduleRepairGuard): added v0.10.0; remove after 2027-05-08 with legacy Schedule mutations.
     if (current.otto?.repairReason)
       throw new ScheduleError(

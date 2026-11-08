@@ -4,6 +4,13 @@ import { ScheduleCadenceSchema, ScheduleTargetSchema } from "@getpaseo/protocol/
 import { ArtifactRef } from "../artifacts.js";
 import { WorkflowRef } from "../workflows/runtime.js";
 import {
+  ScheduleTransferInput,
+  ScheduleTransferInspection,
+  ScheduleTransferLookup,
+  ScheduleTransferReconciliation,
+  ScheduleTransferLockRecovery,
+} from "./transfers.js";
+import {
   OttoStoredSchedule,
   OttoScheduleTarget,
   OttoScheduleRun,
@@ -13,6 +20,7 @@ import {
   ScheduleId,
   ScheduleDraft,
   ScheduleDiagnostic,
+  ScheduleTransferMarker,
   ScheduledWorkflow,
   ScheduledArtifactUpdate,
 } from "./model.js";
@@ -74,6 +82,7 @@ export const ScheduleListItem = z.object({
   runCount: z.number().int().nonnegative(),
   lastRun: ScheduleRunSummary.nullable(),
   repairReason: z.string().nullable(),
+  transfer: ScheduleTransferMarker.nullable(),
 });
 export type ScheduleListItem = z.infer<typeof ScheduleListItem>;
 export const ScheduleFailure = z.object({
@@ -232,6 +241,27 @@ export const saveScheduleDefaults = rpc(
   defaults,
 );
 /** Structural discovery only; no saved prompts, schemas from user files, or run output. */
+export const transferSchedule = rpc(
+  "schedules.storage.transfer.request",
+  ScheduleTransferInput,
+  ScheduleTransferInspection,
+);
+export const readScheduleTransfer = rpc(
+  "schedules.storage.transfer.inspect.request",
+  z.object({ scope: ScheduleProjectScope, operationId: ScheduleId }),
+  ScheduleTransferLookup,
+);
+export const reconcileScheduleTransfer = rpc(
+  "schedules.storage.transfer.reconcile.request",
+  ScheduleTransferReconciliation,
+  ScheduleTransferInspection,
+);
+export const recoverScheduleTransferLock = rpc(
+  "schedules.storage.transfer.lock.recover.request",
+  ScheduleTransferLockRecovery,
+  ScheduleTransferLookup,
+);
+
 export const scheduleOperations = [
   listSchedules,
   watchSchedules,
@@ -246,4 +276,8 @@ export const scheduleOperations = [
   saveScheduleStorage,
   readScheduleDefaults,
   saveScheduleDefaults,
+  transferSchedule,
+  readScheduleTransfer,
+  reconcileScheduleTransfer,
+  recoverScheduleTransferLock,
 ] as const;

@@ -7,6 +7,7 @@ import { scheduleDocument, scheduleListItem, scheduleRunSummary } from "./projec
 import { ScheduleNotFoundError, ScheduleStateConflictError } from "../../schedule/service.js";
 import { awaitScheduleEffect } from "./runtime.js";
 import type { ScheduleChanges } from "./changes.js";
+import { ScheduleTransfers } from "./transfers.js";
 
 export interface ScheduleActionPort {
   create(input: z.infer<typeof rpc.createSchedule.input>): Promise<rpc.ScheduleDocument>;
@@ -28,12 +29,16 @@ const mutations = new Set([
   rpc.controlSchedule.name,
   rpc.saveScheduleStorage.name,
   rpc.saveScheduleDefaults.name,
+  rpc.transferSchedule.name,
+  rpc.reconcileScheduleTransfer.name,
+  rpc.recoverScheduleTransferLock.name,
 ]);
 const RESPONSE_BUDGET = 768 * 1024;
 
 /** One authenticated, bounded API for UI/CLI/MCP. It owns no cadence, provider,
  * project registry or parallel cache; every write reaches the same scheduler/store. */
 export class ScheduleDaemonService {
+  readonly transfers: ScheduleTransfers;
   private closed = false;
   private readonly stopping = new AbortController();
   private readonly writes = new Set<Promise<unknown>>();
@@ -41,7 +46,9 @@ export class ScheduleDaemonService {
     readonly registry: ScheduleRegistry,
     readonly actions: ScheduleActionPort,
     readonly changes: ScheduleChanges,
-  ) {}
+  ) {
+    this.transfers = new ScheduleTransfers(registry);
+  }
   invoke(method: string, value: unknown): Promise<unknown> | undefined {
     const contract = contracts.get(method);
     if (!contract) return undefined;
@@ -101,6 +108,16 @@ export class ScheduleDaemonService {
         return this.defaults(rpc.readScheduleDefaults.input.parse(value));
       case rpc.saveScheduleDefaults.name:
         return this.saveDefaults(rpc.saveScheduleDefaults.input.parse(value));
+      case rpc.transferSchedule.name:
+        return this.transfers.transfer(rpc.transferSchedule.input.parse(value));
+      case rpc.readScheduleTransfer.name: {
+        const input = rpc.readScheduleTransfer.input.parse(value);
+        return this.transfers.lookup(input.scope, input.operationId);
+      }
+      case rpc.reconcileScheduleTransfer.name:
+        return this.transfers.reconcile(rpc.reconcileScheduleTransfer.input.parse(value));
+      case rpc.recoverScheduleTransferLock.name:
+        return this.transfers.recoverLock(rpc.recoverScheduleTransferLock.input.parse(value));
       default:
         throw new ScheduleError("unsupported", "Unknown Schedule operation.");
     }
@@ -223,6 +240,7 @@ export class ScheduleDaemonService {
   /** The owning composition stops scheduler admission before draining these writes. */
   async close() {
     this.closed = true;
+    this.transfers.close();
     this.changes.close();
     this.stopping.abort(
       new ScheduleError(

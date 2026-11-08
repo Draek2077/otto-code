@@ -25,6 +25,13 @@ export const ScheduleRef = z.object({
   storeKey: z.string().min(1).max(1500),
 });
 export type ScheduleRef = z.infer<typeof ScheduleRef>;
+export const ScheduleTransferMarker = z.object({
+  operationId: ScheduleId,
+  operation: z.enum(["copy", "move"]),
+  role: z.enum(["source", "destination"]),
+  phase: z.enum(["pending", "committed"]),
+  peer: ScheduleRef,
+});
 export const ScheduledWorkflow = z.object({
   type: z.literal("workflow"),
   source: WorkflowRef.extend({ kind: z.enum(["ai", "graph"]) }),
@@ -94,6 +101,7 @@ const KnownStoredSchedule = StoredScheduleSchema.extend({
       location: ScheduleLocation,
       storeKey: z.string().min(1).max(1500),
       creation: z.object({ operationId: ScheduleId, fingerprint: ScheduleDigest }).optional(),
+      transfer: ScheduleTransferMarker.optional(),
       repairReason: z.string().max(2000).optional(),
       lastRepairReview: z
         .object({ at: z.string(), runId: z.string().nullable(), reason: z.string().max(2000) })

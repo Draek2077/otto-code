@@ -75,6 +75,7 @@ export function scheduleListItem(entry: ScheduleEntry & { ambiguous: boolean }):
     expiresAt: schedule.expiresAt,
     runCount: schedule.runs.length,
     lastRun: last ? scheduleRunSummary(last) : null,
+    transfer: schedule.otto?.transfer ?? null,
     repairReason: entry.ambiguous
       ? "Duplicate Schedule identity. Inspect both origins and reconcile storage before running."
       : (schedule.otto?.repairReason ?? null),

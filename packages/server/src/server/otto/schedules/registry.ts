@@ -36,6 +36,10 @@ interface Located {
   schedule: StoredSchedule;
   revision: string;
 }
+export interface ScheduleTransferEntry extends Located {
+  ref: ScheduleRef;
+  bytes: string;
+}
 export interface ScheduleRegistryPorts {
   stores: ScheduleStores;
   /** Canonical registry only, including archived projects with retained schedules. */
@@ -261,6 +265,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
     return [...this.index.values()]
       .flatMap((rows) =>
         rows.length === 1 &&
+        rows[0].schedule.otto?.transfer?.phase !== "pending" &&
         !(rows[0].schedule.status === "active" && rows[0].schedule.otto?.repairReason)
           ? [rows[0].schedule]
           : [],
@@ -352,6 +357,100 @@ export class ScheduleRegistry implements ScheduleStorePort {
       revision: scheduleRevision(current.schedule),
       schedule: current.schedule,
     };
+  }
+  /** Transfer/reconciliation owns this same per-ID queue. The exact origin may
+   * be read while a move deliberately leaves two fenced copies of one ID. */
+  async transferRecord<T>(
+    ref: ScheduleRef,
+    expectedRevision: string,
+    operationId: string,
+    operation: (entry: ScheduleTransferEntry) => Promise<T>,
+  ): Promise<T> {
+    assertScheduleId(operationId);
+    return this.serial(ref.id, async () => {
+      await this.refresh(true);
+      if (!(this.index.get(ref.id) ?? []).some((row) => sameOrigin(ref, row.origin)))
+        throw new ScheduleError(
+          "conflict",
+          "This transfer origin is unavailable or its physical store has conflicting project bindings. Inspect storage before writing.",
+        );
+      const entry = await this.transferEntry(ref);
+      if (!entry || entry.revision !== expectedRevision)
+        throw new ScheduleError(
+          "conflict",
+          "Schedule transfer source changed. Inspect both origins again.",
+        );
+      if (entry.schedule.runs.some((run) => run.status === "running"))
+        throw new ScheduleError("busy", "An active Schedule attempt cannot be transferred.");
+      const marker = entry.schedule.otto?.transfer;
+      if (marker?.phase === "pending" && marker.operationId !== operationId)
+        throw new ScheduleError(
+          "busy",
+          "Reconcile the existing Schedule transfer before starting another.",
+        );
+      return operation(entry);
+    });
+  }
+  async transferOrigin(ref: ScheduleRef): Promise<ScheduleOrigin> {
+    assertScheduleId(ref.id);
+    let origin: ScheduleOrigin | undefined;
+    if (ref.location === "legacy") origin = this.ports.stores.legacy();
+    else if (ref.scope.projectId)
+      origin = (
+        await this.ports.stores.locations({ ...ref.scope, projectId: ref.scope.projectId })
+      ).find((item) => sameOrigin(ref, item));
+    if (!origin || !sameOrigin(ref, origin))
+      throw new ScheduleError("invalid", "Choose the exact Schedule storage origin.");
+    return origin;
+  }
+  /** Inspection can report a digest for malformed retained bytes without parsing
+   * them into mutation authority. All paths still come from canonical stores. */
+  async transferBytes(ref: ScheduleRef): Promise<string | null> {
+    const origin = await this.transferOrigin(ref);
+    if (!(await scheduleDirectory(origin.boundary, origin.directory))) return null;
+    return readScheduleFile(this.file(origin, ref.id));
+  }
+  async transferEntry(ref: ScheduleRef): Promise<ScheduleTransferEntry | null> {
+    const origin = await this.transferOrigin(ref);
+    const current = await this.read(origin, ref.id);
+    if (!current) return null;
+    return {
+      origin,
+      ref: refFor(origin, ref.id),
+      schedule: current.schedule,
+      bytes: current.bytes,
+      revision: scheduleRevision(current.schedule),
+    };
+  }
+  /** Only the trusted transfer owner calls these publication methods while holding
+   * transferRecord's queue. Paths come from canonical stores, never an RPC path. */
+  async publishTransfer(origin: ScheduleOrigin, bytes: string, expectedDigest: string | null) {
+    const schedule = parseOttoStoredSchedule(JSON.parse(bytes));
+    await this.verifyOrigin({ origin, schedule, revision: scheduleRevision(schedule) });
+    this.validate(schedule, origin, schedule.id);
+    await scheduleDirectory(origin.boundary, origin.directory, true);
+    await publishScheduleFile(this.file(origin, schedule.id), bytes, expectedDigest);
+    this.remember(origin, schedule);
+    return {
+      origin,
+      ref: refFor(origin, schedule.id),
+      schedule,
+      bytes,
+      revision: scheduleRevision(schedule),
+    };
+  }
+  async retireTransfer(entry: ScheduleTransferEntry) {
+    await this.verifyOrigin(entry);
+    await retireScheduleFile(
+      this.file(entry.origin, entry.schedule.id),
+      scheduleDigest(entry.bytes),
+    );
+    const remaining = (this.index.get(entry.schedule.id) ?? []).filter(
+      (row) => !sameOrigin(entry.ref, row.origin),
+    );
+    if (remaining.length) this.index.set(entry.schedule.id, remaining);
+    else this.index.delete(entry.schedule.id);
+    this.ports.changed?.(entry.origin.scope);
   }
   async get(id: string) {
     return (await this.entry(id))?.schedule ?? null;

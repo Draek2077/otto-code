@@ -117,3 +117,63 @@ test("legacy logs preserve caller ordering and remove only extension fields", ()
   ]);
   expect(runs).toEqual([base, { ...base, id: "second" }]);
 });
+test("a persistent transfer fence blocks old controls, modern repair acknowledgement and bare clock mutations", () => {
+  const schedule = {
+    ...record(),
+    status: "paused" as const,
+    otto: {
+      version: 1 as const,
+      scope: ref.scope,
+      location: ref.location,
+      storeKey: ref.storeKey,
+      transfer: {
+        operationId: "transfer-1",
+        operation: "move" as const,
+        role: "source" as const,
+        phase: "pending" as const,
+        peer: {
+          ...ref,
+          location: "repository" as const,
+          scope: { hostId: "host", projectId: "project" },
+          storeKey: "schedules:repository:project",
+        },
+      },
+    },
+  };
+  expect(StoredScheduleSchema.safeParse(requirePaseoSchedule(schedule)).success).toBe(true);
+  expect(() => assertScheduleMutation(schedule)).toThrow("unfinished storage transfer");
+  expect(() => assertScheduleMutation(schedule, { legacyOnly: true })).toThrow(
+    "unfinished storage transfer",
+  );
+  expect(() =>
+    assertScheduleMutation(schedule, {
+      ref,
+      expectedRevision: scheduleRevision(schedule),
+      repairReviewed: true,
+    }),
+  ).toThrow("unfinished storage transfer");
+});
+test("project-owned native controls require an exact origin while old host-global native controls keep working", () => {
+  const schedule = record();
+  expect(() => assertScheduleMutation(schedule, { legacyOnly: true })).not.toThrow();
+  const source = {
+    ...ref,
+    scope: { hostId: "host", projectId: "project" },
+    location: "repository" as const,
+    storeKey: "schedules:repository:project",
+  };
+  const scoped = {
+    ...schedule,
+    otto: {
+      version: 1 as const,
+      scope: source.scope,
+      location: source.location,
+      storeKey: source.storeKey,
+    },
+  };
+  expect(StoredScheduleSchema.safeParse(requirePaseoSchedule(scoped)).success).toBe(true);
+  expect(() => assertScheduleMutation(scoped, { legacyOnly: true })).toThrow("exact origin");
+  expect(() =>
+    assertScheduleMutation(scoped, { ref: source, expectedRevision: scheduleRevision(scoped) }),
+  ).not.toThrow();
+});

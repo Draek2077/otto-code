@@ -10,6 +10,8 @@ import {
 import { ScheduleStores, type ScheduleOrigin } from "./stores.js";
 import { ScheduleRegistry } from "./registry.js";
 import type { StoredSchedule } from "./types.js";
+import { scheduleDigest } from "./files.js";
+import { deferred } from "../workflows/test-utils/host-fixture.js";
 const parent = fileURLToPath(new URL("../../../../../../.tmp/", import.meta.url));
 const roots: string[] = [];
 afterEach(async () => {
@@ -472,6 +474,56 @@ test("a legacy no-op never materializes origin metadata or rewrites retained sou
   const before = await readFile(file, "utf8");
   expect((await f.registry.update(created.id, (row) => row))?.otto).toBeUndefined();
   expect(await readFile(file, "utf8")).toBe(before);
+});
+test("transfer fencing shares the claim queue and remains non-executable after a fresh registry scan", async () => {
+  const f = await fixture();
+  const created = await f.registry.create(draft(f.origin));
+  const source = await f.registry.entry(created.id);
+  if (!source?.schedule.otto) throw new Error("Missing transfer source");
+  const entered = deferred<void>();
+  const release = deferred<void>();
+  const target = { ...source.ref, location: "host" as const, storeKey: "destination" };
+  const transfer = f.registry.transferRecord(
+    source.ref,
+    source.revision,
+    "transfer-1",
+    async (entry) => {
+      entered.resolve();
+      await release.promise;
+      const next: StoredSchedule = {
+        ...entry.schedule,
+        status: "paused",
+        nextRunAt: null,
+        otto: {
+          ...source.schedule.otto!,
+          transfer: {
+            operationId: "transfer-1",
+            operation: "move",
+            phase: "pending",
+            role: "source",
+            peer: target,
+          },
+        },
+      };
+      return f.registry.publishTransfer(
+        entry.origin,
+        JSON.stringify(next),
+        scheduleDigest(entry.bytes),
+      );
+    },
+  );
+  await entered.promise;
+  const updater = vi.fn((row: StoredSchedule) => ({ ...row, status: "active" as const }));
+  const queued = f.registry.update(created.id, updater).catch((error: unknown) => error);
+  release.resolve();
+  await transfer;
+  expect(await queued).toMatchObject({ kind: "busy" });
+  expect(updater).not.toHaveBeenCalled();
+  await f.registry.refresh(true);
+  expect(await f.registry.list()).toHaveLength(0);
+  expect((await f.registry.inspectOrigin(source.ref))?.schedule.otto?.transfer?.operationId).toBe(
+    "transfer-1",
+  );
 });
 
 test("unknown nested legacy fields survive edits while deliberate known removals and retargeting still apply", async () => {

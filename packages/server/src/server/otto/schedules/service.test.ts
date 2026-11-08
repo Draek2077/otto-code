@@ -13,12 +13,49 @@ import {
   saveScheduleStorage,
   controlSchedule,
   watchSchedules,
+  transferSchedule,
+  readScheduleTransfer,
 } from "@getpaseo/plugin/otto/schedules";
 import type { PluginRpcContract } from "@getpaseo/plugin";
 import { scheduleApiFixture } from "./test-utils/api-fixture.js";
 import { ScheduleError } from "./files.js";
 import { scheduleRevision } from "./legacy.js";
 import { deferred } from "../workflows/test-utils/host-fixture.js";
+
+test("authenticated transfer RPCs compose the real store and disclose receipt summaries without retained source bytes", async () => {
+  const f = await scheduleApiFixture();
+  try {
+    const source = await f.create();
+    const input = {
+      scope: f.scope,
+      source: source.ref,
+      expectedRevision: source.revision,
+      operationId: "api-transfer",
+      operation: "copy",
+      destination: "host",
+    };
+    const copied = transferSchedule.output.parse(await f.api.invoke(transferSchedule.name, input));
+    if (!copied.ok) throw new Error(copied.error.message);
+    expect(copied.value).toMatchObject({
+      status: "committed",
+      needsReconciliation: false,
+      source: source.ref,
+    });
+    expect(JSON.stringify(copied)).not.toContain(f.draft.prompt);
+    expect(
+      await f.api.invoke(readScheduleTransfer.name, {
+        scope: f.scope,
+        operationId: input.operationId,
+      }),
+    ).toEqual(copied);
+    expect(
+      await f.api.invoke(transferSchedule.name, { ...input, operation: "move" }),
+    ).toMatchObject({ ok: false, error: { code: "conflict" } });
+    expect((await f.registry.catalog()).length).toBe(2);
+  } finally {
+    await f.cleanup();
+  }
+});
 
 test("one bounded API creates, reads, searches, pauses and deletes through the canonical store", async () => {
   const f = await scheduleApiFixture();
