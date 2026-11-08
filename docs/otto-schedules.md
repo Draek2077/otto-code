@@ -14,8 +14,9 @@ The native runner remains Paseo-owned. Composition alone does not expose a new e
 advertise a target capability.
 
 The owned daemon API delegates create, edit, and control actions to that same scheduler.
-Its dotted contracts are internal integration points until the authenticated route and editor
-are registered. A create operation carries a stable caller nonce and payload fingerprint;
+Its dotted contracts use the authenticated `otto-schedules` built-in route. The original
+Schedules editor retains its native target contract until the target-aware editor and capability
+are accepted. A create operation carries a stable caller nonce and payload fingerprint;
 repeating it returns the saved record even if defaults or target availability changed after
 publication. A different payload with that nonce is a conflict. Edits and controls carry the
 exact origin and content revision. Settings edits are refused inside the claim queue while a
@@ -27,6 +28,11 @@ origins remain individually inspectable, but cannot execute or mutate through an
 An uncertain outcome requires an explicit inspection acknowledgement and current target
 validation before resuming. That acknowledgement records a receipt and retains the original
 failed run and its audit.
+
+Shutdown closes API admission and rejects unconfirmed responses before stopping the scheduler
+and target owners. Pending provider validation cannot hold daemon shutdown indefinitely.
+Late validation cannot create new work after close; a publication already in progress retains
+its operation identity and must be inspected before another write.
 
 ## Internal records and the legacy transport
 
@@ -82,8 +88,22 @@ resolved identity and exact content revision durably before starting effects. Ru
 additive; cancellation and uncertain outcomes use audit dispositions while the old run
 status enum remains parseable.
 
-The Otto runtime bounds extended target admission to five reservations. Native schedules
-retain Paseo's execution path. Cancellation addresses the exact Schedule/run pair owned by
+The Otto runtime bounds target admission to five reservations. Native schedules
+retain Paseo's provisioning, provider, and workspace cleanup owners. Existing-chat execution
+uses the manager's atomic idle admission, so it cannot steer or replace a manual turn that
+wins a race. Native preflight uses the current canonical project/workspace binding and provider
+catalog; unavailable providers wait for the next cadence and invalid bindings pause for repair.
+
+Native cancellation carries a private receipt bound to the actual provider session and turn.
+The receipt is never serialized. A pending Schedule start or conditional interrupt retains a
+per-chat fence until the actual provider promise settles, including after a timeout or an old
+turn's completion. Other chats remain available. A non-cooperative native operation retains
+one of five bounded reservations after cancellation; revocation prevents late provisioning
+from starting a new turn. An uncertain result pauses for inspection rather than permitting
+unbounded replacement work. The first audited legacy claim records its actual host-global
+origin without assigning a project or moving the record.
+
+Cancellation addresses the exact Schedule/run pair owned by
 the current process. Revoked signals prevent late Artifact publication. Shutdown revokes
 owned waits without depending on a provider returning promptly; interrupted extended work
 requires inspection rather than automatic replay.

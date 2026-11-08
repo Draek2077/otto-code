@@ -5,6 +5,7 @@ import { ScheduleError } from "./files.js";
 import type { ScheduleRegistry } from "./registry.js";
 import { scheduleDocument, scheduleListItem, scheduleRunSummary } from "./projection.js";
 import { ScheduleNotFoundError, ScheduleStateConflictError } from "../../schedule/service.js";
+import { awaitScheduleEffect } from "./runtime.js";
 
 export interface ScheduleActionPort {
   create(input: z.infer<typeof rpc.createSchedule.input>): Promise<rpc.ScheduleDocument>;
@@ -33,6 +34,7 @@ const RESPONSE_BUDGET = 768 * 1024;
  * project registry or parallel cache; every write reaches the same scheduler/store. */
 export class ScheduleDaemonService {
   private closed = false;
+  private readonly stopping = new AbortController();
   private readonly writes = new Set<Promise<unknown>>();
   constructor(
     readonly registry: ScheduleRegistry,
@@ -176,7 +178,10 @@ export class ScheduleDaemonService {
   private async guard(contract: PluginRpcContract, operation: () => Promise<unknown>) {
     try {
       if (this.closed) throw new ScheduleError("unavailable", "Schedules host is stopping.");
-      const response = contract.output.parse({ ok: true, value: await operation() });
+      const response = contract.output.parse({
+        ok: true,
+        value: await awaitScheduleEffect(operation(), this.stopping.signal),
+      });
       if (Buffer.byteLength(JSON.stringify(response)) > RESPONSE_BUDGET)
         throw new ScheduleError(
           "unavailable",
@@ -206,7 +211,13 @@ export class ScheduleDaemonService {
   /** The owning composition stops scheduler admission before draining these writes. */
   async close() {
     this.closed = true;
-    await Promise.allSettled(this.writes);
+    this.stopping.abort(
+      new ScheduleError(
+        "unavailable",
+        "Schedules host stopped before this response was confirmed. Inspect the saved record before another action.",
+      ),
+    );
     await this.actions.close();
+    await Promise.allSettled(this.writes);
   }
 }

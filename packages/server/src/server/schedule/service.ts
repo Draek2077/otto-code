@@ -34,6 +34,7 @@ import type {
   ScheduleMutation,
   ScheduleSettlement,
   ScheduleAdmission,
+  ScheduleTurnFactory,
 } from "../otto/schedules/types.js";
 import { requirePaseoSchedule } from "../otto/schedules/legacy.js"; // OTTO(schedules): preserve the legacy runner contract.
 import {
@@ -43,6 +44,7 @@ import {
   sameScheduleTarget,
 } from "../otto/schedules/lifecycle.js"; // OTTO(schedules): target audit/recovery logic stays owned.
 import type { FirstAgentContext } from "@getpaseo/protocol/messages";
+import { scheduleNativeResult } from "../otto/schedules/native-result.js"; // OTTO(schedules): exact-turn result, not a later chat's state.
 
 const SCHEDULE_TICK_INTERVAL_MS = 1000;
 
@@ -328,7 +330,7 @@ export class ScheduleService {
                 // OTTO(schedules): target dispatch reuses this scheduler's durable claim/finish.
                 schedule,
                 runId,
-                legacy: () => this.executeSchedule(schedule, runId),
+                legacy: (turnOptions) => this.executeSchedule(schedule, runId, turnOptions), // OTTO(schedules): a private turn capability, never provider configuration.
                 stamp: (audit) => stampScheduleRun(this.store, schedule.id, runId, audit, this.now),
               })
             : this.executeSchedule(schedule, runId);
@@ -1034,6 +1036,7 @@ export class ScheduleService {
   private async executeSchedule(
     schedule: StoredSchedule,
     runId: string,
+    turnOptions?: ScheduleTurnFactory, // OTTO(schedules)
   ): Promise<ScheduleExecutionResult> {
     if (schedule.target.type === "agent") {
       const wrappedPrompt = formatSystemNotificationPrompt(buildScheduleFireBody(schedule, runId));
@@ -1050,8 +1053,17 @@ export class ScheduleService {
         agentStorage: this.agentStorage,
         logger: this.logger,
       });
-      if (this.agentManager.hasInFlightRun(agent.id)) {
+      if (!turnOptions && this.agentManager.hasInFlightRun(agent.id)) {
         throw new Error(`Agent ${agent.id} already has an active run`);
+      }
+      if (turnOptions) {
+        // OTTO(schedules): streamAgent's atomic idle admission cannot steer/replace a manual turn arriving after the precheck.
+        const result = await this.agentManager.runAgent(
+          agent.id,
+          wrappedPrompt,
+          await turnOptions(agent.id),
+        );
+        return scheduleNativeResult(agent.id, result);
       }
       await startAgentRun(this.agentManager, agent.id, wrappedPrompt, this.logger, {
         replaceRunning: true,
@@ -1076,6 +1088,15 @@ export class ScheduleService {
       };
     }
 
+    return this.executeNewAgentSchedule(schedule, runId, turnOptions); // OTTO(schedules): keep provisioning in Paseo's existing owner.
+  }
+
+  // OTTO(schedules): extraction preserves the original provision/archive path; only the optional private turn admission differs.
+  private async executeNewAgentSchedule(
+    schedule: StoredSchedule,
+    runId: string,
+    turnOptions?: ScheduleTurnFactory,
+  ): Promise<ScheduleExecutionResult> {
     const config = schedule.target.type === "new-agent" ? schedule.target.config : null;
     if (!config) {
       throw new Error(`Schedule ${schedule.id} target changed during execution`);
@@ -1121,7 +1142,15 @@ export class ScheduleService {
       if (created.initialPromptError) {
         throw created.initialPromptError;
       }
-      const result = await this.agentManager.runAgent(agent.id, schedule.prompt);
+      const result = await this.agentManager.runAgent(
+        agent.id,
+        schedule.prompt,
+        await turnOptions?.(agent.id),
+      ); // OTTO(schedules): revoked late provisioning cannot admit a turn.
+      if (turnOptions) {
+        // OTTO(schedules): this result belongs to the captured foreground turn; do not wait on a later manual turn.
+        return scheduleNativeResult(agent.id, result);
+      }
       const waitResult = await this.agentManager.waitForAgentEvent(agent.id, {
         waitForActive: true,
       });

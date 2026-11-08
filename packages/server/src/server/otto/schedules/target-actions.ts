@@ -16,7 +16,10 @@ export interface ScheduleTargetActionPorts {
     target: Extract<ScheduleTarget, { type: "agent" | "new-agent" }>,
     scope: ProjectScheduleScope,
   ): Promise<string>;
-  validateSelection(selection: z.infer<typeof ArtifactSelection>): Promise<void>;
+  validateSelection(
+    selection: z.infer<typeof ArtifactSelection>,
+    scope: ProjectScheduleScope,
+  ): Promise<void>;
   cancelNative(scheduleId: string, runId: string): Promise<void>;
   isNativeRun(scheduleId: string, runId: string): Promise<boolean>;
 }
@@ -36,7 +39,7 @@ export function createScheduleTargetActions(
       }
       if (target.type === "artifact-update") {
         if (target.update.type === "instruction")
-          await ports.validateSelection(target.update.selection);
+          await ports.validateSelection(target.update.selection, scope);
         const reviewed = await ports.artifacts.review(target, scope);
         return { target: reviewed.target, summary: reviewed.title, autopilot: null };
       }
@@ -51,7 +54,7 @@ export function createScheduleTargetActions(
         prepared.release?.();
       } else if (target.type === "artifact-update") {
         if (target.update.type === "instruction")
-          await ports.validateSelection(target.update.selection);
+          await ports.validateSelection(target.update.selection, scope);
         await ports.artifacts.prepare(target, scope, {
           scheduleId: "validation",
           runId: "validation",

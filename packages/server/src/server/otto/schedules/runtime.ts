@@ -32,6 +32,12 @@ export class ScheduleExecutionError extends Error {
 }
 export interface ScheduleRuntimePorts {
   prepare(schedule: StoredSchedule, runId: string): Promise<PreparedScheduleTarget>;
+  native?: {
+    execute(
+      input: Parameters<ScheduleRuntimeHooks["execute"]>[0],
+    ): Promise<ScheduleExecutionResult>;
+    stop(): Promise<void>;
+  };
 }
 interface Active {
   scheduleId: string;
@@ -42,7 +48,7 @@ interface Active {
 }
 /** Await cancellation without depending on a provider's prompt settlement. Late work retains the same
  * revoked signal and cannot publish; handlers observe eventual rejections and release late preflights. */
-function abortable<T>(
+export function awaitScheduleEffect<T>(
   pending: Promise<T>,
   signal: AbortSignal,
   late?: (value: T) => void,
@@ -91,7 +97,7 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
   }
   acquire(schedule: StoredSchedule): (() => void) | null {
     if (this.closed) return null;
-    if (isPaseoSchedule(schedule)) return () => {};
+    if (isPaseoSchedule(schedule) && !this.ports.native) return () => {};
     if (this.admitted >= 5) return null;
     this.admitted++;
     let released = false;
@@ -111,7 +117,8 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
         {},
         "Review this Schedule after host shutdown.",
       );
-    if (isPaseoSchedule(input.schedule)) return input.legacy();
+    if (isPaseoSchedule(input.schedule))
+      return this.ports.native ? this.ports.native.execute(input) : input.legacy();
     let settle!: () => void;
     const done = new Promise<void>((resolve) => {
       settle = resolve;
@@ -125,7 +132,7 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
     this.active.set(input.runId, active);
     let stage: "preflight" | "executing" = "preflight";
     try {
-      const prepared = await abortable(
+      const prepared = await awaitScheduleEffect(
         this.ports.prepare(input.schedule, input.runId),
         active.controller.signal,
         (late) => late.release?.(),
@@ -135,7 +142,7 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
       await input.stamp(prepared.audit);
       active.controller.signal.throwIfAborted();
       stage = "executing";
-      const result = await abortable(
+      const result = await awaitScheduleEffect(
         prepared.execute(active.controller.signal, input.stamp),
         active.controller.signal,
       );
@@ -216,7 +223,7 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
     run: ScheduleRun,
     outcome: ScheduleSettlement,
   ): ReturnType<ScheduleRuntimeHooks["settle"]> {
-    if (isPaseoSchedule(schedule) || !run.otto) return { run };
+    if ((isPaseoSchedule(schedule) && !this.ports.native) || !run.otto) return { run };
     let failure: ScheduleExecutionError | null = null;
     if (outcome.error instanceof ScheduleExecutionError) failure = outcome.error;
     else if (outcome.error !== undefined)
@@ -234,7 +241,7 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
     };
   }
   recover(schedule: StoredSchedule, run: ScheduleRun): ReturnType<ScheduleRuntimeHooks["recover"]> {
-    if (isPaseoSchedule(schedule) || !run.otto) return { run };
+    if ((isPaseoSchedule(schedule) && !this.ports.native) || !run.otto) return { run };
     const message =
       "Host restarted before target settlement. Inspect the linked result and review this Schedule before resuming; it was not replayed.";
     return {
@@ -255,5 +262,6 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
         ),
       );
     await Promise.all(current.map((active) => active.done));
+    await this.ports.native?.stop();
   }
 }

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   createSchedule,
   listSchedules,
@@ -17,6 +17,7 @@ import type { PluginRpcContract } from "@getpaseo/plugin";
 import { scheduleApiFixture } from "./test-utils/api-fixture.js";
 import { ScheduleError } from "./files.js";
 import { scheduleRevision } from "./legacy.js";
+import { deferred } from "../workflows/test-utils/host-fixture.js";
 
 test("one bounded API creates, reads, searches, pauses and deletes through the canonical store", async () => {
   const f = await scheduleApiFixture();
@@ -243,6 +244,45 @@ test("request errors, stopped owners and host mismatches are sanitized without l
       error: { code: "unavailable" },
     });
   } finally {
+    await f.cleanup();
+  }
+});
+test("shutdown rejects a pending validation response and prevents its late create without waiting for the provider", async () => {
+  const f = await scheduleApiFixture();
+  const entered = deferred<void>();
+  const release = deferred<void>();
+  const finished = deferred<void>();
+  let raw: Promise<unknown> | null = null;
+  try {
+    f.validate.mockImplementationOnce(async () => {
+      entered.resolve();
+      await release.promise;
+    });
+    const create = f.actions.create.bind(f.actions);
+    const spy = vi.spyOn(f.actions, "create");
+    spy.mockImplementationOnce(async (input) => {
+      try {
+        return await create(input);
+      } finally {
+        finished.resolve();
+      }
+    });
+    raw =
+      f.api.invoke(createSchedule.name, {
+        scope: f.scope,
+        operationId: "pending-create",
+        draft: f.draft,
+      }) ?? null;
+    await entered.promise;
+    await f.api.close();
+    expect(await raw).toMatchObject({ ok: false, error: { code: "unavailable" } });
+    release.resolve();
+    await finished.promise;
+    expect(await f.registry.list()).toHaveLength(0);
+    expect(f.runner).not.toHaveBeenCalled();
+  } finally {
+    release.resolve();
+    await Promise.allSettled([raw]);
     await f.cleanup();
   }
 });

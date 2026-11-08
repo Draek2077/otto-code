@@ -430,7 +430,21 @@ export class ScheduleRegistry implements ScheduleStorePort {
         this.remember(found.origin, next);
         return next;
       }
-      const schedule = OttoStoredSchedule.parse(next);
+      // The first audited legacy claim records its real host-global origin. This
+      // supplies the repair fence without guessing a project or moving old data.
+      const schedule = OttoStoredSchedule.parse(
+        !next.otto && found.origin.location === "legacy" && next.runs.some((run) => run.otto)
+          ? {
+              ...next,
+              otto: {
+                version: 1,
+                scope: found.origin.scope,
+                location: found.origin.location,
+                storeKey: found.origin.storeKey,
+              },
+            }
+          : next,
+      );
       this.validate(schedule, found.origin, id);
       const saved = preserveScheduleDiskRecord(
         JSON.parse(current.bytes),

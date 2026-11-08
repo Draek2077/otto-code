@@ -212,7 +212,7 @@ test("instruction selection and native targets are checked through owning policy
         update: { type: "instruction", instruction: "Update value", selection: selected },
       },
     });
-    expect(f.selection).toHaveBeenLastCalledWith(selected);
+    expect(f.selection).toHaveBeenLastCalledWith(selected, f.scope);
     await f.actions.validate({ scope: f.scope, target: reviewed.target });
     expect(f.selection).toHaveBeenCalledTimes(2);
     const target = { type: "agent" as const, agentId: "00000000-0000-4000-8000-000000000001" };

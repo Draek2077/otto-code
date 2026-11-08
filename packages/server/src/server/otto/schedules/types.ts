@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { AgentRunOptions } from "../../agent/agent-sdk-types.js";
 import type {
   CreateScheduleInput as PaseoCreateSchedule,
   UpdateScheduleInput as PaseoUpdateSchedule,
@@ -17,6 +18,7 @@ export type StoredSchedule = OttoStoredSchedule;
 export type ScheduleRun = OttoScheduleRun;
 /** Trusted in-process notification after durable claim, before target effects. Never a wire field. */
 export type ScheduleAdmission = (schedule: StoredSchedule, runId: string) => void;
+export type ScheduleTurnFactory = (agentId: string) => Promise<AgentRunOptions>;
 export type ScheduleAudit = z.infer<typeof ScheduleRunAudit>;
 export interface ScheduleVersionMutation {
   ref: ScheduleRef;
@@ -72,7 +74,7 @@ export interface ScheduleRuntimeHooks {
   execute(input: {
     schedule: StoredSchedule;
     runId: string;
-    legacy(): Promise<ScheduleExecutionResult>;
+    legacy(turnOptions?: ScheduleTurnFactory): Promise<ScheduleExecutionResult>;
     stamp(audit: Partial<z.infer<typeof ScheduleRunAudit>>): Promise<void>;
   }): Promise<ScheduleExecutionResult>;
   settle(

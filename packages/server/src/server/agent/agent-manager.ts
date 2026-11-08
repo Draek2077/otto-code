@@ -72,6 +72,16 @@ import {
   assertWorkflowConfigurationChange,
 } from "../otto/workflows/turn-authority.js"; // OTTO(workflows): runtime-only ownership fence; ordinary sessions pass unchanged.
 import {
+  assertScheduleTurnAvailable,
+  assertScheduleTurn,
+  assertScheduleTurnIdle,
+  recordScheduleTurn,
+  startScheduleProviderTurn,
+  ownsScheduleTurn,
+  retainScheduleProviderOperation,
+  type ScheduleTurnReceipt,
+} from "../otto/schedules/turn-authority.js"; // OTTO(schedules): private exact-turn receipts and late-provider-operation fence.
+import {
   InMemoryAgentTimelineStore,
   type SeedAgentTimelineOptions,
 } from "./agent-timeline-store.js";
@@ -1566,6 +1576,7 @@ export class AgentManager {
     overrides?: Partial<AgentSessionConfig>,
     options?: { rehydrateFromDisk?: boolean },
   ): Promise<ManagedAgent> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     this.assertAcceptingAgentRegistrations();
     let existing = this.requireSessionAgent(agentId);
     assertWorkflowConfigurationChange(existing); // OTTO(workflows): reload cannot remove a captured run's launch ceiling.
@@ -2481,6 +2492,7 @@ export class AgentManager {
    * broadcast like normal timeline events.
    */
   tryRunOutOfBand(agentId: string, prompt: AgentPromptInput, options?: AgentRunOptions): boolean {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     const agent = this.requireSessionAgent(agentId);
     assertWorkflowInteractiveControl(agent, isControlledWorkflowConductor(this, agent.id)); // OTTO(workflows): no side-effect command can bypass run ownership.
     // Providers parse slash commands from the raw text, so a command another agent sent
@@ -2570,7 +2582,9 @@ export class AgentManager {
   }): Promise<string> {
     const { agent, agentId, pendingRun, prompt, options } = params;
     try {
-      const result = await agent.session.startTurn(prompt, options);
+      const result = await startScheduleProviderTurn(this, agentId, options, () =>
+        agent.session.startTurn(prompt, options),
+      ); // OTTO(schedules): a timed-out pending start cannot release a later turn into that session.
       if (pendingRun.settled) {
         throw new Error(`Agent ${agentId} run was canceled before its turn started`);
       }
@@ -2611,6 +2625,8 @@ export class AgentManager {
     prompt: AgentPromptInput,
     options?: AgentRunOptions,
   ): AsyncGenerator<AgentStreamEvent> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
+    assertScheduleTurn(options, agentId, "admit"); // OTTO(schedules)
     const existingAgent = this.requireSessionAgent(agentId);
     assertWorkflowTurn(
       existingAgent,
@@ -2633,6 +2649,7 @@ export class AgentManager {
       "agent.manager.stream.request",
     );
     if (existingAgent.activeForegroundTurnId || this.runs.hasRun(agentId)) {
+      assertScheduleTurnIdle(options, true); // OTTO(schedules): a proven idle-claim rejection has no provider effects.
       this.logger.trace(
         {
           agentId,
@@ -2656,6 +2673,7 @@ export class AgentManager {
     const streamForwarder = async function* streamForwarder(this: AgentManager) {
       // OTTO(workflows): revoke late consumption and release only the pending run this iterator owns.
       try {
+        assertScheduleTurn(options, agentId, "execute"); // OTTO(schedules)
         assertWorkflowTurn(agent, options, "execute", isControlledWorkflowConductor(this, agentId));
       } catch (error) {
         this.runs.settleForegroundRun(agentId, pendingRun.token);
@@ -2678,6 +2696,7 @@ export class AgentManager {
       pendingRun.start = { status: "started", turnId };
       agent.activeForegroundTurnId = turnId;
       this.openActiveTurn(agent, turnId, turnStartedAt);
+      recordScheduleTurn(options, agentId, turnId, agent.session); // OTTO(schedules): receipt binds this provider session, not a reusable turn-id string.
       agent.lifecycle = "running";
       this.touchUpdatedAt(agent);
       // AgentManager owns the accepted-turn boundary. Publish liveness before the canonical
@@ -2821,6 +2840,7 @@ export class AgentManager {
     prompt: AgentPromptInput,
     options?: AgentRunOptions,
   ): Promise<AsyncGenerator<AgentStreamEvent>> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     const snapshot = this.requireAgent(agentId);
     assertWorkflowInteractiveControl(snapshot, isControlledWorkflowConductor(this, agentId)); // OTTO(workflows): replacement would bypass worker settlement/caps.
     if (
@@ -2854,6 +2874,7 @@ export class AgentManager {
     prompt: AgentPromptInput,
     options?: AgentSteerOptions,
   ): Promise<SteerResult> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     const agent = this.requireSessionAgent(agentId);
     assertWorkflowInteractiveControl(agent, isControlledWorkflowConductor(this, agentId)); // OTTO(workflows): only the owning engine may continue a worker.
     const expectedTurnId = agent.activeForegroundTurnId ?? agent.activeTurnId;
@@ -2883,6 +2904,7 @@ export class AgentManager {
     prompt: AgentPromptInput,
     options?: AgentSteerOptions,
   ): Promise<ActiveTurnSteerDispatchResult> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     const agent = this.requireSessionAgent(agentId);
     assertWorkflowInteractiveControl(agent, isControlledWorkflowConductor(this, agentId)); // OTTO(workflows): enforce the same fence for direct steering callers.
     const expectedTurnId = agent.activeForegroundTurnId ?? agent.activeTurnId;
@@ -3165,12 +3187,23 @@ export class AgentManager {
     }
   }
 
-  async cancelAgentRun(agentId: string): Promise<AgentRunCancellationResult> {
-    return this.runForegroundMutation(agentId, () => this.cancelAgentRunNow(agentId));
+  async cancelAgentRun(
+    agentId: string,
+    receipt?: ScheduleTurnReceipt,
+  ): Promise<AgentRunCancellationResult> {
+    // OTTO(schedules): compare the private session/turn receipt inside the existing mutation queue.
+    return this.runForegroundMutation(agentId, () => this.cancelAgentRunNow(agentId, receipt));
   }
 
-  private async cancelAgentRunNow(agentId: string): Promise<AgentRunCancellationResult> {
+  private async cancelAgentRunNow(
+    agentId: string,
+    receipt?: ScheduleTurnReceipt,
+  ): Promise<AgentRunCancellationResult> {
     const agent = this.requireSessionAgent(agentId);
+    // OTTO(schedules): do not cancel a replacement session or a later manual turn.
+    if (receipt && !ownsScheduleTurn(receipt, agentId, agent.activeForegroundTurnId, agent.session))
+      return { status: "not_running" };
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules): a pending start/interrupt cannot be superseded by another cancellation.
     const run =
       this.runs.getRun(agentId) ??
       (agent.lifecycle === "running" ? this.runs.trackAutonomousRun(agentId, null) : null);
@@ -3178,7 +3211,7 @@ export class AgentManager {
       return { status: "not_running" };
     }
 
-    const interruptAcknowledged = await this.interruptSession(agent.session, agentId);
+    const interruptAcknowledged = await this.interruptSession(agent.session, agentId, !!receipt); // OTTO(schedules)
     const settlement = await this.waitWithTimeout({
       operation: run.settledPromise,
       timeoutMs: interruptAcknowledged
@@ -3244,10 +3277,17 @@ export class AgentManager {
     }
   }
 
-  private async interruptSession(session: AgentSession, agentId: string): Promise<boolean> {
+  private async interruptSession(
+    session: AgentSession,
+    agentId: string,
+    scheduleOwned = false,
+  ): Promise<boolean> {
     try {
       const result = await this.waitWithTimeout({
-        operation: session.interrupt(),
+        // OTTO(schedules): keep the lease beyond waitWithTimeout until the real interrupt settles.
+        operation: scheduleOwned
+          ? retainScheduleProviderOperation(this, agentId, () => session.interrupt())
+          : session.interrupt(),
         timeoutMs: this.rescueTimeouts.interruptSessionMs,
         onLateError: (error) => {
           this.logger.warn(
@@ -3293,6 +3333,7 @@ export class AgentManager {
   }
 
   async rewind(agentId: string, messageId: string, mode: RewindMode): Promise<void> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     const agent = this.requireSessionAgent(agentId);
     const submittedRow = this.timelineStore
       .getRows(agentId)

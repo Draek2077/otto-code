@@ -263,6 +263,8 @@ import { createRetainedToolPolicy } from "./otto/retained-tool-policy.js"; // OT
 import { ArtifactDaemonService } from "./otto/artifacts/service.js"; // OTTO(artifacts): one daemon owner for UI and tools.
 import { createWorkflowComposition } from "./otto/workflows/composition.js"; // OTTO(workflows): isolated owner over existing Paseo sessions.
 import { createScheduleComposition } from "./otto/schedules/composition.js"; // OTTO(schedules): target/storage ports for Paseo's single scheduler.
+import { ScheduleNativePolicy } from "./otto/schedules/native-policy.js"; // OTTO(schedules): reuse canonical provider/workspace policy.
+import { createScheduleApi } from "./otto/schedules/api.js"; // OTTO(schedules): one owner for authenticated app/CLI/MCP actions.
 import { createWorkflowArtifactPort } from "./otto/workflows/artifact-source.js"; // OTTO(workflows): live ownership, not editable labels.
 import { BrowserAdmissions } from "./otto/browser/admission.js"; // OTTO(browser-admission)
 import { lookup as lookupBrowserDestination } from "node:dns/promises"; // OTTO(browser-admission): only explicit navigation resolves DNS.
@@ -682,6 +684,7 @@ export async function createPaseoDaemon(
   let ottoKnowledge: KnowledgeDaemonService | null = null; // OTTO(knowledge)
   let ottoArtifacts: ArtifactDaemonService | null = null; // OTTO(artifacts): inert until scoped demand.
   let ottoWorkflows: ReturnType<typeof createWorkflowComposition> | null = null; // OTTO(workflows)
+  let ottoSchedules: ReturnType<typeof createScheduleApi> | null = null; // OTTO(schedules)
   const ottoTerminal = new TerminalHost(
     config.paseoHome,
     () => serverId,
@@ -697,6 +700,7 @@ export async function createPaseoDaemon(
   // OTTO(feature-host): one registry of shared built-in owners; no dispatch growth in Paseo's session path.
   const ottoRoutes: Readonly<Record<string, OttoBuiltinRoute>> = {
     "otto-workflows": (method, input) => ottoWorkflows?.invoke(method, input), // OTTO(workflows)
+    "otto-schedules": (method, input) => ottoSchedules?.invoke(method, input), // OTTO(schedules)
     "otto-editor": (method, input, clientId) =>
       ottoTerminalEditor.invoke(method, input) ?? ottoEditor.invoke(method, input, clientId), // OTTO(editor)
     "otto-terminal": (method, input) => ottoTerminal.invoke(method, input),
@@ -731,6 +735,7 @@ export async function createPaseoDaemon(
       ottoRpc: {
         has: (pluginId) =>
           (pluginId === "otto-workflows" && ottoWorkflows !== null) || // OTTO(workflows)
+          (pluginId === "otto-schedules" && ottoSchedules !== null) || // OTTO(schedules)
           pluginId === "otto-editor" || // OTTO(editor)
           pluginId === "otto-terminal" || // OTTO(terminal)
           (pluginId === "otto-speech" && ottoSpeech !== null) || // OTTO(speech)
@@ -1638,6 +1643,15 @@ export async function createPaseoDaemon(
       },
     );
   };
+  const scheduleNativePolicy = new ScheduleNativePolicy({
+    home: config.paseoHome,
+    hostId: serverId,
+    hostLabel: serverId,
+    metadata: projectRegistry.ottoMetadata,
+    storage: agentStorage,
+    workspaces: workspaceRegistry,
+    providers: providerSnapshotManager,
+  }); // OTTO(schedules): canonical provider and project preflight; no separate catalog or auth.
   const scheduleTargets = createScheduleComposition({
     home: config.paseoHome,
     hostId: serverId,
@@ -1647,6 +1661,15 @@ export async function createPaseoDaemon(
     workflows: ottoWorkflows.schedules,
     artifacts: ottoArtifacts,
     generateData: createArtifactDataGeneration(artifactCompletion()),
+    native: {
+      manager: agentManager,
+      validate: (schedule) => scheduleNativePolicy.validateStored(schedule),
+      onLateError: (scheduleId, runId, error) =>
+        logger.warn(
+          { err: error, scheduleId, runId },
+          "Native Schedule late cleanup needs inspection",
+        ),
+    },
   }); // OTTO(schedules): owners are ready before the original clock starts.
   const scheduleService = new ScheduleService({
     paseoHome: config.paseoHome,
@@ -1660,6 +1683,16 @@ export async function createPaseoDaemon(
     store: scheduleTargets.registry, // OTTO(schedules): includes retained legacy and independently resolved project stores.
     otto: scheduleTargets.runtime, // OTTO(schedules): same claim/admission/settlement owner.
   });
+  ottoSchedules = createScheduleApi({
+    targets: scheduleTargets,
+    scheduler: scheduleService,
+    policy: scheduleNativePolicy,
+    onSettlementError: (scheduleId, error) =>
+      logger.error(
+        { err: error, scheduleId },
+        "Schedule settlement could not be persisted; inspect retained history",
+      ),
+  }); // OTTO(schedules): register real owners only; the target editor capability is added with UI acceptance.
   await scheduleService.start();
   agentManager.setAgentArchivedCallback(async (agentId) => {
     try {
@@ -2137,6 +2170,7 @@ export async function createPaseoDaemon(
       await ottoBrain.close(); // OTTO(brain-host): release waits/feed; never stop independent host jobs.
       await ottoEditor.close(); // OTTO(editor): bounded language-server teardown on startup failure.
       await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
+      await ottoSchedules?.close(); // OTTO(schedules): reject pending API admissions before scheduler/target teardown.
       await scheduleService
         .stop()
         .catch((cleanupError) => logger.warn({ err: cleanupError }, "Schedule cleanup failed")); // OTTO(schedules): revoke target waits before their owning services stop.
@@ -2177,6 +2211,7 @@ export async function createPaseoDaemon(
     scriptHealthMonitor.stop();
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();
+    await ottoSchedules?.close(); // OTTO(schedules): no API admission survives shutdown; owning jobs are stopped below.
     await scheduleService
       .stop()
       .catch((error) => logger.warn({ err: error }, "Schedule cleanup failed")); // OTTO(schedules): stop the clock and revoke publication before target/provider teardown.

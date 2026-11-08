@@ -69,6 +69,7 @@ export class ScheduleActions implements ScheduleActionPort {
   }
   async review(input: ReviewInput) {
     await this.project(input.scope);
+    this.assertOpen();
     return this.ports.targets.review(input);
   }
   async create(input: z.infer<typeof rpc.createSchedule.input>) {
@@ -90,6 +91,7 @@ export class ScheduleActions implements ScheduleActionPort {
       return scheduleDocument(replay);
     }
     const project = await this.project(input.scope);
+    this.assertOpen();
     await this.ports.targets.validate({ scope: input.scope, target: input.draft.target });
     const stores = this.ports.registry.ports.stores;
     const origin = input.location
@@ -118,6 +120,7 @@ export class ScheduleActions implements ScheduleActionPort {
     await this.current(input.ref, input.expectedRevision);
     const scope = this.scope(input.ref);
     await this.project(scope);
+    this.assertOpen();
     await this.ports.targets.validate({ scope, target: input.draft.target });
     this.assertOpen();
     const saved = await this.ports.scheduler.update({
@@ -158,6 +161,7 @@ export class ScheduleActions implements ScheduleActionPort {
       case "run-once": {
         const scope = this.scope(input.ref);
         await this.project(scope);
+        this.assertOpen();
         if (entry.schedule.otto?.repairReason && !command.userConfirmedInspection)
           throw new ScheduleError(
             "conflict",
