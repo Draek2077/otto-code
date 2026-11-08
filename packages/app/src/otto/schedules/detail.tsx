@@ -247,14 +247,18 @@ function DetailActions({
   const transfer = useCallback(() => {
     if (state.document) transferred(state.document);
   }, [state.document, transferred]);
-  const disabled = lane.busy || lane.blocked || state.deleted;
+  const disabled = lane.busy || lane.blocked || state.deleted || !state.document;
+  // Background observation must not disable a navigation press between pointer
+  // down and up. A transfer/editor captures this document and the host still
+  // checks its revision; pending writes and unknown outcomes remain fenced.
+  const navigationDisabled = lane.writing || lane.blocked || state.deleted || !state.document;
   return (
     <View style={styles.contentGap}>
       <View style={styles.actions}>
         <Button variant="outline" onPress={refresh} disabled={lane.busy}>
           Refresh Schedule and history
         </Button>
-        <Button variant="outline" onPress={editing} disabled={disabled}>
+        <Button variant="outline" onPress={editing} disabled={navigationDisabled}>
           Edit or repair target
         </Button>
         {state.document?.schedule.status === "active" ? (
@@ -269,7 +273,7 @@ function DetailActions({
         <Button variant="outline" onPress={run} disabled={disabled}>
           Run once
         </Button>
-        <Button variant="outline" onPress={transfer} disabled={disabled}>
+        <Button variant="outline" onPress={transfer} disabled={navigationDisabled}>
           Copy or move
         </Button>
         <Button variant="destructive" onPress={remove} disabled={disabled}>

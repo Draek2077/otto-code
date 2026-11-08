@@ -14,6 +14,7 @@ import { gotoAppShell } from "../support/helpers/app";
 import { waitForOttoSurface } from "../support/helpers/otto-surfaces";
 
 test.use({
+  trace: "retain-on-failure",
   e2eInjectPaseoTools: true,
   e2eDaemonConfig: {
     pluginsEnabled: true,
@@ -351,6 +352,7 @@ for (const kind of ["agent", "new-agent"] as const) {
         "Pause Schedule?",
       );
       await surface.getByRole("button", { name: "Copy or move", exact: true }).click();
+      await expect(surface.getByText("Schedule storage transfer", { exact: true })).toBeVisible();
       await confirm(
         page,
         surface.getByRole("button", { name: "Transfer once", exact: true }),

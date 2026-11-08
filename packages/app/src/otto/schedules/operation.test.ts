@@ -28,12 +28,26 @@ test("a pending write has one lane and its hidden outcome remains unconfirmed", 
   await lane.run({ write: true, operation: duplicate, apply });
   release();
   lane.activate();
-  expect(lane.getSnapshot()).toMatchObject({ busy: true, blocked: true });
+  expect(lane.getSnapshot()).toMatchObject({ busy: true, writing: true, blocked: true });
   held.resolve("saved");
   await pending;
   expect(apply).not.toHaveBeenCalled();
   expect(duplicate).not.toHaveBeenCalled();
-  expect(lane.getSnapshot()).toMatchObject({ busy: false, blocked: true });
+  expect(lane.getSnapshot()).toMatchObject({ busy: false, writing: false, blocked: true });
+});
+
+test("background reads have no write fence and release without claiming an unknown write", async () => {
+  const lane = new ScheduleOperation(),
+    release = lane.activate(),
+    held = deferred<string>(),
+    apply = vi.fn();
+  const pending = lane.run({ operation: () => held.promise, apply });
+  expect(lane.getSnapshot()).toMatchObject({ busy: true, writing: false, blocked: false });
+  release();
+  held.resolve("stale read");
+  await pending;
+  expect(apply).not.toHaveBeenCalled();
+  expect(lane.getSnapshot()).toMatchObject({ busy: false, writing: false, blocked: false });
 });
 test("unconfirmed errors require an explicit inspected reload before another ordinary write", async () => {
   const lane = new ScheduleOperation();

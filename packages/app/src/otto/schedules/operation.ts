@@ -7,7 +7,7 @@ export class ScheduleOperation {
   private authority = 0;
   private sent = false;
   private listeners = new Set<() => void>();
-  private state = { busy: false, blocked: false, error: "", message: "" };
+  private state = { busy: false, writing: false, blocked: false, error: "", message: "" };
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -56,7 +56,7 @@ export class ScheduleOperation {
     if (!this.active || this.state.busy || (input.write && this.state.blocked && !input.recovery))
       return;
     const authority = this.authority;
-    this.publish({ busy: true, error: "", message: "" });
+    this.publish({ busy: true, writing: !!input.write, error: "", message: "" });
     try {
       if (input.confirm && !(await input.confirm())) return;
       if (!this.active || this.authority !== authority) return;
@@ -72,7 +72,7 @@ export class ScheduleOperation {
       if (this.active && this.authority === authority) this.report(error);
     } finally {
       this.sent = false;
-      this.publish({ busy: false });
+      this.publish({ busy: false, writing: false });
     }
   }
 }
