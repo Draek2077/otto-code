@@ -123,6 +123,7 @@ async function reviewAndSave(editor: Locator) {
   await expect(editor.getByTestId("schedule-approve-target")).toBeVisible();
   await expect(editor.getByTestId("schedule-form-submit")).toBeDisabled();
   await editor.getByTestId("schedule-approve-target").click();
+  await expect(editor.getByTestId("schedule-form-submit")).toBeEnabled();
   await editor.getByTestId("schedule-form-submit").click();
   await expect(editor).toHaveCount(0);
 }
@@ -356,6 +357,9 @@ for (const kind of ["agent", "new-agent"] as const) {
         "Copy Schedule settings?",
       );
       await expect(surface.getByText("Transfer receipt received.", { exact: false })).toBeVisible();
+      await expect(
+        surface.getByRole("button", { name: "Transfer once", exact: true }),
+      ).toBeDisabled();
       const rows = await api.list({ scope: scope(workspace), refresh: true });
       expect(rows.items).toHaveLength(2);
       const copied = rows.items.find((row) => row.ref.id !== saved.ref.id);

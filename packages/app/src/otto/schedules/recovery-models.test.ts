@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { ScheduleDocument } from "@getpaseo/plugin/otto/schedules";
 import { createScheduleApi } from "./api";
 import { ScheduleStorageModel } from "./storage-model";
-import { ScheduleTransferModel } from "./transfer-model";
+import { ScheduleTransferModel, scheduleTransferCanStart } from "./transfer-model";
 import { ScheduleDetailModel } from "./detail-model";
 import type { ScheduleOperation } from "./operation";
 import { deferred } from "../workflows/test-fixtures";
@@ -139,6 +139,7 @@ test("local transfer validation can be corrected; an admitted intent cannot be r
   await model.start(async () => true);
   expect(f.invoke).not.toHaveBeenCalled();
   expect(model.canStart()).toBe(true);
+  expect(scheduleTransferCanStart(model.getSnapshot(), model.lane.getSnapshot())).toBe(true);
   model.operationId("transfer");
   f.invoke.mockResolvedValueOnce({
     ok: true,
@@ -146,6 +147,8 @@ test("local transfer validation can be corrected; an admitted intent cannot be r
   });
   await model.start(async () => true);
   expect(model.canStart()).toBe(false);
+  expect(scheduleTransferCanStart(model.getSnapshot(), model.lane.getSnapshot())).toBe(false);
+  expect(model.getSnapshot().attempted).toBe(true);
   model.operationId("another");
   model.destination("repository");
   await model.start(async () => true);

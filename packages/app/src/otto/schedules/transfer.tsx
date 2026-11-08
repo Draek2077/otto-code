@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { ScheduleText, ScheduleChoice, ScheduleToggle } from "./fields";
-import { ScheduleTransferModel } from "./transfer-model";
+import { ScheduleTransferModel, scheduleTransferCanStart } from "./transfer-model";
 import type { ScheduleApi } from "./api";
 import { styles } from "./styles";
 import { useScheduleActivity } from "./activity";
@@ -124,6 +124,7 @@ export function ScheduleTransfer({
     [model],
   );
   const receipt = state.receipt;
+  const canStart = active && scheduleTransferCanStart(state, lane);
   return (
     <ScrollView style={styles.pane} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Schedule storage transfer</Text>
@@ -136,27 +137,27 @@ export function ScheduleTransfer({
         value={state.operation}
         options={OPERATIONS}
         change={operation}
-        disabled={!model.canStart()}
+        disabled={!canStart}
       />
       <ScheduleChoice
         label="Destination"
         value={state.destination}
         options={LOCATIONS}
         change={destination}
-        disabled={!model.canStart()}
+        disabled={!canStart}
       />
       <ScheduleText
         label="Transfer operation ID"
         value={state.operationId}
         change={identity}
-        disabled={!model.canStart()}
+        disabled={!canStart}
       />
       <Text style={styles.muted}>
         Keep the operation ID to inspect an interrupted transfer after reopening. Inspection never
         replays a transfer.
       </Text>
       <View style={styles.actions}>
-        <Button onPress={start} disabled={!model.canStart()}>
+        <Button onPress={start} disabled={!canStart}>
           Transfer once
         </Button>
         <Button variant="outline" onPress={inspect} disabled={lane.busy}>

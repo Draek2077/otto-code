@@ -6,11 +6,19 @@ import {
 import { ScheduleRequestError, type ScheduleApi } from "./api";
 import { ScheduleOperation } from "./operation";
 
+/** Read both subscribed snapshots rather than a method on the stable model. */
+export function scheduleTransferCanStart(
+  state: { attempted: boolean },
+  lane: { busy: boolean; blocked: boolean },
+) {
+  return !state.attempted && !lane.busy && !lane.blocked;
+}
+
 export class ScheduleTransferModel {
   readonly lane = new ScheduleOperation();
-  private attempted = false;
   private listeners = new Set<() => void>();
   private state: {
+    attempted: boolean;
     operation: "copy" | "move";
     destination: "repository" | "host";
     operationId: string;
@@ -25,6 +33,7 @@ export class ScheduleTransferModel {
     operationId: string,
   ) {
     this.state = {
+      attempted: false,
       operation: "copy",
       destination: document.ref.location === "host" ? "repository" : "host",
       operationId,
@@ -46,24 +55,24 @@ export class ScheduleTransferModel {
     return this.lane.activate();
   }
   canStart() {
-    const lane = this.lane.getSnapshot();
-    return !this.attempted && !lane.busy && !lane.blocked;
+    return scheduleTransferCanStart(this.state, this.lane.getSnapshot());
   }
   operation(value: "copy" | "move") {
-    if (!this.attempted && !this.lane.getSnapshot().busy) this.publish({ operation: value });
+    if (!this.state.attempted && !this.lane.getSnapshot().busy) this.publish({ operation: value });
   }
   destination(value: "repository" | "host") {
-    if (!this.attempted && !this.lane.getSnapshot().busy) this.publish({ destination: value });
+    if (!this.state.attempted && !this.lane.getSnapshot().busy)
+      this.publish({ destination: value });
   }
   operationId(value: string) {
-    if (!this.attempted && !this.lane.getSnapshot().busy)
+    if (!this.state.attempted && !this.lane.getSnapshot().busy)
       this.publish({ operationId: value, receipt: null });
   }
   writersStopped(value: boolean) {
     if (!this.lane.getSnapshot().busy) this.publish({ writersStopped: value });
   }
   async start(confirm: () => Promise<boolean>) {
-    if (this.attempted) return;
+    if (this.state.attempted) return;
     const input = {
       scope: this.scope,
       source: this.document.ref,
@@ -82,7 +91,7 @@ export class ScheduleTransferModel {
             "local-validation",
             "Check the transfer operation ID, project and destination. This request was not sent.",
           );
-        this.attempted = true;
+        this.publish({ attempted: true });
         return this.api.transfer(input);
       },
       apply: (receipt) => this.publish({ receipt }),
@@ -94,8 +103,7 @@ export class ScheduleTransferModel {
     await this.lane.run({
       operation: () => this.api.inspectTransfer({ scope: this.scope, operationId }),
       apply: (receipt) => {
-        this.attempted = true;
-        this.publish({ receipt, receiptInspected: true });
+        this.publish({ attempted: true, receipt, receiptInspected: true });
       },
     });
   }

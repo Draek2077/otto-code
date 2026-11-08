@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import { ScheduleEditorModel } from "./editor-model";
+import { ScheduleEditorModel, scheduleEditorCanSave } from "./editor-model";
 import { ScheduleText, ScheduleToggle } from "./fields";
 import { ScheduleTargetFields } from "./target-fields";
 import type { ScheduleProjectChoice } from "./native-fields";
@@ -247,7 +247,7 @@ export function ScheduleEditor({
       <View style={styles.actions}>
         <Button
           onPress={submit}
-          disabled={!model.canSave()}
+          disabled={!active || !scheduleEditorCanSave(state)}
           loading={state.busy}
           testID="schedule-form-submit"
         >

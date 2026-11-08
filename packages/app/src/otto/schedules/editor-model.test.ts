@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { ScheduleDocument } from "@getpaseo/plugin/otto/schedules";
 import { createScheduleApi } from "./api";
-import { ScheduleEditorModel } from "./editor-model";
+import { ScheduleEditorModel, scheduleEditorCanSave } from "./editor-model";
 
 const scope = { hostId: "host", projectId: "project" };
 const target = { type: "agent" as const, agentId: "00000000-0000-4000-8000-000000000001" };
@@ -94,6 +94,21 @@ test("review and preview cannot dispatch work; save needs a separate explicit ap
     operationId: "intent",
     draft: { runOnCreate: false },
   });
+});
+test("subscribed readiness changes after approval and while an admitted save is pending", async () => {
+  const f = fixture();
+  const seen: boolean[] = [];
+  const release = f.model.subscribe(() => seen.push(scheduleEditorCanSave(f.model.getSnapshot())));
+  await f.ready();
+  expect(seen.at(-1)).toBe(true);
+  const held = deferred<unknown>();
+  f.invoke.mockImplementationOnce(() => held.promise);
+  const saving = f.model.save();
+  expect(seen.at(-1)).toBe(false);
+  held.resolve({ ok: true, value: document });
+  await saving;
+  expect(seen.at(-1)).toBe(true);
+  release();
 });
 test("target and cadence edits invalidate their respective reviews, never reconstruct the draft", async () => {
   const f = fixture();

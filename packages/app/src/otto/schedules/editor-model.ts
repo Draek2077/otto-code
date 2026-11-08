@@ -11,6 +11,17 @@ type Review = Awaited<ReturnType<ScheduleApi["review"]>>;
 type Preview = Awaited<ReturnType<ScheduleApi["preview"]>>;
 type Fields = Omit<ScheduleDraft, "target">;
 type ProjectScope = ScheduleScope & { projectId: string };
+/** Render selectors take the subscribed snapshot explicitly. A stable model method
+ * hides its mutable inputs from React Compiler and can freeze a button's state. */
+export function scheduleEditorCanSave(state: {
+  busy: boolean;
+  blocked: boolean;
+  preview: unknown;
+  review: unknown;
+  approved: boolean;
+}) {
+  return !state.busy && !state.blocked && !!state.preview && !!state.review && state.approved;
+}
 function targetLabel(target: ScheduleTargetCandidate) {
   switch (target.type) {
     case "workflow":
@@ -176,7 +187,7 @@ export class ScheduleEditorModel {
     );
   }
   canSave() {
-    return this.editable() && !!this.state.preview && !!this.state.review && this.state.approved;
+    return this.active && scheduleEditorCanSave(this.state);
   }
   async save(): Promise<ScheduleDocument | null> {
     if (!this.canSave() || !this.state.review) return null;
