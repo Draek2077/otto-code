@@ -12,6 +12,7 @@ import {
   readScheduleStorage,
   saveScheduleStorage,
   controlSchedule,
+  watchSchedules,
 } from "@getpaseo/plugin/otto/schedules";
 import type { PluginRpcContract } from "@getpaseo/plugin";
 import { scheduleApiFixture } from "./test-utils/api-fixture.js";
@@ -283,6 +284,31 @@ test("shutdown rejects a pending validation response and prevents its late creat
   } finally {
     release.resolve();
     await Promise.allSettled([raw]);
+    await f.cleanup();
+  }
+});
+test("a Schedule API observer receives durable changes and closes without idle polling", async () => {
+  const f = await scheduleApiFixture();
+  try {
+    const page = listSchedules.output.parse(
+      await f.api.invoke(listSchedules.name, { scope: f.scope }),
+    );
+    if (!page.ok) throw new Error(page.error.message);
+    const pending = f.api.invoke(watchSchedules.name, {
+      scope: f.scope,
+      version: page.value.version,
+    });
+    await f.create();
+    const changed = watchSchedules.output.parse(await pending);
+    if (!changed.ok) throw new Error(changed.error.message);
+    expect(changed.value.version).toBeGreaterThan(page.value.version);
+    const watching = f.api.invoke(watchSchedules.name, {
+      scope: f.scope,
+      version: changed.value.version,
+    });
+    await f.api.close();
+    expect(await watching).toMatchObject({ ok: false, error: { code: "unavailable" } });
+  } finally {
     await f.cleanup();
   }
 });

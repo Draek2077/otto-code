@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import pino from "pino";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import {
   FileBackedProjectRegistry,
   createPersistedProjectRecord,
@@ -90,6 +90,34 @@ function draft(origin?: ScheduleOrigin): Omit<StoredSchedule, "id"> {
       : {}),
   };
 }
+test("durable creates, edits and deletes notify their scope while unchanged updates stay quiet", async () => {
+  const f = await fixture();
+  const changed = vi.fn();
+  f.registry.ports.changed = changed;
+  const created = await f.registry.create(draft(f.origin));
+  expect(changed).toHaveBeenCalledTimes(1);
+  expect(changed).toHaveBeenLastCalledWith(f.scope);
+  await f.registry.update(created.id, (row) => row);
+  expect(changed).toHaveBeenCalledTimes(1);
+  await f.registry.update(created.id, (row) => ({ ...row, prompt: "Updated" }));
+  expect(changed).toHaveBeenCalledTimes(2);
+  await f.registry.delete(created.id);
+  expect(changed).toHaveBeenCalledTimes(3);
+});
+test("existing-clock discovery notifies external file changes once and ignores identical rescans", async () => {
+  const f = await fixture();
+  const created = await f.registry.create(draft(f.origin));
+  const changed = vi.fn();
+  f.registry.ports.changed = changed;
+  await f.registry.refresh(true);
+  expect(changed).not.toHaveBeenCalled();
+  const file = path.join(f.origin.directory, `${created.id}.json`);
+  await writeFile(file, JSON.stringify({ ...created, name: "External edit" }));
+  await f.registry.refresh(true);
+  expect(changed).toHaveBeenCalledExactlyOnceWith(f.scope);
+  await f.registry.refresh(true);
+  expect(changed).toHaveBeenCalledTimes(1);
+});
 test("new project records retain exact origin while changing defaults selects future creates", async () => {
   const f = await fixture();
   const created = await f.registry.create(draft(f.origin));
@@ -395,6 +423,55 @@ test("concurrent legacy upserts serialize the same canonical identity", async ()
   expect(results[0].id).toBe(results[1].id);
   expect(results[0].id).toHaveLength(8);
   expect(await f.registry.list()).toHaveLength(1);
+});
+test("a legacy native record keeps name/target idempotency after its real origin is stamped", async () => {
+  const f = await fixture();
+  const created = await f.registry.create(draft());
+  await f.registry.update(created.id, (row) => ({ ...row, prompt: "Owned write" }));
+  expect((await f.registry.entry(created.id))?.schedule.otto?.location).toBe("legacy");
+  const create = vi.fn(() => draft());
+  const updated = await f.registry.upsertByNameAndTarget("Review", created.target, {
+    create,
+    update: (row) => ({ ...row, prompt: "Legacy refresh" }),
+  });
+  expect(updated.id).toBe(created.id);
+  expect(updated.prompt).toBe("Legacy refresh");
+  expect(create).not.toHaveBeenCalled();
+  expect(await f.registry.catalog()).toHaveLength(1);
+});
+test("an externally activated repair record cannot evade the legacy upsert guard and create a duplicate", async () => {
+  const f = await fixture();
+  const created = await f.registry.create(draft());
+  const origin = f.stores.legacy();
+  await writeFile(
+    path.join(origin.directory, `${created.id}.json`),
+    JSON.stringify({
+      ...created,
+      otto: {
+        version: 1,
+        scope: origin.scope,
+        location: origin.location,
+        storeKey: origin.storeKey,
+        repairReason: "Inspect unknown effects",
+      },
+    }),
+  );
+  await f.registry.refresh(true);
+  expect(await f.registry.list()).toHaveLength(0);
+  const create = vi.fn(() => draft());
+  await expect(
+    f.registry.upsertByNameAndTarget("Review", created.target, { create, update: (row) => row }),
+  ).rejects.toThrow("inspect and review");
+  expect(create).not.toHaveBeenCalled();
+  expect(await f.registry.catalog()).toHaveLength(1);
+});
+test("a legacy no-op never materializes origin metadata or rewrites retained source bytes", async () => {
+  const f = await fixture();
+  const created = await f.registry.create(draft());
+  const file = path.join(f.stores.legacy().directory, `${created.id}.json`);
+  const before = await readFile(file, "utf8");
+  expect((await f.registry.update(created.id, (row) => row))?.otto).toBeUndefined();
+  expect(await readFile(file, "utf8")).toBe(before);
 });
 
 test("unknown nested legacy fields survive edits while deliberate known removals and retargeting still apply", async () => {

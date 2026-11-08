@@ -105,7 +105,13 @@ export const listSchedules = rpc(
     total: z.number().int().nonnegative(),
     diagnostics: z.array(ScheduleDiagnostic).max(50),
     diagnosticTotal: z.number().int().nonnegative(),
+    version: z.number().int().nonnegative(),
   }),
+);
+export const watchSchedules = rpc(
+  "schedules.library.watch.request",
+  z.object({ scope: ScheduleScope, version: z.number().int().nonnegative() }),
+  z.object({ version: z.number().int().nonnegative() }),
 );
 export const readSchedule = rpc("schedules.document.read.request", ScheduleRef, ScheduleDocument);
 export const readScheduleHistory = rpc(
@@ -228,6 +234,7 @@ export const saveScheduleDefaults = rpc(
 /** Structural discovery only; no saved prompts, schemas from user files, or run output. */
 export const scheduleOperations = [
   listSchedules,
+  watchSchedules,
   readSchedule,
   readScheduleHistory,
   readScheduleRun,

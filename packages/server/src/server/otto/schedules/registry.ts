@@ -41,6 +41,7 @@ export interface ScheduleRegistryPorts {
   /** Canonical registry only, including archived projects with retained schedules. */
   projects(): Promise<{ projectId: string }[]>;
   now?(): number;
+  changed?(scope: ScheduleRef["scope"]): void;
 }
 export interface ScheduleStorageDiagnostic {
   ref: ScheduleRef | null;
@@ -222,9 +223,34 @@ export class ScheduleRegistry implements ScheduleStorePort {
           code: "duplicate_id",
           message: `Schedule ${id} exists in multiple stores. Execution is blocked until an explicit repair.`,
         });
+    this.publishDiscovery(index, diagnostics);
     this.index = index;
     this.diagnostics = diagnostics;
     this.refreshedAt = this.ports.now?.() ?? Date.now();
+  }
+  private scopeVersions(index: Map<string, Located[]>) {
+    const scopes = new Map<string | null, string[]>();
+    for (const rows of index.values())
+      for (const row of rows) {
+        const projectId = row.origin.scope.projectId;
+        const entries = scopes.get(projectId) ?? [];
+        entries.push(JSON.stringify([row.origin.storeKey, row.schedule.id, row.revision]));
+        scopes.set(projectId, entries);
+      }
+    return new Map([...scopes].map(([key, values]) => [key, JSON.stringify(values.sort())]));
+  }
+  private publishDiscovery(
+    index: Map<string, Located[]>,
+    diagnostics: ScheduleStorageDiagnostic[],
+  ) {
+    if (!this.ports.changed) return;
+    const previous = this.scopeVersions(this.index);
+    const next = this.scopeVersions(index);
+    for (const projectId of new Set([...previous.keys(), ...next.keys()]))
+      if (previous.get(projectId) !== next.get(projectId))
+        this.ports.changed({ hostId: this.ports.stores.ports.hostId, projectId });
+    if (JSON.stringify(this.diagnostics) !== JSON.stringify(diagnostics))
+      this.ports.changed({ hostId: this.ports.stores.ports.hostId, projectId: null });
   }
   async problems() {
     await this.refresh();
@@ -331,13 +357,15 @@ export class ScheduleRegistry implements ScheduleStorePort {
     return (await this.entry(id))?.schedule ?? null;
   }
   private remember(origin: ScheduleOrigin, schedule: StoredSchedule) {
+    const previous = (this.index.get(schedule.id) ?? []).find(
+      (row) => row.origin.storeKey === origin.storeKey,
+    );
+    const revision = scheduleRevision(schedule);
     const rows = (this.index.get(schedule.id) ?? []).filter(
       (row) => row.origin.storeKey !== origin.storeKey,
     );
-    this.index.set(schedule.id, [
-      ...rows,
-      { origin, schedule, revision: scheduleRevision(schedule) },
-    ]);
+    this.index.set(schedule.id, [...rows, { origin, schedule, revision }]);
+    if (previous?.revision !== revision) this.ports.changed?.(origin.scope);
   }
   private async originFor(schedule: Omit<StoredSchedule, "id">) {
     const meta = schedule.otto;
@@ -417,25 +445,19 @@ export class ScheduleRegistry implements ScheduleStorePort {
       const current = await this.read(found.origin, id);
       if (!current) {
         this.index.delete(id);
+        this.ports.changed?.(found.origin.scope);
         return null;
       }
       assertScheduleMutation(current.schedule, mutation);
-      const next = reviewScheduleRepair(
-        current.schedule,
-        await updater(current.schedule),
-        mutation,
-        new Date(this.ports.now?.() ?? Date.now()).toISOString(),
-      );
-      if (next === current.schedule) {
-        this.remember(found.origin, next);
-        return next;
-      }
-      // The first audited legacy claim records its real host-global origin. This
-      // supplies the repair fence without guessing a project or moving old data.
-      const schedule = OttoStoredSchedule.parse(
-        !next.otto && found.origin.location === "legacy" && next.runs.some((run) => run.otto)
+      // Normal owned writes, including restart repair, can stamp the real legacy
+      // origin without inventing a project. A no-op and old-wire-only edit retain
+      // their original representation and bytes.
+      const working: StoredSchedule =
+        !current.schedule.otto &&
+        found.origin.location === "legacy" &&
+        !(mutation && "legacyOnly" in mutation)
           ? {
-              ...next,
+              ...current.schedule,
               otto: {
                 version: 1,
                 scope: found.origin.scope,
@@ -443,8 +465,23 @@ export class ScheduleRegistry implements ScheduleStorePort {
                 storeKey: found.origin.storeKey,
               },
             }
-          : next,
+          : current.schedule;
+      const proposed = await updater(working);
+      if (proposed === working && working !== current.schedule) {
+        this.remember(found.origin, current.schedule);
+        return current.schedule;
+      }
+      const next = reviewScheduleRepair(
+        current.schedule,
+        proposed,
+        mutation,
+        new Date(this.ports.now?.() ?? Date.now()).toISOString(),
       );
+      if (next === current.schedule) {
+        this.remember(found.origin, next);
+        return next;
+      }
+      const schedule = OttoStoredSchedule.parse(next);
       this.validate(schedule, found.origin, id);
       const saved = preserveScheduleDiskRecord(
         JSON.parse(current.bytes),
@@ -465,7 +502,9 @@ export class ScheduleRegistry implements ScheduleStorePort {
     const identity = nameTargetIdentityKey(name, target);
     return this.serial(`identity:${identity}`, async () => {
       while (true) {
-        const found = (await this.list()).find((record) => this.matchesLegacy(record, identity));
+        const found = (await this.catalog()).find((entry) =>
+          this.matchesLegacy(entry.schedule, identity),
+        )?.schedule;
         if (!found) return this.create(await options.create());
         let matched = false;
         const updated = await this.update(
@@ -483,7 +522,8 @@ export class ScheduleRegistry implements ScheduleStorePort {
   }
   private matchesLegacy(record: StoredSchedule, identity: string) {
     return (
-      !record.otto &&
+      (!record.otto ||
+        (record.otto.location === "legacy" && record.otto.scope.projectId === null)) &&
       record.status !== "completed" &&
       !!record.name?.trim() &&
       nameTargetIdentityKey(record.name, record.target) === identity
@@ -503,6 +543,7 @@ export class ScheduleRegistry implements ScheduleStorePort {
         );
       await retireScheduleFile(this.file(found.origin, id), scheduleDigest(current.bytes));
       this.index.delete(id);
+      this.ports.changed?.(found.origin.scope);
     });
   }
 }

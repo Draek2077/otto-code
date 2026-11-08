@@ -1,4 +1,5 @@
 import path from "node:path";
+import { writeFile } from "node:fs/promises";
 import { expect, test, vi } from "vitest";
 import { AgentManager } from "../../agent/agent-manager.js";
 import { AgentStorage } from "../../agent/agent-storage.js";
@@ -400,6 +401,44 @@ test("aborted non-cooperative native work retains all five reservations instead 
   } finally {
     held.resolve();
     await Promise.allSettled(runs);
+    await f.cleanup();
+  }
+});
+test("restart pauses an old unaudited native attempt without inventing its historical target", async () => {
+  const f = await fixture();
+  try {
+    const schedule = await f.create(undefined, true);
+    await writeFile(
+      path.join(f.home, "schedules", `${schedule.id}.json`),
+      JSON.stringify({
+        ...schedule,
+        runs: [
+          {
+            id: "pre-upgrade-run",
+            status: "running",
+            agentId: f.agent.id,
+            scheduledFor: "before",
+            startedAt: "before",
+            endedAt: null,
+            output: null,
+            error: null,
+          },
+        ],
+      }),
+    );
+    await f.registry.refresh(true);
+    await f.scheduler.start();
+    const recovered = await f.scheduler.inspect(schedule.id);
+    expect(recovered.status).toBe("paused");
+    expect(recovered.otto).toMatchObject({
+      location: "legacy",
+      scope: { projectId: null },
+      repairReason: expect.stringContaining("not replayed"),
+    });
+    expect(recovered.runs[0].status).toBe("failed");
+    expect(recovered.runs[0].otto).toBeUndefined();
+    expect(f.validate).not.toHaveBeenCalled();
+  } finally {
     await f.cleanup();
   }
 });

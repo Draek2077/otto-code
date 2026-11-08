@@ -8,6 +8,7 @@ import { ScheduleRegistry, type ScheduleRegistryPorts } from "./registry.js";
 import { ScheduleRuntime } from "./runtime.js";
 import { ScheduleError } from "./files.js";
 import { ScheduleNativeOwner, type ScheduleNativePorts } from "./native-owner.js";
+import { ScheduleChanges } from "./changes.js";
 
 export interface ScheduleCompositionPorts extends ScheduleStorePorts {
   projects: ScheduleRegistryPorts["projects"];
@@ -21,7 +22,12 @@ export interface ScheduleCompositionPorts extends ScheduleStorePorts {
  * provider work, timer registration, file writes or model admission. */
 export function createScheduleComposition(ports: ScheduleCompositionPorts) {
   const stores = new ScheduleStores(ports);
-  const registry = new ScheduleRegistry({ stores, projects: ports.projects });
+  const changes = new ScheduleChanges(ports.hostId);
+  const registry = new ScheduleRegistry({
+    stores,
+    projects: ports.projects,
+    changed: (scope) => changes.publish(scope),
+  });
   const workflows = new SavedWorkflowScheduleAdapter(ports.workflows);
   const artifacts = new ArtifactScheduleAdapter({
     artifacts: ports.artifacts,
@@ -52,5 +58,5 @@ export function createScheduleComposition(ports: ScheduleCompositionPorts) {
       throw new ScheduleError("unsupported", "Native agent Schedules use Paseo's execution owner.");
     },
   });
-  return { stores, registry, runtime, workflows, artifacts, native };
+  return { stores, registry, runtime, workflows, artifacts, native, changes };
 }

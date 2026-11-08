@@ -29,6 +29,12 @@ An uncertain outcome requires an explicit inspection acknowledgement and current
 validation before resuming. That acknowledgement records a receipt and retains the original
 failed run and its audit.
 
+Active library views can wait for scoped change versions. Durable writes and discovery on
+the existing clock publish notifications; unrelated project writes do not wake a project view.
+Waits are bounded and demand-owned, with no idle timer or additional filesystem watcher.
+A version captured before reading a page prevents a concurrent write from being lost between
+the page read and its next wait. External-file refresh retains the registry's discovery bound.
+
 Shutdown closes API admission and rejects unconfirmed responses before stopping the scheduler
 and target owners. Pending provider validation cannot hold daemon shutdown indefinitely.
 Late validation cannot create new work after close; a publication already in progress retains
@@ -45,6 +51,9 @@ Legacy Schedule responses contain only agent/new-agent records and the original 
 They never translate a Workflow or Artifact update into an agent prompt. Legacy mutation
 requests carry a guard into the store's serialized update, so a stale client cannot edit a
 record after its target changes to an extended target.
+Host-global native records keep their name/target upsert identity after their actual origin is
+stamped. Repair records remain visible to that identity check even when execution is blocked;
+an old client cannot create a duplicate by refreshing a blocked heartbeat.
 
 The persisted format retains unknown record, origin, and audit fields. Nested legacy target/config
 fields are merged back only at disk publication, never added to execution DTOs. An explicit

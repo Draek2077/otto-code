@@ -40,5 +40,5 @@ export function createScheduleApi(ports: ScheduleApiPorts) {
       },
     }),
   });
-  return new ScheduleDaemonService(targets.registry, actions);
+  return new ScheduleDaemonService(targets.registry, actions, targets.changes);
 }

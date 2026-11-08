@@ -241,11 +241,15 @@ export class ScheduleRuntime implements ScheduleRuntimeHooks {
     };
   }
   recover(schedule: StoredSchedule, run: ScheduleRun): ReturnType<ScheduleRuntimeHooks["recover"]> {
-    if ((isPaseoSchedule(schedule) && !this.ports.native) || !run.otto) return { run };
+    if (isPaseoSchedule(schedule) && !this.ports.native) return { run };
     const message =
       "Host restarted before target settlement. Inspect the linked result and review this Schedule before resuming; it was not replayed.";
     return {
-      run: { ...run, otto: { ...run.otto, disposition: "unknown", failureCode: "host_restarted" } },
+      // Old records have no requested-target proof. Preserve that absence rather
+      // than attributing the interrupted operation to today's edited target.
+      run: run.otto
+        ? { ...run, otto: { ...run.otto, disposition: "unknown", failureCode: "host_restarted" } }
+        : run,
       pauseReason: message,
     };
   }

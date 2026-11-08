@@ -6,6 +6,7 @@ import type { ScheduleRegistry } from "./registry.js";
 import { scheduleDocument, scheduleListItem, scheduleRunSummary } from "./projection.js";
 import { ScheduleNotFoundError, ScheduleStateConflictError } from "../../schedule/service.js";
 import { awaitScheduleEffect } from "./runtime.js";
+import type { ScheduleChanges } from "./changes.js";
 
 export interface ScheduleActionPort {
   create(input: z.infer<typeof rpc.createSchedule.input>): Promise<rpc.ScheduleDocument>;
@@ -39,6 +40,7 @@ export class ScheduleDaemonService {
   constructor(
     readonly registry: ScheduleRegistry,
     readonly actions: ScheduleActionPort,
+    readonly changes: ScheduleChanges,
   ) {}
   invoke(method: string, value: unknown): Promise<unknown> | undefined {
     const contract = contracts.get(method);
@@ -75,6 +77,8 @@ export class ScheduleDaemonService {
     switch (method) {
       case rpc.listSchedules.name:
         return this.list(rpc.listSchedules.input.parse(value));
+      case rpc.watchSchedules.name:
+        return this.watch(rpc.watchSchedules.input.parse(value));
       case rpc.readSchedule.name:
         return this.entry(rpc.readSchedule.input.parse(value)).then(scheduleDocument);
       case rpc.readScheduleHistory.name:
@@ -104,6 +108,9 @@ export class ScheduleDaemonService {
   private async list(input: z.infer<typeof rpc.listSchedules.input>) {
     await this.scope(input.scope);
     if (input.refresh) await this.registry.refresh(true);
+    // Capture before reading data: a concurrent write must cause another watch/refetch,
+    // never give an older page the newer version and lose that notification.
+    const version = this.changes.version(input.scope);
     const query = input.query?.trim().toLowerCase() ?? "";
     const entries = (await this.registry.catalog()).filter((entry) => {
       if (
@@ -132,7 +139,12 @@ export class ScheduleDaemonService {
       total: entries.length,
       diagnostics: diagnostics.slice(diagnosticOffset, diagnosticOffset + 50),
       diagnosticTotal: diagnostics.length,
+      version,
     };
+  }
+  private async watch(input: z.infer<typeof rpc.watchSchedules.input>) {
+    await this.scope(input.scope);
+    return this.changes.watch(input.scope, input.version);
   }
   private async history(input: z.infer<typeof rpc.readScheduleHistory.input>) {
     const entry = await this.entry(input.ref);
@@ -211,6 +223,7 @@ export class ScheduleDaemonService {
   /** The owning composition stops scheduler admission before draining these writes. */
   async close() {
     this.closed = true;
+    this.changes.close();
     this.stopping.abort(
       new ScheduleError(
         "unavailable",

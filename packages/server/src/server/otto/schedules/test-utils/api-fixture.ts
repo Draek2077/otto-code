@@ -11,6 +11,7 @@ import { ScheduleStores } from "../stores.js";
 import { ScheduleRegistry } from "../registry.js";
 import { ScheduleActions, type ScheduleTargetActions } from "../actions.js";
 import { ScheduleDaemonService } from "../service.js";
+import { ScheduleChanges } from "../changes.js";
 import { deferred } from "../../workflows/test-utils/host-fixture.js";
 
 export async function scheduleApiFixture() {
@@ -21,9 +22,11 @@ export async function scheduleApiFixture() {
     hostLabel: "Fixture",
     metadata: f.metadata,
   });
+  const changes = new ScheduleChanges(f.scope.hostId);
   const registry = new ScheduleRegistry({
     stores,
     projects: async () => [...f.records.keys()].map((projectId) => ({ projectId })),
+    changed: (scope) => changes.publish(scope),
   });
   const logger = createTestLogger();
   const runner = vi.fn<NonNullable<ScheduleServiceOptions["runner"]>>(async () => ({
@@ -62,7 +65,7 @@ export async function scheduleApiFixture() {
     targets: { validate, cancel, review },
     onSettlementError: settlementError,
   });
-  const api = new ScheduleDaemonService(registry, actions);
+  const api = new ScheduleDaemonService(registry, actions, changes);
   const draft: rpc.ScheduleDraft = {
     name: "Review",
     prompt: "Review saved work",
