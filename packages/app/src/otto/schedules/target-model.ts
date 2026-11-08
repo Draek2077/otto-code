@@ -97,7 +97,7 @@ export class ScheduleTargetModel {
     return { ...this.state.artifact, update };
   }
   kind(kind: typeof this.state.kind) {
-    if (!this.writable()) return;
+    if (!this.writable() || this.state.kind === kind) return;
     this.state.kind = kind;
     this.emit();
   }

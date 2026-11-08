@@ -536,6 +536,7 @@ for (const kind of ["graph", "ai"] as const) {
             timeout: 30000,
           })
           .toBe("canceled");
+        await expect(surface.getByText("canceled", { exact: true })).toBeVisible();
       }
       scheduled = null;
     } finally {

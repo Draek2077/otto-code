@@ -3,6 +3,19 @@ import { ScheduleTargetCandidate } from "@getpaseo/plugin/otto/schedules";
 import { ScheduleTargetModel } from "./target-model";
 import { entry } from "../workflows/test-fixtures";
 
+test("reselecting the native target kind does not clear its configured model or reviewed intent", () => {
+  const changed = vi.fn(),
+    model = new ScheduleTargetModel(changed, () => true, null, "");
+  const target = {
+    type: "new-agent" as const,
+    config: { provider: "fixture", model: "saved-model", cwd: "/repo" },
+  };
+  model.native(target, "Captured native model");
+  model.kind("new-agent");
+  expect(changed).toHaveBeenCalledTimes(1);
+  expect(changed.mock.calls[0]).toEqual([target, "Captured native model"]);
+});
+
 test("AI selection preserves saved seats, limits and origin without inventing a workspace or launching", () => {
   const changed = vi.fn(),
     model = new ScheduleTargetModel(changed, () => true, null, ""),

@@ -48,6 +48,7 @@ export function ScheduleChoice({
   change,
   disabled = false,
   testID,
+  above = true,
 }: {
   label: string;
   value: string | null;
@@ -56,13 +57,17 @@ export function ScheduleChoice({
   change(value: string): void;
   disabled?: boolean;
   testID?: string;
+  above?: boolean;
 }) {
   const compact = useIsCompactFormFactor();
   const rows = useMemo(
     () => options.map((row) => ({ ...row, id: row.value, testID: `schedule-choice-${row.value}` })),
     [options],
   );
-  const selected = useMemo(() => (display ? { label: display } : null), [display]);
+  const selected = useMemo(() => {
+    const selectedLabel = display ?? options.find((row) => row.value === value)?.label;
+    return selectedLabel === undefined ? null : { label: selectedLabel };
+  }, [display, options, value]);
   return (
     <SelectField
       label={label}
@@ -77,6 +82,7 @@ export function ScheduleChoice({
       size={compact ? "md" : "sm"}
       triggerTestID={testID}
       searchable={rows.length > 6}
+      desktopPlacement={above ? "top-start" : "bottom-start"}
     />
   );
 }

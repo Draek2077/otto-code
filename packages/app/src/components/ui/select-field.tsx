@@ -9,7 +9,12 @@ import {
 } from "react-native";
 import { ChevronDown } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
+import {
+  Combobox,
+  ComboboxItem,
+  type ComboboxOption,
+  type ComboboxDesktopPlacement,
+} from "@/components/ui/combobox";
 import {
   createControlGeometry,
   resolveControlInteractionStyles,
@@ -62,6 +67,8 @@ export interface SelectFieldProps<TValue> {
   field?: boolean;
   testID?: string;
   triggerTestID?: string;
+  // OTTO(schedules): forward the existing popup direction for long forms; defaults stay unchanged.
+  desktopPlacement?: ComboboxDesktopPlacement;
 }
 
 export interface SelectFieldTriggerProps {
@@ -192,6 +199,7 @@ export function SelectField<TValue>({
   field = true,
   testID,
   triggerTestID,
+  desktopPlacement,
 }: SelectFieldProps<TValue>): ReactElement {
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
@@ -326,6 +334,7 @@ export function SelectField<TValue>({
         onOpenChange={setOpen}
         anchorRef={anchorRef}
         renderOption={renderComboboxOption}
+        desktopPlacement={desktopPlacement}
       />
     </>
   );

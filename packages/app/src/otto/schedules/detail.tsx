@@ -27,6 +27,9 @@ const HISTORY_PAGE_SIZES = [5, 10, 25, 50].map((size) => ({
 function confirmation(title: string, message: string, destructive = false) {
   return () => confirmDialog({ title, message, destructive, confirmLabel: "Continue" });
 }
+function runLabel(run: ScheduleRunSummary) {
+  return run.otto?.disposition?.replaceAll("_", " ") ?? run.status;
+}
 function RunRow({
   model,
   run,
@@ -58,7 +61,7 @@ function RunRow({
   return (
     <View style={styles.card}>
       <View style={styles.actions}>
-        <StatusBadge label={run.status} />
+        <StatusBadge label={runLabel(run)} />
         <Text style={styles.muted}>{run.startedAt}</Text>
       </View>
       <Text style={styles.text}>

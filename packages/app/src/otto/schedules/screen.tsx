@@ -505,12 +505,14 @@ function ScheduleDirectory({
           options={projectOptions}
           change={chooseProject}
           testID="schedule-scope-project"
+          above={false}
         />
         <ScheduleChoice
           label="Status"
           value={status ?? ""}
           options={STATUSES}
           change={chooseStatus}
+          above={false}
         />
         <SearchField
           value={query}
