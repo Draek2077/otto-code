@@ -29,6 +29,14 @@ function bundle(body: string): string {
 }
 
 describe("evaluatePluginClientBundle", () => {
+  it("loads Schedules settings lazily, shares its contracts and rejects an unrelated UI consumer", () => {
+    const source = bundle(
+      'const ui=require("@getpaseo/plugin/client/otto-schedules");const rpc=require("@getpaseo/plugin/otto/schedules");rpc.readScheduleDefaults.input.parse({hostId:"host"});plugin.addSettingsScreen({id:"schedules",title:"Schedules",icon:"Settings",Component:ui.SchedulesSettings});',
+    );
+    const plugin = evaluatePluginClientBundle("otto-schedules", source);
+    expect(plugin.settingsScreens.map((entry) => entry.id)).toContain("schedules");
+    expect(() => evaluatePluginClientBundle("unrelated-schedules", source)).toThrow();
+  }); // OTTO(schedules)
   it("loads Speech settings lazily through its trusted presentation bridge", () => {
     const source = bundle(
       'const ui=require("@getpaseo/plugin/client/otto-speech");const rpc=require("@getpaseo/plugin/otto/speech");rpc.readSpeech.input.parse({hostId:"host"});plugin.addSettingsScreen({id:"speech",title:"Speech",icon:"Mic",Component:ui.SpeechSettings});',

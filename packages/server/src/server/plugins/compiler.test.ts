@@ -12,6 +12,15 @@ import {
 
 const asarEsbuildDir = path.join("Resources", "app.asar", "node_modules", "esbuild");
 const temporaryDirectories: string[] = [];
+it("compiles the real Schedules settings contribution through its client-only bridge", async () => {
+  const client = fileURLToPath(
+    new URL("../../../../../plugins/otto-schedules/index.client.tsx", import.meta.url),
+  );
+  const result = await compilePlugin({ client, server: null });
+  expect(result.clientBundle).toContain("@getpaseo/plugin/client/otto-schedules");
+  expect(result.clientBundle).toContain("Schedules");
+  expect(result.serverBundle).toBeNull();
+}); // OTTO(schedules)
 it("compiles the actual Artifacts navigation, workspace and settings contributions", async () => {
   const client = fileURLToPath(
     new URL("../../../../../plugins/otto-artifacts/index.client.tsx", import.meta.url),
@@ -211,6 +220,7 @@ describe("plugin runtime entries", () => {
     "@getpaseo/plugin/client/ui",
     "@getpaseo/plugin/client/otto-brain", // OTTO(brain-ui): keep the renderer out of server bundles.
     "@getpaseo/plugin/client/otto-preview", // OTTO(preview): app-only UI bridge.
+    "@getpaseo/plugin/client/otto-schedules", // OTTO(schedules): no app presentation in server code.
   ])("rejects %s from server code", async (specifier) => {
     const entries = await createSplitPlugin();
     await writeFile(

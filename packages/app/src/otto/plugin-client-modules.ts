@@ -16,14 +16,16 @@ import * as previewUi from "./preview/bridge";
 import * as artifacts from "@getpaseo/plugin/otto/artifacts";
 import * as artifactUi from "./artifacts/bridge";
 import * as workflows from "@getpaseo/plugin/otto/workflows"; // OTTO(workflows)
+import * as schedules from "@getpaseo/plugin/otto/schedules"; // OTTO(schedules)
 import * as workflowUi from "./workflows/bridge"; // OTTO(workflows)
-import * as scheduleUi from "./schedules/settings-entry"; // OTTO(schedules): trusted settings bridge, original navigation retained.
+import * as scheduleUi from "./schedules/bridge"; // OTTO(schedules): lazy trusted settings bridge, original navigation retained.
 
 const shared = new Map<string, unknown>([
   ["@getpaseo/plugin/otto/speech", speech],
   ["@getpaseo/plugin/otto/connectors", connectors],
   ["@getpaseo/plugin/otto/artifacts", artifacts],
   ["@getpaseo/plugin/otto/workflows", workflows],
+  ["@getpaseo/plugin/otto/schedules", schedules], // OTTO(schedules)
   ["@getpaseo/plugin/otto/preview", preview],
   ["@getpaseo/plugin/otto/host-browser", hostBrowser],
   ["@getpaseo/plugin/otto/openai-settings", openai],

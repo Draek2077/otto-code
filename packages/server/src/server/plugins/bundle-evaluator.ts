@@ -4,18 +4,7 @@ import * as pluginProviderRuntime from "@getpaseo/plugin/server/provider";
 import * as pluginAcpRuntime from "@getpaseo/plugin/server/acp";
 import * as pluginUsageRuntime from "@getpaseo/plugin/server/usage";
 import * as pluginServerRuntime from "@getpaseo/plugin/server";
-// OTTO(provider-harness): explicit packaged SDK module shared by Otto providers.
-import * as ottoOpenAiRuntime from "@getpaseo/plugin/server/otto-openai";
-import * as ottoBrainRuntime from "@getpaseo/plugin/server/otto-brain";
-import * as ottoKanbanRuntime from "@getpaseo/plugin/server/otto-kanban"; // OTTO(kanban)
-import * as ottoKanbanShared from "@getpaseo/plugin/otto/kanban"; // OTTO(kanban)
-import * as ottoOpenAiSettings from "@getpaseo/plugin/otto/openai-settings";
-import * as ottoAtlassianSettings from "@getpaseo/plugin/otto/atlassian-settings"; // OTTO(integration)
-import * as ottoBitbucket from "@getpaseo/plugin/otto/bitbucket-connections"; // OTTO(bitbucket)
-import * as ottoConnectors from "@getpaseo/plugin/otto/connectors"; // OTTO(connectors)
-import * as ottoContext from "@getpaseo/plugin/otto/context-management"; // OTTO(context-management)
-import * as ottoKnowledge from "@getpaseo/plugin/otto/project-knowledge"; // OTTO(knowledge)
-import * as ottoWorkflows from "@getpaseo/plugin/otto/workflows"; // OTTO(workflows)
+import { ottoPluginServerModules } from "../otto/plugin-server-modules.js"; // OTTO(schedules): explicit Otto namespaces outside the upstream evaluator.
 import type { PluginServerContribution } from "@getpaseo/plugin/server";
 import * as zod from "zod";
 import { isPluginClientOnlySdkSpecifier } from "./plugin-sdk-specifiers.js";
@@ -27,18 +16,7 @@ function runtimeRequire(name: string): unknown {
     throw new Error(`${name} is available only in plugin client code`);
   }
   if (name === "@getpaseo/plugin") return pluginSharedRuntime;
-  // OTTO(provider-harness): keep the full harness on the node-only SDK boundary.
-  if (name === "@getpaseo/plugin/server/otto-openai") return ottoOpenAiRuntime;
-  if (name === "@getpaseo/plugin/server/otto-brain") return ottoBrainRuntime;
-  if (name === "@getpaseo/plugin/server/otto-kanban") return ottoKanbanRuntime; // OTTO(kanban)
-  if (name === "@getpaseo/plugin/otto/kanban") return ottoKanbanShared; // OTTO(kanban)
-  if (name === "@getpaseo/plugin/otto/openai-settings") return ottoOpenAiSettings;
-  if (name === "@getpaseo/plugin/otto/atlassian-settings") return ottoAtlassianSettings; // OTTO(integration)
-  if (name === "@getpaseo/plugin/otto/bitbucket-connections") return ottoBitbucket; // OTTO(bitbucket)
-  if (name === "@getpaseo/plugin/otto/connectors") return ottoConnectors; // OTTO(connectors)
-  if (name === "@getpaseo/plugin/otto/context-management") return ottoContext; // OTTO(context-management)
-  if (name === "@getpaseo/plugin/otto/project-knowledge") return ottoKnowledge; // OTTO(knowledge)
-  if (name === "@getpaseo/plugin/otto/workflows") return ottoWorkflows; // OTTO(workflows)
+  if (ottoPluginServerModules.has(name)) return ottoPluginServerModules.get(name); // OTTO(schedules)
   if (name === "@getpaseo/plugin/server") return pluginServerRuntime;
   if (name === "@getpaseo/plugin/server/provider") return pluginProviderRuntime;
   if (name === "@getpaseo/plugin/server/acp") return pluginAcpRuntime;

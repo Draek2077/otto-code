@@ -1,10 +1,11 @@
 import { z } from "zod";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { Locator, Page } from "@playwright/test";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import * as workflows from "@getpaseo/plugin/otto/workflows";
 import * as artifacts from "@getpaseo/plugin/otto/artifacts";
 import type { ScheduleRef } from "@getpaseo/plugin/otto/schedules";
-import { createScheduleApi, type ScheduleApi } from "../../src/otto/schedules/api";
 import { buildSchedulesRoute } from "../../src/utils/host-routes";
 import { test, expect } from "../support/helpers/otto-provider-settings";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
@@ -23,6 +24,42 @@ test.use({
   },
 });
 type Client = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">;
+type ScheduleApi = Awaited<ReturnType<typeof scheduleApi>>;
+async function scheduleApi(client: Client) {
+  // Match the daemon client's native-ESM boundary. Loading app TS here mixes
+  // Playwright's CJS transform with already-built protocol ESM modules.
+  const moduleUrl = pathToFileURL(
+    path.resolve(__dirname, "../../../plugin/dist/otto/schedules/index.js"),
+  ).href;
+  const rpc: typeof import("@getpaseo/plugin/otto/schedules") = await import(moduleUrl);
+  async function call<I extends z.ZodType, T>(
+    contract: {
+      name: string;
+      input: I;
+      output: {
+        parse(value: unknown): { ok: true; value: T } | { ok: false; error: { message: string } };
+      };
+    },
+    input: z.input<NoInfer<I>>,
+  ): Promise<T> {
+    const result = contract.output.parse(
+      await client.invokePluginRpc("otto-schedules", contract.name, contract.input.parse(input)),
+    );
+    if (!result.ok) throw new Error(result.error.message);
+    rpc.assertScheduleAcknowledgement(contract.name, input, result.value);
+    return result.value;
+  }
+  return {
+    list: (input: z.input<typeof rpc.listSchedules.input>) => call(rpc.listSchedules, input),
+    read: (input: z.input<typeof rpc.readSchedule.input>) => call(rpc.readSchedule, input),
+    update: (input: z.input<typeof rpc.updateSchedule.input>) => call(rpc.updateSchedule, input),
+    control: (input: z.input<typeof rpc.controlSchedule.input>) => call(rpc.controlSchedule, input),
+    history: (input: z.input<typeof rpc.readScheduleHistory.input>) =>
+      call(rpc.readScheduleHistory, input),
+    storage: (input: z.input<typeof rpc.readScheduleStorage.input>) =>
+      call(rpc.readScheduleStorage, input),
+  };
+}
 const seat = { provider: "openai-compatible", model: "fixture", modeId: "bypassPermissions" };
 const seats = { conductor: seat, worker: seat, judge: seat };
 const template =
@@ -152,7 +189,7 @@ for (const compact of [false, true]) {
       title: "Scheduled report",
     });
     const client = await connectDaemonClient<Client>({ clientIdPrefix: "schedule-artifact" }),
-      api = createScheduleApi(client);
+      api = await scheduleApi(client);
     try {
       ottoProvider.replyWith(reply);
       await ottoProvider.refreshCatalog();
@@ -263,7 +300,7 @@ for (const kind of ["agent", "new-agent"] as const) {
       title: "Native Schedule",
     });
     const client = await connectDaemonClient<Client>({ clientIdPrefix: "schedule-native" }),
-      api = createScheduleApi(client);
+      api = await scheduleApi(client);
     try {
       ottoProvider.replyWith(reply);
       await ottoProvider.refreshCatalog();
@@ -361,7 +398,7 @@ for (const kind of ["graph", "ai"] as const) {
       title: `Scheduled ${kind}`,
     });
     const client = await connectDaemonClient<Client>({ clientIdPrefix: `schedule-${kind}` }),
-      api = createScheduleApi(client);
+      api = await scheduleApi(client);
     let scheduled: ScheduleRef | null = null;
     try {
       ottoProvider.replyWith(reply);

@@ -9,6 +9,7 @@ export const PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS = [
   "@getpaseo/plugin/client/otto-preview", // OTTO(preview): trusted app-owned workspace controls.
   "@getpaseo/plugin/client/otto-artifacts", // OTTO(artifacts): app-owned isolated preview.
   "@getpaseo/plugin/client/otto-workflows", // OTTO(workflows): lazy app-owned authoring and inspection.
+  "@getpaseo/plugin/client/otto-schedules", // OTTO(schedules): trusted app-owned Settings presentation.
   "@getpaseo/plugin/client/otto-bitbucket", // OTTO(bitbucket): trusted built-in presentation and navigation.
   "@getpaseo/plugin/client/otto-connectors", // OTTO(connectors): app-owned Settings presentation.
   "@getpaseo/plugin/client/otto-speech", // OTTO(speech): trusted app-owned speech Settings presentation.
@@ -38,6 +39,7 @@ export const PLUGIN_SDK_SPECIFIERS = [
   "@getpaseo/plugin/otto/preview", // OTTO(preview): structural requests and responses only.
   "@getpaseo/plugin/otto/artifacts", // OTTO(artifacts): structural library and mutation contracts.
   "@getpaseo/plugin/otto/workflows", // OTTO(workflows): documents and scoped RPC only.
+  "@getpaseo/plugin/otto/schedules", // OTTO(schedules): structural target, storage and audit contracts.
   "@getpaseo/plugin/otto/connectors", // OTTO(connectors): catalog and sanitized RPC contracts only.
   "@getpaseo/plugin/otto/speech", // OTTO(speech): structural speech settings and bounded audio contracts.
   "@getpaseo/plugin/otto/host-browser", // OTTO(browser-host): scoped structural viewer contracts.
