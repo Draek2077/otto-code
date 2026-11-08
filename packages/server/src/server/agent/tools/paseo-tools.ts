@@ -121,6 +121,8 @@ import type { PreviewHost } from "../../otto/preview/host.js"; // OTTO(preview)
 import type { RetainedToolPolicy } from "../../otto/retained-tool-policy.js"; // OTTO(preview)
 import { registerWorkflowTools, type WorkflowToolPorts } from "../../otto/workflows/tools.js"; // OTTO(workflows): private execution tools and access ceilings stay feature-owned.
 import { requirePaseoSchedule } from "../../otto/schedules/legacy.js"; // OTTO(schedules): preserve the legacy tool response contract.
+import { registerScheduleTools } from "../../otto/schedules/tools.js"; // OTTO(schedules): progressively discovered, scoped owned operations.
+import type { ScheduleDaemonService } from "../../otto/schedules/service.js"; // OTTO(schedules)
 
 export interface PaseoToolHostDependencies {
   ottoWorkflows?: WorkflowToolPorts; // OTTO(workflows): canonical host binding; absent leaves Paseo catalogs unchanged.
@@ -137,6 +139,8 @@ export interface PaseoToolHostDependencies {
   terminalManager?: TerminalManager | null;
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;
+  ottoSchedules?: ScheduleDaemonService; // OTTO(schedules): existing native tools keep their original contracts.
+  scheduleToolPolicy?: RetainedToolPolicy; // OTTO(schedules): current + retained per-provider ceilings.
   providerSnapshotManager: ProviderSnapshotManager;
   daemonConfigStore?: Pick<DaemonConfigStore, "get">;
   github?: ForgeService;
@@ -3390,6 +3394,16 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     policy: options.paseoToolPolicy,
   });
   // OTTO(workflows): normal catalogs only; reserve first, recheck live authority on every invocation.
+  registerScheduleTools(
+    tools,
+    {
+      host: options.ottoSchedules,
+      policy: options.scheduleToolPolicy,
+      owner: options.ottoWorkflows,
+    },
+    (name) => isPaseoToolEnabled(options.paseoToolPolicy, name),
+  );
+  // OTTO(schedules): Workflow narrowing runs after registration, so reserved members cannot recursively schedule.
   registerWorkflowTools(tools, options.ottoWorkflows, (name) =>
     isPaseoToolEnabled(options.paseoToolPolicy, name),
   );

@@ -91,9 +91,18 @@ describe("live Workflow tool authority", () => {
       description: "",
       handler: async () => ({ content: [] }),
     };
-    const tools = new Map([[fn.name, fn]]);
+    const schedule: PaseoToolDefinition = {
+      name: "schedule_operation",
+      description: "",
+      handler: async () => ({ content: [] }),
+    };
+    const tools = new Map([
+      [fn.name, fn],
+      [schedule.name, schedule],
+    ]);
     constrainWorkflowCatalog(tools, ports);
     expect(tools.get(fn.name)).toBe(fn);
+    expect(tools.get(schedule.name)).toBe(schedule);
     const entry = await f.start();
     caller.agentId = z.string().parse(entry.document.value.conductorAgentId);
     constrainWorkflowCatalog(tools, ports);

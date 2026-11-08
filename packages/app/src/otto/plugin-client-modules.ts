@@ -17,6 +17,7 @@ import * as artifacts from "@getpaseo/plugin/otto/artifacts";
 import * as artifactUi from "./artifacts/bridge";
 import * as workflows from "@getpaseo/plugin/otto/workflows"; // OTTO(workflows)
 import * as workflowUi from "./workflows/bridge"; // OTTO(workflows)
+import * as scheduleUi from "./schedules/settings-entry"; // OTTO(schedules): trusted settings bridge, original navigation retained.
 
 const shared = new Map<string, unknown>([
   ["@getpaseo/plugin/otto/speech", speech],
@@ -37,6 +38,8 @@ const knowledgeModules = new Map<string, unknown>([
 ]);
 /** Public structural contracts are shared; private UI bridges are built-in-only. */
 export function ottoClientModule(pluginId: string, name: string): unknown {
+  if (pluginId === "otto-schedules" && name === "@getpaseo/plugin/client/otto-schedules")
+    return scheduleUi; // OTTO(schedules)
   if (pluginId === "otto-workflows" && name === "@getpaseo/plugin/client/otto-workflows")
     return workflowUi; // OTTO(workflows)
   if (pluginId === "otto-speech" && name === "@getpaseo/plugin/client/otto-speech") return speechUi;

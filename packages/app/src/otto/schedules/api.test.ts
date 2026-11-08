@@ -48,6 +48,21 @@ test("list and observation use the existing daemon transport with structurally v
     ["otto-schedules", "schedules.library.watch.request", { scope, version: 2 }],
   ]);
 });
+
+test("lost-create inspection never replays creation and rejects another intent's acknowledgement", async () => {
+  const invokePluginRpc = vi.fn(async () => ({ ok: true, value: document }));
+  const api = createScheduleApi({ invokePluginRpc });
+  expect(await api.created({ scope, operationId: "create-intent" })).toEqual(document);
+  expect(invokePluginRpc).toHaveBeenCalledWith(
+    "otto-schedules",
+    "schedules.document.created.read.request",
+    { scope, operationId: "create-intent" },
+  );
+  await expect(api.created({ scope, operationId: "different-intent" })).rejects.toMatchObject({
+    origin: "response-validation",
+  });
+  expect(invokePluginRpc).toHaveBeenCalledTimes(2);
+});
 test("local invalid input is distinguished from an unconfirmed write and never reaches transport", async () => {
   const invokePluginRpc = vi.fn(async () => ({}));
   const api = createScheduleApi({ invokePluginRpc });

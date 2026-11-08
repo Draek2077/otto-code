@@ -14,9 +14,9 @@ The native runner remains Paseo-owned. Composition alone does not expose a new e
 advertise a target capability.
 
 The owned daemon API delegates create, edit, and control actions to that same scheduler.
-Its dotted contracts use the authenticated `otto-schedules` built-in route. The original
-Schedules editor retains its native target contract until the target-aware editor and capability
-are accepted. A create operation carries a stable caller nonce and payload fingerprint;
+Its dotted contracts use the authenticated `otto-schedules` built-in route. The target-aware
+editor is selected through the single `scheduleTargets` host capability. Hosts without it
+retain the original native editor. A create operation carries a stable caller nonce and payload fingerprint;
 repeating it returns the saved record even if defaults or target availability changed after
 publication. A different payload with that nonce is a conflict. Edits and controls carry the
 exact origin and content revision. Settings edits are refused inside the claim queue while a
@@ -115,7 +115,54 @@ Inspection reports bounded summaries, digests and lock kinds, never backup conte
 Locks use the existing no-link publisher and recovery rules. Recovering one requires its exact
 inspected revision and explicit confirmation that other owning-host writers stopped. A crash
 before receipt publication permits inspection of packet locks only, without guessing a source
-or destination. These contracts do not by themselves register app transfer controls.
+or destination. The detail's **Copy or move** action opens these controls with the captured
+origin and revision. Inspection never repeats the transfer.
+
+## App editor and Settings
+
+Schedules retains its existing main-navigation destination. Upgraded hosts use a wide
+inventory/detail layout or a compact single-pane selection. The host/project toolbar
+identifies where new records are created. Legacy records remain discoverable;
+unassigned legacy transfers require an explicitly selected project on the same host.
+
+The editor reuses Paseo's native target controls and cadence editor. Saved AI/Graph
+Workflows and project/workspace Artifacts come from their existing libraries. Workflow
+execution requires an explicit workspace and model seats. Target review captures
+authority fingerprints; a separate approval control accepts that review. Cadence preview
+uses the daemon's existing cron/time-zone implementation and displays three next fires.
+Workflow human gates still wait for the user. Failed attempts wait for the next scheduled
+time, without automatic retries between fires. Uncertain outcomes pause for inspection.
+
+Forms retain local drafts and their originating revision. A failed or unconfirmed write
+does not adopt peer revisions or resend itself. Creation inspection uses the retained
+operation nonce; an absent result cannot authorize replay. Explicit confirmed reload
+replaces a draft with the inspected record. Hidden views release read demand while
+accepted work stays owned by the daemon. Library change waits are scoped and bounded.
+
+Host Settings supplies the independent Schedules default. Project Settings supplies its
+override. The Schedules page's Storage action exposes both domains together, each with
+its own revision and explicit Save. Changing preferences never moves existing records.
+
+History pages expose requested/resolved targets, revision, executor, outcome and exact
+chat/Workflow/Artifact result links. The Artifact link retains project or workspace scope
+and original location; malformed or cross-host links never choose another collection.
+Run once acknowledges admission rather than waiting for a Workflow gate. Cancellation
+requests the exact run and retains ownership until its actual target settles.
+
+## CLI and MCP
+
+`otto schedule targets operations` discovers the owned operations. Supply one dotted
+operation name to inspect its input schema. Named commands take an exact JSON request
+with `--input <file>`; mutation commands require `--approved`. They use the selected
+daemon, check its capability and host scope, send one request, validate the reply and
+close the connection. The original native `otto schedule` commands remain available.
+
+The provider-neutral `schedule_catalog` and `schedule_operation` MCP pair uses progressive
+discovery instead of injecting every schema and saved prompt into model requests. It
+reuses daemon/provider tool policy and the calling chat's canonical workspace/project.
+Writes require approval for the exact action; inspection uses creation or transfer
+receipts without replay. Workflow-owned members cannot schedule recursively. Neither
+surface owns a provider, credential store, clock, or alternate target executor.
 
 ## Retained history
 

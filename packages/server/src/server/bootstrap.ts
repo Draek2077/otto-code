@@ -1717,6 +1717,10 @@ export async function createPaseoDaemon(
     runtime: PaseoToolRuntimeContext,
   ): PaseoToolHostDependencies => ({
     ottoWorkflows: ottoWorkflows?.tools(runtime.callerAgentId), // OTTO(workflows): caller-bound authority, shared app/CLI/MCP owner.
+    ottoSchedules: ottoSchedules ?? undefined, // OTTO(schedules): same owner as UI and CLI, never a parallel scheduler.
+    scheduleToolPolicy: createRetainedToolPolicy("schedules", config.paseoHome, () =>
+      daemonConfigStore.get(),
+    ), // OTTO(schedules)
     ottoPreview: ottoPreview ?? undefined, // OTTO(preview)
     previewToolPolicy: createRetainedToolPolicy("preview", config.paseoHome, () =>
       daemonConfigStore.get(),

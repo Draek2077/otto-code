@@ -41,6 +41,7 @@ import { useHostFeature } from "@/runtime/host-features";
 import { OttoKanbanProjectSettings } from "@/otto/kanban/project-settings";
 import { OttoBitbucketProjectSettings } from "@/otto/bitbucket/project-settings"; // OTTO(bitbucket)
 import { OttoArtifactProjectSettings } from "@/otto/artifacts/project-settings"; // OTTO(artifacts): canonical settings placement.
+import { ScheduleProjectSettings } from "@/otto/schedules/settings-entry"; // OTTO(schedules): independent category override at canonical Project Settings.
 import { useToast } from "@/contexts/toast-context";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
@@ -334,6 +335,11 @@ function ProjectSettingsBody({
       />
       {/* OTTO(artifacts): feature-owned controls in canonical Project Settings. */}
       <OttoArtifactProjectSettings
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+      />
+      {/* OTTO(schedules): does not inherit or change any other category's settings. */}
+      <ScheduleProjectSettings
         serverId={selectedHost.serverId}
         projectId={selectedHost.projectId}
       />

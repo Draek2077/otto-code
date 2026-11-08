@@ -52,6 +52,7 @@ on:
             terminal,
             editor,
             workflows,
+            schedules,
           ]
 
 permissions:
@@ -129,6 +130,9 @@ jobs:
               ;;
             workflows)
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-workflows.spec.ts --workers=1 --retries=0 --max-failures=1
+              ;;
+            schedules)
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-schedules.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             terminal)
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-terminal.spec.ts --workers=1 --retries=0 --max-failures=1

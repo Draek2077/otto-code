@@ -3586,6 +3586,7 @@ export const ServerInfoStatusPayloadSchema = z
         ottoKnowledge: z.boolean().optional(), // OTTO(knowledge): daemon-owned Knowledge bridge.
         ottoArtifacts: z.boolean().optional(), // OTTO(artifacts): daemon-owned library, generation and recovery.
         ottoWorkflows: z.boolean().optional(), // OTTO(workflows): scoped durable execution; ordinary chats remain Paseo-owned.
+        scheduleTargets: z.boolean().optional(), // OTTO(schedules): scoped target review, execution, history and storage operations.
         ottoContextManagement: z.boolean().optional(), // OTTO(context-management): additive host capability.
         ottoContextStarter: z.boolean().optional(), // OTTO(context-starter): reviewed creation is separately gated.
         ottoBrowserHistory: z.boolean().optional(), // OTTO(browser-history): additive, no history payload in core framing.

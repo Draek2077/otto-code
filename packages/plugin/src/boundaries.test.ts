@@ -48,6 +48,7 @@ const entries = {
   "./client/otto-preview": "client", // OTTO(preview): trusted app-owned workspace controls.
   "./client/otto-artifacts": "client", // OTTO(artifacts): app-owned presentation bridge.
   "./client/otto-workflows": "client", // OTTO(workflows): trusted presentation bridge.
+  "./client/otto-schedules": "client", // OTTO(schedules): app-owned storage Settings bridge.
   "./client/otto-bitbucket": "client", // OTTO(bitbucket): app-owned settings bridge.
   "./client/otto-connectors": "client", // OTTO(connectors): app-owned Settings presentation.
   "./client/otto-speech": "client", // OTTO(speech): app-owned Settings presentation.

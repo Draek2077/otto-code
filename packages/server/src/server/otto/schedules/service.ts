@@ -2,7 +2,8 @@ import { z } from "zod";
 import type { PluginRpcContract } from "@getpaseo/plugin";
 import * as rpc from "@getpaseo/plugin/otto/schedules";
 import { ScheduleError } from "./files.js";
-import type { ScheduleRegistry } from "./registry.js";
+import { scheduleCreationId, type ScheduleRegistry } from "./registry.js";
+import { computeNextRunAt, validateScheduleCadence } from "../../schedule/cron.js";
 import { scheduleDocument, scheduleListItem } from "./projection.js";
 import { ScheduleHistory } from "./history.js";
 import { ScheduleNotFoundError, ScheduleStateConflictError } from "../../schedule/service.js";
@@ -24,16 +25,7 @@ export interface ScheduleActionPort {
 const contracts = new Map<string, PluginRpcContract>(
   rpc.scheduleOperations.map((contract) => [contract.name, contract]),
 );
-const mutations = new Set([
-  rpc.createSchedule.name,
-  rpc.updateSchedule.name,
-  rpc.controlSchedule.name,
-  rpc.saveScheduleStorage.name,
-  rpc.saveScheduleDefaults.name,
-  rpc.transferSchedule.name,
-  rpc.reconcileScheduleTransfer.name,
-  rpc.recoverScheduleTransferLock.name,
-]);
+const mutations = new Set(rpc.scheduleMutationNames);
 const RESPONSE_BUDGET = 768 * 1024;
 
 /** One authenticated, bounded API for UI/CLI/MCP. It owns no cadence, provider,
@@ -89,6 +81,10 @@ export class ScheduleDaemonService {
         return this.watch(rpc.watchSchedules.input.parse(value));
       case rpc.readSchedule.name:
         return this.entry(rpc.readSchedule.input.parse(value)).then(scheduleDocument);
+      case rpc.readCreatedSchedule.name:
+        return this.created(rpc.readCreatedSchedule.input.parse(value));
+      case rpc.previewScheduleCadence.name:
+        return this.preview(rpc.previewScheduleCadence.input.parse(value));
       case rpc.readScheduleHistory.name:
         return this.history(rpc.readScheduleHistory.input.parse(value));
       case rpc.readScheduleRun.name:
@@ -103,6 +99,12 @@ export class ScheduleDaemonService {
         return this.actions.control(rpc.controlSchedule.input.parse(value));
       case rpc.reviewScheduleTarget.name:
         return this.actions.review(rpc.reviewScheduleTarget.input.parse(value));
+      default:
+        return this.dispatchStorage(method, value);
+    }
+  }
+  private dispatchStorage(method: string, value: unknown): Promise<unknown> {
+    switch (method) {
       case rpc.readScheduleStorage.name:
         return this.readStorage(rpc.readScheduleStorage.input.parse(value));
       case rpc.saveScheduleStorage.name:
@@ -174,6 +176,54 @@ export class ScheduleDaemonService {
   private async watch(input: z.infer<typeof rpc.watchSchedules.input>) {
     await this.scope(input.scope);
     return this.changes.watch(input.scope, input.version);
+  }
+  private async created(input: z.infer<typeof rpc.readCreatedSchedule.input>) {
+    await this.scope(input.scope);
+    const id = scheduleCreationId(input.scope, input.operationId);
+    await this.registry.refresh(true);
+    const found = (await this.registry.catalog()).filter((row) => row.ref.id === id);
+    const problems = await this.registry.problems();
+    if (found.length > 1 || problems.some((problem) => !problem.ref || problem.ref.id === id))
+      throw new ScheduleError(
+        "unavailable",
+        "Schedule creation could not be inspected safely. Review storage diagnostics; do not create a replacement.",
+      );
+    if (!found.length) return null;
+    const entry = await this.entry(found[0].ref);
+    if (
+      entry.ref.scope.hostId !== input.scope.hostId ||
+      entry.ref.scope.projectId !== input.scope.projectId ||
+      entry.schedule.otto?.creation?.operationId !== input.operationId
+    )
+      throw new ScheduleError(
+        "conflict",
+        "This creation identity belongs to a different Schedule. Inspect storage before another write.",
+      );
+    return scheduleDocument(entry);
+  }
+  private async preview(input: z.infer<typeof rpc.previewScheduleCadence.input>) {
+    await this.scope(input.scope);
+    try {
+      validateScheduleCadence(input.cadence);
+      const from = input.from ?? new Date().toISOString();
+      let cursor = new Date(from);
+      const next: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        cursor = computeNextRunAt(input.cadence, cursor);
+        next.push(cursor.toISOString());
+      }
+      return {
+        from,
+        next,
+        timezone: input.cadence.type === "cron" ? (input.cadence.timezone ?? "UTC") : "UTC",
+      };
+    } catch (cause) {
+      throw new ScheduleError(
+        "invalid",
+        "Choose a valid cadence and IANA time zone with a next occurrence within one year.",
+        { cause },
+      );
+    }
   }
   private async history(input: z.infer<typeof rpc.readScheduleHistory.input>) {
     const entry = await this.entry(input.ref);

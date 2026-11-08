@@ -217,6 +217,11 @@
       "default": "./dist/client/otto-workflows.js",
       "source": "./src/client/otto-workflows.ts",
       "types": "./dist/client/otto-workflows.d.ts"
+    },
+    "./client/otto-schedules": {
+      "types": "./dist/client/otto-schedules.d.ts",
+      "source": "./src/client/otto-schedules.ts",
+      "default": "./dist/client/otto-schedules.js"
     }
   },
   "publishConfig": {

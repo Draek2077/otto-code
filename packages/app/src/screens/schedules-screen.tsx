@@ -40,6 +40,7 @@ import {
 } from "@/schedules/schedule-project-targets";
 import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
 import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
+import { OttoSchedulesEntry } from "@/otto/schedules/screen"; // OTTO(schedules): one capability boundary; original old-host UI stays intact.
 
 type FormState =
   | { mode: "closed" }
@@ -60,7 +61,7 @@ export function SchedulesScreen(): ReactElement {
     return <View style={styles.container} />;
   }
 
-  return <SchedulesScreenContent />;
+  return <OttoSchedulesEntry Legacy={SchedulesScreenContent} />;
 }
 
 function SchedulesScreenContent(): ReactElement {

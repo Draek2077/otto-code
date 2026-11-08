@@ -5,6 +5,7 @@ import { speechAvailable } from "./otto/speech/capabilities.js"; // OTTO(speech)
 import { ottoBrowserCapabilities } from "./otto/browser/capabilities.js"; // OTTO(browser-history)
 import { ottoArtifactsAvailable } from "./otto/artifacts/capabilities.js"; // OTTO(artifacts)
 import { ottoWorkflowsAvailable } from "./otto/workflows/capabilities.js"; // OTTO(workflows)
+import { scheduleTargetsAvailable } from "./otto/schedules/capabilities.js"; // OTTO(schedules)
 import { ottoBitbucketAvailable } from "../services/otto/bitbucket/available.js"; // OTTO(bitbucket)
 // OTTO(protocol): preserve Otto 0.9 clients without renaming Paseo internals.
 import {
@@ -1834,6 +1835,7 @@ export class VoiceAssistantWebSocketServer {
         ottoKnowledge: knowledgeAvailable, // OTTO(knowledge)
         ottoArtifacts: ottoArtifactsAvailable(this.pluginRuntime), // OTTO(artifacts)
         ottoWorkflows: ottoWorkflowsAvailable(this.pluginRuntime), // OTTO(workflows)
+        scheduleTargets: scheduleTargetsAvailable(this.pluginRuntime), // OTTO(schedules): one target, history and storage API shared by app/CLI/MCP.
         ottoContextManagement: knowledgeAvailable, // OTTO(context-management): daemon-owned inspection and conditional edits.
         ottoContextStarter: knowledgeAvailable, // OTTO(context-starter): reviewed root-file creation.
         ...ottoBrowserCapabilities(this.pluginRuntime), // OTTO(browser-history)

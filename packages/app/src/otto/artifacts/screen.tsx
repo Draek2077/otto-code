@@ -25,6 +25,7 @@ import { ArtifactDetail } from "./detail";
 import { ArtifactCreate } from "./create";
 import { ArtifactDefaults, ArtifactProjectStorage } from "./settings";
 import { styles } from "./styles";
+import { ArtifactRouteDestination } from "./route-destination"; // OTTO(schedules): exact, origin-bound result links.
 type Navigation = PluginSurfaceProps["navigation"];
 interface LibraryProps {
   hostId: string;
@@ -389,6 +390,16 @@ export function ProjectStorageSettings({
 export function ArtifactsScreen(props: PluginScreenProps) {
   const retained = useRetainedPanelActive(),
     visible = useAppVisible();
+  // OTTO(schedules): URL parameters retain the actual result identity across reloads.
+  if (props.params.artifactRef)
+    return (
+      <ArtifactRouteDestination
+        key={props.params.artifactRef}
+        props={props}
+        encoded={props.params.artifactRef}
+        active={retained && visible && props.active === true}
+      />
+    );
   return (
     <ProjectDirectory
       key={props.host.id}

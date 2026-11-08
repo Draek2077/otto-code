@@ -84,6 +84,7 @@ const unmanaged = new Set([
   "archive_workspace",
   "rename_workspace",
   "create_schedule",
+  "schedule_operation", // OTTO(schedules): a reserved Workflow member cannot create nested scheduler authority.
   "create_heartbeat",
   "delete_heartbeat",
   "pause_schedule",

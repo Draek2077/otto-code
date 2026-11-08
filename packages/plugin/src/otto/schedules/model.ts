@@ -76,6 +76,7 @@ export const ScheduleResultLink = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("workflow"), ref: WorkflowRef }),
   z.object({ kind: z.literal("artifact"), ref: ArtifactRef, revision: ScheduleDigest }),
 ]);
+export type ScheduleResultLink = z.infer<typeof ScheduleResultLink>;
 export const ScheduleRunAudit = z
   .object({
     requestedTarget: OttoScheduleTarget,

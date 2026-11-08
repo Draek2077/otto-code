@@ -212,6 +212,16 @@ Agent providers handle their own auth. Do not add auth checks, environment varia
 
 ## Otto provider coverage
 
+Schedules: `e2e/browser/otto-schedules.spec.ts` exercises the real target-aware
+editor on wide and compact screens, explicit target review, cadence preview,
+conflicting saves with retained drafts and confirmed reload, literal Artifact
+data updates with unchanged HTML design and no generation request, and exact
+result navigation. Saved Graph runs wait at the ordinary human gate; saved AI
+runs remain in Planning until the user acts and retain explicit cancellation.
+The manual `schedules` App Acceptance journey runs this file; full acceptance
+includes it automatically. These are CI browser journeys, not pure fixture or
+local native-provider proof.
+
 <!-- OTTO(workflows): real daemon and provider tool-loop journeys preserve the ordinary chat boundary. -->
 
 Workflows: `e2e/browser/otto-workflows.spec.ts` covers wide/compact library creation,

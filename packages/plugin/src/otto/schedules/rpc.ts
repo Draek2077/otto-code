@@ -126,6 +126,25 @@ export const watchSchedules = rpc(
   z.object({ version: z.number().int().nonnegative() }),
 );
 export const readSchedule = rpc("schedules.document.read.request", ScheduleRef, ScheduleDocument);
+/** Read-only recovery for a lost create acknowledgement. Never resends the create. */
+export const readCreatedSchedule = rpc(
+  "schedules.document.created.read.request",
+  z.object({ scope: ScheduleProjectScope, operationId: ScheduleId }),
+  ScheduleDocument.nullable(),
+);
+export const previewScheduleCadence = rpc(
+  "schedules.cadence.preview.request",
+  z.object({
+    scope: ScheduleScope,
+    cadence: ScheduleCadenceSchema,
+    from: z.iso.datetime().optional(),
+  }),
+  z.object({
+    from: z.iso.datetime(),
+    next: z.array(z.iso.datetime()).length(3),
+    timezone: z.string(),
+  }),
+);
 export const readScheduleHistory = rpc(
   "schedules.history.list.request",
   z.object({
@@ -291,6 +310,8 @@ export const scheduleOperations = [
   listSchedules,
   watchSchedules,
   readSchedule,
+  readCreatedSchedule,
+  previewScheduleCadence,
   readScheduleHistory,
   readScheduleRun,
   readScheduleRunPart,

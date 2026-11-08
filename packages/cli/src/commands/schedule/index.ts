@@ -10,9 +10,11 @@ import { runResumeCommand } from "./resume.js";
 import { runDeleteCommand } from "./delete.js";
 import { runRunOnceCommand } from "./run-once.js";
 import { runUpdateCommand } from "./update.js";
+import { createOwnedScheduleCommand } from "../../otto/schedules/commands.js"; // OTTO(schedules): original commands stay compatible.
 
 export function createScheduleCommand(): Command {
   const schedule = new Command("schedule").description("Manage recurring schedules");
+  schedule.addCommand(createOwnedScheduleCommand()); // OTTO(schedules): exact scoped target operations.
 
   addJsonAndDaemonHostOptions(
     schedule

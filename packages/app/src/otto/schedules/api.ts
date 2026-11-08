@@ -91,6 +91,20 @@ export function createScheduleApi(transport: ScheduleRpcTransport) {
       unwrap(await call(rpc.watchSchedules, input)),
     read: async (input: Input<typeof rpc.readSchedule.input>) =>
       exactDocument(unwrap(await call(rpc.readSchedule, input)), input),
+    created: async (input: Input<typeof rpc.readCreatedSchedule.input>) => {
+      const document = unwrap(await call(rpc.readCreatedSchedule, input));
+      if (
+        document &&
+        (document.ref.scope.hostId !== input.scope.hostId ||
+          document.ref.scope.projectId !== input.scope.projectId ||
+          document.schedule.otto?.creation?.operationId !== input.operationId ||
+          document.schedule.id !== document.ref.id)
+      )
+        unconfirmedResponse();
+      return document;
+    },
+    preview: async (input: Input<typeof rpc.previewScheduleCadence.input>) =>
+      unwrap(await call(rpc.previewScheduleCadence, input)),
     history: async (input: Input<typeof rpc.readScheduleHistory.input>) =>
       unwrap(await call(rpc.readScheduleHistory, input)),
     run: async (input: Input<typeof rpc.readScheduleRun.input>) =>

@@ -559,15 +559,27 @@ interface ScheduleTargetFieldsProps {
   agentTargetLabel: string | null;
   controlSize: FieldControlSize;
   mutationServerId: string;
+  // OTTO(schedules): the owned target editor binds host/project once, while reusing
+  // Paseo's canonical provider, permission, thinking, isolation and archive controls.
+  scopeLocked?: boolean;
 }
 
-function ScheduleTargetFields({
+// OTTO(schedules): a scoped target editor already owns these two selectors.
+function scheduleScopeDisclosure(state: ScheduleFormState, locked: boolean) {
+  return {
+    host: !locked && (state.mode === "edit" || state.hosts.length > 1),
+    project: !locked && state.disclosure.showProjectField,
+  };
+}
+
+export function ScheduleTargetFields({
   model,
   state,
   providerSnapshot,
   agentTargetLabel,
   controlSize,
   mutationServerId,
+  scopeLocked = false,
 }: ScheduleTargetFieldsProps): ReactElement {
   const hostOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
@@ -590,6 +602,7 @@ function ScheduleTargetFields({
     return null;
   }, [selectedHost, state.selectedServerId]);
   const projectOptions = state.projectOptions;
+  const scopeDisclosure = scheduleScopeDisclosure(state, scopeLocked);
   const modeOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
       state.modeOptions.map((option) => ({
@@ -702,7 +715,7 @@ function ScheduleTargetFields({
 
   return (
     <>
-      {state.mode === "edit" || state.hosts.length > 1 ? (
+      {scopeDisclosure.host ? (
         <SelectField
           label="Host"
           value={state.selectedServerId}
@@ -720,7 +733,7 @@ function ScheduleTargetFields({
         />
       ) : null}
 
-      {state.disclosure.showProjectField ? (
+      {scopeDisclosure.project ? (
         <SelectField
           label="Project"
           value={state.selectedProjectOptionId || null}
