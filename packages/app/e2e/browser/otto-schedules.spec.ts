@@ -88,6 +88,17 @@ async function confirm(page: Page, control: Locator, title: string) {
   await dialog.accept();
   await clicked;
 }
+async function chooseFixtureModel(page: Page, control: Locator) {
+  await control.click();
+  const picker = page.getByRole("dialog").filter({ visible: true }).last();
+  await expect(picker).toBeVisible();
+  const back = picker.getByRole("button", { name: "Back", exact: true });
+  // Paseo opens the selected provider's submenu when one is already selected.
+  // Return to the real cross-provider browser instead of searching another provider.
+  if (await back.count()) await back.click();
+  await picker.getByTestId("model-search-all-input").fill("fixture");
+  await picker.getByTestId("model-row-openai-compatible-fixture").click();
+}
 async function openSchedules(page: Page, workspace: SeededWorkspace) {
   await gotoAppShell(page);
   await page.goto(buildSchedulesRoute());
@@ -328,9 +339,7 @@ for (const kind of ["agent", "new-agent"] as const) {
           .last()
           .click();
       } else {
-        await editor.getByTestId("combined-model-selector").click();
-        await page.getByTestId("model-search-input").filter({ visible: true }).fill("fixture");
-        await page.getByText("fixture", { exact: true }).filter({ visible: true }).last().click();
+        await chooseFixtureModel(page, editor.getByTestId("combined-model-selector"));
       }
       await reviewAndSave(editor);
       const saved = await savedByName(api, workspace, "Native proof");
@@ -476,12 +485,10 @@ for (const kind of ["graph", "ai"] as const) {
         .click();
       if (kind === "graph") {
         for (const role of ["conductor", "worker", "judge"]) {
-          await editor
-            .getByTestId(`schedule-seat-${role}`)
-            .getByTestId("combined-model-selector")
-            .click();
-          await page.getByTestId("model-search-input").filter({ visible: true }).fill("fixture");
-          await page.getByText("fixture", { exact: true }).filter({ visible: true }).last().click();
+          await chooseFixtureModel(
+            page,
+            editor.getByTestId(`schedule-seat-${role}`).getByTestId("combined-model-selector"),
+          );
         }
       }
       await reviewAndSave(editor);
