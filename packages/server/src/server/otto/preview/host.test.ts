@@ -94,6 +94,20 @@ async function fixture(alias = false) {
           },
         };
       }
+      if (input.command.command === "navigate") {
+        const args = input.command.args;
+        const tab = tabs.find(
+          (candidate) =>
+            candidate.browserId === args.browserId && candidate.workspaceId === input.workspaceId,
+        );
+        if (!tab) throw new Error("Fixture navigation escaped its workspace");
+        tab.url = args.url;
+        return {
+          requestId: "fixture",
+          ok: true,
+          result: { command: "navigate", browserId: tab.browserId, url: tab.url },
+        };
+      }
       if (input.command.command !== "new_tab" || !input.workspaceId)
         throw new Error("Unexpected fixture operation");
       const tab = {
@@ -328,6 +342,73 @@ test("a confirmed close permits replacement, while repeated opens reuse the exis
   expect(
     await f.host.invoke(stopPreviewServer.name, { ...binding, userApprovedStop: true }),
   ).toMatchObject({ ok: true, value: { status: "stopped" } });
+});
+
+test("explicit reopen retries a failed initial navigation in the same designated tab", async () => {
+  const f = await fixture();
+  const started = startPreviewServer.output.parse(
+    await f.host.invoke(startPreviewServer.name, f.input),
+  );
+  if (!started.ok) throw new Error("Fixture start failed");
+  const tab = f.tabs[0];
+  const browserId = tab.browserId;
+  tab.url = "chrome-error://chromewebdata/";
+  const opened = openPreviewBrowser.output.parse(
+    await f.host.invoke(openPreviewBrowser.name, {
+      ...f.scope,
+      serverId: started.value.server.id,
+    }),
+  );
+  expect(opened).toMatchObject({ ok: true, value: { browserId } });
+  expect(tab.url).toBe(started.value.server.url);
+  expect(f.tabs).toHaveLength(1);
+  expect(f.spawn).toHaveBeenCalledTimes(1);
+  expect(
+    f.execute.mock.calls.filter(([input]) => input.command.command === "navigate"),
+  ).toHaveLength(1);
+});
+
+test("reopen preserves a healthy designated tab's current navigation", async () => {
+  const f = await fixture();
+  const started = startPreviewServer.output.parse(
+    await f.host.invoke(startPreviewServer.name, f.input),
+  );
+  if (!started.ok) throw new Error("Fixture start failed");
+  f.tabs[0].url = "http://127.0.0.1:8200/user-selected-route";
+  await f.host.invoke(openPreviewBrowser.name, { ...f.scope, serverId: started.value.server.id });
+  expect(f.tabs[0].url).toBe("http://127.0.0.1:8200/user-selected-route");
+  expect(
+    f.execute.mock.calls.filter(([input]) => input.command.command === "navigate"),
+  ).toHaveLength(0);
+  expect(f.tabs).toHaveLength(1);
+});
+
+test("failed explicit navigation retains the designated tab without automatically retrying", async () => {
+  const f = await fixture();
+  const started = startPreviewServer.output.parse(
+    await f.host.invoke(startPreviewServer.name, f.input),
+  );
+  if (!started.ok) throw new Error("Fixture start failed");
+  f.tabs[0].url = "chrome-error://chromewebdata/";
+  const original = f.execute.getMockImplementation()!;
+  f.execute.mockImplementation(async (input) => {
+    if (input.command.command === "navigate")
+      return {
+        requestId: "fixture",
+        ok: false,
+        error: { code: "browser_no_host", message: "Unavailable", retryable: true },
+      };
+    return original(input);
+  });
+  expect(
+    await f.host.invoke(openPreviewBrowser.name, { ...f.scope, serverId: started.value.server.id }),
+  ).toMatchObject({ ok: false });
+  expect(f.tabs).toHaveLength(1);
+  expect(f.tabs[0].url).toBe("chrome-error://chromewebdata/");
+  expect(f.spawn).toHaveBeenCalledTimes(1);
+  expect(
+    f.execute.mock.calls.filter(([input]) => input.command.command === "navigate"),
+  ).toHaveLength(1);
 });
 test("invalid configuration and a removed directory retain owned stop authority", async () => {
   const f = await fixture();

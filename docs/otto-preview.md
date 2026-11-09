@@ -76,6 +76,9 @@ than sending an unbounded launch inventory or silently clipping a command approv
 Preview opens one designated tab per server/workspace through Paseo's browser broker,
 reuses a confirmed existing association and refuses to create another when listing fails.
 Browser failures leave process ownership visible. Closing the tab does not stop the server.
+If initial navigation reached Chromium's connection-error page before the server listened,
+an explicit Open browser retries navigation in that same designated tab. A healthy tab's
+current route is preserved; this recovery never creates another process or tab.
 The shared broker serializes AI tab creation per workspace and counts both ordinary
 browser and Preview tabs toward its twelve-tab admission ceiling. Failed inventory
 reads never authorize another create. Navigation to a running Preview origin, or

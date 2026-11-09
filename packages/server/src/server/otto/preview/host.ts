@@ -206,13 +206,29 @@ export class PreviewHost {
         "Could not confirm the existing Preview browser. No extra tab was requested.",
       );
     const boundId = this.browserBindings.get(key);
-    if (
-      boundId &&
-      listed.result.tabs.some(
-        (tab) => tab.browserId === boundId && tab.workspaceId === binding.workspaceId,
-      )
-    )
-      return boundId;
+    const boundTab = listed.result.tabs.find(
+      (tab) => tab.browserId === boundId && tab.workspaceId === binding.workspaceId,
+    );
+    if (boundTab) {
+      // The first navigation can beat a starting server's listener. An explicit
+      // reopen retries that failed page in place, without resetting healthy tabs.
+      if (boundTab.url === "chrome-error://chromewebdata/") {
+        const navigation = await this.ports.broker.execute({
+          ...binding,
+          command: {
+            command: "navigate",
+            args: { browserId: boundTab.browserId, url: server.url },
+          },
+        });
+        if (
+          !navigation.ok ||
+          navigation.result.command !== "navigate" ||
+          navigation.result.browserId !== boundTab.browserId
+        )
+          throw new Error("The existing Preview page could not be reopened. Retry Open browser.");
+      }
+      return boundTab.browserId;
+    }
     if (!boundId && this.browserBindings.size + this.openings.size > 4096)
       throw new Error(
         "Preview's browser association limit is reached. No extra tab was requested.",
