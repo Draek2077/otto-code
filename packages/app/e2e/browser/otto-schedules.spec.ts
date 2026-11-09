@@ -325,6 +325,12 @@ for (const compact of [false, true]) {
         expect(content).not.toContain("<!doctype");
       }
       await expect(surface.getByText("Run history · 1", { exact: true })).toBeVisible();
+      const evidence = surface.getByRole("button", { name: "Target details", exact: true });
+      await expect(evidence).toHaveAttribute("aria-expanded", "false");
+      await evidence.click();
+      await expect(evidence).toHaveAttribute("aria-expanded", "true");
+      await evidence.click();
+      await expect(evidence).toHaveAttribute("aria-expanded", "false");
       await page.screenshot({
         path: info.outputPath(`schedule-artifact-${compact ? "compact" : "wide"}.png`),
         fullPage: true,

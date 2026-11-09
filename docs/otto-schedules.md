@@ -35,6 +35,12 @@ Waits are bounded and demand-owned, with no idle timer or additional filesystem 
 A version captured before reading a page prevents a concurrent write from being lost between
 the page read and its next wait. External-file refresh retains the registry's discovery bound.
 
+A bounded file read that races atomic replacement is a temporary busy observation. Discovery
+does not publish a partial index that treats that record as missing. A scan also cannot replace
+a newer owned publication with an earlier file snapshot. Serialized mutations of known records
+reread their exact origin and bytes independently of a concurrent library scan. These rules
+do not retry execution, relax byte-CAS, or bypass duplicate and canonical-binding checks.
+
 Shutdown closes API admission and rejects unconfirmed responses before stopping the scheduler
 and target owners. Pending provider validation cannot hold daemon shutdown indefinitely.
 Late validation cannot create new work after close; a publication already in progress retains
@@ -148,6 +154,8 @@ chat/Workflow/Artifact result links. The Artifact link retains project or worksp
 and original location; malformed or cross-host links never choose another collection.
 Run once acknowledges admission rather than waiting for a Workflow gate. Cancellation
 requests the exact run and retains ownership until its actual target settles.
+Full target and transfer-receipt payloads are explicit expandable audit details, so ordinary
+history and recovery actions remain reachable without scrolling through transport records.
 History defaults to 25 runs per app page and accepts an explicit limit from 1 through 50
 in the shared API. Smaller pages preserve every retained attempt while keeping large
 results within the transport or tool response budget.

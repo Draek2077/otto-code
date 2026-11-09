@@ -18,6 +18,7 @@ import { ScheduleResultLink } from "./result-link";
 import { styles } from "./styles";
 import { useScheduleActivity } from "./activity";
 import { ScheduleChoice } from "./fields";
+import { ScheduleEvidence } from "./evidence";
 
 const HISTORY_PAGE_SIZES = [5, 10, 25, 50].map((size) => ({
   value: String(size),
@@ -344,13 +345,13 @@ export function ScheduleDetail({
           <Text
             style={styles.muted}
           >{`Next ${document.schedule.nextRunAt ?? "not scheduled"} · Last ${document.schedule.lastRunAt ?? "never"}`}</Text>
-          <Text selectable style={styles.code}>
-            {JSON.stringify(document.schedule.target, null, 2)}
-          </Text>
           {document.schedule.otto?.repairReason ? (
             <Alert variant="error" description={document.schedule.otto.repairReason} />
           ) : null}
         </View>
+      ) : null}
+      {document ? (
+        <ScheduleEvidence label="Target details" value={document.schedule.target} />
       ) : null}
       <Text style={styles.title}>{`Run history · ${state.total}`}</Text>
       <ScheduleChoice

@@ -9,6 +9,7 @@ import { ScheduleTransferModel, scheduleTransferCanStart } from "./transfer-mode
 import type { ScheduleApi } from "./api";
 import { styles } from "./styles";
 import { useScheduleActivity } from "./activity";
+import { ScheduleEvidence } from "./evidence";
 const OPERATIONS = [
   { value: "copy", label: "Copy settings" },
   { value: "move", label: "Move with history" },
@@ -166,8 +167,10 @@ export function ScheduleTransfer({
       </View>
       {receipt ? (
         <View style={styles.contentGap}>
-          <Text selectable style={styles.code}>
-            {JSON.stringify(receipt, null, 2)}
+          <Text style={styles.title}>
+            {receipt.found
+              ? `Transfer ${receipt.status.replaceAll("_", " ")}`
+              : "No transfer receipt found"}
           </Text>
           {receipt.found && receipt.needsReconciliation ? (
             <View style={styles.actions}>
@@ -205,6 +208,7 @@ export function ScheduleTransfer({
               ))}
             </>
           ) : null}
+          <ScheduleEvidence label="Transfer receipt" value={receipt} />
         </View>
       ) : null}
       {lane.error ? <Alert variant="error" description={lane.error} /> : null}

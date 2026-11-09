@@ -56,11 +56,17 @@ daemon through the hosted relay, exchanges encrypted RPCs while reporting Otto
 version `0.10.0`, and opens a second connection. Run it from `packages/server` with
 `RUN_LIVE_RELAY_E2E=1 npx vitest run src/server/otto/hosted-relay.real.e2e.test.ts --bail=1`.
 
-## Saved schedules during the clean baseline
+## Saved schedules
 
-Otto schedule metadata and run history survive supported schedule rewrites. Saved
-workflow targets, profile-bound targets and legacy flat provider policies remain
-intact on disk but are excluded from execution while their owning Otto features
-await restoration. They are not launched with those settings silently stripped.
-The daemon logs the unsupported target; ordinary Paseo schedules keep their normal
-behavior. Explicit deletion still deletes the selected schedule.
+Otto Schedule metadata and run history survive supported rewrites. Current reviewed
+AI/Graph Workflow and Artifact targets use the same scheduler as native agent targets;
+see [Schedule ownership and extension contracts](otto-schedules.md).
+
+Legacy Workflow targets without a current saved-source reference, profile-bound
+targets, and unsupported flat provider policies remain intact on disk and excluded
+from execution. Current target support does not silently convert those formats or
+strip their original authority. Storage diagnostics identify the retained record;
+deliberate current configuration is required before it can execute.
+
+Ordinary Paseo schedules keep their normal behavior. Explicit deletion removes the
+selected executable record and retains its recovery copy in the owning store.
