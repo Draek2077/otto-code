@@ -363,6 +363,32 @@ for (const compact of [false, true])
       const exported = testInfo.outputPath("architecture.svg");
       await download.saveAs(exported);
       expect(await readFile(exported, "utf8")).toContain("<svg");
+      if (!compact) {
+        for (const format of ["png", "jpeg", "webp"] as const) {
+          await page
+            .getByRole("button", { name: "Export diagram", exact: true })
+            .filter({ visible: true })
+            .click();
+          const rasterDownload = page.waitForEvent("download");
+          await page
+            .getByText(`${{ png: "PNG", jpeg: "JPEG", webp: "WebP" }[format]} image`, {
+              exact: true,
+            })
+            .filter({ visible: true })
+            .click();
+          const rasterPath = testInfo.outputPath(`architecture.${format}`);
+          await (await rasterDownload).saveAs(rasterPath);
+          const bytes = await readFile(rasterPath);
+          expect(bytes.length).toBeGreaterThan(1000);
+          if (format === "png")
+            expect([...bytes.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+          if (format === "jpeg") expect([...bytes.subarray(0, 3)]).toEqual([255, 216, 255]);
+          if (format === "webp") {
+            expect(bytes.toString("ascii", 0, 4)).toBe("RIFF");
+            expect(bytes.toString("ascii", 8, 12)).toBe("WEBP");
+          }
+        }
+      }
       if (!compact) await proveWideLayout(page);
       await page.screenshot({
         path: testInfo.outputPath(`views-${compact ? "compact" : "wide"}.png`),
