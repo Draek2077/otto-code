@@ -45,6 +45,9 @@ does not publish a partial index that treats that record as missing. A scan also
 a newer owned publication with an earlier file snapshot. Serialized mutations of known records
 reread their exact origin and bytes independently of a concurrent library scan. These rules
 do not retry execution, relax byte-CAS, or bypass duplicate and canonical-binding checks.
+Exact detail/history inspection shares the per-Schedule write queue and rechecks its
+captured origin and bytes after preceding owned publications. It does not wait on an
+unrelated library scan; external-file conflicts remain explicit.
 
 Shutdown closes API admission and rejects unconfirmed responses before stopping the scheduler
 and target owners. Pending provider validation cannot hold daemon shutdown indefinitely.

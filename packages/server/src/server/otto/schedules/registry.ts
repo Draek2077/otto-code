@@ -366,23 +366,27 @@ export class ScheduleRegistry implements ScheduleStorePort {
   /** Read-only repair inspection is pinned to an exact ref even when execution is blocked. */
   async inspectOrigin(ref: ScheduleRef): Promise<ScheduleEntry | null> {
     assertScheduleId(ref.id);
-    await this.refresh();
-    const rows = (this.index.get(ref.id) ?? []).filter((row) => sameOrigin(ref, row.origin));
-    if (rows.length !== 1)
-      throw new ScheduleError(
-        "conflict",
-        "This exact Schedule origin is unavailable or ambiguous. Refresh its storage diagnostics.",
-      );
-    const found = rows[0];
-    await this.verifyOrigin(found);
-    const current = await this.read(found.origin, ref.id);
-    return current
-      ? {
-          ref: refFor(found.origin, ref.id),
-          revision: scheduleRevision(current.schedule),
-          schedule: current.schedule,
-        }
-      : null;
+    // Exact inspection shares the owned write queue. A known origin does not
+    // depend on an unrelated library scan, but still rechecks binding and bytes.
+    return this.serial(ref.id, async () => {
+      if (!this.index.has(ref.id)) await this.refresh();
+      const rows = (this.index.get(ref.id) ?? []).filter((row) => sameOrigin(ref, row.origin));
+      if (rows.length !== 1)
+        throw new ScheduleError(
+          "conflict",
+          "This exact Schedule origin is unavailable or ambiguous. Refresh its storage diagnostics.",
+        );
+      const found = rows[0];
+      await this.verifyOrigin(found);
+      const current = await this.read(found.origin, ref.id);
+      return current
+        ? {
+            ref: refFor(found.origin, ref.id),
+            revision: scheduleRevision(current.schedule),
+            schedule: current.schedule,
+          }
+        : null;
+    });
   }
   async entry(id: string, ref?: ScheduleRef): Promise<ScheduleEntry | null> {
     const found = await this.locate(id);

@@ -331,6 +331,15 @@ for (const compact of [false, true]) {
       await expect(evidence).toHaveAttribute("aria-expanded", "true");
       await evidence.click();
       await expect(evidence).toHaveAttribute("aria-expanded", "false");
+      await expect(
+        surface.getByRole("button", { name: "Open artifact result", exact: true }),
+      ).toBeVisible();
+      await expect(
+        surface.getByText(
+          "Schedule storage changed during inspection. Refresh its current state.",
+          { exact: true },
+        ),
+      ).toHaveCount(0);
       await page.screenshot({
         path: info.outputPath(`schedule-artifact-${compact ? "compact" : "wide"}.png`),
         fullPage: true,

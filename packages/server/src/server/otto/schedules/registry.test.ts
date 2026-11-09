@@ -175,6 +175,43 @@ test("discovery cannot overwrite an owned publication with an earlier file snaps
   }
   expect((await f.registry.catalog())[0]?.schedule.prompt).toBe("New publication");
 });
+
+test("exact origin inspection waits for its owned publication without joining a library scan", async () => {
+  const f = await fixture();
+  const created = await f.registry.create(draft(f.origin));
+  const entry = await f.registry.entry(created.id);
+  if (!entry) throw new Error("Missing inspection fixture");
+  const entered = deferred<void>(),
+    release = deferred<void>();
+  const writing = f.registry.update(created.id, async (row) => {
+    entered.resolve();
+    await release.promise;
+    return { ...row, prompt: "Settled publication" };
+  });
+  await entered.promise;
+  const read = vi.spyOn(scheduleFiles, "readScheduleFile");
+  const refreshing = vi.spyOn(f.registry, "refresh");
+  let inspected = false;
+  const inspection = f.registry.inspectOrigin(entry.ref).then((value) => {
+    inspected = true;
+    return value;
+  });
+  try {
+    await Promise.resolve();
+    expect(inspected).toBe(false);
+    expect(read).not.toHaveBeenCalled();
+    release.resolve();
+    await writing;
+    expect((await inspection)?.schedule.prompt).toBe("Settled publication");
+    expect(refreshing).not.toHaveBeenCalled();
+  } finally {
+    release.resolve();
+    await writing;
+    await inspection;
+    read.mockRestore();
+    refreshing.mockRestore();
+  }
+});
 test("new project records retain exact origin while changing defaults selects future creates", async () => {
   const f = await fixture();
   const created = await f.registry.create(draft(f.origin));
