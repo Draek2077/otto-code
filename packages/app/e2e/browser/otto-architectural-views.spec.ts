@@ -407,6 +407,13 @@ for (const compact of [false, true])
         }),
       ).rejects.toThrow("conflict");
       await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: author.agentId });
+      await expect(
+        page
+          .getByText("Architectural View authored and repaired. Human publication is required.", {
+            exact: true,
+          })
+          .filter({ visible: true }),
+      ).toBeVisible();
       await expect.poll(displayReady, { timeout: 15000 }).toBe(true);
       await call(rpc.showView, { scope, identity, workspaceId: workspace.workspaceId });
       await expect(
