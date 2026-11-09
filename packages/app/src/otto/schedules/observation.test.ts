@@ -1,7 +1,27 @@
 import { QueryClient } from "@tanstack/react-query";
 import { expect, test, vi } from "vitest";
 import { ScheduleRequestError } from "./api";
-import { retryScheduleObservation } from "./observation";
+import { observeScheduleVersion, retryScheduleObservation } from "./observation";
+
+test("filter loading retains its scope cursor, while host/project switches never inherit it", () => {
+  const scope = { hostId: "host", projectId: "project" };
+  const first = observeScheduleVersion(undefined, scope, 20);
+  expect(observeScheduleVersion(first, scope, undefined).version).toBe(20);
+  expect(
+    observeScheduleVersion(first, { ...scope, projectId: "other" }, undefined).version,
+  ).toBeUndefined();
+  expect(observeScheduleVersion(first, { ...scope, hostId: "other" }, 2).version).toBe(2);
+  expect(
+    observeScheduleVersion(first, { ...scope, projectId: null }, undefined).version,
+  ).toBeUndefined();
+});
+test("an authoritative lower page cursor after daemon restart is not floored by old state", () => {
+  const scope = { hostId: "host", projectId: "project" };
+  const old = observeScheduleVersion(undefined, scope, 50);
+  const restarted = observeScheduleVersion(old, scope, 0);
+  expect(restarted.version).toBe(0);
+  expect(observeScheduleVersion(restarted, scope, undefined).version).toBe(0);
+});
 
 async function query(operation: () => Promise<string>) {
   const client = new QueryClient();

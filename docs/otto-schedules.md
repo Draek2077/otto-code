@@ -37,6 +37,8 @@ backoff. All other read failures require explicit refresh. Mutation, execution a
 requests never use that read-only recovery policy.
 A version captured before reading a page prevents a concurrent write from being lost between
 the page read and its next wait. External-file refresh retains the registry's discovery bound.
+The retained read cursor resets on a host/project change and accepts a lower authoritative
+counter after daemon restart. Another project's clock never suppresses the current page's updates.
 
 A bounded file read that races atomic replacement is a temporary busy observation. Discovery
 does not publish a partial index that treats that record as missing. A scan also cannot replace

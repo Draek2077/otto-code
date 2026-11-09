@@ -3,7 +3,7 @@ import { useFetchQuery } from "@/data/query";
 import type { ScheduleScope } from "@getpaseo/plugin/otto/schedules";
 import type { ScheduleApi } from "./api";
 import { useScheduleActivity } from "./activity";
-import { retryScheduleObservation } from "./observation";
+import { observeScheduleVersion, retryScheduleObservation } from "./observation";
 
 /** One canonical query cache, observed only while active. A failed watch stops;
  * only typed busy reads get bounded cache recovery. No new socket or mutation retry. */
@@ -37,9 +37,9 @@ export function useScheduleLibrary(
   });
   // Filter/page changes must not create another outstanding long poll for every
   // keystroke. Retain the observed scope version while the new page is loading.
-  const observed = useRef<number | undefined>(undefined);
-  if (page.data) observed.current = Math.max(observed.current ?? 0, page.data.version);
-  const version = observed.current;
+  const observed = useRef<ReturnType<typeof observeScheduleVersion> | undefined>(undefined);
+  observed.current = observeScheduleVersion(observed.current, scope, page.data?.version);
+  const version = observed.current.version;
   const { refetch } = page;
   useEffect(() => {
     if (!active || version === undefined || page.isError) return;
