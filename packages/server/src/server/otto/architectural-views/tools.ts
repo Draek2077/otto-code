@@ -4,6 +4,7 @@ import type { AgentManager } from "../../agent/agent-manager.js";
 import type { PaseoToolDefinition } from "../../agent/tools/types.js";
 import type { RetainedToolPolicy } from "../retained-tool-policy.js";
 import type { ArchitecturalViewsService } from "./service.js";
+import { viewDraftToolInput, viewToolSpecification } from "./tool-input.js";
 import { viewModelText, viewSourcePart } from "./model-results.js";
 import { ArchitecturalViewError } from "./specification.js";
 
@@ -35,8 +36,6 @@ export function architecturalViewTools(ports: {
             "unavailable",
             "This tool needs a live workspace chat and enabled Knowledge/View tools.",
           );
-        if (value && typeof value === "object" && "specification" in value)
-          rpc.parseViewSpecification(value.specification);
         const result = await action(schema.parse(value), agent.workspaceId);
         if (Buffer.byteLength(JSON.stringify(result)) > 750000)
           throw new ArchitecturalViewError("invalid", "The View exceeds its tool-response budget.");
@@ -173,17 +172,13 @@ export function architecturalViewTools(ports: {
     tool(
       "update_architectural_view_draft",
       "Validate and replace only this chat's exact bound draft source, guarded by expectedRevision from its latest read. The real pinned renderer checks geometry and diagram semantics before writing. Repair validation errors in this draft. Conflicts or uncertain acknowledgments require inspection, never automatic retry, base adoption, publication or duplicate draft creation.",
-      z
-        .object({
-          expectedRevision: rpc.ViewRevision,
-          specification: rpc.ViewSpecification,
-          title: z.string().min(1).max(200).optional(),
-        })
-        .strict(),
+      viewDraftToolInput,
       async (input, workspaceId) => {
         const bound = await boundDraft(workspaceId);
+        const specification = viewToolSpecification(input.specification);
         const result = await host.drafts.update(bound.projectId, {
           ...input,
+          specification,
           identity: bound.context.identity,
           draftId: bound.context.draftId,
         });

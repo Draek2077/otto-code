@@ -110,10 +110,10 @@ for (const compact of [false, true])
           return JSON.stringify({ title: "Architecture author", branch: "architecture-author" });
         if (!body.tools?.length) return "Ordinary generation completed.";
         const read = body.tools.find((row) =>
-          row.function.description?.startsWith("Read only this chat's bound authoring draft"),
+          row.function.description?.includes("Read only this chat's bound authoring draft"),
         );
         const update = body.tools.find((row) =>
-          row.function.description?.startsWith(
+          row.function.description?.includes(
             "Validate and replace only this chat's exact bound draft",
           ),
         );
@@ -125,22 +125,38 @@ for (const compact of [false, true])
         if (phase++ === 0) return tool(read.function.name, {});
         const draft = findDraft(rpc, body.messages);
         if (!draft) throw new Error("No exact bound draft revision in the tool result");
-        if (phase === 2)
+        if (phase === 2) {
+          const invalid = viewStarter("architecture", "Invalid geometry");
+          invalid.components = [
+            {
+              id: "broken",
+              type: "backend",
+              label: "Broken",
+              pos: ["invalid", 260],
+              size: [220, 72],
+            },
+          ];
           return tool(update.function.name, {
             expectedRevision: draft.revision,
-            specification: {
-              schema_version: 1,
-              diagram_type: "architecture",
-              meta: { title: "Invalid geometry" },
-              components: [],
-            },
+            specification: invalid,
           });
-        if (phase === 3)
+        }
+        if (phase === 3) {
+          if (
+            !body.messages.some(
+              (row) =>
+                row.role === "tool" &&
+                typeof row.content === "string" &&
+                /"code"\s*:\s*"invalid"/.test(row.content),
+            )
+          )
+            throw new Error("The real renderer did not return a typed validation rejection");
           return tool(update.function.name, {
             expectedRevision: draft.revision,
             title: "Authored architecture",
             specification: viewStarter("architecture", "Source-backed acceptance"),
           });
+        }
         return "Architectural View authored and repaired. Human publication is required.";
       });
       await ottoProvider.refreshCatalog();

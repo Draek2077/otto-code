@@ -95,3 +95,15 @@ test("closed or already canceled rendering never launches a child", async () => 
     f.renderer.render({ diagramType: "architecture", specification: {}, projectRoot: f.root }),
   ).rejects.toThrow("shutting down");
 });
+
+test("invalid coordinate types return real typed validation diagnostics before any draft write", async () => {
+  const f = await fixture();
+  const specification = viewStarter("architecture", "Invalid coordinate");
+  specification.components = [
+    { id: "broken", type: "backend", label: "Broken", pos: ["invalid", 260], size: [220, 72] },
+  ];
+  await expect(
+    f.renderer.render({ diagramType: "architecture", specification, projectRoot: f.root }),
+  ).rejects.toMatchObject({ code: "invalid" });
+  expect(await readdir(path.join(f.root, "renders"))).toEqual([]);
+});
