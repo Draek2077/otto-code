@@ -220,8 +220,12 @@ result navigation. Native cases also seed the original host-global RPC and exerc
 visible pause, resume and run-once controls without a project transfer.
 Saved Graph runs wait at the ordinary human gate; saved AI
 runs remain in Planning until the user acts and retain explicit cancellation.
-The manual `schedules` App Acceptance journey runs this file; full acceptance
-includes it automatically. These are CI browser journeys, not pure fixture or
+The original model-hydration, project-target and relative-time specs explicitly
+exercise the pre-extension capability floor through a test-only server-info projection.
+All native RPCs still reach the real daemon, including secondary hosts; no UI or response
+is substituted. The manual `schedules` journey runs both sets. Full Otto acceptance
+includes the upgraded-host file, and main CI retains the native compatibility specs.
+These are CI browser journeys, not pure fixture or
 local native-provider proof.
 
 Schedule CLI CRUD fixtures use an explicit future cadence, so crossing a cron boundary

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "../support/fixtures";
+import { expect, test, type Page } from "../support/helpers/native-schedules"; // OTTO(schedules): original native host capability floor.
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { buildSchedulesRoute } from "../../src/utils/host-routes";
 

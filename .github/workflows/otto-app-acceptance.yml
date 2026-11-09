@@ -132,7 +132,7 @@ jobs:
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-workflows.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             schedules)
-              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-schedules.spec.ts --workers=1 --retries=0 --max-failures=1
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-schedules.spec.ts e2e/browser/schedules-edit-model-hydration.spec.ts e2e/browser/schedules-project-target.spec.ts e2e/browser/schedules-relative-time.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             terminal)
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-terminal.spec.ts --workers=1 --retries=0 --max-failures=1

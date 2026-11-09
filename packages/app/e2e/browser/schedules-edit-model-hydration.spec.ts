@@ -1,4 +1,4 @@
-import { expect, test } from "../support/fixtures";
+import { expect, test } from "../support/helpers/native-schedules"; // OTTO(schedules): original native host capability floor.
 import { gotoAppShell } from "../support/helpers/app";
 import {
   addScheduleHostAndReload,
