@@ -14,7 +14,7 @@ export interface ScheduleTargetActionPorts {
   runtime: Pick<ScheduleRuntime, "cancel">;
   validateNative(
     target: Extract<ScheduleTarget, { type: "agent" | "new-agent" }>,
-    scope: ProjectScheduleScope,
+    scope: ProjectScheduleScope | null,
   ): Promise<string>;
   validateSelection(
     selection: z.infer<typeof ArtifactSelection>,
@@ -29,6 +29,9 @@ export function createScheduleTargetActions(
   ports: ScheduleTargetActionPorts,
 ): ScheduleTargetActions {
   return {
+    async validateLegacyNative(target) {
+      await ports.validateNative(target, null);
+    },
     async review({ scope, target }) {
       if (target.type === "workflow") {
         const reviewed = await ports.workflows.reviewDetails(

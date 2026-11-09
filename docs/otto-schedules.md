@@ -60,6 +60,9 @@ record after its target changes to an extended target.
 Host-global native records keep their name/target upsert identity after their actual origin is
 stamped. Repair records remain visible to that identity check even when execution is blocked;
 an old client cannot create a duplicate by refreshing a blocked heartbeat.
+The target-aware controls also pause, resume and run these native records in place, using
+the canonical native target policy without requiring a project transfer. Workflow and Artifact
+targets always require their owning project; this native compatibility does not relax that boundary.
 
 The persisted format retains unknown record, origin, and audit fields. Nested legacy target/config
 fields are merged back only at disk publication, never added to execution DTOs. An explicit

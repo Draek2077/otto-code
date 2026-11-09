@@ -54,6 +54,7 @@ export async function scheduleApiFixture() {
     now: () => new Date("2026-11-08T00:00:00Z"),
   });
   const validate = vi.fn<ScheduleTargetActions["validate"]>(async () => {});
+  const validateLegacyNative = vi.fn<ScheduleTargetActions["validateLegacyNative"]>(async () => {});
   const cancel = vi.fn<ScheduleTargetActions["cancel"]>(async () => {});
   const review = vi.fn<ScheduleTargetActions["review"]>(async () => {
     throw new Error("Inject an owning target reviewer");
@@ -62,7 +63,7 @@ export async function scheduleApiFixture() {
   const actions = new ScheduleActions({
     registry,
     scheduler,
-    targets: { validate, cancel, review },
+    targets: { validate, validateLegacyNative, cancel, review },
     onSettlementError: settlementError,
   });
   const api = new ScheduleDaemonService(registry, actions, changes);
@@ -84,6 +85,7 @@ export async function scheduleApiFixture() {
     scheduler,
     runner,
     validate,
+    validateLegacyNative,
     cancel,
     review,
     actions,

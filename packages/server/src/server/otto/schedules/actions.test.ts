@@ -2,6 +2,61 @@ import { expect, test } from "vitest";
 import { ScheduleError } from "./files.js";
 import { scheduleApiFixture } from "./test-utils/api-fixture.js";
 
+test.each(["agent", "new-agent"] as const)(
+  "legacy %s controls retain the host-global origin and validate native policy",
+  async (kind) => {
+    const f = await scheduleApiFixture();
+    const held = f.holdRun();
+    try {
+      const target =
+        kind === "agent"
+          ? f.draft.target
+          : {
+              type: "new-agent" as const,
+              config: { provider: "codex", cwd: f.repo, archiveOnFinish: true },
+            };
+      const created = await f.scheduler.create({ ...f.draft, target });
+      const first = await f.registry.entry(created.id);
+      if (!first) throw new Error("Missing legacy Schedule");
+      expect(first.ref).toMatchObject({ location: "legacy", scope: { projectId: null } });
+      const paused = await f.actions.control({
+        ref: first.ref,
+        expectedRevision: first.revision,
+        command: { type: "pause" },
+      });
+      if (!paused.entry) throw new Error("Missing paused Schedule");
+      f.validateLegacyNative.mockRejectedValueOnce(
+        new ScheduleError("invalid", "Review native provider"),
+      );
+      const input = {
+        ref: paused.entry.ref,
+        expectedRevision: paused.entry.revision,
+        command: { type: "resume" as const },
+      };
+      await expect(f.actions.control(input)).rejects.toThrow("Review native provider");
+      expect((await f.registry.entry(created.id))?.schedule.status).toBe("paused");
+      const resumed = await f.actions.control(input);
+      if (!resumed.entry) throw new Error("Missing resumed Schedule");
+      expect(resumed.entry.ref).toEqual(first.ref);
+      const admitted = await f.actions.control({
+        ref: resumed.entry.ref,
+        expectedRevision: resumed.entry.revision,
+        command: { type: "run-once" },
+      });
+      expect(admitted.acceptedRunId).toBeTruthy();
+      held.release();
+      await held.finished;
+      expect((await f.registry.entry(created.id))?.ref).toEqual(first.ref);
+      expect(f.validateLegacyNative).toHaveBeenLastCalledWith(target);
+      expect(f.validate).not.toHaveBeenCalled();
+      expect(f.runner).toHaveBeenCalledTimes(1);
+    } finally {
+      held.release();
+      await f.cleanup();
+    }
+  },
+);
+
 test("create delegates cadence to Paseo and replay preserves history across default changes", async () => {
   const f = await scheduleApiFixture();
   try {

@@ -3,7 +3,7 @@ import type * as rpc from "@getpaseo/plugin/otto/schedules";
 import type { ScheduleService } from "../../schedule/service.js";
 import type { ScheduleActionPort } from "./service.js";
 import { scheduleCreationId, type ScheduleRegistry } from "./registry.js";
-import type { ScheduleVersionMutation, StoredSchedule } from "./types.js";
+import type { ScheduleTarget, ScheduleVersionMutation, StoredSchedule } from "./types.js";
 import { assertScheduleMutation, scheduleRevision } from "./legacy.js";
 import { scheduleDocument } from "./projection.js";
 import { ScheduleError, scheduleDigest } from "./files.js";
@@ -17,6 +17,10 @@ export interface ScheduleTargetActions {
     scope: z.infer<typeof rpc.ScheduleProjectScope>;
     target: rpc.OttoScheduleTarget;
   }): Promise<void>;
+  /** Original host-global native records retain their canonical native policy. */
+  validateLegacyNative(
+    target: Extract<ScheduleTarget, { type: "agent" | "new-agent" }>,
+  ): Promise<void>;
   cancel(scheduleId: string, runId: string): Promise<void>;
 }
 export interface ScheduleActionPorts {
@@ -66,6 +70,19 @@ export class ScheduleActions implements ScheduleActionPort {
         "Assign this legacy Schedule to its project before reviewing or running it from this editor.",
       );
     return { hostId: ref.scope.hostId, projectId: ref.scope.projectId };
+  }
+  private async validateExecution(ref: rpc.ScheduleRef, target: ScheduleTarget) {
+    if (ref.scope.projectId) {
+      const scope = this.scope(ref);
+      await this.project(scope);
+      this.assertOpen();
+      return this.ports.targets.validate({ scope, target });
+    }
+    // Original Paseo native records execute from their existing host-global origin.
+    // This does not create projectless Workflow or Artifact authority.
+    if (ref.location === "legacy" && (target.type === "agent" || target.type === "new-agent"))
+      return this.ports.targets.validateLegacyNative(target);
+    throw new ScheduleError("invalid", "Select the owning project for this Schedule target.");
   }
   async review(input: ReviewInput) {
     await this.project(input.scope);
@@ -159,15 +176,13 @@ export class ScheduleActions implements ScheduleActionPort {
         return { entry: await this.document(entry.schedule) };
       case "resume":
       case "run-once": {
-        const scope = this.scope(input.ref);
-        await this.project(scope);
         this.assertOpen();
         if (entry.schedule.otto?.repairReason && !command.userConfirmedInspection)
           throw new ScheduleError(
             "conflict",
             "Inspect the previous outcome and explicitly acknowledge it before running again.",
           );
-        await this.ports.targets.validate({ scope, target: entry.schedule.target });
+        await this.validateExecution(input.ref, entry.schedule.target);
         this.assertOpen();
         mutation.repairReviewed = command.userConfirmedInspection === true;
         mutation.requireIdle = true;

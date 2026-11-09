@@ -222,6 +222,8 @@ test("instruction selection and native targets are checked through owning policy
       autopilot: null,
     });
     expect(f.native).toHaveBeenCalledWith(target, f.scope);
+    await f.actions.validateLegacyNative(target);
+    expect(f.native).toHaveBeenLastCalledWith(target, null);
   } finally {
     await f.cleanup();
   }

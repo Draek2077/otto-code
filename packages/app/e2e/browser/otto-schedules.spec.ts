@@ -23,7 +23,7 @@ test.use({
     },
   },
 });
-type Client = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">;
+type Client = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc" | "scheduleCreate">;
 type ScheduleApi = Awaited<ReturnType<typeof scheduleApi>>;
 class ScheduleProbeError extends Error {
   constructor(
@@ -356,6 +356,56 @@ async function reviewAndSaveAttempt(editor: Locator) {
   await editor.getByTestId("schedule-form-submit").click();
 }
 
+async function legacyNativeControls(input: {
+  page: Page;
+  surface: Locator;
+  client: Client;
+  api: ScheduleApi;
+  workspace: SeededWorkspace;
+  target: Parameters<Client["scheduleCreate"]>[0]["target"];
+}) {
+  const { page, surface, client, api, workspace, target } = input;
+  const later = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  // Seed through Paseo's unchanged RPC, then control that exact host-global
+  // origin through Otto's visible detail. No implicit project transfer.
+  const created = await client.scheduleCreate({
+    name: "Legacy native proof",
+    prompt: "Preserve legacy native execution",
+    cadence: { type: "cron", expression: `${later.getUTCMinutes()} ${later.getUTCHours()} * * *` },
+    target,
+    runOnCreate: false,
+    maxRuns: 1,
+  });
+  if (!created.schedule) throw new Error(created.error ?? "Legacy Schedule creation failed");
+  const rows = await api.list({ scope: scope(workspace), includeLegacy: true, refresh: true });
+  const row = rows.items.find((item) => item.ref.id === created.schedule?.id);
+  if (!row) throw new Error("Missing legacy Schedule");
+  expect(row.ref).toMatchObject({ location: "legacy", scope: { projectId: null } });
+  await surface.getByRole("button", { name: "Refresh Schedules", exact: true }).click();
+  await surface
+    .getByTestId(`otto-schedule-${row.ref.id}`)
+    .getByRole("button", { name: "Open Schedule", exact: true })
+    .click();
+  await confirm(
+    page,
+    surface.getByRole("button", { name: "Pause", exact: true }),
+    "Pause Schedule?",
+  );
+  await confirm(
+    page,
+    surface.getByRole("button", { name: "Resume", exact: true }),
+    "Resume Schedule?",
+  );
+  await confirm(
+    page,
+    surface.getByRole("button", { name: "Run once", exact: true }),
+    "Run Schedule once?",
+  );
+  const run = await terminal(api, row.ref);
+  expect(run.agentId).toBeTruthy();
+  expect((await api.read(row.ref)).ref).toEqual(row.ref);
+}
+
 for (const kind of ["agent", "new-agent"] as const) {
   test(`Project-owned ${kind} Schedule preserves native execution and explicit storage controls`, async ({
     page,
@@ -448,6 +498,20 @@ for (const kind of ["agent", "new-agent"] as const) {
       await page.screenshot({
         path: info.outputPath(`schedule-${kind}-storage.png`),
         fullPage: true,
+      });
+      await legacyNativeControls({
+        page,
+        surface,
+        client,
+        api,
+        workspace,
+        target:
+          kind === "agent"
+            ? { type: "agent", agentId: agent.id }
+            : {
+                type: "new-agent",
+                config: { ...seat, cwd: workspace.repoPath, archiveOnFinish: true },
+              },
       });
     } finally {
       await client.close();
