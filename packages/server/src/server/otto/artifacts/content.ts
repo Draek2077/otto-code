@@ -7,8 +7,11 @@ interface Span {
   start: number;
   end: number;
 }
-function parse(html: string) {
-  if (Buffer.byteLength(html) > MAX_HTML_BYTES) throw new Error("Artifact HTML exceeds 320 KB.");
+function parse(html: string, maxBytes = MAX_HTML_BYTES) {
+  if (Buffer.byteLength(html) > maxBytes) {
+    if (maxBytes === MAX_HTML_BYTES) throw new Error("Artifact HTML exceeds 320 KB.");
+    throw new Error("HTML exceeds its document budget.");
+  }
   const remove: Span[] = [];
   const blocks: Span[] = [];
   let head = -1,
@@ -95,8 +98,10 @@ export function replaceArtifactData(html: string, json: string): string {
   return next;
 }
 /** Preview-only projection. Original presentation bytes remain on the owning host. */
-export function artifactPreview(html: string): string {
-  const { remove, head } = parse(html);
+export function artifactPreview(html: string, options?: { maxBytes: number }): string {
+  // Otto's pinned diagram runtime includes its offline viewer/font assets. Its
+  // explicit budget does not widen stored/generated Artifact content limits.
+  const { remove, head } = parse(html, options?.maxBytes);
   const edits = [
     ...remove.map((span) => ({ start: span.start, end: span.end, text: "" })),
     {

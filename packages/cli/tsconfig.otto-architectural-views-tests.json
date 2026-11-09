@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "rootDir": ".", "noEmit": true },
+  "include": ["src/otto/architectural-views/**/*.test.ts"],
+  "exclude": ["node_modules", "dist"]
+}

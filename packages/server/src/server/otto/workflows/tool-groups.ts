@@ -1,6 +1,7 @@
 /** Per-node narrowing, intersected after ordinary host/provider policy. Unknown tools never inherit a selected group. */
 export function workflowToolGroup(name: string): string | null {
   if (name.includes("project_knowledge")) return "knowledge";
+  if (name.includes("architectural_view")) return "knowledge";
   if (name.includes("artifact")) return "artifacts";
   if (name.startsWith("preview_")) return "preview";
   if (name.startsWith("browser_")) return "browser";

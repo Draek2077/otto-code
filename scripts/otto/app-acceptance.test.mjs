@@ -65,6 +65,7 @@ test("manual diagnostics stay bounded while every push and pull request retains 
       "editor",
       "workflows",
       "schedules",
+      "architectural-views",
     ],
   );
   assert.ok(

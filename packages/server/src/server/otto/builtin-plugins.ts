@@ -7,6 +7,7 @@ export const ottoBuiltinPlugins = [
   "otto-project-knowledge",
   "otto-browser",
   "otto-artifacts",
+  "otto-architectural-views",
   "otto-speech",
   "otto-terminal",
   "otto-editor",

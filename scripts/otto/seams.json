@@ -1,8 +1,8 @@
 {
   "files": {
     "packages/app/public/manifest.json": "identity: Otto web app name and short name.",
-    ".oxfmtrc.json": "Formatter skips the Otto Knowledge store (.otto/).",
-    ".oxlintrc.json": "workflows: exclude only the unchanged third-party Drawflow minified vendor file; owned canvas wrappers retain all lint rules.",
+    ".oxfmtrc.json": "Formatter skips the Otto Knowledge store and pinned third-party Archify/Drawflow runtime; Otto-owned adapters remain formatted.",
+    ".oxlintrc.json": "workflows/architectural-views: exclude pinned third-party runtime files; Otto-owned wrappers retain all lint rules.",
     "LICENSE": "Otto distribution license (AGPL-3.0); Paseo's text is preserved in LICENSE-Paseo.",
     "package-lock.json": "Lockfile follows Otto's workspace versions.",
     "nix/npm-deps.hash": "build: verified dependency hash for Otto's lockfile; the hash format cannot contain a comment.",
@@ -13,10 +13,10 @@
     "packages/desktop/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
     "packages/expo-two-way-audio/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
     "packages/highlight/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
-    "packages/plugin/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/plugin/package.json": "identity/architectural-views: Otto metadata and structural contracts/trusted app bridge exports.",
     "packages/protocol/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
     "packages/relay/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
-    "packages/server/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
+    "packages/server/package.json": "identity/architectural-views: Otto metadata and materialization of the pinned offline renderer.",
     "packages/website/package.json": "website: retain Otto public site and manual assets; generated or non-commentable format.",
     "plugins/package.json": "identity: Otto version line and package metadata (synced from the root package.json).",
     "packages/app/eas.json": "release: preserve Otto Google Play submission profiles and signing identity.",

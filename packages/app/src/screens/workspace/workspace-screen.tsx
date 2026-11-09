@@ -1,4 +1,5 @@
 import { prepareEditorBulkClose } from "@/otto/editor/bulk-close"; // OTTO(editor)
+import { WorkspaceViewOpenListener } from "@/otto/architectural-views/open-listener"; // OTTO(architectural-views): demand-only display intents, no chat or workspace-selection replacement.
 import { WorkspaceEditorDrops } from "@/otto/editor/workspace-drops"; // OTTO(editor)
 import {
   AssistantFileLinkResolverProvider,
@@ -3769,6 +3770,11 @@ function WorkspaceScreenContent({
   }
   return (
     <WorkspaceContentProviders key={persistenceKey} workspaceKey={persistenceKey}>
+      <WorkspaceViewOpenListener
+        serverId={normalizedServerId}
+        workspaceId={normalizedWorkspaceId}
+        active={isRouteFocused}
+      />
       <HostBrowserWorkspace
         key={`${normalizedServerId}/${normalizedWorkspaceId}`}
         serverId={normalizedServerId}

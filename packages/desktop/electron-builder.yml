@@ -28,6 +28,8 @@ files:
   - "!node_modules/@getpaseo/*/test-results/**"
 asarUnpack:
   - dist/daemon/node-entrypoint-runner.js
+  # OTTO(architectural-views): Node renderer children read their whole offline payload physically.
+  - node_modules/@getpaseo/server/dist/server/server/otto/architectural-views/vendor/archify/**/*
   - node_modules/@getpaseo/server/dist/server/terminal/shell-integration/**/*
 extraResources:
   # OTTO(editor): dotnet cannot read assemblies through app.asar; ship portable IL outside it.

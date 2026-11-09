@@ -12,6 +12,15 @@ import {
 
 const asarEsbuildDir = path.join("Resources", "app.asar", "node_modules", "esbuild");
 const temporaryDirectories: string[] = [];
+it("compiles the actual Architectural Views navigation and workspace bridge", async () => {
+  const client = fileURLToPath(
+    new URL("../../../../../plugins/otto-architectural-views/index.client.tsx", import.meta.url),
+  );
+  const result = await compilePlugin({ client, server: null });
+  expect(result.clientBundle).toContain("@getpaseo/plugin/client/otto-architectural-views");
+  expect(result.clientBundle).toContain("Open Architectural Views");
+  expect(result.serverBundle).toBeNull();
+}); // OTTO(architectural-views)
 it("compiles the real Schedules settings contribution through its client-only bridge", async () => {
   const client = fileURLToPath(
     new URL("../../../../../plugins/otto-schedules/index.client.tsx", import.meta.url),

@@ -10,7 +10,10 @@ import { hasCode, type KnowledgeStore } from "./store-resolver.js";
 
 /** Observe the nearest existing store ancestor, pruning every unrelated subtree.
  * This also sees an external first `.otto` creation without walking the project. */
-export async function knowledgeObservationPlan(store: KnowledgeStore) {
+export async function knowledgeObservationPlan(
+  store: KnowledgeStore,
+  directories: readonly string[] = ["knowledge", "KNOWLEDGE.md"],
+) {
   const relative = path.relative(store.boundary, store.base);
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
     throw new Error("Knowledge observation escapes its owning boundary");
@@ -29,7 +32,7 @@ export async function knowledgeObservationPlan(store: KnowledgeStore) {
     }
   }
   const next = path.relative(root, store.base).split(path.sep)[0];
-  const allowed = new Set(root === store.base ? ["knowledge", "KNOWLEDGE.md"] : [next]);
+  const allowed = new Set(root === store.base ? directories : [next]);
   const ignore = (await readdir(root, { withFileTypes: true }))
     .filter((entry) => !allowed.has(entry.name))
     .map((entry) => path.join(root, entry.name));
@@ -68,6 +71,7 @@ export class KnowledgeObservations {
     private readonly ports: {
       resolve(projectId: string): Promise<KnowledgeStore>;
       createObserver?: () => FileObserver;
+      plan?(store: KnowledgeStore): ReturnType<typeof knowledgeObservationPlan>;
     },
   ) {}
 
@@ -192,7 +196,7 @@ export class KnowledgeObservations {
   private async reconcile(feed: Feed): Promise<void> {
     if (feed.closed) return;
     const store = await this.ports.resolve(feed.projectId);
-    const plan = await knowledgeObservationPlan(store);
+    const plan = await (this.ports.plan ?? knowledgeObservationPlan)(store);
     if (feed.closed) return;
     if (feed.subscription && feed.root === plan.root) {
       await feed.subscription.updateIgnore(plan.ignore);

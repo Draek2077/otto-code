@@ -2,6 +2,8 @@ import { AgentDirectory } from "../directory.js";
 import { stat } from "node:fs/promises";
 import { z } from "zod";
 import { artifactCatalogTools } from "../../otto/artifacts/tools.js"; // OTTO(artifacts): shared project-bound tool surface.
+import { architecturalViewTools } from "../../otto/architectural-views/tools.js"; // OTTO(architectural-views): all providers share the same scoped tools.
+import type { ArchitecturalViewsService } from "../../otto/architectural-views/service.js"; // OTTO(architectural-views)
 import { registerConnectorTools } from "../../../services/otto/connectors/catalog.js"; // OTTO(connectors)
 import type { ArtifactDaemonService } from "../../otto/artifacts/service.js"; // OTTO(artifacts)
 import { ensureValidJson } from "../../json-utils.js";
@@ -131,6 +133,8 @@ export interface PaseoToolHostDependencies {
   previewToolPolicy?: RetainedToolPolicy; // OTTO(preview): preserve existing host/provider ceilings.
   ottoKnowledge?: KnowledgeDaemonService; // OTTO(knowledge): one provider-neutral canonical host service.
   ottoArtifacts?: ArtifactDaemonService; // OTTO(artifacts)
+  ottoViews?: ArchitecturalViewsService; // OTTO(architectural-views)
+  viewToolPolicy?: RetainedToolPolicy; // OTTO(architectural-views)
   artifactToolPolicy?: RetainedToolPolicy; // OTTO(artifacts)
   ottoKanban?: KanbanDaemonService; // OTTO(kanban): UI and every provider share durable board admission.
   kanbanToolPolicy?: KanbanToolPolicy; // OTTO(kanban): preserve retained group/provider ceilings.
@@ -3385,6 +3389,14 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     if (isPaseoToolEnabled(options.paseoToolPolicy, tool.name)) tools.set(tool.name, tool);
   });
   // OTTO(artifacts): normal catalog only, preserving voice-only early return and upstream permissions.
+  architecturalViewTools({
+    host: options.ottoViews,
+    policy: options.viewToolPolicy,
+    manager: agentManager,
+    callerAgentId,
+  }).forEach((tool) => {
+    if (isPaseoToolEnabled(options.paseoToolPolicy, tool.name)) tools.set(tool.name, tool);
+  }); // OTTO(architectural-views): before Workflow narrowing; ordinary queues unchanged.
   // OTTO(connectors): external integrations keep their own per-tool switches;
   // upstream master and direct tool policy remain authoritative.
   registerConnectorTools({

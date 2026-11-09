@@ -18,6 +18,7 @@ import type { EditorSeed } from "./editor-model";
 import { styles } from "./styles";
 import { KnowledgeReviewSignals } from "./review-signals";
 import { KnowledgeArticleReview } from "./review";
+import { KnowledgeViewsButton } from "../architectural-views/knowledge-button"; // OTTO(architectural-views): source-scoped presentation only.
 
 export type KnowledgeSelection =
   | { type: "page"; kind: KnowledgeRecord["kind"]; id: string }
@@ -77,6 +78,10 @@ function PageArticle({
     () => ({ type: "page", kind: page.kind, id: page.id, revision: page.revision }),
     [page.kind, page.id, page.revision],
   );
+  const viewSelection = useMemo(
+    () => ({ type: "page" as const, kind: page.kind, id: page.id }),
+    [page.kind, page.id],
+  );
   return (
     <SettingsSection title={page.title}>
       <SettingsRow
@@ -100,6 +105,7 @@ function PageArticle({
         />
       ) : null}
       <PageActions page={page} onEdit={onEdit} />
+      <KnowledgeViewsButton scope={scope} selection={viewSelection} />
       <KnowledgeArticleReview scope={scope} target={target} body={page.statement} active={active} />
       <SettingsExpander label="Review signals">
         <KnowledgeReviewSignals scope={scope} page={page} active={active} />
@@ -135,6 +141,7 @@ function RootArticle({
   );
   return (
     <SettingsSection title={selection.slug}>
+      <KnowledgeViewsButton scope={scope} selection={selection} />
       <Button onPress={edit} variant="outline" size="sm">
         Edit root
       </Button>

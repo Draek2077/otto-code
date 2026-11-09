@@ -17,6 +17,7 @@
     "**/*.gen.tsx",
     ".otto/**",
     "test-documents/**",
+    "vendor/archify/**",
     "packages/app/src/otto/workflows/canvas/vendor/drawflow.min.js"
   ]
 }

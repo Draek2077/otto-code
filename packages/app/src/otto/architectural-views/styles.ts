@@ -1,0 +1,48 @@
+import { StyleSheet } from "react-native-unistyles";
+export const styles = StyleSheet.create((theme) => ({
+  page: { flex: 1, minHeight: 0, minWidth: 0, backgroundColor: theme.colors.surface0 },
+  toolbar: {
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
+    gap: theme.spacing[3],
+  },
+  row: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: theme.spacing[2] },
+  columns: {
+    flex: 1,
+    minHeight: 0,
+    minWidth: 0,
+    flexDirection: "row",
+    paddingHorizontal: theme.spacing[4],
+    gap: theme.spacing[4],
+  },
+  list: { width: 280, minHeight: 0, flexShrink: 0 },
+  content: { padding: theme.spacing[4], gap: theme.spacing[3] },
+  card: {
+    padding: theme.spacing[4],
+    gap: theme.spacing[3],
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface1,
+  },
+  title: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  text: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
+  muted: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  source: { minHeight: 200, fontFamily: theme.fontFamily.mono, fontSize: theme.fontSize.sm },
+  preview: { flex: 1, minHeight: 200, minWidth: 0, overflow: "hidden" },
+  viewerToolbar: { height: 36, gap: 2, paddingHorizontal: theme.spacing[2] },
+  status: {
+    height: 24,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingHorizontal: theme.spacing[3],
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  statusText: { fontSize: theme.fontSize.sm, color: theme.colors.foregroundMuted },
+  spacer: { flex: 1 },
+}));

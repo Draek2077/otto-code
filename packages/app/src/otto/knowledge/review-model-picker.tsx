@@ -30,10 +30,12 @@ export function ReviewModelPicker({
   model,
   hostId,
   active,
+  allowAutomatic = true,
 }: {
   model: ReviewModelPickerModel;
   hostId: string;
   active: boolean;
+  allowAutomatic?: boolean;
 }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const connected = useHostRuntimeIsConnected(hostId);
@@ -114,7 +116,7 @@ export function ReviewModelPicker({
           desktopPlacement="top-start"
         />
       </Field>
-      {state.selection ? (
+      {state.selection && allowAutomatic ? (
         <Button onPress={automatic} disabled={state.busy} variant="outline" size="sm">
           Use host generation defaults
         </Button>

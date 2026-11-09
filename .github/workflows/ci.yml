@@ -184,6 +184,10 @@ jobs:
       - name: Build server stack
         run: npm run build:server
 
+      # OTTO(architectural-views): source fallbacks cannot mask a missing packaged runtime.
+      - name: Verify packaged Architectural Views renderer
+        run: node --test scripts/otto/archify-package.test.mjs
+
       - name: Verify built-in plugins from built output
         run: node --test scripts/builtin-plugins-dist.test.mjs
 
@@ -211,6 +215,8 @@ jobs:
           npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-terminal-tests.json
           npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-workflow-tests.json
           npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-schedule-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-architectural-views-tests.json
+          npm run typecheck --workspace=@getpaseo/cli -- -p tsconfig.otto-architectural-views-tests.json
           npm run typecheck --workspace=@getpaseo/cli -- -p tsconfig.otto-workflow-tests.json
           npm run typecheck --workspace=@getpaseo/builtin-plugins -- -p otto-kanban/tsconfig.tests.json
 

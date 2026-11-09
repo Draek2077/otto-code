@@ -108,6 +108,8 @@ const additionalInputs = [
   // Agent orchestration skill catalog loaded through filesystem paths
   "packages/server/dist/server/skills/**",
   "packages/server/dist/server/builtin-plugins/**",
+  // OTTO(architectural-views): pinned renderer children load schemas/assets by path.
+  "packages/server/dist/server/server/otto/architectural-views/vendor/archify/**",
   // Shell integration scripts loaded by the terminal manager
   "packages/server/dist/server/terminal/shell-integration/**",
   // Silero VAD ONNX model (sherpa speech provider)

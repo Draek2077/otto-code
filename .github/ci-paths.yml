@@ -35,6 +35,7 @@ hub:
   - "packages/server/src/server/hub/**"
 
 server:
+  - "vendor/archify/**" # OTTO(architectural-views): pinned renderer changes require daemon proof.
   - "packages/otto-brain/**"
   - "plugins/**"
   - "packages/server/**"

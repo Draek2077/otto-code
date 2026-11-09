@@ -15,6 +15,7 @@ export class KnowledgeChangeFeed {
       changed(): void;
       unused(): void;
       makeId?: () => string;
+      disconnectedMessage?: string;
     },
   ) {}
   getSnapshot = () => this.error;
@@ -71,7 +72,8 @@ export class KnowledgeChangeFeed {
     } catch {
       if (session.active)
         this.publish(
-          "Live Knowledge refresh is disconnected. You can refresh manually while Otto reconnects.",
+          this.ports.disconnectedMessage ??
+            "Live Knowledge refresh is disconnected. You can refresh manually while Otto reconnects.",
         );
     } finally {
       // Release again after a late wait admission; an earlier release may have

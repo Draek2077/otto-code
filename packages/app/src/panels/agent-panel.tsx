@@ -1,4 +1,5 @@
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { ArchitecturalChatBoundary } from "@/otto/architectural-views/chat-bridge"; // OTTO(architectural-views): presentation-only boundary; ordinary chat subtree stays unchanged.
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -377,13 +378,19 @@ function AgentPanel() {
 
   return (
     <RetainedChatContent>
-      <AgentPanelContent
+      <ArchitecturalChatBoundary
         serverId={serverId}
         workspaceId={workspaceId}
         agentId={target.agentId}
-        isPaneFocused={isInteractive}
-        onOpenWorkspaceFile={openFileInWorkspace}
-      />
+      >
+        <AgentPanelContent
+          serverId={serverId}
+          workspaceId={workspaceId}
+          agentId={target.agentId}
+          isPaneFocused={isInteractive}
+          onOpenWorkspaceFile={openFileInWorkspace}
+        />
+      </ArchitecturalChatBoundary>
     </RetainedChatContent>
   );
 }

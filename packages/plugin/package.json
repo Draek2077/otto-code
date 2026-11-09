@@ -168,10 +168,20 @@
       "source": "./src/otto/artifacts.ts",
       "default": "./dist/otto/artifacts.js"
     },
+    "./otto/architectural-views": {
+      "types": "./dist/otto/architectural-views/contracts.d.ts",
+      "source": "./src/otto/architectural-views/contracts.ts",
+      "default": "./dist/otto/architectural-views/contracts.js"
+    },
     "./client/otto-artifacts": {
       "types": "./dist/client/otto-artifacts.d.ts",
       "source": "./src/client/otto-artifacts.ts",
       "default": "./dist/client/otto-artifacts.js"
+    },
+    "./client/otto-architectural-views": {
+      "types": "./dist/client/otto-architectural-views.d.ts",
+      "source": "./src/client/otto-architectural-views.ts",
+      "default": "./dist/client/otto-architectural-views.js"
     },
     "./otto/terminal": {
       "types": "./dist/otto/terminal.d.ts",

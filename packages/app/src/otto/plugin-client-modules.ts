@@ -15,6 +15,8 @@ import * as hostBrowser from "@getpaseo/plugin/otto/host-browser";
 import * as previewUi from "./preview/bridge";
 import * as artifacts from "@getpaseo/plugin/otto/artifacts";
 import * as artifactUi from "./artifacts/bridge";
+import * as views from "@getpaseo/plugin/otto/architectural-views"; // OTTO(architectural-views)
+import * as viewUi from "./architectural-views/bridge"; // OTTO(architectural-views): lazy trusted presentation only.
 import * as workflows from "@getpaseo/plugin/otto/workflows"; // OTTO(workflows)
 import * as schedules from "@getpaseo/plugin/otto/schedules"; // OTTO(schedules)
 import * as workflowUi from "./workflows/bridge"; // OTTO(workflows)
@@ -24,6 +26,7 @@ const shared = new Map<string, unknown>([
   ["@getpaseo/plugin/otto/speech", speech],
   ["@getpaseo/plugin/otto/connectors", connectors],
   ["@getpaseo/plugin/otto/artifacts", artifacts],
+  ["@getpaseo/plugin/otto/architectural-views", views],
   ["@getpaseo/plugin/otto/workflows", workflows],
   ["@getpaseo/plugin/otto/schedules", schedules], // OTTO(schedules)
   ["@getpaseo/plugin/otto/preview", preview],
@@ -40,6 +43,11 @@ const knowledgeModules = new Map<string, unknown>([
 ]);
 /** Public structural contracts are shared; private UI bridges are built-in-only. */
 export function ottoClientModule(pluginId: string, name: string): unknown {
+  if (
+    pluginId === "otto-architectural-views" &&
+    name === "@getpaseo/plugin/client/otto-architectural-views"
+  )
+    return viewUi;
   if (pluginId === "otto-schedules" && name === "@getpaseo/plugin/client/otto-schedules")
     return scheduleUi; // OTTO(schedules)
   if (pluginId === "otto-workflows" && name === "@getpaseo/plugin/client/otto-workflows")

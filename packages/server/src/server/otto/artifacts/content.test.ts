@@ -9,6 +9,16 @@ const prefix =
   '<!doctype html><html><head><title>Report</title><style>body { color: red }</style></head><body>\r\n<script id="otto-artifact-data" type="application/json">';
 const suffix = '</script>\r\n<script>document.body.dataset.ready="yes"</script></body></html>';
 const html = prefix + '{"value":1}' + suffix;
+
+test("the explicit offline-renderer preview budget does not widen Artifact content limits", () => {
+  const large = `<html><head></head><body>${"x".repeat(330000)}</body></html>`;
+  expect(() => validateArtifactHtml(large)).toThrow("320 KB");
+  expect(() => artifactPreview(large)).toThrow("320 KB");
+  const preview = artifactPreview(large, { maxBytes: 400000 });
+  expect(preview).toContain("connect-src 'none'");
+  expect(preview.indexOf("Content-Security-Policy")).toBeLessThan(preview.indexOf("<body>"));
+  expect(() => artifactPreview(large, { maxBytes: 320000 })).toThrow("320 KB");
+});
 test("data updates preserve every byte outside the contract and escape closing-script injection", () => {
   const next = replaceArtifactData(
     html,

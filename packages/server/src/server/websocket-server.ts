@@ -4,6 +4,7 @@ import { stat } from "node:fs/promises";
 import { speechAvailable } from "./otto/speech/capabilities.js"; // OTTO(speech)
 import { ottoBrowserCapabilities } from "./otto/browser/capabilities.js"; // OTTO(browser-history)
 import { ottoArtifactsAvailable } from "./otto/artifacts/capabilities.js"; // OTTO(artifacts)
+import { architecturalViewsAvailable } from "./otto/architectural-views/capabilities.js"; // OTTO(architectural-views)
 import { ottoWorkflowsAvailable } from "./otto/workflows/capabilities.js"; // OTTO(workflows)
 import { scheduleTargetsAvailable } from "./otto/schedules/capabilities.js"; // OTTO(schedules)
 import { ottoBitbucketAvailable } from "../services/otto/bitbucket/available.js"; // OTTO(bitbucket)
@@ -1834,6 +1835,7 @@ export class VoiceAssistantWebSocketServer {
         ottoSpeech: speechAvailable(this.pluginRuntime), // OTTO(speech)
         ottoKnowledge: knowledgeAvailable, // OTTO(knowledge)
         ottoArtifacts: ottoArtifactsAvailable(this.pluginRuntime), // OTTO(artifacts)
+        ottoArchitecturalViews: architecturalViewsAvailable(this.pluginRuntime), // OTTO(architectural-views): composed owner includes renderer assets.
         ottoWorkflows: ottoWorkflowsAvailable(this.pluginRuntime), // OTTO(workflows)
         scheduleTargets: scheduleTargetsAvailable(this.pluginRuntime), // OTTO(schedules): one target, history and storage API shared by app/CLI/MCP.
         ottoContextManagement: knowledgeAvailable, // OTTO(context-management): daemon-owned inspection and conditional edits.

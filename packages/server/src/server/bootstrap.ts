@@ -261,6 +261,9 @@ import { PreviewManager } from "./otto/preview/manager.js"; // OTTO(preview)
 import { createPreviewProcessPorts, previewProtectedPorts } from "./otto/preview/process-ports.js"; // OTTO(preview)
 import { createRetainedToolPolicy } from "./otto/retained-tool-policy.js"; // OTTO(preview)
 import { ArtifactDaemonService } from "./otto/artifacts/service.js"; // OTTO(artifacts): one daemon owner for UI and tools.
+import { ArchitecturalViewsService } from "./otto/architectural-views/service.js"; // OTTO(architectural-views): one project-bound owner.
+import { createViewAuthoring } from "./otto/architectural-views/authoring.js"; // OTTO(architectural-views): normal Paseo chat creation and first-turn dispatch.
+import { documentBuiltinAvailable } from "./otto/architectural-views/capabilities.js"; // OTTO(architectural-views): document owner/asset readiness stays outside startup branching.
 import { createWorkflowComposition } from "./otto/workflows/composition.js"; // OTTO(workflows): isolated owner over existing Paseo sessions.
 import { createScheduleComposition } from "./otto/schedules/composition.js"; // OTTO(schedules): target/storage ports for Paseo's single scheduler.
 import { ScheduleNativePolicy } from "./otto/schedules/native-policy.js"; // OTTO(schedules): reuse canonical provider/workspace policy.
@@ -683,6 +686,7 @@ export async function createPaseoDaemon(
   let ottoHostBrowser: ReturnType<typeof createNativeHostBrowser> | null = null; // OTTO(browser-host): composition never launches Chromium.
   let ottoKnowledge: KnowledgeDaemonService | null = null; // OTTO(knowledge)
   let ottoArtifacts: ArtifactDaemonService | null = null; // OTTO(artifacts): inert until scoped demand.
+  let ottoViews: ArchitecturalViewsService | null = null; // OTTO(architectural-views): no startup content reads, watchers or renderer processes.
   let ottoWorkflows: ReturnType<typeof createWorkflowComposition> | null = null; // OTTO(workflows)
   let ottoSchedules: ReturnType<typeof createScheduleApi> | null = null; // OTTO(schedules)
   const ottoTerminal = new TerminalHost(
@@ -706,6 +710,8 @@ export async function createPaseoDaemon(
     "otto-terminal": (method, input) => ottoTerminal.invoke(method, input),
     "otto-speech": (method, input, clientId) => ottoSpeech?.invoke(method, input, clientId),
     "otto-artifacts": (method, input) => ottoArtifacts?.invoke(method, input),
+    "otto-architectural-views": (method, input, clientId) =>
+      ottoViews?.invoke(method, input, clientId), // OTTO(architectural-views)
     "otto-brain": (method, input, clientId) => ottoBrain.invoke(method, input, clientId),
     "otto-browser": (method, input, _clientId, source) =>
       ottoBrowserHistory?.invoke(method, input) ??
@@ -739,7 +745,7 @@ export async function createPaseoDaemon(
           pluginId === "otto-editor" || // OTTO(editor)
           pluginId === "otto-terminal" || // OTTO(terminal)
           (pluginId === "otto-speech" && ottoSpeech !== null) || // OTTO(speech)
-          (pluginId === "otto-artifacts" && ottoArtifacts !== null) || // OTTO(artifacts)
+          documentBuiltinAvailable(pluginId, ottoArtifacts, ottoViews) || // OTTO(architectural-views): no renderer assets, no capability.
           pluginId === "otto-brain" ||
           (pluginId === "otto-browser" && ottoBrowserHistory !== null) || // OTTO(browser-history)
           (pluginId === "otto-kanban" && ottoKanban !== null) ||
@@ -753,6 +759,9 @@ export async function createPaseoDaemon(
             .catch((error) => logger.warn({ err: error }, "Editor client cleanup failed")); // OTTO(editor)
           ottoSpeech?.releaseClient(clientId); // OTTO(speech)
           ottoBrain.releaseClient(clientId);
+          void ottoViews
+            ?.releaseClient(clientId)
+            .catch((error) => logger.warn({ err: error }, "View observation cleanup failed")); // OTTO(architectural-views)
           ottoKanban?.releaseClient(clientId); // OTTO(kanban): stop polling after paired-session teardown.
           void ottoKnowledge
             ?.releaseClient(clientId)
@@ -1117,6 +1126,13 @@ export async function createPaseoDaemon(
     workspaces: workspaceRegistry,
     generation: knowledgeGeneration.forSelection, // OTTO(knowledge): no launch during startup/read.
   }); // OTTO(knowledge): scoped demand, no startup file writes.
+  ottoViews = new ArchitecturalViewsService({
+    hostId: serverId,
+    home: config.paseoHome,
+    knowledge: ottoKnowledge,
+    metadata: projectRegistry.ottoMetadata,
+    report: (error) => logger.warn({ err: error }, "Architectural View operation diagnostic"),
+  }); // OTTO(architectural-views): same canonical Knowledge/project allocation.
   ottoKanban = new KanbanDaemonService({
     hostId: serverId,
     metadata: projectRegistry.ottoMetadata,
@@ -1193,6 +1209,19 @@ export async function createPaseoDaemon(
       resolvePaseoToolPolicy(provider, daemonConfigStore.get().providers),
     logger,
   });
+  ottoViews.setAuthoring(
+    createViewAuthoring({
+      host: ottoViews,
+      agents: agentManager,
+      storage: agentStorage,
+      providers: providerSnapshotManager,
+      workspaces: workspaceRegistry,
+      logger,
+      policy: createRetainedToolPolicy("knowledge", config.paseoHome, () =>
+        daemonConfigStore.get(),
+      ),
+    }),
+  ); // OTTO(architectural-views): caller-selected normal provider and permissions.
   ottoContext = new ContextManagementService({
     hostId: serverId,
     home: config.paseoHome,
@@ -1727,6 +1756,10 @@ export async function createPaseoDaemon(
     ), // OTTO(preview)
     ottoKnowledge: ottoKnowledge ?? undefined, // OTTO(knowledge)
     ottoArtifacts: ottoArtifacts ?? undefined, // OTTO(artifacts)
+    ottoViews: ottoViews ?? undefined, // OTTO(architectural-views)
+    viewToolPolicy: createRetainedToolPolicy("knowledge", config.paseoHome, () =>
+      daemonConfigStore.get(),
+    ), // OTTO(architectural-views): preserve host/provider ceilings.
     artifactToolPolicy: createRetainedToolPolicy("artifacts", config.paseoHome, () =>
       daemonConfigStore.get(),
     ), // OTTO(artifacts)
@@ -2179,6 +2212,7 @@ export async function createPaseoDaemon(
         .stop()
         .catch((cleanupError) => logger.warn({ err: cleanupError }, "Schedule cleanup failed")); // OTTO(schedules): revoke target waits before their owning services stop.
       await ottoArtifacts?.close(); // OTTO(artifacts): revoke late generation publication.
+      await ottoViews?.close(); // OTTO(architectural-views): release feeds/cache and bounded renderer children.
       await ottoWorkflows?.close(); // OTTO(workflows): settle owned sessions before provider teardown.
       await ottoKanban?.close(); // OTTO(kanban): no polling survives daemon startup failure.
       await ottoIntegrations?.close(); // OTTO(bitbucket,connectors): release polls, clients and callback listeners.
@@ -2236,6 +2270,7 @@ export async function createPaseoDaemon(
     await ottoEditor.close(); // OTTO(editor): language servers and observation waits share the daemon lifetime.
     await ottoKnowledge?.close(); // OTTO(knowledge)
     await ottoArtifacts?.close(); // OTTO(artifacts)
+    await ottoViews?.close(); // OTTO(architectural-views)
     await ottoKanban?.close(); // OTTO(kanban)
     await ottoIntegrations?.close(); // OTTO(bitbucket,connectors)
     await ottoHostBrowser
