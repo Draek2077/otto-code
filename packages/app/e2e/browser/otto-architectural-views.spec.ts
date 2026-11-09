@@ -453,6 +453,7 @@ for (const compact of [false, true])
         JSON.stringify(
           {
             phase,
+            page: { url: page.url(), text: await page.locator("body").innerText() },
             requests: ottoProvider.requests,
             agent: authorId ? await client.fetchAgent({ agentId: authorId }) : null,
             library: await call(rpc.readViews, { scope }),
@@ -465,6 +466,7 @@ for (const compact of [false, true])
         path: diagnostic,
         contentType: "application/json",
       });
+      await page.screenshot({ path: testInfo.outputPath("view-before-cleanup.png") });
       throw error;
     } finally {
       await client.close();
