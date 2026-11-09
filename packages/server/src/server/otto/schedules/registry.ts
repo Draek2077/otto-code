@@ -128,19 +128,22 @@ export class ScheduleRegistry implements ScheduleStorePort {
       );
   }
   private async read(origin: ScheduleOrigin, id: string) {
+    let bytes: string | null;
     try {
       if (!(await scheduleDirectory(origin.boundary, origin.directory))) return null;
-      const bytes = await readScheduleFile(this.file(origin, id));
-      if (bytes === null) return null;
-      const schedule = parseOttoStoredSchedule(JSON.parse(bytes));
-      this.validate(schedule, origin, id);
-      await new ScheduleHistory(origin, id).validate(schedule.otto?.history);
-      return { schedule, bytes };
+      bytes = await readScheduleFile(this.file(origin, id));
     } catch (error) {
       if (error instanceof ScheduleError && error.kind === "conflict")
         throw new ScheduleObservationConflict(error);
       throw error;
     }
+    if (bytes === null) return null;
+    const schedule = parseOttoStoredSchedule(JSON.parse(bytes));
+    this.validate(schedule, origin, id);
+    // Immutable history corruption is a persistent diagnostic, never a busy
+    // observation of the primary file's atomic replacement.
+    await new ScheduleHistory(origin, id).validate(schedule.otto?.history);
+    return { schedule, bytes };
   }
   private async scan(
     origin: ScheduleOrigin,

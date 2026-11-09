@@ -11,6 +11,7 @@ import { ScheduleStores, type ScheduleOrigin } from "./stores.js";
 import { ScheduleRegistry } from "./registry.js";
 import type { StoredSchedule } from "./types.js";
 import { scheduleDigest, ScheduleError } from "./files.js";
+import * as scheduleFiles from "./files.js";
 import { ScheduleHistory } from "./history.js";
 import { deferred } from "../workflows/test-utils/host-fixture.js";
 const parent = fileURLToPath(new URL("../../../../../../.tmp/", import.meta.url));
@@ -128,7 +129,7 @@ test("an atomic-read conflict does not publish a discovery snapshot missing a va
   const before = await f.registry.entry(created.id);
   if (!before) throw new Error("Missing Schedule fixture");
   const validation = vi
-    .spyOn(ScheduleHistory.prototype, "validate")
+    .spyOn(scheduleFiles, "readScheduleFile")
     .mockRejectedValueOnce(
       new ScheduleError("conflict", "Schedule file changed during its bounded read."),
     );
