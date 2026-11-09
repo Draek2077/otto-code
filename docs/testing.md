@@ -224,6 +224,10 @@ The manual `schedules` App Acceptance journey runs this file; full acceptance
 includes it automatically. These are CI browser journeys, not pure fixture or
 local native-provider proof.
 
+Schedule CLI CRUD fixtures use an explicit future cadence, so crossing a cron boundary
+cannot start a configured provider during inspection or deletion. Preset compilation belongs
+to the focused Schedule command unit tests; execution has its own controlled-provider journeys.
+
 <!-- OTTO(workflows): real daemon and provider tool-loop journeys preserve the ordinary chat boundary. -->
 
 Workflows: `e2e/browser/otto-workflows.spec.ts` covers wide/compact library creation,

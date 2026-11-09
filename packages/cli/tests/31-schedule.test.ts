@@ -7,6 +7,10 @@ import { createE2ETestContext } from "./helpers/test-daemon.ts";
 console.log("=== Schedule Command Tests ===\n");
 
 const ctx = await createE2ETestContext({ timeout: 30000 });
+// OTTO(schedules): CRUD must never race a due fire or launch a configured provider.
+// Preset compilation is covered by commands/schedule/shared.test.ts.
+const later = new Date(Date.now() + 2 * 60 * 60 * 1000);
+const futureCron = `${later.getUTCMinutes()} ${later.getUTCHours()} * * *`;
 
 try {
   {
@@ -16,8 +20,8 @@ try {
         "schedule",
         "create",
         "Review new PRs",
-        "--every",
-        "5m",
+        "--cron",
+        futureCron,
         "--name",
         "review-prs",
         "--provider",
@@ -31,7 +35,7 @@ try {
     assert.strictEqual(created.exitCode, 0, created.stderr);
     const createdJson = JSON.parse(created.stdout);
     assert.strictEqual(createdJson.name, "review-prs");
-    assert.strictEqual(createdJson.cadence, "cron:*/5 * * * *");
+    assert.strictEqual(createdJson.cadence, `cron:${futureCron}`);
     assert(
       typeof createdJson.target === "string" &&
         (createdJson.target.startsWith("agent:") || createdJson.target === "new-agent:claude"),
@@ -74,8 +78,8 @@ try {
         "schedule",
         "create",
         "Refactor the API layer",
-        "--every",
-        "10m",
+        "--cron",
+        futureCron,
         "--provider",
         "codex/gpt-5.4",
         "--thinking",
@@ -136,7 +140,7 @@ try {
       "create",
       "Review scheduled work",
       "--cron",
-      "0 0 1 1 *",
+      futureCron,
       "--provider",
       "claude",
       "--cwd",
@@ -232,7 +236,7 @@ try {
         "create",
         "Legacy heartbeat",
         "--cron",
-        "0 0 1 1 *",
+        futureCron,
         "--target",
         "00000000-0000-4000-8000-000000000001",
         "--cwd",
