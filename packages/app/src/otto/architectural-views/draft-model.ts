@@ -174,7 +174,8 @@ export class ViewDraftModel {
     }
   }
   async publishView(confirm: () => Promise<boolean>): Promise<ViewSummary | null> {
-    if (this.state.dirty || this.state.draft.starter) return null;
+    if (this.state.dirty || this.state.draft.starter || this.state.draft.base.status !== "reviewed")
+      return null;
     const authority = this.begin(globalThis.crypto.randomUUID());
     const edits = this.editVersion;
     if (authority === null) return null;

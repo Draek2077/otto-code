@@ -236,6 +236,12 @@ export function ViewDraftEditor({
           <Text style={styles.title}>{`${document.draft.title} · Draft`}</Text>
           {state.error ? <Alert variant="error" description={state.error} /> : null}
           {inspection ? <Alert description={inspection} /> : null}
+          {state.draft.base.status === "review_required" ? (
+            <Alert
+              variant="warning"
+              description="This retained draft needs an explicit base review. Open Source and draft actions, then Review published base before publishing."
+            />
+          ) : null}
           {state.peerChanged ? (
             <Alert
               variant="warning"
@@ -315,7 +321,8 @@ function DraftButtons({
           state.blocked ||
           state.dirty ||
           state.peerChanged ||
-          state.draft.starter
+          state.draft.starter ||
+          state.draft.base.status !== "reviewed"
         }
       >
         Publish

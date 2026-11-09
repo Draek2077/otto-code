@@ -3,6 +3,7 @@ import {
   type InteractiveViewCommand,
   type InteractiveViewCommandResult,
   type InteractiveViewState,
+  type InteractiveViewExportFormat,
 } from "./view-bridge";
 import type { ViewFrameMessage } from "./frame-types";
 
@@ -14,7 +15,15 @@ interface Snapshot {
 interface Pending {
   resolve(value: InteractiveViewCommandResult): void;
   timer: ReturnType<typeof setTimeout>;
+  exportFormat?: InteractiveViewExportFormat;
 }
+const exportMimeTypes: Record<InteractiveViewExportFormat, string> = {
+  png: "image/png",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  webm: "video/webm",
+};
 /** One mounted frame lifetime. Untrusted messages cannot resolve another frame's commands. */
 export class ViewController {
   private snapshot: Snapshot = { ready: false, state: null, notice: null };
@@ -53,7 +62,19 @@ export class ViewController {
       return;
     }
     if (event.type === "result") {
-      if (!this.pending.has(event.id)) return;
+      const pending = this.pending.get(event.id);
+      if (!pending) return;
+      if (
+        event.result.ok &&
+        ((event.result.file && !pending.exportFormat) ||
+          (pending.exportFormat &&
+            event.result.file?.mimeType !== exportMimeTypes[pending.exportFormat]))
+      ) {
+        const error = "The View did not return the explicitly requested export.";
+        this.notice(error);
+        this.finish(event.id, { ok: false, error });
+        return;
+      }
       if (event.result.ok) this.publish({ state: event.result.state });
       else this.notice(event.result.error);
       this.finish(event.id, event.result);
@@ -76,7 +97,11 @@ export class ViewController {
         },
         command.type === "export" ? 45000 : 5000,
       );
-      this.pending.set(id, { resolve, timer });
+      this.pending.set(id, {
+        resolve,
+        timer,
+        exportFormat: command.type === "export" ? command.format : undefined,
+      });
       try {
         sender({ id, command });
       } catch {

@@ -247,3 +247,15 @@ test("unreviewed starter and unsaved edits cannot be published", async () => {
   expect(f.ports.publish).not.toHaveBeenCalled();
   end();
 });
+
+test("a legacy draft base must be explicitly reviewed before human publication can be sent", async () => {
+  const f = fixture();
+  const model = new ViewDraftModel(
+    document({ ...draft, base: { status: "review_required", legacySpecificationSha256: null } }),
+    f.ports,
+  );
+  const release = model.retain();
+  expect(await model.publishView(async () => true)).toBeNull();
+  expect(f.ports.publish).not.toHaveBeenCalled();
+  release();
+});

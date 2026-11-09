@@ -122,3 +122,27 @@ test("theme injection follows CSP and cannot close the style/script boundary", (
   expect(html.indexOf('id="otto-view-theme"')).toBeLessThan(html.indexOf("viewer()"));
   expect(html).not.toContain("</style><script>bad()");
 });
+
+test("downloads require an explicit pending export of the same format", async () => {
+  const controller = new ViewController("owner");
+  let id = 0;
+  controller.transport((message) => {
+    id = message.id;
+  });
+  controller.receive(event({ type: "ready", state }));
+  const file = {
+    fileName: "diagram.png",
+    mimeType: "image/png",
+    dataUrl: "data:image/png;base64,AA==",
+  };
+  const fit = controller.run({ type: "fit" });
+  controller.receive(event({ type: "result", id, result: { ok: true, state, file } }));
+  expect((await fit).ok).toBe(false);
+  const mismatch = controller.run({ type: "export", format: "svg" });
+  controller.receive(event({ type: "result", id, result: { ok: true, state, file } }));
+  expect((await mismatch).ok).toBe(false);
+  const exported = controller.run({ type: "export", format: "png" });
+  controller.receive(event({ type: "result", id, result: { ok: true, state, file } }));
+  expect(await exported).toMatchObject({ ok: true, file });
+  controller.close();
+});

@@ -560,15 +560,16 @@ daemon or reads its settings.
 
 <!-- OTTO(architectural-views): acceptance is part of the existing isolated app lane. -->
 
-| Surface                                                                                                                                                | Behavioral coverage                                        |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| Storage, legacy sources, CAS, publication recovery and retained revisions                                                                              | `src/server/otto/architectural-views/storage.test.ts`      |
-| Five pinned diagram validators/renderers, budgets and child shutdown                                                                                   | `src/server/otto/architectural-views/renderer.test.ts`     |
-| Scoped workspace display, lease expiry, disconnect and shutdown                                                                                        | `src/server/otto/architectural-views/open-intents.test.ts` |
-| Local editing authority, late replies, confirmations and retained intent                                                                               | `src/otto/architectural-views/draft-model.test.ts`         |
-| Guest channels, bounded controls, export envelopes and frame teardown                                                                                  | `src/otto/architectural-views/view-controller.test.ts`     |
-| Selected-daemon CLI capability, contract and uncertain-operation identity                                                                              | `src/otto/architectural-views/connection.test.ts` in CLI   |
-| Real daemon, renderer, normal provider authoring tools, wide/compact native chat integration, validation repair, publication, revisions and SVG export | `e2e/browser/otto-architectural-views.spec.ts`             |
+| Surface                                                                                                                                                                          | Behavioral coverage                                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Storage, legacy sources, CAS, publication recovery and retained revisions                                                                                                        | `src/server/otto/architectural-views/storage.test.ts`                                |
+| Five pinned diagram validators/renderers, budgets and child shutdown                                                                                                             | `src/server/otto/architectural-views/renderer.test.ts`                               |
+| Scoped workspace display, lease expiry, disconnect and shutdown                                                                                                                  | `src/server/otto/architectural-views/open-intents.test.ts`                           |
+| Local editing authority, late replies, confirmations and retained intent                                                                                                         | `src/otto/architectural-views/draft-model.test.ts`                                   |
+| Model source paging and portable input preflight                                                                                                                                 | `src/server/otto/architectural-views/model-results.test.ts` and `tool-input.test.ts` |
+| Guest channels, bounded controls, export envelopes and frame teardown                                                                                                            | `src/otto/architectural-views/view-controller.test.ts`                               |
+| Selected-daemon CLI capability, contract and uncertain-operation identity                                                                                                        | `src/otto/architectural-views/connection.test.ts` in CLI                             |
+| Real daemon, renderer, normal provider authoring tools, wide/compact native chat integration, validation repair, publication, retained 0.9 base review, revisions and SVG export | `e2e/browser/otto-architectural-views.spec.ts`                                       |
 
 The browser journey runs in Otto App Acceptance with isolated fixture credentials
 and homes. A manual `architectural-views` diagnostic preserves the full push/PR

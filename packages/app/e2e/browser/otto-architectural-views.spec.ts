@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { Page, WebSocket as BrowserSocket } from "@playwright/test";
 import { createRequire } from "node:module";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -6,7 +8,7 @@ import type { PluginRpcContract } from "@getpaseo/plugin";
 import type * as Views from "@getpaseo/plugin/otto/architectural-views";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { test, expect } from "../support/helpers/otto-provider-settings";
-import { seedWorkspace } from "../support/helpers/seed-client";
+import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import { getServerId } from "../support/helpers/server-id";
 import { gotoAppShell } from "../support/helpers/app";
@@ -75,6 +77,104 @@ function findDraft(
   }
   return null;
 }
+
+function authoredArchitecture() {
+  const specification = viewStarter("architecture", "Source-backed acceptance");
+  specification.cards = [{ dot: "violet", title: "Source notes", items: ["Acceptance source."] }];
+  return specification;
+}
+async function proveWideLayout(page: Page) {
+  const list = await page
+    .getByTestId("architectural-view-list")
+    .filter({ visible: true })
+    .boundingBox();
+  const toolbar = await page
+    .getByTestId("architectural-view-toolbar")
+    .filter({ visible: true })
+    .boundingBox();
+  if (!list || !toolbar) throw new Error("The View list and viewer must both be visible");
+  expect(list.width).toBeGreaterThan(240);
+  expect(list.width).toBeLessThanOrEqual(320);
+  expect(toolbar.width).toBeGreaterThan(list.width + 100);
+}
+function trackDisplayBaseline(page: Page, workspaceId: string, method: string) {
+  const waits = new Map<BrowserSocket, number>();
+  page.on("websocket", (socket) => {
+    socket.on("framesent", (frame) => {
+      const text = frame.payload.toString();
+      if (text.includes(method) && text.includes(workspaceId))
+        waits.set(socket, (waits.get(socket) ?? 0) + 1);
+    });
+  });
+  return () => [...waits].some(([socket, count]) => !socket.isClosed() && count >= 2);
+}
+async function proveRetainedDraft(input: {
+  page: Page;
+  workspace: SeededWorkspace;
+  api: ReturnType<typeof viewApi>;
+  scope: Views.ViewScope;
+  origin: Views.ViewOrigin;
+  route(target: object): string;
+}) {
+  const { page, workspace, api, scope, origin, route } = input;
+  const directory = path.join(
+    workspace.repoPath,
+    ".otto/architectural-views/legacy-proof/drafts/legacy-first",
+  );
+  await mkdir(directory, { recursive: true });
+  const source = JSON.stringify(viewStarter("architecture", "Retained legacy"), null, 2);
+  await writeFile(path.join(directory, "view.architecture.json"), source);
+  await writeFile(
+    path.join(directory, "draft.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      kind: "architectural-view-draft",
+      id: "legacy-first",
+      viewId: "legacy-proof",
+      title: "Retained legacy",
+      knowledgeReferences: [{ kind: "root", id: "architecture" }],
+      baseSpecificationSha256: null,
+      specificationSha256: createHash("sha256").update(source).digest("hex"),
+      authoringAgentId: null,
+      createdAt: "2026-01-01",
+      updatedAt: "2026-01-01",
+      retainedMarker: { keep: true },
+    }),
+  );
+  const identity = { viewId: "legacy-proof", origin };
+  await page.goto(route({ identity, selection: { kind: "draft", draftId: "legacy-first" } }));
+  const editor = page.getByTestId("architectural-view-draft").filter({ visible: true });
+  await expect(
+    editor.getByText("This retained draft needs an explicit base review.", { exact: false }),
+  ).toBeVisible();
+  await expect(editor.getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
+  await editor.getByRole("button", { name: "Source and draft actions", exact: true }).click();
+  const reviewDialog = page.waitForEvent("dialog");
+  const reviewing = editor
+    .getByRole("button", { name: "Review published base", exact: true })
+    .click();
+  await (await reviewDialog).accept();
+  await reviewing;
+  await expect(editor.getByRole("button", { name: "Publish", exact: true })).toBeEnabled();
+  const dialog = page.waitForEvent("dialog");
+  const publishing = editor.getByRole("button", { name: "Publish", exact: true }).click();
+  await (await dialog).accept();
+  await publishing;
+  await expect(
+    page.getByRole("button", { name: "Update View", exact: true }).filter({ visible: true }),
+  ).toBeVisible();
+  const published = await api.call(api.rpc.readView, {
+    scope,
+    identity,
+    selection: { kind: "published" },
+  });
+  expect(published.kind).toBe("published");
+  expect(await readFile(path.join(directory, "view.architecture.json"), "utf8")).toBe(source);
+  expect(
+    JSON.parse(await readFile(path.join(directory, "draft.json"), "utf8")).retainedMarker,
+  ).toEqual({ keep: true });
+}
+
 for (const compact of [false, true])
   test(`Architectural Views author, repair, publish and export with native chat (${compact ? "compact" : "wide"})`, async ({
     page,
@@ -90,7 +190,13 @@ for (const compact of [false, true])
       git: false,
     });
     const client = await connectDaemonClient<Client>({ clientIdPrefix: "views-proof" });
-    const { rpc, call } = viewApi(client);
+    const api = viewApi(client);
+    const { rpc, call } = api;
+    const displayReady = trackDisplayBaseline(
+      page,
+      workspace.workspaceId,
+      rpc.waitViewOpenIntent.name,
+    );
     const scope = {
       hostId: getServerId(),
       target: { kind: "workspace" as const, id: workspace.workspaceId },
@@ -154,7 +260,7 @@ for (const compact of [false, true])
           return tool(update.function.name, {
             expectedRevision: draft.revision,
             title: "Authored architecture",
-            specification: viewStarter("architecture", "Source-backed acceptance"),
+            specification: authoredArchitecture(),
           });
         }
         return "Architectural View authored and repaired. Human publication is required.";
@@ -257,6 +363,7 @@ for (const compact of [false, true])
       const exported = testInfo.outputPath("architecture.svg");
       await download.saveAs(exported);
       expect(await readFile(exported, "utf8")).toContain("<svg");
+      if (!compact) await proveWideLayout(page);
       await page.screenshot({
         path: testInfo.outputPath(`views-${compact ? "compact" : "wide"}.png`),
         fullPage: true,
@@ -299,7 +406,15 @@ for (const compact of [false, true])
           userApproved: true,
         }),
       ).rejects.toThrow("conflict");
+      await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: author.agentId });
+      await expect.poll(displayReady, { timeout: 15000 }).toBe(true);
       await call(rpc.showView, { scope, identity, workspaceId: workspace.workspaceId });
+      await expect(
+        page.getByTestId("architectural-view-library").filter({ visible: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Update View", exact: true }).filter({ visible: true }),
+      ).toBeVisible();
       expect((await call(rpc.readViews, { scope })).views[0].revision).toBe(second.revision);
       for (const diagramType of rpc.ViewKind.options.filter((kind) => kind !== "architecture")) {
         const staged = await call(rpc.createViewDraft, {
@@ -330,6 +445,7 @@ for (const compact of [false, true])
         });
         expect(content.parts).toBeGreaterThan(0);
       }
+      await proveRetainedDraft({ page, workspace, api, scope, origin: identity.origin, route });
     } catch (error) {
       const diagnostic = testInfo.outputPath("view-authoring-state.json");
       await writeFile(
