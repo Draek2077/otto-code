@@ -10,19 +10,19 @@ import type {
 import { useViewContent } from "./data";
 import { ArchitecturalViewer } from "./viewer";
 import { styles } from "./styles";
-export function ViewPreview({
-  scope,
-  identity,
-  selection,
-  revision,
-  active,
-}: {
+interface ViewPreviewProps {
   scope: ViewScope;
   identity: ViewIdentity;
   selection: ViewSelection;
   revision: string;
   active: boolean;
-}) {
+}
+/** Unmount the HTML query observer on hide: disabling it alone neither cancels
+ * an in-flight transfer nor allows its bounded inactive cache lifetime to start. */
+export function ViewPreview(props: ViewPreviewProps) {
+  return props.active ? <ActiveViewPreview {...props} /> : <View style={styles.page} />;
+}
+function ActiveViewPreview({ scope, identity, selection, revision, active }: ViewPreviewProps) {
   const content = useViewContent(scope, identity, selection, revision, active);
   const refresh = useCallback(() => {
     void content.refetch();

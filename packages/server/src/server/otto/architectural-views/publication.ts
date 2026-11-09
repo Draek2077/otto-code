@@ -170,6 +170,7 @@ export class ViewPublication {
         specificationSha256: rendered.specificationSha256,
         renderedAt: new Date().toISOString(),
         ottoPublication: {
+          ...published?.value.ottoPublication,
           ...objects,
           format: 1,
           operationId: input.operationId,

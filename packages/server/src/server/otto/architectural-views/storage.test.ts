@@ -180,6 +180,7 @@ test("published revisions, unknown fields, removed records and original source b
   const file = path.join(viewDirectory(f.store, f.identity.viewId), "view.json");
   const manifest = JSON.parse(await readFile(file, "utf8"));
   manifest.future = { retained: true };
+  manifest.ottoPublication.future = { retained: true };
   const raw = JSON.stringify(manifest, null, 2) + "\n";
   await writeFile(file, raw);
   const base = viewDigest(raw);
@@ -197,6 +198,9 @@ test("published revisions, unknown fields, removed records and original source b
     operationId: "publish_second",
   });
   expect(second.revision).not.toBe(first.revision);
+  expect((await readPublished(f.store, f.identity.viewId))?.value.ottoPublication?.future).toEqual({
+    retained: true,
+  });
   const history = await viewRevisionRecords(f.store, f.identity.viewId);
   expect(history[0]?.raw).toBe(raw);
   expect((await readPublished(f.store, f.identity.viewId))?.value.future).toEqual({
@@ -450,4 +454,55 @@ test("origin-bound catalog search and author binding retain canonical project an
   );
   expect(detached.authoringAgentId).toBeNull();
   expect(detached.authoringWorkspaceId).toBeNull();
+});
+
+test("draft extension metadata survives validated source replacement and binding changes", async () => {
+  const f = await fixture();
+  const input = await authored(f);
+  const file = path.join(
+    viewDirectory(f.store, f.identity.viewId),
+    "drafts",
+    input.draftId,
+    "draft.json",
+  );
+  const saved = JSON.parse(await readFile(file, "utf8"));
+  saved.ottoDraft.future = { retained: true };
+  const raw = JSON.stringify(saved);
+  await writeFile(file, raw);
+  const updated = await f.drafts.update(f.store.projectId, {
+    ...input,
+    expectedRevision: viewDigest(raw),
+    specification: viewStarter("architecture", "Changed"),
+  });
+  await f.drafts.bindAuthor(
+    f.store.projectId,
+    f.identity,
+    updated.draftId,
+    updated.revision,
+    "agent",
+    "workspace",
+  );
+  expect(
+    (await readDraft(f.store, f.identity.viewId, updated.draftId))?.value.ottoDraft?.future,
+  ).toEqual({ retained: true });
+});
+
+test("model-sized metadata pages retain exact offsets without skipping or duplicating drafts", async () => {
+  const f = await fixture();
+  for (let index = 0; index < 4; index++)
+    await f.drafts.create(f.store.projectId, {
+      ...f.input,
+      draftId: `draft-${index}`,
+      operationId: `create-${index}`,
+    });
+  const ids: string[] = [];
+  let offset: number | null = 0;
+  while (offset !== null) {
+    const page = await f.library.catalog(f.store.projectId, undefined, offset, "", 10, 1);
+    expect(page.drafts).toHaveLength(1);
+    ids.push(page.drafts[0].draftId);
+    offset = page.nextOffset;
+  }
+  expect(new Set(ids).size).toBe(4);
+  expect(ids).toHaveLength(4);
 });

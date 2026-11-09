@@ -259,6 +259,8 @@ export class ViewLibrary {
     reference?: ViewReference,
     offset = 0,
     query = "",
+    limit = 100,
+    metadataCharacters = 700000,
   ): Promise<ViewCatalog> {
     const project = await this.ports.resolve(projectId);
     const collected = await this.records(project);
@@ -270,7 +272,7 @@ export class ViewLibrary {
           .includes(query.toLowerCase()),
     );
     matching.sort(compareRecords);
-    const page = matching.slice(offset, offset + 100);
+    const page = matching.slice(offset, offset + limit);
     const views: ViewSummary[] = [];
     const drafts: ViewDraft[] = [];
     const references = new Map<string, ViewReference>();
@@ -278,10 +280,19 @@ export class ViewLibrary {
       for (const linked of entry.record.value.knowledgeReferences)
         references.set(JSON.stringify(linked), linked);
     const sources = await this.ports.sources(projectId, [...references.values()]);
+    let emitted = 0,
+      characters = 0;
     for (const entry of page) {
-      if (entry.kind === "draft")
-        drafts.push(await this.draftSummary(entry.store, entry.record, sources));
-      else views.push(await this.summary(entry.store, entry.record, sources));
+      const summary =
+        entry.kind === "draft"
+          ? await this.draftSummary(entry.store, entry.record, sources)
+          : await this.summary(entry.store, entry.record, sources);
+      const size = JSON.stringify(summary).length;
+      if (emitted && characters + size > metadataCharacters) break;
+      if ("draftId" in summary) drafts.push(summary);
+      else views.push(summary);
+      characters += size;
+      emitted++;
     }
     return {
       projectId,
@@ -290,7 +301,7 @@ export class ViewLibrary {
       diagnostics: collected.diagnostics,
       diagnosticsOmitted: collected.diagnosticsOmitted,
       origins: project.stores.map((store) => store.origin),
-      nextOffset: offset + page.length < matching.length ? offset + page.length : null,
+      nextOffset: offset + emitted < matching.length ? offset + emitted : null,
     };
   }
 }

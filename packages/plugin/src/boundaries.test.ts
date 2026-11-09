@@ -3,6 +3,7 @@ import path from "node:path";
 import { isBuiltin } from "node:module";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import * as server from "./server/index.js";
 
@@ -21,6 +22,7 @@ const entries = {
   "./server/otto-browser": "server", // OTTO(browser-host): shared snapshot/ref engine, never a UI module.
   "./otto/preview": "shared", // OTTO(preview): structural RPC data contains no Node imports.
   "./otto/artifacts": "shared", // OTTO(artifacts): bounded structural contracts only.
+  "./otto/architectural-views": "shared", // OTTO(architectural-views): structural data and explicit bounded JSON preflight.
   "./otto/workflows": "shared", // OTTO(workflows): documents and scoped RPC only; no engine/agent runtime.
   "./otto/schedules": "shared", // OTTO(schedules): structural targets/origins/audit, never scheduler or provider execution.
   "./otto/workflows/judge-verdict": "shared", // OTTO(workflows): structured verdict declarations and pure interpretation.
@@ -47,6 +49,7 @@ const entries = {
   "./client/otto-knowledge": "client", // OTTO(knowledge): app-only presentation bridge.
   "./client/otto-preview": "client", // OTTO(preview): trusted app-owned workspace controls.
   "./client/otto-artifacts": "client", // OTTO(artifacts): app-owned presentation bridge.
+  "./client/otto-architectural-views": "client", // OTTO(architectural-views): trusted app-only viewer/chat presentation.
   "./client/otto-workflows": "client", // OTTO(workflows): trusted presentation bridge.
   "./client/otto-schedules": "client", // OTTO(schedules): app-owned storage Settings bridge.
   "./client/otto-bitbucket": "client", // OTTO(bitbucket): app-owned settings bridge.
@@ -117,15 +120,16 @@ describe("plugin SDK import boundaries", () => {
   it.each(Object.entries(entries))(
     "%s respects its %s boundary, including type dependencies",
     (specifier, runtime) => {
-      const name =
-        specifier === "."
-          ? "index"
-          : specifier.slice(2) +
-            // OTTO(schedules): multi-file structural entries keep explicit runtime-boundary classification.
-            (["./client", "./server", "./otto/workflows", "./otto/schedules"].includes(specifier)
-              ? "/index"
-              : "");
-      expect(boundaryViolations(path.join(sourceDirectory, `${name}.ts`), runtime)).toEqual([]);
+      // OTTO(architectural-views): inspect the actual published source target, including multi-file entries.
+      const manifest = z
+        .object({ exports: z.record(z.string(), z.object({ source: z.string() })) })
+        .parse(JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")));
+      expect(
+        boundaryViolations(
+          path.resolve(sourceDirectory, "..", manifest.exports[specifier].source),
+          runtime,
+        ),
+      ).toEqual([]);
     },
   );
 });

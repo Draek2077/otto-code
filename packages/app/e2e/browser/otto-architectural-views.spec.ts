@@ -23,7 +23,7 @@ test.use({
     },
   },
 });
-type Client = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">;
+type Client = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc" | "fetchAgent">;
 function viewApi(client: Client) {
   const rpc: typeof Views = createRequire(__filename)("@getpaseo/plugin/otto/architectural-views");
   async function call<I extends z.ZodType, T>(
@@ -69,8 +69,8 @@ function findDraft(
       }
       continue;
     }
-    const parsed = rpc.ViewDocument.safeParse(value);
-    if (parsed.success && parsed.data.kind === "draft") return parsed.data.draft;
+    const parsed = rpc.ViewDraft.safeParse(value);
+    if (parsed.success) return parsed.data;
     if (value && typeof value === "object") pending.push(...Object.values(value));
   }
   return null;
@@ -96,6 +96,7 @@ for (const compact of [false, true])
       target: { kind: "workspace" as const, id: workspace.workspaceId },
     };
     let phase = 0;
+    let authorId: string | null = null;
     try {
       ottoProvider.replyWith((raw) => {
         const body = completion.parse(raw);
@@ -185,6 +186,7 @@ for (const compact of [false, true])
         selection: { provider: "openai-compatible", model: "fixture", modeId: "bypassPermissions" },
         userApproved: true,
       });
+      authorId = author.agentId;
       await expect
         .poll(
           async () => {
@@ -312,6 +314,26 @@ for (const compact of [false, true])
         });
         expect(content.parts).toBeGreaterThan(0);
       }
+    } catch (error) {
+      const diagnostic = testInfo.outputPath("view-authoring-state.json");
+      await writeFile(
+        diagnostic,
+        JSON.stringify(
+          {
+            phase,
+            requests: ottoProvider.requests,
+            agent: authorId ? await client.fetchAgent({ agentId: authorId }) : null,
+            library: await call(rpc.readViews, { scope }),
+          },
+          null,
+          2,
+        ),
+      );
+      await testInfo.attach("view-authoring-state", {
+        path: diagnostic,
+        contentType: "application/json",
+      });
+      throw error;
     } finally {
       await client.close();
       await workspace.cleanup();

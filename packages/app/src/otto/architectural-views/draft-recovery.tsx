@@ -1,4 +1,4 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,14 @@ export function LocalViewDraftRecovery({
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const cache = useQueryClient();
   const [notice, setNotice] = useState<string | null>(null);
+  const lifetime = useRef({ active: false });
+  useEffect(() => {
+    const owner = { active };
+    lifetime.current = owner;
+    return () => {
+      owner.active = false;
+    };
+  }, [active]);
   const copy = useCallback(async () => {
     try {
       await copyToClipboard(state.text);
@@ -31,6 +39,8 @@ export function LocalViewDraftRecovery({
     }
   }, [state.text]);
   const discard = useCallback(async () => {
+    const owner = lifetime.current;
+    if (!owner.active) return;
     if (
       state.busy ||
       !(await confirmDialog({
@@ -42,7 +52,7 @@ export function LocalViewDraftRecovery({
       }))
     )
       return;
-    if (model.getSnapshot() !== state) return;
+    if (!owner.active || lifetime.current !== owner || model.getSnapshot() !== state) return;
     forgetViewDraft(cache, model);
     close();
   }, [state, model, cache, close]);

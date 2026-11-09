@@ -100,7 +100,11 @@ The provider-neutral tool catalog exposes `list_architectural_views`,
 `read_architectural_view_draft`, `update_architectural_view_draft` and
 `show_architectural_view`. They honor the existing Knowledge tool-group/provider
 policy. Lists return metadata, never rendered HTML. Source/contracts are pulled
-only when needed. Draft writes are bound to the actual caller agent and canonical
+only when needed. Model replies stay below 14,000 characters, including native
+harnesses with 16,000-character truncation limits. Source reads return revision-pinned
+text parts; the next offset must retain the originating revision. Diagram and common
+contracts are separate on-demand reads. Metadata pages carry their exact continuation
+offset. This avoids truncated JSON and repeated large source/contract injection. Draft writes are bound to the actual caller agent and canonical
 workspace, with exact revision checks.
 
 `otto architectural-view` (alias `otto view`) supplies `ls`, `inspect`, `contract`,

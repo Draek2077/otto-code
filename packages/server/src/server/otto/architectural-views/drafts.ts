@@ -253,6 +253,7 @@ export class ViewDrafts {
           specificationSha256: rendered.specificationSha256,
           updatedAt: new Date().toISOString(),
           ottoDraft: {
+            ...metadata,
             ...objects,
             format: 1,
             creationOperationId: metadata?.creationOperationId ?? `legacy-${current.value.id}`,

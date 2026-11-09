@@ -46,6 +46,7 @@ export const PublishedRecord = z
           }),
         ]),
       })
+      .passthrough()
       .optional(),
   })
   .passthrough();
@@ -77,6 +78,7 @@ export const DraftRecord = z
         operationId: z.string().max(120).nullable(),
         operationBaseRevision: ViewRevision.optional(),
       })
+      .passthrough()
       .optional(),
   })
   .passthrough();
