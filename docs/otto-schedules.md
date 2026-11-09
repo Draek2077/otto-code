@@ -32,6 +32,9 @@ failed run and its audit.
 Active library views can wait for scoped change versions. Durable writes and discovery on
 the existing clock publish notifications; unrelated project writes do not wake a project view.
 Waits are bounded and demand-owned, with no idle timer or additional filesystem watcher.
+A typed busy library read can use at most two retries through the existing query cache's
+backoff. All other read failures require explicit refresh. Mutation, execution and watch
+requests never use that read-only recovery policy.
 A version captured before reading a page prevents a concurrent write from being lost between
 the page read and its next wait. External-file refresh retains the registry's discovery bound.
 

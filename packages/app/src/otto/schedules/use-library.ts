@@ -3,9 +3,10 @@ import { useFetchQuery } from "@/data/query";
 import type { ScheduleScope } from "@getpaseo/plugin/otto/schedules";
 import type { ScheduleApi } from "./api";
 import { useScheduleActivity } from "./activity";
+import { retryScheduleObservation } from "./observation";
 
-/** One canonical query cache, observed only while mounted. A failed watch stops;
- * reconnect/refetch is explicit. No timer, new socket or mutation retry. */
+/** One canonical query cache, observed only while active. A failed watch stops;
+ * only typed busy reads get bounded cache recovery. No new socket or mutation retry. */
 export function useScheduleLibrary(
   api: ScheduleApi,
   scope: ScheduleScope,
@@ -17,6 +18,13 @@ export function useScheduleLibrary(
   },
 ) {
   const active = useScheduleActivity();
+  const activity = useRef(active);
+  activity.current = active;
+  const retry = useCallback(
+    (failureCount: number, error: unknown) =>
+      activity.current && retryScheduleObservation(failureCount, error),
+    [],
+  );
   const [watchError, setWatchError] = useState("");
   const [watchAttempt, setWatchAttempt] = useState(0);
   const page = useFetchQuery({
@@ -24,7 +32,7 @@ export function useScheduleLibrary(
     queryFn: () => api.list({ ...input, scope, includeLegacy: true, refresh: true }),
     dataShape: "value",
     staleTimeMs: 5000,
-    retry: false,
+    retry,
     enabled: active,
   });
   // Filter/page changes must not create another outstanding long poll for every
