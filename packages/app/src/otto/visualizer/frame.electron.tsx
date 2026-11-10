@@ -49,6 +49,7 @@ export function VisualizerFrame({ html, onMessage, onTransport, onFailure }: Vis
       );
     };
     const resize = () => {
+      if (!active) return;
       const bounds = node.getBoundingClientRect();
       if (bounds.width <= 0 || bounds.height <= 0) return;
       if (!guest) {

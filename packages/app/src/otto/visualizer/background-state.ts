@@ -6,10 +6,16 @@ export const useVisualizerBackgroundState = create<{
   setHidden(key: string, hidden: boolean): void;
   remove(key: string): void;
   prune(open: ReadonlySet<string>): void;
+  clear(): void;
 }>((set) => ({
   hidden: {},
   setHidden(key, hidden) {
-    set((state) => ({ hidden: Object.assign({}, state.hidden, { [key]: hidden }) }));
+    set((state) => {
+      if (hidden) return { hidden: Object.assign({}, state.hidden, { [key]: true }) };
+      const next = { ...state.hidden };
+      delete next[key];
+      return { hidden: next };
+    });
   },
   remove(key) {
     set((state) => {
@@ -26,5 +32,8 @@ export const useVisualizerBackgroundState = create<{
       for (const key of closed) delete hidden[key];
       return { hidden };
     });
+  },
+  clear() {
+    set((state) => (Object.keys(state.hidden).length ? { hidden: {} } : state));
   },
 }));

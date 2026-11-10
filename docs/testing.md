@@ -590,6 +590,9 @@ or environment review.
 | Real provider tool loop, real graph, wide/compact panel, retained workspace handoff, PIP, background and Composer        | `e2e/browser/otto-visualizer.spec.ts`, regular Otto App Acceptance and manual `visualizer` diagnostic |
 | Electron private guest, offline policy, browser plane, hidden-window disposal and tab/PIP handoff                        | `packages/desktop/e2e/otto-visualizer.electron.mjs`, called by the existing desktop browser journey   |
 
+`src/otto/visualizer/background-state.test.ts` covers draft/agent tab visibility,
+retained eviction and explicit/tab close.
+
 These define acceptance checks, not the outcome of an untested commit. No test
 launches the installed Otto daemon. Native phone gestures, system audio and
 user-specific providers still need device/environment review.

@@ -12,6 +12,15 @@ import {
 
 const asarEsbuildDir = path.join("Resources", "app.asar", "node_modules", "esbuild");
 const temporaryDirectories: string[] = [];
+it("compiles the actual Visualizer tab, settings and Command Center bridge", async () => {
+  const client = fileURLToPath(
+    new URL("../../../../../plugins/otto-visualizer/index.client.tsx", import.meta.url),
+  );
+  const result = await compilePlugin({ client, server: null });
+  expect(result.clientBundle).toContain("@getpaseo/plugin/client/otto-visualizer");
+  expect(result.clientBundle).toContain("Open Visualizer");
+  expect(result.serverBundle).toBeNull();
+}); // OTTO(visualizer)
 it("compiles the actual Architectural Views navigation and workspace bridge", async () => {
   const client = fileURLToPath(
     new URL("../../../../../plugins/otto-architectural-views/index.client.tsx", import.meta.url),
@@ -230,6 +239,7 @@ describe("plugin runtime entries", () => {
     "@getpaseo/plugin/client/otto-brain", // OTTO(brain-ui): keep the renderer out of server bundles.
     "@getpaseo/plugin/client/otto-preview", // OTTO(preview): app-only UI bridge.
     "@getpaseo/plugin/client/otto-schedules", // OTTO(schedules): no app presentation in server code.
+    "@getpaseo/plugin/client/otto-visualizer", // OTTO(visualizer): no renderer in a server plugin.
   ])("rejects %s from server code", async (specifier) => {
     const entries = await createSplitPlugin();
     await writeFile(

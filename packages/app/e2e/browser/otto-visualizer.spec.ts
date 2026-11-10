@@ -7,6 +7,7 @@ import { openAgentRoute } from "../support/helpers/mock-agent";
 import { buildHostWorkspaceRoute } from "../../src/utils/host-routes";
 import { getServerId } from "../support/helpers/server-id";
 import { selectTabFromSwitcher } from "../support/helpers/sheet";
+import { createAgentTabFromMenu } from "../support/helpers/workspace-tabs";
 import {
   observeVisualizer,
   observedCommands,
@@ -68,6 +69,17 @@ for (const compact of [false, true]) {
       compact ? { width: 390, height: 844 } : { width: 1440, height: 960 },
     );
     await observeVisualizer(page);
+    await page.addInitScript(() =>
+      localStorage.setItem(
+        "@otto:create-agent-preferences",
+        JSON.stringify({
+          provider: "openai-compatible",
+          providerPreferences: {
+            "openai-compatible": { model: "fixture", mode: "bypassPermissions" },
+          },
+        }),
+      ),
+    );
     ottoProvider.replyWith(proofReply);
     await ottoProvider.refreshCatalog();
     const workspace = await seedWorkspace({ repoPrefix: "otto-visualizer-" });
@@ -176,7 +188,29 @@ for (const compact of [false, true]) {
       await page.screenshot({
         path: info.outputPath(`background-${compact ? "compact" : "wide"}.png`),
       });
-      await visualizerMenu(page, "Close ambient Visualizer");
+      await createAgentTabFromMenu(page);
+      await page
+        .getByRole("button", { name: "Show Visualizer only", exact: true })
+        .filter({ visible: true })
+        .click();
+      const draftPrompt = "visualizer-proof: draft handoff";
+      await composer.fill(draftPrompt);
+      await composer.press("Enter");
+      await expect(page.getByTestId("user-message").filter({ hasText: draftPrompt })).toHaveCount(
+        1,
+      );
+      await expect(
+        page
+          .getByRole("button", { name: "Show conversation", exact: true })
+          .filter({ visible: true }),
+      ).toBeVisible();
+      await expectVisualizerReady(page);
+      await page
+        .getByRole("button", { name: "Show conversation", exact: true })
+        .filter({ visible: true })
+        .click();
+      await expect(page.getByTestId("user-message").filter({ hasText: draftPrompt })).toBeVisible();
+      await page.getByRole("button", { name: "Close background Visualizer", exact: true }).click();
       await expect(page.locator('iframe[title="Visualizer"]')).toHaveCount(0);
       await expect(composer).toBeEnabled();
     } catch (error) {

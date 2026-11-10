@@ -76,6 +76,9 @@ guest, simulation, subscriptions and local render effects. They retain tab
 descriptors, selections and device preferences. Restoring a surface creates a
 fresh validated guest and canonical replay. Visible chat backgrounds are the
 explicit singleton exception; each follows its own chat root.
+An unsent draft follows the focused workspace root until its own canonical agent
+exists. The tab identity carries the deliberate conversation visibility choice
+through that normal Paseo handoff.
 
 On web/Electron PIP uses the full window overlay, above resident browser guests,
 below transient sidebars, menus and dialogs. Its two sizes clamp to the current
@@ -102,6 +105,8 @@ shapes, context ring/bar, bloom, glow, stars, backdrop, frame meter, HUD, sound
 volume, PIP size/position and exact 0.9 preference keys. Conflicting old placement
 flags are normalized at one dated compatibility boundary without resetting data.
 Settings and action failures remain visible in their current context.
+The background control strip restores the conversation, switches to PIP or the
+tab, and closes background placement without moving the Composer.
 
 Demo starts only when connected with no open chat tabs and no guest sessions.
 It has an explicit Stop action; real sessions terminate demo before their events

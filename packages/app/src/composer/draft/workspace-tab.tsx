@@ -49,6 +49,7 @@ import {
 } from "@/workspace-tabs/model";
 import { openWorkspaceChanges } from "@/workspace-tabs/open-supporting-view";
 import { useSettings } from "@/hooks/use-settings";
+import { visualizerChatViewport } from "@/otto/visualizer/chat-bridge"; // OTTO(visualizer): same tab-owned backdrop through draft-to-agent handoff; Composer remains outside.
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
@@ -633,7 +634,7 @@ export function WorkspaceDraftAgentTab({
   return (
     <FileDropZone style={styles.container}>
       <ComposerDock fullscreen={isComposerFullscreen}>
-        {dockContent}
+        {visualizerChatViewport({ serverId, workspaceId, agentId: null, children: dockContent })}
         <View style={animatedStaticStyles.inputAreaWrapper} onLayout={onInputAreaLayout}>
           {importPillPress && !isComposerFullscreen ? (
             <View style={styles.importPillRow}>

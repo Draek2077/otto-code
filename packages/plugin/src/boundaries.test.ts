@@ -52,6 +52,7 @@ const entries = {
   "./client/otto-architectural-views": "client", // OTTO(architectural-views): trusted app-only viewer/chat presentation.
   "./client/otto-workflows": "client", // OTTO(workflows): trusted presentation bridge.
   "./client/otto-schedules": "client", // OTTO(schedules): app-owned storage Settings bridge.
+  "./client/otto-visualizer": "client", // OTTO(visualizer): presentation never enters a server module.
   "./client/otto-bitbucket": "client", // OTTO(bitbucket): app-owned settings bridge.
   "./client/otto-connectors": "client", // OTTO(connectors): app-owned Settings presentation.
   "./client/otto-speech": "client", // OTTO(speech): app-owned Settings presentation.

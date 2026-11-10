@@ -146,7 +146,7 @@ function loadFilters(path) {
       filters[currentFilter] = [];
       continue;
     }
-    const patternMatch = /^  - "([^"]+)"\s*$/.exec(line);
+    const patternMatch = /^  - "([^"]+)"\s*(?:#.*)?$/.exec(line);
     if (currentFilter && patternMatch) filters[currentFilter].push(patternMatch[1]);
   }
   return filters;
@@ -254,12 +254,16 @@ test("PR routing declares stable behavior ownership", () => {
     quality: ["**/*.{cjs,js,json,jsx,mjs,ts,tsx}", "packages/expo-two-way-audio/**"],
     hub: ["packages/cli/src/commands/hub/**", "packages/server/src/server/hub/**"],
     server: [
+      "vendor/archify/**",
       "packages/otto-brain/**",
       "plugins/**",
       "packages/server/**",
       "packages/app/e2e/support/fixtures/recording.*",
     ],
     desktop: [
+      "packages/otto-visualizer/**",
+      "vendor/agent-flow/**",
+      "packages/app/src/otto/visualizer/**",
       "packages/desktop/**",
       "packages/app/src/desktop/**",
       "packages/app/src/otto/browser/**",
@@ -269,7 +273,12 @@ test("PR routing declares stable behavior ownership", () => {
       "packages/app/*config.{cjs,js,ts}",
       "packages/app/package.json",
     ],
-    app: ["packages/app/**", "packages/expo-two-way-audio/**"],
+    app: [
+      "packages/otto-visualizer/**",
+      "vendor/agent-flow/**",
+      "packages/app/**",
+      "packages/expo-two-way-audio/**",
+    ],
     sdk: [
       "packages/otto-brain/**",
       "packages/plugin/**",
@@ -280,6 +289,8 @@ test("PR routing declares stable behavior ownership", () => {
       "packages/protocol/**",
     ],
     browser: [
+      "packages/otto-visualizer/**",
+      "vendor/agent-flow/**",
       "packages/server/src/server/agent/provider-snapshot-manager.ts",
       "packages/server/src/server/session/provider/provider-catalog-session.ts",
       "packages/client/src/compat/normalize-provider-models.ts",
@@ -339,7 +350,8 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
     electronModules.every(
       (path) =>
         path.startsWith("packages/app/src/desktop/") ||
-        path.startsWith("packages/app/src/otto/browser/"),
+        path.startsWith("packages/app/src/otto/browser/") ||
+        path.startsWith("packages/app/src/otto/visualizer/"), // OTTO(visualizer): private guest has an explicit desktop owner.
     ),
   );
 
@@ -359,6 +371,9 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
   const routingSource = readFileSync(filtersPath, "utf8");
   assert.doesNotMatch(routingSource, /desktop_bridge|playwright_desktop|browser-\*|browser-\*\//);
   assert.deepEqual(filters.desktop, [
+    "packages/otto-visualizer/**",
+    "vendor/agent-flow/**",
+    "packages/app/src/otto/visualizer/**",
     "packages/desktop/**",
     "packages/app/src/desktop/**",
     "packages/app/src/otto/browser/**",
@@ -369,6 +384,8 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
     "packages/app/package.json",
   ]);
   assert.deepEqual(filters.browser, [
+    "packages/otto-visualizer/**",
+    "vendor/agent-flow/**",
     "packages/server/src/server/agent/provider-snapshot-manager.ts",
     "packages/server/src/server/session/provider/provider-catalog-session.ts",
     "packages/client/src/compat/normalize-provider-models.ts",

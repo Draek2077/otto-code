@@ -22,6 +22,10 @@ on:
     branches: [main]
     paths:
       - "packages/desktop/**"
+      # OTTO(visualizer): embedded bytes also need real installed-package proof.
+      - "packages/otto-visualizer/**"
+      - "vendor/agent-flow/**"
+      - "packages/app/src/otto/visualizer/**"
       - "plugins/**"
       - "nix/**"
       - ".github/workflows/desktop-packages.yml"

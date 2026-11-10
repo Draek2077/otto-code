@@ -32,10 +32,9 @@ const rendererLicense = readFileSync(
 // resolve unchanged. Size note: these add ~600 KB of base64; the Electron
 // view loads the shell as a data: URL, which Chromium caps at 2 MB - check
 // the emitted size stays comfortably below that when adding anything here.
-// Deliberately NOT declared in this package's own dependencies: the specifiers
-// resolve to the app workspace's @expo-google-fonts copy (hoisted to the root
-// node_modules), so the embedded faces are byte-identical to the fonts the
-// app itself registers and can never version-skew from them.
+// These exact 0.9 render faces are declared by this build package. Current
+// Paseo uses system/custom font stacks; host appearance projection still wins.
+// Never rely on fonts hoisted from an app or an ancestor checkout.
 function fontDataUri(specifier) {
   return `data:font/ttf;base64,${readFileSync(require.resolve(specifier)).toString("base64")}`;
 }
@@ -43,6 +42,15 @@ const interFont = fontDataUri("@expo-google-fonts/inter/400Regular/Inter_400Regu
 const jetbrainsMonoFont = fontDataUri(
   "@expo-google-fonts/jetbrains-mono/400Regular/JetBrainsMono_400Regular.ttf",
 );
+const fontLicenses = ["inter", "jetbrains-mono"]
+  .map((family) => {
+    const packageName = `@expo-google-fonts/${family}`;
+    return ["LICENSE", "LICENSE_FONT"]
+      .map((file) => readFileSync(require.resolve(`${packageName}/${file}`), "utf8"))
+      .join("\n");
+  })
+  .join("\n")
+  .replace(/<\/script/gi, "<\\/script");
 
 // Mirror theme.ts DEFAULT_UI_FONT_STACK / DEFAULT_MONO_FONT_STACK (web).
 const DEFAULT_UI_STACK =
@@ -242,6 +250,7 @@ html, body { height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden;
 <body>
 <div id="root"></div>
 <script id="otto-visualizer-renderer-license" type="text/plain">${rendererLicense}</script>
+<script id="otto-visualizer-font-licenses" type="text/plain">${fontLicenses}</script>
 <script>window.__OTTO_VISUALIZER_CHANNEL__="__OTTO_VISUALIZER_CHANNEL__";</script>
 <script>${appearanceScript}</script>
 <script>

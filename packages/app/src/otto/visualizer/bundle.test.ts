@@ -7,6 +7,9 @@ it("ships the real licensed renderer offline within the guest size limit", () =>
   expect(VISUALIZER_HTML).toContain("TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION");
   expect(VISUALIZER_HTML).toContain("connect-src 'none'");
   expect(VISUALIZER_HTML).toContain("font-src data:");
+  expect(VISUALIZER_HTML).toContain("The Inter Project Authors");
+  expect(VISUALIZER_HTML).toContain("The JetBrains Mono Project Authors");
+  expect(VISUALIZER_HTML).toContain("SIL Open Font License");
   expect(VISUALIZER_HTML).not.toContain("EventSource");
   expect(VISUALIZER_HTML).not.toContain("http://127.0.0.1");
   expect(VISUALIZER_HTML.match(/"__OTTO_VISUALIZER_CHANNEL__"/gu)).toHaveLength(1);

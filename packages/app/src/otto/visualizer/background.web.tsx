@@ -1,16 +1,12 @@
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Eye, EyeOff } from "lucide-react-native";
-import { withUnistyles } from "react-native-unistyles";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
 import { usePaneContext } from "@/panels/pane-context";
-import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
+import { VisualizerBackgroundControls } from "./background-controls";
 import { VisualizerGuest } from "./guest";
 import type { VisualizerBackgroundProps } from "./background-types";
 import { useChatBackgroundPointer } from "./background-pointer.web";
 import { useVisualizerBackgroundState } from "./background-state";
-const EyeIcon = withUnistyles(Eye),
-  HiddenIcon = withUnistyles(EyeOff);
 const ignoreState = () => {};
 export function VisualizerBackground({
   serverId,
@@ -63,7 +59,7 @@ export function VisualizerBackground({
               workspaceId={workspaceId}
               placement="background"
               selectedId={agentId}
-              follow={false}
+              follow={agentId === null}
               latestBubble={hidden}
               onState={ignoreState}
             />
@@ -75,12 +71,12 @@ export function VisualizerBackground({
       </div>
       {enabled ? (
         <div style={controlsStyle} data-chat-visualizer-controls>
-          <ToolbarButton
-            label={hidden ? "Show conversation" : "Show Visualizer only"}
-            onPress={toggle}
-          >
-            {hidden ? <EyeIcon size={16} /> : <HiddenIcon size={16} />}
-          </ToolbarButton>
+          <VisualizerBackgroundControls
+            serverId={serverId}
+            workspaceId={workspaceId}
+            hidden={hidden}
+            toggle={toggle}
+          />
         </div>
       ) : null}
     </div>
