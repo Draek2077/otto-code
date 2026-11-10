@@ -148,6 +148,11 @@ for (const compact of [false, true]) {
       await expect(
         visualizerContent(page).getByText("File token usage not reported", { exact: true }),
       ).toBeVisible();
+      await page.getByRole("button", { name: "Visualizer options", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Reported cost", exact: true }).click();
+      const costs = visualizerContent(page).getByTestId("visualizer-reported-cost");
+      await expect(costs).toBeVisible();
+      await expect(costs.getByText("Token usage not reported", { exact: true })).toHaveCount(3);
       await page.screenshot({
         path: info.outputPath(`visualizer-${compact ? "compact" : "wide"}.png`),
       });
@@ -200,7 +205,13 @@ for (const compact of [false, true]) {
       await page.screenshot({
         path: info.outputPath(`background-${compact ? "compact" : "wide"}.png`),
       });
-      await createAgentTabFromMenu(page);
+      if (compact) {
+        await page
+          .getByRole("button", { name: /Switch tabs/ })
+          .filter({ visible: true })
+          .click();
+        await page.getByTestId("workspace-tab-switcher-new-agent").click();
+      } else await createAgentTabFromMenu(page);
       await page
         .getByRole("button", { name: "Show Visualizer only", exact: true })
         .filter({ visible: true })

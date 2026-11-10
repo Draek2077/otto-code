@@ -25,6 +25,9 @@ after a `git subtree pull` if the upstream diff conflicts with it.
 - `web/hooks/simulation/handle-tool-events.ts`: file attention follows canonical
   read/write semantics while keeping the provider's original tool name. The HUD
   and file summary display unreported token usage explicitly instead of a zero.
+- `web/lib/reported-cost.ts` and cost surfaces preserve reported zeroes, retain
+  unknown-usage rows, mark mixed-provider subtotals and never infer missing
+  prices or tool-token counts from activity or serialized text.
 
 The application projection, demand leases, singleton, PIP, background, guest
 policy and preference compatibility live under `packages/app/src/otto/visualizer`.

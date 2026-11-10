@@ -42,7 +42,7 @@ export const TopBar = memo(function TopBar({
   compact,
 }: TopBarProps) {
   const rowStyle = { zIndex: Z.info, color: COLORS.textMuted, maxWidth: 'calc(100% - 6rem)' }
-  const hasCost = typeof totalCostUsd === 'number' && totalCostUsd > 0
+  const hasCost = typeof totalCostUsd === 'number' && Number.isFinite(totalCostUsd) && totalCostUsd >= 0
   const tokens = (
     <span className="whitespace-nowrap">
       {tokensKnown === false ? 'Token usage not reported' : <>{tokensPartial ? '≥ ' : ''}{formatTokens(totalTokens)} tokens</>}

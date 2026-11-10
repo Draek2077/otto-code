@@ -75,7 +75,7 @@ export function FileAttentionPanel({ visible, fileAttention, onOpenFile }: FileA
                     {displayPath}
                   </span>
                   <span className="text-[9px] font-mono" style={{ color: COLORS.textMuted }}>
-                    {file.totalTokens > 0 ? formatTokens(file.totalTokens) : '—'}
+                    {file.tokensKnown || file.totalTokens > 0 ? formatTokens(file.totalTokens) : '—'}
                   </span>
                 </div>
 
