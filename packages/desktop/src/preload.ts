@@ -31,8 +31,26 @@ interface AttachedBrowserRegistration {
   webContentsId: number;
 }
 
+// OTTO(visualizer): cache the owning window's boolean before the app mounts. The
+// sandboxed preload cannot load a local module. Only main can publish this event.
+let visualizerWindowVisible = false;
+const visualizerVisibilityListeners = new Set<() => void>();
+ipcRenderer.on("otto:visualizer:window-visible", (_event, visible: unknown) => {
+  if (typeof visible !== "boolean" || visible === visualizerWindowVisible) return;
+  visualizerWindowVisible = visible;
+  for (const listener of visualizerVisibilityListeners) listener();
+});
+
 contextBridge.exposeInMainWorld("paseoDesktop", {
   documentExport: { print: (html: string) => ipcRenderer.invoke("otto:editor:print", { html }) }, // OTTO(editor): sandbox-safe, static document printing only.
+  // OTTO(visualizer): read-only window lifecycle; no privileged operation is exposed.
+  visualizerWindow: {
+    getSnapshot: () => visualizerWindowVisible,
+    subscribe: (listener: () => void) => {
+      visualizerVisibilityListeners.add(listener);
+      return () => visualizerVisibilityListeners.delete(listener);
+    },
+  },
   // OTTO(wake-word): sandbox-safe literals; no renderer native-module access.
   wakeWord: {
     capabilities: () => ipcRenderer.invoke("otto:wake-word:capabilities"),

@@ -179,6 +179,8 @@ export interface DesktopInvokeBridge {
 export interface DesktopHostBridge {
   documentExport?: { print(html: string): Promise<string> }; // OTTO(editor): optional only until the desktop shell is updated.
   wakeWord?: WakeWordBridge; // OTTO(wake-word): private device IPC, never relay identity.
+  // OTTO(visualizer): the native owner can hide while Chromium still considers the page visible.
+  visualizerWindow?: { getSnapshot(): boolean; subscribe(listener: () => void): () => void };
   platform?: string;
   windowChromeMode?: string;
   invoke?: DesktopInvokeBridge["invoke"];

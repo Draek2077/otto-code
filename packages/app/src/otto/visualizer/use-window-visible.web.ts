@@ -1,1 +1,1 @@
-export { useAppVisible as useVisualizerWindowVisible } from "@/hooks/use-app-visible";
+export { useVisualizerRendererVisible as useVisualizerWindowVisible } from "./use-renderer-visible";

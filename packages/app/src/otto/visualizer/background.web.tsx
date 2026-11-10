@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRetainedPanelActive } from "@/components/retained-panel";
-import { useAppVisible } from "@/hooks/use-app-visible";
+import { useVisualizerRendererVisible } from "./use-renderer-visible";
 import { usePaneContext } from "@/panels/pane-context";
 import { VisualizerBackgroundControls } from "./background-controls";
 import { VisualizerGuest } from "./guest";
@@ -16,7 +16,7 @@ export function VisualizerBackground({
   enabled = false,
 }: VisualizerBackgroundProps) {
   const active = useRetainedPanelActive(),
-    visible = useAppVisible(),
+    visible = useVisualizerRendererVisible(),
     { tabId } = usePaneContext();
   const key = `${serverId}:${workspaceId}:${tabId}`;
   const hidden = useVisualizerBackgroundState((state) => state.hidden[key] === true);

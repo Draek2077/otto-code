@@ -73,8 +73,11 @@ File-open commands are accepted only for actual paths projected for this guest.
 One window lease arbitrates tab and PIP renderers. PIP has priority. Inactive
 retained panels, other workspaces and hidden/minimized windows destroy the
 guest, simulation, subscriptions and local render effects. They retain tab
-descriptors, selections and device preferences. Restoring a surface creates a
-fresh validated guest and canonical replay. Visible chat backgrounds are the
+descriptors, selections and device preferences. In Electron, the owning native
+window publishes visibility to its own preload. Page visibility can differ
+from the native window state, so all three Visualizer placements use that
+native signal to release their guest. Restoring a surface creates a fresh
+validated guest and canonical replay. Visible chat backgrounds are the
 explicit singleton exception; each follows its own chat root.
 An unsent draft follows the focused workspace root until its own canonical agent
 exists. The tab identity carries the deliberate conversation visibility choice

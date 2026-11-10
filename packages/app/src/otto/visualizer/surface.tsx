@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore }
 import { Text, View } from "react-native";
 import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
 import { useAppSettings } from "@/hooks/use-settings";
-import { useAppVisible } from "@/hooks/use-app-visible";
+import { useVisualizerRendererVisible } from "./use-renderer-visible";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,7 @@ export function VisualizerSurface({
   active,
 }: VisualizerSurfaceProps) {
   const { settings, updateSettings } = useAppSettings();
-  const visible = useAppVisible(),
+  const visible = useVisualizerRendererVisible(),
     retained = useRetainedPanelActive(),
     identity = useId();
   const owner = useSyncExternalStore(

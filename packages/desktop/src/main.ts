@@ -61,6 +61,7 @@ import {
   hardenVisualizerSession,
   hardenVisualizerContents,
 } from "./otto/visualizer/guest.js"; // OTTO(visualizer): isolated offline render guest, never a browser profile.
+import { attachVisualizerWindowVisibility } from "./otto/visualizer/window-visibility.js"; // OTTO(visualizer)
 import {
   registerNotificationHandlers,
   ensureNotificationCenterRegistration,
@@ -774,6 +775,7 @@ async function createWindow(
 
   setupDarwinCompositorWatchdog(mainWindow);
   setupWindowResizeEvents(mainWindow);
+  attachVisualizerWindowVisibility(mainWindow); // OTTO(visualizer): scope native visibility to this window.
   if (windowStateStore) {
     setupWindowStatePersistence(mainWindow, windowStateStore);
   }

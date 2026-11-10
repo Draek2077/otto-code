@@ -48,9 +48,13 @@ export async function runVisualizerRegression({ page, setHidden, artifactDir }) 
   );
   expect(blocked).toBe(true);
   await page.screenshot({ path: path.join(artifactDir, "visualizer-over-browser.png") });
+  const windowVisible = () =>
+    page.evaluate(() => window.paseoDesktop.visualizerWindow.getSnapshot());
   await setHidden(true);
+  await expect.poll(windowVisible).toBe(false);
   await expect(guest).toHaveCount(0);
   await setHidden(false);
+  await expect.poll(windowVisible).toBe(true);
   await expect(guest).toHaveCount(1);
   await expect.poll(async () => (await guestIdentity(page)).ready).toBe(true);
   const restored = await guestIdentity(page);
