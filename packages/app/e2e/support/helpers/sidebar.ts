@@ -45,7 +45,16 @@ async function expectContextMenuAtPointer(
   const bounds = measured.value;
   if (!bounds) throw new Error(`Could not measure ${menuTestID}`);
   expect(Math.abs(bounds.x - anchor.x)).toBeLessThanOrEqual(2);
-  expect(Math.abs(bounds.y - (anchor.y + 4))).toBeLessThanOrEqual(2);
+  // OTTO(architectural-views): additional registered navigation rows can put the
+  // pointer near the viewport edge. The existing menu owner flips above it;
+  // either anchored edge must retain the 4px gap and remain inside the viewport.
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("Context-menu placement needs a measured viewport");
+  const belowGap = Math.abs(bounds.y - (anchor.y + 4));
+  const aboveGap = Math.abs(bounds.y + bounds.height - (anchor.y - 4));
+  expect(Math.min(belowGap, aboveGap)).toBeLessThanOrEqual(2);
+  expect(bounds.y).toBeGreaterThanOrEqual(6);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height - 6);
 }
 
 export async function openWorkspaceContextMenu(page: Page, workspaceId: string): Promise<void> {

@@ -156,6 +156,23 @@ async function proveRetainedDraft(input: {
   await (await reviewDialog).accept();
   await reviewing;
   await expect(editor.getByRole("button", { name: "Publish", exact: true })).toBeEnabled();
+  const reviewed = await api.call(api.rpc.readView, {
+    scope,
+    identity,
+    selection: { kind: "draft", draftId: "legacy-first" },
+  });
+  if (reviewed.kind !== "draft") throw new Error("The reviewed legacy draft must remain staged");
+  // Reviewing its base changes the draft revision and starts a new preview.
+  // Wait for that exact preview before human publication, not a timer/retry.
+  await api.call(api.rpc.renderView, {
+    scope,
+    identity,
+    selection: { kind: "draft", draftId: "legacy-first" },
+    expectedRevision: reviewed.draft.revision,
+  });
+  await expect(
+    page.getByRole("button", { name: "Zoom in", exact: true }).filter({ visible: true }),
+  ).toBeEnabled();
   const dialog = page.waitForEvent("dialog");
   const publishing = editor.getByRole("button", { name: "Publish", exact: true }).click();
   await (await dialog).accept();
