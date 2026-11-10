@@ -3,6 +3,9 @@ export const visualizerStyles = StyleSheet.create((theme) => ({
   root: { flex: 1, minHeight: 0, minWidth: 0, backgroundColor: theme.colors.surface0 },
   frame: { flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" },
   toolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 0,
     minHeight: 36,
     height: "auto",
     flexWrap: "wrap",

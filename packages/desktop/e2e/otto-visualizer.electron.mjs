@@ -4,6 +4,7 @@ import { expect } from "@playwright/test";
 async function openVisualizer(page, option) {
   await page
     .getByRole("button", { name: "Visualizer", exact: true })
+    .and(page.locator("[aria-expanded]"))
     .filter({ visible: true })
     .click();
   await page.getByRole("menuitem", { name: option, exact: true }).click();

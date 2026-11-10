@@ -113,6 +113,10 @@ for (const compact of [false, true]) {
       ).toBeVisible({ timeout: 60000 });
       await visualizerMenu(page, "Open Visualizer tab");
       await expectVisualizerReady(page);
+      await expect(page.getByTestId("visualizer-toolbar").filter({ visible: true })).toHaveCSS(
+        "flex-direction",
+        "row",
+      );
       await expect
         .poll(async () =>
           (await observedCommands(page))

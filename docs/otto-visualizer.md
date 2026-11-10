@@ -107,6 +107,9 @@ shapes, context ring/bar, bloom, glow, stars, backdrop, frame meter, HUD, sound
 volume, PIP size/position and exact 0.9 preference keys. Conflicting old placement
 flags are normalized at one dated compatibility boundary without resetting data.
 Settings and action failures remain visible in their current context.
+The private built-in UI bridge binds app-owned controls to the app query client.
+Plugin installation caches remain separate; a panel must not create another
+device-settings owner that the window host cannot observe.
 The background control strip restores the conversation, switches to PIP or the
 tab, and closes background placement without moving the Composer.
 

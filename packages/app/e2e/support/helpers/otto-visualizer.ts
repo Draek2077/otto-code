@@ -52,6 +52,7 @@ export async function observedCommands(page: Page) {
 export async function visualizerMenu(page: Page, label: string) {
   await page
     .getByRole("button", { name: "Visualizer", exact: true })
+    .and(page.locator("[aria-expanded]"))
     .filter({ visible: true })
     .click();
   await page.getByRole("menuitem", { name: label, exact: true }).click();
