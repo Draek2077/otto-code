@@ -251,6 +251,7 @@ function Guest({
           key={bridge.channel}
           html={html}
           channel={bridge.channel}
+          interactive={placement !== "pip"}
           onMessage={bridge.accept}
           onTransport={bridge.attach}
           onFailure={failure}

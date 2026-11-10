@@ -60,11 +60,15 @@ export async function runVisualizerRegression({ page, setHidden, artifactDir }) 
   const restored = await guestIdentity(page);
   expect(restored.id).not.toBe(first.id);
   expect(restored.channel).not.toBe(first.channel);
+  await expect(guest).toHaveCSS("pointer-events", "none");
+  // Hover the graph itself. The host, not the separate webview, owns PIP input.
   await pip.hover();
+  await expect(pip.getByTestId("visualizer-toolbar")).toHaveCSS("opacity", "1");
   await pip.getByRole("button", { name: "Open Visualizer tab", exact: true }).click();
   await expect(pip).toHaveCount(0);
   await expect(guest).toHaveCount(1);
   await expect.poll(async () => (await guestIdentity(page)).ready).toBe(true);
+  await expect(guest).toHaveCSS("pointer-events", "auto");
   // Closing the actual tab retires its guest; descriptor owners remain Paseo's.
   const tab = page
     .locator('[data-testid^="workspace-tab-plugin_workspace_15_otto-visualizer"]')

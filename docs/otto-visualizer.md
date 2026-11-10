@@ -89,6 +89,8 @@ modal overlay plane; pane-scoped sheets keep their measured host and native
 sheets keep their original presenter. Its two sizes clamp to the current
 window. Dragging persists position fractions; resizing keeps the nearest-edge
 inset. The toolbar appears on hover/focus and stays available on touch layouts.
+PIP shows the live graph without passing pointer or keyboard input into the
+guest. Host controls stay reachable even over Electron's separate webview.
 Expand reveals the existing tab; closing PIP does not delete it.
 
 Chat background wraps only the conversation viewport. The Composer stays

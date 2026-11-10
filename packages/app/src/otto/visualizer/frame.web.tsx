@@ -2,7 +2,14 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { visualizerFrameDocument } from "./frame-document";
 import type { VisualizerFrameProps } from "./frame-types";
 const style = { flex: 1, width: "100%", height: "100%", border: 0, background: "transparent" };
-export function VisualizerFrame({ html, onMessage, onTransport, onFailure }: VisualizerFrameProps) {
+const glanceStyle = { ...style, pointerEvents: "none" as const };
+export function VisualizerFrame({
+  html,
+  interactive,
+  onMessage,
+  onTransport,
+  onFailure,
+}: VisualizerFrameProps) {
   const frame = useRef<HTMLIFrameElement | null>(null);
   const document = useMemo(() => visualizerFrameDocument(html), [html]);
   const failed = useCallback(() => onFailure("The Visualizer could not be loaded."), [onFailure]);
@@ -26,7 +33,8 @@ export function VisualizerFrame({ html, onMessage, onTransport, onFailure }: Vis
       referrerPolicy="no-referrer"
       allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'"
       onError={failed}
-      style={style}
+      tabIndex={interactive ? undefined : -1}
+      style={interactive ? style : glanceStyle}
     />
   );
 }

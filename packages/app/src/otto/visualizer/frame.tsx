@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import type { VisualizerFrameProps } from "./frame-types";
 const origins = ["about:blank"];
-export function VisualizerFrame({ html, onMessage, onTransport, onFailure }: VisualizerFrameProps) {
+export function VisualizerFrame({
+  html,
+  interactive,
+  onMessage,
+  onTransport,
+  onFailure,
+}: VisualizerFrameProps) {
   const frame = useRef<WebView | null>(null);
   const source = useMemo(() => ({ html, baseUrl: "about:blank" }), [html]);
   const receive = useCallback(
@@ -23,6 +29,7 @@ export function VisualizerFrame({ html, onMessage, onTransport, onFailure }: Vis
     <WebView
       ref={frame}
       source={source}
+      pointerEvents={interactive ? "auto" : "none"}
       onMessage={receive}
       onError={fail}
       onHttpError={fail}

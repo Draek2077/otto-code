@@ -13,7 +13,13 @@ const style = {
 };
 const PREFIX = "__OTTO_VISUALIZER_V1__";
 const inject = `window.__ottoVisualizerPost=function(message){console.log(${JSON.stringify(PREFIX)}+message)};true;`;
-export function VisualizerFrame({ html, onMessage, onTransport, onFailure }: VisualizerFrameProps) {
+export function VisualizerFrame({
+  html,
+  interactive,
+  onMessage,
+  onTransport,
+  onFailure,
+}: VisualizerFrameProps) {
   const host = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const node = host.current;
@@ -63,6 +69,12 @@ export function VisualizerFrame({ html, onMessage, onTransport, onFailure }: Vis
         guest.style.position = "absolute";
         guest.style.inset = "0";
         guest.style.border = "0";
+        // PIP is a glance view. The host must see hover over the graph and keep
+        // its own toolbar clickable; a cross-process guest can swallow that input.
+        if (!interactive) {
+          guest.style.pointerEvents = "none";
+          guest.tabIndex = -1;
+        }
         guest.src = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
         guest.addEventListener("dom-ready", loaded);
         guest.addEventListener("console-message", message);
@@ -95,6 +107,6 @@ export function VisualizerFrame({ html, onMessage, onTransport, onFailure }: Vis
         guest = null;
       }
     };
-  }, [html, onMessage, onTransport, onFailure]);
+  }, [html, interactive, onMessage, onTransport, onFailure]);
   return <div ref={host} style={style} data-testid="visualizer-electron-guest" />;
 }
