@@ -111,7 +111,7 @@ for (const compact of [false, true]) {
           .filter({ visible: true })
           .first(),
       ).toBeVisible({ timeout: 60000 });
-      await visualizerMenu(page, "Open Visualizer tab");
+      await visualizerMenu(page, "Open Visualizer tab", compact);
       await expectVisualizerReady(page);
       await expect(page.getByTestId("visualizer-toolbar").filter({ visible: true })).toHaveCSS(
         "flex-direction",
@@ -165,7 +165,7 @@ for (const compact of [false, true]) {
       await pip.getByRole("button", { name: "Open Visualizer tab", exact: true }).click();
       await expect(pip).toHaveCount(0);
       await expectVisualizerReady(page);
-      await visualizerMenu(page, "Chat background");
+      await visualizerMenu(page, "Chat background", compact);
       // Native tab controls restore the existing chat; the Visualizer descriptor remains saved.
       if (compact) await selectTabFromSwitcher(page, "Visualizer root");
       else
@@ -226,15 +226,21 @@ for (const compact of [false, true]) {
       await expect(page.locator('iframe[title="Visualizer"]')).toHaveCount(0);
       await expect(composer).toBeEnabled();
     } catch (error) {
-      await page.screenshot({ path: info.outputPath("visualizer-before-cleanup.png") });
-      await writeFile(
-        info.outputPath("visualizer-diagnostic.json"),
-        JSON.stringify(
-          { page: await page.locator("body").innerText(), requests: ottoProvider.requests },
-          null,
-          2,
-        ),
-      );
+      try {
+        if (!page.isClosed()) {
+          await page.screenshot({ path: info.outputPath("visualizer-before-cleanup.png") });
+          await writeFile(
+            info.outputPath("visualizer-diagnostic.json"),
+            JSON.stringify(
+              { page: await page.locator("body").innerText(), requests: ottoProvider.requests },
+              null,
+              2,
+            ),
+          );
+        }
+      } catch {
+        // Timeout teardown may close the page; retain the actual journey error.
+      }
       throw error;
     } finally {
       await other.cleanup();

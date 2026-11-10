@@ -27,6 +27,7 @@ import {
 } from "@getpaseo/protocol/terminal-profiles";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import type { Theme } from "@/styles/theme";
+import { VisualizerWorkspaceMenuItems } from "@/otto/visualizer/workspace-button"; // OTTO(visualizer): compact uses the same actions in its existing workspace menu.
 import {
   useWorkspaceScriptsMenuPages,
   type UseWorkspaceScriptsMenuPagesInput,
@@ -270,6 +271,12 @@ export function WorkspaceHeaderMenuMobile({
         sheetTitle={t("workspace.header.actions.workspaceActions")}
       >
         {scriptsMenu.trigger}
+        <DropdownMenuLabel>Visualizer</DropdownMenuLabel>
+        <VisualizerWorkspaceMenuItems
+          serverId={normalizedServerId}
+          workspaceId={scripts.workspaceId}
+        />
+        <DropdownMenuSeparator />
         {showCreateBrowserTab ? (
           <DropdownMenuItem
             testID="workspace-header-new-browser"

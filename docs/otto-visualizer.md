@@ -100,7 +100,8 @@ the conversation is hidden. Rich media readers are separate future work.
 
 ## Controls and compatibility
 
-Native toolbars provide chat/aggregate selection, focused-chat following/pinning,
+Wide headers expose the Visualizer menu; compact headers use the same actions
+inside Workspace actions. Native toolbars provide chat/aggregate selection, focused-chat following/pinning,
 fit, rendering sound mute, PIP, and existing Timeline, File activity, Reported
 cost, Failures and statistics panels. Device settings retain render quality,
 shapes, context ring/bar, bloom, glow, stars, backdrop, frame meter, HUD, sound

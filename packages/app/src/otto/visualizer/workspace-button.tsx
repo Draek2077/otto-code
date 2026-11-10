@@ -8,7 +8,7 @@ import { openVisualizerPanel } from "./actions";
 import type { Theme } from "@/styles/theme";
 const Icon = withUnistyles(Orbit);
 const iconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-export function VisualizerWorkspaceButton({
+export function VisualizerWorkspaceMenuItems({
   serverId,
   workspaceId,
 }: {
@@ -40,16 +40,23 @@ export function VisualizerWorkspaceButton({
     else await save(settings.visualizerSurface);
   }, [save, settings.visualizerSurface, serverId, workspaceId]);
   return (
+    <>
+      <DropdownMenuItem onSelect={preferred}>Open preferred Visualizer</DropdownMenuItem>
+      <DropdownMenuItem onSelect={tab}>Open Visualizer tab</DropdownMenuItem>
+      <DropdownMenuItem onSelect={pip}>Picture in picture</DropdownMenuItem>
+      <DropdownMenuItem onSelect={background}>Chat background</DropdownMenuItem>
+      <DropdownMenuItem onSelect={close}>Close ambient Visualizer</DropdownMenuItem>
+    </>
+  );
+}
+export function VisualizerWorkspaceButton(props: { serverId: string; workspaceId: string }) {
+  return (
     <DropdownMenu>
       <ToolbarButton kind="menu" label="Visualizer">
         <Icon size={16} uniProps={iconColor} />
       </ToolbarButton>
       <DropdownMenuContent>
-        <DropdownMenuItem onSelect={preferred}>Open preferred Visualizer</DropdownMenuItem>
-        <DropdownMenuItem onSelect={tab}>Open Visualizer tab</DropdownMenuItem>
-        <DropdownMenuItem onSelect={pip}>Picture in picture</DropdownMenuItem>
-        <DropdownMenuItem onSelect={background}>Chat background</DropdownMenuItem>
-        <DropdownMenuItem onSelect={close}>Close ambient Visualizer</DropdownMenuItem>
+        <VisualizerWorkspaceMenuItems {...props} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
