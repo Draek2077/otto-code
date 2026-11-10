@@ -143,7 +143,9 @@ jobs:
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-architectural-views.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             visualizer)
-              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-visualizer.spec.ts --workers=1 --retries=0 --max-failures=1
+              # OTTO(visualizer): root overlay changes retain Paseo's sheet dismissal/hit testing.
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/sidebar-mobile-menu-sheets.spec.ts e2e/browser/sidebar-title-width.spec.ts e2e/browser/schedules-project-target.spec.ts --output=test-results/visualizer-paseo --workers=1 --retries=0 --max-failures=1
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-visualizer.spec.ts --output=test-results/visualizer-feature --workers=1 --retries=0 --max-failures=1
               ;;
             schedules)
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-schedules.spec.ts e2e/browser/schedules-edit-model-hydration.spec.ts e2e/browser/schedules-project-target.spec.ts e2e/browser/schedules-relative-time.spec.ts --workers=1 --retries=0 --max-failures=1

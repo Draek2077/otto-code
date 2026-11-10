@@ -104,7 +104,18 @@ test("manual diagnostics stay bounded while every push and pull request retains 
   );
   assert.ok(source.includes('case "$OTTO_ACCEPTANCE_JOURNEY" in'));
   assert.ok(
-    source.includes("e2e/browser/otto-visualizer.spec.ts --workers=1 --retries=0 --max-failures=1"),
+    source.includes(
+      "e2e/browser/otto-visualizer.spec.ts --output=test-results/visualizer-feature --workers=1 --retries=0 --max-failures=1",
+    ),
+  );
+  assert.ok(
+    source.includes(
+      "e2e/browser/sidebar-mobile-menu-sheets.spec.ts e2e/browser/sidebar-title-width.spec.ts e2e/browser/schedules-project-target.spec.ts --output=test-results/visualizer-paseo --workers=1 --retries=0 --max-failures=1",
+    ),
+  );
+  assert.ok(
+    source.indexOf("test-results/visualizer-paseo") <
+      source.indexOf("test-results/visualizer-feature"),
   );
   assert.ok(
     source.includes(

@@ -582,13 +582,17 @@ or environment review.
 
 <!-- OTTO(visualizer): the existing app and Electron lanes own real render proof. -->
 
-| Surface                                                                                                                  | Behavioral coverage                                                                                   |
-| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Canonical roots/children, streaming revisions, reported usage, failures/cancellation, file overlaps and bounded excerpts | `src/otto/visualizer/projection.test.ts`, `discoveries.test.ts`, `tool-data.test.ts`                  |
-| Selected/aggregate timeline demand, independent Speech leases, disconnect/replay and teardown                            | `src/otto/visualizer/feed-owner.test.ts`                                                              |
-| Singleton handoff, private-frame bounds, nearest-edge resize, offline bundle and legacy preferences                      | `src/otto/visualizer/ownership.test.ts`, `bundle.test.ts`, `preferences.test.ts`                      |
-| Real provider tool loop, real graph, wide/compact panel, retained workspace handoff, PIP, background and Composer        | `e2e/browser/otto-visualizer.spec.ts`, regular Otto App Acceptance and manual `visualizer` diagnostic |
-| Electron private guest, offline policy, browser plane, hidden-window disposal and tab/PIP handoff                        | `packages/desktop/e2e/otto-visualizer.electron.mjs`, called by the existing desktop browser journey   |
+| Surface                                                                                                                  | Behavioral coverage                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical roots/children, streaming revisions, reported usage, failures/cancellation, file overlaps and bounded excerpts | `src/otto/visualizer/projection.test.ts`, `discoveries.test.ts`, `tool-data.test.ts`                                                               |
+| Selected/aggregate timeline demand, independent Speech leases, disconnect/replay and teardown                            | `src/otto/visualizer/feed-owner.test.ts`                                                                                                           |
+| Singleton handoff, private-frame bounds, nearest-edge resize, offline bundle and legacy preferences                      | `src/otto/visualizer/ownership.test.ts`, `bundle.test.ts`, `preferences.test.ts`                                                                   |
+| Real provider tool loop, real graph, wide/compact panel, retained workspace handoff, PIP, background and Composer        | `e2e/browser/otto-visualizer.spec.ts`, regular Otto App Acceptance and manual `visualizer` diagnostic                                              |
+| Electron private guest, offline policy, browser plane, hidden-window disposal and tab/PIP handoff                        | `packages/desktop/e2e/otto-visualizer.electron.mjs`, called by the existing desktop browser journey                                                |
+| Paseo compact sheet dismissal, sidebar menu backdrops and schedule-sheet lifetime after overlay promotion                | `sidebar-mobile-menu-sheets.spec.ts`, `sidebar-title-width.spec.ts`, `schedules-project-target.spec.ts`; included before the Visualizer diagnostic |
+
+Reported cost zero/unknown/subtotal semantics use the pure production renderer
+helper through `src/otto/visualizer/reported-cost.test.ts`.
 
 `src/otto/visualizer/background-state.test.ts` covers draft/agent tab visibility,
 retained eviction and explicit/tab close.

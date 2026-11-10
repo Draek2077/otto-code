@@ -1,21 +1,21 @@
-import {
-  Fragment,
-  useMemo,
-  type ComponentType,
-  type CSSProperties,
-  type PropsWithChildren,
-} from "react";
+import { Fragment, useMemo, type ComponentType, type PropsWithChildren } from "react";
+import { StyleSheet, View } from "react-native";
 import { createPortal } from "react-dom";
 import { getOverlayRoot, OverlayLayerProvider, useOverlayLayer } from "@/lib/overlay-root";
 import { useVisualizerScopedSheets } from "./sheet-scope";
 
-const style: CSSProperties = { position: "fixed", inset: 0, pointerEvents: "none" };
+const style = StyleSheet.absoluteFillObject;
 function VisualizerRootSheetLayer({ children }: PropsWithChildren) {
   const layer = useOverlayLayer("modal");
-  const containerStyle = useMemo(() => ({ ...style, zIndex: layer }), [layer]);
+  const containerStyle = useMemo(() => [style, { zIndex: layer }], [layer]);
   return createPortal(
     <OverlayLayerProvider layer={layer}>
-      <div style={containerStyle}>{children}</div>
+      {/* React Native box-none restores child hit testing beneath overlay-root's
+          pointer-events:none. A plain HTML parent makes the backdrop button
+          inherit none while Gorhom's animated visual backdrop remains hittable. */}
+      <View style={containerStyle} pointerEvents="box-none">
+        {children}
+      </View>
     </OverlayLayerProvider>,
     getOverlayRoot(),
   );

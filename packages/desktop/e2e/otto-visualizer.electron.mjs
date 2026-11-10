@@ -28,9 +28,11 @@ export async function runVisualizerRegression({ page, setHidden, artifactDir }) 
   await openVisualizer(page, "Picture in picture");
   const pip = page.getByTestId("visualizer-window-pip");
   const guest = page.locator('webview[partition="otto-visualizer"]');
-  await expect(pip).toBeVisible();
+  // The first open lazily compiles the production renderer/Surface in Metro.
+  // Use the browser lane's bounded readiness budget, retaining every assertion.
+  await expect(pip).toBeVisible({ timeout: 30000 });
   await expect(guest).toHaveCount(1);
-  await expect.poll(async () => (await guestIdentity(page)).ready).toBe(true);
+  await expect.poll(async () => (await guestIdentity(page)).ready, { timeout: 30000 }).toBe(true);
   const first = await guestIdentity(page);
   expect(first.canvas).toBeGreaterThan(0);
   expect(first.require).toBe("undefined");
