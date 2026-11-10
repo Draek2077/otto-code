@@ -81,7 +81,9 @@ exists. The tab identity carries the deliberate conversation visibility choice
 through that normal Paseo handoff.
 
 On web/Electron PIP uses the full window overlay, above resident browser guests,
-below transient sidebars, menus and dialogs. Its two sizes clamp to the current
+below transient sidebars, menus and dialogs. Root web menu sheets join the shared
+modal overlay plane; pane-scoped sheets keep their measured host and native
+sheets keep their original presenter. Its two sizes clamp to the current
 window. Dragging persists position fractions; resizing keeps the nearest-edge
 inset. The toolbar appears on hover/focus and stays available on touch layouts.
 Expand reveals the existing tab; closing PIP does not delete it.

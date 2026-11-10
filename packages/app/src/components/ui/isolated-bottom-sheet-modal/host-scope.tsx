@@ -15,6 +15,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
+import { VisualizerScopedSheets } from "@/otto/visualizer/sheet-scope"; // OTTO(visualizer): preserve scope geometry instead of promoting pane sheets to the window.
 
 /**
  * Hosts the sheets presented from inside it.
@@ -70,12 +71,14 @@ export function SheetHostScope({
 
   return (
     <BottomSheetModalInternalProvider value={value}>
-      <View style={[styles.scope, style]}>
-        {children}
-        <View ref={hostRef} style={styles.host} pointerEvents="box-none" onLayout={handleLayout}>
-          <PortalHost name={hostName} />
+      <VisualizerScopedSheets>
+        <View style={[styles.scope, style]}>
+          {children}
+          <View ref={hostRef} style={styles.host} pointerEvents="box-none" onLayout={handleLayout}>
+            <PortalHost name={hostName} />
+          </View>
         </View>
-      </View>
+      </VisualizerScopedSheets>
     </BottomSheetModalInternalProvider>
   );
 }

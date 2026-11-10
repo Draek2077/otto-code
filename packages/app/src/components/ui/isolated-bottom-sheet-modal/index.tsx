@@ -13,6 +13,7 @@ import {
 } from "./visibility-tracker";
 import { BottomSheetScope } from "@/components/ui/bottom-sheet-scope";
 import { SheetBackdrop } from "./sheet-backdrop";
+import { useVisualizerSheetLayer } from "@/otto/visualizer/sheet-layer"; // OTTO(visualizer): root web sheets stay above ambient PIP and swooped sidebars.
 
 type GorhomBottomSheetModalMethods = ElementRef<typeof GorhomBottomSheetModal>;
 
@@ -69,6 +70,7 @@ export const IsolatedBottomSheetModal = forwardRef<
   IsolatedBottomSheetModalRef,
   IsolatedBottomSheetModalProps
 >(function IsolatedBottomSheetModal(props, ref) {
+  const sheetLayer = useVisualizerSheetLayer();
   // Gorhom puts this ref into its provider queue and reads `.current` for stack operations.
   // A callback ref accepts the handle but leaves that queue unable to dismiss or restore it.
   const modalRef = useRef<GorhomBottomSheetModalMethods>(null);
@@ -107,6 +109,7 @@ export const IsolatedBottomSheetModal = forwardRef<
   const modal = (
     <GorhomBottomSheetModal
       {...bottomSheetProps}
+      containerComponent={bottomSheetProps.containerComponent ?? sheetLayer}
       ref={modalRef}
       enableDismissOnClose={enableDismissOnClose}
       stackBehavior={presentation}

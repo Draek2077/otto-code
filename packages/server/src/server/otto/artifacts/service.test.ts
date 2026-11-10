@@ -62,6 +62,9 @@ test("an inspected empty lock requires current identity and explicit recovery, n
   await expect
     .poll(async () => (await f.service.read(f.ref(created.id))).artifact.status)
     .toBe("ready");
+  // Ready publication precedes last-good snapshot and transaction cleanup.
+  // Inject this fixture's foreign lock only after that admitted write releases.
+  await expect.poll(async () => (await f.service.read(f.ref(created.id))).lock).toBeNull();
   const doc = await f.service.read(f.ref(created.id)),
     lock = path.join(path.dirname(doc.path), `.artifact-${created.id}.lock`);
   await mkdir(lock);
