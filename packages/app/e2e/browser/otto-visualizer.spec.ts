@@ -31,15 +31,18 @@ const completion = z.object({
   messages: z.array(z.object({ role: z.string(), content: z.unknown().optional() })),
   tools: z.array(z.object({ function: z.object({ name: z.string() }) })).optional(),
 });
+const followUpPrompt = "visualizer-proof: follow-up";
+const followUpReply = "The Visualizer follow-up reached the provider.";
 function proofReply(body: unknown) {
   const request = completion.parse(body);
-  const marker = request.messages.find(
+  const marker = request.messages.findLast(
     (row) =>
       row.role === "user" &&
       typeof row.content === "string" &&
       row.content.includes("visualizer-proof:"),
   );
   if (!marker) return "Visualizer fixture";
+  if (marker.content === followUpPrompt) return followUpReply;
   const count = request.messages.filter((row) => row.role === "tool").length;
   if (count >= 2) return "Visualizer canonical reply with **Markdown** and a real tool failure.";
   const name = count === 0 ? "otto_write_file" : "otto_read_file";
@@ -191,22 +194,23 @@ for (const compact of [false, true]) {
       const composer = page
         .getByRole("textbox", { name: "Message agent...", exact: true })
         .filter({ visible: true });
+      const send = page
+        .getByRole("button", { name: "Send message", exact: true })
+        .filter({ visible: true });
       await page.getByRole("button", { name: "Show Visualizer only", exact: true }).click();
       await expect(
         page.getByRole("button", { name: "Show conversation", exact: true }),
       ).toBeVisible();
-      await composer.fill("visualizer-proof: follow-up");
-      await composer.press("Enter");
+      // Compact uses the send control. Enter inserts a line break there.
+      await composer.fill(followUpPrompt);
+      await send.click();
       await expect(
         page.getByRole("button", { name: "Show conversation", exact: true }),
       ).toBeVisible();
       await expect(composer).toBeEnabled();
       await page.getByRole("button", { name: "Show conversation", exact: true }).click();
       await expect(
-        page
-          .getByText("Visualizer canonical reply with", { exact: false })
-          .filter({ visible: true })
-          .first(),
+        page.getByText(followUpReply, { exact: true }).filter({ visible: true }),
       ).toBeVisible();
       await page.screenshot({
         path: info.outputPath(`background-${compact ? "compact" : "wide"}.png`),
@@ -224,7 +228,7 @@ for (const compact of [false, true]) {
         .click();
       const draftPrompt = "visualizer-proof: draft handoff";
       await composer.fill(draftPrompt);
-      await composer.press("Enter");
+      await send.click();
       await expect(page.getByTestId("user-message").filter({ hasText: draftPrompt })).toHaveCount(
         1,
       );
