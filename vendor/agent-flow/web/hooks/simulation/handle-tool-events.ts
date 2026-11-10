@@ -1,0 +1,242 @@
+import { COLORS } from '@/lib/colors'
+import { NODE, type Discovery, type ToolCallNode } from '@/lib/agent-types'
+import { TOOL_DEDUP_WINDOW_S } from '@/lib/canvas-constants'
+import { pushTimelineBlock, type ProcessEventContext, type MutableEventState } from './process-event'
+import { appendConversation, asString, asBoolean, LABEL_LEN_PARTICLE, LABEL_LEN_TIMELINE } from './types'
+
+// OTTO PATCH (OTTO-PATCHES.md): distance a discovery card rests from the node
+// center, and the golden-angle used to fan successive cards around it so a burst
+// of findings doesn't stack on one spot.
+const DISCOVERY_ORBIT = NODE.radiusMain + 96
+const DISCOVERY_FAN_ANGLE = 2.399963 // ~137.5°, the golden angle
+
+/** OTTO PATCH (OTTO-PATCHES.md): turn a payload.discovery ({type,label,content})
+ * into a floating Discovery card near the agent. Upstream's web/ never consumed
+ * this field (nothing wrote state.discoveries); Otto's adapter derives notable
+ * findings from tool results and this wire renders them, reusing the existing
+ * draw / hit-test / detail-popup / theming and the DISCOVERY_HOLD_S fade. */
+function pushDiscovery(
+  raw: unknown,
+  agent: { x: number; y: number },
+  agentName: string,
+  currentTime: number,
+  state: MutableEventState,
+): void {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return
+  const d = raw as Record<string, unknown>
+  const type = asString(d.type)
+  if (type !== 'file' && type !== 'pattern' && type !== 'finding' && type !== 'code' && type !== 'error') return
+  const label = asString(d.label)
+  const content = asString(d.content)
+  if (!label && !content) return
+  const index = state.discoveries.reduce((n, x) => (x.agentId === agentName ? n + 1 : n), 0)
+  const angle = -Math.PI / 2 + index * DISCOVERY_FAN_ANGLE
+  state.discoveries.push({
+    id: `disc-${agentName}-${currentTime}-${index}`,
+    agentId: agentName,
+    type: type as Discovery['type'],
+    label,
+    content,
+    x: agent.x,
+    y: agent.y,
+    targetX: agent.x + Math.cos(angle) * DISCOVERY_ORBIT,
+    targetY: agent.y + Math.sin(angle) * DISCOVERY_ORBIT,
+    opacity: 0,
+    timestamp: currentTime,
+  })
+}
+
+/** Extract file path from tool input data or fall back to first token of args */
+function extractFilePath(inputData?: Record<string, unknown>, args?: string): string {
+  return asString(inputData?.file_path) || args?.split(' ')[0] || ''
+}
+
+export function handleToolCallStart(
+  payload: Record<string, unknown>,
+  currentTime: number,
+  state: MutableEventState,
+  ctx: ProcessEventContext,
+): void {
+  const agentName = asString(payload.agent)
+  const toolName = asString(payload.tool)
+  const callId = asString(payload.callId)
+  const args = asString(payload.args)
+  const inputData = (payload.inputData && typeof payload.inputData === 'object' && !Array.isArray(payload.inputData))
+    ? payload.inputData as Record<string, unknown> : undefined
+  const agent = state.agents.get(agentName)
+
+  if (agent) {
+    // Dedup: skip if there's already a running tool call for the same agent+tool
+    // created within the last 3 seconds (race between Hook Server and Session Watcher)
+    let isDuplicate = false
+    for (const tc of state.toolCalls.values()) {
+      if (tc.agentId === agentName && tc.toolName === toolName && tc.state === 'running' &&
+          (callId ? tc.callId === callId : (currentTime - tc.startTime) < TOOL_DEDUP_WINDOW_S)) {
+        isDuplicate = true
+        break
+      }
+    }
+    if (isDuplicate) return
+
+    // OTTO PATCH (OTTO-PATCHES.md): record a later identical attempt against
+    // each earlier failure, even after its canvas card has faded away.
+    for (const [id, failure] of state.failedToolCalls) {
+      if (failure.agentId === agentName && failure.toolName === toolName && failure.args === args.slice(0, 500)) {
+        state.failedToolCalls.set(id, { ...failure, retries: failure.retries + 1 })
+      }
+    }
+
+    state.agents.set(agentName, {
+      ...agent,
+      state: 'tool_calling',
+      currentTool: toolName,
+      toolCalls: agent.toolCalls + 1
+    })
+
+    const toolId = callId ? `tool-${agentName}-${callId}` : `tool-${agentName}-${toolName}-${currentTime}`
+
+    const pos = ctx.findToolSlot(agent, state.agents, state.toolCalls, currentTime)
+
+    state.toolCalls.set(toolId, {
+      id: toolId, callId: callId || undefined, agentId: agentName, toolName,
+      state: 'running',
+      args,
+      inputData,
+      x: pos.x,
+      y: pos.y,
+      startTime: currentTime,
+      opacity: 0,
+    })
+
+    state.edges.push({ id: `edge-${toolId}`, from: agentName, to: toolId, type: 'tool', opacity: 0 })
+
+    state.particles.push({
+      id: `p-tc-${currentTime}-${toolId}`,
+      edgeId: `edge-${toolId}`, progress: 0,
+      type: 'tool_call', color: COLORS.tool,
+      size: 4, trailLength: 0.15,
+      label: `${toolName} ${args}`.slice(0, LABEL_LEN_PARTICLE),
+    })
+
+    // Timeline block
+    const entry = state.timelineEntries.get(agentName)
+    if (entry) {
+      pushTimelineBlock(entry, currentTime, { type: 'tool_call', label: `${toolName}: ${args}`.slice(0, LABEL_LEN_TIMELINE), color: COLORS.tool }, ctx)
+    }
+
+    // Track file attention
+    if (toolName === 'Read' || toolName === 'Edit' || toolName === 'Write') {
+      const filePath = extractFilePath(inputData, args)
+      if (filePath) {
+        const prev = state.fileAttention.get(filePath)
+        const updated = prev
+          ? { ...prev, agents: [...prev.agents] }
+          : { path: filePath, reads: 0, edits: 0, totalTokens: 0, lastAccessed: currentTime, agents: [] as string[] }
+        if (toolName === 'Read') updated.reads++
+        else updated.edits++
+        updated.lastAccessed = currentTime
+        if (!updated.agents.includes(agentName)) updated.agents.push(agentName)
+        state.fileAttention.set(filePath, updated)
+      }
+    }
+
+    appendConversation(state.conversations, agentName, {
+      type: 'tool_call', content: `> ${toolName} ${args}`, timestamp: currentTime,
+      toolName, inputData,
+    })
+  }
+}
+
+export function handleToolCallEnd(
+  payload: Record<string, unknown>,
+  currentTime: number,
+  state: MutableEventState,
+  ctx: ProcessEventContext,
+): void {
+  const agentName = asString(payload.agent)
+  const toolName = asString(payload.tool)
+  const callId = asString(payload.callId)
+  const result = asString(payload.result, 'Done')
+  const tokenCost = typeof payload.tokenCost === 'number' ? payload.tokenCost : undefined
+  const isError = asBoolean(payload.isError)
+  const errorMessage = typeof payload.errorMessage === 'string' ? payload.errorMessage : undefined
+  const agent = state.agents.get(agentName)
+
+  if (agent) {
+    state.agents.set(agentName, {
+      ...agent,
+      state: isError ? 'error' : 'thinking',
+      currentTool: undefined,
+      tokensUsed: agent.tokensUsed + (tokenCost ?? 0),
+    })
+
+    const toolState: 'error' | 'complete' = isError ? 'error' : 'complete'
+    let matchedTool: ToolCallNode | undefined
+    for (const [id, tc] of state.toolCalls) {
+      if (tc.agentId === agentName && tc.toolName === toolName && tc.state === 'running' &&
+          (!callId || !tc.callId || tc.callId === callId)) {
+        matchedTool = tc
+        state.toolCalls.set(id, { ...tc, state: toolState, completeTime: currentTime, result, tokenCost, errorMessage: isError ? (errorMessage || result) : undefined })
+        if (isError) {
+          state.failedToolCalls.set(id, {
+            id, agentId: agentName, toolName, args: tc.args.slice(0, 500),
+            errorMessage: (errorMessage || result).slice(0, 2000), tokenCost, time: currentTime, retries: 0,
+          })
+          // Bound retained diagnostic data independently of the event log.
+          if (state.failedToolCalls.size > 100) {
+            const oldest = state.failedToolCalls.keys().next().value
+            if (oldest) state.failedToolCalls.delete(oldest)
+          }
+        }
+
+        const edgeId = `edge-${id}`
+        // Snap any still-traveling outgoing particle to the end
+        const outIdx = state.particles.findIndex(p => p.edgeId === edgeId && p.type === 'tool_call')
+        if (outIdx !== -1) state.particles[outIdx] = { ...state.particles[outIdx], progress: 0.95 }
+
+        state.particles.push({
+          id: `p-tr-${currentTime}-${id}`,
+          edgeId, progress: 1,
+          type: 'tool_return', color: COLORS.return,
+          size: 4, trailLength: 0.15,
+          label: result.slice(0, LABEL_LEN_PARTICLE),
+        })
+        break
+      }
+    }
+
+    // Timeline block end
+    const entry = state.timelineEntries.get(agentName)
+    if (entry) {
+      if (isError) {
+        const lastBlock = entry.blocks[entry.blocks.length - 1]
+        if (lastBlock && !lastBlock.endTime) {
+          lastBlock.color = COLORS.error
+          lastBlock.label = `${toolName}: FAILED`
+        }
+      }
+      pushTimelineBlock(entry, currentTime, { type: 'thinking', label: 'Thinking...', color: COLORS.thinking }, ctx)
+    }
+
+    // File attention token cost
+    if (tokenCost) {
+      const filePath = extractFilePath(matchedTool?.inputData, matchedTool?.args)
+      if (filePath) {
+        const existing = state.fileAttention.get(filePath)
+        if (existing) {
+          state.fileAttention.set(filePath, { ...existing, totalTokens: existing.totalTokens + tokenCost })
+        }
+      }
+    }
+
+    appendConversation(state.conversations, agentName, {
+      type: 'tool_result',
+      content: `< ${result}${tokenCost ? ` (${tokenCost} tokens)` : ''}`,
+      timestamp: currentTime,
+      toolName,
+    })
+
+    // OTTO PATCH (OTTO-PATCHES.md): render a discovery card for a notable result.
+    pushDiscovery(payload.discovery, agent, agentName, currentTime, state)
+  }
+}

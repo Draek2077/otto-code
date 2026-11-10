@@ -7,9 +7,17 @@ pre-commit:
       exclude:
         - "package-lock.json"
         - "**/package-lock.json"
+        # OTTO(visualizer): match oxfmt's pinned-renderer exclusion before
+        # lefthook batches arguments; an all-ignored vendor batch exits 2.
+        - "vendor/agent-flow/**"
+        - "packages/app/src/otto/visualizer/visualizer-bundle.gen.ts"
       run: npm run format:check:files -- --threads=1 {staged_files}
     - name: lint
       glob: "*.{js,jsx,ts,tsx}"
+      # OTTO(visualizer): match the lint exclusion before argument batching too.
+      exclude:
+        - "vendor/agent-flow/**"
+        - "packages/app/src/otto/visualizer/visualizer-bundle.gen.ts"
       run: npm run lint -- --threads=1 {staged_files}
     - name: typecheck
       run: npm run typecheck

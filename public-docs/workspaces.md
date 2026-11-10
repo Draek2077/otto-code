@@ -39,6 +39,9 @@ That matters because real development rarely fits into one long chat. You might 
 
 In Otto, the workspace is the stable container. The sessions are what you run inside it.
 
+Use [Visualizer](/docs/visualizer) to follow those sessions in a graph, a floating
+picture in picture, or behind the conversation.
+
 ## Creating a workspace
 
 You can create a workspace in the app or from the CLI:

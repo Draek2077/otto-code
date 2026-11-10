@@ -46,6 +46,7 @@ import { ProviderSettingsHost } from "@/components/provider-settings-host";
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
 import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
+import { VisualizerWindowHost } from "@/otto/visualizer/window-host"; // OTTO(visualizer): one window-owned PIP, outside retained workspaces.
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
 import { HostConfirmationSheet } from "@/hosts/host-confirmation-sheet";
 import {
@@ -681,6 +682,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
         <HostSessionManager />
         <FaviconStatusSync />
         {children}
+        <VisualizerWindowHost />
       </VoiceProvider>
     </AppearanceProvider>
   );

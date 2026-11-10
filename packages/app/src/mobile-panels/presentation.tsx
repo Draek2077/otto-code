@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { GestureDetector, type GestureType } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { isWeb } from "@/constants/platform";
+import { visualizerSidebarLayer } from "@/otto/visualizer/sidebar-layer"; // OTTO(visualizer): transient web sidebars above ambient PIP; native gesture hosts stay intact.
 import { WindowChromeRootRegion } from "@/utils/desktop-window";
 import { usePanelStore, type MobilePanelView } from "@/stores/panel-store";
 import { getMobilePanelFrame } from "./model";
@@ -75,7 +76,7 @@ export function MobilePanelOverlay({
     overlayPointerEvents = isOpen ? "auto" : "none";
   }
 
-  return (
+  return visualizerSidebarLayer(
     <GestureDetector gesture={closeGesture} touchAction="pan-y">
       {/* Fabric needs an always-mounted native host to attach the close handler while the
           retained panel content is hidden. nativeID keeps that host registered. */}
@@ -105,7 +106,7 @@ export function MobilePanelOverlay({
           </Animated.View>
         </Animated.View>
       </View>
-    </GestureDetector>
+    </GestureDetector>,
   );
 }
 

@@ -21,6 +21,7 @@ import * as workflows from "@getpaseo/plugin/otto/workflows"; // OTTO(workflows)
 import * as schedules from "@getpaseo/plugin/otto/schedules"; // OTTO(schedules)
 import * as workflowUi from "./workflows/bridge"; // OTTO(workflows)
 import * as scheduleUi from "./schedules/bridge"; // OTTO(schedules): lazy trusted settings bridge, original navigation retained.
+import * as visualizerUi from "./visualizer/bridge"; // OTTO(visualizer): lazy presentation, canonical Paseo session owner.
 
 const shared = new Map<string, unknown>([
   ["@getpaseo/plugin/otto/speech", speech],
@@ -38,30 +39,29 @@ const shared = new Map<string, unknown>([
   ["@getpaseo/plugin/otto/project-knowledge", knowledge],
   ["@getpaseo/plugin/otto/context-management", context],
 ]);
-const knowledgeModules = new Map<string, unknown>([
-  ["@getpaseo/plugin/client/otto-knowledge", knowledgeUi],
+// OTTO(visualizer): explicit plugin/module pairs keep trusted UI bridges private
+// without extending a branch chain whenever another built-in is restored.
+const builtinUi = new Map<string, ReadonlyMap<string, unknown>>([
+  ["otto-visualizer", new Map([["@getpaseo/plugin/client/otto-visualizer", visualizerUi]])],
+  [
+    "otto-architectural-views",
+    new Map([["@getpaseo/plugin/client/otto-architectural-views", viewUi]]),
+  ],
+  ["otto-schedules", new Map([["@getpaseo/plugin/client/otto-schedules", scheduleUi]])],
+  ["otto-workflows", new Map([["@getpaseo/plugin/client/otto-workflows", workflowUi]])],
+  ["otto-speech", new Map([["@getpaseo/plugin/client/otto-speech", speechUi]])],
+  [
+    "otto-integrations",
+    new Map<string, unknown>([
+      ["@getpaseo/plugin/client/otto-connectors", connectorUi],
+      ["@getpaseo/plugin/client/otto-bitbucket", bitbucketUi],
+    ]),
+  ],
+  ["otto-artifacts", new Map([["@getpaseo/plugin/client/otto-artifacts", artifactUi]])],
+  ["otto-browser", new Map([["@getpaseo/plugin/client/otto-preview", previewUi]])],
+  ["otto-project-knowledge", new Map([["@getpaseo/plugin/client/otto-knowledge", knowledgeUi]])],
 ]);
 /** Public structural contracts are shared; private UI bridges are built-in-only. */
 export function ottoClientModule(pluginId: string, name: string): unknown {
-  if (
-    pluginId === "otto-architectural-views" &&
-    name === "@getpaseo/plugin/client/otto-architectural-views"
-  )
-    return viewUi;
-  if (pluginId === "otto-schedules" && name === "@getpaseo/plugin/client/otto-schedules")
-    return scheduleUi; // OTTO(schedules)
-  if (pluginId === "otto-workflows" && name === "@getpaseo/plugin/client/otto-workflows")
-    return workflowUi; // OTTO(workflows)
-  if (pluginId === "otto-speech" && name === "@getpaseo/plugin/client/otto-speech") return speechUi;
-  if (pluginId === "otto-integrations" && name === "@getpaseo/plugin/client/otto-connectors")
-    return connectorUi;
-  if (pluginId === "otto-integrations" && name === "@getpaseo/plugin/client/otto-bitbucket")
-    return bitbucketUi;
-  if (pluginId === "otto-artifacts" && name === "@getpaseo/plugin/client/otto-artifacts")
-    return artifactUi;
-  if (pluginId === "otto-browser" && name === "@getpaseo/plugin/client/otto-preview")
-    return previewUi;
-  if (pluginId === "otto-project-knowledge" && knowledgeModules.has(name))
-    return knowledgeModules.get(name);
-  return shared.get(name);
+  return builtinUi.get(pluginId)?.get(name) ?? shared.get(name);
 }

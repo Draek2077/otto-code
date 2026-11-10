@@ -1,0 +1,4 @@
+/* Otto build entry for the pinned renderer stylesheet. Explicit source roots
+   keep utility generation independent of the host checkout and scratch files. */
+@import "../../../vendor/agent-flow/web/app/globals.css";
+@source "../../../vendor/agent-flow/web";

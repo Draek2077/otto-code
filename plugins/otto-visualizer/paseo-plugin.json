@@ -1,0 +1,5 @@
+{
+  "id": "otto-visualizer",
+  "name": "Otto Visualizer",
+  "requirements": { "paseo": ">=0.12.0" }
+}

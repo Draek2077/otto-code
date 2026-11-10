@@ -66,6 +66,7 @@ test("manual diagnostics stay bounded while every push and pull request retains 
       "workflows",
       "schedules",
       "architectural-views",
+      "visualizer",
     ],
   );
   assert.ok(
@@ -102,6 +103,9 @@ test("manual diagnostics stay bounded while every push and pull request retains 
     ),
   );
   assert.ok(source.includes('case "$OTTO_ACCEPTANCE_JOURNEY" in'));
+  assert.ok(
+    source.includes("e2e/browser/otto-visualizer.spec.ts --workers=1 --retries=0 --max-failures=1"),
+  );
   assert.ok(
     source.includes(
       "e2e/browser/otto-context-health.spec.ts --workers=1 --retries=0 --max-failures=1",

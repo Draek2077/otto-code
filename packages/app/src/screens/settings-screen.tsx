@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OttoCodeSettings } from "@/otto/editor/settings/page"; // OTTO(editor)
+import { VisualizerAttribution } from "@/otto/visualizer/attribution"; // OTTO(visualizer): attribution stays in About, outside product identity.
 import type { ComponentType, ReactNode } from "react";
 import {
   Alert,
@@ -486,6 +487,7 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
         </View>
       </SettingsSection>
       <ConnectedHostsSection clientVersion={appVersion} />
+      <VisualizerAttribution />
       <View style={styles.aboutCommunity}>
         <CommunityLinks />
       </View>

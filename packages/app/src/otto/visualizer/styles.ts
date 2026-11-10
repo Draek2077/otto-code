@@ -1,0 +1,37 @@
+import { StyleSheet } from "react-native-unistyles";
+export const visualizerStyles = StyleSheet.create((theme) => ({
+  root: { flex: 1, minHeight: 0, minWidth: 0, backgroundColor: theme.colors.surface0 },
+  frame: { flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" },
+  toolbar: {
+    minHeight: 36,
+    height: "auto",
+    flexWrap: "wrap",
+    paddingHorizontal: theme.spacing[2],
+    gap: theme.spacing[1],
+  },
+  text: { fontSize: theme.fontSize.sm, color: theme.colors.foregroundMuted },
+  caption: {
+    padding: theme.spacing[2],
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
+  },
+  error: { padding: theme.spacing[3], gap: theme.spacing[2] },
+  spacer: { flex: 1 },
+  pipToolbar: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 2 },
+  pip: {
+    flex: 1,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface1,
+  },
+  drag: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: theme.spacing[2],
+    gap: theme.spacing[1],
+    backgroundColor: theme.colors.surface1,
+  },
+}));

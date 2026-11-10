@@ -15,6 +15,7 @@ import { chromium } from "playwright";
 import { runAppearanceFontSizeRegression } from "./appearance-font-size.electron.mjs";
 import { runSettingsMemoryRegression } from "./settings-memory.electron.mjs";
 import { runBrowserHistoryRegression } from "./otto-browser-history.electron.mjs"; // OTTO(browser-history): real guest, daemon, native confirmation and persistent history.
+import { runVisualizerRegression } from "./otto-visualizer.electron.mjs"; // OTTO(visualizer): real private guest, browser layering and hidden-window teardown.
 
 import { seedPluginLinks, runPluginLinksRegression } from "./plugin-links.electron.mjs";
 
@@ -1258,6 +1259,11 @@ async function main() {
       typingAgent,
       artifactDir,
     });
+    const visualizer = await runVisualizerRegression({
+      page,
+      setHidden: (hidden) => setWindowHidden(inspectorPort, hidden),
+      artifactDir,
+    });
     const history = await runBrowserHistoryRegression({
       page,
       execute: (name, args) => callBrowserTool(client, name, args),
@@ -1274,6 +1280,7 @@ async function main() {
       settingsMemory,
       pluginLinks,
       history,
+      visualizer,
     });
     console.log(
       `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, inactive capture, focus continuity, list, snapshot, click, local-page selectors passed.`,

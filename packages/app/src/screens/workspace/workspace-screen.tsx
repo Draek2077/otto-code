@@ -209,6 +209,7 @@ import {
   WorkspaceHeaderMenuMobile,
 } from "@/screens/workspace/workspace-header-menu";
 import { PluginHeaderButtons } from "@/plugins";
+import { VisualizerWorkspaceButton } from "@/otto/visualizer/workspace-button"; // OTTO(visualizer): existing header and workspace panel, no second navigation system.
 import {
   createWorkspaceFileTabTarget,
   normalizeWorkspaceFileLocation,
@@ -3266,6 +3267,10 @@ function WorkspaceScreenContent({
     () => (
       <View style={styles.headerRight}>
         <PluginHeaderButtons serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
+        <VisualizerWorkspaceButton
+          serverId={normalizedServerId}
+          workspaceId={normalizedWorkspaceId}
+        />
         {workspaceDescriptor && workspaceDescriptor.scripts.length > 0 ? (
           <WorkspaceScriptsButton
             serverId={normalizedServerId}

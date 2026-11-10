@@ -183,6 +183,11 @@
       "source": "./src/client/otto-architectural-views.ts",
       "default": "./dist/client/otto-architectural-views.js"
     },
+    "./client/otto-visualizer": {
+      "types": "./dist/client/otto-visualizer.d.ts",
+      "source": "./src/client/otto-visualizer.ts",
+      "default": "./dist/client/otto-visualizer.js"
+    },
     "./otto/terminal": {
       "types": "./dist/otto/terminal.d.ts",
       "source": "./src/otto/terminal.ts",

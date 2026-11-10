@@ -1,0 +1,319 @@
+/**
+ * Holographic color palette and role color definitions.
+ *
+ * Extracted from agent-types.ts to keep that file focused on type definitions.
+ * All colors are re-exported from agent-types.ts for backward compatibility.
+ */
+
+import type { AgentState, ContextBreakdown } from './agent-types'
+
+// Holographic Color Palette
+export const COLORS = {
+  // Background
+  void: '#050510',
+
+  // Primary Hologram
+  holoBase: '#66ccff',
+  holoBright: '#aaeeff',
+  holoHot: '#ffffff',
+
+  // Agent States
+  idle: '#66ccff',
+  thinking: '#66ccff',
+  tool_calling: '#ffbb44',
+  complete: '#66ffaa',
+  error: '#ff5566',
+  paused: '#888899',
+  waiting_permission: '#ffaa33',
+
+  // Edge/Particle Colors
+  dispatch: '#cc88ff',
+  return: '#66ffaa',
+  tool: '#ffbb44',
+  message: '#66ccff',
+
+  // Context breakdown colors
+  contextSystem: '#555577',     // gray-blue — fixed overhead
+  contextUser: '#66ccff',       // blue — user input
+  contextToolResults: '#ffbb44', // amber — expensive!
+  contextReasoning: '#cc88ff',  // purple — agent thinking
+  contextSubagent: '#66ffaa',   // green — child agent results
+
+  // UI Chrome
+  nodeInterior: 'rgba(10, 15, 40, 0.5)',
+  textPrimary: '#aaeeff',
+  textDim: '#66ccff90',
+  textMuted: '#66ccff50',
+
+  // Glass card
+  glassBg: 'rgba(10, 15, 30, 0.7)',
+  glassBorder: 'rgba(100, 200, 255, 0.15)',
+  glassHighlight: 'rgba(100, 200, 255, 0.08)',
+
+  // Holo background/border opacities (avoids scattered rgba literals)
+  holoBg03: 'rgba(100, 200, 255, 0.03)',
+  holoBg05: 'rgba(100, 200, 255, 0.05)',
+  holoBg10: 'rgba(100, 200, 255, 0.1)',
+  holoBorder06: 'rgba(100, 200, 255, 0.06)',
+  holoBorder08: 'rgba(100, 200, 255, 0.08)',
+  holoBorder10: 'rgba(100, 200, 255, 0.1)',
+  holoBorder12: 'rgba(100, 200, 255, 0.12)',
+
+  // Panel chrome
+  panelBg: 'rgba(8, 12, 24, 0.85)',
+  panelSeparator: 'rgba(100, 200, 255, 0.04)',
+
+  // Toggle button states
+  toggleActive: 'rgba(100, 200, 255, 0.15)',
+  toggleInactive: 'rgba(100, 200, 255, 0.05)',
+  toggleBorder: 'rgba(100, 200, 255, 0.1)',
+
+  // Live indicator
+  liveDot: '#ff4444',
+  liveText: '#ff6666',
+  liveResumeBg: 'rgba(255, 68, 68, 0.15)',
+  liveResumeBorder: 'rgba(255, 68, 68, 0.35)',
+
+  // Discovery type colors
+  discoveryFile: '#66ccff',
+  discoveryPattern: '#cc88ff',
+  discoveryFinding: '#66ffaa',
+  discoveryCode: '#ffbb44',
+
+  // Session tab states
+  tabSelectedBg: 'rgba(100, 200, 255, 0.15)',
+  tabInactiveBg: 'rgba(100, 200, 255, 0.03)',
+  tabSelectedBorder: 'rgba(100, 200, 255, 0.3)',
+  tabInactiveBorder: 'rgba(100, 200, 255, 0.08)',
+  tabClose: '#ff6688',
+
+  // Role colors (message bubbles)
+  roleAssistantBg: 'rgba(80, 160, 220, 0.12)',
+  roleAssistantBgSelected: 'rgba(80, 160, 220, 0.2)',
+  roleAssistantText: '#a0d4f0',
+  roleThinkingBg: 'rgba(140, 100, 200, 0.12)',
+  roleThinkingBgSelected: 'rgba(140, 100, 200, 0.2)',
+  roleThinkingText: '#c0a0e0',
+  roleUserBg: 'rgba(200, 160, 80, 0.12)',
+  roleUserBgSelected: 'rgba(200, 160, 80, 0.2)',
+  roleUserText: '#e0c888',
+
+  // Result/success
+  resultBg: 'rgba(102, 255, 170, 0.05)',
+  resultBorder: 'rgba(102, 255, 170, 0.1)',
+
+  // Unread indicator
+  unreadDot: '#ff6666',
+
+  // Play button
+  playBtnBg: 'rgba(102, 204, 255, 0.12)',
+  playBtnActiveBg: 'rgba(102, 204, 255, 0.2)',
+  playBtnBorder: 'rgba(102, 204, 255, 0.4)',
+  playBtnGlow: '0 0 12px rgba(102, 204, 255, 0.15)',
+
+  // Scrubber
+  scrubberFill: 'linear-gradient(90deg, rgba(102,204,255,0.3), rgba(102,204,255,0.6))',
+  scrubberHeadGlow: '0 0 10px rgba(102, 204, 255, 0.6), 0 0 20px rgba(102, 204, 255, 0.2)',
+  reviewBtnBorder: 'rgba(102, 204, 255, 0.25)',
+
+  // Cost overlay
+  costActiveBg: 'rgba(102, 255, 170, 0.15)',
+
+  // Canvas drawing — bubble base colors (partial rgba, alpha appended at draw time)
+  bubbleThinkingBase: 'rgba(140, 100, 200,',
+  bubbleUserBase: 'rgba(200, 160, 80,',
+  bubbleAssistantBase: 'rgba(80, 160, 220,',
+
+  // Canvas drawing — tool card backgrounds (partial rgba, alpha appended at draw time)
+  toolCardErrorBase: 'rgba(40, 10, 15,',
+  toolCardSelectedBase: 'rgba(100, 200, 255,',
+  toolCardBase: 'rgba(10, 15, 30,',
+
+  // Canvas drawing — agent/tool card backgrounds
+  cardBgDark: 'rgba(5, 5, 16, 0.8)',
+  cardBg: 'rgba(10, 15, 30, 0.6)',
+  cardBgSelected: 'rgba(10, 15, 30, 0.8)',
+  cardBgError: 'rgba(40, 10, 15, 0.8)',
+  cardBgSelectedHolo: 'rgba(100, 200, 255, 0.15)',
+  cardBgFaintOverlay: 'rgba(0, 0, 0, 0.01)',
+
+  // Active tool indicator (detail card)
+  toolIndicatorBg: 'rgba(255, 187, 68, 0.1)',
+  toolIndicatorBorder: 'rgba(255, 187, 68, 0.2)',
+  toolIndicatorText: '#ffbb44',
+
+  // Canvas drawing — cost labels
+  costText: '#66ffaa',
+  costTextDim: '#66ffaa80',
+  costPillBg: 'rgba(10, 20, 40, 0.75)',
+  costPillStroke: 'rgba(102, 255, 170, 0.3)',
+
+  // Canvas drawing — cost panel bar fills
+  barFillMain: 'rgba(102, 204, 255, 0.15)',
+  barFillSub: 'rgba(204, 136, 255, 0.15)',
+
+  // ─── Transcript / message feed colors ───────────────────────────────────────
+
+  // User messages
+  userMsgBg: 'rgba(255, 187, 68, 0.06)',
+  userMsgBorder: 'rgba(255, 187, 68, 0.12)',
+  userLabel: '#ffbb4490',
+  userText: '#ffcc66',
+
+  // Assistant messages
+  assistantLabel: '#66ccff80',
+  assistantText: '#aaeeff',
+
+  // Thinking messages
+  thinkingBgExpanded: 'rgba(180, 140, 255, 0.06)',
+  thinkingBgCollapsed: 'rgba(180, 140, 255, 0.03)',
+  thinkingBorder: 'rgba(180, 140, 255, 0.08)',
+  thinkingLabel: '#bb99ff70',
+  thinkingArrow: '#bb99ff55',
+  thinkingPreview: '#bb99ff',
+  thinkingTextExpanded: '#bb99ff80',
+  thinkingBorderLeft: 'rgba(180, 140, 255, 0.15)',
+
+  // Tool call messages
+  toolCallBg: 'rgba(255, 187, 68, 0.05)',
+  toolCallBorder: 'rgba(255, 187, 68, 0.1)',
+
+  // Tool result messages
+  bashResultBg: 'rgba(0,0,0,0.25)',
+  toolResultBg: 'rgba(102, 255, 170, 0.04)',
+  bashResultBorder: 'rgba(255, 187, 68, 0.1)',
+  toolResultBorder: 'rgba(102, 255, 170, 0.08)',
+  bashResultText: '#aaeeff80',
+  toolResultText: '#66ffaa80',
+  textFaint: '#aaeeff60',
+
+  // Search highlight
+  searchHighlightBg: 'rgba(255,187,68,0.3)',
+
+  // ─── Diff / code block colors ───────────────────────────────────────────────
+
+  codeBlockBg: 'rgba(0,0,0,0.3)',
+  diffRemoved: '#ff6666',
+  diffRemovedBg: 'rgba(255,80,80,0.08)',
+  diffAdded: '#66ff88',
+  diffAddedBg: 'rgba(80,255,120,0.08)',
+
+  // ─── Tool content colors ────────────────────────────────────────────────────
+
+  filePathActive: '#66ccff',
+  filePathInactive: '#66ccff90',
+  todoCompleted: '#66ffaa',
+  todoCompletedText: '#66ffaa90',
+  todoPending: '#66ccff60',
+  contentDim: '#aaeeff90',
+  searchIcon: '#66ccff60',
+
+  // ─── Panel header / chrome text ─────────────────────────────────────────────
+
+  panelLabel: '#66ccff90',
+  panelLabelDim: '#66ccff65',
+  scrollBtnText: '#66ccff',
+  scrollbarThumb: 'rgba(100,200,255,0.15)',
+} as const
+
+// OTTO PATCH (see OTTO-PATCHES.md): host-seedable palette. An embedding host
+// may define `window.__OTTO_THEME__` BEFORE this bundle executes (Otto's
+// shell script does, from a build-time placeholder); its `colors` overlay is
+// merged over the defaults above at module init — before ROLE_COLORS below
+// and before any importer reads COLORS. Absent (upstream builds, demo shell),
+// nothing changes. Overlay values must keep each token's exact shape (6-hex
+// for solids that get hex alphas appended, partial `rgba(r, g, b,` bases for
+// withAlpha, etc.).
+declare global {
+  interface Window {
+    __OTTO_THEME__?: { colors?: Partial<Record<keyof typeof COLORS, string>> }
+  }
+}
+if (typeof window !== 'undefined' && window.__OTTO_THEME__?.colors) {
+  Object.assign(COLORS as Record<string, string>, window.__OTTO_THEME__.colors)
+}
+
+// ─── Role Colors (message feed & bubbles) ───────────────────────────────────
+
+export const ROLE_COLORS: Record<string, { bg: string; bgSelected: string; text: string; label: string }> = {
+  assistant: { bg: COLORS.roleAssistantBg, bgSelected: COLORS.roleAssistantBgSelected, text: COLORS.roleAssistantText, label: 'CLAUDE' },
+  thinking:  { bg: COLORS.roleThinkingBg,  bgSelected: COLORS.roleThinkingBgSelected,  text: COLORS.roleThinkingText,  label: 'THINKING' },
+  user:      { bg: COLORS.roleUserBg,       bgSelected: COLORS.roleUserBgSelected,       text: COLORS.roleUserText,       label: 'USER' },
+} as const
+
+// ─── Color Helper Functions ──────────────────────────────────────────────────
+
+export function getStateColor(state: AgentState): string {
+  switch (state) {
+    case 'idle': return COLORS.idle
+    case 'thinking': return COLORS.thinking
+    case 'tool_calling': return COLORS.tool_calling
+    case 'complete': return COLORS.complete
+    case 'error': return COLORS.error
+    case 'paused': return COLORS.paused
+    case 'waiting_permission': return COLORS.waiting_permission
+  }
+}
+
+export function getDiscoveryTypeColor(type: string): string {
+  switch (type) {
+    case 'file': return COLORS.discoveryFile
+    case 'pattern': return COLORS.discoveryPattern
+    case 'finding': return COLORS.discoveryFinding
+    // OTTO PATCH (OTTO-PATCHES.md): failure-shaped discoveries (failed command /
+    // failed tests) render in the error red, not the green "finding" color.
+    case 'error': return COLORS.error
+    default: return COLORS.discoveryCode
+  }
+}
+
+/** Safely combine a partial rgba base (e.g. 'rgba(10, 15, 30,') with an alpha value */
+export function withAlpha(rgbaBase: string, alpha: number): string {
+  return `${rgbaBase} ${alpha})`
+}
+
+// OTTO PATCH (OTTO-PATCHES.md): the breakdown is an open-ended labeled list now
+// (providers report their own category names), so a segment's color is derived
+// from its label instead of its position in a fixed struct.
+//
+// Well-known labels keep their original semantic color so the same slice reads
+// the same across providers — "Tool results" stays amber whether it came from
+// Claude's own accounting or Otto's estimate. Matching is on a normalized label
+// and ORDERED: 'System prompt' must hit the system rule before the prompt/
+// message rule, so the first match wins by design.
+const CONTEXT_LABEL_COLOR_RULES: { test: (label: string) => boolean; color: string }[] = [
+  { test: (l) => l.includes('system'), color: COLORS.contextSystem },
+  { test: (l) => l.includes('subagent') || l.includes('sub-agent'), color: COLORS.contextSubagent },
+  { test: (l) => l.includes('reason') || l.includes('think'), color: COLORS.contextReasoning },
+  { test: (l) => l.includes('tool') || l.includes('mcp'), color: COLORS.contextToolResults },
+  { test: (l) => l.includes('message') || l.includes('prompt'), color: COLORS.contextUser },
+]
+
+// Cycled for labels no rule claims, so an unrecognized provider category still
+// gets a stable, distinct color rather than vanishing into the background.
+const CONTEXT_FALLBACK_PALETTE = [
+  COLORS.contextUser,
+  COLORS.contextToolResults,
+  COLORS.contextReasoning,
+  COLORS.contextSubagent,
+  COLORS.contextSystem,
+]
+
+export function contextSegmentColor(label: string, index: number): string {
+  const normalized = label.toLowerCase()
+  for (const rule of CONTEXT_LABEL_COLOR_RULES) {
+    if (rule.test(normalized)) return rule.color
+  }
+  return CONTEXT_FALLBACK_PALETTE[index % CONTEXT_FALLBACK_PALETTE.length]
+}
+
+/** Build the context-breakdown color segments for a given breakdown. Shape is
+ * unchanged for the canvas draw paths (`{ value, color }`); `label` is added for
+ * the detail card, which spells the categories out. */
+export function contextSegments(bd: ContextBreakdown) {
+  return bd.segments.map((segment, index) => ({
+    label: segment.label,
+    value: segment.tokens,
+    color: contextSegmentColor(segment.label, index),
+  }))
+}

@@ -1,5 +1,6 @@
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { ArchitecturalChatBoundary } from "@/otto/architectural-views/chat-bridge"; // OTTO(architectural-views): presentation-only boundary; ordinary chat subtree stays unchanged.
+import { visualizerChatViewport } from "@/otto/visualizer/chat-bridge"; // OTTO(visualizer): fixed viewport only; Composer, timeline and scrolling remain Paseo-owned.
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -1317,7 +1318,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
 
   const dock = (
     <ChatSurface disabled={isArchivingCurrentAgent} fullscreen={isComposerFullscreen}>
-      {dockContent}
+      {visualizerChatViewport({ serverId, workspaceId, agentId, children: dockContent })}
       {composerSection}
       {dockOverlay}
     </ChatSurface>

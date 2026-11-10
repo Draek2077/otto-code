@@ -6,6 +6,7 @@ decisions, and measured findings live in Otto Knowledge.
 | Page                                                       | Purpose                                                                                                                          |
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | [otto-architectural-views.md](otto-architectural-views.md) | Architectural View storage, authoring, offline rendering, UI and CLI                                                             |
+| [otto-visualizer.md](otto-visualizer.md)                   | Canonical session graph, offline renderer, PIP, chat background and guest lifetime                                               |
 | [otto-agents.md](otto-agents.md)                           | Working rules for Otto additions to the Paseo base                                                                               |
 | [otto-identity.md](otto-identity.md)                       | Branding boundary, environment mapping, and marked seams                                                                         |
 | [otto-continuity.md](otto-continuity.md)                   | Existing data, app storage, and relay migration                                                                                  |

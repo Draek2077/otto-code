@@ -13,6 +13,8 @@ on:
       - packages/protocol/**
       - packages/server/**
       - packages/otto-brain/**
+      - packages/otto-visualizer/** # OTTO(visualizer)
+      - vendor/agent-flow/**
       - vendor/archify/**
       - plugins/**
       - package.json
@@ -28,6 +30,8 @@ on:
       - packages/protocol/**
       - packages/server/**
       - packages/otto-brain/**
+      - packages/otto-visualizer/** # OTTO(visualizer)
+      - vendor/agent-flow/**
       - vendor/archify/**
       - plugins/**
       - package.json
@@ -56,6 +60,7 @@ on:
             workflows,
             schedules,
             architectural-views,
+            visualizer,
           ]
 
 permissions:
@@ -136,6 +141,9 @@ jobs:
               ;;
             architectural-views)
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-architectural-views.spec.ts --workers=1 --retries=0 --max-failures=1
+              ;;
+            visualizer)
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-visualizer.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             schedules)
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-schedules.spec.ts e2e/browser/schedules-edit-model-hydration.spec.ts e2e/browser/schedules-project-target.spec.ts e2e/browser/schedules-relative-time.spec.ts --workers=1 --retries=0 --max-failures=1

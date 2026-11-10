@@ -6,6 +6,7 @@
   "ignorePatterns": [
     ".dev/**",
     "vendor/archify/**",
+    "vendor/agent-flow/**",
     "packages/app/src/otto/workflows/canvas/vendor/drawflow.min.js"
   ],
   "plugins": ["react", "react-perf", "unicorn", "typescript", "oxc", "import", "promise"],

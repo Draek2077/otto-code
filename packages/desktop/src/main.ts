@@ -55,6 +55,13 @@ import { registerDialogHandlers } from "./features/dialogs.js";
 import { registerWakeWordHandlers } from "./otto/speech/wake-word.js"; // OTTO(wake-word)
 import { registerEditorPrint } from "./otto/editor/print.js"; // OTTO(editor)
 import {
+  VISUALIZER_PARTITION,
+  isVisualizerAttach,
+  hardenVisualizerPreferences,
+  hardenVisualizerSession,
+  hardenVisualizerContents,
+} from "./otto/visualizer/guest.js"; // OTTO(visualizer): isolated offline render guest, never a browser profile.
+import {
   registerNotificationHandlers,
   ensureNotificationCenterRegistration,
 } from "./features/notifications.js";
@@ -773,6 +780,12 @@ async function createWindow(
   setupDefaultContextMenu(mainWindow);
   setupDragDropPrevention(mainWindow);
   mainWindow.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+    // OTTO(visualizer): no browser keyboard preload, Node, network or permissions.
+    if (isVisualizerAttach(params)) {
+      hardenVisualizerPreferences(webPreferences, params);
+      hardenVisualizerSession(session.fromPartition(VISUALIZER_PARTITION));
+      return;
+    }
     if (!isPaseoBrowserWebviewAttach(params)) {
       event.preventDefault();
       return;
@@ -794,6 +807,11 @@ async function createWindow(
     webPreferences.preload = getBrowserKeyboardPreloadPath();
   });
   mainWindow.webContents.on("did-attach-webview", (_event, contents) => {
+    // OTTO(visualizer): do not register the render guest as an automatable browser.
+    if (contents.session === session.fromPartition(VISUALIZER_PARTITION)) {
+      hardenVisualizerContents(contents);
+      return;
+    }
     preparePaseoBrowserWebContents(contents);
     contents.once("destroyed", () => {
       pendingBrowserWindowOpenRequests.delete(contents.id);

@@ -37,6 +37,11 @@ import {
   type ThemePreference,
 } from "@/styles/theme";
 import { z } from "zod";
+import {
+  visualizerPreferenceDefaults,
+  visualizerStoredPreferences,
+  type VisualizerPreferences,
+} from "@/otto/visualizer/preferences"; // OTTO(visualizer)
 import { APP_SETTINGS_KEY, LEGACY_SETTINGS_KEY } from "./keys";
 import { migrateAppSettings } from "./migrations";
 // OTTO(storage): preserve dormant Otto preferences when supported settings change.
@@ -85,7 +90,7 @@ export { DEFAULT_CONTENT_MAX_WIDTH };
 export const MIN_CONTENT_MAX_WIDTH = 600;
 export const MAX_CONTENT_MAX_WIDTH = 4000;
 
-export interface AppSettings extends SpeechPreferences, EditorPreferences {
+export interface AppSettings extends SpeechPreferences, EditorPreferences, VisualizerPreferences {
   // OTTO(editor): recognize retained device settings through their original keys.
   theme: ThemePreference;
   /** Which contributed theme `theme: "plugin"` selects. */
@@ -150,6 +155,7 @@ export interface Settings extends AppSettings {
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   ...editorPreferenceDefaults, // OTTO(editor)
   ...speechPreferenceDefaults, // OTTO(speech)
+  ...visualizerPreferenceDefaults, // OTTO(visualizer)
   theme: DEFAULT_THEME_PREFERENCE,
   pluginThemeId: null,
   language: "system",
@@ -228,6 +234,7 @@ const StoredAppSettingsSchema = z
   .looseObject({
     ...editorStoredPreferences, // OTTO(editor)
     ...speechStoredPreferences, // OTTO(speech)
+    ...visualizerStoredPreferences, // OTTO(visualizer)
     theme: ThemePreferenceSchema.catch(DEFAULT_THEME_PREFERENCE),
     pluginThemeId: z.string().nullable().catch(null),
     language: z

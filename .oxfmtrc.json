@@ -18,6 +18,7 @@
     ".otto/**",
     "test-documents/**",
     "vendor/archify/**",
+    "vendor/agent-flow/**",
     "packages/app/src/otto/workflows/canvas/vendor/drawflow.min.js"
   ]
 }

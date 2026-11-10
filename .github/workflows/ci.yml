@@ -529,6 +529,10 @@ jobs:
       - name: Build app dependencies
         run: npm run build:app-deps
 
+      # OTTO(visualizer): every platform ships the same deterministic offline renderer.
+      - name: Verify committed Visualizer renderer
+        run: git diff --exit-code -- packages/app/src/otto/visualizer/visualizer-bundle.gen.ts
+
       - name: Run app unit tests
         run: npm run test --workspace=@getpaseo/app
 

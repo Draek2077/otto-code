@@ -577,3 +577,19 @@ gate. Unit fixtures do not launch the app, a provider CLI or the installed daemo
 These entries define checks; they do not assert that an untested revision passed.
 Physical-device input and user-specific fonts require their corresponding device
 or environment review.
+
+## Otto Visualizer restoration
+
+<!-- OTTO(visualizer): the existing app and Electron lanes own real render proof. -->
+
+| Surface                                                                                                                  | Behavioral coverage                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Canonical roots/children, streaming revisions, reported usage, failures/cancellation, file overlaps and bounded excerpts | `src/otto/visualizer/projection.test.ts`, `discoveries.test.ts`, `tool-data.test.ts`                  |
+| Selected/aggregate timeline demand, independent Speech leases, disconnect/replay and teardown                            | `src/otto/visualizer/feed-owner.test.ts`                                                              |
+| Singleton handoff, private-frame bounds, nearest-edge resize, offline bundle and legacy preferences                      | `src/otto/visualizer/ownership.test.ts`, `bundle.test.ts`, `preferences.test.ts`                      |
+| Real provider tool loop, real graph, wide/compact panel, retained workspace handoff, PIP, background and Composer        | `e2e/browser/otto-visualizer.spec.ts`, regular Otto App Acceptance and manual `visualizer` diagnostic |
+| Electron private guest, offline policy, browser plane, hidden-window disposal and tab/PIP handoff                        | `packages/desktop/e2e/otto-visualizer.electron.mjs`, called by the existing desktop browser journey   |
+
+These define acceptance checks, not the outcome of an untested commit. No test
+launches the installed Otto daemon. Native phone gestures, system audio and
+user-specific providers still need device/environment review.

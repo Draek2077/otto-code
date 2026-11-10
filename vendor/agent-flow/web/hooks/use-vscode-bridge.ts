@@ -1,0 +1,506 @@
+'use client'
+
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo, type PanelsConfig, type RenderConfig, type CameraConfig, type LatestAssistantBubbleConfig, type SessionStateReport, type TogglablePanel, type ViewportCommand } from '@/lib/vscode-bridge'
+import { SimulationEvent } from '@/lib/agent-types'
+import { setHostRenderPaused } from '@/lib/render-gate'
+
+// OTTO PATCH (OTTO-PATCHES.md): synthetic picker value from the native toolbar.
+// It is not an event session; selecting it streams every LIVE chat session into
+// one unconnected workspace forest.
+const ALL_ACTIVE_CHATS_SESSION_ID = 'otto:all-active-chats'
+
+interface BridgeHookResult {
+  isVSCode: boolean
+  connectionStatus: ConnectionStatus
+  /** Events received from VS Code extension, converted to SimulationEvent format */
+  pendingEvents: readonly SimulationEvent[]
+  /** Call after consuming events to clear the queue */
+  consumeEvents: () => void
+  /** Whether to show mock data (standalone mode or explicit config) */
+  useMockData: boolean
+  /** Whether CLAUDE_CODE_DISABLE_1M_CONTEXT=1 is set — caps context window to 200k */
+  disable1MContext: boolean
+  /** Latest `config.panels` seed from the host, or null if none received yet.
+   *  Updates on every config message that carries panels (not just the first). */
+  panelsConfig: PanelsConfig | null
+  /** Latest `config.render` seed from the host, or null if none received yet.
+   *  Updates on every config message that carries render (OTTO PATCH). */
+  renderConfig: RenderConfig | null
+  /** Latest `config.camera` seed from the host, or null if none received yet.
+   *  Auto-fit framing profile — Otto's PIP sends a tighter one (OTTO PATCH). */
+  cameraConfig: CameraConfig | null
+  /** Latest `config.soundVolume` seed from the host (0..1), or null if none
+   *  received yet. Authoritative master volume — 0 mutes (OTTO PATCH). */
+  soundVolume: number | null
+  /** Latest `config.hudHidden` seed from the host, or null if none received
+   *  yet. Authoritative — when set, hides every HUD panel/bar except the HUD
+   *  toggle button itself (OTTO PATCH). */
+  hudHidden: boolean | null
+  /** Latest `config.hudBottomHidden` seed from the host, or null if none
+   *  received yet. Hides ONLY the bottom control bar (play/scrubber), leaving
+   *  the top stats bar up — Otto's PIP shows the top HUD and no controls
+   *  (OTTO PATCH). Independent of `hudHidden`, which hides both. */
+  hudBottomHidden: boolean | null
+  /** Latest `config.hudCompact` seed from the host, or null if none received
+   *  yet. Otto's PIP ("mini") surface: the HUD is laid out for a ~240x150 box
+   *  instead of a full tab — the stats readout splits across both top corners
+   *  and the FPS meter moves out of the top-left they now occupy (OTTO PATCH). */
+  hudCompact: boolean | null
+  /** Background-only host flag for the root node's persistent native reply bubble. */
+  showLatestAssistantBubble: LatestAssistantBubbleConfig | null
+  /** Open a file in the VS Code editor */
+  bridgeOpenFile: (filePath: string, line?: number) => void
+  /** OTTO PATCH: report the in-page mute toggle to the host so it persists the
+   *  preference and re-seeds it via `config.soundVolume` on the next open. */
+  bridgeSetSoundMuted: (muted: boolean) => void
+  /** OTTO PATCH: ask the host to toggle a panel's visibility (page keyboard
+   *  shortcuts). Host settings own panel visibility via `config.panels`, so
+   *  the page defers to the host instead of flipping local state. */
+  bridgeTogglePanel: (panel: TogglablePanel) => void
+  /** OTTO PATCH: mirror the page's session list/selection/activity to the host
+   *  so the Otto toolbar's chats dropdown can render them. */
+  bridgeReportSessionState: (report: SessionStateReport) => void
+  /** OTTO PATCH: subscribe to host -> page session commands (select/close a
+   *  chat) issued by the Otto toolbar. Returns an unsubscribe fn. */
+  subscribeSessionCommand: (
+    callback: (command: 'select' | 'close', sessionId: string) => void,
+  ) => () => void
+  /** OTTO PATCH: subscribe to host -> page viewport commands (zoom to fit /
+   *  restart / cold-restart) issued by the Otto toolbar. Returns an
+   *  unsubscribe fn. */
+  subscribeViewportCommand: (
+    callback: (command: ViewportCommand) => void,
+  ) => () => void
+  /** Known sessions from the extension */
+  sessions: SessionInfo[]
+  /** Currently selected session ID */
+  selectedSessionId: string | null
+  /** Select a session to view (does not flush events — call flushSessionEvents after state swap). */
+  selectSession: (sessionId: string | null) => void
+  /** Flush buffered events for a session into pending. Call from useLayoutEffect after state swap. */
+  flushSessionEvents: (sessionId: string, fromIndex?: number) => void
+  /** Get the current event count for a session (for save/restore) */
+  getSessionEventCount: (sessionId: string) => number
+  /** Ref to the currently selected session ID — updated synchronously, not via React state */
+  selectedSessionIdRef: React.RefObject<string | null>
+  /** Session IDs that have received events while not selected */
+  sessionsWithActivity: Set<string>
+  /** Remove a session from the list */
+  removeSession: (sessionId: string) => void
+}
+
+/**
+ * Connects the VS Code bridge to the React app.
+ * When running standalone, returns useMockData=true and no events.
+ * When inside VS Code, receives events and forwards control commands.
+ *
+ * Supports multi-session: events are buffered per-session so switching
+ * sessions replays the correct event history.
+ */
+export function useVSCodeBridge(): BridgeHookResult {
+  const [isVSCode, setIsVSCode] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
+  const [useMockData, setUseMockData] = useState(
+    process.env.NEXT_PUBLIC_DEMO !== '0'
+  )
+  const [disable1MContext, setDisable1MContext] = useState(false)
+  const [panelsConfig, setPanelsConfig] = useState<PanelsConfig | null>(null)
+  const [renderConfig, setRenderConfig] = useState<RenderConfig | null>(null)
+  const [cameraConfig, setCameraConfig] = useState<CameraConfig | null>(null)
+  const [soundVolume, setSoundVolume] = useState<number | null>(null)
+  const [hudHidden, setHudHidden] = useState<boolean | null>(null)
+  const [hudBottomHidden, setHudBottomHidden] = useState<boolean | null>(null)
+  const [hudCompact, setHudCompact] = useState<boolean | null>(null)
+  const [showLatestAssistantBubble, setShowLatestAssistantBubble] = useState<LatestAssistantBubbleConfig | null>(null)
+  const pendingEventsRef = useRef<SimulationEvent[]>([])
+  const [, setEventVersion] = useState(0) // trigger re-render on new events
+
+  // Session state
+  const [sessions, setSessions] = useState<SessionInfo[]>([])
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const selectedSessionIdRef = useRef<string | null>(null)
+  const sessionEventsRef = useRef<Map<string, SimulationEvent[]>>(new Map())
+  // Keep arrival order across the real per-chat buffers. A workspace-wide
+  // view must replay the same independent events in their observed order.
+  const allSessionEventsRef = useRef<SimulationEvent[]>([])
+  // Otto's synthetic All active view includes only sessions whose provider is
+  // still live. The host maps a closed root to `ended`; it remains selectable
+  // individually, while this status map filters its retained history out of
+  // the aggregate without deleting the normal session buffer.
+  const sessionStatusesRef = useRef<Map<string, SessionInfo['status']>>(new Map())
+  /** True while a session switch is pending (between auto-select and useLayoutEffect).
+   *  Prevents the animation frame from processing events in the wrong simulation context. */
+  const sessionSwitchPendingRef = useRef(false)
+  const [sessionsWithActivity, setSessionsWithActivity] = useState<Set<string>>(new Set())
+
+  // Connect to standalone dev relay server via SSE when not in VS Code
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const bridge = vscodeBridge
+    if (!bridge) return
+
+    // Skip in VS Code — extension handles events via postMessage
+    if (bridge.isVSCode) return
+
+    // Connect to relay in dev mode or standalone CLI mode
+    const isStandalone = process.env.AGENT_FLOW_STANDALONE === '1'
+    if (!isStandalone && (process.env.NODE_ENV !== 'development' || process.env.NEXT_PUBLIC_DEMO !== '0')) return
+
+    const relayPort = process.env.NEXT_PUBLIC_RELAY_PORT || ''
+    const es = new EventSource(relayPort ? `http://127.0.0.1:${relayPort}/events` : '/events')
+
+    es.onopen = () => {
+      setConnectionStatus('connected')
+      setUseMockData(false)
+    }
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        window.postMessage(data, '*')
+      } catch {}
+    }
+    es.onerror = () => {
+      setConnectionStatus('disconnected')
+    }
+
+    return () => {
+      es.close()
+    }
+  }, [])
+
+  useEffect(() => {
+    const bridge = vscodeBridge
+    if (!bridge) { return }
+
+    // Listen for bridge initialization (event-driven, no polling)
+    const unsubInit = bridge.onInit(() => {
+      setIsVSCode(true)
+      setUseMockData(false)
+    })
+
+    // Listen for events — buffer by session, deliver to pending if session matches.
+    // selectedSessionIdRef is updated synchronously (not via React state) so it's
+    // always current even before React re-renders.
+    const unsubEvent = bridge.onEvent((event: AgentEvent) => {
+      const simEvent: SimulationEvent = {
+        time: event.time,
+        type: event.type as SimulationEvent['type'],
+        payload: event.payload,
+        sessionId: event.sessionId,
+        // OTTO PATCH (OTTO-PATCHES.md): carry the hydrate flag through so the
+        // simulation settles backfilled history instead of animating it. Flows
+        // through the normal per-session buffer + pending paths — the animate
+        // loop keys the settle on the flag, so it works regardless of whether
+        // the event reaches the sim live or via a buffered session replay.
+        ...(event.hydrate ? { hydrate: true } : {}),
+      }
+
+      // Always buffer by session (for replay on session switch)
+      if (event.sessionId) {
+        const buf = sessionEventsRef.current.get(event.sessionId) || []
+        buf.push(simEvent)
+        sessionEventsRef.current.set(event.sessionId, buf)
+        allSessionEventsRef.current.push(simEvent)
+      }
+
+      // Deliver to pending if session matches (ref is always current).
+      // Skip if a session switch is pending — useLayoutEffect will flush
+      // from the session buffer once the simulation state is swapped.
+      const selected = selectedSessionIdRef.current
+      const isAllActive = selected === ALL_ACTIVE_CHATS_SESSION_ID
+      const isLiveSession = event.sessionId
+        ? (sessionStatusesRef.current.get(event.sessionId) ?? 'active') === 'active'
+        : false
+      // Let a root's terminal event reach the aggregate after its session has
+      // just been marked completed: an already-visible live tree needs that
+      // event to fade out. Historical closed trees still cannot appear, because
+      // their spawn events remain filtered and the completion has no node.
+      const completesLiveTree = simEvent.type === 'agent_complete'
+      if (selected && ((isAllActive && (isLiveSession || completesLiveTree)) || event.sessionId === selected) && !sessionSwitchPendingRef.current) {
+        pendingEventsRef.current.push(simEvent)
+        setEventVersion(v => v + 1)
+      } else if (event.sessionId && !isAllActive && event.sessionId !== selected) {
+        // Track background activity for unselected sessions
+        setSessionsWithActivity(prev => {
+          if (prev.has(event.sessionId!)) return prev
+          const next = new Set(prev)
+          next.add(event.sessionId!)
+          return next
+        })
+      }
+
+      // Re-add dismissed sessions when new events arrive
+      if (event.sessionId && dismissedSessionsRef.current.has(event.sessionId)) {
+        const saved = dismissedSessionsRef.current.get(event.sessionId)
+        dismissedSessionsRef.current.delete(event.sessionId)
+        if (saved) {
+          setSessions(prev => {
+            if (prev.find(s => s.id === saved.id)) return prev
+            return [...prev, { ...saved, status: 'active' as const, lastActivityTime: Date.now() }]
+          })
+        }
+      }
+    })
+
+    const unsubStatus = bridge.onStatus((status) => {
+      setConnectionStatus(status)
+    })
+
+    const unsubConfig = bridge.onConfig((config) => {
+      if (config.showMockData !== undefined) { setUseMockData(config.showMockData) }
+      if (config.disable1MContext !== undefined) { setDisable1MContext(config.disable1MContext) }
+      if (config.panels !== undefined) { setPanelsConfig(config.panels) }
+      if (config.render !== undefined) { setRenderConfig(config.render) }
+      if (config.camera !== undefined) { setCameraConfig(config.camera) }
+      if (config.soundVolume !== undefined) { setSoundVolume(config.soundVolume) }
+      if (config.hudHidden !== undefined) { setHudHidden(config.hudHidden) }
+      if (config.hudBottomHidden !== undefined) { setHudBottomHidden(config.hudBottomHidden) }
+      if (config.hudCompact !== undefined) { setHudCompact(config.hudCompact) }
+      if (config.showLatestAssistantBubble !== undefined) { setShowLatestAssistantBubble(config.showLatestAssistantBubble) }
+      // OTTO PATCH (OTTO-PATCHES.md): host-reported off-screen state gates every rAF loop.
+      if (config.paused !== undefined) { setHostRenderPaused(config.paused) }
+    })
+
+    // Session lifecycle tracking
+    // Note: these handlers only update session list + selection state.
+    // Event flushing is handled by the consumer (index.tsx effect) to avoid
+    // races between auto-flush here and save/restore logic there.
+    const unsubSession = bridge.onSession((type, data, autoSelect = true) => {
+      if (type === 'reset') {
+        // Panel was reopened — clear all stale state
+        setSessions([])
+        setSelectedSessionId(null)
+        selectedSessionIdRef.current = null
+        pendingEventsRef.current.length = 0
+        sessionEventsRef.current.clear()
+        allSessionEventsRef.current.length = 0
+        sessionStatusesRef.current.clear()
+        setSessionsWithActivity(new Set())
+        dismissedSessionsRef.current.clear()
+        setEventVersion(v => v + 1)
+        return
+      }
+      if (type === 'list') {
+        const sessionList = data as SessionInfo[]
+        sessionStatusesRef.current = new Map(sessionList.map(session => [session.id, session.status]))
+        setSessions(sessionList)
+        // Auto-select: prefer active sessions, then most recently active.
+        // Only set selection — useLayoutEffect handles flushing events.
+        if (!selectedSessionIdRef.current && sessionList.length > 0) {
+          const sorted = [...sessionList].sort((a, b) => {
+            const aActive = a.status === 'active' ? 1 : 0
+            const bActive = b.status === 'active' ? 1 : 0
+            if (aActive !== bActive) return bActive - aActive
+            return b.lastActivityTime - a.lastActivityTime
+          })
+          const autoId = sorted[0].id
+          sessionSwitchPendingRef.current = true
+          pendingEventsRef.current.length = 0
+          selectedSessionIdRef.current = autoId
+          setSelectedSessionId(autoId)
+        }
+      } else if (type === 'started') {
+        const session = data as SessionInfo
+        sessionStatusesRef.current.set(session.id, 'active')
+        setSessions(prev => {
+          const existing = prev.find(s => s.id === session.id)
+          if (existing) {
+            // Session resumed after inactivity — mark active again.
+            // OTTO PATCH (OTTO-PATCHES.md): also take the incoming label — a
+            // re-added session (un-archive) may carry a fresher chat title than
+            // the entry it left behind.
+            return prev.map(s => s.id === session.id
+              ? { ...s, label: session.label, status: 'active' as const, lastActivityTime: Date.now() }
+              : s)
+          }
+          return [...prev, session]
+        })
+        // OTTO PATCH (OTTO-PATCHES.md): a session the host flagged
+        // `select: false` started in the background — the user did not switch
+        // to it, so neither does the canvas. It is still registered above, so
+        // it shows in the session list and its events keep buffering. The one
+        // exception is an empty canvas (nothing selected yet), where showing
+        // the new chat beats showing nothing.
+        const mayAutoSelect = autoSelect || selectedSessionIdRef.current === null
+        // OTTO PATCH (OTTO-PATCHES.md): only arm the switch-pending gate when
+        // the selection actually CHANGES. The flag's only clearer is the
+        // selection-change useLayoutEffect in index.tsx — arming it for an
+        // already-selected session (a host re-post after a lagging
+        // session-state echo) left it set forever, silently diverting every
+        // later live event for that chat into the background-activity
+        // bucket: the canvas froze mid-chat until the tab was reopened.
+        if (mayAutoSelect && selectedSessionIdRef.current !== ALL_ACTIVE_CHATS_SESSION_ID && selectedSessionIdRef.current !== session.id) {
+          // Auto-select newly started session.
+          // Set switch-pending flag to prevent the animation frame from processing
+          // events in the wrong simulation state before useLayoutEffect swaps it.
+          sessionSwitchPendingRef.current = true
+          pendingEventsRef.current.length = 0
+          selectedSessionIdRef.current = session.id
+          setSelectedSessionId(session.id)
+        }
+      } else if (type === 'updated') {
+        const { sessionId, label } = data as { sessionId: string; label: string }
+        setSessions(prev => prev.map(s =>
+          s.id === sessionId ? { ...s, label } : s
+        ))
+      } else if (type === 'ended') {
+        const sessionId = data as string
+        sessionStatusesRef.current.set(sessionId, 'completed')
+        setSessions(prev => prev.map(s =>
+          s.id === sessionId ? { ...s, status: 'completed' as const } : s
+        ))
+      }
+    })
+
+    return () => {
+      unsubInit()
+      unsubEvent()
+      unsubStatus()
+      unsubConfig()
+      unsubSession()
+    }
+  }, [])
+
+  const consumeEvents = useCallback(() => {
+    // Clear in-place so stale closures in animation callbacks
+    // also see the cleared array (prevents multi-frame reprocessing)
+    pendingEventsRef.current.length = 0
+  }, [])
+
+  /** Switch session selection. Does NOT flush events — call flushSessionEvents
+   *  from useLayoutEffect after the simulation state has been saved/swapped. */
+  const selectSession = useCallback((sessionId: string | null) => {
+    // OTTO PATCH (OTTO-PATCHES.md): a re-select of the ALREADY-selected
+    // session must not arm the switch gate — its only clearer is
+    // index.tsx's selection-change layout effect, which never runs without
+    // a change, so the gate stayed set and every later live event for this
+    // chat was dropped from the canvas (same freeze as the session-started
+    // guard above). Clearing pending here is still correct: a real switch's
+    // flush replays from the per-session buffer anyway.
+    pendingEventsRef.current.length = 0
+    if (selectedSessionIdRef.current === sessionId) {
+      setSelectedSessionId(sessionId)
+      return
+    }
+    // Block event delivery to pending until the simulation state is swapped
+    sessionSwitchPendingRef.current = true
+    selectedSessionIdRef.current = sessionId
+    setSelectedSessionId(sessionId)
+    if (sessionId) {
+      setSessionsWithActivity(prev => {
+        if (!prev.has(sessionId)) return prev
+        const next = new Set(prev)
+        next.delete(sessionId)
+        return next
+      })
+    }
+  }, [])
+
+  /** Flush buffered events for the selected session into pending.
+   *  Must be called from useLayoutEffect AFTER simulation state is saved/swapped. */
+  const getAllActiveEvents = useCallback(() => allSessionEventsRef.current.filter(
+    (event) => event.sessionId && sessionStatusesRef.current.get(event.sessionId) === 'active',
+  ), [])
+
+  const flushSessionEvents = useCallback((sessionId: string, fromIndex = 0) => {
+    sessionSwitchPendingRef.current = false
+    const buffered = sessionId === ALL_ACTIVE_CHATS_SESSION_ID
+      ? getAllActiveEvents()
+      : sessionEventsRef.current.get(sessionId) || []
+    pendingEventsRef.current.length = 0
+    pendingEventsRef.current.push(...buffered.slice(fromIndex))
+    setEventVersion(v => v + 1)
+  }, [getAllActiveEvents])
+
+  const getSessionEventCount = useCallback((sessionId: string): number => {
+    return sessionId === ALL_ACTIVE_CHATS_SESSION_ID
+      ? getAllActiveEvents().length
+      : sessionEventsRef.current.get(sessionId)?.length ?? 0
+  }, [getAllActiveEvents])
+
+  const dismissedSessionsRef = useRef<Map<string, SessionInfo>>(new Map())
+
+  const removeSession = useCallback((sessionId: string) => {
+    sessionEventsRef.current.delete(sessionId)
+    sessionStatusesRef.current.delete(sessionId)
+    allSessionEventsRef.current = allSessionEventsRef.current.filter(
+      (event) => event.sessionId !== sessionId,
+    )
+    setSessions(prev => {
+      const session = prev.find(s => s.id === sessionId)
+      if (session) { dismissedSessionsRef.current.set(sessionId, session) }
+      return prev.filter(s => s.id !== sessionId)
+    })
+    setSessionsWithActivity(prev => {
+      if (!prev.has(sessionId)) return prev
+      const next = new Set(prev)
+      next.delete(sessionId)
+      return next
+    })
+  }, [])
+
+  const bridgeOpenFile = useCallback((filePath: string, line?: number) => {
+    vscodeBridge?.openFile(filePath, line)
+  }, [])
+
+  // OTTO PATCH: forward the in-page mute toggle to the host (see BridgeHookResult).
+  const bridgeSetSoundMuted = useCallback((muted: boolean) => {
+    vscodeBridge?.setSoundMuted(muted)
+  }, [])
+
+  // OTTO PATCH: forward a keyboard panel-toggle to the host (see BridgeHookResult).
+  const bridgeTogglePanel = useCallback((panel: TogglablePanel) => {
+    vscodeBridge?.togglePanel(panel)
+  }, [])
+
+  // OTTO PATCH: mirror session state to the host (see BridgeHookResult).
+  const bridgeReportSessionState = useCallback((report: SessionStateReport) => {
+    vscodeBridge?.reportSessionState(report)
+  }, [])
+
+  // OTTO PATCH: subscribe to host -> page session commands (see BridgeHookResult).
+  const subscribeSessionCommand = useCallback(
+    (callback: (command: 'select' | 'close', sessionId: string) => void) =>
+      vscodeBridge?.onSessionCommand(callback) ?? (() => {}),
+    [],
+  )
+
+  // OTTO PATCH: subscribe to host -> page viewport commands (see BridgeHookResult).
+  const subscribeViewportCommand = useCallback(
+    (callback: (command: ViewportCommand) => void) =>
+      vscodeBridge?.onViewportCommand(callback) ?? (() => {}),
+    [],
+  )
+
+  return {
+    isVSCode,
+    connectionStatus,
+    pendingEvents: pendingEventsRef.current,
+    consumeEvents,
+    useMockData,
+    disable1MContext,
+    panelsConfig,
+    renderConfig,
+    cameraConfig,
+    soundVolume,
+    hudHidden,
+    hudBottomHidden,
+    hudCompact,
+    showLatestAssistantBubble,
+    bridgeOpenFile,
+    bridgeSetSoundMuted,
+    bridgeTogglePanel,
+    bridgeReportSessionState,
+    subscribeSessionCommand,
+    subscribeViewportCommand,
+    sessions,
+    selectedSessionId,
+    selectedSessionIdRef,
+    selectSession,
+    flushSessionEvents,
+    getSessionEventCount,
+    sessionsWithActivity,
+    removeSession,
+  }
+}
