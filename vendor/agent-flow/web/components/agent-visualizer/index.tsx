@@ -364,6 +364,15 @@ export function AgentVisualizer() {
     for (const a of agents.values()) sum += a.cumulativeTokens ?? a.tokensUsed
     return sum
   }, [agents, retiredTokens])
+  const tokenCoverage = useMemo(() => {
+    let known = (retiredTokens ?? 0) > 0
+    let partial = false
+    for (const agent of agents.values()) {
+      if (agent.contextKnown === false) partial = true
+      else known = true
+    }
+    return { known, partial }
+  }, [agents, retiredTokens])
 
   // OTTO PATCH (OTTO-PATCHES.md): the graph's REAL cost — Σ of the per-agent
   // figures the host's provider reported, plus the banked cost of nodes already
@@ -628,6 +637,8 @@ export function AgentVisualizer() {
         <TopBar
           agentCount={agents.size}
           totalTokens={totalTokens}
+          tokensKnown={tokenCoverage.known}
+          tokensPartial={tokenCoverage.partial}
           totalCostUsd={cost.totalCostUsd}
           costIsPartial={cost.costIsPartial}
           compact={hudCompact}

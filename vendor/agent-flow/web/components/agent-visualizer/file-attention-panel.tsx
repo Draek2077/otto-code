@@ -21,6 +21,7 @@ export function FileAttentionPanel({ visible, fileAttention, onOpenFile }: FileA
     .sort((a, b) => b.totalTokens - a.totalTokens)
 
   const maxTokens = Math.max(...files.map(f => f.totalTokens), 1)
+  const knownFiles = files.filter(f => f.tokensKnown === true || f.totalTokens > 0)
 
   return (
     <SlidingPanel
@@ -114,7 +115,9 @@ export function FileAttentionPanel({ visible, fileAttention, onOpenFile }: FileA
             color: COLORS.textMuted,
           }}>
             <span>{files.length} files</span>
-            <span>{formatTokens(files.reduce((s, f) => s + f.totalTokens, 0))} tokens in file reads</span>
+            <span>{knownFiles.length === 0 ? 'File token usage not reported' : (
+              <>{knownFiles.length < files.length ? '≥ ' : ''}{formatTokens(knownFiles.reduce((s, f) => s + f.totalTokens, 0))} tokens reported</>
+            )}</span>
           </div>
         )}
       </div>

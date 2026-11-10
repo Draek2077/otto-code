@@ -136,6 +136,14 @@ for (const compact of [false, true]) {
       await expect(
         visualizerContent(page).getByText("missing-visualizer-proof.txt", { exact: false }).first(),
       ).toBeVisible();
+      await page.getByRole("button", { name: "Visualizer options", exact: true }).click();
+      await page.getByRole("menuitem", { name: "File activity", exact: true }).click();
+      await expect(
+        visualizerContent(page).getByText("visualizer-proof.txt", { exact: false }).first(),
+      ).toBeVisible();
+      await expect(
+        visualizerContent(page).getByText("File token usage not reported", { exact: true }),
+      ).toBeVisible();
       await page.screenshot({
         path: info.outputPath(`visualizer-${compact ? "compact" : "wide"}.png`),
       });
@@ -214,6 +222,7 @@ for (const compact of [false, true]) {
       await expect(page.locator('iframe[title="Visualizer"]')).toHaveCount(0);
       await expect(composer).toBeEnabled();
     } catch (error) {
+      await page.screenshot({ path: info.outputPath("visualizer-before-cleanup.png") });
       await writeFile(
         info.outputPath("visualizer-diagnostic.json"),
         JSON.stringify(

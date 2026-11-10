@@ -166,6 +166,7 @@ export interface FileAttention {
   reads: number
   edits: number
   totalTokens: number   // how much context this file consumed
+  tokensKnown?: boolean // OTTO PATCH: absent per-file usage is not a measured zero
   lastAccessed: number
   agents: string[]      // which agents touched this file
 }

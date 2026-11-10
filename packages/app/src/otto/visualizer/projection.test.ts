@@ -168,6 +168,25 @@ describe("canonical Visualizer projection", () => {
     const events = new VisualizerProjector().update(input()).events;
     expect(events.some((event) => event.type === "context_update")).toBe(false);
   });
+  it.each(["read", "write", "edit"] as const)(
+    "projects %s file semantics without renaming a provider's tool",
+    (type) => {
+      const result = new VisualizerProjector().update(
+        input(
+          [agent()],
+          [tool({ name: "otto_custom_file", detail: { type, filePath: "src/test.ts" } })],
+        ),
+      );
+      expect(result.events.find((event) => event.type === "tool_call_start")).toMatchObject({
+        payload: {
+          tool: "otto_custom_file",
+          callId: "call",
+          fileAccess: type === "read" ? "read" : "write",
+          inputData: { file_path: "c:/repo/src/test.ts" },
+        },
+      });
+    },
+  );
   it("uses reported context occupancy and cost without treating input/output as lifetime totals", () => {
     const events = new VisualizerProjector().update(
       input([

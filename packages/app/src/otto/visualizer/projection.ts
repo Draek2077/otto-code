@@ -373,7 +373,12 @@ export class VisualizerProjector {
     const payloads: Array<{ type: VisualizerEvent["type"]; payload: Record<string, unknown> }> = [
       {
         type: "tool_call_start",
-        payload: { ...base, args: clip(content.args, 1000), inputData: content.inputData },
+        payload: {
+          ...base,
+          args: clip(content.args, 1000),
+          inputData: content.inputData,
+          ...(path ? { fileAccess: data.detail.type === "read" ? "read" : "write" } : {}),
+        },
       },
     ];
     if (data.status !== "running")

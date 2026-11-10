@@ -16,6 +16,9 @@ import { formatCost } from "./canvas/draw-cost"
 export interface TopBarProps {
   agentCount: number
   totalTokens: number
+  /** OTTO PATCH: unreported usage must not appear as a measured zero. */
+  tokensKnown?: boolean
+  tokensPartial?: boolean
   /** OTTO PATCH (OTTO-PATCHES.md): the graph's REAL cost — Σ of the per-agent
    * costs the host's provider reported — or null when nothing here can be
    * priced, in which case no dollar figure is shown at all. `partial` when only
@@ -32,6 +35,8 @@ export interface TopBarProps {
 export const TopBar = memo(function TopBar({
   agentCount,
   totalTokens,
+  tokensKnown,
+  tokensPartial,
   totalCostUsd,
   costIsPartial,
   compact,
@@ -40,7 +45,7 @@ export const TopBar = memo(function TopBar({
   const hasCost = typeof totalCostUsd === 'number' && totalCostUsd > 0
   const tokens = (
     <span className="whitespace-nowrap">
-      {formatTokens(totalTokens)} tokens
+      {tokensKnown === false ? 'Token usage not reported' : <>{tokensPartial ? '≥ ' : ''}{formatTokens(totalTokens)} tokens</>}
       {hasCost && (
         <span style={{ color: COLORS.complete + '65', marginLeft: 4 }}>
           {costIsPartial ? '≥ ' : ''}

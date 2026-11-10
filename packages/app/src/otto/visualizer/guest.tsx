@@ -123,10 +123,12 @@ function Guest({
   );
   const palette = useMemo(
     () =>
-      buildVisualizerPalette({
-        colorScheme: theme.colorScheme,
-        colors: { ...theme.colors, background: theme.colors.surface0 },
-      }),
+      JSON.stringify(
+        buildVisualizerPalette({
+          colorScheme: theme.colorScheme,
+          colors: { ...theme.colors, background: theme.colors.surface0 },
+        }),
+      ),
     [theme],
   );
   const guest = useMemo(() => {
@@ -143,10 +145,7 @@ function Guest({
   const { bridge } = guest;
   const ready = readyChannel === bridge.channel;
   const html = useMemo(
-    () =>
-      raw
-        ? prepareVisualizerHtml(raw, bridge.channel, guest.scale, JSON.stringify(guest.palette))
-        : null,
+    () => (raw ? prepareVisualizerHtml(raw, bridge.channel, guest.scale, guest.palette) : null),
     [raw, bridge, guest],
   );
   useEffect(() => {

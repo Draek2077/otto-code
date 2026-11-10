@@ -22,6 +22,9 @@ after a `git subtree pull` if the upstream diff conflicts with it.
   `file-attention` callbacks accept the absent file-open action.
 - `web/app/globals.css`: Tailwind scans only the pinned `web/` tree. Builds do
   not scan Otto app files, local scratch output or unrelated workspaces.
+- `web/hooks/simulation/handle-tool-events.ts`: file attention follows canonical
+  read/write semantics while keeping the provider's original tool name. The HUD
+  and file summary display unreported token usage explicitly instead of a zero.
 
 The application projection, demand leases, singleton, PIP, background, guest
 policy and preference compatibility live under `packages/app/src/otto/visualizer`.

@@ -29,10 +29,18 @@ export const visualizerContent = (page: Page) =>
     .frameLocator('iframe[title="Visualizer content"]');
 
 export async function observedCommands(page: Page) {
-  const frames = await page
-    .frameLocator('iframe[title="Visualizer"]')
-    .locator("body")
-    .evaluate(() => Reflect.get(window, "__ottoVisualizerObserved"));
+  let frames: unknown;
+  try {
+    frames = await page
+      .frameLocator('iframe[title="Visualizer"]')
+      .locator("body")
+      .evaluate(() => Reflect.get(window, "__ottoVisualizerObserved"));
+  } catch (error) {
+    // A new bootstrap gets a new nonce/frame. The caller's bounded poll still
+    // requires the actual canonical replay in the replacement guest.
+    if (error instanceof Error && error.message.includes("Frame was detached")) return [];
+    throw error;
+  }
   return z
     .array(z.object({ version: z.literal(1), channel: z.string(), message: z.unknown() }))
     .parse(frames)
