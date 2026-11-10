@@ -18,7 +18,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/component
 import { SelectField } from "@/components/ui/select-field";
 import type { Theme } from "@/styles/theme";
 import type { VisualizerSession } from "@getpaseo/visualizer/contracts";
-import type { VisualizerPreferences } from "./preferences";
+import {
+  visualizerSwitchEnabled,
+  visualizerSwitchPatch,
+  type VisualizerPreferences,
+} from "./preferences";
 import { ALL_VISUALIZER_CHATS } from "./projection";
 import { visualizerStyles as styles } from "./styles";
 const iconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -68,13 +72,14 @@ function ToggleItem({
   preferences: VisualizerPreferences;
   save: VisualizerToolbarProps["save"];
 }) {
+  const enabled = visualizerSwitchEnabled(preferences, field);
   const toggle = useCallback(
-    () => save({ [field]: !preferences[field] }),
-    [save, preferences, field],
+    () => save(visualizerSwitchPatch(field, !enabled)),
+    [save, enabled, field],
   );
   return (
     <DropdownMenuItem onSelect={toggle}>
-      {preferences[field] ? "✓ " : ""}
+      {enabled ? "✓ " : ""}
       {label}
     </DropdownMenuItem>
   );

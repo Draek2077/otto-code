@@ -148,11 +148,17 @@ for (const compact of [false, true]) {
       await expect(
         visualizerContent(page).getByText("File token usage not reported", { exact: true }),
       ).toBeVisible();
+      await expect(
+        visualizerContent(page).getByText("Failed Tool Calls", { exact: true }),
+      ).toHaveCount(0);
       await page.getByRole("button", { name: "Visualizer options", exact: true }).click();
       await page.getByRole("menuitem", { name: "Reported cost", exact: true }).click();
       const costs = visualizerContent(page).getByTestId("visualizer-reported-cost");
       await expect(costs).toBeVisible();
       await expect(costs.getByText("Token usage not reported", { exact: true })).toHaveCount(3);
+      await expect(
+        visualizerContent(page).getByText("File token usage not reported", { exact: true }),
+      ).toHaveCount(0);
       await page.screenshot({
         path: info.outputPath(`visualizer-${compact ? "compact" : "wide"}.png`),
       });

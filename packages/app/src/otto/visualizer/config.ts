@@ -1,19 +1,20 @@
 import type { VisualizerConfig } from "@getpaseo/visualizer/contracts";
-import type { VisualizerPreferences } from "./preferences";
+import { selectedVisualizerSidePanel, type VisualizerPreferences } from "./preferences";
 export function visualizerConfig(
   preferences: VisualizerPreferences,
   placement: "tab" | "pip" | "background",
   latestBubble = false,
 ): VisualizerConfig {
   const compact = placement !== "tab";
+  const sidePanel = compact ? undefined : selectedVisualizerSidePanel(preferences);
   return {
     showMockData: false,
     paused: false,
     panels: {
       timeline: !compact && preferences.visualizerPanelTimeline,
-      fileAttention: !compact && preferences.visualizerPanelFileAttention,
-      costOverlay: !compact && preferences.visualizerPanelCostOverlay,
-      failures: !compact && preferences.visualizerPanelFailures,
+      fileAttention: sidePanel === "visualizerPanelFileAttention",
+      costOverlay: sidePanel === "visualizerPanelCostOverlay",
+      failures: sidePanel === "visualizerPanelFailures",
       stats: !compact && preferences.visualizerPanelStats,
     },
     render: {

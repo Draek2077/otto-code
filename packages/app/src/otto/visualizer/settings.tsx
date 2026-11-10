@@ -10,18 +10,20 @@ import {
   SettingsRow,
 } from "@/components/settings";
 import { Alert } from "@/components/ui/alert";
-import type { VisualizerPreferences } from "./preferences";
-type SwitchKey = {
-  [Key in keyof VisualizerPreferences]: VisualizerPreferences[Key] extends boolean ? Key : never;
-}[keyof VisualizerPreferences];
-const panels: Array<{ key: SwitchKey; label: string }> = [
+import {
+  visualizerSwitchEnabled,
+  visualizerSwitchPatch,
+  type VisualizerPreferences,
+  type VisualizerSwitchKey,
+} from "./preferences";
+const panels: Array<{ key: VisualizerSwitchKey; label: string }> = [
   { key: "visualizerPanelTimeline", label: "Timeline" },
   { key: "visualizerPanelFileAttention", label: "File activity" },
   { key: "visualizerPanelCostOverlay", label: "Reported cost" },
   { key: "visualizerPanelFailures", label: "Tool failures" },
   { key: "visualizerPanelStats", label: "Node statistics" },
 ];
-const rendering: Array<{ key: SwitchKey; label: string }> = [
+const rendering: Array<{ key: VisualizerSwitchKey; label: string }> = [
   { key: "visualizerRenderBloom", label: "Bloom" },
   { key: "visualizerRenderNodeGlow", label: "Node glow" },
   { key: "visualizerRenderStars", label: "Stars" },
@@ -56,12 +58,15 @@ function PreferenceSwitch({
   value,
   save,
 }: {
-  field: SwitchKey;
+  field: VisualizerSwitchKey;
   label: string;
   value: boolean;
   save(patch: Partial<VisualizerPreferences>): void;
 }) {
-  const change = useCallback((enabled: boolean) => save({ [field]: enabled }), [field, save]);
+  const change = useCallback(
+    (enabled: boolean) => save(visualizerSwitchPatch(field, enabled)),
+    [field, save],
+  );
   return <SettingsSwitch label={label} value={value} onValueChange={change} />;
 }
 function Fields() {
@@ -152,7 +157,7 @@ function Fields() {
               key={item.key}
               field={item.key}
               label={item.label}
-              value={settings[item.key]}
+              value={visualizerSwitchEnabled(settings, item.key)}
               save={save}
             />
           ))}

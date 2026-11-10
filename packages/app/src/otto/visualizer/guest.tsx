@@ -14,7 +14,12 @@ import { VisualizerBridge, prepareVisualizerHtml } from "./transport";
 import { VisualizerFrame } from "./frame";
 import { connectVisualizerFeed, type VisualizerFeedState } from "./feed";
 import { buildVisualizerPalette } from "./palette";
-import { visualizerRenderScale, type VisualizerPreferences } from "./preferences";
+import {
+  visualizerRenderScale,
+  visualizerSwitchEnabled,
+  visualizerSwitchPatch,
+  type VisualizerPreferences,
+} from "./preferences";
 import { visualizerConfig } from "./config";
 import { selectedVisualizerSession } from "./selection";
 import { visualizerStyles as styles } from "./styles";
@@ -96,7 +101,7 @@ function Guest({
       if (message.type === "sound-muted") save({ visualizerSoundMuted: message.muted });
       if (message.type === "panel-toggle") {
         const key = panelKeys[message.panel];
-        save({ [key]: !data.settings[key] });
+        save(visualizerSwitchPatch(key, !visualizerSwitchEnabled(data.settings, key)));
       }
       if (message.type === "open-file" && state.current?.files.has(message.filePath)) {
         const workspace = useSessionStore

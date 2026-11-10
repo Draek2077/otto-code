@@ -26,6 +26,40 @@ export const visualizerPreferenceDefaults = {
   visualizerPipY: 0,
 };
 export type VisualizerPreferences = typeof visualizerPreferenceDefaults;
+export type VisualizerSwitchKey = {
+  [Key in keyof VisualizerPreferences]: VisualizerPreferences[Key] extends boolean ? Key : never;
+}[keyof VisualizerPreferences];
+
+// The renderer has one right-hand panel. Keep its precedence for older settings
+// that have multiple flags set, and resolve the next explicit selection in one write.
+const sidePanelKeys: readonly VisualizerSwitchKey[] = [
+  "visualizerPanelFileAttention",
+  "visualizerPanelCostOverlay",
+  "visualizerPanelFailures",
+];
+export function selectedVisualizerSidePanel(preferences: VisualizerPreferences) {
+  return sidePanelKeys.find((key) => preferences[key]);
+}
+export function visualizerSwitchEnabled(
+  preferences: VisualizerPreferences,
+  field: VisualizerSwitchKey,
+): boolean {
+  return sidePanelKeys.includes(field)
+    ? selectedVisualizerSidePanel(preferences) === field
+    : preferences[field];
+}
+export function visualizerSwitchPatch(
+  field: VisualizerSwitchKey,
+  enabled: boolean,
+): Partial<VisualizerPreferences> {
+  if (!sidePanelKeys.includes(field)) return { [field]: enabled };
+  return {
+    visualizerPanelFileAttention: enabled && field === "visualizerPanelFileAttention",
+    visualizerPanelCostOverlay: enabled && field === "visualizerPanelCostOverlay",
+    visualizerPanelFailures: enabled && field === "visualizerPanelFailures",
+  };
+}
+
 export function visualizerPlacement(preferences: VisualizerPreferences) {
   // COMPAT(visualizerPlacement): added v0.10.0; remove conflict precedence after
   // 2027-05-10 when the supported floor no longer writes 0.9's independent flags.
