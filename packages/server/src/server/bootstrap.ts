@@ -8,7 +8,7 @@ import { describeHookWorkspace } from "./plugins/lifecycle/index.js";
 import express from "express";
 import { createServer as createHTTPServer, type IncomingMessage, type ServerResponse } from "http";
 import { constants, existsSync, unlinkSync } from "fs";
-import { open, rm, stat } from "fs/promises";
+import { open, stat } from "fs/promises"; // OTTO(history): retain existing timeline files at startup.
 import { randomUUID } from "node:crypto";
 import { createNativeHostBrowser } from "./otto/browser/host/native.js"; // OTTO(browser-host): lazy page/runtime ownership.
 import { OTTO_BROWSER_HOST_ID } from "./otto/browser/host/service.js"; // OTTO(browser-host)
@@ -146,6 +146,8 @@ import { releaseArchivedEditorWorkspace } from "./otto/editor/workspace-lifecycl
 import { SpeechHost } from "./otto/speech/host.js"; // OTTO(speech)
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
+import { ChatSearchService } from "./otto/history/search/service.js"; // OTTO(chat-search)
+import { listSearchChats } from "./otto/history/search/host.js"; // OTTO(chat-search)
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import {
@@ -633,13 +635,7 @@ export async function createPaseoDaemon(
 ): Promise<PaseoDaemon> {
   configureGitProcessPolicy(config.git ?? resolveGitProcessPolicy({ env: process.env }));
   const logger = rootLogger.child({ module: "bootstrap" });
-  const obsoleteTimelineDirectory = path.join(config.paseoHome, "agent-timelines");
-  await rm(obsoleteTimelineDirectory, { recursive: true, force: true }).catch((error) => {
-    logger.warn(
-      { err: error, path: obsoleteTimelineDirectory },
-      "Failed to remove obsolete agent timeline data",
-    );
-  });
+  // OTTO(history): keep historical Otto timeline files on upgrade, even when this daemon does not use them.
   const bootstrapStart = performance.now();
   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
   const daemonVersion = config.daemonVersion ?? resolveDaemonVersion(import.meta.url);
@@ -1194,11 +1190,25 @@ export async function createPaseoDaemon(
     if (git) configureGitProcessPolicy(git);
   });
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
+  // OTTO(chat-search): one index per host, started only by a real capture or query.
+  const ottoChatSearch = new ChatSearchService({
+    home: config.paseoHome,
+    logger,
+    snapshot: (id): import("./otto/history/search/service.js").SearchTimeline | null =>
+      agentManager.getSearchTimeline(id),
+    list: () =>
+      listSearchChats({
+        storage: agentStorage,
+        workspaces: workspaceRegistry,
+        projects: projectRegistry,
+      }),
+  });
   const agentManager = new AgentManager({
     pluginLifecycle: pluginRuntime,
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
+    ottoChatSearch, // OTTO(chat-search)
     appendSystemPrompt: config.appendSystemPrompt,
     ottoKnowledgePrompt: ottoKnowledge.sessionPrompt.bind(ottoKnowledge), // OTTO(knowledge): registry-bound, inert until an interactive session opens.
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
@@ -2262,6 +2272,10 @@ export async function createPaseoDaemon(
       label: "drain plugin lifecycle events",
     }).catch((error) => logger.warn({ err: error }, "Plugin lifecycle events did not finish"));
     await agentManager.flushForShutdown().catch(() => undefined);
+    await ottoChatSearch.close().catch((error: unknown) => {
+      // OTTO(chat-search)
+      logger.warn({ err: error }, "Chat search shutdown did not finish");
+    });
     detachAgentStoragePersistence();
     await agentStorage.flush().catch(() => undefined);
     await agentProviderRuntime.shutdown();

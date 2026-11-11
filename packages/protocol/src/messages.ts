@@ -1,5 +1,7 @@
 import { AgentMessageSchema } from "./agent-message.js";
 import { PluginRegistryIdentitySchema } from "./plugin-registry.js";
+import { historyArchiveRequests, historyArchiveResponses } from "./otto/history-archive.js"; // OTTO(history)
+import { chatSearchRequests, chatSearchResponses } from "./otto/chat-search.js"; // OTTO(chat-search)
 import { AgentProfileSchema, AgentSkillSelectionSchema } from "./agent-profile.js";
 export {
   AgentProfileSchema,
@@ -1324,6 +1326,7 @@ export const FetchAgentHistoryRequestMessageSchema = z.object({
   type: z.literal("fetch_agent_history_request"),
   requestId: z.string(),
   filter: AgentDirectoryFilterSchema.optional(),
+  archiveStatus: z.enum(["active", "archived"]).optional(), // OTTO(history): filter before pagination.
   // A free-text filter over agent title, workspace name, branch, and project name.
   // Matching rows follow the requested sort and cursor pagination.
   search: z.string().optional(),
@@ -3208,6 +3211,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   AudioPlayedMessageSchema,
   FetchAgentsRequestMessageSchema,
   FetchAgentHistoryRequestMessageSchema,
+  ...historyArchiveRequests, // OTTO(history)
+  ...chatSearchRequests, // OTTO(chat-search)
   FetchRecentProviderSessionsRequestMessageSchema,
   FetchWorkspacesRequestMessageSchema,
   ProjectListRequestMessageSchema,
@@ -3678,6 +3683,9 @@ export const ServerInfoStatusPayloadSchema = z
         agentTimelinePromptIndex: z.boolean().optional(),
         // COMPAT(agentHistorySearch): added in v0.3.0, remove gate after 2027-02-07.
         agentHistorySearch: z.boolean().optional(),
+        // OTTO(history). COMPAT(historyArchiveCleanup): added in v0.10.0; remove gate after 2027-05-11.
+        historyArchiveCleanup: z.boolean().optional(),
+        chatContentSearch: z.boolean().optional(), // OTTO(chat-search): existing Otto 0.9 capability.
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: z.boolean().optional(),
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
@@ -6936,6 +6944,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentStatusMessageSchema,
   FetchAgentsResponseMessageSchema,
   FetchAgentHistoryResponseMessageSchema,
+  ...historyArchiveResponses, // OTTO(history)
+  ...chatSearchResponses, // OTTO(chat-search)
   FetchRecentProviderSessionsResponseMessageSchema,
   FetchWorkspacesResponseMessageSchema,
   ProjectAddResponseSchema,

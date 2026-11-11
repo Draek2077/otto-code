@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback, useEffect, type ReactElement } from "re
 import { View, Text } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { router } from "expo-router";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronLeft, Import } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -11,18 +11,18 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { AgentList } from "@/components/agent-list";
 import { SearchField } from "@/components/ui/search-field";
-import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { type AgentHistoryHostError, useAgentHistory } from "@/hooks/use-agent-history";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useImportSession } from "@/hooks/use-import-session";
 import { useHosts } from "@/runtime/host-runtime";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
+import { useHistoryToolbar } from "@/otto/history/history-toolbar"; // OTTO(history)
 
 /** Long enough that a typed word is one request, short enough to feel live. */
 const SEARCH_DEBOUNCE_MS = 200;
 
-const sessionsHostOptionTestID = (serverId: string) => `sessions-host-filter-item-${serverId}`;
+const HistorySpinner = withUnistyles(LoadingSpinner, (theme) => ({ color: theme.colors.accent })); // OTTO(history)
 
 /**
  * A host that failed while others answered. Without this the list silently
@@ -54,8 +54,10 @@ function resolveEmptyText(input: {
   t: TFunction;
   isSearching: boolean;
   isAllHosts: boolean;
+  isFiltered?: boolean; // OTTO(history)
 }): string {
   if (input.isSearching) return input.t("sessions.noMatches");
+  if (input.isFiltered) return "No sessions match these filters"; // OTTO(history)
   if (input.isAllHosts) return input.t("sessions.empty");
   return "No sessions for this host";
 }
@@ -71,7 +73,6 @@ export function SessionsScreen() {
 }
 
 function SessionsScreenContent() {
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const importSession = useImportSession();
   const hosts = useHosts();
@@ -79,6 +80,12 @@ function SessionsScreenContent() {
   const [searchInput, setSearchInput] = useState("");
   const search = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS).trim();
   const historyServerId = selectedHost === ALL_HOSTS_OPTION_ID ? null : selectedHost;
+  // OTTO(history): keep the existing History route and pager; scope them from the shared controls.
+  const { scope, toolbar } = useHistoryToolbar({
+    hosts,
+    selectedHost,
+    onSelectHost: setSelectedHost,
+  });
   const {
     agents,
     hasMore,
@@ -93,6 +100,7 @@ function SessionsScreenContent() {
   } = useAgentHistory({
     serverId: historyServerId,
     search,
+    scope, // OTTO(history)
   });
   const isSearching = isSearchSupported && search.length > 0;
 
@@ -117,9 +125,9 @@ function SessionsScreenContent() {
     t,
     isSearching,
     isAllHosts: selectedHost === ALL_HOSTS_OPTION_ID,
+    isFiltered: Boolean(scope), // OTTO(history)
   });
-  const showHostFilter = hosts.length > 1;
-  const showFilterRow = showHostFilter || isSearchSupported;
+  const showFilterRow = toolbar !== null || isSearchSupported; // OTTO(history)
   const showLoadError = isError && agents.length === 0;
 
   const handleBack = useCallback(() => {
@@ -155,6 +163,7 @@ function SessionsScreenContent() {
       <MenuHeader title={t("sessions.title")} />
       {showFilterRow ? (
         <View style={styles.filterContainer}>
+          {toolbar}
           {isSearchSupported ? (
             <SearchField
               value={searchInput}
@@ -165,21 +174,12 @@ function SessionsScreenContent() {
               clearTestID="sessions-search-clear"
             />
           ) : null}
-          {showHostFilter ? (
-            <HostFilter
-              hosts={hosts}
-              selectedHost={selectedHost}
-              onSelectHost={setSelectedHost}
-              triggerTestID="sessions-host-filter-trigger"
-              hostOptionTestID={sessionsHostOptionTestID}
-            />
-          ) : null}
         </View>
       ) : null}
       {hostErrors.length > 0 ? <SessionHostErrorsBanner errors={hostErrors} t={t} /> : null}
       {isInitialLoad ? (
         <View style={styles.loadingContainer}>
-          <LoadingSpinner size="large" color={theme.colors.foregroundMuted} />
+          <HistorySpinner size="large" />
         </View>
       ) : null}
       {!isInitialLoad && showLoadError ? (
@@ -230,8 +230,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   filterContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+    // OTTO(history): scope and actions can wrap; search owns a full row.
     gap: theme.spacing[2],
     paddingHorizontal: {
       xs: theme.spacing[3],

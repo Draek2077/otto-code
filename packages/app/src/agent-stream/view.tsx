@@ -1,4 +1,5 @@
 import { ChatFind, ChatFindExpansion } from "@/agent-stream/chat-find";
+import { useChatSearchJump } from "@/otto/history/chat-search-jump"; // OTTO(chat-search)
 import { SpeechSelectionSurface } from "@/otto/speech/scope"; // OTTO(speech): composes the existing copy surface with host/chat identity only.
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, {
@@ -581,6 +582,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const handleTimelineHistoryLoadError = useCallback(() => {
       toast?.error(t("agentStream.historyLoadFailed"));
     }, [t, toast]);
+    // OTTO(chat-search): a user-selected result uses Paseo's existing window and reveal.
+    useChatSearchJump({
+      serverId: resolvedServerId,
+      agentId,
+      active: isActive,
+      readOnly,
+      ready: isAuthoritativeHistoryReady,
+      items: effectiveStreamItems,
+      head: effectiveStreamHead,
+      viewportRef,
+      reveal: revealLoadedHistory,
+      onError: handleTimelineHistoryLoadError,
+    });
     // Chat find and the chat outline address messages, and an assistant message is a
     // group of block rows, so these hold message ids and never row ids. Only the head
     // changes per streamed delta, so the history set is keyed on mounted history alone.

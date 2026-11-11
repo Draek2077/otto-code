@@ -140,6 +140,13 @@ import {
 } from "./agent/agent-sdk-types.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
+import { ArchiveHost, isArchiveHistoryRequest } from "./otto/history/archive-host.js"; // OTTO(history)
+import { filterHistoryCandidates } from "./otto/history/filter.js"; // OTTO(history)
+import {
+  dispatchChatSearch,
+  isChatSearchRequest,
+  isSearchableRecord,
+} from "./otto/history/search/host.js"; // OTTO(chat-search)
 import {
   ImportSessionsRequestError,
   importProviderSession,
@@ -733,6 +740,7 @@ export class Session {
 
   private agentManager: AgentManager;
   private readonly agentStorage: AgentStorage;
+  private ottoArchiveHost?: ArchiveHost; // OTTO(history): lazy and bound to this session's sources.
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly agentDirectory: AgentDirectory;
@@ -2336,7 +2344,7 @@ export class Session {
       this.dispatchAgentTimelineMessage(msg, source) ??
       this.dispatchHubExecutionMessage(msg) ??
       this.dispatchCreationMessage(msg, source) ??
-      this.dispatchAgentLifecycleMessage(msg) ??
+      this.dispatchAgentLifecycleMessage(msg, source) ?? // OTTO(history): bind the review to the connection.
       this.dispatchAgentConfigMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
       this.dispatchWorkspaceLifecycleMessage(msg) ??
@@ -2760,7 +2768,10 @@ export class Session {
     }
   }
 
-  private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+  private dispatchAgentLifecycleMessage(
+    msg: SessionInboundMessage,
+    source?: object, // OTTO(history)
+  ): Promise<void> | undefined {
     switch (msg.type) {
       case "fetch_agents_request":
         return this.handleFetchAgents(msg);
@@ -2801,7 +2812,7 @@ export class Session {
       case "clear_agent_attention":
         return this.handleClearAgentAttention(msg.agentId, msg.requestId);
       default:
-        return undefined;
+        return this.dispatchOttoHistory(msg, source); // OTTO(history, chat-search)
     }
   }
 
@@ -3231,6 +3242,13 @@ export class Session {
     try {
       await this.agentStorage.remove(agentId);
       await this.agentManager.deleteAgentState(agentId);
+      // OTTO(chat-search): never put the index on the normal chat-create path.
+      void this.agentManager.ottoChatSearch?.forget(agentId).catch((error: unknown) => {
+        this.sessionLogger.warn(
+          { err: error, agentId },
+          "Could not remove the derived chat search source",
+        );
+      });
     } catch (error) {
       this.sessionLogger.error({ err: error, agentId }, `Failed to fully delete agent ${agentId}`);
     }
@@ -5514,7 +5532,7 @@ export class Session {
     };
 
     const search = agentDirectorySearchQuery(request);
-    let candidates = [...agents];
+    let candidates = filterHistoryCandidates(agents, request); // OTTO(history): scope before pagination.
     candidates.sort((left, right) => this.agentsPager.compare(left, right, sort));
     const cursorToken = request.page?.cursor;
     if (cursorToken) {
@@ -6266,6 +6284,47 @@ export class Session {
         },
       });
     }
+  }
+
+  // OTTO(history): the archive coordinator uses the existing agent and workspace update owners.
+  private dispatchOttoHistory(
+    message: SessionInboundMessage,
+    source?: object,
+  ): Promise<void> | undefined {
+    if (isChatSearchRequest(message)) {
+      return dispatchChatSearch(message, {
+        service: this.agentManager.ottoChatSearch,
+        visibleProvider: (provider) => this.isProviderVisibleToClient(provider),
+        open: (agentId) => this.openChatSearchTimeline(agentId),
+        emit: (reply) => this.emit(reply),
+      });
+    }
+    if (!isArchiveHistoryRequest(message)) return undefined;
+    this.ottoArchiveHost ??= new ArchiveHost({
+      storage: this.agentStorage,
+      manager: this.agentManager,
+      logger: this.sessionLogger,
+      onRemoved: async (agentId, workspaceId) => {
+        await this.agentUpdates.removeAgent(agentId);
+        if (workspaceId) await this.emitWorkspaceUpdateForWorkspaceId(workspaceId);
+      },
+    });
+    return this.ottoArchiveHost.dispatch(message, source ?? this, (reply) => this.emit(reply));
+  }
+
+  // OTTO(chat-search): a click uses the normal loader; query/indexing never opens a session.
+  private async openChatSearchTimeline(agentId: string) {
+    const record = await this.agentStorage.get(agentId);
+    if (!record || record.archivedAt || !isSearchableRecord(record)) return null;
+    if (!this.isProviderVisibleToClient(record.provider)) return null;
+    const agent = await ensureAgentLoaded(agentId, {
+      agentManager: this.agentManager,
+      agentStorage: this.agentStorage,
+      logger: this.sessionLogger,
+    });
+    const timeline = this.agentManager.getSearchTimeline(agentId);
+    if (!timeline || agent.internal) return null;
+    return { ...timeline, workspaceId: agent.workspaceId ?? null };
   }
 
   private async handleFetchAgentHistory(

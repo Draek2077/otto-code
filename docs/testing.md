@@ -578,6 +578,14 @@ These entries define checks; they do not assert that an untested revision passed
 Physical-device input and user-specific fonts require their corresponding device
 or environment review.
 
+## Otto History restoration
+
+| Surface                                                                                                     | Behavioral coverage                                                                                 |
+| ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Exact archive review, same-connection single-use approval, restored or edited records, retained transcripts | `server/src/server/otto/history/archive-review.test.ts`, `archive-storage.test.ts`                  |
+| Frozen source compatibility, real SQLite worker search, project/archive scoping, rewrites and deletion      | `server/src/server/otto/history/search/service.test.ts`, `messages.test.ts`                         |
+| Search result opens the chat, History host sizes, archive filters, cancellation and explicit clear          | `app/e2e/browser/otto-history.spec.ts` in Otto App Acceptance, with cleanup on a separate test host |
+
 ## Otto Visualizer restoration
 
 <!-- OTTO(visualizer): the existing app and Electron lanes own real render proof. -->

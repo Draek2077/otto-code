@@ -61,6 +61,7 @@ export interface HostPickerOptionProps {
   onPress: () => void;
   onOpenHostSettings?: (serverId: string) => void;
   testID?: string;
+  description?: string; // OTTO(history): optional metadata for this use of the picker.
 }
 
 export function HostPickerOption({
@@ -72,6 +73,7 @@ export function HostPickerOption({
   onPress,
   onOpenHostSettings,
   testID,
+  description, // OTTO(history)
 }: HostPickerOptionProps): ReactElement {
   const { theme } = useUnistyles();
   const activeConnection = useHostRuntimeSnapshot(serverId)?.activeConnection ?? null;
@@ -110,7 +112,7 @@ export function HostPickerOption({
   return (
     <ComboboxItem
       label={label}
-      description={connectionLabel}
+      description={description ?? connectionLabel} // OTTO(history)
       leadingSlot={leadingSlot}
       trailingSlot={trailingSlot}
       selected={selected}
@@ -133,12 +135,14 @@ function SystemHostPickerOption({
   onPress,
   kind,
   testID,
+  description, // OTTO(history)
 }: {
   active: boolean;
   selected?: boolean;
   onPress: () => void;
   kind: "add" | "all" | "enableBuiltInDaemon";
   testID?: string;
+  description?: string; // OTTO(history)
 }): ReactElement {
   const { theme } = useUnistyles();
   const Icon = kind === "add" ? Plus : Server;
@@ -151,6 +155,7 @@ function SystemHostPickerOption({
   return (
     <ComboboxItem
       label={label}
+      description={description} // OTTO(history)
       leadingSlot={leadingSlot}
       selected={selected}
       active={active}
@@ -180,6 +185,7 @@ export interface HostPickerProps {
   desktopMinWidth?: number;
   addHostTestID?: string;
   hostOptionTestID?: (serverId: string) => string;
+  optionDescriptions?: Readonly<Record<string, string>>; // OTTO(history)
   children: ReactNode;
 }
 
@@ -203,6 +209,7 @@ export function HostPicker({
   desktopMinWidth,
   addHostTestID,
   hostOptionTestID,
+  optionDescriptions, // OTTO(history)
   children,
 }: HostPickerProps): ReactElement {
   const localServerId = useLocalDaemonServerId();
@@ -267,6 +274,7 @@ export function HostPicker({
             selected={selected}
             onPress={onPress}
             testID={hostOptionTestID?.(option.id)}
+            description={optionDescriptions?.[option.id]} // OTTO(history)
           />
         );
       }
@@ -285,12 +293,14 @@ export function HostPicker({
           onPress={onPress}
           onOpenHostSettings={onOpenHostSettings ? handleOpenHostSettings : undefined}
           testID={hostOptionTestID?.(option.id)}
+          description={optionDescriptions?.[option.id]} // OTTO(history)
         />
       );
     },
     [
       addHostTestID,
       hostOptionTestID,
+      optionDescriptions, // OTTO(history)
       onOpenHostSettings,
       showActiveConnection,
       handleOpenHostSettings,

@@ -5,6 +5,12 @@ import type { Logger } from "pino";
 
 // OTTO(store-continuity): keep Otto-only fields when Paseo rewrites an agent record.
 import { writeOttoAgentRecord } from "../otto/store-continuity.js";
+// OTTO(history): review and remove only the exact Otto archive record owned by this index.
+import { inspectArchiveRecordFile } from "../otto/history/archive-record-file.js";
+import type {
+  ArchiveRecordRemoval,
+  ReviewedArchiveRecord,
+} from "../otto/history/archive-review.js";
 import { AgentFeatureSchema, AgentStatusSchema } from "../messages.js";
 import { toStoredAgentRecord } from "./agent-projections.js";
 import type { ManagedAgent } from "./agent-manager.js";
@@ -211,6 +217,44 @@ export class AgentStorage {
     this.deleting.add(agentId);
   }
 
+  // OTTO(history): reviewed bulk removal uses the same write fence and index as ordinary deletion.
+  async inspectReviewedArchive(agentId: string): Promise<ReviewedArchiveRecord | null> {
+    await this.load();
+    await this.waitForPendingWrite(agentId);
+    if (this.deleting.has(agentId)) return null;
+    return (await this.inspectIndexedArchive(agentId))?.record ?? null;
+  }
+
+  async removeReviewedArchive(review: ReviewedArchiveRecord): Promise<ArchiveRecordRemoval> {
+    const agentId = review.agentId;
+    await this.load();
+    if (this.deleting.has(agentId)) return { status: "changed" };
+    this.beginDelete(agentId);
+    let removed = false;
+    try {
+      await this.waitForPendingWrite(agentId);
+      const file = await this.inspectIndexedArchive(agentId);
+      if (!file || file.record.revision !== review.revision) return { status: "changed" };
+      await fs.unlink(file.path);
+      removed = true;
+      this.forgetRecord(agentId);
+      return { status: "deleted", bytes: file.record.bytes };
+    } catch (error) {
+      this.logger.warn({ err: error, agentId }, "Could not remove reviewed archive record");
+      return { status: "failed" };
+    } finally {
+      if (!removed) this.deleting.delete(agentId);
+    }
+  }
+
+  private async inspectIndexedArchive(agentId: string) {
+    const paths = this.pathsById.get(agentId);
+    const expected = this.cache.get(agentId);
+    const indexedPath = this.pathById.get(agentId);
+    if (!expected || !indexedPath || paths?.size !== 1 || !paths.has(indexedPath)) return null;
+    return inspectArchiveRecordFile({ directory: this.baseDir, indexedPath, expected });
+  }
+
   async remove(agentId: string): Promise<void> {
     await this.load();
     this.beginDelete(agentId);
@@ -232,6 +276,10 @@ export class AgentStorage {
       }),
     );
 
+    this.forgetRecord(agentId);
+  }
+
+  private forgetRecord(agentId: string): void {
     this.cache.delete(agentId);
     this.removeOwnerIndex(agentId);
     this.pathById.delete(agentId);

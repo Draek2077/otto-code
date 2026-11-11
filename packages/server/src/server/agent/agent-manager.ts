@@ -25,6 +25,7 @@ import type { ToolPolicy } from "@getpaseo/protocol/agent-types";
 import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-config";
 import { z } from "zod";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
+import type { ChatSearchService, SearchTimeline } from "../otto/history/search/service.js"; // OTTO(chat-search)
 
 import {
   getAgentStreamEventTurnId,
@@ -358,6 +359,7 @@ export interface AgentManagerOptions {
   resolvePaseoToolPolicy?: (provider: AgentProvider) => ProviderPaseoToolsPolicy | undefined;
   appendSystemPrompt?: string;
   ottoKnowledgePrompt?: KnowledgeSessionPrompt; // OTTO(knowledge): canonical workspace-bound metadata only.
+  ottoChatSearch?: ChatSearchService; // OTTO(chat-search): observes canonical rows; never runs agents.
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
   beforeSteerUnavailableFallback?: (input: {
@@ -793,6 +795,7 @@ export class AgentManager {
   ) => ProviderPaseoToolsPolicy | undefined;
   private appendSystemPrompt: string;
   private readonly ottoKnowledgePrompt?: KnowledgeSessionPrompt; // OTTO(knowledge)
+  readonly ottoChatSearch?: ChatSearchService; // OTTO(chat-search)
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
@@ -814,6 +817,7 @@ export class AgentManager {
     this.resolvePaseoToolPolicy = options.resolvePaseoToolPolicy ?? (() => undefined);
     this.appendSystemPrompt = options.appendSystemPrompt ?? "";
     this.ottoKnowledgePrompt = options.ottoKnowledgePrompt; // OTTO(knowledge)
+    this.ottoChatSearch = options.ottoChatSearch; // OTTO(chat-search)
     this.logger = options.logger.child({ module: "agent", component: "agent-manager" });
     this.rescueTimeouts = {
       reloadSessionCloseMs:
@@ -1257,6 +1261,19 @@ export class AgentManager {
   fetchTimeline(id: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
     this.requireAgent(id);
     return this.timelineStore.fetch(id, options);
+  }
+
+  // OTTO(chat-search): copy only user-visible conversation rows, without hydrating a session.
+  getSearchTimeline(id: string): (SearchTimeline & { epoch: string }) | null {
+    const agent = this.agents.get(id);
+    if (!agent || agent.internal || agent.owner || !this.timelineStore.has(id)) return null;
+    return {
+      epoch: this.timelineStore.getEpoch(id),
+      complete: agent.historyPrimed,
+      rows: this.timelineStore
+        .getRows(id)
+        .filter((row) => row.item.type === "user_message" || row.item.type === "assistant_message"),
+    };
   }
 
   listProviderSubagents(parentAgentId: string): ProviderSubagentDescriptor[] {
@@ -3396,6 +3413,35 @@ export class AgentManager {
     await this.deleteCommittedTimeline(agentId);
   }
 
+  // OTTO(history): share the normal resume/restore lifecycle lane. Never close
+  // a live runtime because an older History confirmation said it was archived.
+  async deleteReviewedArchive(
+    review: import("../otto/history/archive-review.js").ReviewedArchiveRecord,
+  ): Promise<
+    import("../otto/history/archive-review.js").ArchiveRecordRemoval & { workspaceId?: string }
+  > {
+    return this.runLifecycleMutation(review.agentId, async () => {
+      if (this.agents.has(review.agentId)) return { status: "changed" };
+      const registry = this.requireRegistry();
+      const stored = await registry.get(review.agentId);
+      const result = await registry.removeReviewedArchive(review);
+      if (result.status !== "deleted") return result;
+      const retainedTimeline = await this.deleteAgentState(review.agentId)
+        .then(() => this.ottoChatSearch?.forget(review.agentId)) // OTTO(chat-search): this is an actual deletion.
+        .then(
+          () => false,
+          (error: unknown) => {
+            this.logger.warn(
+              { err: error, agentId: review.agentId },
+              "Archive removed; timeline cleanup failed",
+            );
+            return true;
+          },
+        );
+      return { ...result, retainedTimeline, workspaceId: stored?.workspaceId };
+    });
+  }
+
   async deleteCommittedTimeline(agentId: string): Promise<void> {
     await this.durableTimelineStore?.deleteAgent(agentId);
   }
@@ -3895,6 +3941,7 @@ export class AgentManager {
     cancelReason: string,
   ): ManagedAgentClosed {
     this.agentStreamCoalescer.flushAndDiscard(agent.id);
+    this.captureClosedSearchTimeline(agent.id); // OTTO(chat-search): copy rows before releasing the owner.
     this.agents.delete(agent.id);
     this.previousStatuses.delete(agent.id);
     if (agent.unsubscribeSession) {
@@ -3923,6 +3970,16 @@ export class AgentManager {
       finalizedForegroundTurnIds: new Set(),
       unsubscribeSession: null,
     };
+  }
+
+  // OTTO(chat-search): search storage failure must not change Paseo's close or reload outcome.
+  private captureClosedSearchTimeline(agentId: string): void {
+    if (!this.ottoChatSearch) return;
+    const timeline = this.getSearchTimeline(agentId);
+    if (!timeline) return;
+    void this.ottoChatSearch.capture(agentId, timeline).catch((error: unknown) => {
+      this.logger.warn({ err: error, agentId }, "Could not capture the closed chat for search");
+    });
   }
 
   private discardRetainedAgentState(agentId: string): void {
@@ -5022,6 +5079,14 @@ export class AgentManager {
     item = limitAgentTimelineItemContent(item);
     const row = this.timelineStore.append(agentId, item, options);
     this.enqueueDurableTimelineAppend(agentId, row);
+    // OTTO(chat-search): coalesce writes; no disk or worker traffic in the live stream path.
+    if (
+      this.ottoChatSearch &&
+      (item.type === "user_message" || item.type === "assistant_message") &&
+      !this.agents.get(agentId)?.internal
+    ) {
+      this.ottoChatSearch.changed(agentId);
+    }
     return row;
   }
 

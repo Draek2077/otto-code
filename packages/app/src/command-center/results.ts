@@ -6,6 +6,7 @@ import {
 } from "@getpaseo/protocol/search/text-match";
 import type { CommandCenterContribution } from "./contributions";
 import type { CommandCenterListMetrics } from "./list-metrics";
+import type { ChatMessageResult } from "@/otto/history/message-result"; // OTTO(chat-search)
 
 /** Sections that reorder by how well they match the query. */
 export const CONTRIBUTION_SECTION_BAND = 0;
@@ -94,6 +95,7 @@ export type CommandCenterResult =
   | CommandCenterWorkspaceResult
   | CommandCenterAgentResult
   | CommandCenterFileResult
+  | ChatMessageResult // OTTO(chat-search)
   | CommandCenterContributionResult;
 
 export interface CommandCenterResultSection {
@@ -181,6 +183,7 @@ function contributionSearchFields(
 
 /** Whether the row draws a second, subtitle line under its title. */
 function hasSubtitleLine(result: CommandCenterResult): boolean {
+  if (result.kind === "message") return true; // OTTO(chat-search)
   if (result.kind === "workspace" || result.kind === "agent") return true;
   if (result.kind === "file") return false;
   const presentation = result.contribution.presentation;

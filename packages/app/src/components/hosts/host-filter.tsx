@@ -26,6 +26,9 @@ export interface HostFilterProps {
   includeAllHost?: boolean;
   triggerTestID?: string;
   hostOptionTestID?: (serverId: string) => string;
+  // OTTO(history): optional per-option data, loaded only while the picker is open.
+  optionDescriptions?: Readonly<Record<string, string>>;
+  onPickerOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -40,6 +43,8 @@ export function HostFilter({
   includeAllHost = true,
   triggerTestID,
   hostOptionTestID,
+  optionDescriptions, // OTTO(history)
+  onPickerOpenChange, // OTTO(history)
 }: HostFilterProps): ReactElement {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const filterAnchorRef = useRef<View>(null);
@@ -49,7 +54,15 @@ export function HostFilter({
     [hosts, includeAllHost, selectedHost],
   );
 
-  const handleFilterOpen = useCallback(() => setIsFilterOpen(true), []);
+  // OTTO(history)
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      setIsFilterOpen(open);
+      onPickerOpenChange?.(open);
+    },
+    [onPickerOpenChange],
+  );
+  const handleFilterOpen = useCallback(() => handleOpenChange(true), [handleOpenChange]);
 
   const filterTriggerStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -66,13 +79,14 @@ export function HostFilter({
       value={selectedHost}
       onSelect={onSelectHost}
       open={isFilterOpen}
-      onOpenChange={setIsFilterOpen}
+      onOpenChange={handleOpenChange} // OTTO(history)
       anchorRef={filterAnchorRef}
       includeAllHost={includeAllHost}
       searchable={false}
       title="Filter by host"
       desktopPlacement="bottom-start"
       hostOptionTestID={hostOptionTestID}
+      optionDescriptions={optionDescriptions} // OTTO(history)
     >
       <View ref={filterAnchorRef} collapsable={false} style={styles.filterTriggerWrap}>
         <Pressable

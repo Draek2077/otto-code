@@ -79,6 +79,11 @@ const INBOUND_PERMISSION = {
   dictation_stream_start: "workspace.write",
   directory_suggestions_request: "workspace.read",
   fetch_agent_history_request: "workspace.read",
+  "history.archives.get_summary.request": "workspace.read", // OTTO(history)
+  "history.archives.review_clear.request": "workspace.write", // OTTO(history)
+  "history.archives.clear_reviewed.request": "workspace.write", // OTTO(history)
+  "search.chats.query.request": "workspace.read", // OTTO(chat-search)
+  "search.chats.resolve.request": "workspace.read", // OTTO(chat-search)
   fetch_agent_request: ["workspace.read", "hub.execute"],
   fetch_agent_timeline_request: ["workspace.read", "hub.execute"],
   fetch_agents_request: ["workspace.read", "hub.execute"],
@@ -301,6 +306,11 @@ const OUTBOUND_PERMISSION = {
   dictation_stream_partial: "workspace.write",
   directory_suggestions_response: "workspace.read",
   fetch_agent_history_response: "workspace.read",
+  "history.archives.get_summary.response": "workspace.read", // OTTO(history)
+  "history.archives.review_clear.response": "workspace.write", // OTTO(history)
+  "history.archives.clear_reviewed.response": "workspace.write", // OTTO(history)
+  "search.chats.query.response": "workspace.read", // OTTO(chat-search)
+  "search.chats.resolve.response": "workspace.read", // OTTO(chat-search)
   fetch_agent_response: ["workspace.read", "hub.execute"],
   fetch_agent_timeline_response: ["workspace.read", "hub.execute"],
   fetch_agents_response: ["workspace.read", "hub.execute"],

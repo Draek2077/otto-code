@@ -22,6 +22,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { StreamItem } from "@/types/stream";
 import type { Theme } from "@/styles/theme";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { useNativeMessageJump } from "@/otto/history/native-message-jump"; // OTTO(chat-search)
 import { useKeyboardStreamInset } from "@/keyboard/shift";
 import { shouldAnimateNativeScrollToBottom } from "./native-scroll-animation";
 import { useRevisedHistoryRows } from "./history-row-revision";
@@ -277,6 +278,21 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     },
     scrollToBottom,
   });
+  // OTTO(chat-search): the native list owns scrolling and cancels a search jump on manual drag.
+  const {
+    cancel: cancelMessageJump,
+    scrollToMessage,
+    onScrollToIndexFailed,
+  } = useNativeMessageJump({
+    agentId,
+    listRef: flatListRef,
+    history: historyRows,
+    head: segments.liveHead,
+    detach: () => {
+      bottomAnchorController.detachByUser();
+      programmaticScrollEventBudgetRef.current = 3;
+    },
+  });
   // Android's maintainVisibleContentPosition ignores the list inversion transform and
   // fights the controller's offset-zero correction while the live header grows.
   const maintainVisibleContentPosition =
@@ -361,6 +377,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         bottomAnchorController.prepareForStickyViewportChange();
         markNativeViewportSettling();
       },
+      scrollToMessage, // OTTO(chat-search)
     };
     viewportRef.current = handle;
     return () => {
@@ -368,7 +385,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         viewportRef.current = null;
       }
     };
-  }, [agentId, bottomAnchorController, markNativeViewportSettling, viewportRef]);
+  }, [agentId, bottomAnchorController, markNativeViewportSettling, scrollToMessage, viewportRef]); // OTTO(chat-search)
 
   const isScrollEventNearBottom = useStableEvent(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -420,6 +437,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   });
 
   const handleScrollBeginDrag = useStableEvent((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    cancelMessageJump(); // OTTO(chat-search)
     clearPendingUserScrollEnd();
     isUserScrollActiveRef.current = true;
     scrollKeyboardDismiss.onScrollBeginDrag(event);
@@ -592,6 +610,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       style={listStyle}
       onLayout={handleListLayout}
       onScroll={handleScroll}
+      onScrollToIndexFailed={onScrollToIndexFailed} // OTTO(chat-search)
       onScrollBeginDrag={handleScrollBeginDrag}
       onScrollEndDrag={handleScrollEndDrag}
       onMomentumScrollBegin={handleMomentumScrollBegin}

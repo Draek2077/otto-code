@@ -2460,6 +2460,7 @@ export class DaemonClient {
       type: "fetch_agent_history_request",
       requestId: resolvedRequestId,
       ...(options?.filter ? { filter: options.filter } : {}),
+      ...(options?.archiveStatus ? { archiveStatus: options.archiveStatus } : {}), // OTTO(history)
       ...(options?.search ? { search: options.search } : {}),
       ...(options?.sort ? { sort: options.sort } : {}),
       ...(options?.page ? { page: options.page } : {}),
@@ -2477,6 +2478,44 @@ export class DaemonClient {
         }
         return msg.payload;
       },
+    });
+  }
+
+  // OTTO(history): new clients explicitly review an owning host's archive before clearing it.
+  getArchiveSummary() {
+    return this.sendNamespacedCorrelatedSessionRequest<"history.archives.get_summary.response">({
+      message: { type: "history.archives.get_summary.request" },
+    });
+  }
+
+  reviewArchiveClear() {
+    return this.sendNamespacedCorrelatedSessionRequest<"history.archives.review_clear.response">({
+      message: { type: "history.archives.review_clear.request" },
+    });
+  }
+
+  clearReviewedArchive(reviewId: string) {
+    return this.sendNamespacedCorrelatedSessionRequest<"history.archives.clear_reviewed.response">({
+      message: { type: "history.archives.clear_reviewed.request", reviewId },
+      timeout: 120_000,
+    });
+  }
+
+  // OTTO(chat-search): only called after the host advertises content search.
+  searchChatMessages(
+    input: Omit<
+      Extract<SessionInboundMessage, { type: "search.chats.query.request" }>,
+      "type" | "requestId"
+    >,
+  ) {
+    return this.sendNamespacedCorrelatedSessionRequest<"search.chats.query.response">({
+      message: { ...input, type: "search.chats.query.request" },
+    });
+  }
+
+  resolveChatSearchMessage(agentId: string, messageKey: string) {
+    return this.sendNamespacedCorrelatedSessionRequest<"search.chats.resolve.response">({
+      message: { type: "search.chats.resolve.request", agentId, messageKey },
     });
   }
 

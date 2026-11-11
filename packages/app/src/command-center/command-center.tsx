@@ -82,6 +82,8 @@ import {
   type CommandCenterWorkspaceResult,
 } from "./results";
 import { useWorkspaceFileSearch } from "./workspace-file-search";
+import { useChatSearch } from "@/otto/history/chat-search"; // OTTO(chat-search)
+import { ChatMessageSearchRow, ChatSearchStatus } from "@/otto/history/message-result"; // OTTO(chat-search)
 
 const ThemedBottomSheetTextInput = withUnistyles(TextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
@@ -233,6 +235,9 @@ interface CommandCenterState {
   inputRef: React.RefObject<EditingTextInputHandle | null>;
   fileSearchLoading: boolean;
   fileSearchError: string | null;
+  chatSearchStatus: string; // OTTO(chat-search)
+  chatSearchLoading: boolean; // OTTO(chat-search)
+  searchLoadingLabel: string; // OTTO(chat-search)
   close(): void;
   select(result: CommandCenterResult): void;
   key(key: string): boolean;
@@ -251,6 +256,8 @@ function useCommandCenterState(listMetrics: CommandCenterListMetrics): CommandCe
   const [query, setQueryState] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const builtInSections = useBuiltInSections(open, query);
+  const chatSearch = useChatSearch(open && scope !== "files", query); // OTTO(chat-search)
+  const chatSections = chatSearch.sections;
   const {
     entries: fileSearchEntries,
     loading: fileSearchLoading,
@@ -291,10 +298,10 @@ function useCommandCenterState(listMetrics: CommandCenterListMetrics): CommandCe
       projectCommandCenterRows(
         scope === "files"
           ? fileSections
-          : [...contributionSections, ...fileSections, ...builtInSections],
+          : [...contributionSections, ...fileSections, ...builtInSections, ...chatSections], // OTTO(chat-search)
         listMetrics,
       ),
-    [builtInSections, contributionSections, fileSections, listMetrics, scope],
+    [builtInSections, chatSections, contributionSections, fileSections, listMetrics, scope],
   );
   const resolvedActiveId = preserveActiveResultId(activeId, projection.selectableResults);
 
@@ -376,6 +383,11 @@ function useCommandCenterState(listMetrics: CommandCenterListMetrics): CommandCe
     inputRef,
     fileSearchLoading,
     fileSearchError,
+    chatSearchStatus: chatSearch.status, // OTTO(chat-search)
+    chatSearchLoading: chatSearch.loading, // OTTO(chat-search)
+    searchLoadingLabel: fileSearchLoading
+      ? t("shell.commandCenter.searchingFiles")
+      : "Searching chat messages", // OTTO(chat-search)
     close,
     select,
     key,
@@ -499,6 +511,7 @@ function WorkspaceProjectIcon({ project }: { project: CommandCenterWorkspaceResu
 }
 
 function ResultContent({ result, query }: { result: CommandCenterResult; query: string }) {
+  if (result.kind === "message") return <ChatMessageSearchRow result={result} query={query} />; // OTTO(chat-search)
   if (result.kind === "file") {
     return (
       <View style={styles.rowContent}>
@@ -757,10 +770,10 @@ export function CommandCenter() {
   const keyExtractor = useCallback((row: CommandCenterListRow) => row.key, []);
   const empty = useMemo(
     () =>
-      state.fileSearchError || state.fileSearchLoading ? null : (
+      state.fileSearchError || state.fileSearchLoading || state.chatSearchLoading ? null : ( // OTTO(chat-search)
         <Text style={styles.emptyText}>{t("shell.commandCenter.noMatches")}</Text>
       ),
-    [state.fileSearchError, state.fileSearchLoading, t],
+    [state.chatSearchLoading, state.fileSearchError, state.fileSearchLoading, t],
   );
   const fileSearchError = useMemo(
     () =>
@@ -852,11 +865,12 @@ export function CommandCenter() {
             autoFocus
           />
           <FileSearchLoadingIndicator
-            loading={state.fileSearchLoading}
-            label={t("shell.commandCenter.searchingFiles")}
+            loading={state.fileSearchLoading || state.chatSearchLoading} // OTTO(chat-search)
+            label={state.searchLoadingLabel} // OTTO(chat-search)
           />
         </View>
         {fileSearchError}
+        <ChatSearchStatus message={state.chatSearchStatus} />
         <BottomSheetFlatList ref={bottomSheetListRef} {...commonListProps} />
       </IsolatedBottomSheetModal>
     );
@@ -888,11 +902,12 @@ export function CommandCenter() {
                 autoFocus
               />
               <FileSearchLoadingIndicator
-                loading={state.fileSearchLoading}
-                label={t("shell.commandCenter.searchingFiles")}
+                loading={state.fileSearchLoading || state.chatSearchLoading} // OTTO(chat-search)
+                label={state.searchLoadingLabel} // OTTO(chat-search)
               />
             </View>
             {fileSearchError}
+            <ChatSearchStatus message={state.chatSearchStatus} />
             <FlatList ref={listRef} {...commonListProps} />
           </View>
         </View>

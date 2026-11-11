@@ -61,6 +61,12 @@ export interface AgentHistoryHost {
   client: AgentHistoryClient;
 }
 
+// OTTO(history): scope is sent to the host before it selects a page.
+export interface AgentHistoryScope {
+  archiveStatus?: FetchAgentHistoryOptions["archiveStatus"];
+  projectKeysByHost?: Readonly<Record<string, string[]>>;
+}
+
 interface AgentHistoryBatchPage {
   agents: AggregatedAgent[];
   pageInfoByServerId: Record<string, FetchAgentHistoryPageInfo>;
@@ -76,9 +82,13 @@ export async function fetchAgentHistoryPage(input: {
   serverId: string;
   cursor: string | null;
   search?: string;
+  scope?: AgentHistoryScope; // OTTO(history)
 }): Promise<AgentHistoryPage> {
+  const projectKeys = input.scope?.projectKeysByHost?.[input.serverId]; // OTTO(history)
   const payload = await input.client.fetchAgentHistory({
     ...(input.search ? { search: input.search } : {}),
+    ...(input.scope?.archiveStatus ? { archiveStatus: input.scope.archiveStatus } : {}), // OTTO(history)
+    ...(projectKeys ? { filter: { projectKeys } } : {}), // OTTO(history)
     sort: AGENT_HISTORY_SORT,
     page: input.cursor
       ? { limit: AGENT_HISTORY_PAGE_LIMIT, cursor: input.cursor }
@@ -161,6 +171,7 @@ export async function fetchAgentHistoryBatch(input: {
   hosts: readonly AgentHistoryHost[];
   cursorByServerId: AgentHistoryCursorByServerId | null;
   search?: string;
+  scope?: AgentHistoryScope; // OTTO(history)
 }): Promise<AgentHistoryBatchPage> {
   const cursorByServerId = input.cursorByServerId ?? {};
   const hasCursorFilter = Object.keys(cursorByServerId).length > 0;
@@ -174,6 +185,7 @@ export async function fetchAgentHistoryBatch(input: {
         client: host.client,
         serverId: host.serverId,
         cursor: cursorByServerId[host.serverId] ?? null,
+        scope: input.scope, // OTTO(history)
         ...(input.search ? { search: input.search } : {}),
       });
       return { host, page };
@@ -218,6 +230,7 @@ export function useAgentHistory(options: {
   serverId?: string | null;
   enabled?: boolean;
   search?: string;
+  scope?: AgentHistoryScope; // OTTO(history)
 }): AgentHistoryResult {
   const { t } = useTranslation();
   const daemons = useHosts();
@@ -232,6 +245,7 @@ export function useAgentHistory(options: {
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
   }, [options.serverId]);
   const enabled = options.enabled ?? true;
+  const scope = options.scope; // OTTO(history)
   // A host the user asked about splits two ways: one this fetch can reach, and
   // one whose sessions will be missing from the answer. Both come out of here,
   // because dropping the unreachable ones silently is what lets the list — and
@@ -244,6 +258,8 @@ export function useAgentHistory(options: {
     const unreachable: AgentHistoryHostError[] = [];
 
     for (const targetServerId of serverIds) {
+      // OTTO(history): a project on one host does not authorize a host-wide fetch on another.
+      if (scope?.projectKeysByHost && !scope.projectKeysByHost[targetServerId]?.length) continue;
       const snapshot = runtime.getSnapshot(targetServerId);
       const client = runtime.getClient(targetServerId);
       const serverName = serverLabelById.get(targetServerId) ?? targetServerId;
@@ -255,7 +271,7 @@ export function useAgentHistory(options: {
     }
 
     return { targetHosts: hosts, unreachableHosts: unreachable };
-  }, [daemons, runtime, runtimeVersion, serverId]);
+  }, [daemons, runtime, runtimeVersion, scope?.projectKeysByHost, serverId]); // OTTO(history)
   const targetServerIds = useMemo(() => targetHosts.map((host) => host.serverId), [targetHosts]);
   // One gate, checked before the field is offered: a fleet where any host
   // predates search has no search, rather than a list that silently omits that
@@ -278,8 +294,9 @@ export function useAgentHistory(options: {
     () => [
       ...(serverId ? agentHistoryQueryKey(serverId) : allAgentHistoryQueryKey(targetServerIds)),
       search,
+      scope ?? null, // OTTO(history)
     ],
-    [search, serverId, targetServerIds],
+    [scope, search, serverId, targetServerIds],
   );
   const serverLabelById = useMemo(
     () => new Map(daemons.map((daemon) => [daemon.serverId, daemon.label])),
@@ -305,6 +322,7 @@ export function useAgentHistory(options: {
       return fetchAgentHistoryBatch({
         hosts: targetHosts,
         cursorByServerId: pageParam,
+        scope, // OTTO(history)
         ...(search ? { search } : {}),
       });
     },
