@@ -3586,6 +3586,7 @@ export const ServerInfoStatusPayloadSchema = z
         ottoBitbucket: z.boolean().optional(), // OTTO(bitbucket): named accounts and native REST forge integration.
         ottoConnectors: z.boolean().optional(), // OTTO(connectors): host-owned authorization and shared provider catalog.
         ottoTerminal: z.boolean().optional(), // OTTO(terminal): host-owned preferences and explicit diagnostics.
+        ottoGitFetch: z.boolean().optional(), // OTTO(git-fetch): owning-host policy and explicit workspace fetch.
         ottoEditor: z.boolean().optional(), // OTTO(editor): host-owned language services and reviewed edit jobs.
         ottoSpeech: z.boolean().optional(), // OTTO(speech): host speech settings and bounded playback.
         ottoKnowledge: z.boolean().optional(), // OTTO(knowledge): daemon-owned Knowledge bridge.

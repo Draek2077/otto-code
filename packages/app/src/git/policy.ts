@@ -5,6 +5,8 @@ import { i18n } from "@/i18n/i18next";
 import type { CheckoutPrMergeMethod, PullRequestMergeable } from "@getpaseo/protocol/messages";
 
 import type { MergeCapability } from "./merge-capability";
+// OTTO(git-fetch): extend menu contributions without changing Paseo's action policy/catalog.
+import type { OttoGitActionId } from "@/otto/workspace-git/action";
 
 export type GitActionId =
   | "commit"
@@ -24,7 +26,7 @@ export type GitActionId =
   | "archive-workspace";
 
 export interface GitAction {
-  id: GitActionId;
+  id: GitActionId | OttoGitActionId;
   label: string;
   pendingLabel: string;
   successLabel: string;

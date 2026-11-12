@@ -586,6 +586,18 @@ or environment review.
 | Frozen source compatibility, real SQLite worker search, project/archive scoping, rewrites and deletion      | `server/src/server/otto/history/search/service.test.ts`, `messages.test.ts`                         |
 | Search result opens the chat, History host sizes, archive filters, cancellation and explicit clear          | `app/e2e/browser/otto-history.spec.ts` in Otto App Acceptance, with cleanup on a separate test host |
 
+<!-- OTTO(git-fetch): focused fixture and real-browser proof uses existing CI ownership. -->
+
+## Otto workspace Git fetch
+
+| Surface                                                                               | Behavioral coverage                                                                         |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Preserved opt-out, unknown fields, revision conflicts and malformed/future files      | `server/src/server/otto/workspace-git/settings.test.ts`, `host.test.ts`                     |
+| Active ownership, queued callbacks after disablement and shared repository operations | `server/src/server/otto/workspace-git/control.test.ts`                                      |
+| Real file-origin Fetch, linked worktrees and canonical Git snapshot refresh           | `server/src/server/otto/workspace-git/service.test.ts`                                      |
+| Explicit-save draft lifetime, conflicts, late replies and manual action recovery      | `app/src/otto/workspace-git/form.test.ts`, `manual.test.ts`                                 |
+| Wide/compact settings, visible conflict recovery and Fetch success/failure            | `app/e2e/browser/otto-workspace-git.spec.ts`, automatically included by Otto App Acceptance |
+
 ## Otto Visualizer restoration
 
 <!-- OTTO(visualizer): the existing app and Electron lanes own real render proof. -->

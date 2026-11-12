@@ -13,6 +13,7 @@ import {
 } from "lucide-react-native";
 import type { TFunction } from "i18next";
 import { OttoTerminalSettings } from "@/otto/terminal/settings"; // OTTO(terminal)
+import { OttoGitFetchSettings } from "@/otto/workspace-git/settings"; // OTTO(git-fetch)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View } from "react-native";
@@ -317,6 +318,8 @@ export function HostWorkspacesPage({ serverId }: { serverId: string }) {
       {isConnected ? (
         <SettingsSection title={t("settings.hostSections.workspaces")}>
           <AutoArchiveMergedWorkspacesCard serverId={serverId} />
+          {/* OTTO(git-fetch): keep host preferences in the existing Workspaces settings frame. */}
+          <OttoGitFetchSettings serverId={serverId} />
         </SettingsSection>
       ) : (
         <View style={[settingsStyles.card, styles.emptyCard]}>

@@ -193,6 +193,11 @@
       "source": "./src/otto/terminal.ts",
       "default": "./dist/otto/terminal.js"
     },
+    "./otto/workspace-git": {
+      "types": "./dist/otto/workspace-git.d.ts",
+      "source": "./src/otto/workspace-git.ts",
+      "default": "./dist/otto/workspace-git.js"
+    },
     "./otto/editor-solution": {
       "types": "./dist/otto/editor-solution.d.ts",
       "source": "./src/otto/editor-solution.ts",

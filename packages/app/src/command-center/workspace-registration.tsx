@@ -205,6 +205,7 @@ export function useWorkspaceCommandCenterActions(): void {
   const { overrides } = useKeyboardShortcutOverrides();
   const { gitActions, isGit } = useGitActions({
     serverId: serverId ?? "",
+    workspaceId, // OTTO(git-fetch): selected workspace identity.
     cwd: cwd ?? "",
     icons: GIT_ACTION_ICONS,
   });

@@ -31,6 +31,8 @@ import { type WorktreeArchiveWarningLabels } from "@/git/worktree-archive-warnin
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 import { readValidatedString } from "@/storage/validated-storage";
+// OTTO(git-fetch): explicit menu contribution only; core primary/secondary policy is unchanged.
+import { useGitFetchAction } from "@/otto/workspace-git/action";
 
 export type { GitActionId, GitAction, GitActions } from "@/git/policy";
 
@@ -189,6 +191,7 @@ function deriveGitActionsState(args: DeriveGitActionsStateArgs): DerivedGitActio
 
 interface UseGitActionsInput {
   serverId: string;
+  workspaceId?: string | null;
   cwd: string;
   icons: {
     commit: ReactElement;
@@ -312,7 +315,12 @@ function useWorkspaceScreenArchiveController({
   };
 }
 
-export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): UseGitActionsResult {
+export function useGitActions({
+  serverId,
+  workspaceId,
+  cwd,
+  icons,
+}: UseGitActionsInput): UseGitActionsResult {
   const { t } = useTranslation();
   const toast = useToast();
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
@@ -322,6 +330,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const { status, isLoading: isStatusLoading } = useCheckoutStatusQuery({ serverId, cwd });
   const gitStatus = status && status.isGit ? status : null;
   const isGit = Boolean(gitStatus);
+  const fetchAction = useGitFetchAction(serverId, workspaceId, Boolean(gitStatus?.hasRemote));
   const notGit = status !== null && !status.isGit && !status.error;
   const baseRef = gitStatus?.baseRef ?? undefined;
 
@@ -854,7 +863,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     baseRef,
   ]);
 
-  const gitActions: GitActions = useMemo(
+  const paseoGitActions: GitActions = useMemo(
     () =>
       translateGitActions(buildGitActions(gitActionsInput), {
         baseRefLabel,
@@ -865,6 +874,14 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     [gitActionsInput, baseRefLabel, hasPullRequest, forge, t],
   );
 
+  // OTTO(git-fetch): the same menu feeds the toolbar and Command Center.
+  const gitActions = useMemo(
+    () =>
+      fetchAction
+        ? { ...paseoGitActions, menu: [...paseoGitActions.menu, fetchAction] }
+        : paseoGitActions,
+    [paseoGitActions, fetchAction],
+  );
   return { gitActions, branchLabel, isGit };
 }
 
@@ -924,6 +941,13 @@ function getTranslatedGitActionLabels(
   },
 ): Pick<GitAction, "label" | "pendingLabel" | "successLabel"> {
   switch (action.id) {
+    // OTTO(git-fetch): Otto-owned labels already belong to the contribution.
+    case "fetch":
+      return {
+        label: action.label,
+        pendingLabel: action.pendingLabel,
+        successLabel: action.successLabel,
+      };
     case "commit":
       return {
         label: t("workspace.git.actions.commit.label"),

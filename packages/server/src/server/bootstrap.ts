@@ -172,6 +172,8 @@ import { resolvePaseoToolPolicy } from "./agent/paseo-tool-policy.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
+import { WorkspaceGitHost, initialGitFetchPolicy } from "./otto/workspace-git/host.js"; // OTTO(git-fetch)
+import { GitFetchSettingsStore } from "./otto/workspace-git/settings.js"; // OTTO(git-fetch)
 import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
 import {
   archiveByScope,
@@ -674,6 +676,7 @@ export async function createPaseoDaemon(
   // the Paseo base release instead of Otto's version.
   const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until demand/action or saved startup intent.
   let ottoKanban: KanbanDaemonService | null = null; // OTTO(kanban): bound after registry/server identity creation, before plugins start.
+  let ottoWorkspaceGit: WorkspaceGitHost | null = null; // OTTO(git-fetch): same canonical workspace/Git owners.
   let ottoIntegrations: ReturnType<typeof createHostIntegrations> | null = null; // OTTO(integration)
   let ottoContext: ContextManagementService | null = null; // OTTO(context-management): composed after AgentManager.
   let ottoBrowserHistory: BrowserHistoryHost | null = null; // OTTO(browser-history): no startup reads or writes.
@@ -704,6 +707,7 @@ export async function createPaseoDaemon(
     "otto-editor": (method, input, clientId) =>
       ottoTerminalEditor.invoke(method, input) ?? ottoEditor.invoke(method, input, clientId), // OTTO(editor)
     "otto-terminal": (method, input) => ottoTerminal.invoke(method, input),
+    "otto-workspace-git": (method, input) => ottoWorkspaceGit?.invoke(method, input), // OTTO(git-fetch)
     "otto-speech": (method, input, clientId) => ottoSpeech?.invoke(method, input, clientId),
     "otto-artifacts": (method, input) => ottoArtifacts?.invoke(method, input),
     "otto-architectural-views": (method, input, clientId) =>
@@ -740,6 +744,7 @@ export async function createPaseoDaemon(
           (pluginId === "otto-schedules" && ottoSchedules !== null) || // OTTO(schedules)
           pluginId === "otto-editor" || // OTTO(editor)
           pluginId === "otto-terminal" || // OTTO(terminal)
+          (pluginId === "otto-workspace-git" && ottoWorkspaceGit !== null) || // OTTO(git-fetch)
           (pluginId === "otto-speech" && ottoSpeech !== null) || // OTTO(speech)
           documentBuiltinAvailable(pluginId, ottoArtifacts, ottoViews) || // OTTO(architectural-views): no renderer assets, no capability.
           pluginId === "otto-brain" ||
@@ -1137,10 +1142,16 @@ export async function createPaseoDaemon(
     atlassian: ottoIntegrations.atlassian, // OTTO(kanban): reuse shared host authorization.
     operationDirectory: path.join(config.paseoHome, "kanban", "operations"), // OTTO(kanban): durable write admission belongs to this isolated daemon home.
   }); // OTTO(kanban)
+  const ottoGitFetchSettings = new GitFetchSettingsStore(config.paseoHome); // OTTO(git-fetch)
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger,
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
+    ottoFetchPolicy: initialGitFetchPolicy(ottoGitFetchSettings, () =>
+      logger.warn(
+        "Git fetch settings are unreadable; automatic fetch stays disabled until they can be read.",
+      ),
+    ), // OTTO(git-fetch): never activate an unreadable old opt-out.
     deps: {
       forgeOverrides: {
         github,
@@ -1148,6 +1159,13 @@ export async function createPaseoDaemon(
       }, // OTTO(bitbucket): reuse private owning-host credentials; registration performs no reads or requests.
     },
   });
+  ottoWorkspaceGit = new WorkspaceGitHost({
+    store: ottoGitFetchSettings,
+    hostId: serverId,
+    workspace: (id) => workspaceRegistry.get(id),
+    policy: (value) => workspaceGitService.ottoFetchControl.setPolicy(value),
+    fetch: (cwd) => workspaceGitService.fetchWorkspace(cwd),
+  }); // OTTO(git-fetch): composition performs no Git command or settings write.
   workspaceRegistry.subscribeToMutations((mutation) => {
     if (mutation.kind === "archive" && mutation.workspace) {
       pluginRuntime.emit("workspace.archived", {

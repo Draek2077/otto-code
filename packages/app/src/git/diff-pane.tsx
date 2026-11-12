@@ -1765,6 +1765,7 @@ export function ChangesSurface({
   );
   const { gitActions, branchLabel } = useGitActions({
     serverId,
+    workspaceId, // OTTO(git-fetch): owning workspace, not a guessed path identity.
     cwd,
     icons: GIT_ACTION_ICONS,
   });

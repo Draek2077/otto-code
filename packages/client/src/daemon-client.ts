@@ -5753,7 +5753,18 @@ export class DaemonClient {
     return payload.plugin;
   }
 
-  async invokePluginRpc(pluginId: string, method: string, input: unknown): Promise<unknown> {
+  // OTTO(git-fetch): explicit long operations can use a bounded per-call budget; other RPC defaults stay intact.
+  async invokePluginRpc(
+    pluginId: string,
+    method: string,
+    input: unknown,
+    timeoutMs?: number,
+  ): Promise<unknown> {
+    if (
+      timeoutMs !== undefined &&
+      (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 600_000)
+    )
+      throw new RangeError("Plugin RPC timeout must be positive and no longer than ten minutes.");
     const requestId = this.createRequestId();
     const payload = await this.sendCorrelatedSessionRequest({
       requestId,
@@ -5765,6 +5776,7 @@ export class DaemonClient {
         input,
       },
       responseType: "plugin.rpc.invoke.response",
+      timeout: timeoutMs,
     });
     return payload.output;
   }

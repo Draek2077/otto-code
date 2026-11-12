@@ -1,4 +1,5 @@
 import { terminalAvailable } from "./otto/terminal/capabilities.js"; // OTTO(terminal)
+import { gitFetchAvailable } from "./otto/workspace-git/capabilities.js"; // OTTO(git-fetch)
 import { editorAvailable } from "./otto/editor/capabilities.js"; // OTTO(editor)
 import { stat } from "node:fs/promises";
 import { speechAvailable } from "./otto/speech/capabilities.js"; // OTTO(speech)
@@ -1831,6 +1832,7 @@ export class VoiceAssistantWebSocketServer {
         ottoBitbucket: ottoBitbucketAvailable(this.pluginRuntime), // OTTO(bitbucket)
         ottoConnectors: ottoBitbucketAvailable(this.pluginRuntime), // OTTO(connectors): same inert built-in owner, independent feature gate.
         ottoTerminal: terminalAvailable(this.pluginRuntime), // OTTO(terminal)
+        ottoGitFetch: gitFetchAvailable(this.pluginRuntime), // OTTO(git-fetch)
         ottoEditor: editorAvailable(this.pluginRuntime), // OTTO(editor)
         ottoSpeech: speechAvailable(this.pluginRuntime), // OTTO(speech)
         ottoKnowledge: knowledgeAvailable, // OTTO(knowledge)

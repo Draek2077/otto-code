@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { forgeStatusErrorMessage } from "./otto/forge-error.js"; // OTTO(forge-errors): actionable PR lookup failures.
 import { readFile } from "node:fs/promises";
+import { GitFetchControl } from "./otto/workspace-git/control.js"; // OTTO(git-fetch): control the existing fetch owner and cadence.
+import type { GitFetchPreferences } from "@getpaseo/plugin/otto/workspace-git"; // OTTO(git-fetch)
 import { basename, dirname, join, resolve } from "node:path";
 import { LRUCache } from "lru-cache";
 import { CheckoutDiffCache } from "./checkout-diff-cache.js";
@@ -80,7 +82,6 @@ import { checkoutLiteFromGitSnapshot } from "./workspace-registry-model.js";
 import { createWatcherLivenessCanary } from "./watcher-liveness-canary.js";
 
 const WORKSPACE_GIT_WATCH_DEBOUNCE_MS = 1_000;
-const BACKGROUND_GIT_FETCH_INTERVAL_MS = 180_000;
 const FETCH_METADATA_ECHO_TTL_MS = 5_000;
 export const WORKSPACE_GIT_OBSERVATION_REENSURE_INTERVAL_MS = 60_000;
 const FORGE_PR_STATUS_POLL_FAST_INTERVAL_MS = 20_000;
@@ -400,6 +401,7 @@ interface WorkspaceGitServiceOptions {
   worktreesRoot?: string;
   fileObserver?: FileObserver;
   deps?: Partial<WorkspaceGitServiceDependencies>;
+  ottoFetchPolicy?: GitFetchPreferences; // OTTO(git-fetch): resolved from the owning host before observations start.
 }
 
 class WorkspaceGitServiceDisposedError extends Error {
@@ -586,6 +588,7 @@ function resolveWorkspaceGitServiceDeps(
 }
 
 export class WorkspaceGitServiceImpl implements WorkspaceGitService {
+  readonly ottoFetchControl: GitFetchControl<RepoGitTarget>; // OTTO(git-fetch): no second timer or metadata cache.
   private readonly logger: pino.Logger;
   private readonly paseoHome: string;
   private readonly worktreesRoot: string | undefined;
@@ -644,6 +647,25 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     this.deps = resolveWorkspaceGitServiceDeps(
       this.fileObserver.subscribe.bind(this.fileObserver),
       options.deps,
+    );
+    // OTTO(git-fetch): only already-observed repositories with origin are admitted.
+    this.ottoFetchControl = new GitFetchControl(
+      {
+        active: (target) =>
+          !this.disposed &&
+          this.repoTargets.get(target.repoGitRoot) === target &&
+          Array.from(target.workspaceKeys).some((key) => {
+            const workspace = this.workspaceTargets.get(key);
+            return workspace !== undefined && this.isActiveObservedWorkspaceTarget(workspace);
+          }),
+        run: (target) => this.runRepoFetch(target),
+        report: (error, target) =>
+          this.logger.warn(
+            { err: error, repoGitRoot: target.repoGitRoot },
+            "Git fetch did not complete",
+          ),
+      },
+      options.ottoFetchPolicy,
     );
     this.forgeResolver = createForgeResolver({
       createService: (forge) => this.deps.forgeOverrides?.[forge] ?? createForgeService(forge),
@@ -1037,6 +1059,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   dispose(): Promise<void> {
     if (this.disposePromise) return this.disposePromise;
     this.disposed = true;
+    this.ottoFetchControl.dispose(); // OTTO(git-fetch): revoke queued callbacks before disposing observations.
     this.disposeController.abort(new WorkspaceGitServiceDisposedError());
     this.workspaceRefreshLimit.clearQueue();
     this.workspaceObservationSetupLimit.clearQueue();
@@ -2200,10 +2223,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     if (!hasOrigin) {
       return;
     }
-    repoTarget.intervalId = setInterval(() => {
-      void this.runRepoFetch(repoTarget);
-    }, BACKGROUND_GIT_FETCH_INTERVAL_MS);
-    void this.runRepoFetch(repoTarget);
+    this.ottoFetchControl.observe(repoTarget); // OTTO(git-fetch): preserve Paseo's initial fetch and one configurable cadence.
   }
 
   private async startRepoMetadataObservation(
@@ -3534,23 +3554,54 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
   }
 
-  private async runRepoFetch(target: RepoGitTarget): Promise<void> {
-    if (target.fetchInFlight) {
-      return;
-    }
+  // OTTO(git-fetch): explicit requests need no observer and share worktree/alias fetches.
+  async fetchWorkspace(cwd: string): Promise<void> {
+    this.assertNotDisposed();
+    const directory = resolve(cwd);
+    const gitDir = await this.deps.resolveAbsoluteGitDir(directory);
+    if (!gitDir || !(await this.deps.hasOriginRemote(directory)))
+      throw new Error("Fetch requires a Git workspace with an origin remote.");
+    const commonRoot = await this.resolveWorkspaceGitRefsRoot(gitDir);
+    const target = this.repoTargets.get(commonRoot);
+    const result = target
+      ? await this.runRepoFetch(target, directory)
+      : await this.ottoFetchControl.single(commonRoot, () =>
+          this.deps.runGitFetch(
+            directory,
+            { onRefSnapshot: () => {} },
+            createRunGitCommand("otto-manual-fetch"),
+          ),
+        );
+    // Partial failures can still have changed refs. Refresh the canonical owner in either case.
+    await this.getSnapshot(directory, {
+      force: true,
+      includeForge: false,
+      reason: "otto-manual-fetch",
+    });
+    if (result.error)
+      throw new Error("Git fetch did not finish successfully.", { cause: result.error });
+  }
 
-    target.fetchInFlight = true;
-    this.logger.debug(
-      { repoGitRoot: target.repoGitRoot, cwd: target.cwd },
-      "Running background git fetch",
+  // OTTO(git-fetch): one operation per real common Git directory, including linked worktrees.
+  private runRepoFetch(target: RepoGitTarget, cwd = target.cwd): Promise<WorkspaceGitFetchResult> {
+    return this.ottoFetchControl.single(target.repoGitRoot, () =>
+      this.performRepoFetch(target, cwd),
     );
+  }
 
-    let result: WorkspaceGitFetchResult | null = null;
+  private async performRepoFetch(
+    target: RepoGitTarget,
+    cwd: string,
+  ): Promise<WorkspaceGitFetchResult> {
+    target.fetchInFlight = true;
+    this.logger.debug({ repoGitRoot: target.repoGitRoot, cwd }, "Running background git fetch");
+
+    let result: WorkspaceGitFetchResult;
     const eventsBeforeFetchSnapshot: FileChange[] = [];
     try {
       try {
         result = await this.deps.runGitFetch(
-          target.cwd,
+          cwd,
           {
             onRefSnapshot: (phase) => {
               const events = target.bufferedFetchMetadataEvents.splice(0);
@@ -3562,12 +3613,14 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
           createRunGitCommand("background-fetch"),
         );
       } catch (error) {
+        result = { changes: null, error }; // OTTO(git-fetch): manual callers receive the same failed outcome.
         this.logger.warn(
-          { err: error, repoGitRoot: target.repoGitRoot, cwd: target.cwd },
+          { err: error, repoGitRoot: target.repoGitRoot, cwd },
           "Background git fetch failed",
         );
       }
       this.applyRepoFetchResult(target, result, eventsBeforeFetchSnapshot);
+      return result; // OTTO(git-fetch): shared background/manual acknowledgment, no retry.
     } finally {
       target.fetchInFlight = false;
     }
@@ -3773,6 +3826,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
   private closeRepoTarget(target: RepoGitTarget): void {
     target.closed = true;
+    this.ottoFetchControl.forget(target); // OTTO(git-fetch): release policy membership with Paseo's target.
     if (target.intervalId) {
       clearInterval(target.intervalId);
       target.intervalId = null;
