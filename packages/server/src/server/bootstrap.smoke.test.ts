@@ -2,7 +2,7 @@ import { resolveDaemonVersion } from "./daemon-version.js";
 import os from "node:os";
 import http from "node:http";
 import path from "node:path";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import pino from "pino";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
@@ -80,17 +80,22 @@ describe("paseo daemon bootstrap", () => {
     }
   });
 
-  test("keeps timeline activity in memory and removes obsolete timeline files at startup", async () => {
-    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-timeline-cleanup-"));
+  // OTTO(history): preserve old homes without making their timeline files the live timeline owner.
+  test("keeps timeline activity in memory and preserves existing timeline files verbatim", async () => {
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-timeline-preservation-"));
     const paseoHome = path.join(paseoHomeRoot, ".paseo");
-    const obsoleteTimelineDirectory = path.join(paseoHome, "agent-timelines");
+    const preservedTimelineDirectory = path.join(paseoHome, "agent-timelines");
+    const preservedTimelineFile = path.join(preservedTimelineDirectory, "retained.json");
+    const preservedContent =
+      '{"agentId":"older-chat","messages":[{"text":"preserved recovery evidence"}],"unknownField":true}\n';
     const agentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-timeline-agent-"));
-    await mkdir(obsoleteTimelineDirectory, { recursive: true });
-    await writeFile(path.join(obsoleteTimelineDirectory, "obsolete.json"), "{}\n", "utf-8");
+    await mkdir(preservedTimelineDirectory, { recursive: true });
+    await writeFile(preservedTimelineFile, preservedContent, "utf-8");
 
     const daemonHandle = await createTestPaseoDaemon({ paseoHomeRoot, cleanup: false });
     try {
-      await expect(access(obsoleteTimelineDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await readFile(preservedTimelineFile, "utf-8")).toBe(preservedContent);
+      expect(await readdir(preservedTimelineDirectory)).toEqual(["retained.json"]);
 
       const agent = await daemonHandle.daemon.agentManager.createAgent(
         { provider: "codex", cwd: agentCwd },
@@ -103,7 +108,14 @@ describe("paseo daemon bootstrap", () => {
       });
       await daemonHandle.daemon.agentManager.flush();
 
-      await expect(access(obsoleteTimelineDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(daemonHandle.daemon.agentManager.getTimeline(agent.id)).toContainEqual(
+        expect.objectContaining({
+          type: "assistant_message",
+          text: "timeline stays in memory",
+        }),
+      );
+      expect(await readFile(preservedTimelineFile, "utf-8")).toBe(preservedContent);
+      expect(await readdir(preservedTimelineDirectory)).toEqual(["retained.json"]);
     } finally {
       await daemonHandle.close();
       await Promise.all([

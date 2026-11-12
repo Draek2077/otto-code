@@ -21,6 +21,11 @@ values retain these fields too. They stay outside Paseo's runtime records and wi
 projections. Paseo still owns edits and removal of its recognized fields, and
 deleting a record does not resurrect it.
 
+Historical `agent-timelines` files remain unchanged at startup and while new
+messages are recorded. Paseo's live timeline owner does not write new records to
+that directory. Keeping these files preserves recovery and rollback evidence;
+it does not turn them into a restored-history reader.
+
 The daemon's `OttoProjectMetadata` adapter reads preserved project fields and
 updates only Kanban and Knowledge fields under the same queue as project
 rename/archive/removal. It checks the opened record revision inside that queue,
