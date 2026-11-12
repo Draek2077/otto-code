@@ -29,6 +29,7 @@ const entries = {
   "./otto/connectors": "shared", // OTTO(connectors): catalog and structural RPC only; no authorization runtime.
   "./otto/speech": "shared", // OTTO(speech): structural selections and bounded RPC only.
   "./otto/terminal": "shared", // OTTO(terminal): structural host preferences and diagnostics only.
+  "./otto/workspace-git": "shared", // OTTO(git-fetch): structural preferences/RPC only, never a Git process or UI import.
   "./otto/editor": "shared", // OTTO(editor): bounded structural editor RPCs.
   "./otto/editor-solution": "shared", // OTTO(editor): read-only solution DTOs, no SDK/runtime imports.
   "./otto/editor-links": "shared", // OTTO(editor): pure host-relative path formatting.
