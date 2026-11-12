@@ -195,8 +195,9 @@ test("recursive observation updates tracked state and prunes ignored storms", as
     }
     throw new Error(`Unexpected Git command: ${args.join(" ")}`);
   });
+  const logger = createLogger();
   const service = new WorkspaceGitServiceImpl({
-    logger: createLogger(),
+    logger,
     paseoHome: path.join(tempDir, "paseo-home"),
     fileObserver,
     deps: {
@@ -234,7 +235,20 @@ test("recursive observation updates tracked state and prunes ignored storms", as
     () => {
       expect(
         activeWatcherCount,
-        JSON.stringify({ observation: observer.getDiagnostics(), service: service.getMetrics() }),
+        // OTTO(test): retain per-subscription evidence when native readiness fails.
+        JSON.stringify(
+          {
+            observation: observer.getDiagnostics(),
+            service: service.getMetrics(),
+            watcherStartCount,
+            events: deliveredEvents.slice(-20),
+            warnings: vi.mocked(logger.warn).mock.calls,
+          },
+          (_key, value) =>
+            value instanceof Error
+              ? { name: value.name, message: value.message, stack: value.stack }
+              : value,
+        ),
       ).toBe(2);
       expect(service.peekSnapshot(repoDir)).not.toBeNull();
       expect(service.getMetrics()).toMatchObject({

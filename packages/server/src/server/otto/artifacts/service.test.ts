@@ -311,6 +311,9 @@ test("Schedule tool writes persist exact source and manual data refresh replaces
   const ref = f.ref(listed.items[0].id);
   f.resolve();
   await expect.poll(async () => (await f.service.read(ref)).artifact.status).toBe("ready");
+  // OTTO(test): ready metadata precedes snapshot flush and lock cleanup. The
+  // separate data transaction starts only once that admitted generation releases.
+  await expect.poll(async () => (await f.service.read(ref)).lock).toBeNull();
   const original = await f.service.read(ref);
   expect(original.artifact.source).toEqual({
     kind: "schedule",
@@ -324,7 +327,8 @@ test("Schedule tool writes persist exact source and manual data refresh replaces
     expectedRevision: original.artifact.revision,
     json: '{"value":2}',
   };
-  expect((await update.handler(input, {})).isError).toBeUndefined();
+  const updated = await update.handler(input, {});
+  expect(updated.isError, JSON.stringify(updated)).toBeUndefined();
   const refreshed = await f.service.read(ref);
   expect(refreshed.artifact.source).toEqual(original.artifact.source);
   expect(refreshed.html!.replace(/\{\s*"value": 2\s*\}/, "DATA")).toBe(
