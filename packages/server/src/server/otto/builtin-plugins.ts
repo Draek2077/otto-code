@@ -15,3 +15,9 @@ export const ottoBuiltinPlugins = [
   "otto-workflows",
   "otto-schedules",
 ] as const;
+
+/** Essential daemon routes are reserved identities, without a plugin module/worker to load. */
+const ottoHostRpcIds = ["otto-workspace-git"] as const;
+export function withOttoHostRpcIds(pluginIds: ReadonlySet<string>): ReadonlySet<string> {
+  return new Set([...pluginIds, ...ottoHostRpcIds]);
+}

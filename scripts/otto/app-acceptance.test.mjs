@@ -62,6 +62,7 @@ test("manual diagnostics stay bounded while every push and pull request retains 
       "artifacts",
       "speech",
       "terminal",
+      "workspace-git",
       "editor",
       "workflows",
       "schedules",
@@ -93,6 +94,11 @@ test("manual diagnostics stay bounded while every push and pull request retains 
   );
   assert.ok(
     source.includes("e2e/browser/otto-terminal.spec.ts --workers=1 --retries=0 --max-failures=1"),
+  );
+  assert.ok(
+    source.includes(
+      "e2e/browser/otto-workspace-git.spec.ts --workers=1 --retries=0 --max-failures=1",
+    ),
   );
   assert.ok(
     source.includes("e2e/browser/otto-workflows.spec.ts --workers=1 --retries=0 --max-failures=1"),

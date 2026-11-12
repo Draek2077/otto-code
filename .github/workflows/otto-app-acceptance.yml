@@ -56,6 +56,7 @@ on:
             artifacts,
             speech,
             terminal,
+            workspace-git,
             editor,
             workflows,
             schedules,
@@ -152,6 +153,10 @@ jobs:
               ;;
             terminal)
               npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-terminal.spec.ts --workers=1 --retries=0 --max-failures=1
+              ;;
+            workspace-git)
+              # OTTO(git-fetch): bounded diagnostics retain the complete default acceptance gate.
+              npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/otto-workspace-git.spec.ts --workers=1 --retries=0 --max-failures=1
               ;;
             editor)
               # Exercise the changed flow first; retain every baseline gate and its proof.

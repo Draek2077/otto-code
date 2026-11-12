@@ -38,7 +38,9 @@ write replies cannot adopt a new revision. The form has no autosave or polling.
 an update message; no legacy RPC fan-out emulates the new capability. The
 `otto-workspace-git` host contribution resolves a workspace ID through its own
 registry, refuses archived or unknown workspaces, and never accepts a client
-filesystem path. RPC declarations live in `@getpaseo/plugin/otto/workspace-git`;
+filesystem path. Its reserved RPC identity shares the built-in install protection
+and allowlist, but is not in the plugin loader's startup list and loads no worker.
+RPC declarations live in `@getpaseo/plugin/otto/workspace-git`;
 implementation lives in each package's `otto/workspace-git` directory. Marked
 seams in Paseo composition, Git actions and Host Workspaces settings only bind
 those owners. Chat, session, provider, transcript and memory paths are unchanged.

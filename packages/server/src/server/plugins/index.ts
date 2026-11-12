@@ -1,5 +1,6 @@
 import type { PluginLifecycle } from "./lifecycle/index.js";
 import type { OttoBuiltinRpc } from "../otto/plugin-rpc.js"; // OTTO(feature-host): daemon-owned built-in effects.
+import { withOttoHostRpcIds } from "../otto/builtin-plugins.js"; // OTTO(git-fetch): reserve essential host RPCs without loading workers.
 import { ottoProviderRegistration } from "../otto/plugin-provider-compat.js"; // OTTO(provider-history)
 import path from "node:path";
 import { stat, rm } from "node:fs/promises";
@@ -122,7 +123,7 @@ export class PluginService {
       });
     this.managedSources = dependencies.managedSources ?? null;
     this.builtinPlugins = dependencies.builtinPlugins ?? new BuiltinPluginLoader(undefined, []);
-    this.builtinPluginIds = this.builtinPlugins.ids;
+    this.builtinPluginIds = withOttoHostRpcIds(this.builtinPlugins.ids); // OTTO(git-fetch): same install protection and RPC allowlist.
     this.runtime.subscribe((pluginId, error) => {
       this.removeProviderRegistrations(pluginId);
       this.removeUsageSources(pluginId);
@@ -488,7 +489,7 @@ export class PluginService {
     });
   }
 
-  // OTTO(feature-host): advertise only an installed built-in's concrete daemon bridge.
+  // OTTO(feature-host): advertise only a registered built-in/host route's concrete daemon bridge.
   supportsBuiltinRpc(pluginId: string): boolean {
     return this.builtinPluginIds.has(pluginId) && this.dependencies.ottoRpc?.has(pluginId) === true;
   }

@@ -590,6 +590,10 @@ or environment review.
 
 ## Otto workspace Git fetch
 
+`server/src/server/otto/workspace-git/capabilities.test.ts` verifies the reserved
+RPC identity without adding a plugin worker to startup. Actual socket routing is
+covered by the wide/compact app acceptance journey below.
+
 | Surface                                                                               | Behavioral coverage                                                                         |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Preserved opt-out, unknown fields, revision conflicts and malformed/future files      | `server/src/server/otto/workspace-git/settings.test.ts`, `host.test.ts`                     |
