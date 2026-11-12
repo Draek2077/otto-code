@@ -14,7 +14,9 @@ automatic admission never serves as a successful manual acknowledgement.
 
 **Fetch** appears in the existing workspace Git actions and Command Center for a
 Git workspace with an `origin` remote. It remains available when automatic fetch
-is off. It runs Paseo's `git fetch origin --prune`, shares any in-flight fetch for
+is off. Compact workspaces use the existing Changes toolbar's Git menu; the
+desktop workspace header and Command Center retain their normal placements.
+It runs Paseo's `git fetch origin --prune`, shares any in-flight fetch for
 the same canonical common Git directory, and refreshes the canonical Git snapshot
 without requesting forge status. Linked worktrees share the operation. The Git
 command retains its existing two-minute bound; only the explicit plugin RPC has a

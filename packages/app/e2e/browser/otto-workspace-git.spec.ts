@@ -9,6 +9,7 @@ import { openCommandCenter } from "../support/helpers/command-center";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import { startIsolatedHostDaemon } from "../support/helpers/isolated-host-daemon";
 import { seedWorkspace } from "../support/helpers/seed-client";
+import { openChangesTreePanel } from "../support/helpers/workspace-tabs";
 import { buildHostWorkspaceRoute } from "../../src/utils/host-routes";
 import { readGitFetchPolicy, saveGitFetchPolicy } from "@getpaseo/plugin/otto/workspace-git";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -127,6 +128,9 @@ for (const compact of [false, true]) {
           localStorage.setItem("@otto:e2e-disable-default-seed-once", nonce);
         });
         await page.goto(buildHostWorkspaceRoute(host.serverId, workspace.workspaceId));
+        // CompactWorkspaceHeader does not mount the desktop header's action row.
+        // Use Paseo's existing Changes toolbar, rather than adding another control.
+        if (compact) await openChangesTreePanel(page);
         const trigger = page
           .getByTestId("changes-overflow-menu")
           .or(page.getByTestId("changes-actions-menu-trigger"))
@@ -173,6 +177,19 @@ for (const compact of [false, true]) {
         await command.click();
         await expect(palette).not.toBeVisible();
         await expect.poll(() => git("rev-parse", "origin/main")).toBe(commandNext);
+      } catch (error) {
+        // Preserve the real failure frame before fixture removal disconnects its host.
+        await page
+          .locator("body")
+          .ariaSnapshot()
+          .then((body) =>
+            info.attach("git-fetch-before-cleanup", { body, contentType: "text/plain" }),
+          )
+          .catch(() => undefined);
+        await page
+          .screenshot({ path: info.outputPath("git-fetch-before-cleanup.png") })
+          .catch(() => undefined);
+        throw error;
       } finally {
         await workspace.cleanup();
       }
