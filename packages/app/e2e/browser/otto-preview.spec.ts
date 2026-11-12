@@ -41,6 +41,10 @@ for (const compact of [false, true]) {
   test(`Preview configuration, reviewed lifecycle, logs and failed start recovery (${compact ? "compact" : "wide"})`, async ({
     page,
   }, testInfo) => {
+    // Cold Metro entry precedes the host browser's bounded 55-second startup,
+    // followed by streaming, input and recovery checks. Ordinary assertions
+    // retain their ten-second limits; the complete scenario needs its own budget.
+    test.setTimeout(180_000);
     if (compact) await page.setViewportSize({ width: 390, height: 844 });
     const workspace = await seedWorkspace({
       repoPrefix: "otto-preview-ui-",
