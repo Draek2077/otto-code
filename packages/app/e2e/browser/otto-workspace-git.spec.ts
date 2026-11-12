@@ -119,6 +119,13 @@ for (const compact of [false, true]) {
         );
         git(`--git-dir=${origin}`, "update-ref", "refs/heads/main", next);
         expect(git("rev-parse", "origin/main")).toBe(before);
+        // The shared fixture reseeds hosts on document navigation. Preserve this
+        // disposable host for exactly the navigation into its real workspace.
+        await page.evaluate(() => {
+          const nonce = localStorage.getItem("@otto:e2e-seed-nonce");
+          if (!nonce) throw new Error("The fixture host registry has no seed nonce.");
+          localStorage.setItem("@otto:e2e-disable-default-seed-once", nonce);
+        });
         await page.goto(buildHostWorkspaceRoute(host.serverId, workspace.workspaceId));
         const trigger = page
           .getByTestId("changes-overflow-menu")
@@ -140,6 +147,20 @@ for (const compact of [false, true]) {
         git("remote", "set-url", "origin", origin);
         await fetch.click();
         await expect(fetch).toContainText("Fetched");
+        const commandNext = git(
+          "-c",
+          "user.name=Fixture",
+          "-c",
+          "user.email=fixture@example.invalid",
+          `--git-dir=${origin}`,
+          "commit-tree",
+          `${next}^{tree}`,
+          "-p",
+          next,
+          "-m",
+          "command-center remote change",
+        );
+        git(`--git-dir=${origin}`, "update-ref", "refs/heads/main", commandNext);
         await page.keyboard.press("Escape");
         if (compact)
           await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
@@ -149,6 +170,7 @@ for (const compact of [false, true]) {
         await expect(command).toBeVisible();
         await command.click();
         await expect(palette).not.toBeVisible();
+        await expect.poll(() => git("rev-parse", "origin/main")).toBe(commandNext);
       } finally {
         await workspace.cleanup();
       }
