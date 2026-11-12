@@ -658,7 +658,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
             const workspace = this.workspaceTargets.get(key);
             return workspace !== undefined && this.isActiveObservedWorkspaceTarget(workspace);
           }),
-        run: (target) => this.runRepoFetch(target),
+        run: (target) => this.performRepoFetch(target, target.cwd),
         report: (error, target) =>
           this.logger.warn(
             { err: error, repoGitRoot: target.repoGitRoot },

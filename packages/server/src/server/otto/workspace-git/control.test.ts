@@ -20,7 +20,7 @@ function prepare(enabled = true) {
   let control!: GitFetchControl<Target>;
   const operation = vi.fn(async () => result);
   const report = vi.fn();
-  const run = vi.fn((entry: Target) => control.single(entry.repoGitRoot, operation));
+  const run = vi.fn((_entry: Target) => operation());
   control = new GitFetchControl(
     { active: () => active, run, report },
     { enabled, intervalSeconds: 180 },
@@ -51,6 +51,41 @@ test("default observation reuses one timer and performs the existing immediate a
   expect(f.operation).toHaveBeenCalledTimes(2);
   f.control.forget(f.target);
   expect(vi.getTimerCount()).toBe(0);
+});
+
+test("disablement also revokes automatic work already waiting at the repository admission boundary", async () => {
+  const f = prepare();
+  f.control.observe(f.target);
+  await Promise.resolve();
+  f.control.setPolicy({ enabled: false, intervalSeconds: 180 });
+  await Promise.resolve();
+  expect(f.operation).not.toHaveBeenCalled();
+  f.control.dispose();
+});
+
+test("an explicit manual request claims queued automatic work even when its policy was disabled", async () => {
+  const f = prepare();
+  f.control.observe(f.target);
+  await Promise.resolve();
+  f.control.setPolicy({ enabled: false, intervalSeconds: 180 });
+  const manual = vi.fn(async () => result);
+  await expect(f.control.single(f.target.repoGitRoot, manual)).resolves.toEqual(result);
+  expect(manual).toHaveBeenCalledTimes(1);
+  expect(f.operation).not.toHaveBeenCalled();
+  f.control.dispose();
+});
+
+test("a skipped automatic admission cannot acknowledge a later manual request without fetching", async () => {
+  const f = prepare();
+  f.control.observe(f.target);
+  await Promise.resolve();
+  f.control.setPolicy({ enabled: false, intervalSeconds: 180 });
+  await Promise.resolve();
+  const manual = vi.fn(async () => result);
+  await expect(f.control.single(f.target.repoGitRoot, manual)).resolves.toEqual(result);
+  expect(manual).toHaveBeenCalledTimes(1);
+  expect(f.operation).not.toHaveBeenCalled();
+  f.control.dispose();
 });
 
 test("a saved opt-out creates no timer or automatic work; enabling only arms the selected cadence", async () => {

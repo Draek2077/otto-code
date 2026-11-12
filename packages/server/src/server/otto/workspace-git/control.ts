@@ -11,12 +11,18 @@ interface FetchTarget {
   closed: boolean;
   intervalId: ReturnType<typeof setInterval> | null;
 }
+interface FetchOperation<T> {
+  promise: Promise<WorkspaceGitFetchResult>;
+  run(): Promise<WorkspaceGitFetchResult>;
+  automatic: T | undefined;
+  started: boolean;
+}
 
 /** Policy over Paseo's existing repository timers, not another observation or job owner. */
 export class GitFetchControl<T extends FetchTarget> {
   private policy: GitFetchPreferences;
   private readonly eligible = new Set<T>();
-  private readonly operations = new Map<string, Promise<WorkspaceGitFetchResult>>();
+  private readonly operations = new Map<string, FetchOperation<T>>();
   private closed = false;
   constructor(
     private readonly ports: {
@@ -51,7 +57,11 @@ export class GitFetchControl<T extends FetchTarget> {
     // cannot revive automatic fetching after its policy or workspace is revoked.
     if (!this.canRun(target)) return;
     void Promise.resolve()
-      .then(() => (this.canRun(target) ? this.ports.run(target) : undefined))
+      .then(() =>
+        this.canRun(target)
+          ? this.admit(target.repoGitRoot, () => this.ports.run(target), target)
+          : undefined,
+      )
       .catch((error: unknown) => this.ports.report(error, target));
   }
   private schedule(target: T) {
@@ -77,21 +87,44 @@ export class GitFetchControl<T extends FetchTarget> {
     target.intervalId = null;
   }
   single(root: string, operation: () => Promise<WorkspaceGitFetchResult>) {
+    return this.admit(root, operation);
+  }
+  private admit(root: string, operation: () => Promise<WorkspaceGitFetchResult>, automatic?: T) {
     if (this.closed) return Promise.reject(new Error("Workspace Git has stopped."));
     const key = this.key(root),
       current = this.operations.get(key);
-    if (current) return current;
-    const pending = Promise.resolve().then(() => {
-      if (this.closed) throw new Error("Workspace Git has stopped.");
-      return operation();
-    });
-    this.operations.set(key, pending);
-    void pending
+    if (current) {
+      // An explicit request may claim queued automatic work even after opt-out.
+      // Once Git is admitted, all callers share that operation's actual result.
+      if (!automatic && current.automatic && !current.started) {
+        current.automatic = undefined;
+        current.run = operation;
+      }
+      return current.promise;
+    }
+    const entry: FetchOperation<T> = {
+      run: operation,
+      automatic,
+      started: false,
+      promise: Promise.resolve().then(() => {
+        if (this.closed) throw new Error("Workspace Git has stopped.");
+        if (entry.automatic && !this.canRun(entry.automatic)) {
+          // Remove a skipped admission immediately: a later manual request must
+          // start real work, rather than inherit this automatic no-op's result.
+          if (this.operations.get(key) === entry) this.operations.delete(key);
+          return { changes: [], error: null };
+        }
+        entry.started = true;
+        return entry.run();
+      }),
+    };
+    this.operations.set(key, entry);
+    void entry.promise
       .finally(() => {
-        if (this.operations.get(key) === pending) this.operations.delete(key);
+        if (this.operations.get(key) === entry) this.operations.delete(key);
       })
       .catch(() => {});
-    return pending;
+    return entry.promise;
   }
   dispose() {
     this.closed = true;

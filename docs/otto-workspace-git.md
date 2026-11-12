@@ -8,7 +8,9 @@ Host Settings > Workspaces contains **Automatic Git fetch** and **Fetch interval
 The default is enabled every three minutes, matching Paseo. Available intervals
 are 1, 3, 5, 10, 15, 30 and 60 minutes. Save is explicit; a settings change re-arms
 the existing repository timer without starting a fetch. Queued callbacks recheck
-the current policy and active workspace ownership before entering Git.
+the current policy and active workspace ownership at final repository admission.
+An explicit Fetch can claim pending automatic work after opt-out; a skipped
+automatic admission never serves as a successful manual acknowledgement.
 
 **Fetch** appears in the existing workspace Git actions and Command Center for a
 Git workspace with an `origin` remote. It remains available when automatic fetch
