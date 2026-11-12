@@ -33,3 +33,10 @@ export class ManualGitFetch {
     }
   }
 }
+
+export function manualGitPresentation(snapshot: ReturnType<ManualGitFetch["getSnapshot"]>) {
+  // Paseo's menu "success" state is terminal and disables the row. Fetch is
+  // repeatable; its normal toast acknowledges success without a reset timer.
+  const status: "idle" | "pending" = snapshot.status === "pending" ? "pending" : "idle";
+  return { status, label: snapshot.error ? "Fetch failed; try again" : "Fetch" };
+}

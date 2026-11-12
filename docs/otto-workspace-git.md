@@ -20,6 +20,9 @@ without requesting forge status. Linked worktrees share the operation. The Git
 command retains its existing two-minute bound; only the explicit plugin RPC has a
 130-second acknowledgement budget. Failures remain visible in the menu until a
 new explicit attempt. No automatic retry is introduced.
+Successful Fetch remains immediately repeatable and uses the existing success
+toast; it does not retain the shared menu's disabling terminal-success state or
+add a reset timer.
 
 ## Storage and compatibility
 

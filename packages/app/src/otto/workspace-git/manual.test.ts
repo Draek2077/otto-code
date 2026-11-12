@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { ManualGitFetch } from "./manual";
+import { ManualGitFetch, manualGitPresentation } from "./manual";
 import { createGitFetchPort, GitFetchError } from "./port";
 
 test("only an explicit action fetches; duplicates join the pending action and failure remains recoverable", async () => {
@@ -17,9 +17,14 @@ test("only an explicit action fetches; duplicates join the pending action and fa
   release();
   await first;
   expect(model.getSnapshot()).toEqual({ status: "success", error: null });
+  expect(manualGitPresentation(model.getSnapshot())).toEqual({ status: "idle", label: "Fetch" });
   fetch.mockRejectedValueOnce(new GitFetchError("Check origin access."));
   await model.run();
   expect(model.getSnapshot()).toEqual({ status: "idle", error: "Check origin access." });
+  expect(manualGitPresentation(model.getSnapshot())).toEqual({
+    status: "idle",
+    label: "Fetch failed; try again",
+  });
   await model.run();
   expect(model.getSnapshot()).toEqual({ status: "success", error: null });
 });

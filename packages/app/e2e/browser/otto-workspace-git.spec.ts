@@ -137,7 +137,8 @@ for (const compact of [false, true]) {
         await expect(fetch).toBeVisible();
         await fetch.click();
         await expect.poll(() => git("rev-parse", "origin/main")).toBe(next);
-        await expect(fetch).toContainText("Fetched");
+        await expect(fetch).toBeEnabled();
+        await expect(page.getByText("Fetched origin.", { exact: true })).toBeVisible();
         expect((await read()).preferences.enabled).toBe(false);
 
         git("remote", "set-url", "origin", path.join(workspace.repoPath, "missing-origin.git"));
@@ -146,7 +147,8 @@ for (const compact of [false, true]) {
         await page.screenshot({ path: info.outputPath("git-fetch-error.png") });
         git("remote", "set-url", "origin", origin);
         await fetch.click();
-        await expect(fetch).toContainText("Fetched");
+        await expect(fetch).toBeEnabled();
+        await expect(page.getByText("Fetched origin.", { exact: true })).toBeVisible();
         const commandNext = git(
           "-c",
           "user.name=Fixture",

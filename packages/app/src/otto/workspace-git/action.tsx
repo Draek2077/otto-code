@@ -4,7 +4,7 @@ import { withUnistyles } from "react-native-unistyles";
 import type { GitAction } from "@/git/policy";
 import { useToast } from "@/contexts/toast-context";
 import { useGitFetchPort } from "./use-port";
-import { ManualGitFetch } from "./manual";
+import { ManualGitFetch, manualGitPresentation } from "./manual";
 
 export type OttoGitActionId = "fetch";
 const FetchIcon = withUnistyles(CloudDownload, (theme) => ({
@@ -33,10 +33,9 @@ export function useGitFetchAction(
     if (!workspaceId || !hasRemote) return null;
     return {
       id: "fetch",
-      label: error ? "Fetch failed; try again" : "Fetch",
+      ...manualGitPresentation({ status, error }),
       pendingLabel: "Fetching...",
       successLabel: "Fetched",
-      status,
       disabled: !connected || status === "pending",
       unavailableMessage: port ? undefined : "Update the host to use manual Git fetch.",
       startsGroup: true,

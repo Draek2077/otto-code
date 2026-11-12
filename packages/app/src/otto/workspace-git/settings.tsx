@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { SettingsCard, SettingsRow, SettingsSelect, SettingsSwitch } from "@/components/settings";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -19,7 +20,8 @@ const intervals = GIT_FETCH_INTERVALS.map((seconds) => ({
 function GitFetchSettingsForm({ port }: { port: GitFetchPort }) {
   const [model] = useState(() => new GitFetchForm(port));
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
-  useEffect(() => model.activate(), [model]);
+  const active = useRetainedPanelActive();
+  useEffect(() => (active ? model.activate() : undefined), [active, model]);
   const enabled = useCallback((value: boolean) => model.edit({ enabled: value }), [model]);
   const interval = useCallback(
     (value: string) => {
