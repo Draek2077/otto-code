@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { rm, writeFile } from "node:fs/promises";
+import { open, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { FileChange } from "./file-observer/index.js";
+import { waitForWatcherCanary } from "./otto/file-observation/liveness.js"; // OTTO(watcher-readiness): native stream startup can miss the initial create.
 
 export const WATCHER_LIVENESS_CANARY_TIMEOUT_MS = 10_000;
 
@@ -32,34 +33,28 @@ export function createWatcherLivenessCanary(
       return filtered;
     },
     async verify(signal) {
-      await writeFile(canaryPath, "paseo watcher liveness canary\n", { flag: "wx" });
-      let timeout: NodeJS.Timeout | null = null;
-      let removeAbortListener = () => {};
+      const file = await open(canaryPath, "wx");
       try {
-        const timeoutPromise = new Promise<never>((_resolve, reject) => {
-          timeout = setTimeout(() => {
-            reject(
-              new Error(
-                `Watcher for ${watchRoot} did not report its liveness canary within ${timeoutMs}ms`,
-              ),
-            );
-          }, timeoutMs);
+        await file.writeFile("paseo watcher liveness canary\n");
+        // OTTO(watcher-readiness): keep the existing deadline and callback proof;
+        // only this temporary canary is re-signaled while startup is unverified.
+        await waitForWatcherCanary({
+          watchRoot,
+          timeoutMs,
+          reported,
+          signal,
+          // Keep the exclusively created handle: a replaced path must never
+          // redirect a readiness probe into another file.
+          touch: async () => {
+            await file.write("paseo watcher liveness canary\n", 0, "utf8");
+          },
         });
-        const abortPromise = new Promise<never>((_resolve, reject) => {
-          if (!signal) return;
-          const rejectForAbort = () => reject(signal.reason);
-          if (signal.aborted) {
-            rejectForAbort();
-            return;
-          }
-          signal.addEventListener("abort", rejectForAbort, { once: true });
-          removeAbortListener = () => signal.removeEventListener("abort", rejectForAbort);
-        });
-        await Promise.race([reported, timeoutPromise, abortPromise]);
       } finally {
-        if (timeout) clearTimeout(timeout);
-        removeAbortListener();
-        await rm(canaryPath, { force: true });
+        try {
+          await file.close();
+        } finally {
+          await rm(canaryPath, { force: true });
+        }
       }
     },
   };
