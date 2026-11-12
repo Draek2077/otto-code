@@ -16,11 +16,12 @@ changelog and checks first. After approval, commit the changelog and run the
 requested release command. That command checks CI, creates the version commit and
 tag, and pushes them. It does not publish npm from the local machine.
 
-The `npm Publish` workflow publishes seven packages using npm trusted publishing:
-highlight, relay, protocol, client, plugin, server, and CLI. A failed publish is
-retried at the same version; already-published packages are skipped. The Brain
-package is absent from the clean base until that feature is rebuilt. CI checks the
-renamed tarballs before release. `--pack-only` creates artifacts without publishing.
+The `npm Publish` workflow publishes eight packages using npm trusted publishing:
+highlight, relay, protocol, client, Brain, plugin, server, and CLI. The restored
+standalone Brain package is included in the dependency-ordered release list in
+`scripts/publish-release-packages.mjs`. A failed publish is retried at the same
+version; already-published packages are skipped. CI checks the renamed tarballs
+before release. `--pack-only` creates artifacts without publishing.
 
 ## Desktop artifacts
 

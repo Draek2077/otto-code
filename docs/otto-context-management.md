@@ -309,8 +309,8 @@ The existing real harness fixture compares the captured system text with its
 request and proves that inspection does not admit a native write. The rendered
 wide/compact journey is `packages/app/e2e/browser/otto-context-management.spec.ts`.
 Source registration and pure fixtures alone do not establish browser, native,
-live-provider or complete F05 acceptance. Deferred personalities, teams and the
-general File Editor are not restored by this feature.
+live-provider or complete F05 acceptance. Personalities and teams remain deferred.
+The [File Editor](otto-editor.md) has its own restoration and acceptance boundary.
 
 The native generation policy, session lifecycle and Copilot SDK protocol have
 focused injected-adapter fixtures. They do not establish a live CLI/model run or

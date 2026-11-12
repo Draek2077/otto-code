@@ -15,11 +15,31 @@ npm run dev:app
 npm run dev:desktop
 ```
 
-Root checkout dev is intentionally split across terminals:
+On Windows, use `npm run dev:win:desktop` for desktop development. The desktop
+launchers manage their Electron-flavored Metro and desktop-managed daemon.
+
+<!-- OTTO(dev-review): commands and their state belong to the selected checkout. -->
+
+Run commands from the checkout or worktree you intend to test. Check its directory,
+branch and revision before launching:
+
+```powershell
+Get-Location
+git branch --show-current
+git rev-parse HEAD
+```
+
+The desktop launcher prints its Metro URL, daemon endpoint, runtime home and
+Electron user-data directory. Check these values before testing. The app's package
+version alone does not identify the source revision or the connected host.
+Switching to another checkout does not update an already running app or daemon.
+
+Web development is split across terminals; desktop has its own launcher:
 
 - `npm run dev:server` runs the daemon on `127.0.0.1:6788`.
 - `npm run dev:app` runs Expo on `http://localhost:8081` and connects to the dev daemon.
-- `npm run dev:desktop` runs its own Electron-flavored Expo server on the first free port from `8082` through `8089`. It never claims port `8081`.
+- The shell `npm run dev:desktop` launcher selects the first free Metro port from `8082` through `8089`.
+- `npm run dev:win:desktop` selects the first free Metro port from `8081` through `8085`. Use the URL printed by that launcher.
 
 Desktop dev launches its desktop-managed daemon with `PASEO_NODE_ENV=development`,
 so development-only providers such as Mock Load Test are available. Packaged
@@ -100,13 +120,16 @@ PASEO_DEV_SEED_HOME=/path/to/home npm run dev # seed from a different source hom
 PASEO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived worktree home
 ```
 
+<!-- OTTO(dev-isolation): both launchers select the checkout-local listener. -->
+
 ### Daemon endpoints
 
 - Stable daemon launched by the desktop app: `localhost:6868`.
 - Root checkout dev daemon: `localhost:6788`.
 - Root checkout Expo: `http://localhost:8081`.
-- Root checkout desktop dev Expo: first free port from `8082` through `8089`.
-- `npm run dev` (Windows): `localhost:6868` for the daemon.
+- Shell desktop dev Expo: first free port from `8082` through `8089`.
+- Windows desktop dev Expo: first free port from `8081` through `8085`.
+- Windows repo dev commands also use `localhost:6788` by default; explicit `OTTO_*`/`PASEO_*` overrides are honored.
 
 In Paseo-managed worktree services, use the injected service environment rather than hardcoded root checkout ports.
 
