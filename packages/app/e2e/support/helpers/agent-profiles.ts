@@ -354,13 +354,16 @@ export async function expectAgentProfileForm(
 
 // ─── The model picker ──────────────────────────────────────────────────────
 
-/** Desktop web renders the model browser inside the combobox popover. */
 function pickerViewport(page: Page): Locator {
-  return page.getByTestId("combobox-desktop-container");
+  return page
+    .getByTestId("combobox-desktop-container")
+    .or(page.getByTestId("agent-controls-model-browser-viewport"))
+    .filter({ visible: true });
 }
 
-export async function openModelPicker(page: Page): Promise<void> {
+export async function openModelPicker(page: Page, compact = false): Promise<void> {
   await page.getByTestId("combined-model-selector").filter({ visible: true }).first().click();
+  if (compact) await page.getByTestId("agent-controls-model").click();
   await expect(pickerViewport(page)).toBeVisible({ timeout: 30_000 });
 }
 

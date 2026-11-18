@@ -200,7 +200,8 @@ async function reloadSavedDraft(page: Page) {
 }
 async function expectOneCatalogChoice(page: Page, label: string) {
   await openModelPicker(page);
-  await page.getByRole("button", { name: "Back", exact: true }).click();
+  const back = page.getByRole("dialog").getByRole("button", { name: "Back", exact: true });
+  if (await back.isVisible()) await back.click();
   await searchAllModels(page, label);
   await expect(page.getByTestId("model-row-gemini-gemini-3.5-flash")).toHaveCount(1);
   await closeModelPicker(page);

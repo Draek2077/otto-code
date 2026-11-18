@@ -510,7 +510,11 @@ test.describe("Mobile sidebar panelState transition", () => {
     await openMobileAgentSidebar(page);
     await expectMobileAgentSidebarVisible(page);
 
-    const firstRow = await page.getByTestId("sidebar-global-new-workspace").boundingBox();
+    const firstRow = await page
+      .getByTestId("sidebar-shortcuts-grid")
+      .getByRole("button")
+      .first()
+      .boundingBox();
     const closeButton = await page.getByTestId("sidebar-close").boundingBox();
     if (!firstRow || !closeButton) throw new Error("first nav row and close button must render");
     expect(closeButton.x).toBeGreaterThanOrEqual(firstRow.x + firstRow.width);

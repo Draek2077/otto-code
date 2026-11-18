@@ -14,6 +14,9 @@ import { seedWorkspace } from "../support/helpers/seed-client";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 import { expectRememberedModel, expectSavedSelection } from "../support/helpers/model-memory";
 
+// OTTO(agent-teams): exercise ordinary provider preferences on a host without a Chatter override.
+test.use({ e2eDaemonConfig: { agentProfiles: [], agentTeams: { activeTeamId: null, teams: [] } } });
+
 const PROVIDER = "remembered-model-recovery";
 const MODEL = "remembered-model";
 const LABEL = "Remembered model";

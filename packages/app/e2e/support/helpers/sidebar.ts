@@ -253,7 +253,7 @@ export async function selectSidebarStatusGrouping(page: Page): Promise<void> {
 }
 
 export async function openMobileAgentSidebar(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
 }
 
 export async function closeMobileAgentSidebar(page: Page): Promise<void> {

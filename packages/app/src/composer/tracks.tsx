@@ -11,7 +11,6 @@ import {
   type MenuTriggerState,
 } from "@/components/ui/menu";
 import { StatusRing } from "@/components/status-ring";
-import { STATUS_RING_HALO_INSET } from "@/components/status-ring/geometry";
 import { isWeb } from "@/constants/platform";
 import { getStatusDotColor } from "@/utils/status-dot-color";
 import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
@@ -272,20 +271,15 @@ export function ComposerTrackRow({
  * Each one is sized to the glyph you can see rather than to a slot wide enough for the largest of
  * them. The mark leads the pill, so a box wider than its glyph is padding on both sides at once:
  * it holds the dot off the pill's leading edge while the label runs flush to the trailing one, and
- * it opens a gap to its own label as wide as the gap to the next segment. The ring's halo is
- * knockout for marks that sit on top of an icon, and nothing sits under this one, so it comes off
- * too — leaving every mark's visible edge on the same rail whatever state it is in.
+ * it opens a gap to its own label as wide as the gap to the next segment.
  */
 function ComposerTrackMark({ bucket }: { bucket: SidebarStateBucket | null }): ReactElement | null {
   if (!bucket) {
     return null;
   }
   if (bucket === "running") {
-    return (
-      <View style={styles.ringMark}>
-        <StatusRing />
-      </View>
-    );
+    // OTTO(chat-identity): the plasma ring fills its frame, including on compact layouts.
+    return <StatusRing />;
   }
   return <View style={dotColorStyle(bucket)} />;
 }
@@ -366,10 +360,6 @@ const styles = StyleSheet.create((theme) => {
       flexShrink: 1,
       minWidth: 0,
       gap: theme.spacing[2],
-    },
-    // Trims the ring's halo so the circle you can see is the box, like the dot's box is the dot.
-    ringMark: {
-      margin: -STATUS_RING_HALO_INSET,
     },
     dotNeedsInput: statusDot("needs_input"),
     dotFailed: statusDot("failed"),

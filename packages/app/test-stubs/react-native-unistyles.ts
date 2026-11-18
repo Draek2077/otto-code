@@ -1,3 +1,5 @@
+import { createElement, type ComponentType } from "react";
+
 const testTheme = {
   colorScheme: "light",
   colors: {
@@ -90,7 +92,19 @@ export const StyleSheet = {
     isStyleFactory(styles) ? styles(testTheme) : styles,
 };
 
-export const withUnistyles = <T>(Component: T): T => Component;
+type ThemeProps = (
+  theme: typeof testTheme,
+  runtime: { themeName: string },
+) => Record<string, unknown>;
+const runtime = { themeName: "light" };
+export function withUnistyles(Component: ComponentType<Record<string, unknown>>, map?: ThemeProps) {
+  return ({ uniProps, ...props }: Record<string, unknown> & { uniProps?: ThemeProps }) =>
+    createElement(Component, {
+      ...map?.(testTheme, runtime),
+      ...props,
+      ...uniProps?.(testTheme, runtime),
+    });
+}
 
 export const useUnistyles = () => ({
   theme: testTheme,

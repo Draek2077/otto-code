@@ -186,6 +186,7 @@ function KnowledgeBody({
   if (editor && compact)
     return (
       <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+        {leading ? <View style={featureBrowserStyles.toolbar}>{leading}</View> : null}
         <KnowledgeEditor
           scope={scope}
           model={editor}

@@ -584,6 +584,8 @@ jobs:
       - name: Run Playwright E2E tests
         run: npm run test:e2e --workspace=@getpaseo/app -- --shard=${{ env.PLAYWRIGHT_SHARD }}
         env:
+          # OTTO(ci): compile one graph across feature visits to bound Metro's memory.
+          EXPO_NO_METRO_LAZY: "1"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           E2E_WORKERS: "2"
           # File groups are weighted by observed reporter durations.

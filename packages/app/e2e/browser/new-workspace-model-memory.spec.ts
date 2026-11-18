@@ -23,6 +23,9 @@ import {
   expectRememberedModel,
 } from "../support/helpers/model-memory";
 
+// OTTO(agent-teams): exercise ordinary provider preferences on a host without a Chatter override.
+test.use({ e2eDaemonConfig: { agentProfiles: [], agentTeams: { activeTeamId: null, teams: [] } } });
+
 const PROVIDER = "model-memory-diagnostic";
 const MODEL = "pi-profile-model";
 const LABEL = "Pi profile model";

@@ -14,13 +14,13 @@ async function openKnowledge(input: { page: Page; compact: boolean }) {
     .filter({ visible: true })
     .first()
     .click();
-  await expect(
-    input.page.getByTestId("otto-knowledge-page").filter({ visible: true }),
-  ).toBeVisible();
+  await expect(input.page.getByRole("button", { name: /^Project \(/ })).toBeVisible({
+    timeout: 30_000,
+  });
 }
 async function chooseProject(input: { page: Page; label: string }) {
-  await input.page.getByRole("button", { name: /^Project:/ }).click();
-  await input.page.getByRole("menuitem", { name: input.label, exact: true }).click();
+  await input.page.getByRole("button", { name: /^Project \(/ }).click();
+  await input.page.getByRole("button", { name: input.label, exact: true }).click();
 }
 for (const compact of [false, true]) {
   test(`Knowledge retains scoped drafts across project changes and route departure (${compact ? "compact" : "wide"})`, async ({

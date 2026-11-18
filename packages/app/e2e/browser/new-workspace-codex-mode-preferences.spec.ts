@@ -17,6 +17,9 @@ import { escapeRegex } from "../support/helpers/regex";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 
+// OTTO(agent-teams): exercise ordinary provider preferences on a host without a Chatter override.
+test.use({ e2eDaemonConfig: { agentProfiles: [], agentTeams: { activeTeamId: null, teams: [] } } });
+
 const CREATE_AGENT_PREFERENCES_KEY = "@otto:create-agent-preferences";
 
 async function seedCodexDefaultPermissionPreferences(page: Page, cwd: string): Promise<string> {

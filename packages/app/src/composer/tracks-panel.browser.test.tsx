@@ -7,6 +7,17 @@ import { ComposerTrackPill, ComposerTrackRow, type ComposerTrackPillSegment } fr
 
 const SUBAGENT_SEGMENTS: ComposerTrackPillSegment[] = [{ bucket: null, text: "3 subagents" }];
 
+// OTTO(chat-identity): inspect the real gradient artwork in the Chromium DOM.
+vi.mock("react-native-svg", async (original) => ({
+  ...(await original<typeof import("react-native-svg")>()),
+  default: "svg",
+  Circle: "circle",
+  Defs: "defs",
+  G: "g",
+  RadialGradient: "radialGradient",
+  Stop: "stop",
+}));
+
 // App sources compile against the classic JSX runtime, which expects React on the global.
 beforeEach(() => vi.stubGlobal("React", React));
 
@@ -196,12 +207,11 @@ describe("composer track pill status mark", () => {
       (element) => element.getAnimations().length > 0,
     );
 
-    expect(animated).toHaveLength(1);
-    // The rotation is on the carrier; the quarter arc it turns is the coloured top border inside.
-    const arc = animated[0]?.firstElementChild as HTMLElement;
-    const arcStyle = getComputedStyle(arc);
-    expect(arcStyle.borderTopColor).toBe("rgb(38, 138, 224)");
-    expect(arcStyle.borderLeftColor).toBe("rgba(0, 0, 0, 0)");
+    expect(animated).toHaveLength(3);
+    const colors = [...mark.querySelectorAll("radialGradient stop:first-child")].map(
+      (stop) => getComputedStyle(stop).stopColor,
+    );
+    expect(colors).toEqual(["rgb(2, 132, 199)", "rgb(2, 132, 199)"]);
   });
 
   it("draws a still dot for every other state", () => {
@@ -211,7 +221,7 @@ describe("composer track pill status mark", () => {
     );
 
     expect(animated).toHaveLength(0);
-    expect(getComputedStyle(mark).backgroundColor).toBe("rgb(241, 46, 47)");
+    expect(getComputedStyle(mark).backgroundColor).toBe("rgb(185, 28, 28)");
   });
 
   it("starts the circle you can see on the pill's own padding, whatever the state", () => {
@@ -220,8 +230,7 @@ describe("composer track pill status mark", () => {
     // looking correctly centred in the box nobody can see.
     for (const bucket of ["running", "failed"] as const) {
       const { mark, body } = mountMark(bucket);
-      // The dot is its own box; the ring is drawn by the rotator inside the frame's halo.
-      const glyph = bucket === "failed" ? mark : mark.firstElementChild?.firstElementChild;
+      const glyph = bucket === "failed" ? mark : mark.firstElementChild;
       if (!(glyph instanceof HTMLElement)) {
         throw new Error(`${bucket} mark did not render a glyph`);
       }
@@ -252,6 +261,6 @@ describe("composer track pill status mark", () => {
     expect(segments.map((segment) => segment.textContent)).toEqual(["1 failed", "1 working"]);
     // The ring is the only mark that animates, so its presence proves the second state survived.
     const animated = segments[1]?.querySelectorAll("*") ?? [];
-    expect([...animated].filter((element) => element.getAnimations().length > 0)).toHaveLength(1);
+    expect([...animated].filter((element) => element.getAnimations().length > 0)).toHaveLength(3);
   });
 });

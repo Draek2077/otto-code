@@ -82,23 +82,23 @@ test("host default and project override saves retain separate original revision 
     model = new ScheduleStorageModel(f.api, "host", "project");
   model.activate();
   await idle(model.lane);
-  model.default("host");
   f.invoke.mockResolvedValueOnce({
     ok: true,
     value: { location: "host", revision: "f".repeat(64) },
   });
-  await model.saveDefault();
+  model.default("host");
+  await idle(model.lane);
   expect(f.invoke.mock.calls.at(-1)).toEqual([
     "otto-schedules",
     "schedules.defaults.save.request",
     { hostId: "host", expectedRevision: "e".repeat(64), location: "host" },
   ]);
-  model.project("host");
   f.invoke.mockResolvedValueOnce({
     ok: true,
     value: { ...storage, override: "host", location: "host", revision: "1".repeat(64) },
   });
-  await model.saveProject();
+  model.project("host");
+  await idle(model.lane);
   expect(f.invoke.mock.calls.at(-1)?.[2]).toEqual({
     scope,
     expectedRevision: storage.revision,
@@ -111,19 +111,20 @@ test("storage conflict preserves choices and requires confirmed reload, never au
     model = new ScheduleStorageModel(f.api, "host", "project");
   model.activate();
   await idle(model.lane);
-  model.project("host");
   f.invoke.mockResolvedValueOnce({
     ok: false,
     error: { code: "conflict", message: "Peer changed storage" },
   });
-  await model.saveProject();
+  model.project("host");
+  await idle(model.lane);
   expect(model.getSnapshot()).toMatchObject({
     projectDraft: "host",
     storage: { revision: storage.revision },
   });
   expect(model.lane.getSnapshot().blocked).toBe(true);
   const count = f.invoke.mock.calls.length;
-  await model.saveProject();
+  model.project("repository");
+  expect(model.getSnapshot().projectDraft).toBe("host");
   expect(f.invoke.mock.calls).toHaveLength(count);
   await model.reload(async () => false);
   expect(model.getSnapshot().projectDraft).toBe("host");

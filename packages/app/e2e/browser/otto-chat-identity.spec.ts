@@ -1,4 +1,4 @@
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
 import {
   seedAgentProfiles,
@@ -8,6 +8,7 @@ import {
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 import { expectComposerVisible } from "../support/helpers/composer";
 import { openMobileAgentSidebar, closeMobileAgentSidebar } from "../support/helpers/sidebar";
+import { tapSheetBackdrop } from "../support/helpers/sheet";
 
 const profile = {
   id: "otto-identity-profile",
@@ -23,6 +24,13 @@ async function stopColors(locator: Locator) {
     .evaluateAll((stops) =>
       [...new Set(stops.map((stop) => getComputedStyle(stop).stopColor))].sort(),
     );
+}
+
+async function expectTabColors(page: Page, compact: boolean, colors: string[]) {
+  if (compact) await page.getByTestId("workspace-tab-switcher-trigger").click();
+  const tab = page.getByTestId("otto-chat-tab-spinner").filter({ visible: true }).first();
+  await expect.poll(() => stopColors(tab)).toEqual(colors);
+  if (compact) await tapSheetBackdrop(page);
 }
 
 for (const viewport of [
@@ -44,18 +52,17 @@ for (const viewport of [
     try {
       await openAgentRoute(page, workspace);
       await expectComposerVisible(page);
-      await openModelPicker(page);
+      await openModelPicker(page, viewport.width < 720);
       await applyProfileFromPicker(page, profile.name);
       await workspace.client.sendAgentMessage(
         workspace.agentId,
         "Show the assigned Profile activity colors.",
       );
       const working = page.locator('[data-testid="turn-working-spinner"]:visible').first();
-      const tab = page.locator('[data-testid="otto-chat-tab-spinner"]:visible').first();
       const colors = ["rgb(171, 205, 239)", "rgb(18, 52, 86)"];
       await expect(working).toBeVisible();
       await expect.poll(() => stopColors(working)).toEqual(colors);
-      await expect.poll(() => stopColors(tab)).toEqual(colors);
+      await expectTabColors(page, viewport.width < 720, colors);
       await page.screenshot({ path: testInfo.outputPath("profile-chat-colors.png") });
 
       if (viewport.width < 720) await openMobileAgentSidebar(page);
@@ -84,7 +91,7 @@ for (const viewport of [
       await expectComposerVisible(page);
       await expect(working).toBeVisible();
       await expect.poll(() => stopColors(working)).toEqual(colors);
-      await expect.poll(() => stopColors(tab)).toEqual(colors);
+      await expectTabColors(page, viewport.width < 720, colors);
     } finally {
       await workspace.client.archiveAgent(workspace.agentId).catch(() => undefined);
       await workspace.cleanup();
