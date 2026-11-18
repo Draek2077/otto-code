@@ -42,8 +42,13 @@ function Storage({
   useEffect(() => {
     if (active) return model.activate();
   }, [model, active]);
-  const select = useCallback((value: string) => model.select(value), [model]),
-    save = useCallback(() => model.save(write), [model, write]),
+  const select = useCallback(
+      (value: string) => {
+        model.select(value);
+        void model.save(write);
+      },
+      [model, write],
+    ),
     reload = useCallback(
       () =>
         model.reload(read, () =>
@@ -66,21 +71,16 @@ function Storage({
           value={state.value}
           options={project ? projectLocations : locations}
           onValueChange={select}
-          disabled={state.busy}
+          disabled={state.busy || state.blocked || !active}
         />
       </SettingsCard>
-      <View style={styles.actions}>
-        <Button
-          variant="outline"
-          onPress={save}
-          disabled={!active || state.busy || state.blocked || !state.changed}
-        >
-          Save storage
-        </Button>
-        <Button variant="ghost" onPress={reload} disabled={!active || state.busy}>
-          Reload saved
-        </Button>
-      </View>
+      {state.blocked ? (
+        <View style={styles.actions}>
+          <Button variant="ghost" onPress={reload} disabled={!active || state.busy}>
+            Reload saved
+          </Button>
+        </View>
+      ) : null}
       {state.error ? <Alert variant="error" description={state.error} /> : null}
       {seed.revision !== state.revision ? (
         <Alert

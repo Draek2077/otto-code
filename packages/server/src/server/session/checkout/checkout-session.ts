@@ -24,6 +24,10 @@ import type {
 } from "../../checkout-diff-manager.js";
 import { toCheckoutError } from "../../checkout-git-utils.js";
 import {
+  commitSelectedPaths,
+  selectedCommitOutput,
+} from "../../otto/workspace-git/selected-commit.js"; // OTTO(manual-commit): isolate selected-path execution from Paseo's generated commit path.
+import {
   buildCheckoutPrStatusPayloadFromSnapshot,
   buildCheckoutStatusPayloadFromSnapshot,
 } from "../../checkout/status-projection.js";
@@ -740,9 +744,11 @@ export class CheckoutSession {
     msg: Extract<SessionInboundMessage, { type: "checkout_commit_request" }>,
   ): Promise<void> {
     const { cwd, requestId } = msg;
+    let consoleOutput: string | undefined; // OTTO(manual-commit)
 
     try {
       let message = msg.message?.trim() ?? "";
+      if (msg.paths && !message) throw new Error("Write a commit message first."); // OTTO(manual-commit): never generate text for an explicit manual operation.
       if (!message) {
         message = await this.gitMetadataGenerator.generateCommitMessage(cwd);
       }
@@ -750,10 +756,13 @@ export class CheckoutSession {
         throw new Error("Commit message is required");
       }
 
-      await commitChanges(cwd, {
-        message,
-        addAll: msg.addAll ?? true,
-      });
+      if (msg.paths)
+        consoleOutput = await commitSelectedPaths(cwd, message, msg.paths); // OTTO(manual-commit)
+      else
+        await commitChanges(cwd, {
+          message,
+          addAll: msg.addAll ?? true,
+        });
       await this.gitMutation.notifyGitMutation(cwd, "commit-changes");
       this.scheduleDiffRefresh(cwd);
 
@@ -762,6 +771,7 @@ export class CheckoutSession {
         payload: {
           cwd,
           success: true,
+          consoleOutput, // OTTO(manual-commit)
           error: null,
           requestId,
         },
@@ -772,6 +782,7 @@ export class CheckoutSession {
         payload: {
           cwd,
           success: false,
+          consoleOutput: consoleOutput ?? selectedCommitOutput(error), // OTTO(manual-commit)
           error: toCheckoutError(error),
           requestId,
         },

@@ -26,6 +26,7 @@ interface PluginSidebarGroupBase {
   pluginId: string;
   contributionId: string;
   title: string;
+  icon?: string; // OTTO(sidebar-icons): settings use the contribution's feature icon.
 }
 
 /**
@@ -80,6 +81,7 @@ export function groupPluginSidebarItems(
           pluginId: plugin.id,
           contributionId: item.id,
           title: item.title,
+          icon: item.icon,
           targets: [{ plugin, item }],
         });
       }

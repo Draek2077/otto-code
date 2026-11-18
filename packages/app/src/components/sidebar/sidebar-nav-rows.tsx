@@ -1,10 +1,13 @@
+import { SidebarTeamSwitcher } from "@/otto/agent-profiles/team-select"; // OTTO(agent-teams)
 import { router, usePathname } from "expo-router";
 import { CalendarClock, History, Plus, Search } from "lucide-react-native";
 import { memo, useCallback, useMemo, useRef, type ComponentType, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { View, type StyleProp, type ViewStyle } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
-import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
+import type { View, StyleProp, ViewStyle } from "react-native";
+// OTTO(sidebar-navigation): keep the native navigation handlers; project their placement and presentation.
+import { SidebarNavigationRow } from "@/otto/sidebar/navigation-row";
+import { SidebarShortcutGrid } from "@/otto/sidebar/shortcut-grid";
+import { isWorkspaceHeaderAction, workspaceHeaderActions } from "@/otto/sidebar/navigation-layout";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { PluginSidebarItem } from "@/plugins/sidebar-items";
 import { canCreateWorktreeForProjectKind } from "@/projects/host-projects";
@@ -26,12 +29,13 @@ import {
 
 interface SidebarNavRowProps {
   onBeforeNavigate?: () => void;
+  iconOnly?: boolean;
 }
 
 interface SidebarNavRowsProps extends SidebarNavRowProps {
   /** Style for the group wrapper, which the sidebar owns. */
   style?: StyleProp<ViewStyle>;
-  /** Sits to the right of the first row, which shrinks to make room. */
+  /** Compact close control, aligned beside the first shortcut row. */
   firstRowTrailing?: ReactNode;
 }
 
@@ -42,14 +46,18 @@ interface SidebarNavRowsProps extends SidebarNavRowProps {
  */
 export function SidebarNavRows({ style, onBeforeNavigate, firstRowTrailing }: SidebarNavRowsProps) {
   const { items } = useSidebarNavItems("header");
-  const visibleItems = useMemo(() => items.filter((item) => item.visible), [items]);
+  const visibleItems = useMemo(
+    () => items.filter((item) => item.visible && !isWorkspaceHeaderAction(item)),
+    [items],
+  );
   const groupRef = useRef<View | null>(null);
 
-  if (visibleItems.length === 0 && !firstRowTrailing) return null;
+  if (visibleItems.length === 0 && !firstRowTrailing) return <SidebarTeamSwitcher />;
 
-  const [firstRow, ...restRows] = visibleItems.map((item) => {
+  const rows = visibleItems.map((item) => {
+    let content: ReactNode;
     if (item.kind === "plugin") {
-      return (
+      content = (
         <PluginSidebarItem
           key={item.key}
           group={item.group}
@@ -58,28 +66,32 @@ export function SidebarNavRows({ style, onBeforeNavigate, firstRowTrailing }: Si
           onBeforeNavigate={onBeforeNavigate}
         />
       );
+    } else {
+      const Row = BUILTIN_ROWS[item.id];
+      content = <Row key={item.key} onBeforeNavigate={onBeforeNavigate} />;
     }
-    const Row = BUILTIN_ROWS[item.id];
-    return <Row key={item.key} onBeforeNavigate={onBeforeNavigate} />;
+    return {
+      key: item.key,
+      content,
+    };
   });
 
   return (
-    <View ref={groupRef} collapsable={false} style={style}>
-      {firstRowTrailing ? (
-        <View style={styles.firstRow}>
-          <View style={styles.firstRowItem}>{firstRow}</View>
-          {firstRowTrailing}
-        </View>
-      ) : (
-        firstRow
-      )}
-      {restRows}
-    </View>
+    <>
+      <SidebarTeamSwitcher />
+      <SidebarShortcutGrid
+        groupRef={groupRef}
+        style={style}
+        items={rows}
+        trailing={firstRowTrailing}
+      />
+    </>
   );
 }
 
 const SidebarNewWorkspaceRow = memo(function SidebarNewWorkspaceRow({
   onBeforeNavigate,
+  iconOnly,
 }: SidebarNavRowProps) {
   const { t } = useTranslation();
   const shortcutKeys = useShortcutKeys(builtinSidebarNavShortcutAction("new-workspace"));
@@ -114,7 +126,8 @@ const SidebarNewWorkspaceRow = memo(function SidebarNewWorkspaceRow({
   }, [activeWorkspace, activeWorkspaceServerId, canUseActiveWorkspaceContext, onBeforeNavigate]);
 
   return (
-    <SidebarHeaderRow
+    <SidebarNavigationRow
+      iconOnly={iconOnly}
       icon={Plus}
       label={t(builtinSidebarNavLabelKey("new-workspace"))}
       onPress={handlePress}
@@ -125,7 +138,7 @@ const SidebarNewWorkspaceRow = memo(function SidebarNewWorkspaceRow({
   );
 });
 
-function SidebarHistoryRow({ onBeforeNavigate }: SidebarNavRowProps) {
+function SidebarHistoryRow({ onBeforeNavigate, iconOnly }: SidebarNavRowProps) {
   const { t } = useTranslation();
   const pathname = usePathname();
   const handlePress = useCallback(() => {
@@ -134,7 +147,8 @@ function SidebarHistoryRow({ onBeforeNavigate }: SidebarNavRowProps) {
   }, [onBeforeNavigate]);
 
   return (
-    <SidebarHeaderRow
+    <SidebarNavigationRow
+      iconOnly={iconOnly}
       icon={History}
       label={t(builtinSidebarNavLabelKey("history"))}
       onPress={handlePress}
@@ -145,7 +159,7 @@ function SidebarHistoryRow({ onBeforeNavigate }: SidebarNavRowProps) {
   );
 }
 
-function SidebarSearchRow({ onBeforeNavigate }: SidebarNavRowProps) {
+function SidebarSearchRow({ onBeforeNavigate, iconOnly }: SidebarNavRowProps) {
   const { t } = useTranslation();
   const shortcutKeys = useShortcutKeys(builtinSidebarNavShortcutAction("search"));
   const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
@@ -155,7 +169,8 @@ function SidebarSearchRow({ onBeforeNavigate }: SidebarNavRowProps) {
   }, [onBeforeNavigate, setCommandCenterOpen]);
 
   return (
-    <SidebarHeaderRow
+    <SidebarNavigationRow
+      iconOnly={iconOnly}
       icon={Search}
       label={t(builtinSidebarNavLabelKey("search"))}
       onPress={handlePress}
@@ -166,7 +181,7 @@ function SidebarSearchRow({ onBeforeNavigate }: SidebarNavRowProps) {
   );
 }
 
-function SidebarSchedulesRow({ onBeforeNavigate }: SidebarNavRowProps) {
+function SidebarSchedulesRow({ onBeforeNavigate, iconOnly }: SidebarNavRowProps) {
   const { t } = useTranslation();
   const pathname = usePathname();
   const handlePress = useCallback(() => {
@@ -175,7 +190,8 @@ function SidebarSchedulesRow({ onBeforeNavigate }: SidebarNavRowProps) {
   }, [onBeforeNavigate]);
 
   return (
-    <SidebarHeaderRow
+    <SidebarNavigationRow
+      iconOnly={iconOnly}
       icon={CalendarClock}
       label={t(builtinSidebarNavLabelKey("schedules"))}
       onPress={handlePress}
@@ -193,13 +209,12 @@ const BUILTIN_ROWS: Record<BuiltinSidebarNavId, ComponentType<SidebarNavRowProps
   schedules: SidebarSchedulesRow,
 };
 
-const styles = StyleSheet.create({
-  firstRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  firstRowItem: {
-    flex: 1,
-    minWidth: 0,
-  },
-});
+/** OTTO(sidebar-navigation): reuse each builtin's route and shortcut in the Workspaces header. */
+export function SidebarWorkspaceActions({ onBeforeNavigate }: SidebarNavRowProps) {
+  const { items } = useSidebarNavItems("header");
+  return workspaceHeaderActions(items).map((item) => {
+    if (item.kind !== "builtin") return null;
+    const Row = BUILTIN_ROWS[item.id];
+    return <Row key={item.key} iconOnly onBeforeNavigate={onBeforeNavigate} />;
+  });
+}

@@ -67,11 +67,14 @@ Otto Schedule metadata and run history survive supported rewrites. Current revie
 AI/Graph Workflow and Artifact targets use the same scheduler as native agent targets;
 see [Schedule ownership and extension contracts](otto-schedules.md).
 
-Legacy Workflow targets without a current saved-source reference, profile-bound
-targets, and unsupported flat provider policies remain intact on disk and excluded
-from execution. Current target support does not silently convert those formats or
-strip their original authority. Storage diagnostics identify the retained record;
-deliberate current configuration is required before it can execute.
+New-agent Schedules can use a saved Scheduler Profile. Older Schedules that stored
+a personality name can resolve it when the name identifies one eligible Profile.
+**Team’s Scheduler** uses the active Team when the Schedule fires.
+
+Two older formats need review before execution. A Workflow target needs a reference
+to its saved Workflow. A new-agent target with a legacy provider policy such as
+`approvalPolicy` or `sandboxMode` needs a supported configuration. Otto preserves
+the original record and reports which setting needs attention.
 
 Ordinary Paseo schedules keep their normal behavior. Explicit deletion removes the
 selected executable record and retains its recovery copy in the owning store.

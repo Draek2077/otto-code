@@ -9,7 +9,7 @@ import { ProjectScreen, type KanbanScreenProps } from "./project-screen.js";
 // another host inventory, client, fallback host, or global board selection here.
 // Match Paseo PageLayout's content rails. The board can use the available work
 // area; forms inside it keep the same readable 720px page frame as Settings.
-const pageStyle = { flex: 1, minHeight: 0, paddingHorizontal: 16, paddingTop: 24 } as const;
+const pageStyle = { flex: 1, minHeight: 0, paddingHorizontal: 16, paddingTop: 16 } as const;
 export function KanbanScreen(props: KanbanScreenProps) {
   return (
     <View style={pageStyle} testID="kanban-page-content">

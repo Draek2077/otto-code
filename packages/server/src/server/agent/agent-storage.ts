@@ -1,3 +1,4 @@
+import { ProfileBinding } from "@getpaseo/protocol/otto/agent-teams"; // OTTO(agent-teams)
 import { promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
@@ -33,6 +34,7 @@ const SERIALIZABLE_CONFIG_SCHEMA = z
       .strict()
       .nullable()
       .optional(),
+    ottoProfile: ProfileBinding.optional(), // OTTO(agent-teams)
     systemPrompt: z.string().nullable().optional(),
     mcpServers: z.record(z.string(), z.any()).nullable().optional(),
   })
@@ -92,6 +94,7 @@ export type SerializableAgentConfig = Pick<
   | "featureValues"
   | "providerOptions"
   | "toolPolicy"
+  | "ottoProfile" // OTTO(agent-teams)
   | "systemPrompt"
   | "mcpServers"
 >;

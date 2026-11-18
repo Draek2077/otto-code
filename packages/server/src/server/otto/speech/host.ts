@@ -1,3 +1,4 @@
+import { openaiVoiceNames, utteranceVoice } from "./profile-voice.js";
 import path from "node:path";
 import type { Logger } from "pino";
 import type { PaseoDaemonConfig } from "../../bootstrap.js";
@@ -94,16 +95,11 @@ export class SpeechHost {
         const change = this.options.runtime.changeState();
         if (change.pending || change.applying)
           return Promise.reject(new Error("Wait for the host to finish applying speech settings."));
-        if (
-          value.selection &&
-          (value.selection.provider !== settings.voice.tts.provider ||
-            value.selection.model !== settings.voice.tts.model)
-        )
-          return Promise.reject(new Error("Save the speech provider and model before previewing."));
+        const selection = utteranceVoice(settings.voice.tts, value.selection, value.profileVoice);
         return this.requests.synthesize({
           ...value,
           clientId,
-          selection: value.selection ?? settings.voice.tts,
+          selection,
           modelsDir: this.modelsDirectory(),
         });
       }
@@ -221,21 +217,7 @@ export class SpeechHost {
         ttsModels,
         openaiSttModels: ["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
         openaiTtsModels: ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"],
-        openaiVoices: [
-          "alloy",
-          "ash",
-          "ballad",
-          "coral",
-          "echo",
-          "fable",
-          "nova",
-          "onyx",
-          "sage",
-          "shimmer",
-          "verse",
-          "marin",
-          "cedar",
-        ],
+        openaiVoices: [...openaiVoiceNames],
       },
       readiness: {
         dictation: {

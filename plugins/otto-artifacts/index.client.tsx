@@ -6,11 +6,12 @@ import {
   ArtifactsWorkspace,
   ArtifactsSettings,
 } from "@getpaseo/plugin/client/otto-artifacts";
+const ARTIFACT_ICON = "PanelsTopLeft";
 function ArtifactsNavigation({ currentScreen, openScreen }: PluginSidebarItemProps) {
   const open = useCallback(() => openScreen({ screenId: "artifacts" }), [openScreen]);
   return (
     <SidebarRow
-      icon="PanelsTopLeft"
+      icon={ARTIFACT_ICON}
       label="Artifacts"
       active={currentScreen?.screenId === "artifacts"}
       onPress={open}
@@ -23,6 +24,7 @@ export default function contribute(client: PluginClientContext) {
     client.addSidebarHeaderItem({
       id: "artifacts",
       title: "Artifacts",
+      icon: ARTIFACT_ICON,
       Component: ArtifactsNavigation,
     }),
     client.addWorkspacePanel({

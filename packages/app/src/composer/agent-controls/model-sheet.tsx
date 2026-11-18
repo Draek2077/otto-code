@@ -363,7 +363,9 @@ export function CompactModelSheet({
               isRetryingProvider={isRetryingProvider}
               scrolling={modelBrowserScrolling}
               searchAllOnFocus
-              showProfilesSection={false}
+              // OTTO(agent-teams): the compact Model drill-down exposes the same Profile choices as desktop.
+              onApplyProfile={handleApplyProfile}
+              showProfilesSection={Boolean(profiles)}
             />
           </View>
         </AdaptiveModalSheet>

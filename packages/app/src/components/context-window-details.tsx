@@ -1,3 +1,4 @@
+// OTTO(usage-popup): reuse the existing details inside the anchored usage popup.
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -13,7 +14,7 @@ interface ContextWindowDetailsProps {
     maxTokens: number;
   } | null;
   sessionCost: string | null;
-  /** The hover card and tooltip title themselves; the sheet's header carries the title instead. */
+  /** Whether this surface includes its own title. */
   showTitle: boolean;
   /** Whether the usage cards have a Refresh button; without one they show their freshness. */
   refreshable: boolean;
@@ -21,7 +22,7 @@ interface ContextWindowDetailsProps {
 
 /**
  * What the context window meter opens: how full the window is, then the usage of the agent's
- * account. The desktop hover card, the native wide tooltip, and the compact sheet all render it.
+ * account. The composer opens these details in its anchored usage popup.
  */
 export function ContextWindowDetails({
   serverId,

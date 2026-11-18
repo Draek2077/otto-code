@@ -18,6 +18,8 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { ComboboxItem } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
+import { useRolePicker } from "@/otto/agent-profiles/use-role-picker"; // OTTO(schedule-profiles)
+import type { AgentProfilePickerRow } from "@/agent-profiles"; // OTTO(schedule-profiles)
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { HostStatusDotSlot } from "@/components/hosts/host-picker";
@@ -341,6 +343,7 @@ function OpenScheduleFormSheet({
         prompt: state.prompt.trim(),
         ...(state.submitCadence ? { cadence: state.submitCadence } : {}),
         newAgentConfig: {
+          agentProfile: explicitBinding(state.agentProfile), // OTTO(schedule-profiles)
           provider,
           model: state.selectedModel || null,
           modeId: state.selectedMode || null,
@@ -363,6 +366,7 @@ function OpenScheduleFormSheet({
       target: {
         type: "new-agent",
         config: {
+          agentProfile: state.agentProfile, // OTTO(schedule-profiles)
           provider,
           cwd,
           model: state.selectedModel || undefined,
@@ -552,6 +556,16 @@ function ScheduleFormFields({
   );
 }
 
+function explicitBinding(value: string | undefined) {
+  return value ?? null;
+}
+function scheduleRoleHost(state: Pick<ScheduleFormState, "targetKind" | "selectedServerId">) {
+  return state.targetKind === "new-agent" ? state.selectedServerId : null;
+}
+
+function manualOptions(visible: boolean, binding: string | undefined) {
+  return visible && !binding;
+}
 interface ScheduleTargetFieldsProps {
   model: ScheduleFormModel;
   state: ScheduleFormState;
@@ -634,11 +648,27 @@ export function ScheduleTargetFields({
     },
     [model],
   );
+  // OTTO(schedule-profiles): reuse the native model picker and keep only selection intent in the form.
+  const applyRole = useCallback(
+    (id: string, row: AgentProfilePickerRow) => model.setModel(row.provider, row.modelId, id),
+    [model],
+  );
+  const roleHost = scheduleRoleHost(state);
+  const { picker, mark } = useRolePicker(
+    roleHost,
+    "scheduler",
+    providerSnapshot.entries,
+    state.agentProfile,
+    state.mode === "create",
+    applyRole,
+  );
+  const roleLabel = picker?.currentName;
   const handleSelectModel = useCallback(
     (provider: AgentProvider, modelId: string) => {
+      mark();
       model.setModel(provider, modelId);
     },
-    [model],
+    [model, mark],
   );
   const handleSelectMode = useCallback(
     (modeId: string) => {
@@ -692,7 +722,9 @@ export function ScheduleTargetFields({
       hovered: boolean;
       pressed: boolean;
     }): ReactNode => {
-      const displayLabel = state.selectedModelDisplay?.label ?? selectedModelLabel;
+      const displayLabel = roleLabel
+        ? selectedModelLabel
+        : (state.selectedModelDisplay?.label ?? selectedModelLabel); // OTTO(schedule-profiles)
       return (
         <SelectFieldTrigger
           label={displayLabel}
@@ -706,7 +738,7 @@ export function ScheduleTargetFields({
         />
       );
     },
-    [controlSize, modelTriggerLeading, state.selectedModel, state.selectedModelDisplay],
+    [roleLabel, controlSize, modelTriggerLeading, state.selectedModel, state.selectedModelDisplay],
   );
 
   if (state.targetKind === "agent") {
@@ -756,6 +788,9 @@ export function ScheduleTargetFields({
       {state.disclosure.showModelField ? (
         <Field label="Model">
           <CombinedModelSelector
+            roleSelectionLabel={roleLabel}
+            onApplyProfile={picker?.applyProfile}
+            profiles={picker} // OTTO(schedule-profiles)
             providers={state.modelSelectorProviders}
             selectedProvider={state.selectedProvider ?? ""}
             selectedModel={state.selectedModel}
@@ -772,7 +807,7 @@ export function ScheduleTargetFields({
         </Field>
       ) : null}
 
-      {state.disclosure.showThinkingField ? (
+      {manualOptions(state.disclosure.showThinkingField, state.agentProfile) ? (
         <SelectField
           label="Thinking"
           value={state.selectedThinkingOptionId || null}
@@ -789,7 +824,7 @@ export function ScheduleTargetFields({
         />
       ) : null}
 
-      {state.disclosure.showModeField ? (
+      {manualOptions(state.disclosure.showModeField, state.agentProfile) ? (
         <SelectField
           label="Mode"
           value={state.selectedMode || null}

@@ -1,5 +1,6 @@
 import { normalizeWorkspaceFileLocation, workspaceFileLocationsEqual } from "@/workspace/file-open";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
+import { normalizeDraftAgentLabels } from "@/otto/chat/identity/profile-binding"; // OTTO(chat-profile): persisted draft handoffs retain captured appearance.
 
 export function normalizeWorkspaceTabTarget(
   value: WorkspaceTabTarget | null | undefined,
@@ -84,7 +85,9 @@ export function normalizeWorkspaceDraftTabSetup(
   if (!provider || !cwd) {
     return undefined;
   }
+  const labels = normalizeDraftAgentLabels(record.labels);
   return {
+    ...(labels ? { labels } : {}),
     provider,
     cwd,
     modeId: trimOptionalString(typeof record.modeId === "string" ? record.modeId : null),

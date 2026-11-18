@@ -1,13 +1,29 @@
 import { useCallback } from "react";
-import { Orbit } from "lucide-react-native";
+import { Waypoints } from "lucide-react-native";
 import { withUnistyles } from "react-native-unistyles";
 import { useAppSettings } from "@/hooks/use-settings";
+import { useToast } from "@/contexts/toast-context";
 import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { openVisualizerPanel } from "./actions";
-import type { Theme } from "@/styles/theme";
-const Icon = withUnistyles(Orbit);
-const iconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const Icon = withUnistyles(Waypoints, (theme) => ({ color: theme.colors.foregroundMuted }));
+function useOpenVisualizer(serverId: string, workspaceId: string) {
+  const { settings, updateSettings } = useAppSettings();
+  const toast = useToast();
+  return useCallback(async () => {
+    try {
+      if (settings.visualizerSurface === "tab") await openVisualizerPanel(serverId, workspaceId);
+      else
+        await updateSettings({
+          visualizerPipOpen: settings.visualizerSurface === "pip",
+          visualizerBackgroundOpen: settings.visualizerSurface === "background",
+        });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Visualizer could not be opened.");
+    }
+  }, [serverId, workspaceId, settings.visualizerSurface, updateSettings, toast]);
+}
+/** Compact navigation opens the same preferred surface. Placement stays inside Visualizer. */
 export function VisualizerWorkspaceMenuItems({
   serverId,
   workspaceId,
@@ -15,49 +31,20 @@ export function VisualizerWorkspaceMenuItems({
   serverId: string;
   workspaceId: string;
 }) {
-  const { settings, updateSettings } = useAppSettings();
-  const save = useCallback(
-    async (placement: "tab" | "pip" | "background") => {
-      await updateSettings({
-        visualizerSurface: placement,
-        visualizerPipOpen: placement === "pip",
-        visualizerBackgroundOpen: placement === "background",
-      });
-    },
-    [updateSettings],
-  );
-  const tab = useCallback(async () => {
-    await openVisualizerPanel(serverId, workspaceId);
-  }, [serverId, workspaceId]);
-  const pip = useCallback(() => save("pip"), [save]);
-  const background = useCallback(() => save("background"), [save]);
-  const close = useCallback(
-    () => updateSettings({ visualizerPipOpen: false, visualizerBackgroundOpen: false }),
-    [updateSettings],
-  );
-  const preferred = useCallback(async () => {
-    if (settings.visualizerSurface === "tab") await openVisualizerPanel(serverId, workspaceId);
-    else await save(settings.visualizerSurface);
-  }, [save, settings.visualizerSurface, serverId, workspaceId]);
-  return (
-    <>
-      <DropdownMenuItem onSelect={preferred}>Open preferred Visualizer</DropdownMenuItem>
-      <DropdownMenuItem onSelect={tab}>Open Visualizer tab</DropdownMenuItem>
-      <DropdownMenuItem onSelect={pip}>Picture in picture</DropdownMenuItem>
-      <DropdownMenuItem onSelect={background}>Chat background</DropdownMenuItem>
-      <DropdownMenuItem onSelect={close}>Close ambient Visualizer</DropdownMenuItem>
-    </>
-  );
+  const open = useOpenVisualizer(serverId, workspaceId);
+  return <DropdownMenuItem onSelect={open}>Open Visualizer</DropdownMenuItem>;
 }
-export function VisualizerWorkspaceButton(props: { serverId: string; workspaceId: string }) {
+export function VisualizerWorkspaceButton({
+  serverId,
+  workspaceId,
+}: {
+  serverId: string;
+  workspaceId: string;
+}) {
+  const open = useOpenVisualizer(serverId, workspaceId);
   return (
-    <DropdownMenu>
-      <ToolbarButton kind="menu" label="Visualizer">
-        <Icon size={16} uniProps={iconColor} />
-      </ToolbarButton>
-      <DropdownMenuContent>
-        <VisualizerWorkspaceMenuItems {...props} />
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ToolbarButton label="Open Visualizer" onPress={open} testID="workspace-visualizer-button">
+      <Icon size={16} />
+    </ToolbarButton>
   );
 }

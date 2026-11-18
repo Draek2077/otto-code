@@ -3,6 +3,7 @@ import { Text, View } from "react-native";
 import type {
   WorkflowEntry,
   WorkflowSeats,
+  WorkflowTeamSnapshot,
   WorkflowLimits,
   GraphInput,
 } from "@getpaseo/plugin/otto/workflows";
@@ -15,6 +16,38 @@ import { WorkflowLaunchForm } from "./launch-model";
 import { useWorkflowApi } from "./api";
 import { styles } from "./styles";
 import { WorkflowSeatOptions } from "./seat-options";
+function ReviewedTeam({ team }: { team: WorkflowTeamSnapshot }) {
+  const members = new Map<
+    string,
+    { name: string; provider: string; model?: string; roles: string[] }
+  >();
+  for (const assignment of team.roles) {
+    const member = members.get(assignment.profileId);
+    if (member) member.roles.push(assignment.role);
+    else
+      members.set(assignment.profileId, {
+        name: assignment.name,
+        provider: assignment.seat.provider,
+        model: assignment.seat.model,
+        roles: [assignment.role],
+      });
+  }
+  return (
+    <View style={styles.card}>
+      <Text style={styles.title}>{team.name}</Text>
+      {Array.from(members, ([id, member]) => (
+        <View key={id}>
+          <Text style={styles.title}>
+            {member.name} · {member.model || member.provider}
+          </Text>
+          <Text style={styles.muted}>
+            {member.provider} · {member.roles.join(", ")}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 function Seat({
   model,
   role,
@@ -173,6 +206,9 @@ export function WorkflowLaunch({
           <Text
             style={styles.title}
           >{`${state.review.agentCount} initially known agents · exact reviewed seats and inputs`}</Text>
+          {state.review.launch.teamSnapshot ? (
+            <ReviewedTeam team={state.review.launch.teamSnapshot} />
+          ) : null}
           {state.review.warnings.map((warning) => (
             <Text key={warning} style={styles.muted}>
               {warning}

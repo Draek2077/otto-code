@@ -132,6 +132,73 @@
             "additionalProperties": {}
           }
         },
+        "ottoProfilesImported": {
+          "type": "boolean"
+        },
+        "agentTeams": {
+          "type": "object",
+          "properties": {
+            "teams": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "memberIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "teamPrompt": {
+                    "type": "string"
+                  },
+                  "avatar": {
+                    "type": "object",
+                    "properties": {
+                      "color": {
+                        "type": "string"
+                      },
+                      "imageId": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": {}
+                  }
+                },
+                "required": ["id", "name"],
+                "additionalProperties": {}
+              }
+            },
+            "activeTeamId": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "projectDefaults": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": {}
+        },
         "agentProfiles": {
           "type": "array",
           "items": {
@@ -556,6 +623,9 @@
         "metadataGeneration": {
           "type": "object",
           "properties": {
+            "preferWriterProfiles": {
+              "type": "boolean"
+            },
             "providers": {
               "type": "array",
               "items": {

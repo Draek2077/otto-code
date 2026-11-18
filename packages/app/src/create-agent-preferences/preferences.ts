@@ -13,6 +13,8 @@ export interface ProviderPreferences {
 export type LaunchTarget = { kind: "chat" } | { kind: "terminal"; profileId: string };
 
 export interface FormPreferences {
+  roleProfileByHost?: Record<string, Partial<Record<"scheduler" | "artificer", string>>>; // OTTO(role-pickers)
+  chatterByHost?: Record<string, string>; // OTTO(agent-teams): explicit create-surface choices only.
   provider?: string;
   providerPreferences?: Record<string, ProviderPreferences>;
   favoriteModels?: Array<{ provider: string; modelId: string }>;
@@ -33,6 +35,13 @@ const launchTargetSchema: z.ZodType<LaunchTarget> = z.discriminatedUnion("kind",
 ]);
 
 export const FormPreferencesSchema = z.strictObject({
+  roleProfileByHost: z
+    .record(
+      z.string(),
+      z.object({ scheduler: z.string().optional(), artificer: z.string().optional() }),
+    )
+    .optional(), // OTTO(role-pickers)
+  chatterByHost: z.record(z.string(), z.string()).optional(), // OTTO(agent-teams)
   provider: z.string().optional(),
   providerPreferences: z.record(z.string(), providerPreferencesSchema).optional(),
   // COMPAT(agentProfileFavoriteMigration): favourites were removed in v0.3.2.

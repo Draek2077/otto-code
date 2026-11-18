@@ -98,6 +98,11 @@ const KnowledgeHostDefaultsSchema = z.object({
   revision,
   defaultStoreLocation: z.enum(["repository", "host"]),
 });
+export const readKnowledgeSettings = defineRpc({
+  name: "knowledge.project.settings.read.request",
+  input: z.object({ scope: KnowledgeScopeSchema }).strict(),
+  output: result(KnowledgeSettingsSchema),
+});
 export const readKnowledgeHostDefaults = defineRpc({
   name: "knowledge.host.defaults.read.request",
   input: z.object({ hostId: z.string().min(1) }).strict(),

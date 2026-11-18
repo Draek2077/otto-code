@@ -2,8 +2,9 @@ import { StyleSheet } from "react-native-unistyles";
 export const styles = StyleSheet.create((theme) => ({
   page: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface0 },
   toolbar: {
-    paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
-    paddingVertical: theme.spacing[4],
+    paddingHorizontal: theme.spacing[4],
+    paddingTop: theme.spacing[4],
+    paddingBottom: theme.spacing[3],
     gap: theme.spacing[3],
   },
   actions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: theme.spacing[2] },

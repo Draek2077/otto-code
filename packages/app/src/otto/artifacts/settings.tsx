@@ -47,13 +47,13 @@ function StoragePanel({
   }, [model, active]);
   const select = useCallback(
     (value: string) => {
-      if (value === "repository" || value === "host" || value === "inherit") model.select(value);
+      if (value === "repository" || value === "host" || value === "inherit") {
+        model.select(value);
+        void model.save(write);
+      }
     },
-    [model],
+    [model, write],
   );
-  const save = useCallback(() => {
-    void model.save(write);
-  }, [model, write]);
   const reload = useCallback(() => {
     void model.reload(read, () =>
       confirmDialog({
@@ -75,18 +75,19 @@ function StoragePanel({
           value={state.value}
           options={project ? projectLocations : locations}
           onValueChange={select}
-          disabled={state.busy}
+          disabled={state.busy || state.blocked || !active}
         />
       </SettingsCard>
-      <View style={styles.actions}>
-        <Button variant="outline" onPress={save} disabled={state.busy || state.blocked || !active}>
-          Save Artifacts storage
-        </Button>
-        <Button variant="ghost" onPress={reload} disabled={state.busy || !active}>
-          Reload saved storage
-        </Button>
-      </View>
-      {state.message ? <Alert description={state.message} /> : null}
+      {state.blocked ? (
+        <View style={styles.actions}>
+          <Button variant="ghost" onPress={reload} disabled={state.busy || !active}>
+            Reload saved storage
+          </Button>
+        </View>
+      ) : null}
+      {state.blocked && state.message ? (
+        <Alert variant="error" description={state.message} />
+      ) : null}
       {seed.revision !== state.revision ? (
         <Alert
           variant="warning"

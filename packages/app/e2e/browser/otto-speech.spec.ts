@@ -97,7 +97,7 @@ for (const compact of [false, true]) {
       );
       const speed = page.getByRole("textbox", { name: "Speaking speed", exact: true });
       await speed.fill("0.75");
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
       await page.getByRole("button", { name: "Voice: FixtureVoice", exact: true }).click();
       await page.getByText("alloy", { exact: true }).last().click();
       await expect(page.getByRole("textbox", { name: "Custom voice ID", exact: true })).toHaveValue(
@@ -106,8 +106,7 @@ for (const compact of [false, true]) {
       await expect(page.getByRole("textbox", { name: "Speech model", exact: true })).toHaveValue(
         "FixtureModel",
       );
-      await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByText("Speech settings saved.", { exact: true })).toBeVisible();
+
       await expect
         .poll(async () => (await read()).settings.voice.tts)
         .toEqual({ provider: "openai", model: "FixtureModel", voice: "alloy", speed: 0.75 });
@@ -132,12 +131,11 @@ for (const compact of [false, true]) {
         page.getByText(/Speech playback failed\. Check the host speech settings/),
       ).toHaveCount(0);
       await page.getByRole("button", { name: "Stop preview", exact: true }).click();
-      await speed.fill("0.8");
       const peer = await read();
       const changed = structuredClone(peer.settings);
       changed.voice.tts.speed = 1.2;
       await write(peer, changed);
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await speed.fill("0.8");
       await expect(page.getByText(/Your edits are retained\. Reload saved settings/)).toBeVisible();
       await expect(speed).toHaveValue("0.8");
       expect((await read()).settings.voice.tts.speed).toBe(1.2);
@@ -147,7 +145,7 @@ for (const compact of [false, true]) {
       page.once("dialog", (dialog) => void dialog.accept());
       await page.getByRole("button", { name: "Reload saved", exact: true }).click();
       await expect(speed).toHaveValue("1.2");
-      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
       expect(await page.locator("body").innerText()).not.toContain("isolated-tts-fixture-key");
       expect(captureAttempts.get(page)?.count).toBe(0);
       const screenshot = testInfo.outputPath(`speech-${compact ? "compact" : "wide"}.png`);

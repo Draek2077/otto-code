@@ -30,6 +30,7 @@ interface CombinedModelSelectorProps {
   onSelect: (provider: AgentProvider, modelId: string) => void;
   isLoading: boolean;
   profiles?: AgentProfilePicker | null;
+  roleSelectionLabel?: string; // OTTO(role-pickers): identify the bound role alongside its concrete model.
   onApplyProfile?: (profileId: string) => void;
   onEditProfiles?: () => void;
   onCreateProfile?: (seed: AgentProfileSeed) => void;
@@ -65,6 +66,15 @@ interface CombinedModelSelectorProps {
   };
 }
 
+// OTTO(role-pickers): preserve the full accessible model name for ordinary selections.
+function modelLabels(
+  role: string | undefined,
+  browser: { triggerLabel: string; selectedModelLabel: string },
+) {
+  if (!role) return browser;
+  const triggerLabel = role + " · " + browser.triggerLabel;
+  return { triggerLabel, selectedModelLabel: role + " · " + browser.selectedModelLabel };
+}
 export function CombinedModelSelector({
   providers,
   selectedProvider,
@@ -72,6 +82,7 @@ export function CombinedModelSelector({
   onSelect,
   isLoading,
   profiles = null,
+  roleSelectionLabel,
   onApplyProfile,
   onEditProfiles,
   onCreateProfile,
@@ -211,6 +222,7 @@ export function CombinedModelSelector({
     </View>
   );
 
+  const labels = modelLabels(roleSelectionLabel, browser);
   return (
     <>
       {renderTrigger ? (
@@ -222,13 +234,13 @@ export function CombinedModelSelector({
           style={triggerStyle}
           accessibilityRole="button"
           accessibilityLabel={t("modelSelector.selectedModel", {
-            model: browser.selectedModelLabel,
+            model: labels.selectedModelLabel,
           })}
           testID="combined-model-selector"
         >
           {({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) =>
             renderTrigger({
-              selectedModelLabel: browser.triggerLabel,
+              selectedModelLabel: labels.triggerLabel,
               onPress: handleTriggerPress,
               disabled,
               isOpen,
@@ -246,7 +258,7 @@ export function CombinedModelSelector({
           style={triggerStyle}
           accessibilityRole="button"
           accessibilityLabel={t("modelSelector.selectedModel", {
-            model: browser.selectedModelLabel,
+            model: labels.selectedModelLabel,
           })}
           testID="combined-model-selector"
           chevron={toolbar?.showCaret === false ? null : undefined}
@@ -261,7 +273,7 @@ export function CombinedModelSelector({
             </View>
           ) : null}
           <Text style={styles.triggerText} numberOfLines={1} ellipsizeMode="tail">
-            {browser.triggerLabel}
+            {labels.triggerLabel}
           </Text>
         </ComboboxTrigger>
       )}

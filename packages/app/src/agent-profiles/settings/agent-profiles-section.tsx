@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { Alert, Text, View } from "react-native";
+import { useFetchQuery } from "@/data/query";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -15,6 +16,7 @@ import { useAgentProfiles } from "../internal/use-agent-profiles";
 import { generateAgentProfileId } from "../internal/profile-id";
 import type { AgentProfileValue } from "../internal/profile-form-model";
 import { AgentProfileEditModal } from "./agent-profile-edit-modal";
+import { mergeEditedProfile } from "@/otto/agent-profiles/edits"; // OTTO(profile-continuity)
 import { AgentProfileRow } from "./agent-profile-row";
 
 const ThemedPlus = withUnistyles(Plus);
@@ -26,6 +28,9 @@ interface EditTarget {
   profile?: AgentProfile;
 }
 
+import { MemoryRemoval } from "@/otto/agent-profiles/memory-removal"; // OTTO(profile-memory)
+import { useHostFeature } from "@/runtime/host-features";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
 export function AgentProfilesSection({ serverId }: { serverId: string }): ReactElement {
   const { t } = useTranslation();
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -33,6 +38,27 @@ export function AgentProfilesSection({ serverId }: { serverId: string }): ReactE
   const { entries } = useProvidersSnapshot(serverId, { cwd: null });
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
 
+  const memorySupported = useHostFeature(serverId, "ottoProfileMemory");
+  const client = useHostRuntimeClient(serverId);
+  const { data: counts, refetch: refreshCounts } = useFetchQuery({
+    dataShape: "value",
+    queryKey: ["ottoProfileMemoryCounts", serverId],
+    enabled: memorySupported && isConnected && !!client,
+    staleTimeMs: 0,
+    retry: false,
+    queryFn: async () => {
+      if (!client) throw new Error("Host disconnected.");
+      return client.profileMemoryCounts();
+    },
+  });
+  const [removal, setRemoval] = useState<{ profile: AgentProfile; count: number } | null>(null);
+  const closeRemoval = useCallback(() => setRemoval(null), []);
+  const finishRemoval = useCallback(async () => {
+    if (!removal || !profiles || !profiles.some((p) => p.id === removal.profile.id))
+      throw new Error("Profile roster changed.");
+    await saveProfiles(profiles.filter((p) => p.id !== removal.profile.id));
+    await refreshCounts();
+  }, [removal, profiles, saveProfiles, refreshCounts]);
   const handleAddOpen = useCallback(() => setEditTarget({ mode: "create" }), []);
   const handleEditClose = useCallback(() => setEditTarget(null), []);
 
@@ -51,11 +77,16 @@ export function AgentProfilesSection({ serverId }: { serverId: string }): ReactE
     async (value: AgentProfileValue) => {
       const current = profiles ?? [];
       const editing = editTarget?.mode === "edit" ? editTarget.profile : undefined;
-      // The edited profile is replaced, not merged: `value` omits the fields the
-      // user cleared, so spreading it over the stored record would silently keep
-      // the old model, mode, thinking option or notes.
+      // OTTO(agent-teams): host broadcasts replace the list. Keep another editor's draft intact.
+      if (
+        editing &&
+        JSON.stringify(current.find((item) => item.id === editing.id)) !== JSON.stringify(editing)
+      )
+        throw new Error("This Profile changed. Reopen it to edit the new version.");
       const next: AgentProfile[] = editing
-        ? current.map((entry) => (entry.id === editing.id ? { id: entry.id, ...value } : entry))
+        ? current.map((entry) =>
+            entry.id === editing.id ? mergeEditedProfile(entry, value) : entry,
+          )
         : [...current, { id: generateAgentProfileId(), ...value }];
       await saveProfiles(next);
     },
@@ -91,10 +122,23 @@ export function AgentProfilesSection({ serverId }: { serverId: string }): ReactE
   const handleMoveDown = useCallback((id: string) => void reorder(id, 1), [reorder]);
 
   const handleRemove = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const profile = profiles?.find((entry) => entry.id === id);
       if (!profile) {
         return;
+      }
+      if (memorySupported) {
+        try {
+          if (!client) throw new Error("Reconnect to this host first.");
+          const view = await client.profileMemory({ kind: "view", profileId: id });
+          if (view.entries.length) {
+            setRemoval({ profile, count: view.entries.length });
+            return;
+          }
+        } catch (error) {
+          Alert.alert("Cannot inspect Profile lessons", String(error));
+          return;
+        }
       }
       void confirmDialog({
         title: t("settings.host.agentProfiles.removeConfirmTitle"),
@@ -117,7 +161,7 @@ export function AgentProfilesSection({ serverId }: { serverId: string }): ReactE
         return;
       });
     },
-    [profiles, saveProfiles, t],
+    [profiles, saveProfiles, t, memorySupported, client],
   );
 
   const addButton = useMemo(
@@ -156,6 +200,16 @@ export function AgentProfilesSection({ serverId }: { serverId: string }): ReactE
 
   return (
     <>
+      {removal && profiles ? (
+        <MemoryRemoval
+          hostId={serverId}
+          profile={removal.profile}
+          count={removal.count}
+          profiles={profiles}
+          remove={finishRemoval}
+          close={closeRemoval}
+        />
+      ) : null}
       <SettingsSection
         title={t("settings.host.agentProfiles.sectionTitle")}
         trailing={addButton}
@@ -167,6 +221,7 @@ export function AgentProfilesSection({ serverId }: { serverId: string }): ReactE
               <AgentProfileRow
                 key={profile.id}
                 profile={profile}
+                lessonCount={counts?.[profile.id]}
                 entries={entries}
                 isFirst={index === 0}
                 isLast={index === profiles.length - 1}

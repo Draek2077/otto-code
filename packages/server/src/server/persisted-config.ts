@@ -13,6 +13,7 @@ import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-co
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
 import { migrateOttoConfig } from "./otto/config-migration.js";
 import { ensureOttoHomeSnapshot } from "./otto/home-snapshot.js";
+import { AgentTeams } from "@getpaseo/protocol/otto/agent-teams"; // OTTO(agent-teams)
 import { AgentProfileSchema, AgentSkillSelectionSchema } from "@getpaseo/protocol/agent-profile";
 import { PluginIdSchema, PluginSourceSchema } from "@getpaseo/protocol/plugin-config";
 import { TerminalProfileSchema } from "@getpaseo/protocol/terminal-profile";
@@ -174,6 +175,7 @@ const StructuredGenerationProviderConfigSchema = z
 
 const AgentMetadataGenerationSchema = z
   .object({
+    preferWriterProfiles: z.boolean().optional(), // OTTO(agent-teams)
     providers: z.array(StructuredGenerationProviderConfigSchema).optional(),
   })
   .strict();
@@ -271,6 +273,8 @@ export const PersistedConfigSchema = z
         enableTerminalAgentHooks: z.boolean().optional(),
         appendSystemPrompt: z.string().optional(),
         terminalProfiles: z.array(TerminalProfileSchema).optional(),
+        ottoProfilesImported: z.boolean().optional(), // OTTO(agent-teams): one-time legacy roster import.
+        agentTeams: AgentTeams.optional(), // OTTO(agent-teams)
         agentProfiles: z.array(AgentProfileSchema).optional(),
         cors: z
           .object({

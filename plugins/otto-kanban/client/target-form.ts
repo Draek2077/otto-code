@@ -28,6 +28,11 @@ export function openTargetForm(input: {
 }) {
   const listeners = new Set<() => void>();
   let revision = input.snapshot.settingsRevision;
+  let active = false;
+  let authority = 0;
+  let version = 0;
+  let writing = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let state: TargetFormState = {
     enabled: input.snapshot.target !== null,
     adapter: input.snapshot.target?.adapter ?? "github",
@@ -46,18 +51,45 @@ export function openTargetForm(input: {
     for (const listener of listeners) listener();
   }
   function edit(next: Partial<TargetFormState>) {
-    if (!state.busy)
+    if (!state.busy || writing) {
+      version++;
       patch({
         ...next,
         dirty: true,
         saved: false,
         ...(state.reloadRequired ? {} : { error: "", errorCode: null }),
       });
+      schedule();
+    }
   }
-  return {
+  function schedule() {
+    clearTimeout(timer);
+    if (active && !state.busy && state.dirty && !state.reloadRequired && !state.error)
+      timer = setTimeout(() => {
+        void model.save();
+      }, 250);
+  }
+  const model = {
     getSnapshot: () => state,
     getRevision: () => revision,
     binding: input.snapshot.binding,
+    activate() {
+      active = true;
+      const activation = ++authority;
+      schedule();
+      return () => {
+        if (activation !== authority) return;
+        active = false;
+        authority++;
+        clearTimeout(timer);
+        if (writing)
+          patch({
+            reloadRequired: true,
+            error:
+              "The save outcome is unknown. Reload saved settings before making another change.",
+          });
+      };
+    },
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => {
@@ -74,9 +106,15 @@ export function openTargetForm(input: {
       read: (binding: ProjectConfiguration["binding"]) => Promise<Result<ProjectConfiguration>>,
     ): Promise<boolean> {
       if (state.busy) return false;
+      clearTimeout(timer);
+      const activation = authority;
       patch({ busy: true });
       try {
         const result = await read(input.snapshot.binding);
+        if (activation !== authority) {
+          patch({ busy: false });
+          return false;
+        }
         if (!result.ok) {
           patch({ busy: false, error: result.error.message });
           return false;
@@ -103,6 +141,10 @@ export function openTargetForm(input: {
         });
         return true;
       } catch {
+        if (activation !== authority) {
+          patch({ busy: false });
+          return false;
+        }
         patch({
           busy: false,
           error: "Project Settings could not be reloaded. Your changes are still here.",
@@ -112,6 +154,9 @@ export function openTargetForm(input: {
     },
     async save(): Promise<ProjectConfiguration | null> {
       if (state.busy || !state.dirty || state.reloadRequired) return null;
+      clearTimeout(timer);
+      const activation = authority;
+      const submittedVersion = version;
       const target = state.enabled
         ? {
             adapter: state.adapter,
@@ -121,6 +166,7 @@ export function openTargetForm(input: {
               : {}),
           }
         : null;
+      writing = true;
       patch({ busy: true, error: "", errorCode: null });
       try {
         const result = await input.save({
@@ -128,6 +174,7 @@ export function openTargetForm(input: {
           expectedRevision: revision,
           target,
         });
+        if (activation !== authority) return null;
         if (!result.ok) {
           patch({
             busy: false,
@@ -150,18 +197,24 @@ export function openTargetForm(input: {
           return null;
         }
         revision = saved.settingsRevision;
-        patch({ busy: false, dirty: false, saved: true });
+        patch({ busy: false, dirty: version !== submittedVersion, saved: true });
         return saved;
       } catch {
+        if (activation !== authority) return null;
         patch({
           busy: false,
           error: "Project Settings could not be saved. Your changes are still here.",
           reloadRequired: true,
         });
         return null;
+      } finally {
+        writing = false;
+        patch({ busy: false });
+        if (activation === authority) schedule();
       }
     },
   };
+  return model;
 }
 
 export type TargetFormModel = ReturnType<typeof openTargetForm>;

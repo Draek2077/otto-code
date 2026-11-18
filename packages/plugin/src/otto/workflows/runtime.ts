@@ -1,3 +1,4 @@
+import { ProfileBinding } from "@getpaseo/protocol/otto/agent-teams";
 import { z } from "zod";
 import { defineRpc } from "../../rpc.js";
 import {
@@ -126,12 +127,28 @@ export const WorkflowTemplateSnapshot = z.object({
   template: PromptTemplateSchema,
 });
 export type WorkflowTemplateSnapshot = z.infer<typeof WorkflowTemplateSnapshot>;
+const WorkflowTeamSnapshot = z.object({
+  id: z.string(),
+  name: z.string(),
+  roles: z.array(
+    z.object({
+      role: z.string(),
+      profileId: z.string(),
+      binding: ProfileBinding.optional(),
+      name: z.string(),
+      prompt: z.string(),
+      seat: WorkflowSeat,
+    }),
+  ),
+});
+export type WorkflowTeamSnapshot = z.infer<typeof WorkflowTeamSnapshot>;
 export const WorkflowLaunch = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("ai"),
     definition: AiWorkflowDefinition,
     seats: WorkflowSeats.optional(),
     limits: WorkflowLimits.optional(),
+    teamSnapshot: WorkflowTeamSnapshot.optional(),
     source: z.object({ ref: WorkflowRef, revision: z.string() }).optional(),
   }),
   z.object({
@@ -143,6 +160,7 @@ export const WorkflowLaunch = z.discriminatedUnion("kind", [
     allowTemplateCode: z.boolean().optional(),
     allowQueryEffects: z.boolean().optional(),
     templateSnapshots: z.array(WorkflowTemplateSnapshot).max(64).optional(),
+    teamSnapshot: WorkflowTeamSnapshot.optional(),
     source: z.object({ ref: WorkflowRef, revision: z.string() }).optional(),
   }),
 ]);

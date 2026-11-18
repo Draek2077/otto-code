@@ -51,3 +51,12 @@ export const fetchWorkspaceGit = defineRpc({
   input: Host.extend({ workspaceId: z.string().min(1).max(256) }),
   output: result(z.object({ remote: z.literal("origin") })),
 });
+export const setWorkspaceComparisonBase = defineRpc({
+  name: "workspace.git.set_comparison_base.request",
+  input: Host.extend({
+    workspaceId: z.string().min(1).max(256),
+    branchName: z.string().min(1).max(1024),
+    baseRef: z.string().min(1).max(1024).nullable(),
+  }),
+  output: result(z.object({ branchName: z.string(), baseRef: z.string() })),
+});

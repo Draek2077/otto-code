@@ -6,14 +6,14 @@ const Workspace = lazy(async () => ({
   default: (await import("./screen")).ContextManagementWorkspace,
 }));
 const Screen = lazy(async () => ({ default: (await import("./screen")).ContextManagementScreen }));
-const loading = <SettingsRow label="Loading Context Management..." />;
+const loading = <SettingsRow label="Loading Context..." />;
 function Available({ hostId, children }: { hostId: string; children: ReactNode }) {
   // COMPAT(ottoContextManagement): added v0.10.0; remove after 2027-04-25 when host floor >= v0.10.0.
   const available = useHostFeature(hostId, "ottoContextManagement");
   return available ? (
     <Suspense fallback={loading}>{children}</Suspense>
   ) : (
-    <SettingsRow label="Update the host to use Context Management." />
+    <SettingsRow label="Update the host to use Context." />
   );
 }
 export function ContextManagementWorkspace(props: PluginWorkspacePanelProps) {

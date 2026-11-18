@@ -55,6 +55,7 @@ import {
   type DraftAgentControlsProps,
 } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
+import { ComposerUsageSlotProvider } from "@/otto/ui/composer-usage-slot"; // OTTO(usage-button): one existing meter, immediately before the model picker.
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { selectAgentTurnPresentation, useSessionStore } from "@/stores/session-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
@@ -2055,23 +2056,19 @@ function ComposerContentImpl({
   );
 
   const contextWindowMeterGlyphSize = isCompactLayout ? ICON_SIZE.md : buttonIconSize;
-  const beforeVoiceContent = useMemo(
+  const usageMeter = useMemo(
     () =>
       hasAgent ? (
-        <>
-          {/* OTTO(speech) */}
-          <SpeechChatToggle serverId={serverId} agentId={agentId} enabled={mode.showVoice} />
-          <View style={styles.contextWindowMeterSlot}>
-            <ContextWindowMeter
-              serverId={serverId}
-              agentId={agentId}
-              maxTokens={agentState.contextWindowMaxTokens}
-              usedTokens={agentState.contextWindowUsedTokens}
-              totalCostUsd={agentState.totalCostUsd}
-              glyphSize={contextWindowMeterGlyphSize}
-            />
-          </View>
-        </>
+        <View style={styles.contextWindowMeterSlot}>
+          <ContextWindowMeter
+            serverId={serverId}
+            agentId={agentId}
+            maxTokens={agentState.contextWindowMaxTokens}
+            usedTokens={agentState.contextWindowUsedTokens}
+            totalCostUsd={agentState.totalCostUsd}
+            glyphSize={contextWindowMeterGlyphSize}
+          />
+        </View>
       ) : null,
     [
       hasAgent,
@@ -2081,9 +2078,15 @@ function ComposerContentImpl({
       agentState.contextWindowUsedTokens,
       agentState.totalCostUsd,
       contextWindowMeterGlyphSize,
-      mode.showVoice, // OTTO(speech)
     ],
-  );
+  ); // OTTO(usage-button)
+  const beforeVoiceContent = useMemo(
+    () =>
+      hasAgent ? (
+        <SpeechChatToggle serverId={serverId} agentId={agentId} enabled={mode.showVoice} />
+      ) : null,
+    [hasAgent, serverId, agentId, mode.showVoice],
+  ); // OTTO(speech)
 
   const hasGithubAttachment = useMemo(
     () =>
@@ -2202,16 +2205,27 @@ function ComposerContentImpl({
   );
 
   const leftContent = useMemo(
-    () =>
-      renderLeftContent({
-        agentControls,
-        agentId,
-        serverId,
-        focusInput,
-        isCompactLayout,
-        showAgentControls: mode.showAgentControls,
-      }),
-    [agentControls, agentId, focusInput, isCompactLayout, mode.showAgentControls, serverId],
+    () => (
+      <ComposerUsageSlotProvider value={usageMeter}>
+        {renderLeftContent({
+          agentControls,
+          agentId,
+          serverId,
+          focusInput,
+          isCompactLayout,
+          showAgentControls: mode.showAgentControls,
+        })}
+      </ComposerUsageSlotProvider>
+    ),
+    [
+      usageMeter,
+      agentControls,
+      agentId,
+      focusInput,
+      isCompactLayout,
+      mode.showAgentControls,
+      serverId,
+    ],
   );
 
   const handleAttachButtonRef = useCallback((node: View | null) => {
@@ -2594,6 +2608,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
+    marginLeft: theme.spacing[1], // OTTO(usage-button): match the controls row's gap on both sides.
   },
   realtimeVoiceButton: {
     width: 28,

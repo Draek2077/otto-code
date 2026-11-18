@@ -10,7 +10,7 @@ interface HostDefaultState {
   error: string;
   success: string;
 }
-/** One explicit host preference draft. Peer invalidation never rebases its origin. */
+/** One host preference writer. Peer invalidation never rebases its origin. */
 export class KnowledgeHostDefaultModel {
   private state: HostDefaultState = {
     origin: null,
@@ -58,7 +58,10 @@ export class KnowledgeHostDefaultModel {
     return this.authority;
   }
   select(location: HostDefaultState["location"]) {
-    if (!this.closed && this.active && !this.state.busy) this.publish({ ...this.state, location });
+    if (!this.closed && this.active && !this.state.busy && !this.state.blocked) {
+      this.publish({ ...this.state, location });
+      void this.save();
+    }
   }
   private admitted(authority: number) {
     return !this.closed && this.active && authority === this.authority && !this.state.busy;

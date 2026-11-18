@@ -75,17 +75,14 @@ export async function editWorktreeSetup(page: Page, setupCommands: string[]): Pr
     .fill(setupCommands.join("\n"));
 }
 
-export async function clickSaveProjectSettings(page: Page): Promise<void> {
-  await page.getByTestId("save-button").click();
-}
-
-export async function clickRetryProjectSettingsSave(page: Page): Promise<void> {
-  // action-0 is always "Try again"; action-1 is always "Reload".
-  // The write-failed callout renders these two buttons in a fixed order.
-  await page.getByTestId("write-failed-callout-action-0").click();
-}
-
 export async function clickReloadProjectSettings(page: Page): Promise<void> {
+  // OTTO(settings): only an open preference draft needs discard confirmation.
+  if (
+    await page
+      .locator('[data-testid="stale-callout"], [data-testid="write-failed-callout"]')
+      .count()
+  )
+    page.once("dialog", (dialog) => void dialog.accept());
   // Scope to the active error callout so the locator is unambiguous.
   // At most one error callout renders at a time.
   await page.locator('[data-testid$="-callout"]').getByRole("button", { name: "Reload" }).click();
@@ -168,15 +165,6 @@ export async function expectNoProjectSettingsError(
   timeout = 15_000,
 ): Promise<void> {
   await expect(page.getByTestId(errorCalloutTestId[kind])).not.toBeVisible({ timeout });
-}
-
-export async function expectWriteFailedCalloutActions(page: Page): Promise<void> {
-  await expect(page.getByTestId("write-failed-callout-action-0")).toHaveText("Try again");
-  await expect(page.getByTestId("write-failed-callout-action-1")).toHaveText("Reload");
-}
-
-export async function expectSaveButtonDisabled(page: Page): Promise<void> {
-  await expect(page.getByTestId("save-button")).toBeDisabled();
 }
 
 export async function expectUncommittedSetupWarning(page: Page): Promise<void> {

@@ -1,4 +1,10 @@
 import { isSyntaxThemeId, type SyntaxThemeId } from "@getpaseo/highlight";
+// OTTO(action-groups): recognize the existing device preference without replacing Paseo settings.
+import {
+  actionGroupingDefaults,
+  actionGroupingStoredPreferences,
+  type ActionGroupingPreferences,
+} from "@/otto/chat/preferences";
 import {
   editorPreferenceDefaults,
   editorStoredPreferences,
@@ -90,7 +96,9 @@ export { DEFAULT_CONTENT_MAX_WIDTH };
 export const MIN_CONTENT_MAX_WIDTH = 600;
 export const MAX_CONTENT_MAX_WIDTH = 4000;
 
-export interface AppSettings extends SpeechPreferences, EditorPreferences, VisualizerPreferences {
+export interface AppSettings
+  extends SpeechPreferences, EditorPreferences, VisualizerPreferences, ActionGroupingPreferences {
+  // OTTO(action-groups)
   // OTTO(editor): recognize retained device settings through their original keys.
   theme: ThemePreference;
   /** Which contributed theme `theme: "plugin"` selects. */
@@ -155,6 +163,7 @@ export interface Settings extends AppSettings {
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   ...editorPreferenceDefaults, // OTTO(editor)
   ...speechPreferenceDefaults, // OTTO(speech)
+  ...actionGroupingDefaults, // OTTO(action-groups)
   ...visualizerPreferenceDefaults, // OTTO(visualizer)
   theme: DEFAULT_THEME_PREFERENCE,
   pluginThemeId: null,
@@ -234,6 +243,7 @@ const StoredAppSettingsSchema = z
   .looseObject({
     ...editorStoredPreferences, // OTTO(editor)
     ...speechStoredPreferences, // OTTO(speech)
+    ...actionGroupingStoredPreferences, // OTTO(action-groups)
     ...visualizerStoredPreferences, // OTTO(visualizer)
     theme: ThemePreferenceSchema.catch(DEFAULT_THEME_PREFERENCE),
     pluginThemeId: z.string().nullable().catch(null),

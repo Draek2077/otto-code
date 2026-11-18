@@ -131,6 +131,45 @@ describe("createWebStreamStrategy", () => {
     vi.restoreAllMocks();
   });
 
+  // OTTO(action-groups): explicit detail reading stops follow without an offset write.
+  it("holds the reader on detail expansion and resumes only on an explicit bottom request", () => {
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
+    const viewportRef = React.createRef<StreamViewportHandle>();
+    const renderInput: StreamRenderInput = {
+      agentId: "agent",
+      segments: { historyVirtualized: [], historyMounted: [userMessage(1)], liveHead: [] },
+      boundary: { hasVirtualizedHistory: false, hasMountedHistory: true, hasLiveHead: false },
+      renderers: createRenderers(vi.fn()),
+      listEmptyComponent: null,
+      viewportRef,
+      routeBottomAnchorRequest: null,
+      isAuthoritativeHistoryReady: true,
+      onNearBottomChange: vi.fn(),
+      onNearHistoryStart: vi.fn().mockReturnValue(false),
+      isLoadingOlderHistory: false,
+      hasOlderHistory: false,
+      olderHistoryProgressKey: null,
+      scrollEnabled: true,
+      listStyle: null,
+      baseListContentContainerStyle: null,
+      forwardListContentContainerStyle: null,
+      contentMaxWidth: DEFAULT_CONTENT_MAX_WIDTH,
+    };
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => root!.render(strategy.render(renderInput)));
+    const scroll = container.querySelector<HTMLElement>('[data-testid="agent-chat-scroll"]')!;
+    scroll.scrollTop = 40;
+    vi.mocked(HTMLElement.prototype.scrollTo).mockClear();
+    act(() => viewportRef.current!.holdReadingPosition!());
+    expect(scroll.style.overflowAnchor).toBe("none");
+    expect(scroll.scrollTop).toBe(40);
+    expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalled();
+    act(() => viewportRef.current!.scrollToBottom());
+    expect(scroll.style.overflowAnchor).toBe("auto");
+  });
+
   it("mounts virtualized history without recursive row measurement updates", () => {
     const rowRenderCount = vi.fn();
     const strategy = createWebStreamStrategy({ isMobileBreakpoint: true });

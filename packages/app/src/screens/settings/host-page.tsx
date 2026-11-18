@@ -1,3 +1,4 @@
+import { TeamsSection } from "@/otto/agent-profiles/teams-section"; // OTTO(agent-teams)
 import {
   ArrowDown,
   ArrowUp,
@@ -300,6 +301,7 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
       )}
       <AgentSkillsSection serverId={serverId} />
       <AgentProfilesSection serverId={serverId} />
+      <TeamsSection serverId={serverId} />
     </View>
   );
 }

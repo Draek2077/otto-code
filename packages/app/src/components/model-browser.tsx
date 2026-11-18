@@ -942,24 +942,36 @@ function CreateAgentProfileRow({ onPress }: { onPress: () => void }) {
   );
 }
 
+// OTTO(agent-teams): the all-providers page and single-provider page share this identity header.
 function AgentProfilesPickerContent({
   rows,
+  profiles,
   onApplyProfile,
   onEditProfiles,
 }: {
   rows: AgentProfilePickerRowModel[];
+  profiles: AgentProfilePicker;
   onApplyProfile?: (profileId: string) => void;
   onEditProfiles?: () => void;
 }) {
-  if (rows.length === 0) {
-    return onEditProfiles ? <CreateAgentProfileRow onPress={onEditProfiles} /> : null;
-  }
-  return (
+  const list = rows.length ? (
     <AgentProfilesPickerSection
       rows={rows}
       onApplyProfile={onApplyProfile}
       onEditProfiles={onEditProfiles}
     />
+  ) : null;
+  return (
+    <View>
+      {profiles.currentName && (
+        <Text style={styles.sectionHeadingText}>Current Profile · {profiles.currentName}</Text>
+      )}
+      {profiles.teamName && (
+        <Text style={styles.sectionHeadingText}>Team · {profiles.teamName}</Text>
+      )}
+      {list}
+      {!list && onEditProfiles && <CreateAgentProfileRow onPress={onEditProfiles} />}
+    </View>
   );
 }
 
@@ -1303,6 +1315,7 @@ function ProviderModelBrowserContent({
     () =>
       normalizedQuery.length === 0 && showProfilesSection && profiles ? (
         <AgentProfilesPickerContent
+          profiles={profiles}
           rows={providerProfileRows}
           onApplyProfile={onApplyProfile}
           onEditProfiles={onEditProfiles}
@@ -1463,6 +1476,7 @@ function ModelBrowserContent({
     <View>
       {showProfilesSection && profiles ? (
         <AgentProfilesPickerContent
+          profiles={profiles}
           rows={profiles.rows}
           onApplyProfile={onApplyProfile}
           onEditProfiles={onEditProfiles}

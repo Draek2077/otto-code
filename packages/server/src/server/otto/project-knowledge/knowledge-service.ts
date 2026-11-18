@@ -77,6 +77,14 @@ export class KnowledgeNotFoundError extends Error {
     super("This Knowledge page was removed. Choose another page.");
   }
 }
+export class KnowledgePageInvalidError extends Error {
+  constructor(file: string, cause: unknown) {
+    super(
+      `Knowledge could not read ${file}. Its Markdown or timeline is invalid; the original file was left unchanged.`,
+      { cause },
+    );
+  }
+}
 export class KnowledgePurgeIncompleteError extends Error {
   constructor(cause: unknown) {
     super(
@@ -366,7 +374,12 @@ export class KnowledgeService {
     const absolutePath = pagePath(store, target);
     const raw = await readKnowledgeFile(store, absolutePath);
     if (raw === null) throw new KnowledgeNotFoundError();
-    const page = parseKnowledgePage(raw);
+    let page: KnowledgePage;
+    try {
+      page = parseKnowledgePage(raw);
+    } catch (error) {
+      throw new KnowledgePageInvalidError(path.relative(store.base, absolutePath), error);
+    }
     if (page.metadata.id !== target.id || page.metadata.kind !== target.kind) {
       throw new Error("Knowledge metadata does not match its canonical path");
     }

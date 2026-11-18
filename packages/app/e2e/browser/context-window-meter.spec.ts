@@ -1,3 +1,4 @@
+// OTTO(usage-popup): click/tap popup and first-load positioning acceptance.
 import type { Locator, Page } from "@playwright/test";
 import { expect, test as base } from "../support/fixtures";
 import {
@@ -7,19 +8,17 @@ import {
 } from "../support/helpers/composer";
 import {
   type AgentUsageScript,
-  closeContextWindowSheet,
+  closeContextWindowPopup,
   contextWindowDetails,
   expectRefreshButtons,
   expiredLogin,
   gate,
-  hoverContextWindowMeter,
-  leaveContextWindowMeter,
+  pressContextWindowMeter,
   type MockAgentSession,
   moveOntoContextWindowDetails,
   onPersonalLogin,
   onWorkLogin,
   openAgent,
-  pressContextWindowMeter,
   qaScreenshot,
   refreshUsageCard,
   reloadAgent,
@@ -113,20 +112,86 @@ const DESKTOP = { width: 1440, height: 900 };
 const COMPACT = { width: 390, height: 844 };
 const LOGIN_EXPIRED = /^Login expired .*Run claude to refresh it\.$/;
 
+async function expectUsagePopupAnchored(page: Page): Promise<void> {
+  await expect
+    .poll(async () => {
+      const [popup, meter] = await Promise.all([
+        page.getByTestId("context-window-popup").boundingBox(),
+        page.getByTestId("context-window-meter").boundingBox(),
+      ]);
+      if (!popup || !meter) return Number.POSITIVE_INFINITY;
+      // The measured content excludes the surface border; allow its two pixels in the gap.
+      return Math.abs(meter.y - popup.y - popup.height - 8);
+    })
+    .toBeLessThanOrEqual(3);
+}
+
+async function expectUsageButtonGeometry(page: Page): Promise<void> {
+  const [attachment, meter, model] = await Promise.all([
+    page.getByTestId("message-input-attach-button").boundingBox(),
+    page.getByTestId("context-window-meter").boundingBox(),
+    page.getByTestId("combined-model-selector").boundingBox(),
+  ]);
+  if (!attachment || !meter || !model) throw new Error("The composer controls must be visible.");
+  expect(meter.width).toBeCloseTo(attachment.width, 1);
+  expect(meter.height).toBeCloseTo(attachment.height, 1);
+  expect(meter.width).toBeCloseTo(meter.height, 1);
+  expect(meter.x - attachment.x - attachment.width).toBeCloseTo(model.x - meter.x - meter.width, 1);
+  const radius = await page
+    .getByTestId("context-window-meter")
+    .evaluate((button) => Number.parseFloat(getComputedStyle(button).borderTopLeftRadius));
+  expect(radius).toBeGreaterThanOrEqual(meter.width / 2);
+}
+
 for (const layout of [
   {
     name: "desktop",
     viewport: DESKTOP,
-    open: hoverContextWindowMeter,
-    close: leaveContextWindowMeter,
+    open: pressContextWindowMeter,
+    close: closeContextWindowPopup,
   },
   {
     name: "compact",
     viewport: COMPACT,
     open: pressContextWindowMeter,
-    close: closeContextWindowSheet,
+    close: closeContextWindowPopup,
   },
 ]) {
+  test(`keeps the first usage popup anchored as its loading state expands (${layout.name})`, async ({
+    page,
+    agent,
+  }) => {
+    test.setTimeout(180_000);
+    const source = gate();
+    const [claude] = claudeAndCodexReports();
+    const report = onPersonalLogin(claude!);
+    const usage = await scriptAgentUsage(page);
+    usage.answerNext({ stream: [source.promise, report] });
+    await page.setViewportSize(layout.viewport);
+    await openAgent(page, agent);
+    const details = await pressContextWindowMeter(page);
+    await expect(details.getByText("Loading usage...", { exact: true })).toBeVisible();
+    // Let the opening animation finish while the first answer is still in flight.
+    await page.waitForTimeout(250);
+    await expectUsagePopupAnchored(page);
+    const initial = await page.getByTestId("context-window-popup").boundingBox();
+    if (!initial) throw new Error("The loading popup must be visible.");
+    source.open();
+    await expect(usageCard(details, report.id)).toBeVisible();
+    await expect
+      .poll(async () => (await page.getByTestId("context-window-popup").boundingBox())?.height ?? 0)
+      .toBeGreaterThan(initial.height);
+    // Reanimated used to write the loading frame back during delayed animation cleanup.
+    await page.waitForTimeout(1000);
+    await expectUsagePopupAnchored(page);
+    await closeContextWindowPopup(page);
+
+    usage.answerNext([report]);
+    await pressContextWindowMeter(page);
+    await expect(usageCard(contextWindowDetails(page), report.id)).toBeVisible();
+    await expectUsagePopupAnchored(page);
+  });
+
   test(`shows account usage before the first turn (${layout.name})`, async ({ page }) => {
     test.setTimeout(180_000);
     const source = await installLoginUsage({
@@ -141,9 +206,19 @@ for (const layout of [
       try {
         await page.setViewportSize(layout.viewport);
         await openAgent(page, agent);
+        await expectUsageButtonGeometry(page);
 
         await test.step("the empty meter opens context details and account usage", async () => {
           const details = await layout.open(page, "Context window: No context data");
+          await expect(
+            page.getByRole("dialog", { name: "Context window", exact: true }),
+          ).toHaveCount(0);
+          const [popup, meter] = await Promise.all([
+            page.getByTestId("context-window-popup").boundingBox(),
+            page.getByTestId("context-window-meter").boundingBox(),
+          ]);
+          if (!popup || !meter) throw new Error("The usage popup must be anchored to its button.");
+          expect(popup.y + popup.height).toBeLessThanOrEqual(meter.y);
           await expect(details.getByText("No context data", { exact: true })).toBeVisible();
           await expect(details.getByText("0% used", { exact: true })).toHaveCount(0);
           await expect(details.getByText(/tokens$/)).toHaveCount(0);
@@ -242,29 +317,28 @@ async function expectOnlyContextWindowWithoutUsage(
 }
 
 for (const theme of ["light", "dark"] as const) {
-  test(`the context window hover card shows the agent's usage (${theme})`, async ({
-    page,
-    agent,
-  }) => {
+  test(`the context window popup shows the agent's usage (${theme})`, async ({ page, agent }) => {
     test.setTimeout(240_000);
     const [claude] = claudeAndCodexReports();
     const usage = await scriptAgentUsage(page);
     await page.emulateMedia({ colorScheme: theme });
     await page.setViewportSize(DESKTOP);
     await openAgent(page, agent);
-    const shot: Shot = (state) => qaScreenshot(page, `hover-card-desktop-${theme}-${state}`);
+    const shot: Shot = (state) => qaScreenshot(page, `popup-desktop-${theme}-${state}`);
 
     await test.step("reports stream in one card at a time, each with Refresh", async () => {
-      const card = await expectCardsToStreamIn(page, usage, hoverContextWindowMeter, shot);
+      const card = await expectCardsToStreamIn(page, usage, pressContextWindowMeter, shot);
       await expectRefreshButtons(card, 2);
       await shot("ready");
       expect(usage.agentRequests()).toEqual([agent.agentId]);
     });
 
-    await test.step("the card stays open while the pointer moves onto it", async () => {
+    await test.step("the popup stays open while the pointer moves onto it or away", async () => {
       const card = contextWindowDetails(page);
       await moveOntoContextWindowDetails(page, card);
       await page.waitForTimeout(300);
+      await expect(card).toBeVisible();
+      await page.mouse.move(0, 0);
       await expect(card).toBeVisible();
     });
 
@@ -286,19 +360,19 @@ for (const theme of ["light", "dark"] as const) {
       // Refresh can retain focus; return to the composer before testing pointer dismissal.
       await composerLocator(page).focus();
       // Closed while the old login's report is still on its way.
-      await leaveContextWindowMeter(page);
+      await closeContextWindowPopup(page);
       const slowSource = gate();
       usage.answerNext({ stream: [slowSource.promise, onWorkLogin(claude!)] });
-      const closedEarly = await hoverContextWindowMeter(page);
+      const closedEarly = await pressContextWindowMeter(page);
       await expect(closedEarly.getByText("Loading usage...", { exact: true })).toBeVisible();
-      await leaveContextWindowMeter(page);
+      await closeContextWindowPopup(page);
 
       const resumed = gate();
       const finished = gate();
       usage.answerNext({
         stream: [resumed.promise, onPersonalLogin(claude!), finished.promise],
       });
-      const card = await hoverContextWindowMeter(page);
+      const card = await pressContextWindowMeter(page);
       await expect(card.getByText("Loading usage...", { exact: true })).toBeVisible();
       await expect(card.getByText("work@example.com", { exact: true })).toHaveCount(0);
 
@@ -315,23 +389,23 @@ for (const theme of ["light", "dark"] as const) {
     await test.step("a report with a problem shows it on the card", async () => {
       usage.answerNext([expiredLogin(onWorkLogin(claude!))]);
       await reloadAgent(page);
-      const card = await hoverContextWindowMeter(page);
+      const card = await pressContextWindowMeter(page);
       await expect(card.getByText(LOGIN_EXPIRED)).toBeVisible();
       await shot("problem");
     });
 
     await test.step("a failed request says so in a sentence", async () => {
-      await expectFailedRequestSentence(page, usage, hoverContextWindowMeter, shot);
+      await expectFailedRequestSentence(page, usage, pressContextWindowMeter, shot);
     });
 
     await test.step("a host without usage reports shows only the context window", async () => {
-      await expectOnlyContextWindowWithoutUsage(page, usage, hoverContextWindowMeter, shot);
+      await expectOnlyContextWindowWithoutUsage(page, usage, pressContextWindowMeter, shot);
       // One request per open that had usage; this one sends none.
       expect(usage.agentRequests()).toHaveLength(6);
     });
   });
 
-  test(`the context window sheet shows the agent's usage and refreshes it (${theme})`, async ({
+  test(`the compact context window popup shows the agent's usage and refreshes it (${theme})`, async ({
     page,
     agent,
   }) => {
@@ -341,7 +415,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await page.setViewportSize(COMPACT);
     await openAgent(page, agent);
-    const shot: Shot = (state) => qaScreenshot(page, `sheet-compact-${theme}-${state}`);
+    const shot: Shot = (state) => qaScreenshot(page, `popup-compact-${theme}-${state}`);
 
     await test.step("reports stream in one card at a time, each with Refresh", async () => {
       const sheet = await expectCardsToStreamIn(page, usage, pressContextWindowMeter, shot);
@@ -361,8 +435,8 @@ for (const theme of ["light", "dark"] as const) {
       await shot("problem");
     });
 
-    await test.step("Close dismisses the sheet", async () => {
-      await closeContextWindowSheet(page);
+    await test.step("Tapping outside dismisses the popup", async () => {
+      await closeContextWindowPopup(page);
     });
 
     await test.step("a failed request says so in a sentence", async () => {
@@ -376,7 +450,7 @@ for (const theme of ["light", "dark"] as const) {
   });
 }
 
-test("context details support keyboard entry and dismiss when the viewport moves", async ({
+test("context popup supports keyboard activation, Escape and viewport repositioning", async ({
   page,
   agent,
 }) => {
@@ -396,10 +470,11 @@ test("context details support keyboard entry and dismiss when the viewport moves
   await expect(trigger).toHaveAttribute("tabindex", "0");
   await trigger.focus();
   const details = contextWindowDetails(page);
+  await expect(details).toHaveCount(0);
+  await trigger.press("Enter");
   await expect(details).toBeVisible();
   await expect(details.getByRole("button", { name: "Refresh Claude", exact: true })).toBeVisible();
-  await trigger.press("ArrowDown");
-  await expect(details.getByRole("button", { name: "Refresh Claude", exact: true })).toBeFocused();
+  await details.getByRole("button", { name: "Refresh Claude", exact: true }).focus();
   await page.keyboard.press("Escape");
   await expect(details).toHaveCount(0);
   await expect(stop).toBeVisible();
@@ -414,23 +489,26 @@ test("context details support keyboard entry and dismiss when the viewport moves
     await expect(trigger).toBeFocused();
   }
   usage.answerNext([onPersonalLogin(claude!)]);
-  await trigger.press("ArrowDown");
+  await trigger.press("Enter");
   await expect(details).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 850 });
+  await expect(details).toBeInViewport();
+  await page.keyboard.press("Escape");
   await expect(details).toHaveCount(0);
 });
 
-test("pointer hovering context details preserves composer focus", async ({ page, agent }) => {
+test("hover shows only the usage tooltip and preserves composer focus", async ({ page, agent }) => {
   const usage = await scriptAgentUsage(page);
   await page.setViewportSize(DESKTOP);
   await openAgent(page, agent);
-  const [claude] = claudeAndCodexReports();
-  usage.answerNext([onPersonalLogin(claude!)]);
   const input = composerLocator(page);
   await input.focus();
-  await hoverContextWindowMeter(page);
+  await page.getByTestId("context-window-meter").hover();
+  await expect(page.getByText("Context window", { exact: true })).toBeVisible();
+  await expect(contextWindowDetails(page)).toHaveCount(0);
+  expect(usage.agentRequests()).toEqual([]);
   await expect(input).toBeFocused();
-  await leaveContextWindowMeter(page);
+  await page.mouse.move(0, 0);
   await expect(input).toBeFocused();
 });
 
@@ -446,6 +524,7 @@ test("Find remains available after dismissing context details", async ({ page, a
     exact: true,
   });
   await trigger.focus();
+  await trigger.press("Enter");
   await expect(contextWindowDetails(page)).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(contextWindowDetails(page)).toHaveCount(0);

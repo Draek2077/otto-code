@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { View, Text } from "react-native";
-import { SettingsSection, SettingsCard, SettingsRow } from "@/components/settings";
+import { View } from "react-native";
+import { SettingsSection, SettingsCard, SettingsSelect } from "@/components/settings";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { ScheduleApi } from "./api";
 import { ScheduleStorageModel } from "./storage-model";
-import { ScheduleChoice } from "./fields";
 import { styles } from "./styles";
 import { useScheduleActivity } from "./activity";
 const LOCATIONS = [
-  { value: "repository", label: "Repository" },
-  { value: "host", label: "Owning host" },
+  { value: "repository", label: "Project folder" },
+  { value: "host", label: "This host" },
 ];
-const PROJECT = [{ value: "", label: "Use Schedules host default" }, ...LOCATIONS];
+const PROJECT = [{ value: "", label: "Use host default" }, ...LOCATIONS];
 export function ScheduleStorage({
   api,
   hostId,
@@ -56,63 +55,42 @@ export function ScheduleStorage({
       ),
     [model],
   );
-  const saveHost = useCallback(() => model.saveDefault(), [model]);
-  const saveProject = useCallback(() => model.saveProject(), [model]);
-  const disabled = lane.busy || lane.blocked;
+  const disabled = !state.defaults || lane.blocked;
   return (
     <View style={styles.contentGap}>
-      <SettingsSection title="Schedules storage">
+      <SettingsSection
+        title="Schedules storage"
+        info="Choose where new schedules are saved. Existing schedules stay where they are."
+      >
         <SettingsCard>
-          <SettingsRow
-            label="New schedules only"
-            hint="Schedules has its own default and project override. Repository schedules belong to the project; host-local schedules remain and execute on this owning host. Changing a setting never moves existing records."
-          />
+          {state.defaults && showDefault ? (
+            <SettingsSelect
+              label="Default location"
+              value={state.defaultDraft}
+              options={LOCATIONS}
+              onValueChange={host}
+              disabled={disabled}
+            />
+          ) : null}
+          {state.storage ? (
+            <SettingsSelect
+              label="Save new schedules in"
+              value={state.projectDraft ?? ""}
+              options={PROJECT}
+              onValueChange={project}
+              disabled={disabled}
+            />
+          ) : null}
         </SettingsCard>
       </SettingsSection>
-      {state.defaults && showDefault ? (
+      {lane.error || lane.blocked ? (
         <>
-          <ScheduleChoice
-            label="Schedules host default"
-            value={state.defaultDraft}
-            options={LOCATIONS}
-            change={host}
-            disabled={disabled}
-          />
-          <Button
-            variant="outline"
-            onPress={saveHost}
-            disabled={disabled || state.defaultDraft === state.defaults.location}
-          >
-            Save host default
+          <Button variant="ghost" onPress={reload} disabled={lane.busy}>
+            Reload saved settings
           </Button>
+          {lane.error ? <Alert variant="error" description={lane.error} /> : null}
         </>
       ) : null}
-      {state.storage ? (
-        <>
-          <Text
-            style={styles.muted}
-          >{`${state.storage.hostLabel} · ${state.storage.projectLabel}`}</Text>
-          <ScheduleChoice
-            label="Schedules project override"
-            value={state.projectDraft ?? ""}
-            options={PROJECT}
-            change={project}
-            disabled={disabled}
-          />
-          <Button
-            variant="outline"
-            onPress={saveProject}
-            disabled={disabled || state.projectDraft === state.storage.override}
-          >
-            Save project override
-          </Button>
-        </>
-      ) : null}
-      <Button variant="ghost" onPress={reload} disabled={lane.busy}>
-        Reload storage settings
-      </Button>
-      {lane.error ? <Alert variant="error" description={lane.error} /> : null}
-      {lane.message ? <Alert description={lane.message} /> : null}
     </View>
   );
 }

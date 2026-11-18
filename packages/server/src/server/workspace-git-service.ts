@@ -318,7 +318,9 @@ export type WorkspaceGitBranchValidationResult = BranchCheckoutResolution;
 export type WorkspaceGitBranchSuggestion = BranchSuggestion;
 export type WorkspaceGitWorktreeInfo = PaseoWorktreeInfo;
 
-export type WorkspaceGitSnapshotOptions =
+export type WorkspaceGitSnapshotOptions = {
+  queueIfBusy?: boolean; // OTTO(diff-base): explicit metadata writes must outlive an in-flight read.
+} & (
   | {
       force?: false;
       includeForge?: boolean;
@@ -328,7 +330,8 @@ export type WorkspaceGitSnapshotOptions =
       force: true;
       includeForge?: boolean;
       reason: string;
-    };
+    }
+);
 
 interface WorkspaceGitRefreshRequest {
   force: boolean;
@@ -3115,7 +3118,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       includeForge: options?.includeForge ?? true,
       reason: options?.reason ?? defaultReason,
       notify,
-      queueIfBusy: false,
+      queueIfBusy: options?.queueIfBusy === true, // OTTO(diff-base)
       movedRemoteRefs: new Set(),
     };
   }

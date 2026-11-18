@@ -4,6 +4,7 @@ import { AgentProfileEditModal } from "./settings/agent-profile-edit-modal";
 import { generateAgentProfileId } from "./internal/profile-id";
 import type { AgentProfileSeed, AgentProfileValue } from "./internal/profile-form-model";
 import { useAgentProfiles } from "./internal/use-agent-profiles";
+import { mergeEditedProfile } from "@/otto/agent-profiles/edits"; // OTTO(profile-continuity): preserve stored Otto extensions when editing basic Paseo fields.
 
 export interface AgentProfileEditorControls {
   /** Open the create form pre-filled with provider, model, and suggested name. */
@@ -47,8 +48,15 @@ export function useAgentProfileEditor(serverId: string | null): AgentProfileEdit
     async (value: AgentProfileValue) => {
       const current = profiles ?? [];
       const editing = request?.mode === "edit" ? request.profile : undefined;
+      if (
+        editing &&
+        JSON.stringify(current.find((item) => item.id === editing.id)) !== JSON.stringify(editing)
+      )
+        throw new Error("This Profile changed. Reopen it to edit the new version."); // OTTO(agent-teams)
       const next: AgentProfile[] = editing
-        ? current.map((entry) => (entry.id === editing.id ? { id: entry.id, ...value } : entry))
+        ? current.map((entry) =>
+            entry.id === editing.id ? mergeEditedProfile(entry, value) : entry,
+          )
         : [...current, { id: generateAgentProfileId(), ...value }];
       await saveProfiles(next);
       setRequest(null);

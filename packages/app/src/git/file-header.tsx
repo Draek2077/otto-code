@@ -11,6 +11,7 @@ import { DiffStat } from "@/components/diff-stat";
 import { FileActionsContextMenuContent } from "@/components/file-actions-menu";
 import { FileChangeIcon } from "@/components/file-change-icon";
 import { MaterialFileIcon } from "@/components/material-file-icon";
+import { ManualCommitFileCheckbox } from "@/otto/workspace-git/commit-context"; // OTTO(manual-commit): selection is scoped by the owning Changes surface.
 import {
   treeRowPaddingLeft,
   workspaceTreeRowStyles,
@@ -256,6 +257,8 @@ export const FileHeader = memo(function FileHeader({
       testID={testID ? `${testID}-header-content` : undefined}
     >
       <View ref={dragSourceRef} style={showDir ? styles.left : [styles.left, styles.leftTree]}>
+        <ManualCommitFileCheckbox path={file.path} enabled={!showsBodyState} />
+        {/* OTTO(manual-commit) */}
         {showDir ? null : (
           <View style={styles.icon}>
             <MaterialFileIcon fileName={fileName} size={WORKSPACE_TREE_ICON_SIZE} />

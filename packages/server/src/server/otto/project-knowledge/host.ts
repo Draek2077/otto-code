@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   readKnowledgeCatalog,
+  readKnowledgeSettings,
   readKnowledgePage,
   readKnowledgeRoot,
   readKnowledgeLinkHealth,
@@ -26,6 +27,7 @@ import type { WorkspaceRegistry } from "../../workspace-registry.js";
 import {
   KnowledgeService,
   KnowledgeNotFoundError,
+  KnowledgePageInvalidError,
   KnowledgePurgeIncompleteError,
   knowledgeRoots,
   type KnowledgeDocument,
@@ -247,10 +249,25 @@ export class KnowledgeDaemonService {
     return result;
   }
 
-  async catalog(input: z.infer<typeof readKnowledgeCatalog.input>) {
-    const project = await this.resolveProject(input.scope);
+  // Settings do not depend on parsing any article or its append-only history.
+  async settings(scope: KnowledgeScope) {
+    const project = await this.resolveProject(scope);
     const store = await this.resolver.resolve(project.projectId);
     const fields = projectFields.parse(project.record);
+    return {
+      projectId: project.projectId,
+      label: String(project.record.customName ?? project.record.displayName ?? project.projectId),
+      revision: project.revision,
+      location: store.location,
+      override: fields.knowledgeLocation ?? null,
+      directoryName: fields.knowledgeDirectoryName ?? null,
+      path: store.base,
+    };
+  }
+
+  async catalog(input: z.infer<typeof readKnowledgeCatalog.input>) {
+    const settings = await this.settings(input.scope);
+    const project = { projectId: settings.projectId };
     const query = input.query.trim().toLowerCase();
     const pages = (await this.service.catalog(project.projectId, input.includeInactive))
       .filter(
@@ -265,15 +282,7 @@ export class KnowledgeDaemonService {
       roots.push({ slug, revision: root?.revision ?? null });
     }
     return {
-      settings: {
-        projectId: project.projectId,
-        label: String(project.record.customName ?? project.record.displayName ?? project.projectId),
-        revision: project.revision,
-        location: store.location,
-        override: fields.knowledgeLocation ?? null,
-        directoryName: fields.knowledgeDirectoryName ?? null,
-        path: store.base,
-      },
+      settings,
       records: pages.slice(input.offset, input.offset + input.limit),
       total: pages.length,
       nextOffset: input.offset + input.limit < pages.length ? input.offset + input.limit : null,
@@ -449,6 +458,14 @@ export class KnowledgeDaemonService {
           await this.observations.release(clientId, input.leaseId);
           return releaseKnowledgeChanges.output.parse({ ok: true, value: { released: true } });
         });
+      case readKnowledgeSettings.name:
+        return this.guard(async () => {
+          const input = readKnowledgeSettings.input.parse(value);
+          return readKnowledgeSettings.output.parse({
+            ok: true,
+            value: await this.settings(input.scope),
+          });
+        });
       case readKnowledgeCatalog.name:
         return this.guard(async () => {
           const input = readKnowledgeCatalog.input.parse(value);
@@ -505,6 +522,8 @@ export class KnowledgeDaemonService {
     try {
       return await run();
     } catch (error) {
+      if (error instanceof KnowledgePageInvalidError)
+        return { ok: false, error: { code: "invalid", message: error.message } };
       if (error instanceof KnowledgeLockRecoveryError)
         return { ok: false, error: { code: error.code, message: error.message } };
       if (error instanceof KnowledgeReviewUnavailableError)

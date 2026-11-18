@@ -6,11 +6,12 @@ import {
   WorkflowsWorkspace,
   WorkflowsSettings,
 } from "@getpaseo/plugin/client/otto-workflows";
+const WORKFLOW_ICON = "Workflow";
 function Navigation({ currentScreen, openScreen }: PluginSidebarItemProps) {
   const open = useCallback(() => openScreen({ screenId: "workflows" }), [openScreen]);
   return (
     <SidebarRow
-      icon="Workflow"
+      icon={WORKFLOW_ICON}
       label="Workflows"
       active={currentScreen?.screenId === "workflows"}
       onPress={open}
@@ -20,7 +21,12 @@ function Navigation({ currentScreen, openScreen }: PluginSidebarItemProps) {
 export default function contribute(client: PluginClientContext) {
   const releases = [
     client.addScreen({ id: "workflows", title: "Workflows", Component: WorkflowsScreen }),
-    client.addSidebarHeaderItem({ id: "workflows", title: "Workflows", Component: Navigation }),
+    client.addSidebarHeaderItem({
+      id: "workflows",
+      title: "Workflows",
+      icon: WORKFLOW_ICON,
+      Component: Navigation,
+    }),
     client.addWorkspacePanel({
       id: "workflows",
       title: "Workflows",

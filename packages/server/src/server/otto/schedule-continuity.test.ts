@@ -67,8 +67,6 @@ it("preserves Otto schedule and run metadata on a supported schedule rewrite", a
   expect(JSON.parse(await readFile(file, "utf8")).runs).toEqual([]);
 });
 it.each([
-  ["agentProfile", "saved-profile"],
-  ["personality", "saved-profile"],
   ["approvalPolicy", "never"],
   ["sandboxMode", "read-only"],
   ["networkAccess", false],
@@ -100,3 +98,17 @@ it("leaves dormant workflow schedules byte-identical", async () => {
   await expect(store.get(schedule.id)).rejects.toThrow("explicitly select its saved target");
   expect(await readFile(file, "utf8")).toBe(raw);
 });
+
+it.each(["agentProfile", "personality"] as const)(
+  "reads and preserves a restored %s binding",
+  async (field) => {
+    const { store, schedule, file } = await fixture();
+    const stored = JSON.parse(await readFile(file, "utf8"));
+    stored.target.config[field] = "saved-profile";
+    await writeFile(file, JSON.stringify(stored));
+    const read = await store.get(schedule.id);
+    expect(read?.target).toMatchObject({ type: "new-agent", config: { [field]: "saved-profile" } });
+    await store.update(schedule.id, (s) => ({ ...s, name: "Renamed" }));
+    expect(JSON.parse(await readFile(file, "utf8")).target.config[field]).toBe("saved-profile");
+  },
+);

@@ -1,9 +1,10 @@
 import { StyleSheet } from "react-native-unistyles";
 export const styles = StyleSheet.create((theme) => ({
   page: { flex: 1, minHeight: 0 },
+  hidden: { display: "none" },
   content: {
     padding: theme.spacing[4],
-    paddingTop: theme.spacing[6],
+    paddingTop: theme.spacing[4],
     paddingBottom: theme.spacing[8],
     gap: theme.spacing[4],
     width: "100%",

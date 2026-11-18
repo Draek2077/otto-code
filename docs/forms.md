@@ -86,6 +86,15 @@ can import `SettingsGroup` and `SettingsSection` directly from their modules in
 `@/components/settings/headings/`.
 The plugin UI entry exposes the same components; keep them independent of storage and routing.
 
+<!-- OTTO(settings): preferences follow the instant-save contract. -->
+
+Ordinary preferences save when changed, without a Save footer. A plain form model owns
+debouncing for text, a single writer, and queued edits; React only renders and dispatches.
+Revisioned forms advance only their own accepted revision. A conflict or uncertain outcome
+retains the draft and stops automatic writes until an explicit, confirmed reload. Do not show
+Reload during normal operation. Creating a connection, replacing credentials, transferring
+files and invoking runtime commands remain deliberate actions rather than preference changes.
+
 ## Data gating
 
 Aggregate hooks return a discriminated load state:

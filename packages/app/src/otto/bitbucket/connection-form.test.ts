@@ -41,6 +41,16 @@ function fixture() {
     },
   };
 }
+it("autosaving a default selection retains the separate account draft and pending key", async () => {
+  const f = fixture();
+  const draft = f.model.getSnapshot().draft;
+  f.model.choose("");
+  const saving = f.model.saveSelection();
+  expect(f.calls[0].action).toEqual({ kind: "select", connectionId: null });
+  f.resolve({ ok: true, value: snapshot("second") });
+  await saving;
+  expect(f.model.getSnapshot()).toMatchObject({ editing: true, draft, generation: 0 });
+});
 it("saves one coherent connection under the originating revision and clears the accepted secret", async () => {
   const f = fixture();
   const saved = f.model.save();

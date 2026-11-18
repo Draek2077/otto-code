@@ -10,7 +10,7 @@ const providers = [
   { value: "openai" as const, label: "OpenAI Compatible API" },
 ];
 function locked(state: ReturnType<SpeechForm["getSnapshot"]>, path: string) {
-  return state.busy || state.origin.overrides.includes(path);
+  return state.reading || state.origin.overrides.includes(path);
 }
 export function SttFields({ form, role }: { form: SpeechForm; role: "dictation" | "voice" }) {
   const state = useSyncExternalStore(form.subscribe, form.getSnapshot);
@@ -149,7 +149,7 @@ export function TtsFields({ form }: { form: SpeechForm }) {
     () =>
       state.origin.choices.ttsModels.map((entry) => ({
         value: entry.id,
-        label: `${entry.label}${entry.installed ? "" : " (download on save)"}`,
+        label: `${entry.label}${entry.installed ? "" : " (download when selected)"}`,
       })),
     [state.origin.choices.ttsModels],
   );

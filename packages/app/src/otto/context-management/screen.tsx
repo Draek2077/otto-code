@@ -4,6 +4,9 @@ import {
   ContextWriteFeedback,
   ContextControls,
 } from "./report-view";
+import { ProfileMemoryPane, ProfileMemorySelector } from "../agent-profiles/memory-pane";
+import { useHostFeature } from "@/runtime/host-features";
+import { Button } from "@/components/ui/button";
 import { ContextLayout } from "./layout";
 import React, {
   useCallback,
@@ -13,7 +16,7 @@ import React, {
   useState,
   useSyncExternalStore,
 } from "react";
-import { View } from "react-native";
+import { ScrollView, View } from "react-native";
 import {
   usePaseo,
   useRpc,
@@ -27,13 +30,14 @@ import {
   type ContextSelection,
 } from "@getpaseo/plugin/otto/context-management";
 import { useFetchQuery } from "@/data/query";
-import { SettingsRow, SettingsSelect } from "@/components/settings";
+import { SettingsRow } from "@/components/settings";
 import { Alert } from "@/components/ui/alert";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ContextTree } from "./tree";
 import { styles } from "./styles";
+import { FeatureScopeSelect, featureBrowserStyles } from "../ui/feature-browser";
 import { ContextEdgeEdit } from "./edge-edit";
 import type { ContextSourceSelection } from "./selection";
 import { ContextSourceDrafts } from "./source-model";
@@ -46,14 +50,18 @@ const windows = [16384, 32768, 65536, 131072, 200000, 1000000].map((value) => ({
   value: String(value),
   label: value.toLocaleString() + " tokens",
 }));
-function ContextBody({
+function ContextReportBody({
   hostId,
   workspaceId,
   active,
+  profileId,
+  profileSelector,
 }: {
   hostId: string;
   workspaceId: string;
   active: boolean;
+  profileId?: string;
+  profileSelector?: React.ReactNode;
 }) {
   const readAgents = useRpc(readContextAgents);
   const readReport = useRpc(readContextReport);
@@ -84,8 +92,14 @@ function ContextBody({
   useLayoutEffect(() => (active ? writeModel.activate() : undefined), [active, writeModel]);
   const compact = useIsCompactFormFactor();
   const scope = useMemo<ContextSelection>(
-    () => ({ hostId, workspaceId, agentId: agentId || null, windowTokens: Number(windowTokens) }),
-    [hostId, workspaceId, agentId, windowTokens],
+    () => ({
+      hostId,
+      workspaceId,
+      agentId: agentId || null,
+      windowTokens: Number(windowTokens),
+      ...(!agentId && profileId ? { profileId } : {}),
+    }),
+    [hostId, workspaceId, agentId, windowTokens, profileId],
   );
   const agents = useFetchQuery({
     dataShape: "list",
@@ -190,6 +204,7 @@ function ContextBody({
         agentId={agentId}
         windowTokens={windowTokens}
         options={options}
+        profileSelector={agentId ? undefined : profileSelector}
         windows={windows}
         chooseAgent={chooseAgent}
         chooseWindow={chooseWindow}
@@ -274,6 +289,48 @@ function ContextBody({
     </View>
   );
 }
+function ContextBody(props: { hostId: string; workspaceId: string; active: boolean }) {
+  const supported = useHostFeature(props.hostId, "ottoProfileMemory");
+  const [profileId, select] = useState("");
+  const selector = useMemo(
+    () => <ProfileMemorySelector hostId={props.hostId} profileId={profileId} select={select} />,
+    [props.hostId, profileId],
+  );
+  const [memory, setMemory] = useState(false);
+  const showMemory = useCallback(() => setMemory(true), []);
+  const showReport = useCallback(() => setMemory(false), []);
+  if (!supported) return <ContextReportBody {...props} />;
+  return (
+    <View style={styles.page}>
+      <View style={styles.actions}>
+        <Button size="sm" variant={memory ? "ghost" : "outline"} onPress={showReport}>
+          Context
+        </Button>
+        <Button size="sm" variant={memory ? "outline" : "ghost"} onPress={showMemory}>
+          Memory
+        </Button>
+      </View>
+      <View style={memory ? styles.hidden : styles.page}>
+        <ContextReportBody
+          {...props}
+          active={props.active && !memory}
+          profileId={profileId}
+          profileSelector={selector}
+        />
+      </View>
+      {memory && props.active ? (
+        <ScrollView contentContainerStyle={styles.content}>
+          {selector}
+          <ProfileMemoryPane
+            hostId={props.hostId}
+            workspaceId={props.workspaceId}
+            profileId={profileId}
+          />
+        </ScrollView>
+      ) : null}
+    </View>
+  );
+}
 function ContextFrame({ hostId, workspaceId }: { hostId: string; workspaceId: string }) {
   const retained = useRetainedPanelActive();
   const visible = useAppVisible();
@@ -317,12 +374,12 @@ export function ContextManagementScreen(props: PluginScreenProps) {
   );
   return (
     <View style={styles.page} testID="otto-context-management-screen">
-      <View style={styles.chooser}>
-        <SettingsSelect
+      <View style={featureBrowserStyles.toolbar}>
+        <FeatureScopeSelect
           label="Workspace"
           value={selected}
           options={options}
-          onValueChange={setSelected}
+          onChange={setSelected}
         />
         {workspaces.error ? (
           <Alert variant="error" description="Workspaces could not be read from this host." />

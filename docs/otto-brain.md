@@ -34,7 +34,11 @@ an explicit start/restart uses the owning host's saved default; a selected model
 overrides it without rewriting that default. Passive settings projections apply
 environment overrides in memory without seeding a missing configuration file.
 Daemon-owned connection and owner settings use the same local/Remote transport
-and private home. The same plugin registers the `otto-brain` agent provider,
+and private home. Ordinary preferences autosave with debounced text and independent
+connection/owner revisions. Credential changes require Apply key changes; a pending
+key never rides along with an automatic preference write. Conflict recovery requires
+an explicit reload. Saving preferences does not start or restart Brain.
+The same plugin registers the `otto-brain` agent provider,
 sharing the complete OpenAI harness. Native terminal, model and
 product acceptance remain restoration work tracked in Otto Knowledge. This
 package is not yet the complete Brain product. `serve`

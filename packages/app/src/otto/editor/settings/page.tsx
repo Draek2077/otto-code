@@ -74,9 +74,6 @@ function CodeForm({ client }: { client: EditorClient }) {
     staleTimeMs: 5000,
     retry: false,
   });
-  const save = useCallback(() => {
-    void model.save();
-  }, [model]);
   const reload = useCallback(async () => {
     if (
       state.dirty &&
@@ -174,24 +171,13 @@ function CodeForm({ client }: { client: EditorClient }) {
             choices={caps}
             model={model}
           />
-          <SettingsRow label={state.dirty ? "Unsaved changes" : "Settings saved"}>
-            <Button
-              size="sm"
-              variant="outline"
-              onPress={reload}
-              disabled={state.phase === "saving"}
-            >
-              Reload
-            </Button>
-            <Button
-              size="sm"
-              onPress={save}
-              loading={state.phase === "saving"}
-              disabled={state.phase !== "ready" || !state.dirty}
-            >
-              Save
-            </Button>
-          </SettingsRow>
+          {state.phase === "blocked" ? (
+            <SettingsRow label="Settings could not be saved">
+              <Button size="sm" variant="outline" onPress={reload}>
+                Reload
+              </Button>
+            </SettingsRow>
+          ) : null}
         </SettingsCard>
       </SettingsSection>
       <SettingsSection title="Language servers">

@@ -94,6 +94,8 @@ export interface PluginSidebarItemContribution {
   id: string;
   /** Settings row label, accessibility label, and default label for SidebarRow. */
   title: string;
+  /** OTTO(sidebar-icons): Lucide name for this item's settings row. */
+  icon?: string;
   Component: ComponentType<PluginSidebarItemProps>;
 }
 

@@ -319,6 +319,7 @@ function MenuFlyout({
 
   if (!anchorRef) return null;
 
+  // OTTO(menu-geometry): live content measurements own flyout geometry, including page changes.
   return (
     <AnchoredSurface
       open
@@ -332,7 +333,6 @@ function MenuFlyout({
       maxHeight={maxHeight}
       scrollable={scrollable}
       backdrop={false}
-      revision={page.id}
       onPointerEnter={cancelHoverClose}
       onPointerLeave={handleHoverOut}
       testID={testID}

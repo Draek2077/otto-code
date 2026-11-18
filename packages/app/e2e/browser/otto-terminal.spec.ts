@@ -100,24 +100,22 @@ for (const compact of [false, true]) {
       const automatic = page.getByRole("switch", { name: "Automatic titles", exact: true });
       await expect(automatic).toBeChecked();
       await automatic.click();
-      await page.getByRole("button", { name: "Save preferences", exact: true }).click();
-      await expect(page.getByText("Terminal preferences saved", { exact: true })).toBeVisible();
-      expect((await read()).preferences.terminalTitleMode).toBe("default");
-      await automatic.click();
+      await expect.poll(async () => (await read()).preferences.terminalTitleMode).toBe("default");
+      await expect(automatic).toBeEnabled();
       current = await read();
       await client.invokePluginRpc("otto-terminal", saveTerminalSettings.name, {
         hostId,
         expectedRevision: current.revision,
         patch: { terminalTitleIncludePaths: true },
       });
-      await page.getByRole("button", { name: "Save preferences", exact: true }).click();
+      await automatic.click();
       await expect(page.getByRole("alert")).toContainText(
         "Terminal settings changed. Reload before saving.",
       );
       await expect(automatic).toBeChecked();
-      await expect(
-        page.getByRole("button", { name: "Save preferences", exact: true }),
-      ).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save preferences", exact: true })).toHaveCount(
+        0,
+      );
       page.once("dialog", (dialog) => void dialog.dismiss());
       await page.getByRole("button", { name: "Reload settings", exact: true }).click();
       await expect(automatic).toBeChecked();

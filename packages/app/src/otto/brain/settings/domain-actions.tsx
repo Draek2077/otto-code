@@ -7,6 +7,10 @@ import { useBrainSettings, useSettingsControlSize } from "./context";
 import { styles } from "./styles";
 
 type Scope = "connection" | "owner";
+const operations = {
+  connection: { save: "save-connection", reload: "reload-connection" },
+  owner: { save: "save-owner", reload: "reload-owner" },
+} as const;
 
 export function DomainNotice({ scope }: { scope: Scope }) {
   const { state, snapshot } = useBrainSettings();
@@ -30,6 +34,21 @@ export function DomainNotice({ scope }: { scope: Scope }) {
   ) : null;
 }
 
+function actionVisibility(scope: Scope, state: ReturnType<typeof useBrainSettings>["state"]) {
+  const domain = state[scope];
+  const credentialChange =
+    state.credentials.access.action !== "keep" || state.credentials.huggingFace.action !== "keep";
+  const showApply =
+    scope === "connection" ? state.credentials.remote.action !== "keep" : credentialChange;
+  const showReload =
+    !domain ||
+    domain.blocked ||
+    domain.peerChanged ||
+    domain.error ||
+    (scope === "owner" && state.targetChanged);
+  return { showApply, showReload };
+}
+
 export function DomainActions({ scope }: { scope: Scope }) {
   const { state, model, snapshot, flushInputs, active } = useBrainSettings();
   const size = useSettingsControlSize();
@@ -51,35 +70,39 @@ export function DomainActions({ scope }: { scope: Scope }) {
       }),
     );
   }, [model, scope]);
-  const saving = state.operation === (scope === "connection" ? "save-connection" : "save-owner");
-  const saveLabel = scope === "connection" ? "Save connection" : "Save Brain settings";
+  const saving = state.operation === operations[scope].save;
+  const saveLabel = "Apply key changes";
+  const { showApply, showReload } = actionVisibility(scope, state);
   const cannotEdit = scope === "connection" && !snapshot.capabilities.editConnection;
+  if (!showApply && !showReload) return null;
   return (
     <View style={styles.actions}>
-      <Button
-        variant="secondary"
-        size={size}
-        onPress={save}
-        disabled={
-          busy ||
-          !dirty ||
-          domain?.blocked ||
-          cannotEdit ||
-          (scope === "owner" && state.targetChanged)
-        }
-      >
-        {saving ? "Saving..." : saveLabel}
-      </Button>
-      <Button
-        variant="outline"
-        size={size}
-        onPress={reload}
-        disabled={busy || (scope === "owner" && snapshot.owner.data === null)}
-      >
-        {state.operation === (scope === "connection" ? "reload-connection" : "reload-owner")
-          ? "Reloading..."
-          : "Reload saved settings"}
-      </Button>
+      {showApply ? (
+        <Button
+          variant="secondary"
+          size={size}
+          onPress={save}
+          disabled={
+            busy ||
+            !dirty ||
+            domain?.blocked ||
+            cannotEdit ||
+            (scope === "owner" && state.targetChanged)
+          }
+        >
+          {saving ? "Saving..." : saveLabel}
+        </Button>
+      ) : null}
+      {showReload ? (
+        <Button
+          variant="outline"
+          size={size}
+          onPress={reload}
+          disabled={busy || (scope === "owner" && snapshot.owner.data === null)}
+        >
+          {state.operation === operations[scope].reload ? "Reloading..." : "Reload saved settings"}
+        </Button>
+      ) : null}
     </View>
   );
 }

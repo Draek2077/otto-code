@@ -5,6 +5,7 @@ import type { LocalSpeechModelId } from "./providers/local/config.js";
 import { ensureLocalSpeechModels, listMissingLocalSpeechModels } from "./providers/local/models.js";
 import { initializeLocalSpeechServices } from "./providers/local/runtime.js";
 import {
+  createOpenAiTts, // OTTO(profile-voice)
   getOpenAiSpeechAvailability,
   initializeOpenAiSpeechServices,
   validateOpenAiCredentialRequirements,
@@ -295,7 +296,7 @@ function resolveEffectiveProviderIds(params: {
 export interface SpeechService {
   resolveStt: () => SpeechToTextProvider | null;
   resolveSttLanguage: () => string;
-  resolveTts: () => TextToSpeechProvider | null;
+  resolveTts: (provider?: "local" | "openai") => TextToSpeechProvider | null; // OTTO(profile-voice)
   resolveTurnDetection: () => TurnDetectionProvider | null;
   resolveDictationStt: () => SpeechToTextProvider | null;
   resolveDictationSttLanguage: () => string;
@@ -675,7 +676,15 @@ export function createSpeechService(params: {
     resolveTurnDetection: () => turnDetectionService,
     resolveStt: () => sttService,
     resolveSttLanguage: () => speechConfig?.sttLanguages?.voice ?? "en",
-    resolveTts: () => ttsService,
+    resolveTts: (provider) => {
+      // OTTO(profile-voice): choose for this utterance without rebuilding the configured runtime.
+      if (provider === "local") return localVoiceTtsProvider;
+      if (provider === "openai")
+        return openaiConfig?.tts?.apiKey
+          ? createOpenAiTts(openaiConfig.tts.apiKey, openaiConfig, logger)
+          : null;
+      return ttsService;
+    },
     resolveDictationStt: () => dictationSttService,
     resolveDictationSttLanguage: () => speechConfig?.sttLanguages?.dictation ?? "en",
     getReadiness: () => lastPublishedReadinessSnapshot ?? computeReadinessSnapshot(),

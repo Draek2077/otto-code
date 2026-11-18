@@ -1,13 +1,5 @@
 import { router } from "expo-router";
-import {
-  CircleGauge,
-  FolderPlus,
-  GitBranch,
-  Server,
-  Settings,
-  X,
-  type LucideIcon,
-} from "lucide-react-native";
+import { CircleGauge, FolderPlus, Server, Settings, X, type LucideIcon } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
@@ -36,7 +28,7 @@ import {
 } from "@/components/sidebar-resize-handle-layout";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
-import { SidebarNavRows } from "@/components/sidebar/sidebar-nav-rows";
+import { SidebarNavRows, SidebarWorkspaceActions } from "@/components/sidebar/sidebar-nav-rows"; // OTTO(sidebar-navigation)
 import { SidebarFooterIconHighlight } from "@/components/sidebar/sidebar-footer-icon-highlight";
 import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
@@ -88,7 +80,7 @@ const ThemedX = withUnistyles(X);
 
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
-const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL?.trim() || null;
+// OTTO(workspace-chrome): development identity is rendered beside the workspace title.
 
 interface SidebarSharedProps {
   theme: SidebarTheme;
@@ -563,6 +555,10 @@ function MobileSidebar({
     () => <SidebarCloseButton label={labels.closeSidebar} onPress={closeSidebar} />,
     [labels.closeSidebar, closeSidebar],
   );
+  const workspacesHeader = useMemo(
+    () => <WorkspacesSectionHeader onBeforeNavigate={closeSidebar} />,
+    [closeSidebar],
+  ); // OTTO(sidebar-navigation): compact header actions dismiss the drawer before navigating.
 
   const mobileSidebarInsetStyle = useMemo(
     () => ({
@@ -609,7 +605,7 @@ function MobileSidebar({
             onImportSession={handleImportSession}
             parentGestureRef={closeGestureRef}
             dragGestureHostActive={active}
-            listHeaderComponent={workspacesSectionHeaderElement}
+            listHeaderComponent={workspacesHeader}
           />
         )}
 
@@ -655,7 +651,6 @@ function SidebarCloseButton({ label, onPress }: { label: string; onPress: () => 
 }
 
 function DesktopSidebar({
-  theme,
   workspaceGroups,
   projectIconTargets,
   pinnedGroups,
@@ -769,22 +764,9 @@ function DesktopSidebar({
     >
       <View style={desktopSidebarBorderStyle}>
         <View style={styles.sidebarDragArea}>
-          {ownsTopLeft || DEV_BUILD_LABEL ? (
+          {ownsTopLeft ? (
             <View style={styles.desktopChromeRow}>
               <TitlebarDragRegion />
-              {DEV_BUILD_LABEL ? (
-                <View
-                  pointerEvents="none"
-                  style={styles.devBuildBadge}
-                  testID="dev-build-label"
-                  accessibilityLabel={`Development build: ${DEV_BUILD_LABEL}`}
-                >
-                  <GitBranch size={12} color={theme.colors.accentForeground} />
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={styles.devBuildBadgeText}>
-                    {DEV_BUILD_LABEL}
-                  </Text>
-                </View>
-              ) : null}
             </View>
           ) : (
             <TitlebarDragRegion />
@@ -836,9 +818,10 @@ function DesktopSidebar({
   );
 }
 
-function WorkspacesSectionHeader() {
+function WorkspacesSectionHeader({ onBeforeNavigate }: { onBeforeNavigate?: () => void }) {
   return (
-    <SidebarSectionHeader title="Workspaces">
+    <SidebarSectionHeader title="Workspaces" wrapActions testID="sidebar-workspaces-heading">
+      <SidebarWorkspaceActions onBeforeNavigate={onBeforeNavigate} />
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
           <View>
@@ -853,8 +836,7 @@ function WorkspacesSectionHeader() {
   );
 }
 
-// Stable element so the sidebar list's listHeaderComponent prop keeps identity across
-// renders (WorkspacesSectionHeader takes no props).
+// The desktop header has no captured navigation callback, so its list element stays stable.
 const workspacesSectionHeaderElement = <WorkspacesSectionHeader />;
 
 // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to

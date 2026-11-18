@@ -1,3 +1,4 @@
+import { presentationLabel } from "@getpaseo/protocol/otto/agent-teams";
 import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import type { Logger } from "pino";
 import type { AgentManager } from "../../agent/agent-manager.js";
@@ -119,7 +120,10 @@ export function createPaseoWorkflowRuntime(
           featureValues: resolved.featureValues,
           cwd: request.workspace.cwd,
           title: request.title,
-          systemPrompt: roleInstructions(request),
+          ottoProfile: request.profile,
+          systemPrompt: [roleInstructions(request), request.profile?.prompt]
+            .filter(Boolean)
+            .join("\n\n"),
         },
         request.agentId,
         {
@@ -127,6 +131,11 @@ export function createPaseoWorkflowRuntime(
           initialTitle: request.title,
           persistSession: true,
           labels: {
+            ...(request.profile
+              ? {
+                  "otto.profile": presentationLabel(request.profile),
+                }
+              : {}),
             [WORKFLOW_CHAT_ORIGIN_LABEL]: JSON.stringify(binding.ref),
             [request.role === "conductor" ? WORKFLOW_CONDUCTOR_LABEL : WORKFLOW_RUN_LABEL]:
               request.runId,

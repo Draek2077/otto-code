@@ -1,4 +1,4 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { View } from "react-native";
 import {
   SettingsButton,
@@ -23,15 +23,15 @@ const providerOptions = [
 export function TargetForm({
   model,
   read,
+  active,
 }: {
   model: TargetFormModel;
+  active: boolean;
   read(binding: ProjectConfiguration["binding"]): Promise<Result<ProjectConfiguration>>;
 }) {
   const [confirmReload, setConfirmReload] = useState(false);
+  useEffect(() => (active ? model.activate() : undefined), [model, active]);
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
-  const save = useCallback(async () => {
-    await model.save();
-  }, [model]);
   const requestReload = useCallback(() => setConfirmReload(true), []);
   const keepEditing = useCallback(() => setConfirmReload(false), []);
   const reload = useCallback(async () => {
@@ -45,7 +45,6 @@ export function TargetForm({
           label="Configure a board for this project"
           value={state.enabled}
           onValueChange={model.setEnabled}
-          disabled={state.busy}
         />
         {state.enabled ? (
           <>
@@ -54,14 +53,12 @@ export function TargetForm({
               value={state.adapter}
               options={providerOptions}
               onValueChange={model.setAdapter}
-              disabled={state.busy}
             />
             <SettingsInput
               key={`${state.adapter}/${state.generation}`}
               label="Board number or URL"
               initialValue={state.boardId}
               onChangeText={model.setBoardId}
-              disabled={state.busy}
               placeholder={
                 state.adapter === "github"
                   ? "https://github.com/orgs/example/projects/1"
@@ -76,7 +73,6 @@ export function TargetForm({
                     label="Board owner"
                     initialValue={state.boardOwner}
                     onChangeText={model.setBoardOwner}
-                    disabled={state.busy}
                   />
                 ) : null}
                 <SettingsRow label="An empty board identifier discovers boards linked to this project's GitHub repository." />
@@ -94,21 +90,13 @@ export function TargetForm({
           </>
         ) : null}
         {state.error ? <SettingsRow label="Settings were not saved" error={state.error} /> : null}
-        {state.saved ? <SettingsRow label="Board settings saved" /> : null}
-        {state.dirty ? (
-          <SettingsRow label="Your unsaved changes will be here when you return." />
+        {state.reloadRequired ? (
+          <View style={actionsStyle}>
+            <SettingsButton variant="outline" onPress={requestReload} disabled={state.busy}>
+              Reload saved settings
+            </SettingsButton>
+          </View>
         ) : null}
-        <View style={actionsStyle}>
-          <SettingsButton
-            onPress={save}
-            disabled={state.busy || !state.dirty || state.reloadRequired}
-          >
-            {state.busy ? "Saving..." : "Save"}
-          </SettingsButton>
-          <SettingsButton variant="outline" onPress={requestReload} disabled={state.busy}>
-            Reload saved settings
-          </SettingsButton>
-        </View>
         {confirmReload ? (
           <View>
             <SettingsRow label="Discard unsaved board settings and reload?" />

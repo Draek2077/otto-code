@@ -210,6 +210,7 @@ import {
 } from "@/screens/workspace/workspace-header-menu";
 import { PluginHeaderButtons } from "@/plugins";
 import { VisualizerWorkspaceButton } from "@/otto/visualizer/workspace-button"; // OTTO(visualizer): existing header and workspace panel, no second navigation system.
+import { DevelopmentTag } from "@/otto/ui/development-tag"; // OTTO(workspace-chrome): build identity follows the workspace title.
 import {
   createWorkspaceFileTabTarget,
   normalizeWorkspaceFileLocation,
@@ -509,6 +510,8 @@ function WorkspaceHeaderTitleBar({
         </View>
       )}
       <View style={styles.compactHeaderMenuCluster}>
+        <DevelopmentTag />
+        {/* OTTO(workspace-chrome): title, build identity, then actions. */}
         <WorkspaceHeaderMenuDesktop
           currentBranchName={currentBranchName}
           showWorkspaceSetup={showWorkspaceSetup}

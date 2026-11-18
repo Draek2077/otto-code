@@ -527,6 +527,7 @@ function resolveProfileLists(persisted: ReturnType<typeof loadPersistedConfig>) 
   return {
     terminalProfiles: persisted.daemon?.terminalProfiles,
     agentProfiles: persisted.daemon?.agentProfiles,
+    agentTeams: persisted.daemon?.agentTeams, // OTTO(agent-teams)
   };
 }
 
@@ -579,6 +580,7 @@ export function resolveConfigFromPersisted(
     appendSystemPrompt,
     terminalProfiles,
     agentProfiles,
+    agentTeams, // OTTO(agent-teams)
     hostnames,
     trustedProxies,
     appBaseUrl,
@@ -624,6 +626,7 @@ export function resolveConfigFromPersisted(
     appendSystemPrompt,
     terminalProfiles,
     agentProfiles,
+    agentTeams, // OTTO(agent-teams)
     skillSelection: persisted.agents?.skills?.selection,
     pluginsEnabled: persisted.pluginsEnabled ?? false,
     plugins: persisted.plugins,

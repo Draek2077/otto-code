@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+// OTTO(chat-identity): question/error priority is independent of root-chat activity.
 import type { Agent, WorkspaceDescriptor } from "@/stores/session-store";
 import type { WorkspaceStructureProject } from "@/projects/workspace-structure";
 import { buildWorkspaceAgentActivityIndex } from "@/utils/workspace-agent-activity";
@@ -66,6 +67,28 @@ describe("createSidebarWorkspaceEntry forge threading", () => {
     });
     expect(entry.prHint).toMatchObject({ number: 42, forge: "github" });
   });
+});
+
+describe("Otto workspace status and independent activity", () => {
+  it.each(["needs_input", "failed"] as const)(
+    "keeps %s visible alongside another chat's activity",
+    (status) => {
+      const descriptor = workspaceWithForge(undefined, "https://github.com/acme/repo/pull/42");
+      descriptor.status = "running";
+      const enteredAt = new Date("2026-06-01T10:00:00Z");
+      const entry = createSidebarWorkspaceEntry({
+        serverId: "srv",
+        workspace: descriptor,
+        workspaceAgentActivity: new Map([
+          [descriptor.id, { agentId: "waiting", status, enteredAt, hasActiveChat: true }],
+        ]),
+      });
+      expect(entry.statusBucket).toBe(status);
+      expect(entry.statusEnteredAt).toBe(enteredAt);
+      expect(entry.hasActiveChat).toBe(true);
+      expect(descriptor.status).toBe("running");
+    },
+  );
 });
 
 describe("createSidebarWorkspaceEntry workspace directory label", () => {

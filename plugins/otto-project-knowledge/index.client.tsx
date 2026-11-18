@@ -7,11 +7,13 @@ import {
   ProjectKnowledgeSettings,
 } from "@getpaseo/plugin/client/otto-knowledge";
 import * as knowledgeUi from "@getpaseo/plugin/client/otto-knowledge";
+const KNOWLEDGE_ICON = "BookOpen";
+const CONTEXT_ICON = "Layers";
 function KnowledgeSidebar({ currentScreen, openScreen }: PluginSidebarItemProps) {
   const open = useCallback(() => openScreen({ screenId: "knowledge" }), [openScreen]);
   return (
     <SidebarRow
-      icon="BookOpen"
+      icon={KNOWLEDGE_ICON}
       label="Knowledge"
       active={currentScreen?.screenId === "knowledge"}
       onPress={open}
@@ -22,7 +24,7 @@ function ContextSidebar({ currentScreen, openScreen }: PluginSidebarItemProps) {
   const open = useCallback(() => openScreen({ screenId: "context-management" }), [openScreen]);
   return (
     <SidebarRow
-      icon="Layers"
+      icon={CONTEXT_ICON}
       label="Context"
       active={currentScreen?.screenId === "context-management"}
       onPress={open}
@@ -38,23 +40,24 @@ function registerContext(client: PluginClientContext) {
     client.addSidebarHeaderItem({
       id: "context-management",
       title: "Context",
+      icon: CONTEXT_ICON,
       Component: ContextSidebar,
     }),
     client.addWorkspacePanel({
       id: "context-management",
-      title: "Context Management",
+      title: "Context",
       icon: "Layers",
       context: "workspace",
       Component: ContextManagementWorkspace,
     }),
     client.addScreen({
       id: "context-management",
-      title: "Context Management",
+      title: "Context",
       Component: ContextManagementScreen,
     }),
     client.addCommandCenterItem({
       id: "open-context-management",
-      title: "Open Context Management",
+      title: "Open Context",
       icon: "Layers",
       context: "workspace",
       onSelect({ openPanel }) {
@@ -87,6 +90,7 @@ export default function contribute(client: PluginClientContext) {
     client.addSidebarHeaderItem({
       id: "knowledge",
       title: "Knowledge",
+      icon: KNOWLEDGE_ICON,
       Component: KnowledgeSidebar,
     }),
     client.addCommandCenterItem({

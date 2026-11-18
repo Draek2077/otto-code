@@ -367,6 +367,12 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
 
   useEffect(() => {
     const handle: StreamViewportHandle = {
+      // OTTO(action-groups): FlatList keeps the visible row; the controller stops requesting offset zero.
+      holdReadingPosition: () => {
+        clearPendingUserScrollEnd();
+        bottomAnchorController.detachByUser();
+        programmaticScrollEventBudgetRef.current = 3;
+      },
       scrollToBottom: (reason = "jump-to-bottom") => {
         bottomAnchorController.requestLocalAnchor({
           agentId,
@@ -385,7 +391,14 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         viewportRef.current = null;
       }
     };
-  }, [agentId, bottomAnchorController, markNativeViewportSettling, scrollToMessage, viewportRef]); // OTTO(chat-search)
+  }, [
+    agentId,
+    bottomAnchorController,
+    markNativeViewportSettling,
+    scrollToMessage,
+    viewportRef,
+    clearPendingUserScrollEnd,
+  ]); // OTTO(chat-search) OTTO(action-groups)
 
   const isScrollEventNearBottom = useStableEvent(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {

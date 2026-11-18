@@ -94,6 +94,7 @@ export interface ScheduleFormState {
   selectedServerId: string | null;
   selectedProvider: AgentProvider | null;
   selectedModel: string;
+  agentProfile?: string; // OTTO(schedule-profiles)
   selectedMode: string;
   selectedThinkingOptionId: string;
   workingDir: string;
@@ -128,7 +129,7 @@ export interface ScheduleFormModel {
   applyProviderSnapshot: (serverId: string, snapshot: ScheduleFormProviderSnapshot) => void;
   setHost: (serverId: string | null) => void;
   setProject: (optionId: string, display: ScheduleFormDisplay) => void;
-  setModel: (provider: AgentProvider, modelId: string) => void;
+  setModel: (provider: AgentProvider, modelId: string, agentProfile?: string) => void;
   setThinking: (thinkingOptionId: string) => void;
   setSessionMode: (modeId: string) => void;
   setName: (value: string) => void;
@@ -152,6 +153,9 @@ function newAgentConfig(schedule: ScheduleFormSnapshot["schedule"]) {
   return null;
 }
 
+function scheduleBinding(config: ReturnType<typeof newAgentConfig>) {
+  return config?.agentProfile ?? config?.personality;
+}
 function buildProjectOptionTestId(optionId: string): string {
   const targetKey = optionId.slice(PROJECT_OPTION_PREFIX.length).replace(/^[^:]+:/, "");
   return `schedule-project-option-${targetKey}`;
@@ -664,6 +668,7 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
     selectedServerId,
     selectedProvider: config?.provider ?? null,
     selectedModel: initialModel,
+    agentProfile: scheduleBinding(config), // OTTO(schedule-profiles)
     selectedMode: initialMode,
     selectedThinkingOptionId: initialThinking,
     workingDir,
@@ -902,6 +907,7 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       ...nextState,
       selectedProvider: null,
       selectedModel: "",
+      agentProfile: undefined, // OTTO(schedule-profiles)
       selectedMode: "",
       selectedThinkingOptionId: "",
       modelSelectorProviders: [],
@@ -1046,7 +1052,7 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       }
       requestProviderSnapshot(target.serverId, target.cwd);
     },
-    setModel(provider, modelId) {
+    setModel(provider, modelId, agentProfile) {
       if (closed) {
         return;
       }
@@ -1072,6 +1078,7 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
         ...state,
         selectedProvider: provider,
         selectedModel,
+        agentProfile, // OTTO(schedule-profiles)
         selectedMode: pickModeForProvider({
           entries: providerEntries,
           provider,

@@ -9,20 +9,20 @@ export default function contribute(client: PluginClientContext) {
     client.addWorkspacePanel({
       id: "visualizer",
       title: "Visualizer",
-      icon: "Orbit",
+      icon: "Waypoints",
       context: "workspace",
       Component: VisualizerWorkspace,
     }),
     client.addSettingsScreen({
       id: "visualizer",
       title: "Visualizer",
-      icon: "Orbit",
+      icon: "Waypoints",
       Component: VisualizerSettings,
     }),
     client.addCommandCenterItem({
       id: "visualizer",
       title: "Open Visualizer",
-      icon: "Orbit",
+      icon: "Waypoints",
       context: "workspace",
       async onSelect({ openPanel }) {
         await activateVisualizerTab();

@@ -11,12 +11,13 @@ import type { ProjectSelection } from "./project-selection.js";
 import { ProjectTargetDrafts } from "./target-drafts.js";
 import { KanbanProjectSettings } from "./project-settings.js";
 import { BoardActionDrafts } from "./action-drafts.js";
+const KANBAN_ICON = "Kanban";
 
 function KanbanSidebar({ currentScreen, openScreen }: PluginSidebarItemProps) {
   const openBoard = useCallback(() => openScreen({ screenId: "board" }), [openScreen]);
   return (
     <SidebarRow
-      icon="Kanban"
+      icon={KANBAN_ICON}
       label="Kanban"
       active={currentScreen?.screenId === "board"}
       onPress={openBoard}
@@ -60,6 +61,7 @@ export function createKanbanClientContribution(): PluginClientContribution {
     const removeSidebar = client.addSidebarHeaderItem({
       id: "kanban",
       title: "Kanban",
+      icon: KANBAN_ICON,
       Component: KanbanSidebar,
     });
     const removeCommand = client.addCommandCenterItem({

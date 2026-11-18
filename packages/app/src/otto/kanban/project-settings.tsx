@@ -12,6 +12,8 @@ import { usePluginHostNavigation } from "@/plugins/host-navigation";
 import { toPluginTheme } from "@/plugins/theme";
 import { useHosts } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
+import { useAppVisible } from "@/hooks/use-app-visible";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import type { Theme } from "@/styles/theme";
 
 interface Identity {
@@ -32,6 +34,8 @@ function ProjectSettingsSlot({
   const navigation = usePluginHostNavigation(serverId);
   const hosts = useHosts();
   const compact = useIsCompactFormFactor();
+  const visible = useAppVisible();
+  const retained = useRetainedPanelActive();
   const host = useMemo(
     () => ({
       id: serverId,
@@ -58,6 +62,7 @@ function ProjectSettingsSlot({
           layout={layout}
           params={params}
           navigation={navigation}
+          active={visible && retained}
         />
       </PluginInstallationProvider>
     </SurfaceErrorBoundary>

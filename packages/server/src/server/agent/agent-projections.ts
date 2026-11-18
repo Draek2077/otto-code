@@ -322,6 +322,7 @@ function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentC
       preapproved: config.toolPolicy.preapproved.map((grant) => ({ ...grant })),
     };
   }
+  if (config.ottoProfile) serializable.ottoProfile = config.ottoProfile; // OTTO(agent-teams)
   if (config.systemPrompt) {
     serializable.systemPrompt = config.systemPrompt;
   }

@@ -5,12 +5,13 @@ import {
   ArchitecturalViewsScreen,
   ArchitecturalViewsWorkspace,
 } from "@getpaseo/plugin/client/otto-architectural-views";
+const ARCHITECTURE_ICON = "Network";
 function Navigation({ currentScreen, openScreen }: PluginSidebarItemProps) {
   const open = useCallback(() => openScreen({ screenId: "views" }), [openScreen]);
   return (
     <SidebarRow
-      icon="Network"
-      label="Architectural Views"
+      icon={ARCHITECTURE_ICON}
+      label="Architecture"
       active={currentScreen?.screenId === "views"}
       onPress={open}
     />
@@ -20,24 +21,25 @@ export default function contribute(client: PluginClientContext) {
   const cleanups = [
     client.addScreen({
       id: "views",
-      title: "Architectural Views",
+      title: "Architecture",
       Component: ArchitecturalViewsScreen,
     }),
     client.addSidebarHeaderItem({
       id: "views",
-      title: "Architectural Views",
+      title: "Architecture",
+      icon: ARCHITECTURE_ICON,
       Component: Navigation,
     }),
     client.addWorkspacePanel({
       id: "views",
-      title: "Architectural Views",
+      title: "Architecture",
       icon: "Network",
       context: "workspace",
       Component: ArchitecturalViewsWorkspace,
     }),
     client.addCommandCenterItem({
       id: "open-views",
-      title: "Open Architectural Views",
+      title: "Open Architecture",
       icon: "Network",
       context: "workspace",
       onSelect({ openPanel }) {

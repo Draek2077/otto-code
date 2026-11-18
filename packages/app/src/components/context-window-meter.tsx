@@ -1,16 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
-import { Pressable, Text, View, useWindowDimensions } from "react-native";
+import { UsageDetailsButton } from "@/otto/ui/usage-details-button"; // OTTO(usage-button): tooltip on hover, details on explicit press for every platform.
+import { useCallback, useMemo } from "react";
+import { Text } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { isNative } from "@/constants/platform";
-import { useHostReportsUsage } from "@/usage";
 import type { Theme } from "@/styles/theme";
 import { ContextWindowDetails } from "./context-window-details";
-import { ContextWindowSheet } from "./context-window-sheet";
 
 interface ContextWindowMeterProps {
   serverId: string;
@@ -24,7 +19,6 @@ interface ContextWindowMeterProps {
 }
 
 const SVG_SIZE = 14;
-const USAGE_POPOVER_WIDTH = 300;
 const COMPACT_SVG_SIZE = 12;
 const COMPACT_RADIUS = 5;
 const STROKE_WIDTH = 2;
@@ -151,15 +145,6 @@ export function ContextWindowMeter({
   glyphSize,
 }: ContextWindowMeterProps) {
   const { t } = useTranslation();
-  const { width } = useWindowDimensions();
-  // Usage cards need a wider popover; without them it keeps the plain tooltip shape.
-  const showsUsage = useHostReportsUsage(serverId);
-  const popoverWidth = Math.min(USAGE_POPOVER_WIDTH, width - 24);
-  // Compact screens open the details in a sheet, which can hold a pressable Refresh.
-  const isCompact = useIsCompactFormFactor();
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const openSheet = useCallback(() => setIsSheetOpen(true), []);
-  const closeSheet = useCallback(() => setIsSheetOpen(false), []);
   const percentage =
     maxTokens !== null && usedTokens !== null ? getUsagePercentage(maxTokens, usedTokens) : null;
   const geometry = getMeterGeometry(showPercentage, glyphSize);
@@ -180,7 +165,6 @@ export function ContextWindowMeter({
   );
   const formattedSessionCost =
     typeof totalCostUsd === "number" ? formatSessionCost(totalCostUsd) : null;
-  const containerStyle = geometry.containerStyle;
   const ring = (
     <ContextWindowRing
       size={geometry.svgSize}
@@ -198,105 +182,27 @@ export function ContextWindowMeter({
     ? t("contextWindow.accessibility", { percentage: context.percentage })
     : t("contextWindow.accessibilityNoData");
 
-  if (isCompact) {
-    return (
-      <>
-        <Pressable
-          style={containerStyle}
-          testID="context-window-meter"
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel}
-          onPress={openSheet}
-        >
-          {ring}
-          {percentageLabel}
-        </Pressable>
-        <ContextWindowSheet open={isSheetOpen} onClose={closeSheet}>
-          <ContextWindowDetails
-            serverId={serverId}
-            agentId={agentId}
-            context={context}
-            sessionCost={formattedSessionCost}
-            showTitle={false}
-            refreshable
-          />
-        </ContextWindowSheet>
-      </>
-    );
-  }
-
-  const popoverStyle = showsUsage
-    ? [styles.usagePopover, { width: popoverWidth }]
-    : styles.plainPopover;
-
-  // Native wide screens have no hover, so the details open in a tooltip on press. The tooltip
-  // takes no presses, so its usage cards have no Refresh.
-  if (isNative) {
-    return (
-      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile>
-        <TooltipTrigger asChild triggerRefProp="ref">
-          <Pressable
-            style={containerStyle}
-            testID="context-window-meter"
-            accessibilityRole="image"
-            accessibilityLabel={accessibilityLabel}
-          >
-            {ring}
-            {percentageLabel}
-          </Pressable>
-        </TooltipTrigger>
-        <TooltipContent
-          side="top"
-          align="center"
-          offset={8}
-          maxWidth={showsUsage ? popoverWidth : undefined}
-          style={popoverStyle}
-          testID="context-window-meter-tooltip"
-        >
-          <ContextWindowDetails
-            serverId={serverId}
-            agentId={agentId}
-            context={context}
-            sessionCost={formattedSessionCost}
-            showTitle
-            refreshable={false}
-          />
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
-
   return (
-    <HoverCard>
-      <HoverCardTrigger focusable accessibilityLabel={accessibilityLabel}>
-        <View
-          style={containerStyle}
-          testID="context-window-meter"
-          accessibilityRole="image"
-          accessibilityLabel={accessibilityLabel}
-        >
+    <UsageDetailsButton
+      key={serverId + ":" + agentId}
+      label={accessibilityLabel}
+      tooltip={t("contextWindow.title")}
+      glyph={
+        <>
           {ring}
           {percentageLabel}
-        </View>
-      </HoverCardTrigger>
-      <HoverCardContent
-        placement="top"
-        offset={8}
-        role="dialog"
-        accessibilityLabel={t("contextWindow.title")}
-        testID="context-window-details"
-        style={popoverStyle}
-      >
-        <ContextWindowDetails
-          serverId={serverId}
-          agentId={agentId}
-          context={context}
-          sessionCost={formattedSessionCost}
-          showTitle
-          refreshable
-        />
-      </HoverCardContent>
-    </HoverCard>
+        </>
+      }
+    >
+      <ContextWindowDetails
+        serverId={serverId}
+        agentId={agentId}
+        context={context}
+        sessionCost={formattedSessionCost}
+        showTitle
+        refreshable
+      />
+    </UsageDetailsButton>
   );
 }
 

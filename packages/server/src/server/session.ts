@@ -1,3 +1,4 @@
+import { authorProfile, metadataRoster } from "./otto/agent-profiles/author.js"; // OTTO(profile-authoring)
 import { AgentDirectory } from "./agent/directory.js";
 import { searchTimeline } from "./agent/chat-search/index.js";
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
@@ -810,6 +811,7 @@ export class Session {
   private readonly providerCatalogSession: ProviderCatalogSession;
   private readonly usageSession: UsageSession;
   private readonly workspaceFilesSession: WorkspaceFilesSession;
+  private readonly profileGeneration: ReturnType<typeof createAgentStructuredTextGeneration>; // OTTO(profile-authoring)
   private readonly agentConfigSession: AgentConfigSession;
   private readonly projectConfigSession: ProjectConfigSession;
   private readonly daemonSession: DaemonSession;
@@ -946,6 +948,12 @@ export class Session {
         await this.workspaceProvisioning.ensureWorkspaceRecordUnarchived(workspace);
       },
     });
+    this.profileGeneration = createAgentStructuredTextGeneration({
+      agentManager: this.agentManager,
+      providerSnapshotManager,
+      readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
+      getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
+    }); // OTTO(profile-authoring): reuse the host metadata provider chain.
     this.checkoutSession = new CheckoutSession({
       host: {
         emit: (msg) => this.emit(msg),
@@ -960,12 +968,7 @@ export class Session {
       checkoutDiffManager,
       gitMetadataGenerator: createGitMetadataGenerator({
         workspaceGitService: this.workspaceGitService,
-        generation: createAgentStructuredTextGeneration({
-          agentManager: this.agentManager,
-          providerSnapshotManager,
-          readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
-          getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
-        }),
+        generation: this.profileGeneration,
       }),
       paseoHome: this.paseoHome,
       worktreesRoot: this.worktreesRoot,
@@ -1036,7 +1039,10 @@ export class Session {
         },
         setMode: async (agentId, modeId) =>
           (await setAgentModeCommand({ agentManager }, { agentId, modeId })).notice,
-        setModel: (agentId, modelId) => agentManager.setAgentModel(agentId, modelId),
+        selectProfile: (agentId, id) => agentManager.selectChatProfile(agentId, id), // OTTO(agent-teams)
+        setModel: async (agentId, modelId) => {
+          await agentManager.selectChatProfile(agentId, null, modelId);
+        },
         setFeature: (agentId, featureId, value) =>
           agentManager.setAgentFeature(agentId, featureId, value),
         setThinking: (agentId, thinkingOptionId) =>
@@ -1563,9 +1569,7 @@ export class Session {
   }
 
   private readStructuredGenerationDaemonConfig(): StructuredGenerationDaemonConfig {
-    return {
-      metadataGeneration: this.daemonConfigStore.get().metadataGeneration,
-    };
+    return metadataRoster(this.daemonConfigStore.get()); // OTTO(agent-teams)
   }
 
   public getRuntimeMetrics(): SessionRuntimeMetrics {
@@ -2816,6 +2820,53 @@ export class Session {
     }
   }
 
+  private dispatchProfileMemory(
+    msg: Extract<SessionInboundMessage, { type: "agent.profile.memory.request" }>,
+  ) {
+    const operation =
+      this.agentManager.profileMemory?.manage(msg.input, async (id) => {
+        const workspace = await this.workspaceRegistry.get(id);
+        if (!workspace) throw new Error("Select a workspace on this host.");
+        const project = await this.projectRegistry.get(workspace.projectId);
+        if (!project) throw new Error("Workspace project unavailable.");
+        return project.rootPath;
+      }) ?? Promise.reject(new Error("Profile memory unavailable."));
+    return operation
+      .catch((error: unknown) => {
+        this.sessionLogger.warn({ err: error }, "Profile memory operation failed");
+        return {
+          kind: "error" as const,
+          message:
+            "Profile memory could not be updated or read. Check the Profile, workspace and host log.",
+        };
+      })
+      .then((result) =>
+        this.emit({
+          type: "agent.profile.memory.response",
+          payload: { requestId: msg.requestId, result },
+        }),
+      );
+  }
+
+  // OTTO(agent-profiles): keep Profile operations outside Paseo's configuration dispatch.
+  private dispatchOttoProfileMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      // OTTO(profile-authoring)
+      case "agent.profile.memory.request":
+        return this.dispatchProfileMemory(msg); // OTTO(profile-memory)
+      case "agent.profile.author.request": {
+        return authorProfile(this.profileGeneration, msg.input).then((result) =>
+          this.emit({
+            type: "agent.profile.author.response",
+            payload: { requestId: msg.requestId, result },
+          }),
+        );
+      }
+      default:
+        return undefined;
+    }
+  }
+
   private dispatchAgentConfigMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "set_agent_mode_request":
@@ -2864,7 +2915,7 @@ export class Session {
       case "write_project_config_request":
         return this.projectConfigSession.handleWriteProjectConfigRequest(msg);
       default:
-        return undefined;
+        return this.dispatchOttoProfileMessage(msg);
     }
   }
 

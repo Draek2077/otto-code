@@ -1,3 +1,4 @@
+// OTTO(sidebar-icons): preserve per-contribution settings artwork across host grouping.
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import type { InstalledPlugin } from "./types";
@@ -41,6 +42,19 @@ function installed(
 }
 
 describe("groupPluginSidebarItems", () => {
+  it("preserves per-feature settings icons across header and footer host grouping", () => {
+    const plugins = [installed("host-a"), installed("host-b")];
+    for (const plugin of plugins) {
+      plugin.sidebarItems.header[0]!.icon = "BookOpen";
+      plugin.sidebarItems.footer[0]!.icon = "Brain";
+    }
+    expect(groupPluginSidebarItems(plugins, "header")[0]).toMatchObject({
+      icon: "BookOpen",
+      targets: [{ plugin: plugins[0] }, { plugin: plugins[1] }],
+    });
+    expect(groupPluginSidebarItems(plugins, "footer")[0]?.icon).toBe("Brain");
+    expect(groupPluginSidebarItems([installed("unannotated")], "header")[0]?.icon).toBeUndefined();
+  });
   it("coalesces the same plugin contribution across hosts", () => {
     const groups = groupPluginSidebarItems([installed("host-a"), installed("host-b")], "header");
 

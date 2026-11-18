@@ -32,6 +32,12 @@ file-list/diff review sheet, with individual operation outcomes and safe undo.
 
 ## Language servers and host settings
 
+Editor device preferences and host Code preferences save when changed. Writes serialize,
+and edits made during a write remain queued behind its acknowledged revision. A failed or
+conflicting host write retains the draft and requires explicit reload; there is no automatic
+retry or revision rebase. Normal preference rows have no Save button. Language-server
+installation, process controls and compatibility checks remain explicit actions.
+
 **Settings → Host → Code** controls the selected host, including remote hosts.
 Code intelligence is enabled by default. Processes start only when an editor
 requests the corresponding language. Opening Settings discovers commands but

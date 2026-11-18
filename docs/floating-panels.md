@@ -323,6 +323,15 @@ The "render invisible to measure, then reveal" pattern is the canonical
 solution to chicken-and-egg positioning in this codebase. Reach for it before
 anything fancier.
 
+<!-- OTTO(menu-geometry): preserve position while asynchronous menu content grows. -->
+
+For content that changes after opening, keep geometry under the positioning code's control.
+Custom Reanimated web keyframes restore an animation-end snapshot during delayed cleanup. That
+can undo a newer position, width and height when account reports or submenu contents arrive.
+The menu surface uses a predefined web fade, which leaves geometry alone; native keeps its
+existing animation. A timer that removes a fixed height cannot prevent a later snapshot from
+restoring stale coordinates.
+
 ## Gotcha 6 — Bottom sheet refs are not lifecycle truth
 
 `@gorhom/bottom-sheet` modals churn their imperative ref while presenting and

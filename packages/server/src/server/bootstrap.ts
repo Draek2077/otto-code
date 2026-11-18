@@ -1,3 +1,5 @@
+import { initialRoster } from "@getpaseo/protocol/otto/starter-roster"; // OTTO(agent-teams)
+import { metadataRoster } from "./otto/agent-profiles/author.js"; // OTTO(agent-teams)
 import {
   OTTO_APP_BASE_URL,
   OTTO_PASEO_BASE_VERSION,
@@ -280,6 +282,9 @@ import { createNativeContextGeneration } from "./otto/context-management/native-
 import { resolveStructuredGenerationProviders } from "./agent/structured-generation-providers.js"; // OTTO(context-compaction): reuse canonical model selection without launching a normal agent.
 import { nativeContextInspector } from "./otto/context-management/native-host.js"; // OTTO(context-management): read-only native conventions.
 import { createKnowledgeGenerationSource } from "./otto/project-knowledge/generation.js"; // OTTO(knowledge): use the existing provider-neutral generation boundary.
+import { roleResolver } from "./otto/agent-profiles/role-selection.js"; // OTTO(role-pickers)
+import { ProfileMemoryStore } from "./otto/profile-memory/profile-memory-store.js"; // OTTO(profile-memory)
+import { ProfileMemoryService } from "./otto/profile-memory/profile-memory-service.js"; // OTTO(profile-memory)
 import { createArtifactGeneration } from "./otto/artifacts/generation.js"; // OTTO(artifacts): cancellable provider-owned utility sessions.
 import { createArtifactDataGeneration } from "./otto/artifacts/data-generation.js"; // OTTO(schedules): JSON-only updates, never HTML regeneration.
 import type { ArtifactCompletionPorts } from "./otto/artifacts/completion.js";
@@ -460,6 +465,7 @@ export interface PaseoDaemonConfig {
   appendSystemPrompt?: string;
   terminalProfiles?: TerminalProfile[];
   agentProfiles?: AgentProfile[];
+  agentTeams?: MutableDaemonConfig["agentTeams"]; // OTTO(agent-teams)
   skillSelection?: AgentSkillSelection;
   pluginsEnabled?: boolean;
   plugins?: Record<string, PluginSource>;
@@ -609,6 +615,7 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
     browserTools: { enabled: config.browserToolsEnabled ?? false },
     providers,
     metadataGeneration: {
+      ...config.metadataGeneration,
       providers: config.metadataGeneration?.providers ?? [],
     },
     autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
@@ -623,9 +630,7 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
     initialConfig.terminalProfiles = config.terminalProfiles;
   }
 
-  if (config.agentProfiles !== undefined) {
-    initialConfig.agentProfiles = config.agentProfiles;
-  }
+  Object.assign(initialConfig, initialRoster(config.agentProfiles, config.agentTeams)); // OTTO(agent-teams)
 
   return initialConfig;
 }
@@ -1097,13 +1102,19 @@ export async function createPaseoDaemon(
   ottoHostBrowser.register(); // OTTO(browser-host)
   const knowledgeGeneration = createKnowledgeGenerationSource(); // OTTO(knowledge): inert until AgentManager composition below.
   // OTTO(artifacts,schedules): both utility formats share provider selection without sharing sessions.
+  const resolveRole = roleResolver(
+    () => daemonConfigStore.get(),
+    (provider, cwd) => providerSnapshotManager.getProvider({ provider, cwd, wait: true }),
+  ); // OTTO(role-pickers)
   const artifactCompletion = (): ArtifactCompletionPorts => ({
+    resolveRole,
+    profileBrief: (id, cwd) => profileMemory.previewBrief(id, cwd), // OTTO(profile-memory): only explicitly Profile-bound generation reads lessons.
     providers: providerSnapshotManager,
     candidates: (cwd) =>
       resolveStructuredGenerationProviders({
         cwd,
         providerSnapshotManager,
-        daemonConfig: { metadataGeneration: daemonConfigStore.get().metadataGeneration },
+        daemonConfig: metadataRoster(daemonConfigStore.get()),
       }),
   });
   ottoArtifacts = new ArtifactDaemonService({
@@ -1165,6 +1176,12 @@ export async function createPaseoDaemon(
     workspace: (id) => workspaceRegistry.get(id),
     policy: (value) => workspaceGitService.ottoFetchControl.setPolicy(value),
     fetch: (cwd) => workspaceGitService.fetchWorkspace(cwd),
+    setBase: async (cwd, input) => {
+      // OTTO(diff-base): reuse the existing snapshot owner and push subscriptions.
+      const { setComparisonBaseAndRefresh } =
+        await import("./otto/workspace-git/comparison-base.js");
+      return setComparisonBaseAndRefresh(cwd, input, workspaceGitService);
+    },
   }); // OTTO(git-fetch): composition performs no Git command or settings write.
   workspaceRegistry.subscribeToMutations((mutation) => {
     if (mutation.kind === "archive" && mutation.workspace) {
@@ -1221,12 +1238,22 @@ export async function createPaseoDaemon(
         projects: projectRegistry,
       }),
   });
+  const profileMemory = new ProfileMemoryService({
+    store: new ProfileMemoryStore(path.join(config.paseoHome, "profile-memory"), logger),
+    logger,
+    readAgentProfiles: () => daemonConfigStore.get().agentProfiles ?? [],
+    resolveProjectRoot: (cwd) => workspaceGitService.resolveRepoRoot(cwd),
+  });
   const agentManager = new AgentManager({
     pluginLifecycle: pluginRuntime,
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
     ottoChatSearch, // OTTO(chat-search)
+    readProfileCatalog: (provider, cwd) =>
+      providerSnapshotManager.getProvider({ provider, cwd, wait: true }), // OTTO(agent-teams)
+    profileMemory, // OTTO(profile-memory)
+    readProfileRoster: () => daemonConfigStore.get(), // OTTO(agent-teams)
     appendSystemPrompt: config.appendSystemPrompt,
     ottoKnowledgePrompt: ottoKnowledge.sessionPrompt.bind(ottoKnowledge), // OTTO(knowledge): registry-bound, inert until an interactive session opens.
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
@@ -1251,6 +1278,7 @@ export async function createPaseoDaemon(
     }),
   ); // OTTO(architectural-views): caller-selected normal provider and permissions.
   ottoContext = new ContextManagementService({
+    profileBrief: (id, cwd) => profileMemory.previewBrief(id, cwd), // OTTO(profile-memory)
     hostId: serverId,
     home: config.paseoHome,
     workspaces: workspaceRegistry,
@@ -1273,7 +1301,7 @@ export async function createPaseoDaemon(
             resolveStructuredGenerationProviders({
               cwd,
               providerSnapshotManager,
-              daemonConfig: { metadataGeneration: daemonConfigStore.get().metadataGeneration },
+              daemonConfig: metadataRoster(daemonConfigStore.get()),
             }),
         },
         selection,
@@ -1282,7 +1310,7 @@ export async function createPaseoDaemon(
   knowledgeGeneration.initialize({
     agentManager,
     providerSnapshotManager,
-    readDaemonConfig: () => ({ metadataGeneration: daemonConfigStore.get().metadataGeneration }),
+    readDaemonConfig: () => metadataRoster(daemonConfigStore.get()),
   }); // OTTO(knowledge): wire only after both sides of the host/agent dependency exist.
   const syncPluginProviders = () => {
     agentManager.updateProviderRegistry(
@@ -1447,7 +1475,7 @@ export async function createPaseoDaemon(
     workspaceRegistry,
     workspaceGitService,
     providerSnapshotManager,
-    readDaemonConfig: () => ({ metadataGeneration: daemonConfigStore.get().metadataGeneration }),
+    readDaemonConfig: () => metadataRoster(daemonConfigStore.get()),
     gitMutation: createGitMutationService({
       workspaceGitService,
       logger,
@@ -1701,6 +1729,7 @@ export async function createPaseoDaemon(
     );
   };
   const scheduleNativePolicy = new ScheduleNativePolicy({
+    resolveRole, // OTTO(schedule-profiles)
     home: config.paseoHome,
     hostId: serverId,
     hostLabel: serverId,
@@ -1729,6 +1758,7 @@ export async function createPaseoDaemon(
     },
   }); // OTTO(schedules): owners are ready before the original clock starts.
   const scheduleService = new ScheduleService({
+    resolveRole, // OTTO(schedule-profiles)
     paseoHome: config.paseoHome,
     logger,
     agentManager,

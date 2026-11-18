@@ -84,6 +84,53 @@ async function readNextComposerPaintHeight(page: Page): Promise<number> {
   return page.evaluate(() => Reflect.get(globalThis, "__composerNextPaintHeight"));
 }
 
+// OTTO(composer-size): verify actual line geometry, rather than a fixed default font's pixels.
+for (const [width, contentFontSize] of [
+  [1280, 15],
+  [390, 22],
+]) {
+  test(`starts at one line and grows and shrinks at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 720 });
+    await page.addInitScript((size) => {
+      localStorage.setItem("@otto:app-settings", JSON.stringify({ contentFontSize: size }));
+    }, contentFontSize);
+    const agent = await seedMockAgentWorkspace({
+      repoPrefix: "composer-single-line-",
+      title: "Single-line composer",
+    });
+    try {
+      await openAgentRoute(page, agent);
+      await expectComposerVisible(page);
+      const composer = composerLocator(page);
+      const lineBox = await composer.evaluate((node) => {
+        const css = getComputedStyle(node);
+        return (
+          parseFloat(css.lineHeight) +
+          parseFloat(css.paddingTop) +
+          parseFloat(css.paddingBottom) +
+          parseFloat(css.borderTopWidth) +
+          parseFloat(css.borderBottomWidth)
+        );
+      });
+      await expect
+        .poll(async () => Math.abs((await composerHeight(page)) - lineBox))
+        .toBeLessThanOrEqual(1);
+      const emptyHeight = await composerHeight(page);
+      await composer.fill("One line");
+      await expectComposerHeight(page, emptyHeight);
+      await composer.fill("first\nsecond\nthird");
+      await expect.poll(() => composerHeight(page)).toBeGreaterThan(emptyHeight * 2);
+      await composer.fill("A sentence that wraps naturally. ".repeat(20));
+      await expect.poll(() => composerHeight(page)).toBeGreaterThan(emptyHeight);
+      await composer.fill("");
+      await expectComposerHeight(page, emptyHeight);
+      await page.screenshot({ path: testInfo.outputPath("single-line-composer.png") });
+    } finally {
+      await agent.cleanup();
+    }
+  });
+}
+
 test("blank composer lines remain present and keep their measured height", async ({ page }) => {
   const agent = await seedMockAgentWorkspace({
     repoPrefix: "composer-whitespace-",

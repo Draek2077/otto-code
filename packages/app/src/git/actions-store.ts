@@ -102,7 +102,13 @@ interface CheckoutGitActionsStoreState {
     actionId: CheckoutGitAsyncActionId;
   }) => CheckoutGitActionStatus;
 
-  commit: (params: { serverId: string; cwd: string }) => Promise<void>;
+  commit: (params: {
+    serverId: string;
+    cwd: string;
+    message?: string;
+    paths?: string[];
+    onOutput?: (output: string) => void;
+  }) => Promise<void>; // OTTO(manual-commit): same in-flight operation and canonical invalidation.
   pull: (params: { serverId: string; cwd: string }) => Promise<void>;
   push: (params: { serverId: string; cwd: string }) => Promise<void>;
   pullAndPush: (params: { serverId: string; cwd: string }) => Promise<void>;
@@ -182,14 +188,15 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
     return get().statusByCheckout[key]?.[actionId] ?? "idle";
   },
 
-  commit: async ({ serverId, cwd }) => {
+  commit: async ({ serverId, cwd, message, paths, onOutput }) => {
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "commit",
       run: async () => {
         const client = resolveClient(serverId);
-        const payload = await client.checkoutCommit(cwd, { addAll: true });
+        const payload = await client.checkoutCommit(cwd, { addAll: true, message, paths }); // OTTO(manual-commit)
+        onOutput?.(payload.consoleOutput ?? payload.error?.message ?? "Commit completed."); // OTTO(manual-commit): operation output is local to the form.
         if (payload.error) {
           throw new Error(payload.error.message);
         }

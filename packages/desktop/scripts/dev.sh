@@ -32,6 +32,8 @@ export PASEO_DAEMON_ENDPOINT="$DAEMON_ENDPOINT"
 
 export PASEO_CORS_ORIGINS="${PASEO_CORS_ORIGINS:-*}"
 
+# OTTO(dev-runtime): source-matched daemon, serialized builds before Electron launch.
+npm --prefix "$ROOT_DIR" run build:dev-runtime
 npm --prefix "$DESKTOP_DIR" run build:main
 
 echo "══════════════════════════════════════════════════════"

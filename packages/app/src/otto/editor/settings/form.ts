@@ -58,6 +58,7 @@ export class EditorSettingsForm {
     if (!draft || !saved || phase === "loading") return;
     const next = { ...draft, ...patch };
     this.publish({ draft: next, dirty: !equal(next, saved.preferences) });
+    void this.save();
   }
   async reload() {
     if (this.pending || !this.active) return;
@@ -74,7 +75,15 @@ export class EditorSettingsForm {
   }
   async save() {
     const { saved, draft, phase } = this.snapshot;
-    if (!saved || !draft || this.pending || phase !== "ready" || !this.active) return;
+    if (
+      !saved ||
+      !draft ||
+      !this.snapshot.dirty ||
+      this.pending ||
+      phase !== "ready" ||
+      !this.active
+    )
+      return;
     const activation = this.activation;
     this.pending = true;
     this.publish({ phase: "saving", error: null });
@@ -94,6 +103,9 @@ export class EditorSettingsForm {
         this.publish({ phase: "blocked", error: message(error) });
     } finally {
       this.pending = false;
+      // Only our own accepted revision can admit another queued preference edit.
+      if (activation === this.activation && this.snapshot.phase === "ready" && this.snapshot.dirty)
+        void this.save();
     }
   }
 }

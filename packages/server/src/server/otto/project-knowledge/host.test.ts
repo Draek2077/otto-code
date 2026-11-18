@@ -13,6 +13,7 @@ import { createKnowledgeTools } from "./tools.js";
 import {
   mutateKnowledge,
   readKnowledgeCatalog,
+  readKnowledgeSettings,
   readKnowledgePage,
   readKnowledgeLinkHealth,
   inspectKnowledgeFormat,
@@ -30,6 +31,30 @@ import {
 
 const parent = fileURLToPath(new URL("../../../../../../.tmp/knowledge-host/", import.meta.url));
 const roots: string[] = [];
+it("loads project settings independently of invalid article history without rewriting it", async () => {
+  const f = await fixture();
+  const directory = path.join(f.repo, ".otto", "knowledge", "findings");
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, "invalid-history.md");
+  const original = "An existing article with invalid history.\n";
+  await writeFile(file, original);
+  const settings = readKnowledgeSettings.output.parse(
+    await f.host.invoke(readKnowledgeSettings.name, { scope: f.scope }),
+  );
+  expect(settings).toMatchObject({
+    ok: true,
+    value: { projectId: "project-a", location: "repository", path: path.join(f.repo, ".otto") },
+  });
+  const catalog = readKnowledgeCatalog.output.parse(
+    await f.host.invoke(readKnowledgeCatalog.name, f.catalogInput),
+  );
+  expect(catalog).toMatchObject({
+    ok: false,
+    error: { code: "invalid", message: expect.stringContaining("invalid-history.md") },
+  });
+  expect(await readFile(file, "utf8")).toBe(original);
+  expect(await readdir(directory)).toEqual(["invalid-history.md"]);
+});
 afterEach(async () => {
   for (const root of roots.splice(0)) {
     const relative = path.relative(parent, root);

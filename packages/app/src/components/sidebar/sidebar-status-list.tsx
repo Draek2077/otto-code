@@ -31,14 +31,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { density, densityIconBox, densityIconProps } from "@/styles/density";
 import type { SidebarSurfaceBackdrop } from "@/styles/surface-backdrop";
 import { withUnistyles } from "react-native-unistyles";
-import {
-  ChevronDown,
-  ChevronRight,
-  CircleAlert,
-  CircleCheck,
-  CircleDot,
-  CircleX,
-} from "lucide-react-native";
+import { ChevronDown, ChevronRight, CircleCheck } from "lucide-react-native";
 import { useToast } from "@/contexts/toast-context";
 import { WorkspaceRenameModal } from "@/components/workspace-rename-modal";
 import { useWorkspaceClipboardActions } from "@/hooks/use-workspace-clipboard-actions";
@@ -61,7 +54,6 @@ import {
 } from "@/components/sidebar/sidebar-workspace-row-content";
 import { useOpenKebabMenuVisibility } from "@/components/sidebar/use-open-kebab-menu-visibility";
 import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop";
-import { getStatusDotColor } from "@/utils/status-dot-color";
 import { selectWorkspaceServiceSummary } from "@/components/sidebar/workspace-meta-row";
 import {
   SidebarWorkspaceTrailingContent,
@@ -80,32 +72,23 @@ import type { ToggleSidebarWorkspacePin } from "@/hooks/use-sidebar-workspace-pi
 import { DraggableList, type DraggableRenderItemInfo } from "@/components/draggable-list";
 import type { DraggableListDragHandleProps } from "@/components/draggable-list.types";
 import { useLongPressDragInteraction } from "@/components/sidebar/use-long-press-drag-interaction";
+import { ChatStatusIcon } from "@/otto/chat/identity/status-icon"; // OTTO(chat-identity): released semantic glyphs.
+import { ChatSpinner } from "@/otto/chat/identity/spinner";
+import { workspaceActivityBlue } from "@/otto/chat/identity/palette";
 
 // Themed icon wrappers
 const mutedGroupIconProps = densityIconProps("sm", (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
-// One mapping per bucket, resolved through the status-dot producer so a group header and
-// the rows under it cannot disagree about what "failed" looks like.
-const needsInputGroupIconProps = densityIconProps("sm", (theme) => ({
-  color: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
-}));
-const failedGroupIconProps = densityIconProps("sm", (theme) => ({
-  color: getStatusDotColor({ theme, bucket: "failed" }) ?? undefined,
-}));
-const attentionGroupIconProps = densityIconProps("sm", (theme) => ({
-  color: getStatusDotColor({ theme, bucket: "attention" }) ?? undefined,
-}));
-const runningGroupIconProps = densityIconProps("sm", (theme) => ({
-  color: getStatusDotColor({ theme, bucket: "running" }) ?? undefined,
-}));
-
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
-const ThemedCircleAlert = withUnistyles(CircleAlert);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
-const ThemedCircleDot = withUnistyles(CircleDot);
-const ThemedCircleX = withUnistyles(CircleX);
+const ThemedChatStatusIcon = withUnistyles(ChatStatusIcon);
+const ThemedChatSpinner = withUnistyles(ChatSpinner);
+const groupSpinnerProps = densityIconProps("sm", (theme) => ({
+  glowA: workspaceActivityBlue(theme.colorScheme === "dark"),
+  glowB: workspaceActivityBlue(theme.colorScheme === "dark"),
+}));
 const EMPTY_SHORTCUT_INDEX = new Map<string, number>();
 
 function statusWorkspaceKeyExtractor(workspace: SidebarWorkspaceEntry): string {
@@ -484,13 +467,13 @@ function StatusGroupLeadingVisual({
 function StatusGroupIcon({ bucket }: { bucket: StatusBucket }) {
   switch (bucket) {
     case "needs_input":
-      return <ThemedCircleAlert uniProps={needsInputGroupIconProps} />;
+      return <ThemedChatStatusIcon bucket="needs_input" uniProps={mutedGroupIconProps} />;
     case "failed":
-      return <ThemedCircleX uniProps={failedGroupIconProps} />;
+      return <ThemedChatStatusIcon bucket="failed" uniProps={mutedGroupIconProps} />;
     case "attention":
-      return <ThemedCircleCheck uniProps={attentionGroupIconProps} />;
+      return <ThemedChatStatusIcon bucket="attention" uniProps={mutedGroupIconProps} />;
     case "running":
-      return <ThemedCircleDot uniProps={runningGroupIconProps} />;
+      return <ThemedChatSpinner uniProps={groupSpinnerProps} />;
     case "done":
       return <ThemedCircleCheck uniProps={mutedGroupIconProps} />;
   }

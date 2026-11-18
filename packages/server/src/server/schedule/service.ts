@@ -1,3 +1,5 @@
+import { presentationLabel } from "@getpaseo/protocol/otto/agent-teams"; // OTTO(schedule-profiles)
+import { scheduleProfile, type ResolveRole } from "../otto/agent-profiles/role-selection.js"; // OTTO(schedule-profiles)
 import { formatSystemNotificationPrompt } from "../agent/agent-messages/index.js";
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
@@ -112,6 +114,12 @@ function applyNewAgentConfig(
   patch: UpdateScheduleNewAgentConfig,
 ): Extract<ScheduleTarget, { type: "new-agent" }> {
   const config = { ...target.config };
+  if (patch.agentProfile !== undefined) {
+    // OTTO(schedule-profiles)
+    delete config.personality;
+    if (patch.agentProfile) config.agentProfile = patch.agentProfile;
+    else delete config.agentProfile;
+  }
   if (patch.provider !== undefined) {
     const trimmed = patch.provider.trim();
     if (!trimmed) {
@@ -272,6 +280,7 @@ interface ScheduleWorkspaceCreateInput {
 }
 
 export interface ScheduleServiceOptions {
+  resolveRole?: ResolveRole; // OTTO(schedule-profiles)
   paseoHome: string;
   logger: Logger;
   agentManager: ScheduleAgentManager;
@@ -312,10 +321,12 @@ export class ScheduleService {
   private readonly runningScheduleIds = new Set<string>();
   private tickTimer: ReturnType<typeof setInterval> | null = null;
 
+  private readonly resolveRole?: ResolveRole; // OTTO(schedule-profiles)
   constructor(options: ScheduleServiceOptions) {
     this.logger = options.logger.child({ module: "schedule-service" });
     this.store =
       options.store ?? new ScheduleStore(join(options.paseoHome, "schedules"), this.logger); // OTTO(schedules)
+    this.resolveRole = options.resolveRole; // OTTO(schedule-profiles)
     this.otto = options.otto; // OTTO(schedules)
     this.agentManager = options.agentManager;
     this.agentStorage = options.agentStorage;
@@ -1110,10 +1121,11 @@ export class ScheduleService {
     runId: string,
     turnOptions?: ScheduleTurnFactory,
   ): Promise<ScheduleExecutionResult> {
-    const config = schedule.target.type === "new-agent" ? schedule.target.config : null;
-    if (!config) {
+    const stored = schedule.target.type === "new-agent" ? schedule.target.config : null;
+    if (!stored) {
       throw new Error(`Schedule ${schedule.id} target changed during execution`);
     }
+    const { config, binding } = await scheduleProfile(stored, this.resolveRole); // OTTO(schedule-profiles): capture once before provisioning.
     await this.assertNewAgentCwdDirectory(config.cwd);
     let workspace: PersistedWorkspaceRecord | null = null;
     let agentId: string | null = null;
@@ -1129,11 +1141,12 @@ export class ScheduleService {
       const created = await this.createAgent({
         kind: "mcp",
         provider: formatScheduleProviderModel(runConfig),
-        config: buildScheduleAgentConfig(runConfig),
+        config: { ...buildScheduleAgentConfig(runConfig), ottoProfile: binding }, // OTTO(schedule-profiles)
         cwd: workspace.cwd,
         workspaceId: workspace.workspaceId,
         title: resolveScheduleAgentTitle(config, schedule.prompt),
         labels: {
+          ...(binding ? { "otto.profile": presentationLabel(binding) } : {}), // OTTO(schedule-profiles)
           "paseo.schedule-id": schedule.id,
           "paseo.schedule-run": runId,
         },

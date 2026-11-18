@@ -19,6 +19,7 @@ import {
   type WorkflowKind,
 } from "@getpaseo/plugin/otto/workflows";
 import { SettingsSelect } from "@/components/settings";
+import { FeatureScopeSelect } from "../ui/feature-browser";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { useFetchQuery } from "@/data/query";
@@ -555,11 +556,11 @@ function Directory(props: PluginScreenProps | PluginWorkspacePanelProps) {
     <View testID="otto-workflows-page" style={styles.page}>
       {!("workspaceId" in props) ? (
         <View style={styles.toolbar}>
-          <SettingsSelect
+          <FeatureScopeSelect
             label="Project"
             value={projectId}
             options={options}
-            onValueChange={setProject}
+            onChange={setProject}
           />
         </View>
       ) : null}

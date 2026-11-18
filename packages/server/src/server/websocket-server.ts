@@ -1833,6 +1833,8 @@ export class VoiceAssistantWebSocketServer {
         ottoConnectors: ottoBitbucketAvailable(this.pluginRuntime), // OTTO(connectors): same inert built-in owner, independent feature gate.
         ottoTerminal: terminalAvailable(this.pluginRuntime), // OTTO(terminal)
         ottoGitFetch: gitFetchAvailable(this.pluginRuntime), // OTTO(git-fetch)
+        ottoGitDiffBase: gitFetchAvailable(this.pluginRuntime), // OTTO(diff-base)
+        ottoManualCommit: true, // OTTO(manual-commit): selected-file operation is implemented by this daemon.
         ottoEditor: editorAvailable(this.pluginRuntime), // OTTO(editor)
         ottoSpeech: speechAvailable(this.pluginRuntime), // OTTO(speech)
         ottoKnowledge: knowledgeAvailable, // OTTO(knowledge)
@@ -1999,6 +2001,9 @@ export class VoiceAssistantWebSocketServer {
         checkoutDiscardChanges: true,
         // COMPAT(agentProfiles): added in v0.3.2, remove gate after 2027-02-11.
         agentProfiles: true,
+        ottoProfileMemory: true, // OTTO(profile-memory)
+        ottoRolePickers: true, // OTTO(role-pickers)
+        ottoAgentTeams: true, // OTTO(agent-teams)
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: true,
       },

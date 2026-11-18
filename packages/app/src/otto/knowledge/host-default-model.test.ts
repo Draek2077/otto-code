@@ -65,11 +65,11 @@ it("serializes writes and retains the selection on conflict without automatic re
   await f.model.reload();
   expect(f.model.getSnapshot()).toMatchObject({ origin, location: "repository", blocked: false });
 });
-it("invalidates a captured confirmation after hiding without submitting its write", async () => {
+it("does not write a selection made while hidden", async () => {
   const f = await fixture();
-  f.model.select("host");
   const authority = f.model.getAuthority();
   f.model.setActive(false);
+  f.model.select("host");
   f.model.setActive(true);
   await f.model.save(authority);
   expect(f.save).not.toHaveBeenCalled();

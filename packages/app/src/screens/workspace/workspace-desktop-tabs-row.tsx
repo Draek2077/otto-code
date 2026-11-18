@@ -87,6 +87,7 @@ import {
 } from "@/components/ui/horizontal-scroll-boundary";
 import { useSessionStore } from "@/stores/session-store";
 import { PreviewGutterMenu } from "@/otto/preview/gutter-menu"; // OTTO(preview): one play menu, optional management page last.
+import { explorerChrome } from "@/otto/ui/explorer-chrome"; // OTTO(workspace-chrome): Explorer tabs share their sidebar surface.
 import { WakeWordGutter } from "@/otto/speech/wake/button"; // OTTO(wake-word)
 
 const DROPDOWN_WIDTH = 220;
@@ -1352,7 +1353,7 @@ function ResolvedWorkspaceDesktopTabsRow({
 
   const row = (
     <View
-      style={styles.tabsContainer}
+      style={[styles.tabsContainer, host === "explorer" && explorerChrome.tabs]}
       testID="workspace-tabs-row"
       onLayout={handleTabsContainerLayout}
     >
@@ -1420,13 +1421,15 @@ function ResolvedWorkspaceDesktopTabsRow({
           rightStyle={tabScrollBoundary.rightShadeStyle}
         />
       </View>
-      {/* OTTO(preview): same play menu for all servers; management is its final option. */}
-      <View onLayout={handlePreviewMenuLayout}>
-        {/* OTTO(wake-word): include the optional listener control in the existing measured gutter. */}
-        <WakeWordGutter>
-          <PreviewGutterMenu serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
-        </WakeWordGutter>
-      </View>
+      {/* OTTO(preview): the creation gutter belongs to the workspace, never the Explorer/window controls. */}
+      {host !== "explorer" ? (
+        <View onLayout={handlePreviewMenuLayout}>
+          {/* OTTO(wake-word): include the optional listener control in the existing measured gutter. */}
+          <WakeWordGutter>
+            <PreviewGutterMenu serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
+          </WakeWordGutter>
+        </View>
+      ) : null}
       <WorkspacePaneToolbarActions
         panePanelKinds={panePanelKinds}
         host={host}

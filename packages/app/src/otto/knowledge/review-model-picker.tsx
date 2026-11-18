@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { View } from "react-native";
+import { useRolePicker } from "../agent-profiles/use-role-picker";
+import type { AgentProfilePickerRow } from "@/agent-profiles";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/form-field";
@@ -14,13 +16,18 @@ import { styles } from "./styles";
 
 // OTTO(review-model-picker): the catalog UI is shared by reviewed prose operations; drafts stay with each feature.
 export interface ReviewModelSelection {
+  profileId?: string;
   provider: string;
   model: string;
   providerLabel: string;
   modelLabel: string;
 }
 export interface ReviewModelPickerModel {
-  getSnapshot(): { selection: ReviewModelSelection | null; busy: boolean };
+  getSnapshot(): {
+    selection: ReviewModelSelection | null;
+    busy: boolean;
+    selectionTouched?: boolean;
+  };
   subscribe(listener: () => void): () => void;
   selectModel(selection: ReviewModelSelection | null): void;
 }
@@ -31,11 +38,13 @@ export function ReviewModelPicker({
   hostId,
   active,
   allowAutomatic = true,
+  artificer,
 }: {
   model: ReviewModelPickerModel;
   hostId: string;
   active: boolean;
   allowAutomatic?: boolean;
+  artificer?: "create" | "edit";
 }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const connected = useHostRuntimeIsConnected(hostId);
@@ -70,8 +79,28 @@ export function ReviewModelPicker({
     next[index] = { ...captured, modelSelection: { kind: "models", rows: [row, ...rows] } };
     return next;
   }, [entries, state.selection, connected]);
+  const applyProfile = useCallback(
+    (profileId: string, row: AgentProfilePickerRow) =>
+      model.selectModel({
+        profileId,
+        provider: row.provider,
+        model: row.modelId,
+        modelLabel: row.modelId,
+        providerLabel: row.provider,
+      }),
+    [model],
+  );
+  const { picker, mark } = useRolePicker(
+    active && artificer ? hostId : null,
+    "artificer",
+    entries,
+    state.selection?.profileId,
+    artificer === "create" && !state.selectionTouched && !state.selection && !state.busy,
+    applyProfile,
+  );
   const select = useCallback(
     (provider: string, modelId: string) => {
+      mark();
       const entry = providers.find((item) => item.id === provider);
       const row =
         entry?.modelSelection.kind === "models"
@@ -85,9 +114,12 @@ export function ReviewModelPicker({
           modelLabel: row.modelLabel,
         });
     },
-    [model, providers],
+    [model, providers, mark],
   );
-  const automatic = useCallback(() => model.selectModel(null), [model]);
+  const automatic = useCallback(() => {
+    mark();
+    model.selectModel(null);
+  }, [model, mark]);
   const open = useCallback(() => {
     refetchIfStale();
   }, [refetchIfStale]);
@@ -101,6 +133,9 @@ export function ReviewModelPicker({
     <View style={styles.contentGap}>
       <Field label="Preferred model">
         <CombinedModelSelector
+          roleSelectionLabel={picker?.currentName}
+          onApplyProfile={picker?.applyProfile}
+          profiles={artificer ? picker : null}
           providers={providers}
           selectedProvider={state.selection?.provider ?? ""}
           selectedModel={state.selection?.model ?? ""}

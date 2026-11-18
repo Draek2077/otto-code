@@ -59,18 +59,10 @@ async function proveHostDefaults(input: {
       .getByRole("button", { name: `New store location: ${originalLabel}`, exact: true })
       .click();
     await page.getByRole("menuitem", { name: nextLabel, exact: true }).click();
-    page.once("dialog", (dialog) => void dialog.dismiss());
-    await form.getByRole("button", { name: "Save default", exact: true }).click();
-    expect(await read()).toEqual(origin);
-    await expect(
-      form.getByRole("button", { name: `New store location: ${nextLabel}`, exact: true }),
-    ).toBeVisible();
-    page.once("dialog", (dialog) => void dialog.accept());
-    await form.getByRole("button", { name: "Save default", exact: true }).click();
-    await expect(
-      form.getByText("Host default saved. Existing stores remain in place.", { exact: true }),
-    ).toBeVisible();
-    expect((await read()).defaultStoreLocation).toBe(nextLabel === "Host" ? "host" : "repository");
+    await expect(form.getByRole("button", { name: "Save default", exact: true })).toHaveCount(0);
+    await expect
+      .poll(async () => (await read()).defaultStoreLocation)
+      .toBe(nextLabel === "Host" ? "host" : "repository");
     const catalog = readKnowledgeCatalog.output.parse(
       await client.invokePluginRpc("otto-project-knowledge", readKnowledgeCatalog.name, {
         scope,
@@ -85,10 +77,9 @@ async function proveHostDefaults(input: {
       .getByRole("button", { name: `New store location: ${nextLabel}`, exact: true })
       .click();
     await page.getByRole("menuitem", { name: originalLabel, exact: true }).click();
-    page.once("dialog", (dialog) => void dialog.accept());
-    await form.getByRole("button", { name: "Save default", exact: true }).click();
-    await expect(form.getByRole("button", { name: "Save default", exact: true })).toBeDisabled();
-    expect((await read()).defaultStoreLocation).toBe(origin.defaultStoreLocation);
+    await expect
+      .poll(async () => (await read()).defaultStoreLocation)
+      .toBe(origin.defaultStoreLocation);
   } finally {
     const current = await read();
     if (current.defaultStoreLocation !== origin.defaultStoreLocation) {
@@ -436,7 +427,7 @@ for (const compact of [false, true]) {
         .click();
       await page.getByRole("menuitem", { name: "Host", exact: true }).click();
       page.once("dialog", (dialog) => void dialog.accept());
-      await surface.getByRole("button", { name: "Save storage", exact: true }).click();
+      await surface.getByRole("button", { name: "Copy and switch", exact: true }).click();
       await expect
         .poll(async () => {
           const result = readKnowledgeCatalog.output.parse(

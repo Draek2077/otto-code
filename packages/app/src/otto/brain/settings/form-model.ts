@@ -90,6 +90,8 @@ export class BrainSettingsFormModel {
   private state: BrainSettingsFormState;
   private listeners = new Set<() => void>();
   private activation: Activation | null = null;
+  private ownerSaveTimer: ReturnType<typeof setTimeout> | undefined;
+  private connectionSaveTimer: ReturnType<typeof setTimeout> | undefined;
   private runtimeSelectionVersion = 0;
   private pending: { activation: Activation; operation: Operation; redactions: string[] } | null =
     null;
@@ -188,9 +190,11 @@ export class BrainSettingsFormModel {
       ...this.state,
       connection: {
         ...this.state.connection,
+        error: this.state.connection.blocked ? this.state.connection.error : null,
         draft: { ...this.state.connection.draft, [key]: value },
       },
     });
+    this.scheduleConnectionSave();
   }
 
   editOwner<Key extends keyof OwnerDraft>(key: Key, value: OwnerDraft[Key]): void {
@@ -199,9 +203,48 @@ export class BrainSettingsFormModel {
       ...this.state,
       owner: {
         ...this.state.owner,
+        error: this.state.owner.blocked ? this.state.owner.error : null,
         draft: { ...this.state.owner.draft, [key]: value },
       },
     });
+    this.scheduleOwnerSave();
+  }
+
+  private scheduleOwnerSave(): void {
+    clearTimeout(this.ownerSaveTimer);
+    const owner = this.state.owner;
+    if (
+      !this.activation?.active ||
+      this.pending ||
+      !owner ||
+      owner.blocked ||
+      owner.error ||
+      this.state.targetChanged ||
+      !this.state.ownerDirty ||
+      this.state.credentials.access.action !== "keep" ||
+      this.state.credentials.huggingFace.action !== "keep"
+    )
+      return;
+    this.ownerSaveTimer = setTimeout(() => {
+      void this.saveOwner();
+    }, 300);
+  }
+  private scheduleConnectionSave(): void {
+    clearTimeout(this.connectionSaveTimer);
+    const connection = this.state.connection;
+    if (
+      !this.activation?.active ||
+      this.pending ||
+      !connection ||
+      connection.blocked ||
+      connection.error ||
+      !this.state.connectionDirty ||
+      this.state.credentials.remote.action !== "keep"
+    )
+      return;
+    this.connectionSaveTimer = setTimeout(() => {
+      void this.saveConnection();
+    }, 300);
   }
 
   selectModel(choice: BrainSettingsChoice | null): void {
@@ -227,6 +270,7 @@ export class BrainSettingsFormModel {
       },
       displays: { ...this.state.displays, runtime: choice },
     });
+    this.scheduleOwnerSave();
   }
 
   selectRuntimeSource(source: BrainRuntimeSource): void {
@@ -246,6 +290,7 @@ export class BrainSettingsFormModel {
       },
       displays: { ...this.state.displays, runtime: null },
     });
+    this.scheduleOwnerSave();
   }
 
   setRuntimePath(value: string): void {
@@ -275,6 +320,9 @@ export class BrainSettingsFormModel {
 
   editCredential(slot: BrainCredentialSlot, draft: CredentialDraft): void {
     this.publish({ ...this.state, credentials: { ...this.state.credentials, [slot]: draft } });
+    // A credential action entered during the debounce must not ride a pending preference write.
+    this.scheduleOwnerSave();
+    this.scheduleConnectionSave();
   }
 
   async saveConnection(): Promise<boolean> {
@@ -586,6 +634,8 @@ export class BrainSettingsFormModel {
   }
 
   private deactivate(activation: Activation): void {
+    clearTimeout(this.ownerSaveTimer);
+    clearTimeout(this.connectionSaveTimer);
     if (activation.active) {
       activation.active = false;
       activation.release();
@@ -747,6 +797,8 @@ export class BrainSettingsFormModel {
     } finally {
       this.pending = null;
       this.publish({ ...this.state, operation: null });
+      this.scheduleOwnerSave();
+      this.scheduleConnectionSave();
     }
   }
 

@@ -10,15 +10,17 @@ import { useRead } from "./use-read.js";
 function OpenProjectForm({
   snapshot,
   drafts,
+  active,
 }: {
   snapshot: ProjectConfiguration;
   drafts: ProjectTargetDrafts;
+  active: boolean;
 }) {
   const write = useRpc(setProjectTarget);
   const read = useRpc(getProjectConfiguration);
   const [model] = useState(() => drafts.open(snapshot, write));
   useEffect(() => drafts.retain(model), [drafts, model]);
-  return <TargetForm model={model} read={read} />;
+  return <TargetForm model={model} read={read} active={active} />;
 }
 
 export function KanbanProjectSettings({
@@ -49,6 +51,7 @@ export function KanbanProjectSettings({
         key={JSON.stringify([props.host.id, projectId])}
         snapshot={state.value.value}
         drafts={drafts}
+        active={props.active === true}
       />
     );
   let error = "";

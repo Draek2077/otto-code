@@ -13,6 +13,7 @@ import type { buildContextGraph } from "./graph.js";
 import type { NativeContextInventory } from "./native-inventory.js";
 import { collectContextFindings } from "./findings.js";
 export interface InspectedContext {
+  profileBrief?: string;
   provider: string;
   visible: boolean;
   prepared: PreparedContext | null;
@@ -48,6 +49,8 @@ export function contextReport(
   const sections: Partial<Record<ContextCategory, string>> = input.native?.sections ?? {
     context_files: instructionText,
   };
+  if (input.profileBrief !== undefined && !selection.agentId)
+    sections.otto_injected = input.profileBrief;
   if (input.prepared) {
     let remaining = input.system;
     if (instructionText) {
@@ -70,6 +73,7 @@ export function contextReport(
         hostId: selection.hostId,
         workspaceId: selection.workspaceId,
         agentId: selection.agentId,
+        profileId: selection.profileId,
         windowTokens: selection.windowTokens,
       },
       provider: input.provider,
@@ -125,6 +129,14 @@ function categoryTotal(
   selection: ContextSelection,
 ): ContextReport["categories"][number] {
   const text = sections[category];
+  if (category === "otto_injected" && input.profileBrief !== undefined && !selection.agentId)
+    return {
+      category,
+      visibility: "exact_text",
+      estimatedTokens: Math.round(input.profileBrief.length / 4),
+      explanation:
+        "The selected Profile’s lesson brief for this workspace. A new chat receives this text when it starts.",
+    };
   if (input.native && text !== undefined)
     return {
       category,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { EditorSettings } from "@getpaseo/plugin/otto/editor";
 import { EditorSettingsForm, type EditorSettingsPort } from "./form";
 
@@ -36,13 +36,18 @@ describe("Code settings form revision ownership", () => {
   it("serializes writes and preserves newer edits across the originating revision acknowledgment", async () => {
     const pending = deferred<EditorSettings>();
     const calls: string[] = [];
-    const { model, close } = await open(async (revision) => {
+    const { model, close } = await open(async (revision, patch) => {
       calls.push(revision);
-      return pending.promise;
+      return calls.length === 1
+        ? pending.promise
+        : {
+            ...initial,
+            revision: "accepted-newer",
+            preferences: { ...initial.preferences, ...patch },
+          };
     });
     try {
       model.edit({ idleMinutes: 15 });
-      const save = model.save();
       model.edit({ idleMinutes: 30 });
       await model.save();
       pending.resolve({
@@ -50,14 +55,15 @@ describe("Code settings form revision ownership", () => {
         revision: "accepted",
         preferences: { ...initial.preferences, idleMinutes: 15 },
       });
-      await save;
-      expect(calls).toEqual(["origin"]);
-      expect(model.getSnapshot()).toMatchObject({
-        phase: "ready",
-        dirty: true,
-        draft: { idleMinutes: 30, languages: { future: false } },
-        saved: { revision: "accepted" },
-      });
+      await vi.waitFor(() =>
+        expect(model.getSnapshot()).toMatchObject({
+          phase: "ready",
+          dirty: false,
+          draft: { idleMinutes: 30, languages: { future: false } },
+          saved: { revision: "accepted-newer" },
+        }),
+      );
+      expect(calls).toEqual(["origin", "accepted"]);
     } finally {
       close();
     }

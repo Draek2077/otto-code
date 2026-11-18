@@ -4,7 +4,8 @@ Otto extends Paseo's existing speech service, audio engine and dictation flow.
 It does not create another recording engine, speech daemon or browser connection.
 The bundled `otto-speech` plugin contributes **Configure Speech** in the selected
 host's Plugins settings. The app-owned screen uses the ordinary Settings cards,
-rows, inputs, expanders and explicit Save/Reload controls.
+rows, inputs and expanders. Preferences autosave; text edits are debounced and
+serialized. Reload appears only to recover a blocked write.
 
 ## Ownership
 
@@ -43,12 +44,15 @@ environment-owned fields are labeled and locked; secrets are never copied from
 the environment into the saved file. URL validation accepts HTTP(S) API prefixes,
 without embedded credentials, query strings or fragments.
 
-Save compares the originating revision and atomically replaces the configuration.
+Each autosave compares the originating revision and atomically replaces the configuration.
 A stale or uncertain write retains the draft and requires confirmed Reload;
 there is no automatic retry or rebase. Runtime replacement waits for existing
 capture/TTS leases to finish, coalesces changes, then exposes the new readiness.
 Settings show downloads, pending changes, errors and an explicit retry action.
-Preview uses the saved provider/model and may audition unsaved voice/speed.
+Preview uses the acknowledged selection and is unavailable while settings apply
+or the selected local model is missing. Existing host readiness publications
+refresh the screen without a settings poller. Credential replacement/removal
+uses Apply key changes and never rides along with a preference autosave.
 
 The dated compatibility overlay reads supported model, speaker and speed values
 from preserved Otto 0.9 settings only when the current configuration has not

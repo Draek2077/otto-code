@@ -1163,6 +1163,12 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   useEffect(() => {
     const handle: StreamViewportHandle = {
       focus: () => scrollContainerRef.current?.focus({ preventScroll: true }),
+      // OTTO(action-groups): detail expansion is reader-owned, never a request for the bottom.
+      holdReadingPosition: () => {
+        stopFollowingOutputFromUserIntent();
+        const container = scrollContainerRef.current;
+        if (container) readingAnchor.scroll(container.scrollTop);
+      },
       scrollToBottom: () => {
         setFollowOutput(true);
         cancelPendingStickToBottom();
@@ -1188,6 +1194,8 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     forceStickToBottom,
     scheduleStickToBottom,
     scrollToMessage,
+    stopFollowingOutputFromUserIntent,
+    readingAnchor, // OTTO(action-groups)
     viewportRef,
   ]);
 

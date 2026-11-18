@@ -123,6 +123,7 @@ export const synthesizeSpeech = defineRpc({
       requestId: z.string().min(1).max(128),
       text: z.string().min(1).max(2048),
       selection: SpeechTtsSelectionSchema.optional(),
+      profileVoice: z.boolean().optional(),
       pauseAfterMs: z.number().int().min(0).max(2000).optional(),
     })
     .strict(),

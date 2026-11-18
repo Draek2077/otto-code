@@ -3,9 +3,11 @@ import {
   readGitFetchPolicy,
   saveGitFetchPolicy,
   fetchWorkspaceGit,
+  setWorkspaceComparisonBase,
   type GitFetchPreferences,
 } from "@getpaseo/plugin/otto/workspace-git";
 import { GitFetchSettingsStore, GitFetchSettingsError } from "./settings.js";
+import { ComparisonBaseError } from "./comparison-base.js";
 
 export class WorkspaceGitHost {
   readonly store: GitFetchSettingsStore;
@@ -16,6 +18,10 @@ export class WorkspaceGitHost {
       workspace(id: string): Promise<{ cwd: string; archivedAt: string | null } | null>;
       policy(value: GitFetchPreferences): void;
       fetch(cwd: string): Promise<void>;
+      setBase(
+        cwd: string,
+        input: { branchName: string; baseRef: string | null },
+      ): Promise<{ branchName: string; baseRef: string }>;
     },
   ) {
     this.store = ports.store;
@@ -41,6 +47,28 @@ export class WorkspaceGitHost {
   }
   invoke(method: string, input: unknown): Promise<unknown> | undefined {
     switch (method) {
+      case setWorkspaceComparisonBase.name:
+        return (async () => {
+          try {
+            const value = setWorkspaceComparisonBase.input.parse(input);
+            this.assertHost(value.hostId);
+            const workspace = await this.ports.workspace(value.workspaceId);
+            if (!workspace || workspace.archivedAt)
+              throw new ComparisonBaseError("Select an active workspace.");
+            return { ok: true, value: await this.ports.setBase(workspace.cwd, value) };
+          } catch (error) {
+            return {
+              ok: false,
+              error: {
+                kind: "failed",
+                message:
+                  error instanceof ComparisonBaseError
+                    ? error.message
+                    : "The parent branch could not be saved. Check the host connection and choose a branch to try again.",
+              },
+            };
+          }
+        })();
       case readGitFetchPolicy.name:
         return this.guard(async () => {
           this.assertHost(readGitFetchPolicy.input.parse(input).hostId);

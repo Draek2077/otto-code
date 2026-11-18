@@ -1,3 +1,4 @@
+import { captureWorkflowTeam } from "./team-roles.js";
 import type { Logger } from "pino";
 import type { MutableDaemonConfig } from "../../daemon-config-store.js";
 import type { AgentManager } from "../../agent/agent-manager.js";
@@ -28,7 +29,7 @@ interface CompositionOptions {
   agents: AgentManager;
   storage: AgentStorage;
   providers: ProviderSnapshotManager;
-  readConfig(): Pick<MutableDaemonConfig, "mcp" | "providers">;
+  readConfig(): Pick<MutableDaemonConfig, "mcp" | "providers" | "agentTeams" | "agentProfiles">;
 }
 /** Compose existing owners once. No constructor starts a session, model, timer, watcher or filesystem scan. */
 export function createWorkflowComposition(options: CompositionOptions) {
@@ -68,6 +69,14 @@ export function createWorkflowComposition(options: CompositionOptions) {
   });
   host = new WorkflowHost(library, {
     ...runtime,
+    captureTeam: async (workspace) => {
+      const config = options.readConfig();
+      if (!config.agentTeams?.activeTeamId) return undefined;
+      return captureWorkflowTeam(
+        config,
+        await options.providers.listProviders({ cwd: workspace.cwd, wait: true }),
+      );
+    },
     changed: (entry) => changes.publish(entry.ref.scope),
   });
   const service = new WorkflowDaemonService(library, host, changes);

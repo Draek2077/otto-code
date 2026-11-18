@@ -50,6 +50,7 @@ export class ContextManagementService {
         ): Promise<{ workspaceId: string; cwd: string; archivedAt: string | null } | null>;
       };
       agents: AgentPort;
+      profileBrief?(profileId: string, cwd: string): Promise<string | null>;
       providerOwner(providerId: string): string | undefined;
       invoke(pluginId: string, method: string, input: unknown): Promise<unknown>;
       generation?(selection?: { provider: string; model: string }): StructuredTextGeneration;
@@ -119,6 +120,9 @@ export class ContextManagementService {
         system: preview.text,
         tools: null,
         instructionIssues: preview.issues,
+        profileBrief: input.profileId
+          ? ((await this.ports.profileBrief?.(input.profileId, cwd)) ?? "")
+          : undefined,
       };
     }
     const root = source.workspaceRoot;

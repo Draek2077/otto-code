@@ -64,6 +64,9 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useComposerHeight } from "./height";
+// OTTO(composer-size): start with one font-sized line instead of reserving two on web.
+import { composerMinimumHeight } from "@/otto/chat/composer-size";
+import { useSettings } from "@/hooks/use-settings";
 import { ComposerInputPresentation } from "./presentation";
 import { resolveComposerInputMode, type ComposerInputMode } from "@/composer/input-mode";
 import type { NativePastedFile } from "@/composer/native-pasted-image";
@@ -202,11 +205,8 @@ export interface MessageInputRef {
   getNativeElement?: () => HTMLElement | null;
 }
 
-const MIN_INPUT_HEIGHT_MOBILE = 30;
-const MIN_INPUT_HEIGHT_DESKTOP = 46;
 const DEFAULT_MAX_INPUT_HEIGHT = 160;
 const MAX_INPUT_VIEWPORT_RATIO = 0.5;
-const MIN_INPUT_HEIGHT = isWeb ? MIN_INPUT_HEIGHT_DESKTOP : MIN_INPUT_HEIGHT_MOBILE;
 type WebTextInputKeyPressEvent = NativeSyntheticEvent<
   TextInputKeyPressEventData & {
     metaKey?: boolean;
@@ -1247,6 +1247,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const mode = resolveComposerInputMode(inputMode);
     const { t } = useTranslation();
     const isCompact = useIsCompactFormFactor();
+    // OTTO(composer-size): a narrow settings subscription follows the actual content font.
+    const contentFontSize = useSettings((settings) => settings.contentFontSize);
+    const minInputHeight = composerMinimumHeight(isWeb, contentFontSize);
     const { height: windowHeight } = useWindowDimensions();
     const editingSession = useComposerEditingSession(inputMode, props.editingSession);
     const isFullscreen = useComposerFullscreen(editingSession);
@@ -1341,7 +1344,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const composerHeight = useComposerHeight({
       getText: getLiveText,
       textareaRef: webTextareaRef,
-      minHeight: MIN_INPUT_HEIGHT,
+      minHeight: minInputHeight, // OTTO(composer-size)
       maxHeight: maxInputHeight,
       onRenderedLinesChange: setRenderedLines,
       presentationKey: isFullscreen,
@@ -1920,8 +1923,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     // Static content has no textarea to mirror, so it grows with its own text
     // instead of the measured input height.
     const readOnlyTextStyle = useMemo(
-      () => [styles.textInput, mode.isMonospace && styles.textInputMonospace, styles.readOnlyText],
-      [mode.isMonospace],
+      () => [
+        styles.textInput,
+        mode.isMonospace && styles.textInputMonospace,
+        styles.readOnlyText,
+        { minHeight: minInputHeight },
+      ],
+      [mode.isMonospace, minInputHeight], // OTTO(composer-size)
     );
     // Fullscreen always shows Send; without content it is disabled, and looks it.
     const isPresentedSendDisabled = resolvePresentationSendDisabled({
@@ -2324,7 +2332,7 @@ const styles = StyleSheet.create((theme: Theme) => ({
     fontFamily: theme.fontFamily.mono,
   },
   readOnlyText: {
-    minHeight: MIN_INPUT_HEIGHT,
+    // OTTO(composer-size): the current font-sized minimum is supplied by the caller.
     color: theme.colors.foregroundMuted,
   },
   buttonRow: {

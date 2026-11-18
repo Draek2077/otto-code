@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { TeamSelection } from "@/otto/agent-profiles/team-select"; // OTTO(agent-teams)
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { StyleSheet } from "react-native-unistyles";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, MoreVertical, Pencil, Plus } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
 import type {
@@ -42,11 +43,11 @@ import { OttoKanbanProjectSettings } from "@/otto/kanban/project-settings";
 import { OttoBitbucketProjectSettings } from "@/otto/bitbucket/project-settings"; // OTTO(bitbucket)
 import { OttoArtifactProjectSettings } from "@/otto/artifacts/project-settings"; // OTTO(artifacts): canonical settings placement.
 import { ScheduleProjectSettings } from "@/otto/schedules/settings-entry"; // OTTO(schedules): independent category override at canonical Project Settings.
-import { useToast } from "@/contexts/toast-context";
+import { ProjectConfigSettingsForm } from "@/otto/settings/project-config-form"; // OTTO(settings): serialized preference autosave.
+import { useAppVisible } from "@/hooks/use-app-visible"; // OTTO(settings): hidden forms release save authority.
+import { useRetainedPanelActive } from "@/components/retained-panel"; // OTTO(settings)
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
-  applyDraftToConfig,
-  configToDraft,
   METADATA_PROMPT_KEYS,
   type LifecycleOriginalKind,
   type MetadataPromptKey,
@@ -324,6 +325,11 @@ function ProjectSettingsBody({
         onBackToProjects,
         showBackToProjects,
       })}
+      <TeamSelection
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+        projectDefault
+      />
       <OttoKanbanProjectSettings
         serverId={selectedHost.serverId}
         projectId={selectedHost.projectId}
@@ -409,7 +415,8 @@ function renderContent({
     );
   }
 
-  const formKey = `${selectedHost.serverId}::${selectedHost.repoRoot}::${revisionToKey(loadedRevision)}`;
+  // OTTO(settings): keep the open draft mounted across our own accepted revisions.
+  const formKey = `${selectedHost.serverId}::${selectedHost.repoRoot}`;
   return (
     <ProjectConfigForm
       key={formKey}
@@ -422,11 +429,6 @@ function renderContent({
       onReload={onReload}
     />
   );
-}
-
-function revisionToKey(revision: PaseoConfigRevision | null): string {
-  if (!revision) return "none";
-  return `${revision.mtimeMs}-${revision.size}`;
 }
 
 interface ReadFailureCalloutProps {
@@ -514,61 +516,54 @@ function ProjectConfigForm({
 }: ProjectConfigFormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const toast = useToast();
-
-  const [draft, setDraft] = useState<ProjectConfigDraft>(() => configToDraft(baseConfig));
-  const [writeError, setWriteError] = useState<ProjectConfigRpcError | null>(null);
+  // OTTO(settings): React renders a plain form owner; it does not sequence writes.
+  const [model] = useState(
+    () =>
+      new ProjectConfigSettingsForm(baseConfig, revision, {
+        read: () => client.readProjectConfig(repoRoot),
+        write: (config, expectedRevision) =>
+          client.writeProjectConfig({ repoRoot, config, expectedRevision }),
+        valid: (next) => !next.scripts.some((script) => validateScript(script, t).hasErrors),
+        accepted: (result) => {
+          queryClient.setQueryData<ReadProjectConfigData>(queryKey, {
+            ...result,
+            requestId: "local-cache",
+            repoRoot,
+          });
+          void queryClient.invalidateQueries({ queryKey: ["projects"] });
+        },
+      }),
+  );
+  const appVisible = useAppVisible();
+  const retainedActive = useRetainedPanelActive();
+  useEffect(
+    () => (appVisible && retainedActive ? model.activate() : undefined),
+    [model, appVisible, retainedActive],
+  );
+  const {
+    draft,
+    error: writeError,
+    reading,
+  } = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const [editingScriptId, setEditingScriptId] = useState<string | null>(null);
-
-  const saveMutation = useMutation({
-    mutationFn: async (input: {
-      config: PaseoConfigRaw;
-      expectedRevision: PaseoConfigRevision | null;
-    }) => {
-      return client.writeProjectConfig({
-        repoRoot,
-        config: input.config,
-        expectedRevision: input.expectedRevision,
-      });
-    },
-    onSuccess: (result) => {
-      if (result.ok) {
-        queryClient.setQueryData<ReadProjectConfigData>(queryKey, {
-          ok: true,
-          config: result.config,
-          revision: result.revision,
-          requestId: "local-cache",
-          repoRoot,
-          ...(result.hasUncommittedWorktreeSetupChanges === undefined
-            ? {}
-            : {
-                hasUncommittedWorktreeSetupChanges: result.hasUncommittedWorktreeSetupChanges,
-              }),
-        });
-        setWriteError(null);
-        queryClient.invalidateQueries({ queryKey: ["projects"] });
-        toast.show(t("settings.project.actions.saved"), { variant: "success" });
-      } else {
-        setWriteError(result.error);
-      }
-    },
-  });
-
-  const handleSave = useCallback(() => {
-    if (writeError?.code === "stale_project_config") return;
-    const config = applyDraftToConfig({ draft, base: baseConfig });
-    saveMutation.mutate({ config, expectedRevision: revision });
-  }, [draft, baseConfig, revision, writeError, saveMutation]);
-
-  const handleReload = useCallback(() => {
-    setWriteError(null);
+  const handleReload = useCallback(async () => {
+    if (
+      !(await confirmDialog({
+        title: t("settings.project.actions.reload"),
+        message: "Replace unsaved changes with the saved project settings?",
+        confirmLabel: t("settings.project.actions.reload"),
+      }))
+    )
+      return;
+    await model.reload();
     onReload();
-  }, [onReload]);
-
-  const updateDraft = useCallback((updater: (draft: ProjectConfigDraft) => ProjectConfigDraft) => {
-    setDraft((prev) => updater(prev));
-  }, []);
-
+  }, [model, onReload, t]);
+  const updateDraft = useCallback(
+    (updater: (value: ProjectConfigDraft) => ProjectConfigDraft) => {
+      model.edit(updater);
+    },
+    [model],
+  );
   const handleSetupChange = useCallback(
     (text: string) => updateDraft((d) => ({ ...d, setupText: text })),
     [updateDraft],
@@ -665,11 +660,6 @@ function ProjectConfigForm({
 
   const editingScript = draft.scripts.find((entry) => entry.id === editingScriptId);
 
-  const hasInvalidScripts = useMemo(
-    () => draft.scripts.some((script) => validateScript(script, t).hasErrors),
-    [draft.scripts, t],
-  );
-
   const scriptsTrailing = useMemo(
     () => (
       <Pressable
@@ -711,7 +701,14 @@ function ProjectConfigForm({
 
   const isStale = writeError?.code === "stale_project_config";
   const isWriteFailed = writeError?.code === "write_failed";
-  const saveDisabled = saveMutation.isPending || isStale || hasInvalidScripts;
+
+  // OTTO(settings): confirmed reload owns the form until the saved snapshot arrives.
+  if (reading)
+    return (
+      <View style={styles.centered}>
+        <LoadingSpinner color={ResolveSpinnerColor()} />
+      </View>
+    );
 
   return (
     <View>
@@ -830,14 +827,6 @@ function ProjectConfigForm({
             description={t("settings.project.writeFailures.failedDescription")}
           >
             <Button
-              testID="write-failed-callout-action-0"
-              onPress={handleSave}
-              variant="outline"
-              size="sm"
-            >
-              {t("settings.project.actions.tryAgain")}
-            </Button>
-            <Button
               testID="write-failed-callout-action-1"
               onPress={handleReload}
               variant="outline"
@@ -848,22 +837,6 @@ function ProjectConfigForm({
           </Alert>
         </View>
       ) : null}
-
-      <View style={styles.footer}>
-        <Button
-          testID="save-button"
-          accessibilityLabel={t("settings.project.actions.save")}
-          variant="default"
-          size="md"
-          disabled={saveDisabled}
-          loading={saveMutation.isPending}
-          onPress={handleSave}
-        >
-          {saveMutation.isPending
-            ? t("settings.project.actions.saving")
-            : t("settings.project.actions.save")}
-        </Button>
-      </View>
 
       {editingScript ? (
         <ScriptEditModal

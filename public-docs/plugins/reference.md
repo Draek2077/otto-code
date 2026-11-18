@@ -947,10 +947,11 @@ screen with other params shows the new params.
 
 `addSidebarHeaderItem` adds a row to the list at the top of the sidebar. `addSidebarFooterItem`
 adds a row to the footer, between **Add project** and the footer's icon row. The icon row is fixed;
-plugins can't add to it. Both take `{ id, title, Component }`. `title` labels the item in
+plugins can't add to it. Both take `{ id, title, icon?, Component }`. `title` labels the item in
 Settings > Sidebar, where users reorder and hide items, and is the default label and accessibility
-label of `SidebarRow`. Settings shows a generic plugin icon for these items; a row from the
-deprecated `addSidebarItem` keeps its registered icon.
+label of `SidebarRow`. Set `icon` to the feature's Lucide icon name for its Settings row.
+Share that name with the component's `SidebarRow` icon so both match. Without `icon`, Settings
+shows a generic plugin icon. Unknown icon names are rejected at registration.
 
 With the plugin on several hosts, an item renders from the host of the screen the app shows. Off a
 host's screens, it uses the host last picked in one of the plugin's screens or last opened from one

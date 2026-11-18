@@ -6,6 +6,7 @@ import {
   readGitFetchPolicy,
   saveGitFetchPolicy,
   fetchWorkspaceGit,
+  setWorkspaceComparisonBase,
 } from "@getpaseo/plugin/otto/workspace-git";
 import { WorkspaceGitHost, initialGitFetchPolicy } from "./host.js";
 import { GitFetchSettingsStore } from "./settings.js";
@@ -21,12 +22,49 @@ function prepare() {
   );
   const policy = vi.fn(),
     fetch = vi.fn(async () => {});
-  const host = new WorkspaceGitHost({ store, hostId: "host", workspace, policy, fetch });
-  return { home, store, workspace, policy, fetch, host };
+  const setBase = vi.fn(
+    async (_cwd: string, value: { branchName: string; baseRef: string | null }) => ({
+      branchName: value.branchName,
+      baseRef: value.baseRef ?? "refs/heads/main",
+    }),
+  );
+  const host = new WorkspaceGitHost({ store, hostId: "host", workspace, policy, fetch, setBase });
+  return { home, store, workspace, policy, fetch, setBase, host };
 }
 afterEach(() => {
   for (const home of roots.splice(0)) rmSync(home, { recursive: true, force: true });
 });
+test("parent selection resolves the owning workspace and rejects foreign, missing and archived targets", async () => {
+  const f = prepare();
+  const input = {
+    hostId: "host",
+    workspaceId: "workspace",
+    branchName: "child",
+    baseRef: "refs/heads/parent",
+    cwd: "/untrusted",
+  };
+  expect(await f.host.invoke(setWorkspaceComparisonBase.name, input)).toEqual({
+    ok: true,
+    value: { branchName: "child", baseRef: "refs/heads/parent" },
+  });
+  expect(f.setBase).toHaveBeenCalledExactlyOnceWith(
+    joinPath(f.home),
+    expect.objectContaining({ branchName: "child", baseRef: "refs/heads/parent" }),
+  );
+  f.setBase.mockClear();
+  expect(
+    await f.host.invoke(setWorkspaceComparisonBase.name, { ...input, hostId: "other" }),
+  ).toMatchObject({ ok: false });
+  expect(
+    await f.host.invoke(setWorkspaceComparisonBase.name, { ...input, workspaceId: "missing" }),
+  ).toMatchObject({ ok: false });
+  f.workspace.mockResolvedValueOnce({ cwd: "/archived", archivedAt: "past" });
+  expect(await f.host.invoke(setWorkspaceComparisonBase.name, input)).toMatchObject({ ok: false });
+  expect(f.setBase).not.toHaveBeenCalled();
+});
+function joinPath(home: string) {
+  return path.join(home, "owning-project");
+}
 
 test("construction and policy reads start no Git operation", async () => {
   const f = prepare();

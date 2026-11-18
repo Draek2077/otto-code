@@ -43,6 +43,9 @@ import {
   useCheckoutPrStatusQuery,
 } from "@/git/use-pr-status-query";
 import { CommitsSection } from "@/git/commits-section/commits-section";
+import { ManualCommitSection } from "@/otto/workspace-git/commit-section"; // OTTO(manual-commit): typed manual message above commit history, same Git owner.
+import { ManualCommitScope } from "@/otto/workspace-git/commit-context"; // OTTO(manual-commit): local selection shared only by this Changes tree and form.
+import { ComparisonBasePicker } from "@/otto/workspace-git/comparison-base-picker"; // OTTO(diff-base)
 import { useAppSettings } from "@/hooks/use-settings";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import {
@@ -468,6 +471,7 @@ interface ChangesRepositoryToolbarModel {
 }
 
 interface ChangesComparisonToolbarModel {
+  basePicker?: ReactNode; // OTTO(diff-base): owned comparison control, alongside the existing mode menu.
   committedDescription?: string;
   diffMode: "uncommitted" | "base";
   mode: ChangesToolbarMode;
@@ -484,6 +488,7 @@ interface ChangesHeaderProps {
 }
 
 interface BuildChangesHeaderModelInput {
+  basePicker?: ReactNode; // OTTO(diff-base)
   branchName: string | null;
   committedDescription?: string;
   compact: boolean;
@@ -516,6 +521,7 @@ function buildChangesHeaderModel(input: BuildChangesHeaderModelInput): {
       workspaceId: input.workspaceId,
     },
     comparison: {
+      basePicker: input.basePicker, // OTTO(diff-base)
       committedDescription: input.committedDescription,
       diffMode: input.diffMode,
       mode: input.mode,
@@ -738,6 +744,7 @@ function ChangesComparisonToolbar({
           onSelectUncommitted={model.onSelectUncommitted}
           onSelectBase={model.onSelectBase}
         />
+        {model.basePicker /* OTTO(diff-base) */}
         {model.selectedDiffStat ? (
           <DiffStat
             additions={model.selectedDiffStat.additions}
@@ -1890,6 +1897,17 @@ export function ChangesSurface({
   const changesHeaderModel = useMemo(
     () =>
       buildChangesHeaderModel({
+        basePicker: (
+          <ComparisonBasePicker
+            key={`${cwd}:${currentBranchName}`}
+            serverId={serverId}
+            workspaceId={workspaceId}
+            cwd={cwd}
+            branchName={currentBranchName}
+            baseRef={baseRef}
+            visible={diffMode === "base"}
+          />
+        ), // OTTO(diff-base)
         branchName: currentBranchName,
         committedDescription: committedDiffDescription,
         compact: isMobile,
@@ -1906,6 +1924,7 @@ export function ChangesSurface({
         workspaceId,
       }),
     [
+      baseRef, // OTTO(diff-base)
       committedDiffDescription,
       currentBranchName,
       cwd,
@@ -1925,52 +1944,63 @@ export function ChangesSurface({
   );
 
   return (
-    <View
-      {...{
-        onContextMenu: (event: { preventDefault?: () => void }) => event.preventDefault?.(),
-      }}
-      style={styles.container}
+    <ManualCommitScope
+      serverId={serverId}
+      cwd={cwd}
+      enabled={enabled}
+      isGit={isGit}
+      diffMode={diffMode}
+      presentation={presentation}
+      files={files}
     >
-      {isGit ? (
-        <ChangesHeader
-          compact={isMobile}
-          repository={changesHeaderModel.repository}
-          comparison={changesHeaderModel.comparison}
-          sidebarSurface={presentation === "tree"}
-        />
-      ) : null}
-
-      {forgeSetupMessage ? (
-        <View style={styles.forgeSetupCallout} testID="forge-setup-callout">
-          <Text style={styles.forgeSetupCalloutText}>{forgeSetupMessage}</Text>
-        </View>
-      ) : null}
-
-      {prErrorMessage ? <Text style={styles.actionErrorText}>{prErrorMessage}</Text> : null}
-
-      <View style={styles.diffContainer}>
-        {bodyContent}
-        {showJumpToFile ? (
-          <JumpToFile files={files} mode={workingMode} onSelectFile={handleSelectTreeFile} />
+      <View
+        {...{
+          onContextMenu: (event: { preventDefault?: () => void }) => event.preventDefault?.(),
+        }}
+        style={styles.container}
+      >
+        {isGit ? (
+          <ChangesHeader
+            compact={isMobile}
+            repository={changesHeaderModel.repository}
+            comparison={changesHeaderModel.comparison}
+            sidebarSurface={presentation === "tree"}
+          />
         ) : null}
+
+        {forgeSetupMessage ? (
+          <View style={styles.forgeSetupCallout} testID="forge-setup-callout">
+            <Text style={styles.forgeSetupCalloutText}>{forgeSetupMessage}</Text>
+          </View>
+        ) : null}
+
+        {prErrorMessage ? <Text style={styles.actionErrorText}>{prErrorMessage}</Text> : null}
+
+        <View style={styles.diffContainer}>
+          {bodyContent}
+          {showJumpToFile ? (
+            <JumpToFile files={files} mode={workingMode} onSelectFile={handleSelectTreeFile} />
+          ) : null}
+        </View>
+
+        <ReviewCommentSheet
+          enabled={enabled}
+          editor={reviewActions.sheetEditor}
+          reviewActions={reviewActions}
+          onChangeBody={reviewActions.onChangeEditorBody}
+        />
+
+        <ManualCommitSection serverId={serverId} />
+        <ChangesCommits
+          presentation={presentation}
+          serverId={serverId}
+          cwd={cwd}
+          onCommitPress={handleCommitPress}
+          collapsed={instanceState.commitsCollapsed}
+          onCollapsedChange={handleCommitsCollapsedChange}
+        />
       </View>
-
-      <ReviewCommentSheet
-        enabled={enabled}
-        editor={reviewActions.sheetEditor}
-        reviewActions={reviewActions}
-        onChangeBody={reviewActions.onChangeEditorBody}
-      />
-
-      <ChangesCommits
-        presentation={presentation}
-        serverId={serverId}
-        cwd={cwd}
-        onCommitPress={handleCommitPress}
-        collapsed={instanceState.commitsCollapsed}
-        onCollapsedChange={handleCommitsCollapsedChange}
-      />
-    </View>
+    </ManualCommitScope>
   );
 }
 

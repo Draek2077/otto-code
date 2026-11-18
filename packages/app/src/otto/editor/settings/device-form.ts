@@ -22,6 +22,7 @@ export class DeviceEditorForm {
   private version = 0;
   private closed = false;
   private activation = 0;
+  private writing = false;
   constructor(
     initial: DeviceEditorDraft,
     private readonly write: (patch: DeviceEditorDraft) => Promise<unknown>,
@@ -62,6 +63,7 @@ export class DeviceEditorForm {
   edit(patch: Partial<DeviceEditorDraft>) {
     this.version++;
     this.publish({ draft: { ...this.state.draft, ...patch }, dirty: true, error: null });
+    void this.save();
   }
   mapping(action: VimAction, key: string) {
     this.edit({
@@ -92,7 +94,7 @@ export class DeviceEditorForm {
     return null;
   }
   async save() {
-    if (this.closed || this.state.pending || !this.state.dirty) return;
+    if (this.closed || this.writing || !this.state.dirty) return;
     const error = this.validate();
     if (error) {
       this.publish({ error });
@@ -101,6 +103,7 @@ export class DeviceEditorForm {
     const version = this.version;
     const activation = this.activation;
     const draft = this.state.draft;
+    this.writing = true;
     this.publish({ pending: true, error: null });
     try {
       await this.write(draft);
@@ -110,12 +113,16 @@ export class DeviceEditorForm {
       if (activation !== this.activation) return;
       this.publish({ error: "Editor settings could not be saved. Your edits are retained." });
     } finally {
-      if (activation === this.activation) this.publish({ pending: false });
+      this.writing = false;
+      this.publish({ pending: false });
+      // A successful write drains newer edits, without retrying a failed write.
+      if (activation === this.activation && this.state.dirty && !this.state.error) void this.save();
     }
   }
   activate() {
     this.closed = false;
     this.activation++;
+    this.publish({ pending: this.writing });
     return () => {
       this.closed = true;
       this.activation++;

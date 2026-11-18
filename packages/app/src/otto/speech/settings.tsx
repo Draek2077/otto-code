@@ -22,6 +22,8 @@ import { SpeechApiFields } from "./credentials";
 import { SpeechDeviceSettings } from "./device-settings";
 import { useSpeechPlayback } from "./playback-context";
 import { IDLE_SPEECH_PLAYBACK } from "./playback";
+import { useSessionStore } from "@/stores/session-store";
+import { speechPreviewState } from "./preview-state";
 
 const confirmReload = () =>
   confirmDialog({
@@ -44,11 +46,12 @@ function Preview({ form }: { form: SpeechForm }) {
   );
   const key = `${state.origin.hostId}:preview`;
   const playing = current.key === key;
+  const availability = speechPreviewState(state);
   const previewHint = playing
     ? { generating: "Generating preview…", playing: "Playing preview…", idle: "Preview stopped." }[
         current.phase
       ]
-    : "Save a provider or model change first. Preview never records from your microphone.";
+    : availability.hint;
   const preview = useCallback(() => {
     if (playing) playback?.stop();
     else
@@ -65,7 +68,7 @@ function Preview({ form }: { form: SpeechForm }) {
         <Button
           variant="outline"
           size="sm"
-          disabled={!playback || state.busy || !state.draft.voice.enabled}
+          disabled={!playing && (!playback || !availability.ready)}
           onPress={preview}
         >
           {playing ? "Stop preview" : "Preview voice"}
@@ -118,28 +121,15 @@ function SpeechStatus({ form }: { form: SpeechForm }) {
     </SettingsCard>
   );
 }
-function SpeechActions({ form }: { form: SpeechForm }) {
+function SpeechRecovery({ form }: { form: SpeechForm }) {
   const state = useSyncExternalStore(form.subscribe, form.getSnapshot);
-  const save = useCallback(() => {
-    void form.save();
-  }, [form]);
   const reload = useCallback(() => {
     void form.reload();
   }, [form]);
+  if (!state.blocked) return null;
   return (
     <SettingsCard>
-      <SettingsRow
-        label="Host speech settings"
-        hint="Models download on this host when enabled and saved. Recording begins only through the microphone or voice controls."
-      >
-        <Button
-          size="sm"
-          onPress={save}
-          disabled={state.busy || state.blocked || !state.dirty}
-          loading={state.busy}
-        >
-          Save
-        </Button>
+      <SettingsRow label="Host speech settings">
         <Button size="sm" variant="outline" onPress={reload} disabled={state.busy}>
           Reload saved
         </Button>
@@ -147,6 +137,21 @@ function SpeechActions({ form }: { form: SpeechForm }) {
     </SettingsCard>
   );
 }
+function SpeechCredentialAction({ form }: { form: SpeechForm }) {
+  const state = useSyncExternalStore(form.subscribe, form.getSnapshot);
+  const apply = useCallback(() => {
+    void form.save();
+  }, [form]);
+  if (state.credentials.stt.kind === "keep" && state.credentials.tts.kind === "keep") return null;
+  return (
+    <SettingsRow label="API key changes">
+      <Button size="sm" onPress={apply} disabled={state.busy || state.blocked}>
+        Apply key changes
+      </Button>
+    </SettingsRow>
+  );
+}
+
 function Loaded({
   hostId,
   initial,
@@ -171,6 +176,11 @@ function Loaded({
   useEffect(() => {
     form.setActive(active);
   }, [form, active]);
+  // Reuse the host's readiness publication; no settings poller or second audio connection.
+  const capabilities = useSessionStore((store) => store.sessions[hostId]?.serverInfo?.capabilities);
+  useEffect(() => {
+    if (active) void form.refresh();
+  }, [form, active, capabilities]);
   useEffect(() => () => form.close(), [form]);
   const turnDetection = useCallback(
     (value: "local" | "openai") =>
@@ -210,16 +220,17 @@ function Loaded({
               value={state.draft.voice.turnDetection}
               options={turnDetectors}
               onValueChange={turnDetection}
-              disabled={state.busy}
+              disabled={state.reading}
             />
           </SettingsCollapsibleRow>
           <SettingsCollapsibleRow label="API connections and keys">
             <SpeechApiFields form={form} endpoint="stt" />
             <SpeechApiFields form={form} endpoint="tts" />
+            <SpeechCredentialAction form={form} />
           </SettingsCollapsibleRow>
         </SettingsCard>
       </SettingsSection>
-      <SpeechActions form={form} />
+      <SpeechRecovery form={form} />
       <SettingsSection title="Host readiness">
         <SpeechStatus form={form} />
       </SettingsSection>

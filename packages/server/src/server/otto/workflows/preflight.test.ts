@@ -9,6 +9,41 @@ describe("Workflow authority preflight", () => {
   afterEach(async () => {
     await f.cleanup();
   });
+  test("replaces caller-supplied Team seats, checks the selected conductor tools, and captures the result", async () => {
+    const role = {
+      role: "orchestrator",
+      profileId: "p",
+      name: "Coordinator",
+      prompt: "Coordinate",
+      seat: { provider: "mock", model: "team-model" },
+    };
+    const team = { id: "team", name: "Review team", roles: [role] };
+    const checked: string[] = [];
+    const review = await reviewWorkflow(
+      {
+        ...f.ports,
+        captureTeam: async () => team,
+        validateSeat: async () => [],
+        validateTools: async (seat) => {
+          checked.push(seat.model ?? "");
+          return [];
+        },
+      },
+      f.scope,
+      "workspace-1",
+      { ...f.ai, teamSnapshot: { id: "fake", name: "Fake", roles: [] } },
+      "team-review",
+    );
+    expect(checked).toEqual(["team-model"]);
+    role.seat.model = "edited";
+    expect(review.launch.teamSnapshot?.roles[0]?.seat.model).toBe("team-model");
+    await expect(
+      validatePlan(f.ports, review, {
+        title: "Research",
+        phases: [{ id: "research", type: "research", title: "Survey", task: "Read the project" }],
+      }),
+    ).rejects.toThrow(/researcher/);
+  });
   test("gate-only AI plans cannot bypass the phase budget without spawning workers", async () => {
     await expect(
       validatePlan(

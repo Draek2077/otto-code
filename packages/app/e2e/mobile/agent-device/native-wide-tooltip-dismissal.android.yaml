@@ -1,3 +1,4 @@
+# OTTO(usage-popup): dismiss the click-open usage popup on native.
 appId: sh.paseo.debug
 ---
 - launchApp
@@ -8,16 +9,16 @@ appId: sh.paseo.debug
 - tapOn:
     id: context-window-meter
 - assertVisible:
-    id: context-window-meter-tooltip
+    id: context-window-popup
 - tapOn:
-    id: tooltip-dismiss
+    id: context-window-popup-backdrop
 - assertNotVisible:
-    id: context-window-meter-tooltip
+    id: context-window-popup
 - tapOn:
     id: context-window-meter
 - assertVisible:
-    id: context-window-meter-tooltip
+    id: context-window-popup
 - tapOn:
-    id: tooltip-dismiss
+    id: context-window-popup-backdrop
 - assertNotVisible:
-    id: context-window-meter-tooltip
+    id: context-window-popup

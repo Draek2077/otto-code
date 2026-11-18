@@ -1,4 +1,4 @@
-# Workspace Git fetch
+# Workspace Git
 
 Otto extends Paseo's existing `WorkspaceGitServiceImpl` with host fetch policy
 and an explicit Fetch action. It does not own a second Git service, watcher,
@@ -52,6 +52,31 @@ implementation lives in each package's `otto/workspace-git` directory. Marked
 seams in Paseo composition, Git actions and Host Workspaces settings only bind
 those owners. Chat, session, provider, transcript and memory paths are unchanged.
 
+## Parent branch comparisons
+
+Changes > **Committed** shows a **vs** picker beside the comparison mode. **Parent branch**
+offers local branches, separate `origin/` branches, and **Repository default**. A local
+and remote branch can point to different commits, so an explicit choice keeps its exact
+ref. The existing diff engine compares from the merge base; a child's Changes view then
+excludes work already on the selected parent.
+
+The choice is stored per working branch in the checkout's Git directory at
+`otto/diff-base.json`, using Otto 0.9's existing record format. Ordinary checkouts share
+a Git directory across branch switches; linked worktrees have separate Git directories.
+The picker changes no checked-out branch, index, commit, or worktree identity metadata.
+The existing Git service reads the selected base for its snapshots, diffs, commit list
+and base-targeted actions, and refreshes its existing subscriptions after a save.
+An explicit selection forces a structural snapshot and queues behind an in-flight
+refresh before acknowledging success. The ordinary refresh throttle must not leave
+the previous comparison visible after a saved choice.
+
+Branch suggestions load when the picker opens. A failed save leaves the picker open
+with the error and available choices; it does not replace the current comparison.
+`server_info.features.ottoGitDiffBase` gates editing. Hosts without that capability
+retain the comparison label and require an update to change it. The host resolves
+workspace ownership and checks that the working branch still matches the opened picker
+before saving.
+
 ## Verification
 
 Feature tests cover legacy preservation, revision conflicts, disabled callbacks,
@@ -61,3 +86,10 @@ Git/file-origin test proves linked-worktree coalescing and canonical ref refresh
 conflict and failure journeys in wide and compact browsers in CI. It uses a
 disposable host and no external Git credentials. Employer-specific remotes and
 device-native controls remain environment acceptance checks.
+
+`server/src/server/otto/workspace-git/comparison-base.test.ts` verifies real stacked
+branches, branch-scoped persistence, linked worktrees, exact remote refs and stale or
+invalid choices, rapid reselection and writes during an in-flight read.
+`app/e2e/browser/otto-comparison-base.spec.ts` covers the real sidebar
+picker, changed file list, reload persistence, a deleted-branch failure and recovery on
+wide and compact browsers.

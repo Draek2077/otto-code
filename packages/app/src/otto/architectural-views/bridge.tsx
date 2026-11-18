@@ -6,14 +6,14 @@ const Screen = lazy(async () => ({ default: (await import("./screen")).Architect
 const Workspace = lazy(async () => ({
   default: (await import("./screen")).ArchitecturalViewsWorkspace,
 }));
-const loading = <SettingsRow label="Loading Architectural Views..." />;
+const loading = <SettingsRow label="Loading Architecture..." />;
 function Available({ hostId, children }: { hostId: string; children: ReactNode }) {
   // COMPAT(ottoArchitecturalViews): added v0.10.0; remove after 2027-05-09 when host floor >= v0.10.0.
   const available = useHostFeature(hostId, "ottoArchitecturalViews");
   return available ? (
     <Suspense fallback={loading}>{children}</Suspense>
   ) : (
-    <SettingsRow label="Update the host to use Architectural Views." />
+    <SettingsRow label="Update the host to use Architecture." />
   );
 }
 export function ArchitecturalViewsScreen(props: PluginScreenProps) {

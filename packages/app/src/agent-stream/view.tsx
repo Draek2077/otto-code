@@ -64,7 +64,14 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { ToolCallDetailsContent } from "@/components/tool-call-details";
 import { QuestionFormCard } from "@/components/question-form-card";
 import { ToolCallSheetProvider } from "@/components/tool-call-sheet";
-import { createStreamPresentation, getStreamItemMessageId } from "./presentation";
+import { getStreamItemMessageId } from "./presentation";
+// OTTO(action-groups): decorate the existing presentation, not the timeline or scroll strategy.
+import {
+  createGroupedStreamPresentation,
+  getGroupedHistoryStartId,
+} from "@/otto/chat/action-groups";
+import { ActionGroupView } from "@/otto/chat/action-group";
+import type { ActionMember } from "@/otto/chat/action-groups";
 import { OverviewToolCallGroupView } from "@/tool-calls/detail-level/overview/view";
 import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
@@ -335,6 +342,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const { t } = useTranslation();
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
+    const groupConsecutiveActions = useSettings((settings) => settings.groupConsecutiveActions); // OTTO(action-groups)
     const chatOutlineEnabled = useSettings((settings) => settings.chatOutlineEnabled);
     const contentMaxWidth = useSettings(resolveContentMaxWidth);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
@@ -361,6 +369,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
+    const chatSpinnerColors = useChatProfileColors(resolvedServerId, agentId);
     const transformTimelineItem = useInstalledTimelineTransform(resolvedServerId);
 
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);
@@ -511,7 +520,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveStreamHead = useRetainedValue(streamHead, isActive);
     const effectiveTurnPresentation = useRetainedValue(turnPresentation, isActive);
     const isTurnActive = effectiveTurnPresentation.isActive;
-    const presentStream = useMemo(() => createStreamPresentation(), []);
+    const presentStream = useMemo(() => createGroupedStreamPresentation(), []); // OTTO(action-groups)
     const presentation = useMemo(
       () =>
         presentStream({
@@ -519,6 +528,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
           transform: transformTimelineItem,
           level: toolCallDetailLevel,
+          groupConsecutiveActions, // OTTO(action-groups)
           isTurnActive,
         }),
       [
@@ -527,6 +537,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         effectiveStreamHead,
         transformTimelineItem,
         toolCallDetailLevel,
+        groupConsecutiveActions, // OTTO(action-groups)
         isTurnActive,
       ],
     );
@@ -542,6 +553,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     });
     const isLoadingOlder = remoteIsLoadingOlder;
     const hasOlder = hasLocalHistory || remoteHasOlder;
+    // OTTO(action-groups): compressed pages must not auto-drain remote history
+    // merely to fill a viewport. The oldest summary offers the normal loader explicitly.
+    const groupedHistoryStartId = getGroupedHistoryStartId(
+      presentation.tail,
+      presentation.actionGroupsByHostId,
+      hasLocalHistory,
+      remoteHasOlder,
+    );
+    const loadOlderOnNearStart = useCallback(
+      () => (groupedHistoryStartId ? false : loadOlder()),
+      [groupedHistoryStartId, loadOlder],
+    );
     const progressKey = `${remoteProgressKey ?? "local"}:${historyWindowStart}`;
 
     const baseRenderModel = useMemo(() => {
@@ -855,9 +878,53 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       ],
     );
 
+    // OTTO(action-groups): reuse current tool/reasoning renderers and expansion revisions.
+    const getActionGroup = useStableEvent((id: string) =>
+      presentation.actionGroupsByHostId.get(id),
+    );
+    // OTTO(action-groups): preserve the header under the reader while its details change height.
+    const setActionGroupExpanded = useCallback(
+      (id: string, expanded: boolean) => {
+        viewportRef.current?.holdReadingPosition?.();
+        setToolCallGroupExpanded(id, expanded);
+      },
+      [setToolCallGroupExpanded],
+    );
+    const renderActionMember = useCallback(
+      (member: ActionMember, isLast: boolean) => {
+        if (member.kind === "tool_call") return renderSingleToolCallItem(member, isLast);
+        return (
+          <ToolCallSlot
+            itemId={member.id}
+            onInlineDetailsExpandedChangeByItemId={setInlineDetailsExpanded}
+            toolName="thinking"
+            args={member.text}
+            status="completed"
+            isLastInSequence={isLast}
+            defaultExpanded={autoExpandReasoning}
+          />
+        );
+      },
+      [autoExpandReasoning, renderSingleToolCallItem, setInlineDetailsExpanded],
+    );
+
     const renderStreamItemContent = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const item = layoutItem.item;
+        // OTTO(action-groups): collapsed members never mount their detail components.
+        const actionGroup = getActionGroup(item.id);
+        if (actionGroup)
+          return (
+            <ActionGroupView
+              group={actionGroup}
+              expanded={expandedToolCallGroupIds.has(actionGroup.id)}
+              onExpandedChange={setActionGroupExpanded}
+              isLastInSequence={layoutItem.isLastInToolSequence}
+              renderMember={renderActionMember}
+              onLoadOlder={actionGroup.id === groupedHistoryStartId ? loadOlder : undefined}
+              isLoadingOlder={isLoadingOlder}
+            />
+          );
         switch (item.kind) {
           case "user_message":
             return renderUserMessageItem(layoutItem, item);
@@ -901,6 +968,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         renderAssistantMessageItem,
         renderThoughtItem,
         renderToolCallItem,
+        getActionGroup,
+        setActionGroupExpanded, // OTTO(action-groups)
+        expandedToolCallGroupIds,
+        renderActionMember, // OTTO(action-groups)
+        groupedHistoryStartId,
+        isLoadingOlder,
+        loadOlder, // OTTO(action-groups)
         resolvedServerId,
       ],
     );
@@ -944,6 +1018,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       () =>
         isTurnActive || bottomTurnFooterHost ? (
           <TurnFooter
+            spinnerColors={chatSpinnerColors}
             isRunning={isTurnActive}
             inFlightTurnStartedAt={baseRenderModel.turnTiming.runningStartedAt}
             host={bottomTurnFooterHost}
@@ -956,6 +1031,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [
         handleForkAssistantTurn,
         handleForkInFlightTurn,
+        chatSpinnerColors,
         readOnly,
         isTurnActive,
         baseRenderModel.turnTiming.runningStartedAt,
@@ -1082,11 +1158,22 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       expandedInlineToolCallIds.size === 0;
     const historyRowRevision = useMemo(
       () => ({
-        contentById: presentation.historyGroupUpdatesByHostId,
+        // OTTO(action-groups): only the history-start host needs the loader's revisions.
+        contentById: {
+          isLoadingOlder,
+          has: (id: string) =>
+            id === groupedHistoryStartId || presentation.historyGroupUpdatesByHostId.has(id),
+        },
         displayStateById: expandedToolCallGroupIds,
         globalDisplayState: isMobile,
       }),
-      [expandedToolCallGroupIds, isMobile, presentation.historyGroupUpdatesByHostId],
+      [
+        expandedToolCallGroupIds,
+        isMobile,
+        presentation.historyGroupUpdatesByHostId,
+        groupedHistoryStartId,
+        isLoadingOlder,
+      ], // OTTO(action-groups)
     );
 
     const findItems = useMemo(
@@ -1124,7 +1211,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 isAuthoritativeHistoryReady,
                 onNearBottomChange: setIsNearBottom,
                 onReadingPositionChange: handleReadingPositionChange,
-                onNearHistoryStart: loadOlder,
+                onNearHistoryStart: loadOlderOnNearStart, // OTTO(action-groups)
                 isLoadingOlderHistory: isLoadingOlder,
                 hasOlderHistory: hasOlder,
                 olderHistoryProgressKey: progressKey,
@@ -1800,3 +1887,4 @@ function StreamItemWrapper({ gapBelow, children }: StreamItemWrapperProps) {
   );
   return <View style={wrapperStyle}>{children}</View>;
 }
+import { useChatProfileColors } from "@/otto/chat/identity/use-profile-colors"; // OTTO(chat-profile): presentation-only subscription to the canonical agent.

@@ -33,6 +33,7 @@ import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 import { readValidatedString } from "@/storage/validated-storage";
 // OTTO(git-fetch): explicit menu contribution only; core primary/secondary policy is unchanged.
 import { useGitFetchAction } from "@/otto/workspace-git/action";
+import { withManualFetch } from "@/otto/workspace-git/action-placement"; // OTTO(git-fetch): use the existing Git options menu.
 
 export type { GitActionId, GitAction, GitActions } from "@/git/policy";
 
@@ -876,10 +877,7 @@ export function useGitActions({
 
   // OTTO(git-fetch): the same menu feeds the toolbar and Command Center.
   const gitActions = useMemo(
-    () =>
-      fetchAction
-        ? { ...paseoGitActions, menu: [...paseoGitActions.menu, fetchAction] }
-        : paseoGitActions,
+    () => withManualFetch(paseoGitActions, fetchAction),
     [paseoGitActions, fetchAction],
   );
   return { gitActions, branchLabel, isGit };

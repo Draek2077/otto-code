@@ -18,8 +18,12 @@ import {
 } from "@/utils/status-indicator-geometry";
 import type { Theme } from "@/styles/theme";
 import { usePanelInstanceAttributes } from "@/panels/panel-instance-attributes";
+import { ChatTabIcon } from "@/otto/chat/identity/tab-icon"; // OTTO(chat-identity): released status artwork, without changing descriptors.
+import { useChatProfileColors } from "@/otto/chat/identity/use-profile-colors";
+import type { SpinnerColors } from "@/otto/chat/identity/palette";
 
 export interface WorkspaceTabPresentation {
+  chatSpinnerColors?: SpinnerColors; // OTTO(chat-profile): captured identity, separate from workspace blue.
   key: string;
   kind: WorkspaceTabDescriptor["kind"];
   label: string;
@@ -82,9 +86,14 @@ function WorkspaceTabPresentationResolverInner({
     tabId: tab.tabId,
   });
   const attributes = usePanelInstanceAttributes({ serverId, workspaceId, tabId: tab.tabId });
+  const chatSpinnerColors = useChatProfileColors(
+    serverId,
+    tab.target.kind === "agent" ? tab.target.agentId : null,
+  );
 
   const presentation = useMemo(
     () => ({
+      chatSpinnerColors,
       key: tab.key,
       kind: tab.kind,
       label: descriptor.label,
@@ -97,6 +106,7 @@ function WorkspaceTabPresentationResolverInner({
       statusBucket: descriptor.statusBucket,
     }),
     [
+      chatSpinnerColors,
       descriptor.icon,
       descriptor.label,
       descriptor.tooltip,
@@ -166,6 +176,18 @@ export function WorkspaceTabIcon({
     ],
     [statusDotColor, statusDotBorderColor],
   );
+
+  if (presentation.kind === "agent")
+    return (
+      <ChatTabIcon
+        bucket={bucket}
+        Icon={Icon}
+        size={size}
+        color={iconColor}
+        strokeWidth={strokeWidth}
+        spinnerColors={presentation.chatSpinnerColors}
+      />
+    );
 
   return (
     <View style={agentIconWrapperStyle}>

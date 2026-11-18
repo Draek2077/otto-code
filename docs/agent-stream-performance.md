@@ -48,6 +48,47 @@ So arrival sets a _target_ and the reveal rate is derived from the backlog inste
   while text arrives, and release obsolete window caches as the reader reveals more history;
   window caches must stay bounded while their source timeline remains loaded.
 
+<!-- OTTO(action-groups): presentation-only action grouping uses the existing row and scroll owners. -->
+
+## Otto action grouping
+
+In Detailed tool-call mode, **Group consecutive actions** collapses runs of two or
+more completed tools and reasoning into expandable summaries. Running actions stay
+visible below the summary, including parallel calls that complete out of order.
+Messages, plans, plugin content, notifications, compaction markers and explicit
+turn boundaries separate runs. Failed actions remain inspectable and the summary
+shows their failure count. Overview mode retains Paseo's existing presentation.
+
+`packages/app/src/otto/chat/action-groups.ts` decorates the existing presentation
+after plugin transforms. It groups retained history only; the live head stays
+unchanged until committed. Canonical rows, source cursors, persistence and model
+requests do not contain groups. Tail identity caches the projection during text
+deltas, and unchanged runs retain their host objects so row memoization still
+works. The cache retains only the current groups, including when older pages extend
+a run. Existing group IDs survive backward pagination extending the same run.
+
+Collapsed groups mount no member views. Expansion mounts 25 actions at a time;
+**Show more actions** reveals another batch. Collapse releases member views.
+The group uses the current tool and reasoning controls inside the existing
+transcript, without a nested scroller, another virtualizer, timers or scroll writes.
+The existing group-expansion revision channel updates the memoized history host.
+Opening or closing a group explicitly hands position ownership to the reader
+through the existing viewport's `holdReadingPosition` handle. Web cancels pending
+bottom following and captures its current reading anchor; native detaches its
+bottom controller while FlatList maintains the visible row. Neither path writes
+an offset. Sending a message, jumping to the bottom, and ordinary bottom-reaching
+gestures retain their existing follow behavior.
+
+When the oldest loaded row is a compressed action group and remote history remains,
+the group exposes **Load older messages** through the normal history loader.
+Automatic near-start loading pauses there: continually loading pages to fill a
+viewport with collapsed action summaries could otherwise drain the whole history.
+Ordinary history and local window revelation retain the base pagination policy.
+
+The device preference keeps the 0.9 key `groupConsecutiveActions`, defaults to true,
+and preserves an explicit false value. It lives alongside the existing Chat detail
+settings. This presentation does not depend on which provider produced the actions.
+
 ## Native parsing cost
 
 The native library reparses and measures its entire `markdown` prop on each update. During streaming, the renderer splits source at an mdast block boundary and memoizes the head, so per-frame updates parse only the tail. Boundary discovery runs when a source line completes, rather than on every reveal frame. The unfinished line and final parsed block stay in the tail, preserving list continuation, setext headings, tables and open fences. Reference-dependent source and HTML retain a larger tail because later source can change their meaning. A single long block therefore still carries its full parsing cost.

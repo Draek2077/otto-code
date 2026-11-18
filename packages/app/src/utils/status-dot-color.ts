@@ -1,5 +1,6 @@
 import type { Theme } from "@/styles/theme";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
+import { workspaceActivityBlue } from "@/otto/chat/identity/palette"; // OTTO(chat-identity): released semantic blue without modifying Paseo's theme.
 
 export function getStatusDotColor(input: {
   theme: Theme;
@@ -8,24 +9,19 @@ export function getStatusDotColor(input: {
 }): string | null {
   const { theme, bucket, showDoneAsInactive = false } = input;
 
-  // The one place the statusDot* band is read. Dots sit louder than the check icons and host
-  // badges on the same row — see the band's note in theme.ts — so going through the status
-  // family here instead would quietly put the row's state below its metadata.
-  //
-  // needs_input is amber because it wants something from you. Working is blue: an agent doing
-  // its job is the one busy state that asks for nothing, so it should not sit in the same
-  // color as the states that do.
+  // OTTO(chat-identity): match 0.9.35's shared semantic status family. The blue activity
+  // ring is independent of this dot, so an error or question stays visible while work continues.
   if (bucket === "needs_input") {
-    return theme.colors.statusDotWarning;
+    return theme.colors.statusWarning; // OTTO(chat-identity): shared semantic status tints, as in 0.9.35.
   }
   if (bucket === "failed") {
-    return theme.colors.statusDotDanger;
+    return theme.colors.statusDanger;
   }
   if (bucket === "running") {
-    return theme.colors.statusDotRunning;
+    return workspaceActivityBlue(theme.colorScheme === "dark");
   }
   if (bucket === "attention") {
-    return theme.colors.statusDotSuccess;
+    return theme.colors.statusSuccess;
   }
   if (bucket === "done") {
     return showDoneAsInactive ? theme.colors.border : null;

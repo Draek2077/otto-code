@@ -212,7 +212,9 @@ export async function initializeLocalSpeechServices(params: {
     sttService,
     ttsService,
     dictationSttService,
-    localVoiceTtsProvider,
+    localVoiceTtsProvider:
+      localVoiceTtsProvider ??
+      (workerClient ? initializeLocalVoiceTts({ client: workerClient }) : null), // OTTO(profile-voice): same lazy worker for installed per-utterance voices.
     localModelConfig: localConfig
       ? {
           modelsDir: localConfig.modelsDir,

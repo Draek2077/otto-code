@@ -1,3 +1,6 @@
+import type { Agent } from "@/stores/session-store";
+import { useProviderSubagentStore } from "@/subagents/provider-store";
+import { busyParents, chooseLine, cueState, spokenProfile, voiceForChat } from "./profile-cues";
 import { useEffect, useMemo, useState } from "react";
 import { useSessionStore } from "@/stores/session-store";
 import { useSettings } from "@/hooks/use-settings";
@@ -6,14 +9,12 @@ import { speechAgentKey } from "./preferences";
 import { speechDevicePreferences } from "./device";
 import { createSpeechSegments } from "./segments";
 import type { SpeechPlayback } from "./playback";
-import type { Agent } from "@/stores/session-store";
+function skipAgent(agent: Agent) {
+  return agent.archivedAt || agent.status === "closed" || agent.parentAgentId;
+}
 import type { SessionState } from "@/stores/session-store";
 const sameFeed = (previous: readonly unknown[] | null, next: readonly unknown[]) =>
   previous !== null && previous.every((value, index) => value === next[index]);
-function cueState(agent: Agent) {
-  if (agent.pendingPermissions.length) return "waiting";
-  return agent.turn.phase === "open" ? "thinking" : "done";
-}
 const sameHosts = (previous: string[], next: string[]) =>
   previous.length === next.length && previous.every((host, index) => host === next[index]);
 function canPlayHostCues(session: SessionState | undefined): session is SessionState {
@@ -79,6 +80,7 @@ function ChatSpeechSource({
         playback.speak({
           hostId: serverId,
           key: prefix + segment.key,
+          ...voiceForChat(serverId, agentId),
           itemId: segment.itemId,
           text: segment.text,
           automatic: true,
@@ -104,6 +106,8 @@ function HostVoiceCues({ serverId, playback }: { serverId: string; playback: Spe
     if (!available) return;
     const before = new Map<string, string>();
     let initialized = false;
+    let lastChildren: ReturnType<typeof useProviderSubagentStore.getState>["descriptors"] | null =
+      null;
     let lastAgents: SessionState["agents"] | null = null;
     const consume = () => {
       const session = useSessionStore.getState().sessions[serverId];
@@ -115,12 +119,15 @@ function HostVoiceCues({ serverId, playback }: { serverId: string; playback: Spe
         lastAgents = null;
         return;
       }
-      if (initialized && session.agents === lastAgents) return;
+      const descriptors = useProviderSubagentStore.getState().descriptors;
+      if (initialized && session.agents === lastAgents && descriptors === lastChildren) return;
+      lastChildren = descriptors;
+      const parents = busyParents(serverId, session.agents);
       lastAgents = session.agents;
       const preferences = speechDevicePreferences();
       for (const agent of session.agents.values()) {
-        if (agent.archivedAt || agent.status === "closed") continue;
-        const state = cueState(agent);
+        if (skipAgent(agent)) continue;
+        const state = cueState(agent, parents.has(agent.id));
         const previous = before.get(agent.id);
         before.set(agent.id, state);
         if (
@@ -131,11 +138,13 @@ function HostVoiceCues({ serverId, playback }: { serverId: string; playback: Spe
           preferences.agentAutoSpeechEnabled[speechAgentKey(serverId, agent.id)]
         )
           continue;
-        const line =
-          previous === undefined
-            ? "Starting!"
-            : { thinking: "Thinking...", waiting: "Waiting...", done: "Complete!" }[state];
+        if (state === "error" || (previous === "error" && state === "done")) continue;
+        const profile = spokenProfile(agent.labels["otto.profile"]);
+        const line = chooseLine(previous === undefined ? "join" : state, profile);
+        if (!line) continue;
         playback.speak({
+          selection: profile.selection,
+          profileVoice: profile.profileVoice,
           hostId: serverId,
           key: `${serverId}:${agent.id}:cue:${state}`,
           text: line,
@@ -147,9 +156,11 @@ function HostVoiceCues({ serverId, playback }: { serverId: string; playback: Spe
       for (const id of before.keys()) if (!session.agents.has(id)) before.delete(id);
     };
     const unsubscribe = useSessionStore.subscribe(consume);
+    const children = useProviderSubagentStore.subscribe(consume);
     consume();
     return () => {
       unsubscribe();
+      children();
       playback.cancelKey(`${serverId}:`);
     };
   }, [available, serverId, playback]);

@@ -1,3 +1,4 @@
+import { boundRole } from "./team-roles.js";
 import { randomUUID } from "node:crypto";
 import {
   WorkflowLaunch,
@@ -6,6 +7,8 @@ import {
   type RunPlan,
   type WorkflowScheduleSource,
   runPhaseEditsWorkspace,
+  defaultRoleForPhaseType,
+  isRunPhaseType,
   describeRunPlanStart,
 } from "@getpaseo/plugin/otto/workflows";
 import type { WorkflowRuntimePorts, WorkflowWorkspace } from "./runtime-ports.js";
@@ -58,13 +61,22 @@ export async function reviewWorkflow(
   const workspace = await ports.workspace(scope, workspaceId);
   if (workspace.projectId !== scope.projectId || workspace.workspaceId !== workspaceId)
     throw new WorkflowError("invalid", "Workflow workspace does not belong to this project.");
+  // A submitted or previously reviewed snapshot cannot supply a host identity.
+  launch.teamSnapshot = await ports.captureTeam?.(workspace);
+  if (Buffer.byteLength(JSON.stringify(launch)) > 512000)
+    throw new WorkflowError(
+      "invalid",
+      "The launch and Team roster exceed the 500 KB review limit.",
+    );
   const problems = launch.kind === "graph" ? graphProblems(launch) : [];
   const seats = WorkflowSeats.parse(seatsFor(launch));
+  const conductor = boundRole(launch, "orchestrator")?.seat ?? seats.conductor;
   if (launch.kind === "ai")
-    problems.push(...((await ports.validateTools?.(seats.conductor, ["start_workflow"])) ?? []));
-  problems.push(...(await ports.validateSeat(seats.conductor, workspace, "write")));
-  for (const seat of [seats.worker, seats.judge])
-    problems.push(...(await ports.validateSeat(seat, workspace, "write")));
+    problems.push(...((await ports.validateTools?.(conductor, ["start_workflow"])) ?? []));
+  problems.push(...(await ports.validateSeat(conductor, workspace, "write")));
+  if (!launch.teamSnapshot)
+    for (const seat of [seats.worker, seats.judge])
+      problems.push(...(await ports.validateSeat(seat, workspace, "write")));
   if (launch.kind === "graph")
     problems.push(...(await graphSeatProblems(ports, launch, seats, workspace)));
   if (problems.length) throw new WorkflowError("unsupported", problems.join(" "));
@@ -89,14 +101,22 @@ async function graphSeatProblems(
   const problems: string[] = [];
   for (const node of launch.graph.nodes) {
     if (node.kind !== "agent") continue;
-    const seat = node.model ? parseGraphSeat(node.model) : seats.worker;
+    const seat =
+      boundRole(launch, node.role)?.seat ??
+      (node.model ? parseGraphSeat(node.model) : seats.worker);
     problems.push(...(await ports.validateSeat(seat, workspace, graphAccess(node.access))));
     if (node.autonomous)
       problems.push(
         ...((await ports.validateTools?.(seat, ["delegate_workflow_task", "create_agent"])) ?? []),
       );
     if (node.loop?.until)
-      problems.push(...(await ports.validateSeat(seats.judge, workspace, "read")));
+      problems.push(
+        ...(await ports.validateSeat(
+          boundRole(launch, node.loop.until.judgeRole ?? "judger")?.seat ?? seats.judge,
+          workspace,
+          "read",
+        )),
+      );
   }
   return problems;
 }
@@ -150,13 +170,22 @@ export async function validatePlan(
     if (phase.type === "gate") continue;
     problems.push(
       ...(await ports.validateSeat(
-        phase.type === "verify" ? seats.judge : seats.worker,
+        boundRole(
+          review.launch,
+          phase.role ?? (isRunPhaseType(phase.type) ? defaultRoleForPhaseType(phase.type) : null),
+        )?.seat ?? (phase.type === "verify" ? seats.judge : seats.worker),
         review.workspace,
         planPhaseAccess(phase),
       )),
     );
     if (phase.judge)
-      problems.push(...(await ports.validateSeat(seats.judge, review.workspace, "read")));
+      problems.push(
+        ...(await ports.validateSeat(
+          boundRole(review.launch, phase.judge.role ?? "judger")?.seat ?? seats.judge,
+          review.workspace,
+          "read",
+        )),
+      );
   }
   if (problems.length) throw new WorkflowError("unsupported", problems.join(" "));
 }

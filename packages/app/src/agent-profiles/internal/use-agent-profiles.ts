@@ -7,6 +7,7 @@ import { supportsAgentProfiles } from "./capabilities";
 export interface UseAgentProfilesResult {
   /** `null` until the daemon config has arrived. */
   profiles: AgentProfile[] | null;
+  teams?: import("@getpaseo/protocol/otto/agent-teams").AgentTeams; // OTTO(agent-teams)
   /** False on daemons that predate agent profiles, or while disconnected. */
   isSupported: boolean;
   /** Writes the whole list; there is no per-profile RPC. */
@@ -21,12 +22,19 @@ export function useAgentProfiles(serverId: string | null): UseAgentProfilesResul
 
   const saveProfiles = useCallback(
     async (next: AgentProfile[]) => {
-      await patchConfig({ agentProfiles: next });
+      if (
+        !(await patchConfig({
+          agentProfiles: next,
+          expectedProfileRoster: config?.agentProfiles ?? [],
+        }))
+      )
+        throw new Error("The host disconnected before Profiles were saved."); // OTTO(agent-teams)
     },
-    [patchConfig],
+    [config?.agentProfiles, patchConfig],
   );
 
   return {
+    teams: config?.agentTeams, // OTTO(agent-teams)
     profiles: config ? (config.agentProfiles ?? []) : null,
     isSupported,
     saveProfiles,

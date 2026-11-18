@@ -266,6 +266,7 @@ type NewWorkspaceComposerState = NonNullable<
 >;
 
 interface WorkspaceDraftSubmissionConfig {
+  labels?: Record<string, string>; // OTTO(chat-profile): carry explicit identity into background creation.
   cwd: string;
   provider: AgentProvider;
   modeId: string | null;
@@ -369,6 +370,7 @@ function buildWorkspaceDraftSetupFromComposer(input: {
   composerState: NewWorkspaceComposerState;
 }): WorkspaceDraftTabSetup {
   return {
+    labels: chatProfileLabels(input.composerState.chatProfile),
     provider: input.provider,
     cwd: input.cwd,
     modeId: input.composerState.effectiveModeId || null,
@@ -448,6 +450,7 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
   let navigated = false;
   let outcome: SubmitOutcome = "background";
   const initialAgent: NonNullable<CreateWorkspaceRequestOptions["agent"]> = {
+    labels: chatProfileLabels(composerState.chatProfile),
     config: {
       provider,
       cwd,
@@ -568,6 +571,7 @@ function resolveWorkspaceDraftSubmissionConfig(input: {
       model: initialSetup.model,
       thinkingOptionId: initialSetup.thinkingOptionId,
       featureValues: initialSetup.featureValues,
+      labels: initialSetup.labels,
       target: { kind: "draft", draftId, setup: initialSetup },
     };
   }
@@ -578,6 +582,7 @@ function resolveWorkspaceDraftSubmissionConfig(input: {
     model: composerState.effectiveModelId || null,
     thinkingOptionId: composerState.effectiveThinkingOptionId || null,
     featureValues: composerState.featureValues,
+    labels: chatProfileLabels(composerState.chatProfile),
     target: { kind: "draft", draftId },
   };
 }
@@ -636,6 +641,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): SubmitOutcome {
     ...(submission.model ? { model: submission.model } : {}),
     ...(submission.thinkingOptionId ? { thinkingOptionId: submission.thinkingOptionId } : {}),
     ...(submission.featureValues ? { featureValues: submission.featureValues } : {}),
+    ...(submission.labels ? { labels: submission.labels } : {}),
     allowEmptyText: true,
     agentCreation: input.agentCreation,
   });
@@ -1702,3 +1708,4 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: 20,
   },
 }));
+import { chatProfileLabels } from "@/otto/chat/identity/profile-binding"; // OTTO(chat-profile): persist only explicitly assigned appearance with agent creation.

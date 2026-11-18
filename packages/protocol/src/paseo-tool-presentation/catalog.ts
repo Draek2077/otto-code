@@ -309,6 +309,17 @@ export const PASEO_TOOL_CATALOG = {
     detail: { inputOrder: ["provider"] },
   },
   list_profiles: { label: "List profiles" },
+  // OTTO(profile-memory): keep lesson text in the expandable detail.
+  remember_lesson: {
+    label: "Remember lesson",
+    context: field("scope"),
+    detail: { inputOrder: ["scope", "lesson"] },
+  },
+  review_lessons: { label: "Review lessons" },
+  revise_lesson: {
+    label: "Revise lesson",
+    detail: { inputOrder: ["handle", "lesson", "scope", "forget"] },
+  },
   inspect_provider: {
     label: "Inspect provider",
     context: field("provider"),

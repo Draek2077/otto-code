@@ -79,7 +79,7 @@ function StorageEditor({
           Cancel
         </Button>
         <Button onPress={save} disabled={state.busy || state.blocked}>
-          {state.busy ? "Copying..." : "Save storage"}
+          {state.busy ? "Copying..." : "Copy and switch"}
         </Button>
       </View>
     </>

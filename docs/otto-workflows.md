@@ -111,7 +111,7 @@ through a command query.
 Repository stores live at `.otto/workflows/{definitions,templates,runs}`. Host
 stores use the owning daemon's `project-workflows/<persisted-directory>/`.
 Workflow location is independent of Knowledge and Artifacts. Host defaults and
-project overrides use separate explicit CAS saves. Changing a location affects
+project overrides autosave independently using their captured CAS revisions. Changing a location affects
 future creates, never silently moves or hides existing records.
 
 Otto 0.9 global Graph/template libraries are discoverable as read-only legacy

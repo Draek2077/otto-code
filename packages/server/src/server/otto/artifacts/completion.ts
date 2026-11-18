@@ -16,6 +16,8 @@ export interface ArtifactCompletionRequest {
 }
 export interface ArtifactCompletionPorts {
   providers: Pick<ProviderSnapshotManager, "getAgentManagerProviderState" | "resolveCreateConfig">;
+  resolveRole?: import("../agent-profiles/role-selection.js").ResolveRole;
+  profileBrief?(id: string, cwd: string): Promise<string | null>;
   candidates(cwd: string): Promise<readonly StructuredGenerationProvider[]>;
 }
 interface CompletionFormat<T> {
@@ -33,6 +35,16 @@ export function createArtifactCompletion<T>(
 ) {
   return async (request: ArtifactCompletionRequest) => {
     request.signal.throwIfAborted();
+    const selected = request.selection;
+    const seat = selected?.profileId
+      ? await ports.resolveRole?.("artificer", selected.profileId, request.cwd)
+      : undefined;
+    if (
+      selected?.profileId &&
+      (!seat || seat.model !== selected.model || seat.profile.provider !== selected.provider)
+    )
+      throw new ArtifactError("unavailable", "The Artificer changed. Select its current model.");
+    const profileBrief = seat ? await ports.profileBrief?.(seat.profile.id, request.cwd) : null;
     const candidates = request.selection
       ? [request.selection]
       : await ports.candidates(request.cwd);
@@ -50,13 +62,19 @@ export function createArtifactCompletion<T>(
       });
       request.signal.throwIfAborted();
       const config: AgentSessionConfig = {
-        ...candidate,
+        provider: candidate.provider,
+        model: candidate.model,
         ...resolved,
         cwd: request.cwd,
         internal: true,
         mcpServers: {},
         title: format.title,
-        systemPrompt: format.systemPrompt,
+        thinkingOptionId:
+          seat?.profile.thinkingOptionId ??
+          ("thinkingOptionId" in candidate ? candidate.thinkingOptionId : undefined),
+        systemPrompt: [seat?.binding.prompt, profileBrief, format.systemPrompt]
+          .filter(Boolean)
+          .join("\n\n"),
       };
       const session = await client.createSession(config, {}, { persistSession: false });
       // A selected provider owns this attempt. Never fall through after admission.

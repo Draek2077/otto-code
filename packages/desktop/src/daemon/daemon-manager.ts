@@ -355,9 +355,12 @@ export async function stopDesktopDaemon(
   logDesktopDaemonLifecycle("stopping captured supervisor", { reason, pid: instance.pid, owned });
   await stopDaemonInstance(home, {
     instance,
+    force: owned && reason === "quit", // OTTO(dev-shutdown): the existing captured-instance safeguards govern final cleanup on explicit quit.
     timeoutMs: 15_000,
     requestShutdown: async (ready) => {
-      await runExternalCliJsonCommand(["daemon", "stop", "--host", ready.listen, "--json"]);
+      await runExternalCliJsonCommand(["daemon", "stop", "--host", ready.listen, "--json"], {
+        timeoutMs: 10_000,
+      }); // OTTO(dev-shutdown): leave time for captured-supervisor exit/cleanup.
     },
   });
   if (owned) ownedLaunch = null;

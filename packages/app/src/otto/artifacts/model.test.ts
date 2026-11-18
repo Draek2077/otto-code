@@ -294,3 +294,25 @@ test("saving metadata preserves an unrelated JSON draft and live status never re
   expect(draft.getSnapshot().latest.artifact.status).toBe("error");
   expect(draft.getSnapshot().document.artifact.revision).toBe("saved");
 });
+
+test("retains the explicit host default when reopening an Artifact creation draft", async () => {
+  const draft = new ArtifactCreateDraft({ hostId: "host", target: { kind: "project", id: "p" } });
+  const hide = draft.activate();
+  draft.edit("name", "A");
+  draft.edit("description", "Describe a report");
+  draft.selectModel({
+    profileId: "art",
+    provider: "mock",
+    model: "selected",
+    providerLabel: "Mock",
+    modelLabel: "Selected",
+  });
+  draft.selectModel(null);
+  hide();
+  draft.activate();
+  expect(draft.getSnapshot().selectionTouched).toBe(true);
+  await draft.submit(async (input) => {
+    expect(input.selection).toBeUndefined();
+    return document().artifact;
+  });
+});

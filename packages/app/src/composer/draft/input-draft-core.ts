@@ -27,6 +27,7 @@ export function buildDraftAgentControls(input: {
 }): DraftAgentControlsProps {
   const { formState, features, onSetFeature, onApplyAgentProfile, onDropdownClose } = input;
   return {
+    selectedProfileName: formState.chatProfile?.name, // OTTO(agent-teams)
     providerDefinitions: formState.providerDefinitions,
     selectedProvider: formState.selectedProvider,
     modeOptions: formState.modeOptions,

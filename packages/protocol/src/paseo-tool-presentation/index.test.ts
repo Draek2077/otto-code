@@ -18,6 +18,13 @@ function display(toolName: string, input: unknown, targetAgentTitle?: string) {
 
 describe("Paseo tool display", () => {
   it.each([
+    // OTTO(profile-memory): show the scope without quoting lesson text in the collapsed row.
+    [
+      "remember_lesson",
+      { scope: "project", lesson: "Run scoped checks" },
+      "Remember lesson",
+      "project",
+    ],
     [
       "send_agent_prompt",
       { agentId: "agt_1", prompt: "Fix the failing test" },

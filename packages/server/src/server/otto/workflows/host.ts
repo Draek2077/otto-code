@@ -1,3 +1,4 @@
+import { boundRole } from "./team-roles.js";
 import { randomUUID } from "node:crypto";
 import {
   RunPlanSchema,
@@ -272,6 +273,9 @@ export class WorkflowHost {
           };
     const run = normalizeWorkflowRunRecord({
       ...base,
+      ...(review.launch.teamSnapshot
+        ? { teamId: review.launch.teamSnapshot.id, teamName: review.launch.teamSnapshot.name }
+        : {}),
       ...(review.scheduleSource ? { scheduleSource: review.scheduleSource } : {}),
       launch: review.launch,
       ownerInstance: this.instanceId,
@@ -319,7 +323,8 @@ export class WorkflowHost {
       const request = this.request(state, {
         agentId: conductorAgentId,
         role: "conductor",
-        seat: seatsFor(review.launch).conductor,
+        seat: boundRole(review.launch, "orchestrator")?.seat ?? seatsFor(review.launch).conductor,
+        profile: this.roleProfile(review.launch, "orchestrator"),
         title: `Workflow: ${run.title}`,
         access: "write",
       });
@@ -407,7 +412,10 @@ export class WorkflowHost {
   }
   private request(
     state: ActiveWorkflow,
-    input: Pick<WorkflowAgentRequest, "agentId" | "role" | "seat" | "title" | "access"> &
+    input: Pick<
+      WorkflowAgentRequest,
+      "agentId" | "role" | "seat" | "title" | "access" | "profile"
+    > &
       Partial<WorkflowAgentRequest>,
   ): WorkflowAgentRequest {
     return {
@@ -721,34 +729,53 @@ export class WorkflowHost {
       signal.addEventListener("abort", aborted, { once: true });
     });
   }
+  private roleProfile(launch: WorkflowLaunch, role: string | null) {
+    const match = boundRole(launch, role);
+    if (!match) return undefined;
+    return (
+      match.binding ?? {
+        id: match.profileId,
+        name: match.name,
+        prompt: match.prompt,
+        respectGlobal: true,
+      }
+    );
+  }
   private async spawnPlan(state: ActiveWorkflow, input: RunEngineSpawnInput) {
     const judge = input.phaseType === "verify";
     const phase = state.plan?.phases.find((value) => value.id === input.phaseId);
     let access = phase ? planPhaseAccess(phase) : "write";
     if (judge && phase?.type !== "verify") access = "read";
-    const seat = judge ? seatsFor(state.launch).judge : seatsFor(state.launch).worker;
+    const member = boundRole(state.launch, input.role);
+    const seat =
+      member?.seat ?? (judge ? seatsFor(state.launch).judge : seatsFor(state.launch).worker);
     const agentId = randomUUID();
     await this.createOwned(
       state,
       this.request(state, {
         agentId,
         role: judge ? "judge" : "worker",
+        profile: this.roleProfile(state.launch, input.role),
         seat,
         title: `${state.run.title}: ${input.phaseId}`,
         access,
       }),
     );
     this.beginTurn(state, agentId, input.task);
-    return { agentId };
+    return { agentId, personalityId: member?.profileId };
   }
   private async spawnGraph(state: ActiveWorkflow, input: GraphEngineSpawnInput) {
-    const seat = input.model ? parseGraphSeat(input.model) : seatsFor(state.launch)[input.purpose];
+    const member = boundRole(state.launch, input.role);
+    const seat =
+      member?.seat ??
+      (input.model ? parseGraphSeat(input.model) : seatsFor(state.launch)[input.purpose]);
     const agentId = randomUUID();
     await this.createOwned(
       state,
       this.request(state, {
         agentId,
         role: input.purpose,
+        profile: this.roleProfile(state.launch, input.role),
         seat,
         title: input.title,
         access: input.purpose === "judge" ? "read" : graphAccess(input.access),
@@ -759,7 +786,7 @@ export class WorkflowHost {
       }),
     );
     this.beginTurn(state, agentId, input.task);
-    return { agentId };
+    return { agentId, personalityId: member?.profileId };
   }
   private launchEngine(state: ActiveWorkflow) {
     if (state.engine) throw new WorkflowError("conflict", "Workflow execution is already running.");
@@ -831,7 +858,9 @@ export class WorkflowHost {
       } else {
         const port: RunEnginePort = {
           ...common,
-          resolveRole: async (role) => ({ personalityId: `captured:${role}` }),
+          resolveRole: async (role) => ({
+            personalityId: boundRole(state.launch, role)?.profileId ?? `captured:${role}`,
+          }),
           spawn: (input) => this.spawnPlan(state, input),
           continueAgent: async ({ agentId, task }) => {
             this.beginTurn(state, agentId, task);

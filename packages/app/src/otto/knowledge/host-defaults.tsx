@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRpc } from "@getpaseo/plugin/client";
 import {
@@ -11,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { KnowledgeHostDefaultModel } from "./host-default-model";
-import { styles } from "./styles";
 
 const options = [
   { value: "repository", label: "Repository" },
@@ -57,19 +55,6 @@ export function KnowledgeHostDefaults({ hostId, active }: { hostId: string; acti
       return;
     await model.reload(authority);
   }, [model, state.blocked, state.location, state.origin]);
-  const submit = useCallback(async () => {
-    const authority = model.getAuthority();
-    if (
-      !(await confirmDialog({
-        title: "Change the host Knowledge default?",
-        message:
-          "This changes where new stores are created. Existing initialized stores stay where they are; project storage overrides remain unchanged.",
-        confirmLabel: "Save default",
-      }))
-    )
-      return;
-    await model.save(authority);
-  }, [model]);
   return (
     <SettingsSection title="Host Knowledge defaults" testID="knowledge-host-defaults">
       <SettingsCard>
@@ -79,29 +64,15 @@ export function KnowledgeHostDefaults({ hostId, active }: { hostId: string; acti
           value={state.location}
           options={options}
           onValueChange={select}
-          disabled={!state.origin || state.busy || !active}
+          disabled={!state.origin || state.busy || state.blocked || !active}
         />
       </SettingsCard>
       {state.error ? <Alert variant="error" description={state.error} /> : null}
-      {state.success ? <Alert description={state.success} /> : null}
-      <View style={styles.actions}>
+      {state.error ? (
         <Button variant="outline" size="sm" onPress={reload} disabled={!active || state.busy}>
           Reload default
         </Button>
-        <Button
-          size="sm"
-          onPress={submit}
-          disabled={
-            !active ||
-            !state.origin ||
-            state.busy ||
-            state.blocked ||
-            state.location === state.origin.defaultStoreLocation
-          }
-        >
-          {state.busy ? "Working..." : "Save default"}
-        </Button>
-      </View>
+      ) : null}
     </SettingsSection>
   );
 }

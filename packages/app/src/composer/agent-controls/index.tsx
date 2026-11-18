@@ -1,3 +1,5 @@
+import { readChatProfile } from "@/otto/chat/identity/profile-binding"; // OTTO(agent-teams)
+import { ComposerUsageSlot } from "@/otto/ui/composer-usage-slot"; // OTTO(usage-button): the composer injects its meter without another usage subscription.
 import {
   memo,
   useCallback,
@@ -37,7 +39,8 @@ import { filterSelectableModels } from "@/provider-selection/model-catalog";
 import { useSessionStore } from "@/stores/session-store";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { resolveProviderDefinition } from "@/utils/provider-definitions";
-import { mergeProviderPreferences, useFormPreferences } from "@/hooks/use-form-preferences";
+import { useLiveChatPreferences } from "@/otto/agent-profiles/live-preferences"; // OTTO(agent-teams)
+import { mergeProviderPreferences } from "@/hooks/use-form-preferences";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import {
   AgentModeControl,
@@ -134,6 +137,7 @@ interface ControlledAgentControlsProps {
 }
 
 export interface DraftAgentControlsProps {
+  selectedProfileName?: string; // OTTO(agent-teams)
   providerDefinitions: AgentProviderDefinition[];
   selectedProvider: AgentProvider | null;
   modeOptions: AgentMode[];
@@ -389,6 +393,7 @@ function pickDesktopModel({
 }
 
 type AgentControlsSlice = {
+  labels: Record<string, string>; // OTTO(agent-teams): resolve the assigned Profile after sync.
   provider: string;
   cwd: string | null;
   runtimeModelId: string | null;
@@ -409,6 +414,7 @@ function selectAgentControlsSlice(
     return null;
   }
   return {
+    labels: currentAgent.labels, // OTTO(agent-teams)
     provider: currentAgent.provider,
     cwd: currentAgent.cwd,
     runtimeModelId: currentAgent.runtimeInfo?.model ?? null,
@@ -982,6 +988,8 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
         </>
       ) : null}
 
+      {canSelectModel ? <ComposerUsageSlot /> : null}
+      {/* OTTO(usage-button) */}
       {canSelectModel ? (
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild triggerRefProp="ref">
@@ -1252,29 +1260,33 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
   );
 
   return canSelectModel ? (
-    <CompactModelSheet
-      providers={modelSelectorProviders}
-      selectedProvider={provider}
-      selectedModel={selectedModelId ?? ""}
-      thinkingLabel={hasThinking ? displayThinking : null}
-      onSelect={handleSheetModelSelect}
-      profiles={agentProfiles}
-      onApplyProfile={onApplyAgentProfile}
-      onEditProfiles={onEditAgentProfiles}
-      onCreateProfile={onCreateAgentProfile}
-      onEditProfile={onEditAgentProfile}
-      isLoading={isModelLoading}
-      disabled={modelDisabled}
-      onOpen={onModelSelectorOpen}
-      onClose={onDropdownClose}
-      onRetryProvider={onRetryModelProvider}
-      isRetryingProvider={isRetryingModelProvider}
-      serverId={modelSelectorServerId}
-      glyphSize={glyphSize}
-      canSwitchProvider={canSwitchProvider}
-    >
-      {sheetControls}
-    </CompactModelSheet>
+    <>
+      <ComposerUsageSlot />
+      {/* OTTO(usage-button) */}
+      <CompactModelSheet
+        providers={modelSelectorProviders}
+        selectedProvider={provider}
+        selectedModel={selectedModelId ?? ""}
+        thinkingLabel={hasThinking ? displayThinking : null}
+        onSelect={handleSheetModelSelect}
+        profiles={agentProfiles}
+        onApplyProfile={onApplyAgentProfile}
+        onEditProfiles={onEditAgentProfiles}
+        onCreateProfile={onCreateAgentProfile}
+        onEditProfile={onEditAgentProfile}
+        isLoading={isModelLoading}
+        disabled={modelDisabled}
+        onOpen={onModelSelectorOpen}
+        onClose={onDropdownClose}
+        onRetryProvider={onRetryModelProvider}
+        isRetryingProvider={isRetryingModelProvider}
+        serverId={modelSelectorServerId}
+        glyphSize={glyphSize}
+        canSwitchProvider={canSwitchProvider}
+      >
+        {sheetControls}
+      </CompactModelSheet>
+    </>
   ) : null;
 }
 
@@ -1549,13 +1561,17 @@ function ThinkingComboboxOption({
   );
 }
 
+function boundProfileName(agent: { labels?: Record<string, string> } | null | undefined) {
+  return readChatProfile(agent?.labels?.["otto.profile"])?.name;
+} // OTTO(agent-teams)
+
 export const AgentControls = memo(function AgentControls({
   agentId,
   serverId,
   onDropdownClose,
   isCompactLayout,
 }: AgentControlsProps) {
-  const { updatePreferences } = useFormPreferences();
+  const updatePreferences = useLiveChatPreferences(serverId);
   const agent = useSessionStore(
     useShallow((state) => selectAgentControlsSlice(state, serverId, agentId)),
   );
@@ -1661,6 +1677,7 @@ export const AgentControls = memo(function AgentControls({
   );
   const agentProfiles = useAgentProfilePicker({
     serverId,
+    selectedProfileName: boundProfileName(agent),
     availableProviders: profileProviders,
     target: profileTarget,
   });
@@ -1849,6 +1866,7 @@ export function DraftAgentControls({
   disabled = false,
   modelSelectorServerId = null,
   isCompactLayout,
+  selectedProfileName,
 }: DraftAgentControlsProps) {
   const mappedThinkingOptions = useMemo<AgentControlOption[]>(() => {
     return toThinkingControlOptions(thinkingOptions);
@@ -1883,6 +1901,7 @@ export function DraftAgentControls({
   );
   const agentProfiles = useAgentProfilePicker({
     serverId: modelSelectorServerId,
+    selectedProfileName,
     availableProviders: profileProviders,
     target: profileTarget,
   });

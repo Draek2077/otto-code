@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+// OTTO(chat-identity): retain concurrent activity without obscuring actionable status.
 import type { Agent } from "@/stores/session-store";
 import { buildWorkspaceAgentActivityIndex } from "./workspace-agent-activity";
 
@@ -66,6 +67,49 @@ function agent(input: {
 }
 
 describe("workspace agent activity index", () => {
+  it.each(["needs_input", "failed"] as const)(
+    "keeps an older %s status visible while a different root chat works",
+    (bucket) => {
+      const waiting = agent({
+        id: "waiting",
+        workspaceId: "workspace",
+        updatedAt: "2026-06-01T10:00:00Z",
+        pendingPermissionCount: bucket === "needs_input" ? 1 : 0,
+        status: bucket === "failed" ? "error" : "idle",
+      });
+      const working = agent({
+        id: "working",
+        workspaceId: "workspace",
+        status: "running",
+        updatedAt: "2026-06-01T10:05:00Z",
+      });
+      const index = buildWorkspaceAgentActivityIndex(
+        new Map([
+          [waiting.id, waiting],
+          [working.id, working],
+        ]),
+      );
+      expect(index.get("workspace")).toMatchObject({
+        agentId: "waiting",
+        status: bucket,
+        hasActiveChat: true,
+      });
+      const stopped = {
+        ...working,
+        status: "idle" as const,
+        turn: { phase: "idle" as const, cancellationRequestId: null },
+      };
+      const settled = buildWorkspaceAgentActivityIndex(
+        new Map([
+          [waiting.id, waiting],
+          [stopped.id, stopped],
+        ]),
+        index,
+      );
+      expect(settled.get("workspace")?.status).toBe(bucket);
+      expect(settled.get("workspace")?.hasActiveChat).not.toBe(true);
+    },
+  );
   it("uses turn liveness for running while preserving protocol lifecycle states", () => {
     const result = buildWorkspaceAgentActivityIndex(
       new Map([
@@ -143,6 +187,7 @@ describe("workspace agent activity index", () => {
           {
             agentId: "permission",
             status: "needs_input",
+            hasActiveChat: true,
             enteredAt: new Date("2026-06-01T10:01:00.000Z"),
           },
         ],
@@ -197,6 +242,7 @@ describe("workspace agent activity index", () => {
     expect(index.get("workspace-a")).toEqual({
       agentId: "root",
       status: "running",
+      hasActiveChat: true,
       enteredAt: new Date("2026-06-01T10:00:00.000Z"),
     });
   });
@@ -240,6 +286,7 @@ describe("workspace agent activity index", () => {
           {
             agentId: "child",
             status: "running",
+            hasActiveChat: true,
             enteredAt: new Date("2026-06-01T10:03:00.000Z"),
           },
         ],

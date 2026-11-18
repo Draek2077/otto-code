@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   BrainConnectionRead,
   BrainOwnerRead,
@@ -7,6 +7,11 @@ import type {
 } from "./contracts";
 import { BrainSettingsOperationError } from "./contracts";
 import { openBrainSettingsForm } from "./form-model";
+const opened: ReturnType<typeof openBrainSettingsForm>[] = [];
+afterEach(() => {
+  for (const model of opened.splice(0)) model.close();
+  vi.useRealTimers();
+});
 
 function deferred<T>() {
   let resolve: (value: T) => void = () => {
@@ -227,6 +232,7 @@ function fixture(initial = snapshot()) {
     openBrain: () => {},
   };
   const model = openBrainSettingsForm(port);
+  opened.push(model);
   const activate = () => model.activate();
   const hide = activate();
   const apply = (next: BrainSettingsSnapshot) => {
@@ -251,6 +257,48 @@ function fixture(initial = snapshot()) {
 }
 
 describe("Brain settings ownership and explicit saves", () => {
+  it("does not apply a credential entered while a preference autosave is waiting", async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    f.model.editOwner("logVerbosity", 4);
+    f.model.editCredential("huggingFace", { action: "replace", value: "pending-private-key" });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(f.owners).toHaveLength(0);
+    expect(f.model.getState().ownerDirty).toBe(true);
+  });
+  it("autosaves connection preferences without starting Brain", async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    f.model.editConnection("autoStart", false);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(f.connections).toHaveLength(1);
+    expect(f.connections[0].input).toMatchObject({
+      expectedRevision: "connection/opaque-A",
+      patch: { autoStart: false },
+      credential: { action: "keep" },
+    });
+    expect(f.actions).toEqual([]);
+  });
+  it("autosaves debounced owner preferences without applying credentials or launching the runtime", async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    f.model.editOwner("logVerbosity", 4);
+    expect(f.owners).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(f.owners).toHaveLength(1);
+    expect(f.owners[0].input).toMatchObject({
+      expectedRevision: "owner/opaque-A",
+      patch: { runtime: { logVerbosity: 4 } },
+      credentials: { access: { action: "keep" }, huggingFace: { action: "keep" } },
+    });
+    const result = owner();
+    result.revision = "owner/autosaved";
+    result.config.runtime.logVerbosity = 4;
+    f.owners[0].reply.resolve(result);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.model.getState().ownerDirty).toBe(false);
+    expect(f.actions).toEqual([]);
+  });
   it("opens with host-provided values and independent enable/autostart intent without launching or saving", async () => {
     const f = fixture();
     await Promise.resolve();

@@ -1,3 +1,4 @@
+import { cleanTeamReferences } from "./otto/agent-profiles/team-references.js"; // OTTO(agent-teams)
 import {
   loadPersistedConfig,
   savePersistedConfig,
@@ -22,12 +23,13 @@ interface SupportedMutableConfigPatch {
   browserTools?: { enabled?: boolean };
   providers?: MutableDaemonConfig["providers"];
   removeProviders?: string[];
-  metadataGeneration?: MutableDaemonConfig["metadataGeneration"];
+  metadataGeneration?: MutableDaemonConfigPatch["metadataGeneration"];
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
   appendSystemPrompt?: string;
   terminalProfiles?: MutableDaemonConfig["terminalProfiles"];
   agentProfiles?: MutableDaemonConfig["agentProfiles"];
+  agentTeams?: MutableDaemonConfig["agentTeams"]; // OTTO(agent-teams)
   skills?: MutableDaemonConfig["skills"];
   pluginsEnabled?: boolean;
   plugins?: MutableDaemonConfig["plugins"];
@@ -183,6 +185,7 @@ const RELOADABLE_PATHS = [
   "daemon.appendSystemPrompt",
   "daemon.terminalProfiles",
   "daemon.agentProfiles",
+  "daemon.agentTeams", // OTTO(agent-teams)
   "app.baseUrl",
   "agents.providers",
   "agents.catalogRefreshTimeoutMs",
@@ -206,6 +209,7 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["daemon.appendSystemPrompt", "appendSystemPrompt"],
   ["daemon.terminalProfiles", "terminalProfiles"],
   ["daemon.agentProfiles", "agentProfiles"],
+  ["daemon.agentTeams", "agentTeams"], // OTTO(agent-teams)
   ["app.baseUrl", "app.baseUrl"],
   ["agents.providers", "providers"],
   ["agents.catalogRefreshTimeoutMs", "catalogRefreshTimeoutMs"],
@@ -260,9 +264,9 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
       : {}),
     ...(patch.providers !== undefined ? { providers: patch.providers } : {}),
     ...(patch.removeProviders !== undefined ? { removeProviders: patch.removeProviders } : {}),
-    ...(patch.metadataGeneration?.providers !== undefined
-      ? { metadataGeneration: { providers: patch.metadataGeneration.providers } }
-      : {}),
+    ...(patch.metadataGeneration !== undefined
+      ? { metadataGeneration: patch.metadataGeneration }
+      : {}), // OTTO(agent-teams)
     ...(patch.autoArchiveAfterMerge !== undefined
       ? { autoArchiveAfterMerge: patch.autoArchiveAfterMerge }
       : {}),
@@ -274,6 +278,7 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
       : {}),
     ...(patch.terminalProfiles !== undefined ? { terminalProfiles: patch.terminalProfiles } : {}),
     ...(patch.agentProfiles !== undefined ? { agentProfiles: patch.agentProfiles } : {}),
+    ...(patch.agentTeams !== undefined ? { agentTeams: patch.agentTeams } : {}), // OTTO(agent-teams)
     ...(patch.pluginsEnabled !== undefined ? { pluginsEnabled: patch.pluginsEnabled } : {}),
     ...(patch.plugins !== undefined ? { plugins: patch.plugins } : {}),
   };
@@ -347,6 +352,27 @@ export class DaemonConfigStore {
   }
 
   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {
+    // OTTO(agent-teams): an edit dialog holds the exact roster it opened with.
+    if (
+      partial.expectedTeamRoster &&
+      !isEqualValue(partial.expectedTeamRoster, this.current.agentTeams?.teams ?? [])
+    )
+      throw new Error("Teams changed on this host. Reopen the Team to edit its current settings.");
+    if (
+      partial.expectedProfileRoster &&
+      !isEqualValue(partial.expectedProfileRoster, this.current.agentProfiles ?? [])
+    )
+      throw new Error(
+        "Profiles changed on this host. Reopen the Profile to edit its current settings.",
+      );
+    const teamId = partial.agentTeams?.activeTeamId;
+    if (
+      teamId &&
+      !(partial.agentTeams?.teams ?? this.current.agentTeams?.teams)?.some(
+        (team) => team.id === teamId,
+      )
+    )
+      throw new Error("That Team no longer exists.");
     const parsedPatch = pickSupportedPatchFields(MutableDaemonConfigPatchSchema.parse(partial));
     return this.applySupportedPatch(parsedPatch);
   }
@@ -367,6 +393,9 @@ export class DaemonConfigStore {
     if (parsedPatch.skills?.selection !== undefined) {
       merged.skills = { selection: parsedPatch.skills.selection };
     }
+    if (parsedPatch.agentTeams?.projectDefaults !== undefined && merged.agentTeams)
+      merged.agentTeams.projectDefaults = parsedPatch.agentTeams.projectDefaults; // OTTO(agent-teams): replacement admits removal of a workspace default.
+    cleanTeamReferences(merged.agentTeams, parsedPatch.agentTeams?.teams); // OTTO(agent-teams)
     if (parsedPatch.plugins !== undefined) merged.plugins = parsedPatch.plugins;
     const next = MutableDaemonConfigSchema.parse(
       omitMetadataGenerationProvidersFromConfig(
@@ -381,8 +410,14 @@ export class DaemonConfigStore {
       return this.current;
     }
 
+    // OTTO(agent-teams): persist the effective roster together on a roster edit. A first
+    // selection may refer to seeded ids; deleted Teams must also clear persisted references.
+    const persistedPatch =
+      configPatch.agentTeams || configPatch.agentProfiles
+        ? { ...configPatch, agentTeams: next.agentTeams, agentProfiles: next.agentProfiles }
+        : configPatch;
     const { previous: persistedBeforePatch, knownNext } = this.persistConfig(
-      configPatch,
+      persistedPatch,
       removedProviders,
     );
     if (!configChanged) {
@@ -619,11 +654,15 @@ function mergeMutableAgentPatch(
   if (providerOverrides) next["providers"] = providerOverrides;
   else delete next["providers"];
 
-  if (patch.metadataGeneration?.providers !== undefined) {
-    next["metadataGeneration"] = { providers: patch.metadataGeneration.providers };
+  if (patch.metadataGeneration !== undefined) {
+    next["metadataGeneration"] = {
+      ...persistedAgents?.metadataGeneration,
+      ...patch.metadataGeneration,
+    }; // OTTO(agent-teams)
   } else if (removeProviders.length > 0 && persistedAgents?.metadataGeneration?.providers) {
     const removed = new Set(removeProviders);
     next["metadataGeneration"] = {
+      ...persistedAgents.metadataGeneration,
       providers: persistedAgents.metadataGeneration.providers.filter(
         (entry) => !removed.has(entry.provider),
       ),
@@ -661,5 +700,6 @@ function mergeMutableDaemonPatch(
   if (patch.appendSystemPrompt !== undefined) next.appendSystemPrompt = patch.appendSystemPrompt;
   if (patch.terminalProfiles !== undefined) next.terminalProfiles = patch.terminalProfiles;
   if (patch.agentProfiles !== undefined) next.agentProfiles = patch.agentProfiles;
+  if (patch.agentTeams !== undefined) next.agentTeams = { ...next.agentTeams, ...patch.agentTeams }; // OTTO(agent-teams)
   return Object.keys(next).length > 0 ? next : undefined;
 }

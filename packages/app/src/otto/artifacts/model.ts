@@ -14,6 +14,7 @@ export function artifactEditorKey(surface: string, reference: ArtifactRef) {
 }
 
 export interface ArtifactModelSelection {
+  profileId?: string;
   provider: string;
   model: string;
   providerLabel: string;
@@ -271,6 +272,7 @@ export function releaseArtifactDraft(owner: object, key: string) {
 }
 
 interface CreateSnapshot {
+  selectionTouched: boolean;
   name: string;
   description: string;
   selection: ArtifactModelSelection | null;
@@ -281,6 +283,7 @@ interface CreateSnapshot {
 }
 export class ArtifactCreateDraft {
   private state: CreateSnapshot = {
+    selectionTouched: false,
     name: "",
     description: "",
     selection: null,
@@ -306,7 +309,7 @@ export class ArtifactCreateDraft {
     if (!this.state.busy) this.set({ [field]: value });
   }
   selectModel(selection: ArtifactModelSelection | null) {
-    if (!this.state.busy) this.set({ selection });
+    if (!this.state.busy) this.set({ selection, selectionTouched: true });
   }
   activate() {
     this.active = true;
@@ -324,7 +327,7 @@ export class ArtifactCreateDraft {
       scope: ArtifactScope;
       name: string;
       description: string;
-      selection?: { provider: string; model: string };
+      selection?: { provider: string; model: string; profileId?: string };
     }) => Promise<ArtifactSummary>,
   ): Promise<ArtifactSummary | null> {
     if (!this.active || this.state.busy || this.state.blocked) return null;
@@ -349,6 +352,7 @@ export class ArtifactCreateDraft {
         ...(this.state.selection
           ? {
               selection: {
+                profileId: this.state.selection.profileId,
                 provider: this.state.selection.provider,
                 model: this.state.selection.model,
               },

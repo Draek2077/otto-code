@@ -81,10 +81,10 @@ export class ManagedSpeechRuntime implements SpeechService {
   /** The host consumes the selected stream inside this lease, including cancelled
    * native work that cannot be interrupted. Configuration cannot free its model.
    */
-  async withTts<T>(operation: SpeechTtsOperation<T>): Promise<T> {
+  async withTts<T>(operation: SpeechTtsOperation<T>, engine?: "local" | "openai"): Promise<T> {
     const release = this.retain();
     try {
-      const provider = this.current.resolveTts();
+      const provider = this.current.resolveTts(engine);
       if (!provider || this.failure) throw new Error("The configured speech engine is not ready.");
       return await operation(provider);
     } finally {

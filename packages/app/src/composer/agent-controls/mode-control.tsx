@@ -19,7 +19,8 @@ import { useComposerControlLayout } from "@/composer/agent-controls/layout-conte
 import { AgentControlTrigger } from "@/composer/agent-controls/control";
 import { useSessionStore } from "@/stores/session-store";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
-import { mergeProviderPreferences, useFormPreferences } from "@/hooks/use-form-preferences";
+import { useLiveChatPreferences } from "@/otto/agent-profiles/live-preferences"; // OTTO(agent-teams)
+import { mergeProviderPreferences } from "@/hooks/use-form-preferences";
 import { resolveProviderDefinition } from "@/utils/provider-definitions";
 import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
@@ -263,7 +264,7 @@ export function useLiveAgentModeControl(
     compareAvailableModes,
   );
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
-  const { updatePreferences } = useFormPreferences();
+  const updatePreferences = useLiveChatPreferences(serverId);
   const toast = useToast();
   const { entries: snapshotEntries } = useProvidersSnapshot(serverId, { cwd: slice?.cwd });
 

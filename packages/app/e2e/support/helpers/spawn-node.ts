@@ -54,7 +54,9 @@ export async function killProcessTree(child: ChildProcess | null): Promise<void>
       await waitForExitOrTimeout(exited, 5_000);
       throw new Error(`Failed to terminate process tree for PID ${pid}`, { cause: taskkillError });
     }
-    if (!hasExited(child) && !(await waitForExitOrTimeout(exited, 5_000))) {
+    // OTTO(test-fixture): Windows can finish taskkill before Metro's process
+    // handle signals exit. Verify the PID if Node's exit event is delayed.
+    if (!hasExited(child) && !(await waitForExitOrTimeout(exited, 30_000)) && isProcessAlive(pid)) {
       throw new Error(`Process tree for PID ${pid} did not exit after taskkill`);
     }
     return;
@@ -66,6 +68,16 @@ export async function killProcessTree(child: ChildProcess | null): Promise<void>
   child.kill("SIGKILL");
   if (!(await waitForExitOrTimeout(exited, 5_000))) {
     throw new Error(`Process ${String(child.pid)} did not exit after SIGKILL`);
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
   }
 }
 

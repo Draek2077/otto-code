@@ -52,6 +52,10 @@ and disposes all drafts with the plugin installation. It is not a host-data cach
 Drafts retain their originating revision; a conflict or uncertain save outcome
 blocks another save until an explicit reload. Confirmed reload preserves edits
 when its host read fails. Accepted own saves advance only that draft's revision.
+Board preferences save automatically after a short input debounce. One writer drains newer
+edits using its own acknowledged revision. Leaving the active page cancels unsent work;
+an unconfirmed in-flight write requires explicit reload. The normal settings view has no
+Save or Reload row; reload appears only when reconciliation is required.
 External-resource plugins must not import private daemon services to bypass them.
 
 ## Read behavior

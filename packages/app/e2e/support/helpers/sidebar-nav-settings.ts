@@ -119,7 +119,23 @@ export async function expectSidebarNavSettingsOrder(
 }
 
 export async function expectSidebarOrder(page: Page, keys: SidebarNavKey[]): Promise<void> {
-  await expectVerticalOrder(keys, (key) => shellRow(page, key), "app shell sidebar rows");
+  await expect
+    .poll(
+      async () => {
+        const measured = await Promise.all(
+          keys.map(async (key) => ({ key, box: await shellRow(page, key).boundingBox() })),
+        );
+        if (measured.some((item) => !item.box)) return null;
+        return measured
+          .sort((a, b) => (a.box?.y ?? 0) - (b.box?.y ?? 0) || (a.box?.x ?? 0) - (b.box?.x ?? 0))
+          .map((item) => item.key);
+      },
+      {
+        message: "Expected sidebar shortcuts followed by the Workspaces icon actions",
+        timeout: 15_000,
+      },
+    )
+    .toEqual(keys);
 }
 
 export async function expectSidebarItemHidden(page: Page, key: SidebarNavKey): Promise<void> {

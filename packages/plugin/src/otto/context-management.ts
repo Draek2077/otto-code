@@ -83,6 +83,7 @@ export const ContextReportSchema = z.object({
 const scope = z.object({ hostId: z.string().min(1), workspaceId: z.string().min(1) }).strict();
 export const ContextSelectionSchema = scope
   .extend({
+    profileId: z.string().min(1).max(200).optional(),
     agentId: z.string().min(1).nullable(),
     windowTokens: z.number().int().min(1024).max(10000000),
   })

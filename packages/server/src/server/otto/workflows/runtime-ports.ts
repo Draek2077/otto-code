@@ -13,6 +13,7 @@ export interface WorkflowWorkspace {
   cwd: string;
 }
 export interface WorkflowAgentRequest {
+  profile?: import("@getpaseo/protocol/otto/agent-teams").ProfileBinding;
   agentId: string;
   runId: string;
   ownerInstance: string;
@@ -29,6 +30,9 @@ export interface WorkflowAgentRequest {
   delegationDepth?: number;
 }
 export interface WorkflowRuntimePorts {
+  captureTeam?(
+    workspace: WorkflowWorkspace,
+  ): Promise<import("@getpaseo/plugin/otto/workflows").WorkflowTeamSnapshot | undefined>;
   /** Canonical Paseo workspace/project lookup; paths never come from RPC callers. */
   workspace(scope: WorkflowScope, workspaceId: string): Promise<WorkflowWorkspace>;
   /** Validate exact model/mode and enforceable access before admission. Never start a session here. */

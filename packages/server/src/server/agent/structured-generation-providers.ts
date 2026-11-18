@@ -7,7 +7,9 @@ import type { StructuredGenerationProvider } from "./agent-response-loop.js";
 import type { ProviderSnapshotManager } from "./provider-snapshot-manager.js";
 
 export interface StructuredGenerationDaemonConfig {
+  writerProfiles?: StructuredGenerationProvider[]; // OTTO(agent-teams)
   metadataGeneration?: {
+    preferWriterProfiles?: boolean; // OTTO(agent-teams)
     providers?: Array<{
       provider: string;
       model?: string;
@@ -81,7 +83,16 @@ export async function resolveStructuredGenerationProviders(
     providers.push(currentSelection);
   }
 
-  return dedupeProviders(providers);
+  // OTTO(agent-teams): only consider Writer Profiles whose model is available on this host.
+  const writers = (options.daemonConfig?.writerProfiles ?? []).filter((p) => {
+    const entry = entriesByProvider.get(p.provider);
+    return entry && (!p.model || entry.models?.some((m) => m.id === p.model));
+  });
+  return dedupeProviders(
+    options.daemonConfig?.metadataGeneration?.preferWriterProfiles
+      ? [...writers, ...providers]
+      : [...providers, ...writers],
+  );
 }
 
 function resolveCurrentSelection(

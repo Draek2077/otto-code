@@ -31,6 +31,7 @@ import {
 } from "../services/forge-cli-command.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import { runGitCommand, type RunGitCommand } from "./run-git-command.js";
+import { readComparisonBase } from "../server/otto/workspace-git/comparison-base-store.js"; // OTTO(diff-base)
 import { readGitFileContents } from "./git-file-contents.js";
 import { unquoteGitPath } from "./git-quoted-path.js";
 import { isPaseoOwnedWorktreeCwd, resolvePaseoWorktreesBaseRoot } from "./worktree.js";
@@ -943,6 +944,7 @@ export type CheckoutSnapshotFacts =
       gitCommonDir: string | null;
       paseoWorktree: PaseoWorktreeForCwd;
       storedBaseRef: string | null;
+      ottoComparisonBaseRef?: string | null; // OTTO(diff-base): preserve an explicit local/remote choice on the status wire.
       resolvedBaseRef: string | null;
       mainRepoRoot: string | null;
       comparisonBaseRef: string | null;
@@ -1280,6 +1282,13 @@ async function getStoredBaseRefForCwd(
     return context.facts.storedBaseRef;
   }
   const paseoWorktree = await getPaseoWorktreeForCwd(cwd, { context });
+  const selectedBase = readComparisonBase(
+    paseoWorktree.isPaseoOwnedWorktree
+      ? paseoWorktree.worktreeRoot
+      : await requireGitWorktreeRoot(cwd),
+    await getCurrentBranch(cwd, context),
+  ); // OTTO(diff-base): one selection for status, diffs, commits and Git actions.
+  if (selectedBase) return selectedBase; // OTTO(diff-base)
   if (!paseoWorktree.isPaseoOwnedWorktree) {
     return null;
   }
@@ -2074,7 +2083,8 @@ export async function getCheckoutSnapshotFacts(
   const paseoWorktreeMetadata = inspected.paseoWorktree.isPaseoOwnedWorktree
     ? readPaseoWorktreeMetadata(inspected.paseoWorktree.worktreeRoot)
     : null;
-  const storedBaseRef = storedBaseRefFromMetadata(paseoWorktreeMetadata);
+  const ottoComparisonBaseRef = readComparisonBase(inspected.worktreeRoot, inspected.currentBranch); // OTTO(diff-base): snapshot inspection already owns branch/root discovery.
+  const storedBaseRef = ottoComparisonBaseRef ?? storedBaseRefFromMetadata(paseoWorktreeMetadata); // OTTO(diff-base)
   const resolvedBaseRef = storedBaseRef ?? (await resolveBaseRef(cwd, context));
   const mainRepoRoot = await getMainRepoRootFromCommonDir(
     cwd,
@@ -2139,6 +2149,7 @@ export async function getCheckoutSnapshotFacts(
     gitCommonDir: inspected.gitCommonDir,
     paseoWorktree: inspected.paseoWorktree,
     storedBaseRef,
+    ottoComparisonBaseRef, // OTTO(diff-base)
     resolvedBaseRef,
     mainRepoRoot,
     comparisonBaseRef,
@@ -2317,7 +2328,8 @@ export async function getCheckoutStatus(
   // The wire carries the display name: clients label the base with it and send it back to
   // request diffs and merges. The exact ref stays in worktree.json and in facts, where the
   // comparisons and actions read it.
-  const displayBaseRef = baseRef ? branchNameFromRef(baseRef) : null;
+  const displayBaseRef =
+    facts.ottoComparisonBaseRef ?? (baseRef ? branchNameFromRef(baseRef) : null); // OTTO(diff-base): selected refs retain their identity; existing metadata labels keep their display names.
   const upstreamRef = upstreamStatus?.ref ?? null;
   const aheadOfOrigin = upstreamStatus?.aheadBehind.ahead ?? null;
   const behindOfOrigin = upstreamStatus?.aheadBehind.behind ?? null;

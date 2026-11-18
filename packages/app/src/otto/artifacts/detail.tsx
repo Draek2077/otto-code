@@ -291,11 +291,17 @@ function ArtifactDetailBody(props: DetailProps & { document: ArtifactDocument })
         type: "regenerate",
         instruction: state.fields.instruction,
         ...(state.fields.provider && state.fields.model
-          ? { selection: { provider: state.fields.provider, model: state.fields.model } }
+          ? {
+              selection: {
+                profileId: state.selection?.profileId,
+                provider: state.fields.provider,
+                model: state.fields.model,
+              },
+            }
           : {}),
         userApprovedDesignChange: true,
       }),
-    [execute, state.fields],
+    [execute, state.fields, state.selection?.profileId],
   );
   const cancel = useCallback(() => void execute({ type: "cancel" }), [execute]);
   const recover = useCallback(() => {
@@ -430,6 +436,7 @@ function ArtifactDetailBody(props: DetailProps & { document: ArtifactDocument })
       )}
       <DraftField draft={draft} field="instruction" label="Regeneration instructions" multiline />
       <ReviewModelPicker
+        artificer="edit"
         model={draft}
         hostId={props.reference.scope.hostId}
         active={props.active}

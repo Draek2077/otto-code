@@ -6,6 +6,7 @@ import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import type { WorkspaceDraftTabSetup } from "@/workspace-tabs/model";
 
 export interface PendingWorkspaceDraftSubmission {
+  labels?: Record<string, string>; // OTTO(chat-profile): creation retries keep the captured Profile appearance.
   /** Already-running creation. Mounting the draft only observes its result. */
   agentCreation?: {
     result: Promise<AgentSnapshotPayload>;

@@ -14,6 +14,8 @@ function videoMode(): "on" | "on-first-retry" | "retain-on-failure" {
 
 export default defineConfig({
   testDir: "./e2e/browser",
+  // OTTO(e2e): the daemon client loads compiled workspace ESM with Node resolution.
+  build: { external: ["**/packages/*/dist/**"] },
   globalSetup: "./e2e/support/global-setup.ts",
   timeout: 60_000,
   expect: {

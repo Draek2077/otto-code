@@ -47,7 +47,7 @@ const BUILTIN_ICONS: Record<BuiltinSidebarItemId, LucideIcon> = {
   usage: Gauge,
 };
 
-/** Plugin items register no icon, so they share this one; a legacy `addSidebarItem` keeps its own. */
+/** Unannotated third-party contributions retain the generic plugin icon. */
 const PLUGIN_ICON = Blocks;
 
 function NavIcon({ Icon, color = "" }: { Icon: LucideIcon; color?: string }) {
@@ -58,7 +58,8 @@ const ThemedNavIcon = withUnistyles(NavIcon);
 
 function navItemIcon(item: SidebarNavItem): LucideIcon {
   if (item.kind === "builtin") return BUILTIN_ICONS[item.id];
-  return item.group.kind === "legacy" ? resolvePluginIcon(item.group.icon) : PLUGIN_ICON;
+  // OTTO(sidebar-icons): modern and legacy contributions share feature metadata.
+  return item.group.icon ? resolvePluginIcon(item.group.icon) : PLUGIN_ICON;
 }
 
 function navItemLabel(t: TFunction, item: SidebarNavItem): string {

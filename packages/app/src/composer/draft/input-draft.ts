@@ -27,12 +27,14 @@ import { AfterPaintPublication } from "@/composer/after-paint-publication";
 import { useShallow } from "zustand/shallow";
 import type { ComposerTextSource } from "@/composer/text-source";
 import { isWeb } from "@/constants/platform";
+import type { ChatProfileBinding } from "@/otto/chat/identity/profile-binding"; // OTTO(chat-profile): draft handoffs keep explicit Profile identity.
 
 type AttachmentUpdater =
   | UserComposerAttachment[]
   | ((prev: UserComposerAttachment[]) => UserComposerAttachment[]);
 
 interface AgentInputDraftComposerOptions {
+  initialChatProfile?: { provider: string; binding: ChatProfileBinding } | null;
   initialServerId: string | null;
   initialValues?: CreateAgentInitialValues;
   initialFeatureValues?: Record<string, unknown>;
@@ -75,6 +77,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     workingDir,
     serverId: composerOptions?.initialServerId ?? null,
     initialValues: composerOptions?.initialValues,
+    initialChatProfile: composerOptions?.initialChatProfile,
     isVisible: composerOptions?.isVisible ?? false,
     isCreateFlow: true,
   });

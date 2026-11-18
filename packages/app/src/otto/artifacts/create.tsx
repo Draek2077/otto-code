@@ -77,7 +77,7 @@ export function ArtifactCreate({
         multiline
         disabled={state.busy}
       />
-      <ReviewModelPicker model={model} hostId={scope.hostId} active={active} />
+      <ReviewModelPicker artificer="create" model={model} hostId={scope.hostId} active={active} />
       {state.error ? <Alert variant="error" description={state.error} /> : null}
       {state.created ? (
         <Text

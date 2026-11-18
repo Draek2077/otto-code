@@ -3,6 +3,7 @@ import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import type { WorkspaceFileTabTarget } from "@/workspace/file-open";
 
 export interface WorkspaceDraftTabSetup {
+  labels?: Record<string, string>; // OTTO(chat-profile): preserve captured identity through a draft handoff.
   provider: AgentProvider;
   cwd: string;
   modeId: string | null;

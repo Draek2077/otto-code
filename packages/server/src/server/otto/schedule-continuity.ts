@@ -22,15 +22,9 @@ export function parseOttoStoredSchedule(value: unknown): StoredSchedule {
     }
     if (target.type === "new-agent" && record(target.config)) {
       const config = target.config;
-      const dormant = [
-        "agentProfile",
-        "personality",
-        "approvalPolicy",
-        "sandboxMode",
-        "networkAccess",
-        "webSearch",
-        "extra",
-      ].find((field) => Object.hasOwn(config, field));
+      const dormant = ["approvalPolicy", "sandboxMode", "networkAccess", "webSearch", "extra"].find(
+        (field) => Object.hasOwn(config, field),
+      );
       if (dormant) {
         throw new Error(
           `This saved Otto schedule uses ${dormant}, a feature awaiting restoration.`,

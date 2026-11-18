@@ -1,3 +1,4 @@
+import { voiceForChat } from "./profile-cues";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Text, View } from "react-native";
 import { Alert } from "@/components/ui/alert";
@@ -85,7 +86,14 @@ function useMessagePlayback(getContent: () => string, itemId: string) {
   const press = useCallback(() => {
     if (!scope || !playback) return;
     if (playing) playback.stop();
-    else playback.speak({ hostId: scope.serverId, key, text: getContent(), itemId });
+    else
+      playback.speak({
+        ...voiceForChat(scope.serverId, scope.agentId),
+        hostId: scope.serverId,
+        key,
+        text: getContent(),
+        itemId,
+      });
   }, [scope, playback, playing, key, getContent, itemId]);
   return {
     available: Boolean(available && scope && playback),

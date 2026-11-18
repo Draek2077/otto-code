@@ -470,3 +470,108 @@ for (const compact of [false, true])
       await workspace.cleanup();
     }
   });
+
+test("Profile parity: Context lessons persist and an Artificer generates the workspace Artifact", async ({
+  page,
+  ottoProvider,
+}) => {
+  test.setTimeout(150000);
+  const workspace = await seedWorkspace({
+    repoPrefix: "profile-parity-art-",
+    title: "Profile library",
+    git: false,
+  });
+  const client = await connectDaemonClient<DaemonClient>({ clientIdPrefix: "profile-art" });
+  const { config } = await client.getDaemonConfig();
+  const profile = {
+    id: "profile-art-test",
+    name: "Workshop artist",
+    provider: "openai-compatible",
+    model: "fixture",
+    roles: ["artificer"],
+    personalityPrompt: "PROFILE_ART_DIRECTION",
+  };
+  try {
+    await client.patchDaemonConfig({
+      agentProfiles: [profile],
+      agentTeams: {
+        activeTeamId: "club",
+        teams: [{ id: "club", name: "Studio", memberIds: [profile.id] }],
+      },
+    });
+    ottoProvider.replyWith(() =>
+      JSON.stringify({
+        html: "<!doctype html><html><head><title>Studio</title></head><body><h1>Profile-built artifact</h1></body></html>",
+      }),
+    );
+    await ottoProvider.refreshCatalog();
+    await gotoAppShell(page);
+    await openWorkspaceContextMenu(page, workspace.workspaceId);
+    await page.getByText("Open Context", { exact: true }).last().click();
+    const context = page.getByTestId("otto-context-management").filter({ visible: true });
+    await context.getByRole("button", { name: "Memory", exact: true }).click();
+    await context.getByRole("button", { name: /^Profile:/ }).click();
+    await page.getByText(profile.name, { exact: true }).last().click();
+    await context.getByRole("button", { name: "Add lesson", exact: true }).click();
+    await context
+      .getByLabel("Lesson", { exact: true })
+      .fill("Always run the scoped Studio checks.");
+    await context.getByRole("button", { name: "Save lesson", exact: true }).click();
+    await expect
+      .poll(
+        async () =>
+          (
+            await client.profileMemory({
+              kind: "view",
+              profileId: profile.id,
+              workspaceId: workspace.workspaceId,
+            })
+          ).brief.text,
+      )
+      .toContain("scoped Studio checks");
+    await context.getByRole("button", { name: "Context", exact: true }).click();
+    await expect(context.getByRole("button", { name: "Profile: " + profile.name })).toBeVisible();
+    await expect(
+      context.getByText("The selected Profile’s lesson brief for this workspace.", {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await openWorkspaceContextMenu(page, workspace.workspaceId);
+    await page.getByText("Open Artifacts", { exact: true }).last().click();
+    const surface = page.getByTestId("otto-artifacts-page").filter({ visible: true });
+    await surface.getByRole("button", { name: "New artifact", exact: true }).click();
+    const form = surface.getByTestId("artifact-create-form");
+    await expect(form.getByTestId("combined-model-selector")).toContainText(profile.name);
+    await form.getByLabel("Artifact name", { exact: true }).fill("Studio report");
+    await form
+      .getByLabel("Describe the artifact", { exact: true })
+      .fill("Create a compact release report.");
+    await form.getByRole("button", { name: "Create artifact", exact: true }).click();
+    await expect
+      .poll(() => JSON.stringify(ottoProvider.requests))
+      .toContain("PROFILE_ART_DIRECTION");
+    expect(JSON.stringify(ottoProvider.requests)).toContain("Always run the scoped Studio checks.");
+    await expect
+      .poll(async () => {
+        const result = listArtifacts.output.parse(
+          await client.invokePluginRpc("otto-artifacts", listArtifacts.name, {
+            scope: {
+              hostId: getServerId(),
+              target: { kind: "workspace", id: workspace.workspaceId },
+            },
+          }),
+        );
+        return (
+          result.ok && result.value.items.find((item) => item.name === "Studio report")?.status
+        );
+      })
+      .toBe("ready");
+  } finally {
+    await client.patchDaemonConfig({
+      agentProfiles: config.agentProfiles,
+      agentTeams: config.agentTeams,
+    });
+    await client.close();
+    await workspace.cleanup();
+  }
+});

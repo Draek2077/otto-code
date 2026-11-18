@@ -378,6 +378,9 @@ function seedDisplay(value: string | undefined): AgentProfileFormDisplay | null 
  */
 function buildInitialState(snapshot: AgentProfileFormSnapshot): AgentProfileFormState {
   const profile = snapshot.profile ?? BLANK_PROFILE;
+  const thinking =
+    profile.thinkingOptionId ??
+    (typeof snapshot.profile?.effortLevel === "string" ? snapshot.profile.effortLevel : undefined); // OTTO(agent-teams): old rosters stored portable effort alone.
   const seed = snapshot.mode === "create" ? snapshot.seed : undefined;
   const name = seed?.name ?? profile.name;
   const provider = seed?.provider ?? profile.provider;
@@ -391,7 +394,7 @@ function buildInitialState(snapshot: AgentProfileFormSnapshot): AgentProfileForm
     provider,
     modelId,
     modeId: profile.modeId ?? "",
-    thinkingOptionId: profile.thinkingOptionId ?? "",
+    thinkingOptionId: thinking ?? "",
     featureValues: { ...profile.featureValues },
     providerOptions: [],
     modelOptions: [],
@@ -401,7 +404,7 @@ function buildInitialState(snapshot: AgentProfileFormSnapshot): AgentProfileForm
     providerDisplay: seedDisplay(provider),
     modelDisplay: seedDisplay(modelId),
     modeDisplay: seedDisplay(profile.modeId),
-    thinkingDisplay: seedDisplay(profile.thinkingOptionId),
+    thinkingDisplay: seedDisplay(thinking),
     catalogResolution: "idle",
     featureResolution: "idle",
     featureRequest: null,

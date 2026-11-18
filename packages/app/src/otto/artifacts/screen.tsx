@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ScrollView, Text, View } from "react-native";
 import type {
   PluginScreenProps,
@@ -13,7 +13,6 @@ import {
   type ArtifactSummary,
 } from "@getpaseo/plugin/otto/artifacts";
 import { useFetchQuery } from "@/data/query";
-import { SettingsSelect } from "@/components/settings";
 import { FormTextInput } from "@/components/ui/form-field";
 import type { EditingTextInputHandle } from "@/components/ui/text-input";
 import { Button } from "@/components/ui/button";
@@ -26,6 +25,8 @@ import { ArtifactCreate } from "./create";
 import { ArtifactDefaults, ArtifactProjectStorage } from "./settings";
 import { styles } from "./styles";
 import { ArtifactRouteDestination } from "./route-destination"; // OTTO(schedules): exact, origin-bound result links.
+import { artifactWorkspaceSelection } from "./workspace-selection";
+import { FeatureScopeSelect } from "../ui/feature-browser";
 type Navigation = PluginSurfaceProps["navigation"];
 interface LibraryProps {
   hostId: string;
@@ -347,11 +348,11 @@ function ProjectDirectory({
     <View style={styles.page}>
       <View style={styles.toolbar}>
         {settings ? <ArtifactDefaults hostId={hostId} active={active} /> : null}
-        <SettingsSelect
+        <FeatureScopeSelect
           label="Project"
           value={projectId}
           options={options}
-          onValueChange={setProjectId}
+          onChange={setProjectId}
         />
         {projects.error ? (
           <Alert
@@ -410,12 +411,39 @@ export function ArtifactsScreen(props: PluginScreenProps) {
   );
 }
 export function ArtifactsWorkspace(props: PluginWorkspacePanelProps) {
+  useSyncExternalStore(
+    artifactWorkspaceSelection.subscribe,
+    artifactWorkspaceSelection.getSnapshot,
+  );
+  const reference = artifactWorkspaceSelection.read(props.host.id, props.workspaceId);
+  const [revision, setRevision] = useState(0);
+  const changed = useCallback(() => setRevision((value) => value + 1), []);
+  const closed = useCallback(
+    () => artifactWorkspaceSelection.clear(props.host.id, props.workspaceId),
+    [props.host.id, props.workspaceId],
+  );
   const retained = useRetainedPanelActive(),
     visible = useAppVisible();
   const scope = useMemo<ArtifactScope>(
     () => ({ hostId: props.host.id, target: { kind: "workspace", id: props.workspaceId } }),
     [props.host.id, props.workspaceId],
   );
+  if (reference)
+    return (
+      <ScrollView style={styles.page}>
+        <View style={styles.content}>
+          <ArtifactDetail
+            key={`${JSON.stringify(reference)}:${revision}`}
+            reference={reference}
+            draftSurface={`workspace:${props.workspaceId}`}
+            active={retained && visible}
+            navigation={props.navigation}
+            changed={changed}
+            closed={closed}
+          />
+        </View>
+      </ScrollView>
+    );
   return (
     <ArtifactLibrary
       hostId={props.host.id}

@@ -25,6 +25,7 @@ export interface AgentConfigSessionHost {
  * thinking yield a provider notice; model and feature do not.
  */
 export interface AgentConfigOperations {
+  selectProfile?(agentId: string, id: string): Promise<AgentProviderNotice | null>; // OTTO(agent-teams)
   ensureLoaded(agentId: string): Promise<void>;
   setMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null>;
   setModel(agentId: string, modelId: string | null): Promise<void>;
@@ -174,6 +175,10 @@ export class AgentConfigSession {
     agentId: string,
     config: AgentConfigApply,
   ): Promise<AgentProviderNotice | null> {
+    if (config.ottoProfileId !== undefined) {
+      if (!this.operations.selectProfile) throw new Error("Update the host to apply this Profile.");
+      return this.operations.selectProfile(agentId, config.ottoProfileId);
+    } // OTTO(agent-teams)
     let notice: AgentProviderNotice | null = null;
 
     if (config.modelId !== undefined) {

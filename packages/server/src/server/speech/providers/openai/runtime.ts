@@ -103,7 +103,9 @@ function createOpenAiStt(
   return new OpenAISTT({ apiKey, ...sttConfig }, logger);
 }
 
-function createOpenAiTts(
+export function createOpenAiTts(
+  // OTTO(profile-voice): host-owned credential and endpoint.
+
   apiKey: string,
   openaiConfig: OpenAiSpeechProviderConfig | undefined,
   logger: Logger,

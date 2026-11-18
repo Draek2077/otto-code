@@ -274,7 +274,7 @@ describe("evaluatePluginClientBundle", () => {
         const Item = require("react").memo(function Item() { return null; });
         plugin.addScreen({ id: "main", title: " Main ", Component: Screen });
         plugin.addScreen({ id: "bot", title: (params) => params.botId, Component: Screen });
-        plugin.addSidebarHeaderItem({ id: "main", title: " Example ", Component: Item });
+        plugin.addSidebarHeaderItem({ id: "main", title: " Example ", icon: "BookOpen", Component: Item });
         plugin.addSidebarFooterItem({ id: "main", title: "Status", Component: Item });
       `),
     );
@@ -283,8 +283,8 @@ describe("evaluatePluginClientBundle", () => {
     expect(plugin.surfaces.map((surface) => surface.id)).toEqual(["main", "bot"]);
     expect(plugin.surfaces[0]?.title).toBe("Main");
     expect(plugin.surfaces[1]?.title).toBeTypeOf("function");
-    expect(plugin.sidebarItems.header.map(({ id, title }) => ({ id, title }))).toEqual([
-      { id: "main", title: "Example" },
+    expect(plugin.sidebarItems.header.map(({ id, title, icon }) => ({ id, title, icon }))).toEqual([
+      { id: "main", title: "Example", icon: "BookOpen" },
     ]);
     expect(plugin.sidebarItems.footer.map(({ id, title }) => ({ id, title }))).toEqual([
       { id: "main", title: "Status" },
@@ -338,6 +338,14 @@ describe("evaluatePluginClientBundle", () => {
         ),
       ),
     ).toThrow("Sidebar item main has no title");
+    expect(() =>
+      evaluatePluginClientBundle(
+        "example",
+        bundle(
+          `plugin.addSidebarFooterItem({ id: "main", title: "Main", icon: "MissingFeatureIcon", Component() { return null; } });`,
+        ),
+      ),
+    ).toThrow("MissingFeatureIcon");
   });
 
   it("expands the addSurface and addSidebarItem aliases to a screen and a legacy header item", () => {

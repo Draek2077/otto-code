@@ -1,4 +1,13 @@
-import { Children, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Children,
+  lazy,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ViewDraft, ViewScope, ViewSummary } from "@getpaseo/plugin/otto/architectural-views";
@@ -9,8 +18,9 @@ import { Alert } from "@/components/ui/alert";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useViewLibrary } from "./data";
 import { ViewChangeLease } from "./changes";
-import { ViewDetail, type ViewTarget } from "./reader";
-import { CreateView } from "./create";
+import type { ViewTarget } from "./reader";
+const ViewDetail = lazy(async () => ({ default: (await import("./reader")).ViewDetail }));
+const CreateView = lazy(async () => ({ default: (await import("./create")).CreateView }));
 import type { ViewDestination } from "./navigation";
 import { recoverableViewDrafts } from "./drafts";
 import { styles } from "./styles";

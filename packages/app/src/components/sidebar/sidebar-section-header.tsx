@@ -6,6 +6,7 @@ import { DensityIcon } from "@/components/ui/density-icon";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
 import { density } from "@/styles/density";
+import { sidebarNavigationChrome } from "@/otto/sidebar/navigation-chrome"; // OTTO(sidebar-navigation): narrow Workspaces headers may wrap their action group.
 
 /** A sidebar section label such as "Pinned" or "Workspaces". A section with `onToggle`
  * collapses from its title; children sit at the trailing edge as its actions. */
@@ -15,15 +16,17 @@ export function SidebarSectionHeader({
   onToggle,
   testID,
   children,
+  wrapActions = false,
 }: {
   title: string;
   collapsed?: boolean;
   onToggle?: () => void;
   testID?: string;
   children?: ReactNode;
+  wrapActions?: boolean;
 }) {
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, wrapActions && sidebarNavigationChrome.wrap]}>
       {onToggle ? (
         <CollapsibleTitle
           title={title}

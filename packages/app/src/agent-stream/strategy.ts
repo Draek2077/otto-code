@@ -55,6 +55,8 @@ export interface StreamViewportHandle {
   focus?: () => void;
   scrollToBottom: (reason?: BottomAnchorLocalRequest["reason"]) => void;
   prepareForViewportChange: () => void;
+  // OTTO(action-groups): an explicit detail-reading action relinquishes bottom follow without scrolling.
+  holdReadingPosition?: () => void;
   scrollToMessage?: (messageId: string, occurrence?: ScrollToMessageOccurrence) => void;
 }
 

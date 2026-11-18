@@ -494,13 +494,14 @@ for (const kind of ["agent", "new-agent"] as const) {
       expect((await api.history({ ref: saved.ref })).total).toBe(1);
       await surface.getByRole("button", { name: "Storage", exact: true }).click();
       await expect(surface.getByText("Schedules storage", { exact: true })).toBeVisible();
-      await surface.getByText("Use Schedules host default", { exact: true }).click();
-      await page.getByTestId("schedule-choice-host").filter({ visible: true }).click();
-      await surface.getByRole("button", { name: "Save project override", exact: true }).click();
+      await surface
+        .getByRole("button", { name: "Save new schedules in: Use host default", exact: true })
+        .click();
+      await page.getByRole("menuitem", { name: "This host", exact: true }).click();
       await expect(
         surface.getByRole("button", { name: "Save project override", exact: true }),
-      ).toBeDisabled();
-      expect((await api.storage(scope(workspace))).override).toBe("host");
+      ).toHaveCount(0);
+      await expect.poll(async () => (await api.storage(scope(workspace))).override).toBe("host");
       const unchanged = await api.read(saved.ref);
       expect(unchanged.ref).toEqual(saved.ref);
       expect((await api.history({ ref: saved.ref })).total).toBe(1);
@@ -704,3 +705,78 @@ for (const kind of ["graph", "ai"] as const) {
     }
   });
 }
+
+test("Profile parity: a reviewed Team Scheduler resolves the new member when fired", async ({
+  page,
+  ottoProvider,
+}) => {
+  test.setTimeout(150000);
+  const workspace = await seedWorkspace({
+    repoPrefix: "profile-parity-schedule-",
+    title: "Role schedule",
+    git: true,
+  });
+  const client = await connectDaemonClient<DaemonClient>({ clientIdPrefix: "profile-schedule" });
+  const { config } = await client.getDaemonConfig();
+  const first = {
+    id: "first-planner",
+    name: "First planner",
+    provider: "openai-compatible",
+    model: "fixture",
+    roles: ["scheduler"],
+    personalityPrompt: "FIRST_PROFILE_WORK",
+  };
+  const second = {
+    ...first,
+    id: "second-planner",
+    name: "Second planner",
+    personalityPrompt: "SECOND_PROFILE_WORK",
+  };
+  const teams = [
+    { id: "first", name: "First team", memberIds: [first.id] },
+    { id: "second", name: "Second team", memberIds: [second.id] },
+  ];
+  try {
+    await client.patchDaemonConfig({
+      agentProfiles: [first, second],
+      agentTeams: { activeTeamId: "first", teams },
+    });
+    await client.profileMemory({
+      kind: "add",
+      profileId: second.id,
+      scope: "project",
+      workspaceId: workspace.workspaceId,
+      text: "SECOND_SCHEDULER_PROJECT_LESSON",
+    });
+    ottoProvider.replyWith(() => "Finished the scheduled check.");
+    await ottoProvider.refreshCatalog();
+    const api = scheduleApi(client),
+      surface = await openSchedules(page, workspace),
+      editor = await begin(page, surface, "Profile scheduler", "New agent");
+    await expect(editor.getByTestId("combined-model-selector")).toContainText("Team’s Scheduler");
+    await reviewAndSave(editor);
+    const saved = await savedByName(api, workspace, "Profile scheduler");
+    expect(saved.schedule.target).toMatchObject({
+      type: "new-agent",
+      config: { agentProfile: "@team-scheduler" },
+    });
+    await client.patchDaemonConfig({ agentTeams: { activeTeamId: "second", teams } });
+    await confirm(
+      page,
+      surface.getByRole("button", { name: "Run once", exact: true }),
+      "Run Schedule once?",
+    );
+    const run = await terminal(api, saved.ref);
+    expect(run.status).toBe("succeeded");
+    expect(JSON.stringify(ottoProvider.requests)).toContain("SECOND_PROFILE_WORK");
+    expect(JSON.stringify(ottoProvider.requests)).toContain("SECOND_SCHEDULER_PROJECT_LESSON");
+    expect(JSON.stringify(ottoProvider.requests)).not.toContain("FIRST_PROFILE_WORK");
+  } finally {
+    await client.patchDaemonConfig({
+      agentProfiles: config.agentProfiles,
+      agentTeams: config.agentTeams,
+    });
+    await client.close();
+    await workspace.cleanup();
+  }
+});

@@ -30,21 +30,23 @@ for (const compact of [false, true]) {
       .click();
     const boardInput = form.getByRole("textbox", { name: "Board number or URL", exact: true });
     const boardUrl = "https://github.com/orgs/otto-fixture/projects/42";
+    // A real peer write happens before this edit, so the conflict does not depend on debounce timing.
+    await kanban.write({ adapter: "github", boardId: "70", boardOwner: "otto-fixture" });
     await boardInput.fill(boardUrl);
+    // OTTO(settings): editing triggers autosave against the retained revision.
+    await expect(
+      form.getByText("Project Settings changed. Reload before saving.", { exact: true }),
+    ).toBeVisible();
+    await expect(boardInput).toHaveValue(boardUrl);
+    await expect(form.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
 
-    // Browser Back exercises the actual route departure; no reload or synthetic UI state.
+    // Retain the conflicted local draft across real route departure, with no vendor read.
+    await kanban.write(null);
     await page.goBack();
     await expect(page.getByText(empty, { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Project Settings", exact: true }).click();
     await expect(boardInput).toHaveValue(boardUrl);
     await kanban.write({ adapter: "github", boardId: "70", boardOwner: "otto-fixture" });
-    const save = form.getByRole("button", { name: "Save", exact: true });
-    await save.click();
-    await expect(
-      form.getByText("Project Settings changed. Reload before saving.", { exact: true }),
-    ).toBeVisible();
-    await expect(boardInput).toHaveValue(boardUrl);
-    await expect(save).toBeDisabled();
 
     const reload = form.getByRole("button", { name: "Reload saved settings", exact: true });
     await reload.click();
@@ -54,8 +56,6 @@ for (const compact of [false, true]) {
     await form.getByRole("button", { name: "Discard and reload", exact: true }).click();
     await expect(boardInput).toHaveValue("70");
     await boardInput.fill(boardUrl);
-    await save.click();
-    await expect(form.getByText("Board settings saved", { exact: true })).toBeVisible();
     await expect
       .poll(async () => (await kanban.read()).target)
       .toEqual({
@@ -69,7 +69,6 @@ for (const compact of [false, true]) {
     await form
       .getByRole("switch", { name: "Configure a board for this project", exact: true })
       .click();
-    await save.click();
     await expect.poll(async () => (await kanban.read()).target).toBeNull();
     await page.goBack();
     await expect(page.getByText(empty, { exact: true })).toBeVisible();

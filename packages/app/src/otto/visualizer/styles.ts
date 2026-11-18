@@ -5,6 +5,8 @@ export const visualizerStyles = StyleSheet.create((theme) => ({
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
+    // With wrapping enabled, center the line itself inside the minimum height too.
+    alignContent: "center",
     flexShrink: 0,
     minHeight: 36,
     height: "auto",

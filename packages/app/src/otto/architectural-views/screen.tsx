@@ -15,11 +15,11 @@ import {
 import { useFetchQuery } from "@/data/query";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
-import { SettingsSelect } from "@/components/settings";
 import { Alert } from "@/components/ui/alert";
 import { ViewLibrary } from "./library";
 import { viewNavigationIntents } from "./navigation";
 import { styles } from "./styles";
+import { FeatureScopeSelect, featureBrowserStyles } from "../ui/feature-browser";
 const destinationSchema = z.object({
   identity: ViewIdentity.optional(),
   selection: ViewSelection.optional(),
@@ -135,12 +135,12 @@ export function ArchitecturalViewsScreen(props: PluginScreenProps) {
   };
   return (
     <View style={styles.page}>
-      <View style={styles.toolbar}>
-        <SettingsSelect
+      <View style={featureBrowserStyles.toolbar}>
+        <FeatureScopeSelect
           label="Project"
           value={projectId}
           options={choices}
-          onValueChange={setProjectId}
+          onChange={setProjectId}
         />
         {projects.error ? <Alert variant="error" description={projects.error.message} /> : null}
       </View>

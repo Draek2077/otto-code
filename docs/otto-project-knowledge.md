@@ -26,10 +26,10 @@ current directory are not inputs. Existing directory identities are preserved;
 a host store without its persisted identity is refused rather than guessed.
 
 Host settings expose a host-wide new-store default before project selection.
-Reading it is inert. An explicit confirmed save uses its captured revision and
+Reading it is inert. Selecting a default autosaves using its captured revision and
 stores only the nonsecret preference in
 `<OTTO_HOME>/project-knowledge/settings.json`; retained `otto-config.json` remains
-read-only and supplies the default until that explicit replacement exists.
+read-only and supplies the default until that replacement exists.
 Unknown preference fields survive writes. Before replacing a Host default, the
 same canonical project registry queue pins initialized inherited host stores,
 including archived projects, to their existing directory. Repository precedence
@@ -55,6 +55,10 @@ Retained-store binding rechecks the captured marker under that queue and never
 rewrites existing records, roots, policy or history. A marker-publication failure
 keeps the saved identity and requires a fresh read rather than rollback or another
 automatic allocation. Root initialization remains a separate explicit action.
+
+Project settings use a separate metadata-only read. An invalid article or timeline
+cannot prevent storage configuration from loading. Article reads identify the
+failing file and preserve its bytes; settings never repair or rewrite articles.
 
 ## Records and roots
 

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { Text } from "react-native";
 import {
   SettingsCard,
   SettingsRow,
@@ -12,7 +11,6 @@ import { Alert } from "@/components/ui/alert";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import { settingsStyles } from "@/styles/settings";
 import {
   readTerminalSettings,
   saveTerminalSettings,
@@ -36,21 +34,26 @@ function TerminalSettingsForm({ port }: { port: TerminalSettingsPort }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   useEffect(() => model.activate(), [model]);
   const autoTitle = useCallback(
-    (enabled: boolean) => model.edit({ terminalTitleMode: enabled ? "auto" : "default" }),
+    (enabled: boolean) => {
+      model.edit({ terminalTitleMode: enabled ? "auto" : "default" });
+      void model.save();
+    },
     [model],
   );
   const paths = useCallback(
-    (enabled: boolean) => model.edit({ terminalTitleIncludePaths: enabled }),
+    (enabled: boolean) => {
+      model.edit({ terminalTitleIncludePaths: enabled });
+      void model.save();
+    },
     [model],
   );
   const shell = useCallback(
-    (value: TerminalPreferences["defaultTerminalShell"]) =>
-      model.edit({ defaultTerminalShell: value }),
+    (value: TerminalPreferences["defaultTerminalShell"]) => {
+      model.edit({ defaultTerminalShell: value });
+      void model.save();
+    },
     [model],
   );
-  const save = useCallback(() => {
-    void model.save();
-  }, [model]);
   const diagnose = useCallback(() => {
     void model.diagnose();
   }, [model]);
@@ -106,26 +109,7 @@ function TerminalSettingsForm({ port }: { port: TerminalSettingsPort }) {
               disabled={disabled}
             />
           ) : null}
-          <SettingsRow
-            label="New terminal sessions"
-            hint="Existing sessions and explicit command profiles keep their current settings."
-          >
-            <Button
-              size="sm"
-              variant="outline"
-              onPress={save}
-              disabled={disabled}
-              loading={state.phase === "saving"}
-            >
-              Save preferences
-            </Button>
-          </SettingsRow>
         </SettingsCard>
-      ) : null}
-      {state.saved ? (
-        <Text style={settingsStyles.rowHint} accessibilityLiveRegion="polite">
-          Terminal preferences saved
-        </Text>
       ) : null}
       <SettingsCard>
         <SettingsRow

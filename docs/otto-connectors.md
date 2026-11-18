@@ -5,6 +5,10 @@ Open **Settings > Host > Plugins > Configure Connectors**. The installed list le
 to inline management; **Add connector** opens the searchable catalog or a custom
 HTTP, SSE or local-command form. The existing Settings page owns the title,
 scrolling, gutters and compact layout. Advanced options use existing expanders.
+After a connection exists, **Connector tool availability** offers a collapsed diagnostic
+report. It describes provider tool-policy access, not provider authentication or configuration.
+Provider setup remains in Host > Providers. The ordinary page has one Refresh action;
+Reload saved settings appears only for recovery from an unconfirmed change.
 
 The structural SDK contracts are in `@getpaseo/plugin/otto/connectors`. The trusted
 `otto-integrations` plugin registers the app-owned screen through

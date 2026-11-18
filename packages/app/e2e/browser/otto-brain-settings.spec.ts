@@ -11,17 +11,16 @@ for (const compact of [false, true]) {
     await openBrainSettings(page, compact);
     const enabled = page.getByRole("switch", { name: "Enable Brain", exact: true });
     const autoStart = page.getByRole("switch", { name: "Start with host", exact: true });
-    const save = page.getByRole("button", { name: "Save connection", exact: true });
+    const save = page.getByRole("button", { name: "Save Brain settings", exact: true });
     // A peer changes the persisted revision after this form captured its draft.
-    await autoStart.click();
     await brain.updateConnection({ enabled: true });
-    await save.click();
+    await autoStart.click();
     await expect(
       page.getByText("Brain connection settings changed; reload before saving", { exact: true }),
     ).toBeVisible();
     await expect(autoStart).toBeChecked();
     await expect(enabled).not.toBeChecked();
-    await expect(save).toBeDisabled();
+    await expect(save).toHaveCount(0);
     expect((await brain.readConnection()).config).toMatchObject({
       enabled: true,
       autoStart: false,
@@ -38,8 +37,7 @@ for (const compact of [false, true]) {
     await expect(autoStart).not.toBeChecked();
     await expect(enabled).toBeChecked();
     await autoStart.click();
-    await save.click();
-    await expect(page.getByText("Connection settings saved", { exact: true })).toBeVisible();
+    await expect.poll(async () => (await brain.readConnection()).config.autoStart).toBe(true);
     expect((await brain.readConnection()).config).toMatchObject({ enabled: true, autoStart: true });
     // Saving enabled/autostart intent must not launch a host in this session.
     expect(await brain.localRunning()).toBe(false);

@@ -12,6 +12,7 @@ import { aggregateSidebarStateBuckets } from "@/utils/sidebar-agent-state";
 import { shortenPath } from "@/utils/shorten-path";
 import type { WorkspaceAgentActivity } from "@/utils/workspace-agent-activity";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
+import { workspaceStatusPriority } from "@/otto/chat/identity/workspace-activity"; // OTTO(chat-identity): priority and motion are separate presentation facts.
 
 const EMPTY_PROJECTS: SidebarProjectEntry[] = [];
 
@@ -34,6 +35,7 @@ export interface SidebarWorkspacePlacement {
 export interface SidebarStatusWorkspacePlacement extends SidebarWorkspacePlacement {
   statusBucket: SidebarStateBucket;
   statusEnteredAt: Date | null;
+  hasActiveChat?: boolean; // OTTO(chat-identity): canonical root-chat activity, independent of the winning status.
 }
 
 export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
@@ -173,6 +175,9 @@ export function createSidebarWorkspaceEntry(input: {
     currentBranch: normalizeCurrentBranch(input.workspace.gitRuntime?.currentBranch),
     statusBucket: effectiveStatus.status,
     statusEnteredAt: effectiveStatus.enteredAt,
+    ...(input.workspaceAgentActivity?.get(input.workspace.id)?.hasActiveChat
+      ? { hasActiveChat: true }
+      : {}),
     archivingAt: input.workspace.archivingAt,
     diffStat: input.workspace.diffStat,
     prHint: selectPrHintFromStatus(
@@ -194,6 +199,13 @@ function deriveEffectiveWorkspaceStatus(input: {
   pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
   workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentActivity>;
 }): EffectiveWorkspaceStatus {
+  // OTTO(chat-identity): another chat's newer activity cannot mask a pending question/error.
+  const rootActivity = input.workspaceAgentActivity?.get(input.workspace.id);
+  if (
+    rootActivity &&
+    workspaceStatusPriority(rootActivity.status) < workspaceStatusPriority(input.workspace.status)
+  )
+    return rootActivity;
   if (input.workspace.status !== "done") {
     return { status: input.workspace.status, enteredAt: input.workspace.statusEnteredAt };
   }

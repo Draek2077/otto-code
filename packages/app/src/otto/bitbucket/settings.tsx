@@ -123,7 +123,13 @@ function ConnectionForm({
   }, [model, active]);
   useEffect(() => () => model.close(), [model]);
   const add = useCallback(() => model.begin(), [model]);
-  const choose = useCallback((value: string) => model.choose(value), [model]);
+  const choose = useCallback(
+    (value: string) => {
+      model.choose(value);
+      void model.saveSelection();
+    },
+    [model],
+  );
   const reload = useCallback(
     () =>
       model.reload(() =>
@@ -163,15 +169,6 @@ function ConnectionForm({
             onValueChange={choose}
             disabled={state.busy || state.blocked}
           />
-          <SettingsRow label="Selection">
-            <Button
-              variant="outline"
-              onPress={model.saveSelection}
-              disabled={state.busy || state.blocked}
-            >
-              Save selection
-            </Button>
-          </SettingsRow>
           {state.origin.connections.map((account) => (
             <AccountRow key={account.id} account={account} model={model} />
           ))}

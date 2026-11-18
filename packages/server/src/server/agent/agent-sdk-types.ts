@@ -588,6 +588,7 @@ export interface ImportedProviderSession {
 }
 
 export interface AgentSessionConfig {
+  ottoProfile?: import("@getpaseo/protocol/otto/agent-teams").ProfileBinding; // OTTO(agent-teams): daemon-resolved snapshot, absent from inbound config.
   provider: AgentProvider;
   cwd: string;
   /**

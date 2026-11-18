@@ -1,3 +1,15 @@
+import {
+  applyCreationProfile,
+  reloadLabels,
+  rosterReader,
+  resolveHostProfile,
+  selectProfile,
+} from "../otto/agent-profiles/selection.js"; // OTTO(agent-teams)
+import {
+  bindProfile,
+  presentationLabel,
+  profileIntentLabel,
+} from "@getpaseo/protocol/otto/agent-teams"; // OTTO(agent-teams)
 import { projectTimelineRows } from "./timeline-projection.js";
 import type { PluginLifecycle } from "../plugins/lifecycle/index.js";
 import { describeHookAgent, publishAgentStream } from "../plugins/lifecycle/index.js";
@@ -233,6 +245,7 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
     config.providerOptions = record.config.providerOptions;
   }
   if (record.config.toolPolicy != null) config.toolPolicy = record.config.toolPolicy;
+  if (record.config.ottoProfile) config.ottoProfile = record.config.ottoProfile; // OTTO(agent-teams)
   if (record.config.systemPrompt != null) {
     config.systemPrompt = record.config.systemPrompt;
   }
@@ -358,6 +371,9 @@ export interface AgentManagerOptions {
   paseoToolCatalogFactory?: PaseoToolCatalogFactory;
   resolvePaseoToolPolicy?: (provider: AgentProvider) => ProviderPaseoToolsPolicy | undefined;
   appendSystemPrompt?: string;
+  profileMemory?: import("../otto/profile-memory/profile-memory-service.js").ProfileMemoryService; // OTTO(profile-memory)
+  readProfileCatalog?: Parameters<typeof resolveHostProfile>[3]; // OTTO(agent-teams)
+  readProfileRoster?: () => Parameters<typeof bindProfile>[0]; // OTTO(agent-teams)
   ottoKnowledgePrompt?: KnowledgeSessionPrompt; // OTTO(knowledge): canonical workspace-bound metadata only.
   ottoChatSearch?: ChatSearchService; // OTTO(chat-search): observes canonical rows; never runs agents.
   agentStreamCoalesceWindowMs?: number;
@@ -793,6 +809,10 @@ export class AgentManager {
   private readonly resolvePaseoToolPolicy: (
     provider: AgentProvider,
   ) => ProviderPaseoToolsPolicy | undefined;
+  private readonly configsWithProfileLessons = new WeakSet<AgentSessionConfig>(); // OTTO(profile-memory)
+  readonly profileMemory: AgentManagerOptions["profileMemory"]; // OTTO(profile-memory)
+  private readonly readProfileCatalog: AgentManagerOptions["readProfileCatalog"]; // OTTO(agent-teams)
+  private readonly readProfileRoster: NonNullable<AgentManagerOptions["readProfileRoster"]>; // OTTO(agent-teams)
   private appendSystemPrompt: string;
   private readonly ottoKnowledgePrompt?: KnowledgeSessionPrompt; // OTTO(knowledge)
   readonly ottoChatSearch?: ChatSearchService; // OTTO(chat-search)
@@ -805,6 +825,9 @@ export class AgentManager {
   private acceptingAgentRegistrations = true;
 
   constructor(options: AgentManagerOptions) {
+    this.profileMemory = options.profileMemory; // OTTO(profile-memory)
+    this.readProfileCatalog = options.readProfileCatalog; // OTTO(agent-teams)
+    this.readProfileRoster = rosterReader(options.readProfileRoster); // OTTO(agent-teams)
     this.pluginLifecycle = options.pluginLifecycle;
     this.idFactory = options?.idFactory ?? (() => randomUUID());
     this.registry = options?.registry;
@@ -1329,8 +1352,29 @@ export class AgentManager {
         config,
         env: options.env,
       });
-      config = { ...request.config, internal: config.internal };
+      // OTTO(schedule-profiles): the public hook sees only the portable config. Preserve the
+      // binding captured by the owning daemon before provisioning this scheduled workspace.
+      config = { ...request.config, internal: config.internal, ottoProfile: config.ottoProfile };
       options = { ...options, env: request.env };
+    }
+    // OTTO(agent-teams): the transported id is intent. Only the owning host supplies prompt and identity.
+    const intended = options.labels?.[profileIntentLabel];
+    if (intended) {
+      const { profile, binding } = await resolveHostProfile(
+        this.readProfileRoster(),
+        intended,
+        config,
+        this.readProfileCatalog,
+      );
+      if (profile.model && config.model && profile.model !== config.model)
+        throw new Error("The Profile model changed. Select the Profile again.");
+      config = applyCreationProfile(config, profile, binding);
+      const labels: Record<string, string> = {
+        ...options.labels,
+        "otto.profile": presentationLabel(binding),
+      };
+      delete labels[profileIntentLabel];
+      options = { ...options, labels };
     }
     await this.deleteAgentState(resolvedAgentId);
     const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
@@ -1591,7 +1635,7 @@ export class AgentManager {
   private async reloadAgentSessionInternal(
     agentId: string,
     overrides?: Partial<AgentSessionConfig>,
-    options?: { rehydrateFromDisk?: boolean },
+    options: { rehydrateFromDisk?: boolean; profileLabels?: Record<string, string> } = {},
   ): Promise<ManagedAgent> {
     assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     this.assertAcceptingAgentRegistrations();
@@ -1601,7 +1645,7 @@ export class AgentManager {
       await this.cancelAgentRunBefore(agentId, "reload");
       existing = this.requireSessionAgent(agentId);
     }
-    const rehydrateFromDisk = options?.rehydrateFromDisk ?? false;
+    const rehydrateFromDisk = options.rehydrateFromDisk === true;
     const preservedHistoryPrimed = existing.historyPrimed;
     const preservedLastUsage = existing.lastUsage;
     const preservedLastError = existing.lastError;
@@ -1668,7 +1712,7 @@ export class AgentManager {
       // Preserve existing labels and timeline during reload.
       handedToRegistration = true;
       return this.registerSession(session, storedConfig, agentId, {
-        labels: existing.labels,
+        labels: reloadLabels(existing.labels, options.profileLabels), // OTTO(agent-teams)
         workspaceId: existing.workspaceId,
         owner: existing.owner,
         createdAt: existing.createdAt,
@@ -2083,6 +2127,53 @@ export class AgentManager {
     return notice;
   }
 
+  // OTTO(agent-teams): serialize raw and Profile picks across clients. Refuse a prompt swap that would interrupt a turn or lose provider history.
+  selectChatProfile(agentId: string, profileId: string | null, rawModel?: string | null) {
+    return this.runLifecycleMutation(agentId, async () => {
+      const agent = this.requireSessionAgent(agentId);
+      assertWorkflowConfigurationChange(agent);
+      if ((profileId || agent.config.ottoProfile) && this.hasInFlightRun(agentId))
+        throw new Error("Wait for the current turn to finish before changing its Profile.");
+      const selected =
+        profileId === null
+          ? null
+          : await resolveHostProfile(
+              this.readProfileRoster(),
+              profileId,
+              agent.config,
+              this.readProfileCatalog,
+            );
+      return selectProfile(agent.config, agent.labels["otto.profile"], selected, rawModel, {
+        refreshMemory: async (next) =>
+          this.configsWithProfileLessons.has(agent.config) ||
+          Boolean(
+            next &&
+            (await this.profileMemory?.resolveBriefForSpawn({
+              personalityId: next.id,
+              personalityName: next.name,
+              cwd: agent.cwd,
+            })),
+          ),
+        setModel: (model) => this.setAgentModel(agentId, model),
+        setMode: (mode) => this.setAgentMode(agentId, mode),
+        setThinking: (effort) => this.setAgentThinkingOption(agentId, effort),
+        setFeature: (key, value) => this.setAgentFeature(agentId, key, value),
+        writeBinding: async (binding, label) => {
+          agent.config.ottoProfile = binding;
+          await this.writeLabels(agentId, { "otto.profile": label });
+        },
+        resume: async (overrides, label) => {
+          if (this.hasInFlightRun(agentId) || !agent.persistence)
+            throw new Error(
+              "Switch this Profile when the chat is idle and its provider session can resume.",
+            );
+          await this.reloadAgentSessionInternal(agentId, overrides, {
+            profileLabels: applyLabelPatch(agent.labels, { "otto.profile": label }),
+          });
+        },
+      });
+    });
+  }
   async setAgentModel(agentId: string, modelId: string | null): Promise<void> {
     const agent = this.requireSessionAgent(agentId);
     assertWorkflowConfigurationChange(agent); // OTTO(workflows): model seats are immutable for the run.
@@ -5483,12 +5574,31 @@ export class AgentManager {
           "Project Knowledge catalog is unavailable",
         ),
     });
+    // OTTO(profile-memory): only the transient provider prompt receives accrued lessons.
+    const profile = storedConfig.ottoProfile;
+    if (profile && this.profileMemory) {
+      const brief = await this.profileMemory.resolveBriefForSpawn({
+        personalityId: profile.id,
+        personalityName: profile.name,
+        cwd: storedConfig.cwd,
+      });
+      if (brief) {
+        this.configsWithProfileLessons.add(storedConfig);
+        launchConfig.daemonAppendSystemPrompt = [launchConfig.daemonAppendSystemPrompt, brief]
+          .filter(Boolean)
+          .join("\n\n");
+      }
+    }
     return { storedConfig, launchConfig, paseoToolPolicy };
   }
 
   private applyDaemonAppendSystemPrompt(config: AgentSessionConfig): AgentSessionConfig {
-    const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();
+    // OTTO(agent-teams): snapshots survive resume; explicitly authored chat instructions take precedence.
+    const daemonAppendSystemPrompt =
+      config.ottoProfile?.respectGlobal === false ? "" : this.appendSystemPrompt.trim();
     const next = { ...config };
+    if (!next.systemPrompt && next.ottoProfile?.prompt) next.systemPrompt = next.ottoProfile.prompt;
+    delete next.ottoProfile;
     delete next.daemonAppendSystemPrompt;
 
     return daemonAppendSystemPrompt

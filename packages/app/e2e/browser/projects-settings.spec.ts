@@ -8,8 +8,6 @@ import {
   bumpPaseoConfigOnDisk,
   chooseProjectIconImage,
   clickReloadProjectSettings,
-  clickRetryProjectSettingsSave,
-  clickSaveProjectSettings,
   commitPaseoConfig,
   corruptPaseoConfig,
   editWorktreeSetup,
@@ -27,9 +25,7 @@ import {
   expectProjectSettingsFormVisible,
   expectProjectTitle,
   expectProjectSettingsHistoryRoundTrip,
-  expectSaveButtonDisabled,
   expectScriptRowCount,
-  expectWriteFailedCalloutActions,
   expectUncommittedSetupWarning,
   fillProjectIconUrl,
   fillProjectName,
@@ -166,6 +162,12 @@ async function readProjectConfigFile(project: ProjectsSettingsProject): Promise<
   return readFile(path.join(project.path, "otto.json"), "utf8");
 }
 
+async function expectScriptsRemoved(project: ProjectsSettingsProject): Promise<void> {
+  await expect
+    .poll(async () => JSON.parse(await readProjectConfigFile(project)).scripts)
+    .toBeUndefined();
+}
+
 async function addProjectFromSidebar(page: Page, projectPath: string): Promise<string> {
   await openAddProjectFlow(page);
   await chooseAddProjectMethod(page, "directory-search");
@@ -232,7 +234,8 @@ test.describe("Projects settings", () => {
     await openProjectSettings(page, editableProject.name);
     await expectNoUncommittedSetupWarning(page);
     await editWorktreeSetup(page, updatedSetup);
-    await clickSaveProjectSettings(page);
+    // OTTO(settings): preference edits persist without a Save control.
+    await expect(page.getByTestId("save-button")).toHaveCount(0);
     await expectProjectConfigSaved(editableProject);
     await expectUncommittedSetupWarning(page);
 
@@ -253,7 +256,7 @@ test.describe("Projects settings", () => {
       await removeProjectScript(page, "dev");
       await expectScriptRowCount(page, 0);
       await expectEmptyScriptList(page);
-      await clickSaveProjectSettings(page);
+      await expectScriptsRemoved(editableProject);
       await expectNoUncommittedSetupWarning(page);
     });
   });
@@ -266,7 +269,6 @@ test.describe("Projects settings", () => {
     await openProjects(page);
     await openProjectSettings(page, gitlabRemoteProject.name);
     await editWorktreeSetup(page, updatedSetup);
-    await clickSaveProjectSettings(page);
     await expectProjectConfigSaved(gitlabRemoteProject);
   });
 
@@ -356,7 +358,7 @@ test.describe("Projects settings — compact navigation", () => {
 });
 
 test.describe("Projects settings — error UX", () => {
-  test("stale-write callout appears on save, disables save, and reload clears it", async ({
+  test("stale autosave retains the draft and reload clears the conflict", async ({
     page,
     editableProject,
   }) => {
@@ -366,10 +368,10 @@ test.describe("Projects settings — error UX", () => {
     // Bump the file on disk so the daemon detects a revision mismatch on save.
     await bumpPaseoConfigOnDisk(editableProject.path);
 
-    await clickSaveProjectSettings(page);
+    await editWorktreeSetup(page, updatedSetup);
 
     await expectProjectSettingsError(page, "stale");
-    await expectSaveButtonDisabled(page);
+    await expect(page.getByTestId("save-button")).toHaveCount(0);
 
     await clickReloadProjectSettings(page);
 
@@ -398,7 +400,7 @@ test.describe("Projects settings — error UX", () => {
     await expectProjectSettingsFormVisible(page);
   });
 
-  test("write_failed callout appears on save with blocked directory, retry re-attempts, reload clears it", async ({
+  test("failed autosave retains the draft without retry, and confirmed reload recovers", async ({
     page,
     editableProject,
   }) => {
@@ -407,13 +409,13 @@ test.describe("Projects settings — error UX", () => {
 
     await blockPaseoConfigWrites(editableProject.path);
 
-    await clickSaveProjectSettings(page);
+    await editWorktreeSetup(page, updatedSetup);
 
     await expectProjectSettingsError(page, "write_failed");
-    await expectWriteFailedCalloutActions(page);
-
-    await clickRetryProjectSettingsSave(page);
-    await expectProjectSettingsError(page, "write_failed");
+    await expect(page.getByTestId("write-failed-callout-action-1")).toHaveText("Reload");
+    await expect(page.getByRole("textbox", { name: "Worktree setup commands" })).toHaveValue(
+      updatedSetup.join("\n"),
+    );
 
     await unblockPaseoConfigWrites(editableProject.path);
     await clickReloadProjectSettings(page);

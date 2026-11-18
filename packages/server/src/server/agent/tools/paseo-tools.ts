@@ -1,3 +1,10 @@
+import {
+  activeTeam,
+  teamProfiles,
+  profileIntentLabel,
+  profileRoles,
+  hasProfileRole,
+} from "@getpaseo/protocol/otto/agent-teams"; // OTTO(agent-teams)
 import { AgentDirectory } from "../directory.js";
 import { stat } from "node:fs/promises";
 import { z } from "zod";
@@ -118,6 +125,7 @@ import { createKnowledgeTools } from "../../otto/project-knowledge/tools.js"; //
 import type { KanbanDaemonService } from "../../otto/kanban/service.js"; // OTTO(kanban)
 import { createKanbanCatalogTools } from "../../otto/kanban/catalog.js"; // OTTO(kanban)
 import type { KanbanToolPolicy } from "../../otto/kanban/tool-policy.js"; // OTTO(kanban)
+import { registerProfileMemory } from "../../otto/profile-memory/tools.js"; // OTTO(profile-memory)
 import { registerPreviewTools } from "../../otto/preview/catalog.js"; // OTTO(preview)
 import type { PreviewHost } from "../../otto/preview/host.js"; // OTTO(preview)
 import type { RetainedToolPolicy } from "../../otto/retained-tool-policy.js"; // OTTO(preview)
@@ -1142,6 +1150,11 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       .min(1, "Title is required")
       .max(60, "Title must be 60 characters or fewer")
       .describe("Short descriptive title (<= 60 chars) summarizing the agent's focus."),
+    profileId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Optional host Profile id from list_profiles. Use its provider/model pair."),
     provider: ProviderModelInputSchema.describe(
       "Required provider/model pair, for example codex/gpt-5.4.",
     ),
@@ -1353,6 +1366,9 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       resolveCallerAgent,
     });
   }
+
+  // OTTO(profile-memory): resolve identity for every call, including after a live Profile switch.
+  registerProfileMemory(agentManager, callerAgentId, registerTool);
 
   // OTTO(preview): after the voice-only return; the owning module retains all policy gates.
   registerPreviewTools({
@@ -1634,7 +1650,9 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           workspaceId: resolvedArgs.workspaceId,
           thinking: parsedArgs.settings?.thinkingOptionId,
           features: parsedArgs.settings?.features,
-          labels: parsedArgs.labels,
+          labels: parsedArgs.profileId
+            ? { ...parsedArgs.labels, [profileIntentLabel]: parsedArgs.profileId }
+            : parsedArgs.labels, // OTTO(agent-teams)
           mode: parsedArgs.settings?.modeId,
           promptFailure: "throw",
           notifyOnFinish,
@@ -3122,18 +3140,23 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     {
       title: "List agent profiles",
       description:
-        "List agent profiles: named provider/model/mode bundles a human configured for specific " +
-        "kinds of work. Read each profile's `notes` to pick the one that fits the task you're " +
-        "delegating, then copy its `provider`, `model`, `modeId`, `thinkingOptionId`, and " +
-        "`featureValues` into create_agent (there is no `profile` parameter). Returns an empty " +
-        "list if none are configured.",
+        "List Profiles in the active team, or the host roster if no team is selected. Choose by roles and notes, then pass profileId with the matching provider/model to create_agent.",
       inputSchema: {},
       outputSchema: {
         profiles: z.array(AgentProfileSchema),
       },
     },
     async () => {
-      const profiles = daemonConfigStore?.get().agentProfiles ?? [];
+      const config = daemonConfigStore?.get();
+      // OTTO(agent-teams): omit the spoken lines and prompt from repeated tool results.
+      const profiles = teamProfiles(
+        activeTeam(config?.agentTeams),
+        config?.agentProfiles ?? [],
+      ).map((p) =>
+        Object.assign(AgentProfileSchema.strip().parse(p), {
+          roles: profileRoles.filter((role) => hasProfileRole(p, role)),
+        }),
+      );
       return {
         content: [],
         structuredContent: ensureValidJson({ profiles }),

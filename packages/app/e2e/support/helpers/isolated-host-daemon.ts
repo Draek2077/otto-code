@@ -4,6 +4,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { withDisabledE2ESpeechEnv } from "./speech-env";
+import { stopFixtureDaemon } from "./otto-stop-fixture"; // OTTO(dev-shutdown)
 import { killProcessTree, spawnTsx } from "./spawn-node";
 
 export interface IsolatedHostDaemon {
@@ -218,7 +219,7 @@ export async function startIsolatedHostDaemon(
     close: async () => {
       if (closed) return;
       closed = true;
-      await killProcessTree(child);
+      await stopFixtureDaemon(child, serverId, port); // OTTO(dev-shutdown): only the owned test home.
       if (!options.preserveHome) {
         await rm(paseoHome, { recursive: true, force: true });
       }

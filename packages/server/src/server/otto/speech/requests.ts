@@ -42,7 +42,7 @@ export class SpeechRequests {
         abort.signal,
         input.pauseAfterMs,
       );
-    });
+    }, input.selection.provider);
     const finished = work
       .catch((error) => {
         if (!abort.signal.aborted)

@@ -1,3 +1,4 @@
+import { WriterSetting } from "@/otto/agent-profiles/writer-setting"; // OTTO(agent-teams)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -116,6 +117,7 @@ export function MetadataGenerationPage({ serverId }: { serverId: string }) {
       testID="metadata-generation-settings"
     >
       <View style={settingsStyles.card}>
+        <WriterSetting serverId={serverId} />
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>

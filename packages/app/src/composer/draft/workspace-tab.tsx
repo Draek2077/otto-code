@@ -50,6 +50,11 @@ import {
 import { openWorkspaceChanges } from "@/workspace-tabs/open-supporting-view";
 import { useSettings } from "@/hooks/use-settings";
 import { visualizerChatViewport } from "@/otto/visualizer/chat-bridge"; // OTTO(visualizer): same tab-owned backdrop through draft-to-agent handoff; Composer remains outside.
+import {
+  creationChatProfileLabels,
+  restoreDraftChatProfile,
+  type ChatProfileBinding,
+} from "@/otto/chat/identity/profile-binding"; // OTTO(chat-profile): use the same creation request and canonical agent labels.
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
@@ -62,6 +67,7 @@ const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
 };
 
 interface AutoSubmitConfig {
+  labels?: Record<string, string>;
   provider: string;
   modeId: string | null;
   model: string | null;
@@ -71,6 +77,7 @@ interface AutoSubmitConfig {
 
 function resolveAutoSubmitConfig(
   pending: {
+    labels?: Record<string, string>;
     provider: string;
     modeId?: string | null;
     model?: string | null;
@@ -81,6 +88,7 @@ function resolveAutoSubmitConfig(
   if (!pending) return null;
   return {
     provider: pending.provider,
+    labels: pending.labels,
     modeId: pending.modeId ?? null,
     model: pending.model ?? null,
     thinkingOptionId: pending.thinkingOptionId ?? null,
@@ -128,6 +136,7 @@ async function submitDraftCreateRequest(input: {
   workspaceId: string | null;
   autoSubmitConfig: AutoSubmitConfig | null;
   composerState: {
+    chatProfile?: ChatProfileBinding;
     selectedProvider: string | null;
     effectiveModeId: string;
     effectiveModelId: string | null;
@@ -177,6 +186,7 @@ async function submitDraftCreateRequest(input: {
   const attachmentsArray = Array.isArray(attachments) ? attachments : undefined;
   const imagesData = await encodeImages(images);
   const options = {
+    labels: creationChatProfileLabels(autoSubmitConfig, composerState.chatProfile),
     idempotencyKey: input.draftId,
     config,
     workspaceId,
@@ -334,6 +344,7 @@ export function WorkspaceDraftAgentTab({
     composer: {
       initialServerId: serverId,
       initialValues: draftInitialValues,
+      initialChatProfile: restoreDraftChatProfile(draftSetup),
       initialFeatureValues: draftSetup?.featureValues,
       isVisible: true,
       lockedWorkingDir: draftWorkingDirectory ?? undefined,

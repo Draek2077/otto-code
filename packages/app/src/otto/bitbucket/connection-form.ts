@@ -83,14 +83,15 @@ export function openBitbucketConnectionForm(
         return;
       }
       const value = result.value;
+      const selectionOnly = action.kind === "select";
       publish({
         origin: value,
         busy: false,
-        editing: false,
-        draft: emptyDraft(),
-        removeId: "",
+        editing: selectionOnly ? state.editing : false,
+        draft: selectionOnly ? state.draft : emptyDraft(),
+        removeId: selectionOnly ? state.removeId : "",
         selection: value.projectId ? (value.projectOverrideId ?? "") : (value.hostDefaultId ?? ""),
-        generation: state.generation + 1,
+        generation: selectionOnly ? state.generation : state.generation + 1,
         message: "Git connection settings saved.",
       });
     } catch {

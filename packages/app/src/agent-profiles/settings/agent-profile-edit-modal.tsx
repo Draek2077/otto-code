@@ -1,3 +1,6 @@
+import { parseEffortLevel } from "@getpaseo/protocol/otto/profile-effort"; // OTTO(agent-teams)
+import { IdentityFields, initialFields } from "@/otto/agent-profiles/profile-fields"; // OTTO(agent-teams)
+import { useHostFeature } from "@/runtime/host-features";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -140,6 +143,8 @@ function OpenAgentProfileEditModal({
   );
   const model = useAgentProfileFormModel(snapshot);
   const state = useAgentProfileFormState(model);
+  const extended = useHostFeature(serverId, "ottoAgentTeams");
+  const [identity, setIdentity] = useState(() => initialFields(profile)); // OTTO(agent-teams)
   useAgentProfileFormCatalog({ serverId, model });
   useAgentProfileFormFeatures({ serverId, model, state });
 
@@ -194,14 +199,33 @@ function OpenAgentProfileEditModal({
     model.setSubmitError(null);
     model.setSubmitting(true);
     try {
-      await onSave(value);
+      if (
+        extended &&
+        identity.spinner &&
+        ![identity.spinner.glowA, identity.spinner.glowB].every((color) =>
+          /^#[0-9a-f]{6}$/i.test(color),
+        )
+      )
+        throw new Error(
+          "Enter both spinner colors as six-digit hex colors, or clear both to use the provider colors.",
+        );
+      const submission = extended
+        ? {
+            ...value,
+            ...identity,
+            effortLevel: value.thinkingOptionId
+              ? (parseEffortLevel(value.thinkingOptionId) ?? undefined)
+              : undefined,
+          }
+        : value;
+      await onSave(submission);
       onClose();
     } catch (error) {
       model.setSubmitError(toErrorMessage(error));
     } finally {
       model.setSubmitting(false);
     }
-  }, [model, onClose, onSave]);
+  }, [extended, identity, model, onClose, onSave]);
 
   const handleSavePress = useCallback(() => {
     void handleSave();
@@ -367,6 +391,15 @@ function OpenAgentProfileEditModal({
           />
         </Field>
 
+        {extended && (
+          <IdentityFields
+            serverId={serverId}
+            name={state.name}
+            fields={identity}
+            set={setIdentity}
+            profile={profile}
+          />
+        )}
         {state.submitError ? (
           <Text style={styles.submitError} testID="agent-profile-submit-error">
             {state.submitError}

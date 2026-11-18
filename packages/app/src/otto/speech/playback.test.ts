@@ -19,6 +19,37 @@ const settle = async () => {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 };
 describe("shared speech playback", () => {
+  it("uses the bound voice for one utterance and drops busy lifecycle cues", async () => {
+    const { playback, port, generation, output } = fixture();
+    const selection = { provider: "local" as const, model: "kokoro", voice: "af_heart", speed: 1 };
+    playback.speak({
+      hostId: "host",
+      key: "join",
+      text: "Here.",
+      cue: true,
+      automatic: true,
+      profileVoice: true,
+      selection,
+    });
+    await settle();
+    expect(port.synthesize).toHaveBeenCalledWith(
+      expect.objectContaining({ selection, profileVoice: true }),
+    );
+    playback.speak({
+      hostId: "host",
+      key: "thinking",
+      text: "Working.",
+      cue: true,
+      automatic: true,
+    });
+    generation.resolve(audio);
+    await settle();
+    output.resolve();
+    await settle();
+    expect(port.synthesize).toHaveBeenCalledTimes(1);
+    expect(port.play).toHaveBeenCalledTimes(1);
+    playback.close();
+  });
   it("gives all capture owners priority without saving a stale narration backlog", async () => {
     const { playback, port, generation } = fixture();
     playback.speak({ hostId: "host", key: "first", text: "Old speech." });

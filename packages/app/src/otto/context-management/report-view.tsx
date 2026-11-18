@@ -11,6 +11,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Bot } from "lucide-react-native";
 import { ContextHealthSettings } from "./health-settings";
 export function ContextControls(props: {
+  profileSelector?: ReactNode;
   agentId: string;
   windowTokens: string;
   options: { value: string; label: string }[];
@@ -25,7 +26,7 @@ export function ContextControls(props: {
 }) {
   return (
     <SettingsSection
-      title="Context Management"
+      title="Context"
       info="Fixed occupancy is different from conversation usage or spend. Exact text still uses an estimated token count; provider-hidden inputs are unknown, never zero."
     >
       <SettingsCard>
@@ -43,6 +44,7 @@ export function ContextControls(props: {
           onValueChange={props.chooseWindow}
           disabled={props.busy}
         />
+        {props.profileSelector}
       </SettingsCard>
       <ContextHealthSettings active={props.active} />
       <View style={styles.actions}>

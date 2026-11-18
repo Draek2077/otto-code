@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { ScrollView, View } from "react-native";
+import { lazy, useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { ScrollView, Text, View } from "react-native";
 import type { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchQuery } from "@/data/query";
@@ -17,14 +17,20 @@ import {
   readKnowledgeRoot,
   type KnowledgeScope,
 } from "@getpaseo/plugin/otto/project-knowledge";
-import { SettingsRow, SettingsSection, SettingsSelect } from "@/components/settings";
+import { SettingsRow, SettingsCollapsibleRow } from "@/components/settings";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { KnowledgeReadingLayout } from "./reading-layout";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
 import { KnowledgeCatalogView } from "./catalog";
-import { KnowledgeDocument, type KnowledgeSelection } from "./document";
-import { KnowledgeEditor } from "./editor";
+import type { KnowledgeSelection } from "./document";
+import { FeatureScopeSelect, featureBrowserStyles } from "../ui/feature-browser";
+const KnowledgeDocument = lazy(async () => ({
+  default: (await import("./document")).KnowledgeDocument,
+}));
+const KnowledgeEditor = lazy(async () => ({ default: (await import("./editor")).KnowledgeEditor }));
 import type { EditorSeed, EditorReloadTarget } from "./editor-model";
 import { KnowledgeStorage } from "./storage";
 import { styles } from "./styles";
@@ -32,6 +38,7 @@ import { useKnowledgeChanges } from "./use-knowledge-changes";
 import { KnowledgeLinkHealth } from "./link-health";
 import { KnowledgeFormat } from "./format";
 import { KnowledgeHostDefaults } from "./host-defaults";
+import { KnowledgeProjectSettings } from "./project-settings";
 import { KnowledgeStorageSetup } from "./setup";
 import { KnowledgeLockRecovery } from "./lock-recovery";
 import { knowledgeEditorDraftsFor } from "./editor-drafts";
@@ -68,11 +75,14 @@ function KnowledgeBody({
   scope,
   active,
   settingsOnly = false,
+  leading,
 }: {
+  leading?: import("react").ReactNode;
   scope: KnowledgeScope;
   active: boolean;
   settingsOnly?: boolean;
 }) {
+  const compact = useIsCompactFormFactor();
   const readCatalog = useRpc(readKnowledgeCatalog);
   const mutate = useRpc(mutateKnowledge);
   const readPage = useRpc(readKnowledgePage);
@@ -173,15 +183,17 @@ function KnowledgeBody({
       setInitializing(false);
     }
   }, [initializing, mutate, scope, refresh]);
-  if (editor)
+  if (editor && compact)
     return (
-      <KnowledgeEditor
-        scope={scope}
-        model={editor}
-        drafts={drafts}
-        onSaved={saved}
-        onCancel={closeEditor}
-      />
+      <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+        <KnowledgeEditor
+          scope={scope}
+          model={editor}
+          drafts={drafts}
+          onSaved={saved}
+          onCancel={closeEditor}
+        />
+      </ScrollView>
     );
   if (catalog.error)
     return (
@@ -204,52 +216,75 @@ function KnowledgeBody({
         <KnowledgeLockRecovery scope={scope} active={active} />
       </>
     );
-  return (
+  const catalogPane = (
     <>
-      <SettingsSection title={catalog.data.settings.label}>
-        <View style={styles.actions}>
-          <Button variant="outline" size="sm" onPress={refresh}>
-            Refresh
+      <KnowledgeCatalogView
+        catalog={catalog.data}
+        query={query}
+        inactive={inactive}
+        offset={offset}
+        setQuery={setQuery}
+        setInactive={setInactive}
+        setOffset={setOffset}
+        onSelect={setSelection}
+      />
+      <SettingsCollapsibleRow label="Storage and maintenance">
+        <Button variant="outline" size="sm" onPress={initialize} disabled={initializing}>
+          {initializing ? "Initializing..." : "Initialize roots"}
+        </Button>
+        <KnowledgeLinkHealth scope={scope} active={active} onSelect={setSelection} />
+        <KnowledgeStorage scope={scope} settings={catalog.data.settings} onChanged={refresh} />
+        <KnowledgeFormat scope={scope} active={active} />
+        <KnowledgeLockRecovery scope={scope} active={active} />
+      </SettingsCollapsibleRow>
+    </>
+  );
+  const selectedDocument = selection ? (
+    <KnowledgeDocument
+      scope={scope}
+      selection={selection}
+      active={active}
+      onEdit={openEditor}
+      onMissing={back}
+    />
+  ) : (
+    <SettingsRow label="Choose a Knowledge entry or project-map page." />
+  );
+  const editingDocument = editor ? (
+    <KnowledgeEditor
+      scope={scope}
+      model={editor}
+      drafts={drafts}
+      onSaved={saved}
+      onCancel={closeEditor}
+    />
+  ) : null;
+  return (
+    <View style={styles.page}>
+      <View style={featureBrowserStyles.toolbar}>
+        {leading ?? <Text style={styles.projectLabel}>{catalog.data.settings.label}</Text>}
+        {compact && selection ? (
+          <Button variant="ghost" size="sm" onPress={back}>
+            Back to pages
           </Button>
-          <Button variant="outline" size="sm" onPress={create}>
-            New entry
-          </Button>
-          <Button variant="outline" size="sm" onPress={initialize} disabled={initializing}>
-            {initializing ? "Initializing..." : "Initialize roots"}
-          </Button>
-          {selection ? (
-            <Button variant="outline" size="sm" onPress={back}>
-              Back to pages
-            </Button>
-          ) : null}
-        </View>
-      </SettingsSection>
+        ) : null}
+        <View style={styles.toolbarSpacer} />
+        <Button variant="outline" size="sm" onPress={create}>
+          New entry
+        </Button>
+        <Button variant="ghost" size="sm" onPress={refresh}>
+          Refresh
+        </Button>
+      </View>
       {actionError ? <Alert variant="error" description={actionError} /> : null}
       {observationError ? <Alert variant="warning" description={observationError} /> : null}
-      {selection ? (
-        <KnowledgeDocument
-          scope={scope}
-          selection={selection}
-          active={active}
-          onEdit={openEditor}
-          onMissing={back}
-        />
-      ) : (
-        <KnowledgeCatalogView
-          catalog={catalog.data}
-          query={query}
-          inactive={inactive}
-          offset={offset}
-          setQuery={setQuery}
-          setInactive={setInactive}
-          setOffset={setOffset}
-          onSelect={setSelection}
-        />
-      )}
-      <KnowledgeLinkHealth scope={scope} active={active} onSelect={setSelection} />
-      <KnowledgeStorage scope={scope} settings={catalog.data.settings} onChanged={refresh} />
-      <KnowledgeFormat key="format" scope={scope} active={active} />
-    </>
+      <KnowledgeReadingLayout
+        compact={compact}
+        detailOpen={!!selection || !!editor}
+        catalog={catalogPane}
+        detail={editingDocument ?? selectedDocument}
+      />
+    </View>
   );
 }
 
@@ -264,14 +299,16 @@ function ScopeFrame({
 }) {
   const retained = useRetainedPanelActive();
   const visible = useAppVisible();
+  if (settingsOnly)
+    return (
+      <ScrollView style={styles.page} contentContainerStyle={embedded ? undefined : styles.content}>
+        <KnowledgeProjectSettings scope={scope} active={retained && visible} />
+      </ScrollView>
+    );
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={embedded ? undefined : styles.content}
-      testID="otto-knowledge-page"
-    >
-      <KnowledgeBody scope={scope} active={retained && visible} settingsOnly={settingsOnly} />
-    </ScrollView>
+    <View style={styles.page} testID="otto-knowledge-page">
+      <KnowledgeBody scope={scope} active={retained && visible} />
+    </View>
   );
 }
 
@@ -317,34 +354,43 @@ function ProjectPicker({
     () => ({ hostId, target: { kind: "project", id: projectId } }),
     [hostId, projectId],
   );
-  const body = (
-    <>
-      {settingsOnly ? <KnowledgeHostDefaults hostId={hostId} active={active} /> : null}
-      <SettingsSelect
+  const picker = useMemo(
+    () => (
+      <FeatureScopeSelect
         label="Project"
         value={projectId}
         options={options}
-        onValueChange={setProjectId}
+        onChange={setProjectId}
       />
+    ),
+    [projectId, options],
+  );
+  if (settingsOnly)
+    return (
+      <View>
+        <KnowledgeHostDefaults hostId={hostId} active={active} />
+        <View style={featureBrowserStyles.toolbar}>{picker}</View>
+        {projectId ? (
+          <KnowledgeProjectSettings key={projectId} scope={scope} active={active} />
+        ) : null}
+      </View>
+    );
+  return (
+    <View style={styles.page} testID="otto-knowledge-page">
       {projects.error ? (
         <Alert variant="error" description="Projects could not be loaded from the selected host." />
       ) : null}
       {projectId ? (
-        <KnowledgeBody key={projectId} scope={scope} active={active} settingsOnly={settingsOnly} />
+        <KnowledgeBody key={projectId} scope={scope} active={active} leading={picker} />
       ) : (
-        <SettingsRow label="Choose the project whose Knowledge you want to open." />
+        <>
+          <View style={featureBrowserStyles.toolbar}>{picker}</View>
+          <View style={styles.content}>
+            <SettingsRow label="Choose the project whose Knowledge you want to open." />
+          </View>
+        </>
       )}
-    </>
-  );
-  if (settingsOnly) return <View>{body}</View>;
-  return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      testID="otto-knowledge-page"
-    >
-      {body}
-    </ScrollView>
+    </View>
   );
 }
 export function ProjectKnowledgeScreen(props: PluginScreenProps) {

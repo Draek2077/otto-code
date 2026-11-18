@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { saveSpeech, type SpeechSnapshot } from "@getpaseo/plugin/otto/speech";
 import { openSpeechForm } from "./form-model";
+import { speechPreviewState } from "./preview-state";
 import { speechDeferred, speechSnapshot } from "../../../test-speech";
+afterEach(() => vi.useRealTimers());
 
 function fixture() {
   const initial = speechSnapshot();
@@ -21,6 +23,70 @@ function fixture() {
   return { initial, pending, port, form, edit };
 }
 describe("speech settings form", () => {
+  it("keeps preview unavailable until the acknowledged local model is installed and the engine has settled", () => {
+    const { form, initial } = fixture();
+    expect(speechPreviewState(form.getSnapshot()).ready).toBe(false);
+    initial.choices.ttsModels = [
+      {
+        id: "kokoro-en-v0_19",
+        label: "Kokoro",
+        description: "",
+        voices: ["af"],
+        defaultVoice: "af",
+        installed: true,
+      },
+    ];
+    expect(speechPreviewState(form.getSnapshot()).ready).toBe(true);
+    initial.readiness.applyingSettings = true;
+    expect(speechPreviewState(form.getSnapshot()).ready).toBe(false);
+    form.close();
+  });
+  it("debounces preferences, retains newer edits during a write, and advances only its own revision", async () => {
+    vi.useFakeTimers();
+    const { form, initial, pending, port, edit } = fixture();
+    edit();
+    form.credential("tts", { kind: "replace", value: "pending-key" });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(port.save).toHaveBeenCalledTimes(1);
+    expect(port.save.mock.calls[0]?.[0].credentials.tts).toEqual({ kind: "keep" });
+    form.edit((draft) => ({
+      ...draft,
+      voice: { ...draft.voice, tts: { ...draft.voice.tts, speed: 1.25 } },
+    }));
+    const first = port.save.mock.calls[0]![0];
+    port.save.mockImplementation(async (input) => ({
+      ...initial,
+      revision: "revision-3",
+      settings: input.settings,
+    }));
+    pending.resolve({ ...initial, revision: "revision-2", settings: first.settings });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(port.save).toHaveBeenCalledTimes(2);
+    expect(port.save.mock.calls[1]?.[0]).toMatchObject({
+      expectedRevision: "revision-2",
+      settings: { voice: { tts: { speed: 1.25 } } },
+    });
+    expect(form.getSnapshot()).toMatchObject({
+      generation: 0,
+      origin: { revision: "revision-3" },
+      credentials: { tts: { kind: "replace", value: "pending-key" } },
+    });
+    form.close();
+  });
+  it("stops autosave after an uncertain write even when the user edits again", async () => {
+    vi.useFakeTimers();
+    const { form, pending, port, edit } = fixture();
+    edit();
+    await vi.advanceTimersByTimeAsync(300);
+    pending.reject(new Error("disconnected"));
+    await vi.advanceTimersByTimeAsync(1);
+    edit();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(port.save).toHaveBeenCalledTimes(1);
+    expect(form.getSnapshot()).toMatchObject({ blocked: true, dirty: true });
+    expect(form.getSnapshot().error).toContain("edits are retained");
+    form.close();
+  });
   it("does not save or launch anything on construction or editing; submits the originating revision once", async () => {
     const { initial, pending, port, form, edit } = fixture();
     edit();

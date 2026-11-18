@@ -125,9 +125,7 @@ function SettingsContent() {
           <RuntimeStorageSection />
           <DefaultsSection />
           <SecuritySection />
-          <SettingsSection title={`Save settings for ${state.owner.origin.owner.label}`}>
-            <DomainActions scope="owner" />
-          </SettingsSection>
+          <DomainActions scope="owner" />
         </>
       ) : (
         <SettingsSection title="Brain settings">

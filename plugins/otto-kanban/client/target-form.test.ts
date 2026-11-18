@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openTargetForm } from "./target-form.js";
 import type { ProjectConfiguration, Result } from "../shared/model.js";
 
@@ -8,8 +8,85 @@ const snapshot: ProjectConfiguration = {
   settingsRevision: "r1",
   target: { adapter: "github", boardId: "7", boardOwner: "shared" },
 };
+afterEach(() => vi.useRealTimers());
 
 describe("project board settings form", () => {
+  it("ignores a saved-state read completed after the settings surface is hidden", async () => {
+    let finish: (value: Result<ProjectConfiguration>) => void = () => {
+      throw new Error("not started");
+    };
+    const form = openTargetForm({ snapshot, save: async () => ({ ok: true, value: snapshot }) });
+    const close = form.activate();
+    form.setBoardId("my draft");
+    const reading = form.reload(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    close();
+    const closeAgain = form.activate();
+    finish({ ok: true, value: { ...snapshot, target: null, settingsRevision: "late" } });
+    await reading;
+    expect(form.getSnapshot()).toMatchObject({ boardId: "my draft", dirty: true, busy: false });
+    expect(form.getRevision()).toBe("r1");
+    closeAgain();
+  });
+  it("automatically saves committed edits in order without an explicit Save action", async () => {
+    vi.useFakeTimers();
+    let finish: (value: Result<ProjectConfiguration>) => void = () => {
+      throw new Error("not started");
+    };
+    const save = vi
+      .fn<Parameters<typeof openTargetForm>[0]["save"]>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockImplementation(async ({ target }) => ({
+        ok: true,
+        value: { ...snapshot, target, settingsRevision: "r3" },
+      }));
+    const form = openTargetForm({ snapshot, save });
+    const close = form.activate();
+    form.setBoardId("8");
+    await vi.advanceTimersByTimeAsync(250);
+    form.setBoardId("9");
+    await vi.advanceTimersByTimeAsync(250);
+    expect(save).toHaveBeenCalledTimes(1);
+    finish({ ok: true, value: { ...snapshot, settingsRevision: "r2" } });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(save.mock.calls.map(([input]) => input.expectedRevision)).toEqual(["r1", "r2"]);
+    expect(save.mock.calls[1]?.[0].target?.boardId).toBe("9");
+    expect(form.getSnapshot().dirty).toBe(false);
+    close();
+  });
+  it("does not apply or retry an automatic write hidden before acknowledgement", async () => {
+    vi.useFakeTimers();
+    let finish: (value: Result<ProjectConfiguration>) => void = () => {
+      throw new Error("not started");
+    };
+    const save = vi.fn<Parameters<typeof openTargetForm>[0]["save"]>(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const form = openTargetForm({ snapshot, save });
+    const close = form.activate();
+    form.setEnabled(false);
+    await vi.advanceTimersByTimeAsync(250);
+    close();
+    const closeAgain = form.activate();
+    finish({ ok: true, value: { ...snapshot, settingsRevision: "late", target: null } });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(form.getRevision()).toBe("r1");
+    expect(form.getSnapshot()).toMatchObject({ reloadRequired: true, dirty: true });
+    expect(save).toHaveBeenCalledTimes(1);
+    closeAgain();
+  });
   it("saves only identifiers with the opened host/project/revision", async () => {
     const saved: ProjectConfiguration = {
       ...snapshot,
@@ -45,7 +122,7 @@ describe("project board settings form", () => {
       error: "Reload Project Settings before saving.",
     });
   });
-  it("prevents duplicate saves and input changes while the current save is pending", async () => {
+  it("prevents duplicate saves and preserves newer input while the current save is pending", async () => {
     let finish: ((result: Result<ProjectConfiguration>) => void) | undefined;
     const save = vi.fn(
       () =>
@@ -59,11 +136,12 @@ describe("project board settings form", () => {
     expect(form.getSnapshot().busy).toBe(true);
     expect(await form.save()).toBeNull();
     form.setBoardId("9");
-    expect(form.getSnapshot().boardId).toBe("8");
+    expect(form.getSnapshot().boardId).toBe("9");
     if (!finish) throw new Error("The save did not start");
     finish({ ok: true, value: { ...snapshot, settingsRevision: "r2" } });
     await pending;
     expect(save).toHaveBeenCalledTimes(1);
+    expect(form.getSnapshot().dirty).toBe(true);
   });
   it("does not retain the previous board owner when a new owner is supplied by a URL", () => {
     const form = openTargetForm({

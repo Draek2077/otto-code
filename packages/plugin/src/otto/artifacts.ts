@@ -71,6 +71,7 @@ export const ArtifactRef = z.object({
 });
 export type ArtifactRef = z.infer<typeof ArtifactRef>;
 export const ArtifactSelection = z.object({
+  profileId: z.string().min(1).optional(),
   provider: z.string().min(1).max(512),
   model: z.string().min(1).max(512),
 });

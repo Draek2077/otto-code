@@ -1,3 +1,4 @@
+import { scheduleProfile, type ResolveRole } from "../agent-profiles/role-selection.js";
 import { stat } from "node:fs/promises";
 import type { AgentStorage } from "../../agent/agent-storage.js";
 import type { ProviderSnapshotManager } from "../../agent/provider-snapshot-manager.js";
@@ -14,6 +15,7 @@ import { isPathInsideRoot } from "../../../utils/path.js";
 import { ScheduleError } from "./files.js";
 
 export interface ScheduleNativePolicyPorts extends ScheduleStorePorts {
+  resolveRole?: ResolveRole;
   storage: Pick<AgentStorage, "get">;
   workspaces: Pick<WorkspaceRegistry, "get" | "list">;
   providers: Pick<ProviderSnapshotManager, "hasProvider" | "getProvider">;
@@ -124,7 +126,18 @@ export class ScheduleNativePolicy {
         { cause: error },
       );
     }
-    await this.provider(target.config, target.config.cwd);
+    const resolved = await scheduleProfile(target.config, this.ports.resolveRole);
+    await this.provider(resolved.config, target.config.cwd);
+    if (resolved.binding) {
+      const name =
+        target.config.agentProfile === "@team-scheduler" ||
+        target.config.personality === "@team-scheduler"
+          ? "Team’s Scheduler at run time"
+          : "Scheduler";
+      return [name, resolved.binding.name, resolved.config.provider, resolved.config.model].join(
+        " · ",
+      );
+    }
     return target.config.title ?? "New agent";
   }
   async validateStored(schedule: StoredSchedule) {

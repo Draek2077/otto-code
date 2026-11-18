@@ -2,6 +2,9 @@ import { AgentMessageSchema } from "./agent-message.js";
 import { PluginRegistryIdentitySchema } from "./plugin-registry.js";
 import { historyArchiveRequests, historyArchiveResponses } from "./otto/history-archive.js"; // OTTO(history)
 import { chatSearchRequests, chatSearchResponses } from "./otto/chat-search.js"; // OTTO(chat-search)
+import { MemoryRequest, MemoryResponse } from "./otto/profile-memory.js"; // OTTO(profile-memory)
+import { AuthorRequest, AuthorResponse } from "./otto/profile-authoring.js"; // OTTO(profile-authoring)
+import { AgentTeams, Team } from "./otto/agent-teams.js"; // OTTO(agent-teams)
 import { AgentProfileSchema, AgentSkillSelectionSchema } from "./agent-profile.js";
 export {
   AgentProfileSchema,
@@ -158,6 +161,7 @@ const MutableStructuredGenerationProviderSchema = z
 
 const MutableMetadataGenerationConfigSchema = z
   .object({
+    preferWriterProfiles: z.boolean().optional(), // OTTO(agent-teams)
     providers: z.array(MutableStructuredGenerationProviderSchema).default([]),
   })
   .passthrough();
@@ -206,6 +210,7 @@ export const MutableDaemonConfigSchema = z
     enableTerminalAgentHooks: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
+    agentTeams: AgentTeams.optional(), // OTTO(agent-teams)
     agentProfiles: z.array(AgentProfileSchema).optional(),
     skills: z.object({ selection: AgentSkillSelectionSchema.optional() }).strict().optional(),
     pluginsEnabled: z.boolean().optional(),
@@ -215,6 +220,8 @@ export const MutableDaemonConfigSchema = z
 
 export const MutableDaemonConfigPatchSchema = z
   .object({
+    expectedProfileRoster: z.array(AgentProfileSchema).optional(), // OTTO(agent-teams): guard concurrent roster writes.
+    expectedTeamRoster: z.array(Team).optional(), // OTTO(agent-teams): compare before replacing a host roster.
     relay: MutableRelayConfigSchema.partial().optional(),
     mcp: z.object({ injectIntoAgents: z.boolean().optional() }).passthrough().optional(),
     browserTools: MutableBrowserToolsConfigSchema.partial().optional(),
@@ -227,6 +234,7 @@ export const MutableDaemonConfigPatchSchema = z
     enableTerminalAgentHooks: z.boolean().optional(),
     appendSystemPrompt: z.string().optional(),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
+    agentTeams: AgentTeams.optional(), // OTTO(agent-teams)
     agentProfiles: z.array(AgentProfileSchema).optional(),
     pluginsEnabled: z.boolean().optional(),
     plugins: z.record(PluginIdSchema, PluginSourceSchema).optional(),
@@ -1991,6 +1999,7 @@ export const SetAgentFeatureResponseMessageSchema = z.object({
  * clears them, matching the single-field RPCs above.
  */
 export const AgentConfigApplySchema = z.object({
+  ottoProfileId: z.string().optional(), // OTTO(agent-teams): validated against the host roster.
   modelId: z.string().nullable().optional(),
   modeId: z.string().optional(),
   thinkingOptionId: z.string().nullable().optional(),
@@ -2219,6 +2228,7 @@ export const CheckoutCommitRequestSchema = z.object({
   cwd: z.string(),
   message: z.string().optional(),
   addAll: z.boolean().optional(),
+  paths: z.array(z.string().min(1).max(4096)).min(1).max(5000).optional(), // OTTO(manual-commit): literal selected paths; older senders retain existing commit semantics.
   requestId: z.string(),
 });
 
@@ -3302,6 +3312,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentThinkingRequestMessageSchema,
   SetAgentFeatureRequestMessageSchema,
   AgentConfigApplyRequestMessageSchema,
+  MemoryRequest, // OTTO(profile-memory)
+  AuthorRequest, // OTTO(profile-authoring)
   AgentDetachRequestMessageSchema,
   AgentRewindRequestMessageSchema,
   AgentPermissionResponseMessageSchema,
@@ -3587,6 +3599,8 @@ export const ServerInfoStatusPayloadSchema = z
         ottoConnectors: z.boolean().optional(), // OTTO(connectors): host-owned authorization and shared provider catalog.
         ottoTerminal: z.boolean().optional(), // OTTO(terminal): host-owned preferences and explicit diagnostics.
         ottoGitFetch: z.boolean().optional(), // OTTO(git-fetch): owning-host policy and explicit workspace fetch.
+        ottoGitDiffBase: z.boolean().optional(), // OTTO(diff-base): branch-scoped parent selection.
+        ottoManualCommit: z.boolean().optional(), // OTTO(manual-commit): per-file commits and bounded console output.
         ottoEditor: z.boolean().optional(), // OTTO(editor): host-owned language services and reviewed edit jobs.
         ottoSpeech: z.boolean().optional(), // OTTO(speech): host speech settings and bounded playback.
         ottoKnowledge: z.boolean().optional(), // OTTO(knowledge): daemon-owned Knowledge bridge.
@@ -3778,6 +3792,9 @@ export const ServerInfoStatusPayloadSchema = z
         // agentProfiles to one is silently dropped. The client hides the feature
         // rather than letting a save appear to succeed.
         agentProfiles: z.boolean().optional(),
+        ottoProfileMemory: z.boolean().optional(), // COMPAT(ottoProfileMemory): added 0.10.0, remove gate after 2027-05-18.
+        ottoRolePickers: z.boolean().optional(), // COMPAT(ottoRolePickers): added 0.10.0, remove gate after 2027-05-18.
+        ottoAgentTeams: z.boolean().optional(), // OTTO(agent-teams): COMPAT(ottoAgentTeams) added in 0.10.0, remove gate after 2027-05-18.
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: z.boolean().optional(),
       })
@@ -5479,6 +5496,7 @@ export const CheckoutCommitResponseSchema = z.object({
   payload: z.object({
     cwd: z.string(),
     success: z.boolean(),
+    consoleOutput: z.string().max(65536).optional(), // OTTO(manual-commit): old clients accept additive operation output.
     error: CheckoutErrorSchema.nullable(),
     requestId: z.string(),
   }),
@@ -7000,6 +7018,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentThinkingResponseMessageSchema,
   SetAgentFeatureResponseMessageSchema,
   AgentConfigApplyResponseMessageSchema,
+  MemoryResponse, // OTTO(profile-memory)
+  AuthorResponse, // OTTO(profile-authoring)
   AgentDetachResponseMessageSchema,
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,

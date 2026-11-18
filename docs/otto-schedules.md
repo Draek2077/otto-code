@@ -75,15 +75,19 @@ targets always require their owning project; this native compatibility does not 
 The persisted format retains unknown record, origin, and audit fields. Nested legacy target/config
 fields are merged back only at disk publication, never added to execution DTOs. An explicit
 target-kind replacement removes the replaced target rather than transplanting its private fields.
-Unsupported Otto 0.9
-provider/profile policies remain dormant with their original bytes intact. They are not
-silently stripped to obtain an executable record.
+New-agent targets support named Scheduler Profiles and **Team’s Scheduler**.
+Legacy flat provider policies and Workflow targets missing their saved source remain
+on disk pending review. See [Saved schedules](otto-continuity.md#saved-schedules).
 
 ## Project storage
 
 Schedules have independent host defaults and project overrides. They never inherit another
 category's location. New records select the project override, then the Schedule host default.
 Existing records retain their exact location and store key, even after a preference change.
+Storage choices save automatically through one serialized revision-checked lane. Newer local
+choices survive an in-flight acknowledgment. Failures and unknown hidden write outcomes
+retain the draft and expose explicit reload recovery. Settings use Project folder, This host,
+and Use host default labels; they do not repeat internal server IDs or show normal Save rows.
 
 - Repository records use `<canonicalProjectRoot>/.otto/schedules/`.
 - Host records use `<OTTO_HOME>/project-schedules/<persisted-directory-identity>/`.

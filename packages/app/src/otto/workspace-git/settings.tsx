@@ -1,6 +1,4 @@
 import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
-import { View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { SettingsCard, SettingsRow, SettingsSelect, SettingsSwitch } from "@/components/settings";
 import { Button } from "@/components/ui/button";
@@ -22,17 +20,21 @@ function GitFetchSettingsForm({ port }: { port: GitFetchPort }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const active = useRetainedPanelActive();
   useEffect(() => (active ? model.activate() : undefined), [active, model]);
-  const enabled = useCallback((value: boolean) => model.edit({ enabled: value }), [model]);
+  const enabled = useCallback(
+    (value: boolean) => {
+      model.edit({ enabled: value });
+      void model.save();
+    },
+    [model],
+  );
   const interval = useCallback(
     (value: string) => {
       const intervalSeconds = GitFetchPreferencesSchema.shape.intervalSeconds.parse(Number(value));
       model.edit({ intervalSeconds });
+      void model.save();
     },
     [model],
   );
-  const save = useCallback(() => {
-    void model.save();
-  }, [model]);
   const reload = useCallback(() => {
     void model.reload(() =>
       confirmDialog({
@@ -75,27 +77,16 @@ function GitFetchSettingsForm({ port }: { port: GitFetchPort }) {
           testID="otto-git-fetch-notice"
         />
       ) : null}
-      <SettingsRow label="Git fetch settings">
-        <View style={styles.actions}>
-          <Button
-            size="sm"
-            variant="outline"
-            onPress={reload}
-            disabled={state.phase === "loading" || state.phase === "saving"}
-          >
+      {state.phase === "blocked" ? (
+        <SettingsRow label="Git fetch settings">
+          <Button size="sm" variant="outline" onPress={reload}>
             Reload
           </Button>
-          <Button size="sm" onPress={save} disabled={disabled || !state.dirty}>
-            {state.phase === "saving" ? "Saving..." : "Save"}
-          </Button>
-        </View>
-      </SettingsRow>
+        </SettingsRow>
+      ) : null}
     </SettingsCard>
   );
 }
-const styles = StyleSheet.create((theme) => ({
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing[2] },
-}));
 export function OttoGitFetchSettings({ serverId }: { serverId: string }) {
   const { port, connected } = useGitFetchPort(serverId);
   if (!connected) return <SettingsRow label="Connect the host to manage Git fetch" />;

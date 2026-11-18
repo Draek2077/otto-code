@@ -241,6 +241,7 @@ interface SidebarWorkspaceListProps {
 }
 
 interface ProjectHeaderRowProps {
+  hasActiveChat?: boolean; // OTTO(chat-identity): independent of aggregate question/error status.
   project: SidebarProjectEntry;
   displayName: string;
   iconDataUri: string | null;
@@ -855,6 +856,7 @@ function ProjectHeaderRow({
   displayName,
   iconDataUri,
   statusBucket,
+  hasActiveChat,
   selected = false,
   chevron,
   onPress,
@@ -947,6 +949,7 @@ function ProjectHeaderRow({
     <>
       <View style={styles.projectRowLeft}>
         <ProjectLeadingVisual
+          hasActiveChat={hasActiveChat}
           displayName={displayName}
           iconDataUri={iconDataUri}
           statusBucket={statusBucket}
@@ -1801,6 +1804,12 @@ function ProjectBlock({
       style={projectChildren ? styles.projectBlockExpanded : undefined}
     >
       <ProjectHeaderRow
+        hasActiveChat={
+          collapsed &&
+          project.workspaces.some(
+            (entry) => workspaceEntriesByKey.get(entry.workspaceKey)?.hasActiveChat === true,
+          )
+        }
         project={project}
         displayName={displayName}
         iconDataUri={iconDataUri}

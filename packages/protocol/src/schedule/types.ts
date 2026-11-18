@@ -25,6 +25,8 @@ export const ScheduleTargetSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("new-agent"),
     config: z.object({
+      agentProfile: z.string().min(1).optional(), // OTTO(schedule-profiles): stable id or @team-scheduler.
+      personality: z.string().min(1).optional(), // COMPAT(scheduleProfiles): 0.9 legacy binding; review after 2027-05-18.
       provider: AgentProviderSchema,
       cwd: z.string().trim().min(1),
       modeId: z.string().trim().min(1).optional(),
@@ -89,6 +91,7 @@ export interface CreateScheduleInput {
 }
 
 export interface UpdateScheduleNewAgentConfig {
+  agentProfile?: string | null; // OTTO(schedule-profiles)
   provider?: string;
   model?: string | null;
   modeId?: string | null;

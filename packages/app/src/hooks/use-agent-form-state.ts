@@ -1,3 +1,8 @@
+import { defaultChatter } from "@/otto/agent-profiles/chat-choices";
+import { activeTeam } from "@getpaseo/protocol/otto/agent-teams"; // OTTO(agent-teams)
+import { materializeAgentProfile } from "@/agent-profiles/internal/materialize-profile";
+import { useDaemonConfig } from "./use-daemon-config";
+import { useHostFeature } from "@/runtime/host-features";
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
 import type {
@@ -38,6 +43,8 @@ import {
 } from "@/provider-selection/resolve-agent-form";
 import { useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import type { MaterializedAgentProfile } from "@/agent-profiles";
+import { useDraftChatProfile } from "@/otto/chat/identity/draft-profile"; // OTTO(chat-profile): identity follows explicit selection, never a provider/model guess.
+import type { ChatProfileBinding } from "@/otto/chat/identity/profile-binding";
 
 export type { FormInitialValues } from "@/provider-selection/resolve-agent-form";
 
@@ -45,11 +52,13 @@ export interface UseAgentFormStateOptions {
   serverId: string | null;
   workingDir: string;
   initialValues?: FormInitialValues;
+  initialChatProfile?: { provider: string; binding: ChatProfileBinding } | null; // OTTO(chat-profile): restored draft selection.
   isVisible?: boolean;
   isCreateFlow?: boolean;
 }
 
 export interface UseAgentFormStateResult {
+  chatProfile?: ChatProfileBinding;
   selectedServerId: string | null;
   selectedProvider: AgentProvider | null;
   selectedMode: string;
@@ -148,6 +157,10 @@ async function persistProviderPreferences(input: {
 export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFormStateResult {
   const { serverId, initialValues, workingDir, isVisible = true, isCreateFlow = true } = options;
 
+  const supportsTeams = useHostFeature(serverId, "ottoAgentTeams");
+  const { config: roster } = useDaemonConfig(supportsTeams ? serverId : null);
+  const explicit = useRef<string | null>(null);
+  const automatic = useRef<string | null>(null);
   const { preferences, isLoading: isPreferencesLoading, updatePreferences } = useFormPreferences();
   const preferenceOverlayRef = useRef(new OptimisticFormPreferences(preferences));
 
@@ -177,6 +190,12 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
     userModified: INITIAL_USER_MODIFIED,
     resolution: INITIAL_AGENT_FORM_RESOLUTION,
   });
+  const draftProfile = useDraftChatProfile(
+    serverId,
+    formState.provider,
+    options.initialChatProfile,
+  );
+  const { binding: chatProfile, select: selectChatProfile, clear: clearChatProfile } = draftProfile;
 
   const {
     entries: snapshotEntries,
@@ -254,7 +273,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
     (resolution.status === "pending" || snapshotIsLoading || selectedProviderIsLoading);
   const isAllModelsLoading = isModelSelectionLoading;
 
-  useEffect(() => {
+  const refreshFormInputs = useCallback(() => {
     dispatch({
       type: "INPUTS_CHANGED",
       serverId,
@@ -279,6 +298,8 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
     snapshotResolvableProviderDefinitionMap,
   ]);
 
+  useEffect(refreshFormInputs, [refreshFormInputs]);
+
   const setProviderAndModelFromUser = useCallback(
     (provider: AgentProvider, modelId: string) => {
       if (!selectableProviderDefinitionMap.has(provider)) {
@@ -289,6 +310,8 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
       const providerPrefs = preferenceOverlayRef.current.current().providerPreferences?.[provider];
       const normalizedModelId = normalizeSelectedModelId(modelId);
       const nextModelId = normalizedModelId || resolveDefaultModelId(providerModels);
+      explicit.current = serverId;
+      clearChatProfile(); // OTTO(chat-profile): choosing a raw model explicitly leaves the Profile.
 
       dispatch({
         type: "SET_PROVIDER_AND_MODEL_FROM_USER",
@@ -308,15 +331,23 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
         }),
       );
     },
-    [allProviderModels, selectableProviderDefinitionMap, updateCurrentPreferences],
+    [
+      allProviderModels,
+      clearChatProfile,
+      selectableProviderDefinitionMap,
+      serverId,
+      updateCurrentPreferences,
+    ],
   );
 
   const clearProviderSelectionFromUser = useCallback(() => {
+    explicit.current = serverId;
+    clearChatProfile();
     dispatch({ type: "CLEAR_PROVIDER_SELECTION_FROM_USER" });
-  }, []);
+  }, [clearChatProfile, serverId]);
 
   const applyProfileFromUser = useCallback(
-    (profile: MaterializedAgentProfile) => {
+    (profile: MaterializedAgentProfile, fromTeam = false) => {
       const provider = profile.provider as AgentProvider;
       if (!selectableProviderDefinitionMap.has(provider)) {
         return;
@@ -342,6 +373,17 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
         : [];
 
       dispatch(action);
+      selectChatProfile(provider, profile.chatProfile);
+      if (fromTeam) return;
+      explicit.current = serverId;
+      if (serverId && profile.chatProfile?.hostBinding) {
+        const id = profile.chatProfile.id;
+        void updateCurrentPreferences((current) => ({
+          ...current,
+          chatterByHost: { ...current.chatterByHost, [serverId]: id },
+        })).catch((error) => console.warn("[useAgentFormState] remember Chatter failed", error));
+        return;
+      }
       void updateCurrentPreferences((current) => {
         const { model, modeId, thinkingOptionId } = nextState.form;
         return applyAgentProfilePreferences({
@@ -366,8 +408,61 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
       selectableProviderDefinitionMap,
       updateCurrentPreferences,
       userModified,
+      selectChatProfile,
+      serverId,
     ],
   );
+
+  const presetDraft = Boolean(options.initialChatProfile || initialValues?.provider);
+  // OTTO(agent-teams): resolve only fresh, unconfigured drafts. Remembered preferences never select a Profile.
+  useEffect(() => {
+    if (
+      !serverId ||
+      !isVisible ||
+      !isCreateFlow ||
+      isPreferencesLoading ||
+      explicit.current === serverId ||
+      presetDraft ||
+      !roster
+    )
+      return;
+    const team = activeTeam(roster.agentTeams);
+    const available = (roster.agentProfiles ?? []).filter(
+      (p) =>
+        selectableProviderDefinitionMap.has(p.provider) &&
+        (!p.model || allProviderModels.get(p.provider)?.some((m) => m.id === p.model)),
+    );
+    const member = defaultChatter(team, available, preferences.chatterByHost?.[serverId]);
+    const key = JSON.stringify([serverId, team?.id, member?.id, member?.model]);
+    if (automatic.current === key) return;
+    if (!member) {
+      if (automatic.current && chatProfile?.hostBinding) {
+        clearChatProfile();
+        dispatch({ type: "RESET" });
+        refreshFormInputs();
+      }
+      automatic.current = key;
+      return;
+    }
+    const selection = materializeAgentProfile(member);
+    if (selection.chatProfile) selection.chatProfile.hostBinding = true;
+    automatic.current = key;
+    applyProfileFromUser(selection, true);
+  }, [
+    allProviderModels,
+    applyProfileFromUser,
+    chatProfile,
+    clearChatProfile,
+    presetDraft,
+    preferences.chatterByHost,
+    refreshFormInputs,
+    isCreateFlow,
+    isPreferencesLoading,
+    isVisible,
+    roster,
+    selectableProviderDefinitionMap,
+    serverId,
+  ]);
 
   const setModeFromUser = useCallback(
     (modeId: string) => {
@@ -390,6 +485,8 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
 
   const setModelFromUser = useCallback(
     (modelId: string) => {
+      explicit.current = serverId;
+      clearChatProfile();
       const provider = formState.provider;
       const providerPrefs = provider
         ? preferenceOverlayRef.current.current().providerPreferences?.[provider]
@@ -414,7 +511,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
         );
       }
     },
-    [availableModels, formState.provider, updateCurrentPreferences],
+    [availableModels, clearChatProfile, formState.provider, serverId, updateCurrentPreferences],
   );
 
   const setThinkingOptionFromUser = useCallback(
@@ -450,7 +547,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
   }, [formState.provider, refetchSnapshotIfStale]);
 
   const persistFormPreferences = useCallback(async () => {
-    if (!formState.provider) {
+    if (chatProfile?.hostBinding || !formState.provider) {
       return;
     }
     await persistProviderPreferences({
@@ -459,7 +556,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
       availableModels,
       updatePreferences: updateCurrentPreferences,
     });
-  }, [availableModels, formState, updateCurrentPreferences]);
+  }, [availableModels, chatProfile?.hostBinding, formState, updateCurrentPreferences]);
 
   const agentDefinition = formState.provider
     ? providerDefinitionMap.get(formState.provider)
@@ -477,6 +574,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
 
   return useMemo(
     () => ({
+      chatProfile,
       selectedServerId: serverId,
       selectedProvider: formState.provider,
       selectedMode: formState.modeId,
@@ -508,6 +606,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
       persistFormPreferences,
     }),
     [
+      chatProfile,
       serverId,
       formState.provider,
       formState.modeId,

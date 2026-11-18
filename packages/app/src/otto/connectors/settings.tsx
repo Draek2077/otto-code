@@ -8,7 +8,12 @@ import {
   type ConnectorSummary,
   type ConnectorsSnapshot,
 } from "@getpaseo/plugin/otto/connectors";
-import { SettingsCard, SettingsRow, SettingsSection } from "@/components/settings";
+import {
+  SettingsCard,
+  SettingsRow,
+  SettingsSection,
+  SettingsCollapsibleRow,
+} from "@/components/settings";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -63,6 +68,7 @@ const confirmDiscard = () =>
     confirmLabel: "Discard and reload",
   });
 const open = (url: string) => Linking.openURL(url);
+const actionsStyle = { flexDirection: "row", flexWrap: "wrap", gap: 8 } as const;
 function LoadedSettings({
   initial,
   hostId,
@@ -91,11 +97,21 @@ function LoadedSettings({
   }, [model]);
   const actions = useMemo(
     () => (
-      <Button size="sm" onPress={model.showCatalog} disabled={state.busy || state.blocked}>
-        Add connector
-      </Button>
+      <View style={actionsStyle}>
+        <Button
+          variant="outline"
+          size="sm"
+          onPress={refresh}
+          disabled={state.busy || state.blocked || Boolean(state.draft)}
+        >
+          Refresh
+        </Button>
+        <Button size="sm" onPress={model.showCatalog} disabled={state.busy || state.blocked}>
+          Add connector
+        </Button>
+      </View>
     ),
-    [model, state.busy, state.blocked],
+    [model, refresh, state.busy, state.blocked, state.draft],
   );
   return (
     <>
@@ -118,44 +134,37 @@ function LoadedSettings({
             />
           )}
         </SettingsCard>
-        <SettingsCard>
-          <SettingsRow label="Saved connections">
-            <Button
-              variant="outline"
-              size="sm"
-              onPress={refresh}
-              disabled={state.busy || state.blocked || Boolean(state.draft)}
-            >
-              Refresh
-            </Button>
-            <Button variant="outline" size="sm" onPress={reload} disabled={state.busy}>
-              Reload saved settings
-            </Button>
-          </SettingsRow>
-        </SettingsCard>
+        {state.blocked ? (
+          <SettingsCard>
+            <SettingsRow label="Connection changes could not be confirmed">
+              <Button variant="outline" size="sm" onPress={reload} disabled={state.busy}>
+                Reload saved settings
+              </Button>
+            </SettingsRow>
+          </SettingsCard>
+        ) : null}
         <ConnectorEditor model={model} />
         <ConnectorDetails model={model} />
       </SettingsSection>
-      <SettingsSection
-        title="Agent providers"
-        info="Connectors share the existing Otto tool bridge. Each provider's permissions and Otto tool controls still apply. Disabling a connector blocks new calls immediately; refresh existing chat tools to update their displayed catalog."
-      >
+      {state.snapshot.connectors.length > 0 ? (
         <SettingsCard>
-          {state.snapshot.providers.map((provider) => (
-            <SettingsRow
-              key={provider.id}
-              label={provider.label}
-              hint={provider.reason ?? "Uses this host's enabled Connector tools."}
-            >
-              <StatusBadge
-                label={provider.available ? "Available" : "Unavailable"}
-                variant={provider.available ? "success" : "muted"}
-                size="xs"
-              />
-            </SettingsRow>
-          ))}
+          <SettingsCollapsibleRow label="Connector tool availability">
+            {state.snapshot.providers.map((provider) => (
+              <SettingsRow
+                key={provider.id}
+                label={provider.label}
+                hint={provider.reason ?? undefined}
+              >
+                <StatusBadge
+                  label={provider.available ? "Available" : "Tools disabled"}
+                  variant={provider.available ? "success" : "muted"}
+                  size="xs"
+                />
+              </SettingsRow>
+            ))}
+          </SettingsCollapsibleRow>
         </SettingsCard>
-      </SettingsSection>
+      ) : null}
       <ConnectorCatalogSheet model={model} />
     </>
   );

@@ -80,11 +80,79 @@ test("fixed footer line keeps its five icons, Help and Settings at the end", asy
 });
 
 test.describe("Sidebar items in Appearance settings", () => {
+  test("feature shortcuts use two columns, collapse when narrowed, and restore when widened", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await gotoAppShell(page);
+    const grid = page.locator('[data-testid="sidebar-shortcuts-grid"]:visible').first();
+    const cells = grid.locator(":scope > div").filter({ has: page.locator('[role="button"]') });
+    const resize = async (width: number) => {
+      const handle = await page.getByTestId("left-sidebar-resize-handle").boundingBox();
+      if (!handle) throw new Error("The desktop sidebar resize handle must be visible.");
+      const y = handle.y + handle.height / 2;
+      await page.mouse.move(handle.x + handle.width / 2, y);
+      await page.mouse.down();
+      await page.mouse.move(width, y, { steps: 12 });
+      await page.mouse.up();
+    };
+    await resize(400);
+    await expect
+      .poll(async () => {
+        const [first, second, third] = await Promise.all([
+          cells.nth(0).boundingBox(),
+          cells.nth(1).boundingBox(),
+          cells.nth(2).boundingBox(),
+        ]);
+        return (
+          first &&
+          second &&
+          third &&
+          Math.abs(first.y - second.y) < 1 &&
+          second.x > first.x &&
+          third.y > first.y
+        );
+      })
+      .toBe(true);
+    await resize(240);
+    await expect
+      .poll(async () => {
+        const [first, second] = await Promise.all([
+          cells.nth(0).boundingBox(),
+          cells.nth(1).boundingBox(),
+        ]);
+        return first && second && Math.abs(first.x - second.x) < 1 && second.y > first.y;
+      })
+      .toBe(true);
+    await resize(400);
+    await expect
+      .poll(async () => {
+        const [first, second] = await Promise.all([
+          cells.nth(0).boundingBox(),
+          cells.nth(1).boundingBox(),
+        ]);
+        return first && second && Math.abs(first.y - second.y) < 1 && second.x > first.x;
+      })
+      .toBe(true);
+  });
+
   test("owner reorders and hides top-level sidebar items", async ({ page }) => {
     await gotoAppShell(page);
 
     await test.step("the sidebar starts in the default order", async () => {
-      await expectSidebarOrder(page, ["new-workspace", "history", "search", "schedules"]);
+      await expectSidebarOrder(page, ["schedules", "history", "search", "new-workspace"]);
+      const shortcuts = page.locator('[data-testid="sidebar-shortcuts"]:visible').first();
+      const header = page
+        .locator('[data-testid="sidebar-workspaces-heading"]:visible')
+        .first()
+        .locator("..");
+      for (const id of ["sidebar-sessions", "sidebar-search", "sidebar-global-new-workspace"]) {
+        await expect(shortcuts.getByTestId(id)).toHaveCount(0);
+        await expect(header.getByTestId(id)).toBeVisible();
+        await expect(header.getByTestId(id).locator("svg")).toBeVisible();
+      }
+      await expect(header.getByText("New workspace", { exact: true })).toHaveCount(0);
     });
 
     await test.step("the Sidebar section lists every item in the same order", async () => {
@@ -111,7 +179,7 @@ test.describe("Sidebar items in Appearance settings", () => {
       ).toBeVisible();
     });
 
-    await test.step("moving Schedules up twice lifts it above History", async () => {
+    await test.step("reordering retains the separate shortcut and Workspaces sections", async () => {
       await moveSidebarNavItemUp(page, "schedules");
       await expectSidebarNavSettingsOrder(page, [
         "new-workspace",
@@ -128,7 +196,7 @@ test.describe("Sidebar items in Appearance settings", () => {
       ]);
 
       await leaveSettings(page);
-      await expectSidebarOrder(page, ["new-workspace", "schedules", "history", "search"]);
+      await expectSidebarOrder(page, ["schedules", "history", "search", "new-workspace"]);
     });
 
     await test.step("turning History off removes it from the sidebar", async () => {
@@ -152,13 +220,13 @@ test.describe("Sidebar items in Appearance settings", () => {
 
       await leaveSettings(page);
       await expectSidebarItemHidden(page, "history");
-      await expectSidebarOrder(page, ["new-workspace", "schedules", "search"]);
+      await expectSidebarOrder(page, ["schedules", "search", "new-workspace"]);
     });
 
     await test.step("the sidebar keeps that shape across a reload", async () => {
       await page.reload();
       await expectSidebarItemHidden(page, "history");
-      await expectSidebarOrder(page, ["new-workspace", "schedules", "search"]);
+      await expectSidebarOrder(page, ["schedules", "search", "new-workspace"]);
     });
   });
 

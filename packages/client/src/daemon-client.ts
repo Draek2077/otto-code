@@ -869,6 +869,7 @@ export interface CreateScheduleOptions {
           modeId?: string;
           model?: string;
           thinkingOptionId?: string;
+          agentProfile?: string; // OTTO(schedule-profiles)
           archiveOnFinish?: boolean;
           isolation?: "local" | "worktree";
           title?: string | null;
@@ -887,6 +888,7 @@ export interface InspectScheduleOptions {
   requestId?: string;
 }
 export interface UpdateScheduleNewAgentConfig {
+  agentProfile?: string | null; // OTTO(schedule-profiles)
   provider?: string;
   model?: string | null;
   modeId?: string | null;
@@ -3772,6 +3774,64 @@ export class DaemonClient {
    * provider rejection can still leave earlier steps applied.
    * Gated on `server_info.features.agentConfigApply`.
    */
+  // OTTO(profile-authoring): user-initiated draft generation uses the selected host.
+  async profileMemoryCounts() {
+    const result = await this.requestProfileMemory({ kind: "counts" });
+    if (result.kind !== "counts")
+      throw new Error("The host returned an unexpected Profile memory response.");
+    return result.counts;
+  }
+  async profileMemory(
+    input: Exclude<
+      import("@getpaseo/protocol/otto/profile-memory").MemoryAction,
+      { kind: "counts" }
+    >,
+  ) {
+    const result = await this.requestProfileMemory(input);
+    if (result.kind !== "view")
+      throw new Error("The host returned an unexpected Profile memory response.");
+    return result;
+  }
+  private async requestProfileMemory(
+    input: import("@getpaseo/protocol/otto/profile-memory").MemoryAction,
+  ) {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.profile.memory.request",
+      requestId,
+      input,
+    });
+    const result = await this.sendRequest({
+      requestId,
+      message,
+      options: { skipQueue: true },
+      select: (msg) =>
+        msg.type === "agent.profile.memory.response" && msg.payload.requestId === requestId
+          ? msg.payload.result
+          : null,
+    });
+    if (result.kind === "error") throw new Error(result.message);
+    return result;
+  }
+  async authorProfile(input: import("@getpaseo/protocol/otto/profile-authoring").AuthorInput) {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.profile.author.request",
+      requestId,
+      input,
+    });
+    const result = await this.sendRequest({
+      requestId,
+      message,
+      options: { skipQueue: true },
+      select: (msg) =>
+        msg.type === "agent.profile.author.response" && msg.payload.requestId === requestId
+          ? msg.payload.result
+          : null,
+    });
+    if (result.kind === "error") throw new Error(result.message);
+    return result;
+  }
   async applyAgentConfig(
     agentId: string,
     config: AgentConfigApply,
@@ -4250,7 +4310,7 @@ export class DaemonClient {
 
   async checkoutCommit(
     cwd: string,
-    input: { message?: string; addAll?: boolean },
+    input: { message?: string; addAll?: boolean; paths?: string[] }, // OTTO(manual-commit): existing correlated request and ownership.
     requestId?: string,
   ): Promise<CheckoutCommitPayload> {
     return this.sendCorrelatedSessionRequest({
@@ -4260,6 +4320,7 @@ export class DaemonClient {
         cwd,
         message: input.message,
         addAll: input.addAll,
+        paths: input.paths, // OTTO(manual-commit)
       },
       responseType: "checkout_commit_response",
     });

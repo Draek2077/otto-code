@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { lazy, useMemo } from "react";
 import type { ContextSelection } from "@getpaseo/plugin/otto/context-management";
 import { ContextDetail } from "./report-view";
-import { ContextSourceEditor } from "./source-editor";
+const ContextSourceEditor = lazy(async () => ({
+  default: (await import("./source-editor")).ContextSourceEditor,
+}));
 import type { ContextSourceDrafts } from "./source-model";
 import type { ContextSourceSelection } from "./selection";
 import type { ContextEdgeEdit, ContextEdgeEditState } from "./edge-edit";

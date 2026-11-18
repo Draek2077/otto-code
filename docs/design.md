@@ -157,6 +157,15 @@ The branching is one `useIsCompactFormFactor()` check at the top of the screen c
 
 The workspace screen (`packages/app/src/screens/workspace/workspace-screen.tsx`) follows a different but parallel rule: tabs collapse on compact, panes split on desktop. The sidebar (`packages/app/src/components/left-sidebar.tsx`) is overlaid on compact and pinned on desktop.
 
+<!-- OTTO(sidebar-navigation): the feature shortcut grid and Workspaces actions have distinct places. -->
+
+Otto's feature shortcuts use at most two columns when their available sidebar width is at least
+272px, including in the compact sidebar. Narrower grids use one column; labels wrap at the
+normal row density. Plugin header items share the grid with builtin shortcuts. History, Search and New workspace
+are tooltip-bearing icon actions in the Workspaces header, with New workspace immediately before
+Display preferences. Their existing visibility preferences still apply. The action group wraps
+when the title and controls cannot share one line.
+
 On a narrow desktop route, app navigation yields to the rendered content topology when the remaining width cannot preserve its center target: Settings keeps its 320px list + 400px detail split, and a workspace Explorer keeps its current visible width plus a 400px center pane. That is a topology decision at the app container, not a second compact breakpoint. Temporary width clamps are render-only; widening restores the user's saved sidebar widths.
 
 Electron window controls are top-corner obstructions, not a compact-layout condition. Rendered surfaces declare which top corners they physically occupy; only those corners receive clearance. Full-window overlays redeclare both corners. A focused split pane owns both corners; if focus restoration temporarily exposes the full split tree, the split boundary reserves one top strip instead of assigning a control rectangle to an arbitrarily narrow leaf. The 720px desktop breakpoint preserves the default 320px sidebar and target 400px center width when the Explorer is closed; it is product policy, not an obstruction gate.
@@ -266,6 +275,33 @@ New status pills use `<StatusBadge>`. Identity, shortcut, and interactive link b
 - Importing `ActivityIndicator` directly. `<LoadingSpinner>` is the loading primitive.
 
 ---
+
+<!-- OTTO(chat-identity): product artwork is isolated from Paseo's session and theme owners. -->
+
+## Otto chat activity and status
+
+Chat activity uses Otto's two-color plasma artwork in `src/otto/chat/identity/`.
+The orbit geometry, default theme pairs and Siren, SirenQuestion and Error glyphs
+come from released Otto 0.9.35. Chat tabs replace the provider glyph while working
+or requesting attention; idle and completed tabs retain their ordinary glyph.
+
+Workspace activity stays blue, with a visible semantic status dot in its center.
+Only a genuinely working root chat animates it. A question, failure or unread result
+can remain the center signal while another chat is working. Loading, indexing and
+stale aggregate status do not manufacture chat activity.
+
+An explicitly selected Profile supplies its saved spinner pair to the chat tab and
+in-chat working indicator. Chats without custom Profile colors use the theme's
+Otto default pair. Captured Profile identity and appearance travel in the existing
+persisted agent label `otto.profile`, including draft handoffs and creation retries.
+Model/provider similarity never assigns a Profile. The label contains presentation
+metadata only; configuration, permissions, execution roles and Teams retain their
+own owners. Editing basic Profile fields preserves Otto extensions and still
+allows ordinary optional fields to be cleared.
+
+Web motion uses the browser animation timeline. Native motion shares one UI clock;
+hidden retained consumers detach and the clock stops after its final consumer.
+Neither renderer owns a chat store, transport, polling loop or model request.
 
 ## 15. Canonical surfaces by pattern
 

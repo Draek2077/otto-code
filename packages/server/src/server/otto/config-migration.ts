@@ -9,6 +9,7 @@
 // are merged into otto-config.json (where Otto features read them back), and
 // config.json is rewritten with the Paseo part. Nothing is discarded.
 
+import { recoverLegacyRoster } from "./agent-profiles/legacy.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { z } from "zod";
@@ -228,10 +229,14 @@ export function migrateOttoConfig(
       backup: path.join(home, OTTO_CONFIG_BACKUP_FILENAME),
       preserved: path.join(home, OTTO_CONFIG_FILENAME),
     });
+  const rosterRecovered =
+    isObject(split.paseo) &&
+    recoverLegacyRoster(split.paseo, split.otto, path.join(home, OTTO_CONFIG_FILENAME));
   const relayMoved = migrateOttoRelay(split.paseo);
   const hasOttoSettings = Object.keys(split.otto).length > 0;
   if (!persist) return split.paseo;
-  if (!relayMoved && !hasOttoSettings && !apiModelsRecovered) return split.paseo;
+  if (!relayMoved && !hasOttoSettings && !apiModelsRecovered && !rosterRecovered)
+    return split.paseo;
   // Let Paseo report malformed configuration without rewriting it first.
   if (!schema.safeParse(split.paseo).success) return split.paseo;
 

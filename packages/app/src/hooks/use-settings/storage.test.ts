@@ -44,6 +44,27 @@ function makeDeps(
 }
 
 describe("loadAppSettingsFromStorage", () => {
+  // OTTO(action-groups): preserve a 0.9 opt-out and unrelated retained settings.
+  it.each([true, false, undefined])(
+    "restores the action grouping preference %s",
+    async (groupConsecutiveActions) => {
+      const deps = makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({
+            groupConsecutiveActions,
+            theme: "light",
+            futureValue: "keep",
+          }),
+        }),
+      });
+      const loaded = await loadAppSettingsFromStorage(deps);
+      expect(loaded.groupConsecutiveActions).toBe(groupConsecutiveActions ?? true);
+      expect(loaded.theme).toBe("light");
+      expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY)!)).toMatchObject({
+        futureValue: "keep",
+      });
+    },
+  );
   // OTTO(editor): adding editor fields must not invalidate the existing device record.
   it.each([undefined, null])(
     "preserves settings and unknown data when legacy Vim mappings are %s",

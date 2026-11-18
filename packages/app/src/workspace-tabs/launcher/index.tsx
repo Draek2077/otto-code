@@ -30,6 +30,7 @@ import {
   resolveTerminalProfiles,
 } from "@getpaseo/protocol/terminal-profiles";
 import { getBuiltInLaunchOrder, type BuiltInLaunchItemId } from "./internal/catalog";
+import { showWorkspacePluginPanel } from "@/otto/ui/workspace-menu-policy"; // OTTO(workspace-navigation): management surfaces keep their canonical entry points.
 
 export type WorkspaceTabLaunchPurpose = "primary" | "supporting";
 
@@ -202,6 +203,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
     for (const plugin of plugins) {
       if (plugin.serverId !== serverId) continue;
       for (const panel of plugin.workspacePanels) {
+        if (!showWorkspacePluginPanel(plugin.id, panel.id)) continue; // OTTO(workspace-navigation)
         if (panel.context !== "workspace") continue;
         const location = host === "explorer" ? "explorer" : "workspace";
         if (!pluginPanelSupportsLocation(panel, location)) continue;

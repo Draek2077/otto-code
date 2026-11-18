@@ -1,4 +1,5 @@
 import type { AgentConfigApply, AgentProfile } from "@getpaseo/protocol/messages";
+import { captureChatProfile, type ChatProfileBinding } from "@/otto/chat/identity/profile-binding"; // OTTO(chat-profile): keep the explicitly chosen identity with its configuration.
 
 /**
  * A profile with its blank fields resolved away. Storage keeps every field
@@ -7,6 +8,7 @@ import type { AgentConfigApply, AgentProfile } from "@getpaseo/protocol/messages
  * every consumer would otherwise re-derive the same trim-and-drop rules.
  */
 export interface MaterializedAgentProfile {
+  chatProfile?: ChatProfileBinding;
   provider: string;
   /** Empty when the profile names no model, meaning "leave the model alone". */
   modelId: string;
@@ -21,6 +23,7 @@ function trimmed(value: string | undefined): string {
 
 export function materializeAgentProfile(profile: AgentProfile): MaterializedAgentProfile {
   return {
+    chatProfile: captureChatProfile(profile),
     provider: trimmed(profile.provider),
     modelId: trimmed(profile.model),
     modeId: trimmed(profile.modeId),

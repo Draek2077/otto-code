@@ -1,4 +1,6 @@
+// OTTO(desktop-shutdown): bound captured CLI waits during explicit development quit.
 import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { runExternalCliJsonCommand, runExternalCliTextCommand } from "./external";
 
@@ -59,6 +61,29 @@ function mockExternalCliOutput(input: {
 }
 
 describe("external CLI", () => {
+  it("bounds an unresponsive shutdown request and releases only its own CLI child", async () => {
+    vi.useFakeTimers();
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      kill: vi.fn(),
+    });
+    mocks.spawnProcess.mockReturnValueOnce(child);
+    try {
+      const result = expect(
+        runExternalCliJsonCommand(["daemon", "stop", "--host", "127.0.0.1:6788", "--json"], {
+          timeoutMs: 10000,
+        }),
+      ).rejects.toThrow("shutdown request did not complete");
+      await vi.advanceTimersByTimeAsync(10000);
+      await result;
+      expect(child.kill).toHaveBeenCalledTimes(1);
+      expect(child.stdout.destroyed).toBe(true);
+      expect(child.stderr.destroyed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("runs text commands through an isolated CLI process", async () => {
     mockExternalCliOutput({ stdout: "daemon running\n" });
 

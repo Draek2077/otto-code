@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+// OTTO(chat-profile): explicit identity is captured separately from provider configuration.
 import type { AgentProfile } from "@getpaseo/protocol/messages";
 import {
   materializeAgentProfile,
@@ -27,6 +28,7 @@ describe("materializeAgentProfile", () => {
         }),
       ),
     ).toEqual({
+      chatProfile: { id: "ui-work", name: "UI work" },
       provider: "claude",
       modelId: "claude-opus-5",
       modeId: "plan",
@@ -37,6 +39,7 @@ describe("materializeAgentProfile", () => {
 
   it("treats omitted and blank fields the same", () => {
     expect(materializeAgentProfile(profile({ model: "   ", modeId: "" }))).toEqual({
+      chatProfile: { id: "ui-work", name: "UI work" },
       provider: "claude",
       modelId: "",
       modeId: "",

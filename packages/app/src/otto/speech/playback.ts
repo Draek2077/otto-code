@@ -14,6 +14,7 @@ export interface SpeechPlaybackRequest {
   text: string;
   automatic?: boolean;
   cue?: boolean;
+  profileVoice?: boolean;
   selection?: SpeechTtsSelection;
 }
 export interface SpeechPlaybackPort {
@@ -24,6 +25,7 @@ export interface SpeechPlaybackPort {
     hostId: string;
     requestId: string;
     text: string;
+    profileVoice?: boolean;
     selection?: SpeechTtsSelection;
     pauseAfterMs?: number;
   }): Promise<{ base64: string; mimeType: string }>;
@@ -58,6 +60,7 @@ export function createSpeechPlayback(port: SpeechPlaybackPort) {
   let serial = 0;
   let closed = false;
   let captures = 0;
+  let previousCue = -Infinity;
   const occupied = () => captures > 0 || port.occupied();
   const publish = (patch: Partial<typeof state>) => {
     state = { ...state, ...patch };
@@ -83,6 +86,7 @@ export function createSpeechPlayback(port: SpeechPlaybackPort) {
         text: segment.text,
         pauseAfterMs: segment.pauseAfterMs,
         selection: job.request.selection,
+        profileVoice: job.request.profileVoice,
       });
       return { ok: true as const, audio };
     } catch (error) {
@@ -156,6 +160,11 @@ export function createSpeechPlayback(port: SpeechPlaybackPort) {
     },
     speak(request: SpeechPlaybackRequest) {
       if (closed || occupied()) return;
+      if (request.cue) {
+        const now = Date.now();
+        if (current || queue.length || now - previousCue < 2500) return;
+        previousCue = now;
+      }
       if (!request.text.trim() || request.text.length > 65536) {
         publish({
           error: "Choose a non-empty reply of at most 65,536 characters to read aloud.",

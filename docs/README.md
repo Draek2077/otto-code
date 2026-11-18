@@ -8,7 +8,9 @@ decisions, and measured findings live in Otto Knowledge.
 | [otto-architectural-views.md](otto-architectural-views.md) | Architectural View storage, authoring, offline rendering, UI and CLI                                                             |
 | [otto-visualizer.md](otto-visualizer.md)                   | Canonical session graph, offline renderer, PIP, chat background and guest lifetime                                               |
 | [otto-history.md](otto-history.md)                         | Paginated History, cross-chat content search, and reviewed archive cleanup                                                       |
+| [agent-stream-performance.md](agent-stream-performance.md) | Streaming cost, cached transcript presentation and expandable Otto action groups                                                 |
 | [otto-agents.md](otto-agents.md)                           | Working rules for Otto additions to the Paseo base                                                                               |
+| [otto-agent-profiles.md](otto-agent-profiles.md)           | Profiles, Teams, Workflow role binding, and spoken identity                                                                      |
 | [otto-identity.md](otto-identity.md)                       | Branding boundary, environment mapping, and marked seams                                                                         |
 | [otto-continuity.md](otto-continuity.md)                   | Existing data, app storage, and relay migration                                                                                  |
 | [otto-openai-compatible.md](otto-openai-compatible.md)     | Bundled provider, host settings, tools and current limits                                                                        |
@@ -25,7 +27,7 @@ decisions, and measured findings live in Otto Knowledge.
 | [otto-bitbucket.md](otto-bitbucket.md)                     | Bitbucket Cloud accounts, forge actions, repository discovery and cloning                                                        |
 | [otto-connectors.md](otto-connectors.md)                   | Full Connector catalog, shared provider tools and preserved authorization                                                        |
 | [otto-terminal.md](otto-terminal.md)                       | Terminal delta comparison, host preferences, diagnostics and bundled glyph coverage                                              |
-| [otto-workspace-git.md](otto-workspace-git.md)             | Host Git fetch policy, explicit workspace Fetch and shared repository ownership                                                  |
+| [otto-workspace-git.md](otto-workspace-git.md)             | Host Git fetch policy, explicit Fetch, parent branch comparisons and shared repository ownership                                 |
 | [otto-editor.md](otto-editor.md)                           | File Editor, language servers, reviewed workspace edits, document tools, real terminal editors and read-only .NET solution files |
 | [otto-speech.md](otto-speech.md)                           | Host speech settings, narration, recognition, playback and device controls                                                       |
 | [otto-wake-word.md](otto-wake-word.md)                     | Opt-in Hey Otto listening, local detector ownership and command handoff                                                          |

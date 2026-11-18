@@ -66,6 +66,7 @@ export function ProjectLeadingVisual({
   chevron = null,
   showChevron = false,
   isArchiving = false,
+  hasActiveChat = false,
 }: {
   displayName: string;
   iconDataUri: string | null;
@@ -77,6 +78,7 @@ export function ProjectLeadingVisual({
   chevron?: "expand" | "collapse" | null;
   showChevron?: boolean;
   isArchiving?: boolean;
+  hasActiveChat?: boolean; // OTTO(chat-identity): explicit root-chat activity from the same workspace entries.
 }) {
   if (showChevron && chevron !== null) {
     return (
@@ -96,6 +98,7 @@ export function ProjectLeadingVisual({
 
   return (
     <ProjectStatusIndicator
+      hasActiveChat={hasActiveChat}
       iconDataUri={iconDataUri}
       displayName={displayName}
       projectViewKey={projectViewKey}
@@ -117,6 +120,7 @@ export function ProjectStatusIndicator({
   statusBucket,
   backdrop,
   loading = false,
+  hasActiveChat = false,
   testID,
 }: {
   iconDataUri: string | null;
@@ -126,6 +130,7 @@ export function ProjectStatusIndicator({
   /** The row's current background, so the status badge can knock out of it. */
   backdrop: SidebarSurfaceBackdrop;
   loading?: boolean;
+  hasActiveChat?: boolean; // OTTO(chat-identity): motion does not replace the semantic status.
   testID?: string;
 }) {
   const placeholderInitial = projectIconPlaceholderLabelFromDisplayName(displayName)
@@ -153,13 +158,18 @@ export function ProjectStatusIndicator({
           placeholderInitial={placeholderInitial}
           projectViewKey={projectViewKey}
         />
-        {badgeContent === null || badgeBucket === null ? null : (
+        {hasActiveChat ? (
+          <View style={styles.statusRingAnchor} testID="project-status-badge">
+            <StatusRing backdrop={backdrop} centerBucket={statusBucket ?? "running"} />
+          </View>
+        ) : null}
+        {!hasActiveChat && badgeContent !== null && badgeBucket !== null ? (
           <ProjectStatusBadge
             content={badgeContent}
             statusBucket={badgeBucket}
             backdrop={backdrop}
           />
-        )}
+        ) : null}
       </View>
     </View>
   );
@@ -175,21 +185,8 @@ function ProjectStatusBadge({
   backdrop: SidebarSurfaceBackdrop;
 }) {
   const { t } = useTranslation();
-  // Running skips the shell. The ring is wider than the 12pt shell and carries its own knockout,
-  // so nesting it inside would clip it against the very thing that was meant to separate it from
-  // the icon. It anchors to the same corner instead, growing around the centre the dot had.
-  if (content.kind === "dot" && content.bucket === "running") {
-    return (
-      <View
-        role="status"
-        accessibilityLabel={getStatusBucketLabel(statusBucket, t)}
-        style={styles.statusRingAnchor}
-        testID="project-status-badge"
-      >
-        <StatusRing backdrop={backdrop} />
-      </View>
-    );
-  }
+  // OTTO(chat-identity): creation/indexing/aggregate status alone never animates.
+  // Only the parent's explicit root-chat activity branch mounts the blue ring.
   return (
     <View
       role="status"

@@ -66,6 +66,8 @@ export function ScheduleNativeFields({
       const value = model.getState();
       const { selectedProvider, selectedModel, workingDir } = value;
       const config = {
+        agentProfile: value.agentProfile,
+        personality: undefined,
         provider: selectedProvider,
         model: selectedModel,
         cwd: workingDir,

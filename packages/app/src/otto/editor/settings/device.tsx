@@ -70,7 +70,6 @@ function DeviceForm({ model }: { model: DeviceEditorForm }) {
     (alwaysUseOttoEditorForMarkdown: boolean) => model.edit({ alwaysUseOttoEditorForMarkdown }),
     [model],
   );
-  const save = useCallback(() => void model.save(), [model]);
   const reset = useCallback(() => model.resetMappings(), [model]);
   return (
     <SettingsSection title="File editor">
@@ -120,11 +119,6 @@ function DeviceForm({ model }: { model: DeviceEditorForm }) {
             onValueChange={column}
           />
         )}
-        <SettingsRow label="Editor settings">
-          <Button size="sm" onPress={save} disabled={!state.dirty || state.pending}>
-            {state.pending ? "Saving..." : "Save"}
-          </Button>
-        </SettingsRow>
       </SettingsCard>
       {state.error && <Alert variant="error">{state.error}</Alert>}
     </SettingsSection>

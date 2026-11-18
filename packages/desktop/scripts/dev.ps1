@@ -6,6 +6,9 @@ $AppDir = (Resolve-Path "$DesktopDir\..\app").Path
 $RootDir = (Resolve-Path "$DesktopDir\..\..").Path
 $env:PATH = "$RootDir\node_modules\.bin;$env:PATH"
 
+# OTTO(dev-runtime): refresh the source-matched daemon before Electron manages it.
+npm --prefix $RootDir run build:dev-runtime
+if ($LASTEXITCODE) { throw 'Could not build the Otto development daemon.' }
 # Build the Electron main process
 npm run build:main
 

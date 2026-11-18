@@ -191,10 +191,12 @@ export function runPluginClientBundle(
     if (!isComponentType(contribution.Component)) {
       throw new Error(`Sidebar item ${normalizedId} is not a component`);
     }
+    // OTTO(sidebar-icons): validate and retain feature-owned settings artwork.
+    if (contribution.icon !== undefined) resolvePluginIcon(contribution.icon);
     ids.add(normalizedId);
     return register(
       collector.sidebarItems[section],
-      { id: normalizedId, title, Component: contribution.Component },
+      { id: normalizedId, title, icon: contribution.icon, Component: contribution.Component },
       () => ids.delete(normalizedId),
     );
   }
