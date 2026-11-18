@@ -1,3 +1,4 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 import { mkdtemp, rename, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,7 +25,7 @@ import {
 } from "../support/helpers/model-memory";
 
 // OTTO(agent-teams): exercise ordinary provider preferences on a host without a Chatter override.
-test.use({ e2eDaemonConfig: { agentProfiles: [], agentTeams: { activeTeamId: null, teams: [] } } });
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 const PROVIDER = "model-memory-diagnostic";
 const MODEL = "pi-profile-model";

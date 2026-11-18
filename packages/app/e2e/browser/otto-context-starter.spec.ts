@@ -41,7 +41,7 @@ for (const compact of [false, true]) {
           .getByTestId(`sidebar-workspace-kebab-${getServerId()}:${workspace.workspaceId}`)
           .click();
       } else await openWorkspaceContextMenu(page, workspace.workspaceId);
-      await page.getByText("Open Context Management", { exact: true }).click();
+      await page.getByText("Open Context", { exact: true }).click();
       const surface = page.getByTestId("otto-context-management").filter({ visible: true });
       const setup = surface.getByTestId("context-starter");
       await setup.getByRole("button", { name: "Load repository context", exact: true }).click();

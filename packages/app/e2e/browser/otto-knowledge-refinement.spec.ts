@@ -111,7 +111,8 @@ for (const compact of [false, true]) {
       expect(updated).toContain("future: retained");
       expect(updated).toContain("Original evidence");
       expect(updated).toContain("Accepted the first reviewed correction only");
-      await surface.getByRole("button", { name: "Back to pages", exact: true }).click();
+      if (compact)
+        await surface.getByRole("button", { name: "Back to pages", exact: true }).click();
       await surface
         .getByTestId("knowledge-root-architecture")
         .getByRole("button", { name: "Open", exact: true })

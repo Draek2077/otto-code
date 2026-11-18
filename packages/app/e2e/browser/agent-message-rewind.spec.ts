@@ -1,3 +1,4 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 import type { Locator } from "@playwright/test";
 import { expect, test, type Page } from "../support/fixtures";
 import { expectAgentIdle, expectAgentReadyToInterrupt } from "../support/helpers/agent-stream";
@@ -43,6 +44,8 @@ async function expectTurnCompletesNormally(
   await expect(page.getByText("(end of synthetic stream)", { exact: true }).last()).toBeVisible();
   await expectAgentIdle(page);
 }
+
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 test.describe("Agent message rewind", () => {
   test("rewinds a submitted prompt without replaying history and preserves a human draft", async ({

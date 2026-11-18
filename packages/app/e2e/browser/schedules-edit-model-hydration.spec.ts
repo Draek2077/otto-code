@@ -1,7 +1,7 @@
 import { expect, test } from "../support/helpers/native-schedules"; // OTTO(schedules): original native host capability floor.
 import { gotoAppShell } from "../support/helpers/app";
+import { addRetainedFixtureHostAndReload } from "../support/helpers/hosts";
 import {
-  addScheduleHostAndReload,
   createScheduleHost,
   SECONDARY_MODEL_ID,
   SECONDARY_MODEL_LABEL,
@@ -133,7 +133,7 @@ test.describe("Schedules", () => {
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
     await page.goto(buildSchedulesRoute());
-    await addScheduleHostAndReload({
+    await addRetainedFixtureHostAndReload({
       page,
       serverId: secondary.serverId,
       label: secondary.label,

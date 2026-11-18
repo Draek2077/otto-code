@@ -1,3 +1,4 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 import type { createCreationScenario } from "../support/helpers/creation";
 import { expect } from "../support/fixtures";
 import { test } from "../support/creation-fixtures";
@@ -11,6 +12,8 @@ for (const isolation of ["local", "worktree"] as const) {
     await creation.expectOneCreatedWorkspace();
   });
 }
+
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 test("repeated Send clicks before a render create only one agent", async ({ creation }) => {
   await creation.openAgentDraft();

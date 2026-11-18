@@ -184,7 +184,9 @@ test.describe("Tab creation", () => {
       page.getByTestId("file-explorer-tree-scroll").filter({ visible: true }),
     ).toBeVisible();
 
-    await page.locator("body").click({ position: { x: 1, y: 1 } });
+    // OTTO(navigation): (1,1) can open the team switcher, covering the launcher.
+    await agent.evaluate((element) => (element as HTMLElement).blur());
+    await expect(agent).not.toBeFocused();
     await panel.click({ position: { x: 20, y: 20 } });
     await expect(agent).toBeFocused();
   });

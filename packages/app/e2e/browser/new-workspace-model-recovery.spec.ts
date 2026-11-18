@@ -1,3 +1,4 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 // OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { test, expect, type Page } from "../support/fixtures";
@@ -15,7 +16,7 @@ import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 import { expectRememberedModel, expectSavedSelection } from "../support/helpers/model-memory";
 
 // OTTO(agent-teams): exercise ordinary provider preferences on a host without a Chatter override.
-test.use({ e2eDaemonConfig: { agentProfiles: [], agentTeams: { activeTeamId: null, teams: [] } } });
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 const PROVIDER = "remembered-model-recovery";
 const MODEL = "remembered-model";

@@ -136,7 +136,7 @@ for (const compact of [false, true]) {
       changed.voice.tts.speed = 1.2;
       await write(peer, changed);
       await speed.fill("0.8");
-      await expect(page.getByText(/Your edits are retained\. Reload saved settings/)).toBeVisible();
+      await expect(page.getByText(/Your edits are retained[.;] reload/i)).toBeVisible();
       await expect(speed).toHaveValue("0.8");
       expect((await read()).settings.voice.tts.speed).toBe(1.2);
       page.once("dialog", (dialog) => void dialog.dismiss());

@@ -1,5 +1,9 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 import { test } from "../support/fixtures";
 import { verifyDelayedWorkspaceCreation } from "../support/helpers/new-workspace-navigation";
+
+// OTTO(profiles): this fixture verifies retention of the explicitly seeded provider defaults.
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 test.describe("Delayed workspace creation", () => {
   test.describe.configure({ timeout: 120_000 });

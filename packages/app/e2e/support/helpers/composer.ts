@@ -472,7 +472,7 @@ export async function activateRetainedComposerTab(page: Page, title: string): Pr
 
 export async function recordVisibleComposerGeometry(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const frames: { input: number; root: number }[] = [];
+    const frames: { input: number; root: number; minimumInput: number }[] = [];
     Reflect.set(window, "__composerGeometryFrames", frames);
     let running = true;
     const tick = () => {
@@ -483,6 +483,10 @@ export async function recordVisibleComposerGeometry(page: Page): Promise<void> {
         if (input)
           frames.push({
             input: input.getBoundingClientRect().height,
+            // OTTO(composer-size): a short draft uses one line. A multiline draft must retain two.
+            minimumInput: input.value.includes("\n")
+              ? 42
+              : Math.ceil(parseFloat(getComputedStyle(input).fontSize) * 1.4),
             root: root.getBoundingClientRect().height,
           });
       }
@@ -497,10 +501,14 @@ export async function recordVisibleComposerGeometry(page: Page): Promise<void> {
 export async function expectNoCollapsedVisibleComposer(page: Page): Promise<void> {
   const frames = await page.evaluate(() => {
     Reflect.get(window, "__stopComposerGeometry")?.();
-    return Reflect.get(window, "__composerGeometryFrames") as { input: number; root: number }[];
+    return Reflect.get(window, "__composerGeometryFrames") as {
+      input: number;
+      root: number;
+      minimumInput: number;
+    }[];
   });
   expect(frames.length).toBeGreaterThan(0);
-  expect(frames.filter((frame) => frame.root < 42 || frame.input < 42)).toEqual([]);
+  expect(frames.filter((frame) => frame.root < 42 || frame.input < frame.minimumInput)).toEqual([]);
 }
 
 /** Exercise the quick-return race before a hidden pane gets a rendering frame. */

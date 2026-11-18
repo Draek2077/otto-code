@@ -45,7 +45,7 @@ for (const compact of [false, true]) {
           .getByTestId(`sidebar-workspace-kebab-${getServerId()}:${workspace.workspaceId}`)
           .click();
       } else await openWorkspaceContextMenu(page, workspace.workspaceId);
-      await page.getByText("Open Context Management", { exact: true }).click();
+      await page.getByText("Open Context", { exact: true }).click();
       const surface = page.getByTestId("otto-context-management").filter({ visible: true });
       const initial = await report();
       const root = initial.nodes.find((node) => node.label === "AGENTS.md")!;

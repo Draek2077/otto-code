@@ -376,7 +376,8 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
       selectChatProfile(provider, profile.chatProfile);
       if (fromTeam) return;
       explicit.current = serverId;
-      if (serverId && profile.chatProfile?.hostBinding) {
+      // OTTO(agent-teams): roleless Paseo presets still apply their provider preferences.
+      if (serverId && profile.rememberAsChatter && profile.chatProfile?.hostBinding) {
         const id = profile.chatProfile.id;
         void updateCurrentPreferences((current) => ({
           ...current,

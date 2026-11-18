@@ -1,3 +1,4 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 // OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { test, expect } from "../support/fixtures";
 import { expectWorkspaceTabVisible } from "../support/helpers/archive-tab";
@@ -147,6 +148,8 @@ async function expectWorkspaceRowDoesNotShowIndicator(
     row.locator(`[data-testid="workspace-status-indicator-${input.indicator}"]`),
   ).toHaveCount(0, { timeout: 5_000 });
 }
+
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 test.describe("Workspace model regressions", () => {
   let client: NewWorkspaceDaemonClient;

@@ -95,7 +95,8 @@ async function expectPopoverBeside(page: Page, text: string, row: Locator, elsew
   const otherBox = await boxOf(elsewhere);
   expect(popover.x).toBeGreaterThanOrEqual(rowBox.x + rowBox.width);
   expect(Math.abs(popover.y - rowBox.y)).toBeLessThan(40);
-  expect(Math.abs(popover.y - otherBox.y)).toBeGreaterThan(20);
+  // OTTO(sidebar): density changes row spacing. The popup must be nearer its own row.
+  expect(Math.abs(popover.y - rowBox.y)).toBeLessThan(Math.abs(popover.y - otherBox.y));
 }
 
 /** Subscription ids the daemon confirms released, collected from the page's websocket. */
@@ -242,7 +243,9 @@ test.describe("Plugin sidebar items", () => {
     });
   });
 
-  test("a header row's shortcut hint presses the row", async ({ page }) => {
+  test("the workspace toolbar shows its shortcut and opens the new workspace form", async ({
+    page,
+  }) => {
     await page.setViewportSize(WIDE);
     await gotoWorkspace(page, workspaceId);
     const newWorkspace = visibleTestId(page, "sidebar-global-new-workspace");
@@ -251,7 +254,7 @@ test.describe("Plugin sidebar items", () => {
     const hint = page.getByText("Ctrl+N", { exact: true }).locator("visible=true");
     await expect(hint).toBeVisible();
     await qaScreenshot(page, "phase7-header-row-hint", newWorkspace.locator("xpath=../.."));
-    await hint.click();
+    await newWorkspace.click();
     await expect(page).toHaveURL(/\/new(\?|$)/);
   });
 

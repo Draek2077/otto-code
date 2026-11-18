@@ -1,3 +1,4 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 import { readFile, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { createServer } from "node:http";
@@ -19,10 +20,12 @@ test.use({
   e2eInjectPaseoTools: true,
   e2eDaemonConfig: {
     pluginsEnabled: true,
+    // Exercise the configured host generator here. The Profile parity case binds its own Studio team.
+    daemon: unassignedRoster,
     agents: {
       metadataGeneration: { providers: [{ provider: "openai-compatible", model: "fixture" }] },
     },
-  } satisfies Pick<PersistedConfig, "pluginsEnabled" | "agents">,
+  } satisfies Pick<PersistedConfig, "pluginsEnabled" | "agents" | "daemon">,
 });
 const artifactTemplate =
   '<!doctype html><html><head><title>Artifact acceptance</title></head><body><h1>Interactive report</h1><button onclick="document.querySelector(\'h1\').textContent=\'Clicked\'">Interact</button><button onclick="location.href=\'ARTIFACT_NAVIGATION_PROBE\'">Navigate outside</button><script id="otto-artifact-data" type="application/json">{"value":1}</script><script>try{parent.document.body.dataset.artifactEscape="bad"}catch{document.body.dataset.isolated="yes"}fetch("https://artifact-network.invalid/leak").catch(()=>document.body.dataset.network="blocked")</script></body></html>';
@@ -278,7 +281,15 @@ for (const compact of [false, true])
         .getByLabel("Describe the artifact", { exact: true })
         .fill("Build an interactive report with a data contract.");
       await surface.getByRole("button", { name: "Create artifact", exact: true }).click();
-      await expect.poll(async () => (await listing()).items[0]?.status).toBe("ready");
+      await expect
+        .poll(
+          async () => {
+            const item = (await listing()).items[0];
+            return item && { status: item.status, error: item.error };
+          },
+          { timeout: 60_000 },
+        )
+        .toEqual({ status: "ready", error: null });
       await surface.getByRole("button", { name: "Reload saved output", exact: true }).click();
       const detail = surface.getByTestId("artifact-detail");
       if (!compact) {

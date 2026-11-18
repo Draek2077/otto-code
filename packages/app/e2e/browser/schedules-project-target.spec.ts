@@ -1,6 +1,9 @@
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import { expect, test, type Page } from "../support/helpers/native-schedules"; // OTTO(schedules): original native host capability floor.
 import { gotoAppShell } from "../support/helpers/app";
-import { addScheduleHostAndReload, createScheduleHost } from "../support/helpers/schedule-host";
+import { addRetainedFixtureHostAndReload } from "../support/helpers/hosts";
+import { createScheduleHost } from "../support/helpers/schedule-host";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { projectEquivalenceViewKey } from "../support/helpers/project-view-key";
@@ -240,7 +243,7 @@ test.describe("Schedules project target", () => {
 
     const secondary = await createScheduleHost();
     cleanupTasks.push(() => secondary.cleanup());
-    await addScheduleHostAndReload({
+    await addRetainedFixtureHostAndReload({
       page,
       serverId: secondary.serverId,
       label: secondary.label,
@@ -260,16 +263,34 @@ test.describe("Schedules project target", () => {
   });
 
   test("clears the selected project and model when the host changes", async ({ page }) => {
+    test.setTimeout(120_000); // Includes two independent host startups and persisted model discovery.
     const workspace = await seedWorkspace({ repoPrefix: "schedule-project-host-model-" });
     cleanupTasks.push(() => workspace.cleanup());
     const serverId = getServerId();
     const secondary = await createScheduleHost();
     cleanupTasks.push(() => secondary.cleanup());
 
+    // OTTO(schedules): the second host deliberately has no Scheduler role assignment.
+    // It must discard the first host's explicit model and require a fresh choice.
+    const secondaryConfig = await connectDaemonClient<
+      Pick<DaemonClient, "connect" | "close" | "patchDaemonConfig">
+    >({
+      port: secondary.port,
+      clientIdPrefix: "schedule-unassigned-host",
+    });
+    try {
+      await secondaryConfig.patchDaemonConfig({
+        agentProfiles: [],
+        agentTeams: { activeTeamId: null, teams: [] },
+      });
+    } finally {
+      await secondaryConfig.close();
+    }
+
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
     await page.goto(buildSchedulesRoute());
-    await addScheduleHostAndReload({
+    await addRetainedFixtureHostAndReload({
       page,
       serverId: secondary.serverId,
       label: secondary.label,
@@ -314,8 +335,10 @@ test.describe("Schedules project target", () => {
     await expect(modeTrigger).toBeVisible();
     await expectSettled(modeTrigger);
 
-    await hostTrigger.click();
-    await page.getByTestId(`schedule-host-option-${secondary.serverId}`).click();
+    await hostTrigger.press("Enter");
+    const secondaryOption = page.getByTestId(`schedule-host-option-${secondary.serverId}`);
+    await expect(secondaryOption).toBeVisible();
+    await secondaryOption.click();
     await expect(hostTrigger).toContainText(secondary.label);
     await expect(projectTrigger).toContainText(/select project/i);
     await expect(modelTrigger).toHaveCount(0);

@@ -42,11 +42,21 @@ async function expectProviderIcon(surface: Locator, paths: string[]): Promise<vo
     .toContainEqual(paths);
 }
 
+// OTTO(model-picker): the Profiles root and a remembered provider both lead to the same model list.
+async function showPluginModels(page: Page): Promise<void> {
+  const row = page.getByTestId("model-row-direct-example-example-1");
+  const provider = page.getByTestId("model-provider-direct-example");
+  const back = page.getByRole("button", { name: "Back", exact: true });
+  await expect(row.or(provider).or(back).first()).toBeVisible();
+  if (await row.isVisible()) return;
+  if (!(await provider.isVisible())) await back.click();
+  await provider.click();
+}
+
 async function selectPluginModel(page: Page): Promise<void> {
   await openModelPicker(page);
-  await page.getByRole("button", { name: "Back", exact: true }).click();
-  await page.getByText("Direct provider example", { exact: true }).click();
-  await page.getByText("Example 1", { exact: true }).click();
+  await showPluginModels(page);
+  await page.getByTestId("model-row-direct-example-example-1").click();
   await expect(page.getByRole("button", { name: MODEL_LABEL, exact: true })).toBeVisible();
 }
 
@@ -124,6 +134,7 @@ export async function verifyNewWorkspaceModelIcon({
     await openGlobalNewWorkspaceComposer(page);
     await selectPluginModel(page);
     await openModelPicker(page);
+    await showPluginModels(page);
     await expectProviderIcon(page.getByTestId("model-row-direct-example-example-1"), iconPaths);
     await capture(page, testInfo, "new-workspace-picker");
     await page.keyboard.press("Escape");

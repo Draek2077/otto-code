@@ -1,6 +1,7 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 // OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { Page } from "@playwright/test";
-import { expect, test as baseTest } from "../support/fixtures";
+import { expect, test as baseTest } from "../support/helpers/otto-individual-actions"; // OTTO(chat-actions)
 import { expectAgentIdle } from "../support/helpers/agent-stream";
 import {
   attachImageFromMenu,
@@ -90,6 +91,8 @@ declare global {
     __activityContinuityOracle?: ActivityOracleState;
   }
 }
+
+baseTest.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 const test = baseTest.extend<{ streamingAgent: MockAgentWorkspace }>({
   streamingAgent: async ({ page: _page }, provide) => {

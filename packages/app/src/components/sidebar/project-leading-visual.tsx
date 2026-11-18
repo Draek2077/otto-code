@@ -133,6 +133,7 @@ export function ProjectStatusIndicator({
   hasActiveChat?: boolean; // OTTO(chat-identity): motion does not replace the semantic status.
   testID?: string;
 }) {
+  const { t } = useTranslation();
   const placeholderInitial = projectIconPlaceholderLabelFromDisplayName(displayName)
     .charAt(0)
     .toUpperCase();
@@ -159,7 +160,12 @@ export function ProjectStatusIndicator({
           projectViewKey={projectViewKey}
         />
         {hasActiveChat ? (
-          <View style={styles.statusRingAnchor} testID="project-status-badge">
+          <View
+            role="status"
+            accessibilityLabel={getStatusBucketLabel(statusBucket ?? "running", t)}
+            style={styles.statusRingAnchor}
+            testID="project-status-badge"
+          >
             <StatusRing backdrop={backdrop} centerBucket={statusBucket ?? "running"} />
           </View>
         ) : null}

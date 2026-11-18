@@ -132,8 +132,11 @@ for (const compact of [false, true])
       await title.blur();
       await surface.getByRole("button", { name: "Save", exact: true }).click();
       await expect(surface.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
-      const list = await call(workflows.workflowList, { scope: scope(workspace), kind: "graph" });
-      expect(list.items).toHaveLength(1);
+      // Save is disabled while a write is pending. Observe the published graph before opening it.
+      const savedGraphs = () =>
+        call(workflows.workflowList, { scope: scope(workspace), kind: "graph" });
+      await expect.poll(async () => (await savedGraphs()).items.length).toBe(1);
+      const list = await savedGraphs();
       const original = await call(workflows.workflowRead, list.items[0].ref);
       if (original.document.kind !== "graph") throw new Error("Expected saved Graph");
       expect(original.document.value.nodes).toEqual(

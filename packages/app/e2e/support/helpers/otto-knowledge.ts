@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { callAgentMcp } from "./agent-mcp";
 import { gotoAppShell } from "./app";
 import { getServerId } from "./server-id";
@@ -23,4 +23,9 @@ export async function openWorkspaceKnowledge(input: {
   } else await openWorkspaceContextMenu(input.page, input.workspaceId);
   await input.page.getByText("Open Knowledge", { exact: true }).click();
   return waitForOttoSurface(input.page, "otto-knowledge-page");
+}
+
+export async function openKnowledgeMaintenance(surface: Locator) {
+  const toggle = surface.getByRole("button", { name: "Storage and maintenance", exact: true });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
 }

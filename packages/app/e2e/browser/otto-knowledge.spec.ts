@@ -19,7 +19,7 @@ import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import { gotoAppShell } from "../support/helpers/app";
 import { openWorkspaceContextMenu } from "../support/helpers/sidebar";
 import { getServerId } from "../support/helpers/server-id";
-import { callKnowledgeMcp } from "../support/helpers/otto-knowledge";
+import { callKnowledgeMcp, openKnowledgeMaintenance } from "../support/helpers/otto-knowledge";
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
 
 async function proveHostDefaults(input: {
@@ -116,7 +116,6 @@ async function proveConfirmedPurge(
     }),
   );
   expect(result.ok).toBe(true);
-  await surface.getByRole("button", { name: "Back to pages", exact: true }).click();
   await surface
     .getByTestId(`knowledge-record-${id}`)
     .getByRole("button", { name: "Open", exact: true })
@@ -328,6 +327,7 @@ for (const compact of [false, true]) {
       await page.getByText("Open Knowledge", { exact: true }).click();
       const surface = page.getByTestId("otto-knowledge-page").filter({ visible: true });
       await expect(surface).toBeVisible();
+      await openKnowledgeMaintenance(surface);
       await surface.getByRole("button", { name: "Initialize roots", exact: true }).click();
       await surface.getByRole("button", { name: "New entry", exact: true }).click();
       const editor = surface.getByTestId("knowledge-editor");
@@ -421,6 +421,9 @@ for (const compact of [false, true]) {
       await editor.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(surface.getByText("Peer conclusion.", { exact: true })).toBeVisible();
       const original = await readFile(sourcePath);
+      if (compact)
+        await surface.getByRole("button", { name: "Back to pages", exact: true }).click();
+      await openKnowledgeMaintenance(surface);
       await surface.getByRole("button", { name: "Change storage", exact: true }).click();
       await surface
         .getByRole("button", { name: "Store location: Repository", exact: true })
@@ -467,7 +470,11 @@ for (const compact of [false, true]) {
       );
       await expect(surface.getByRole("button", { name: "New entry", exact: true })).toBeVisible();
       expect(await readFile(sourcePath)).toEqual(original);
+      await openKnowledgeMaintenance(surface);
       await proveLinkHealth(surface, client, scope, project.workspaceId);
+      if (compact)
+        await surface.getByRole("button", { name: "Back to pages", exact: true }).click();
+      await openKnowledgeMaintenance(surface);
       await proveFormatConversion(page, surface, client, scope, project, id);
       await page.screenshot({ path: testInfo.outputPath("knowledge-format-conversion.png") });
       await proveHostDefaults({ page, client, scope, compact });

@@ -7,6 +7,7 @@ import { clickSettingsBackToWorkspace, openHostSection, selectSettingsHost } fro
 
 const REGISTRY_KEY = "@otto:daemon-registry";
 const SEED_NONCE_KEY = "@otto:e2e-seed-nonce";
+const EXTRA_HOSTS_KEY = "@otto:e2e-extra-hosts";
 const DISABLE_DEFAULT_SEED_ONCE_KEY = "@otto:e2e-disable-default-seed-once";
 
 // The multi-host UI (the command-center host label, the sidebar host filter) only renders once
@@ -273,4 +274,50 @@ export async function reloadPreservingHostRegistry(page: Page): Promise<void> {
     { nonce: SEED_NONCE_KEY, disableSeedOnce: DISABLE_DEFAULT_SEED_ONCE_KEY },
   );
   await page.reload();
+}
+
+export async function addRetainedFixtureHostAndReload(input: {
+  page: Page;
+  serverId: string;
+  label: string;
+  port: number;
+}): Promise<void> {
+  const host = buildSeededHost({
+    serverId: input.serverId,
+    label: input.label,
+    endpoint: `127.0.0.1:${input.port}`,
+    nowIso: new Date().toISOString(),
+  });
+
+  await input.page.evaluate(
+    ({ seededHost, keys }) => {
+      const nonce = localStorage.getItem(keys.nonce);
+      if (!nonce) {
+        throw new Error("Expected the e2e seed nonce before overriding the host registry.");
+      }
+      const raw = localStorage.getItem(keys.registry);
+      const registry: Array<{ serverId: string }> = raw ? JSON.parse(raw) : [];
+      const nextRegistry = registry.filter((entry) => entry.serverId !== seededHost.serverId);
+      nextRegistry.push(seededHost);
+      localStorage.setItem(keys.registry, JSON.stringify(nextRegistry));
+
+      const rawExtraHosts = localStorage.getItem(keys.extraHosts);
+      const extraHosts: Array<{ serverId: string }> = rawExtraHosts
+        ? JSON.parse(rawExtraHosts)
+        : [];
+      const nextExtraHosts = extraHosts.filter((entry) => entry.serverId !== seededHost.serverId);
+      nextExtraHosts.push(seededHost);
+      localStorage.setItem(keys.extraHosts, JSON.stringify(nextExtraHosts));
+    },
+    {
+      seededHost: host,
+      keys: {
+        registry: REGISTRY_KEY,
+        nonce: SEED_NONCE_KEY,
+        extraHosts: EXTRA_HOSTS_KEY,
+      },
+    },
+  );
+
+  await input.page.reload();
 }

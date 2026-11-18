@@ -37,7 +37,7 @@ test("Context reading width and pane height persist; compact geometry does not r
   try {
     await gotoAppShell(page);
     await openWorkspaceContextMenu(page, workspace.workspaceId);
-    await page.getByText("Open Context Management", { exact: true }).click();
+    await page.getByText("Open Context", { exact: true }).click();
     const surface = page.getByTestId("otto-context-management").filter({ visible: true });
     const sidebar = surface.getByTestId("context-reading-sidebar");
     const summary = surface.getByTestId("context-reading-summary");

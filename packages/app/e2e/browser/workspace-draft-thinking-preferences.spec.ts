@@ -1,3 +1,4 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 // OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, test, type Page } from "../support/fixtures";
 import { gotoWorkspace } from "../support/helpers/launcher";
@@ -84,6 +85,8 @@ async function seedLegacyModelPreference(page: Page): Promise<void> {
     );
   });
 }
+
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 test.describe("Workspace draft thinking preferences", () => {
   test.describe.configure({ timeout: 180_000 });

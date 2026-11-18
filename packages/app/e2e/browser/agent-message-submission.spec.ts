@@ -1,6 +1,7 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 // OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { Locator, Page } from "@playwright/test";
-import { expect, test as baseTest } from "../support/fixtures";
+import { expect, test as baseTest } from "../support/helpers/otto-individual-actions"; // OTTO(chat-actions)
 import {
   awaitToolCall,
   expectAgentIdle,
@@ -88,6 +89,8 @@ interface UnrelatedRunningScenario {
   gate: Awaited<ReturnType<typeof gateNextAgentMessage>>;
   agent: Awaited<ReturnType<typeof seedMockAgentWorkspace>>;
 }
+
+baseTest.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 const test = baseTest.extend<{
   submissionScenario: SubmissionScenario;

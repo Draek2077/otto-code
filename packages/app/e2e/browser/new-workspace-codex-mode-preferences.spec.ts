@@ -1,3 +1,4 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 // OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, type Page } from "../support/fixtures";
 import { test } from "../support/creation-fixtures";
@@ -18,7 +19,7 @@ import { seedWorkspace } from "../support/helpers/seed-client";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 
 // OTTO(agent-teams): exercise ordinary provider preferences on a host without a Chatter override.
-test.use({ e2eDaemonConfig: { agentProfiles: [], agentTeams: { activeTeamId: null, teams: [] } } });
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 const CREATE_AGENT_PREFERENCES_KEY = "@otto:create-agent-preferences";
 

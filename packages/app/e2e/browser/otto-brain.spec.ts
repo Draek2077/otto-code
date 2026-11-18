@@ -16,7 +16,6 @@ for (const compact of [false, true]) {
     await expect(autoStart).not.toBeChecked();
     expect(await brain.localRunning()).toBe(false);
     await enable.click();
-    await page.getByRole("button", { name: "Save connection", exact: true }).click();
     await expect(page.getByText("Connection settings saved", { exact: true })).toBeVisible();
     await expect(autoStart).not.toBeChecked();
     await page.reload();

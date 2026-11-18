@@ -14,7 +14,11 @@ import { test, expect } from "../support/fixtures";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import { getServerId } from "../support/helpers/server-id";
-import { callKnowledgeMcp, openWorkspaceKnowledge } from "../support/helpers/otto-knowledge";
+import {
+  callKnowledgeMcp,
+  openKnowledgeMaintenance,
+  openWorkspaceKnowledge,
+} from "../support/helpers/otto-knowledge";
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
 type Client = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc">;
@@ -126,6 +130,7 @@ for (const compact of [false, true]) {
         ).toBeVisible();
         page.once("dialog", (dialog) => void dialog.accept());
         await setup.getByRole("button", { name: "Apply storage choice", exact: true }).click();
+        await openKnowledgeMaintenance(surface);
         await expect(
           surface.getByRole("button", { name: "Initialize roots", exact: true }),
         ).toBeVisible();

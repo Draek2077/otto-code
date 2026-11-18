@@ -73,15 +73,13 @@ for (const compact of [false, true]) {
         const automatic = card.getByRole("switch", { name: "Automatic Git fetch", exact: true });
         await expect(automatic).not.toBeChecked();
         await automatic.click();
-        await card.getByRole("button", { name: "Save", exact: true }).click();
         await expect(card).toContainText("Git fetch settings saved.");
-        expect((await read()).preferences.enabled).toBe(true);
+        await expect.poll(async () => (await read()).preferences.enabled).toBe(true);
         await automatic.click();
-        await card.getByRole("button", { name: "Save", exact: true }).click();
         await expect(automatic).toBeEnabled();
-        expect((await read()).preferences.enabled).toBe(false);
+        await expect.poll(async () => (await read()).preferences.enabled).toBe(false);
 
-        await automatic.click();
+        // A peer writes before the next local toggle. That toggle must retain its stale edit.
         const peer = await read();
         const changed = saveGitFetchPolicy.output.parse(
           await client.invokePluginRpc("otto-workspace-git", saveGitFetchPolicy.name, {
@@ -91,10 +89,10 @@ for (const compact of [false, true]) {
           }),
         );
         expect(changed.ok).toBe(true);
-        await card.getByRole("button", { name: "Save", exact: true }).click();
+        await automatic.click();
         await expect(card).toContainText("Git fetch settings changed. Reload before saving.");
         await expect(automatic).toBeChecked();
-        await expect(card.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+        await expect(automatic).toBeDisabled();
         page.once("dialog", (dialog) => dialog.accept());
         await card.getByRole("button", { name: "Reload", exact: true }).click();
         await expect(automatic).not.toBeChecked();
@@ -148,7 +146,7 @@ for (const compact of [false, true]) {
         await expect.poll(() => git("rev-parse", "origin/main")).toBe(next);
         await expect(fetch).toBeEnabled();
         await expect(page.getByText("Fetched origin.", { exact: true })).toBeVisible();
-        expect((await read()).preferences.enabled).toBe(false);
+        await expect.poll(async () => (await read()).preferences.enabled).toBe(false);
         await page.screenshot({ path: info.outputPath("git-fetch-success.png") });
 
         git("remote", "set-url", "origin", path.join(workspace.repoPath, "missing-origin.git"));

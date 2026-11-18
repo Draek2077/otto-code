@@ -1,4 +1,5 @@
-import { test, expect } from "../support/fixtures";
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
+import { test, expect } from "../support/helpers/otto-individual-actions"; // OTTO(chat-actions)
 import {
   awaitAssistantMessage,
   expectAgentIdle,
@@ -26,6 +27,8 @@ import {
 } from "../support/helpers/mock-agent";
 
 const SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE = 360;
+
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 test.describe("Agent stream UI", () => {
   test("keeps running agent chrome after page refresh", async ({ page }) => {

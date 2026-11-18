@@ -1,3 +1,4 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 import { expect, test } from "../support/fixtures";
 import { expectComposerModel } from "../support/helpers/agent-profiles";
 import { installDaemonWebSocketGate } from "../support/helpers/daemon-websocket-gate";
@@ -10,6 +11,8 @@ async function restoreHostConnection(gate: Awaited<ReturnType<typeof installDaem
   await gate.waitForHeldServerMessage("status");
   gate.releaseHeldServerMessage("status");
 }
+
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 test("an offline workspace draft reports the disconnected host instead of loading models", async ({
   page,
