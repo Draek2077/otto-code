@@ -1,4 +1,4 @@
-import { ProfileBinding } from "@getpaseo/protocol/otto/agent-teams";
+import { ProfileBinding } from "@getpaseo/protocol/otto/profile-binding";
 import { z } from "zod";
 import { defineRpc } from "../../rpc.js";
 import {

@@ -94,6 +94,7 @@ function boundaryViolations(entry: string, runtime: "shared" | "server" | "clien
         if (
           specifier !== "zod" &&
           specifier !== "@getpaseo/protocol/agent-types" &&
+          specifier !== "@getpaseo/protocol/otto/profile-binding" && // OTTO(agent-profiles): shared Workflow snapshots use only the structural Zod schema.
           specifier !== "@getpaseo/protocol/schedule/types" && // OTTO(schedules): reviewed pure Zod DTOs and provider manifest types.
           specifier !== "@getpaseo/protocol/browser-automation/rpc-schemas"
         )

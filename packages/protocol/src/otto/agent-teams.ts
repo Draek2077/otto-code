@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { ProfileBinding } from "./profile-binding.js";
+export { ProfileBinding, ProfileVoice, ProfileCues } from "./profile-binding.js";
 import type { AgentProfile } from "../agent-profile.js";
 
 export const profileRoles = [
@@ -17,17 +19,6 @@ export const profileRoles = [
 export type ProfileRole = (typeof profileRoles)[number];
 export const cueMoments = ["join", "thinking", "waiting", "done"] as const;
 export type CueMoment = (typeof cueMoments)[number];
-export const ProfileVoice = z
-  .object({ provider: z.string(), model: z.string(), name: z.string() })
-  .passthrough();
-export const ProfileCues = z
-  .object({
-    join: z.array(z.string()).optional(),
-    thinking: z.array(z.string()).optional(),
-    waiting: z.array(z.string()).optional(),
-    done: z.array(z.string()).optional(),
-  })
-  .passthrough();
 export const Team = z
   .object({
     id: z.string().min(1),
@@ -72,16 +63,6 @@ export function profilePrompt(profile: AgentProfile, team?: Team) {
     .join("\n\n");
 }
 
-export const ProfileBinding = z.object({
-  id: z.string(),
-  name: z.string(),
-  prompt: z.string(),
-  respectGlobal: z.boolean(),
-  spinner: z.object({ glowA: z.string(), glowB: z.string() }).optional(),
-  voice: ProfileVoice.optional(),
-  voiceCues: ProfileCues.optional(),
-});
-export type ProfileBinding = z.infer<typeof ProfileBinding>;
 export const profileIntentLabel = "otto.selectProfile";
 export function bindProfile(
   config: { agentProfiles?: AgentProfile[]; agentTeams?: AgentTeams },
