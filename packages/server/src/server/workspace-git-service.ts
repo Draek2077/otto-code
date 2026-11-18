@@ -3575,12 +3575,17 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
             createRunGitCommand("otto-manual-fetch"),
           ),
         );
-    // Partial failures can still have changed refs. Refresh the canonical owner in either case.
-    await this.getSnapshot(directory, {
-      force: true,
-      includeForge: false,
-      reason: "otto-manual-fetch",
-    });
+    // OTTO(git-fetch): observed repositories already schedule the affected workspace
+    // refreshes in applyRepoFetchResult. Waiting for another full snapshot delays
+    // acknowledgement and duplicates Git work. An unobserved checkout needs its
+    // initial refresh, including after a partial failure that changed its refs.
+    if (!target) {
+      await this.getSnapshot(directory, {
+        force: true,
+        includeForge: false,
+        reason: "otto-manual-fetch",
+      });
+    }
     if (result.error)
       throw new Error("Git fetch did not finish successfully.", { cause: result.error });
   }

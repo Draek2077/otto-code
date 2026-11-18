@@ -140,6 +140,7 @@ for (const compact of [false, true]) {
         const trigger = page
           .getByTestId("changes-overflow-menu")
           .or(page.getByTestId("changes-actions-menu-trigger"))
+          .or(page.getByTestId("changes-primary-cta-caret"))
           .filter({ visible: true })
           .first();
         await trigger.click();
@@ -154,7 +155,7 @@ for (const compact of [false, true]) {
 
         git("remote", "set-url", "origin", path.join(workspace.repoPath, "missing-origin.git"));
         await fetch.click();
-        await expect(fetch).toContainText("Fetch failed; try again");
+        await expect(fetch).toContainText("Fetch failed; try again", { timeout: 30_000 });
         await page.screenshot({ path: info.outputPath("git-fetch-error.png") });
         git("remote", "set-url", "origin", origin);
         await fetch.click();

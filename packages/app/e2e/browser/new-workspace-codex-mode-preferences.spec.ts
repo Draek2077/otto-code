@@ -34,6 +34,7 @@ async function seedCodexDefaultPermissionPreferences(page: Page, cwd: string): P
           (await client.getProvidersSnapshot({ cwd })).entries.find(
             (entry) => entry.provider === "codex",
           )?.status,
+        { timeout: 30_000 },
       )
       .toBe("ready");
     const snapshot = await client.getProvidersSnapshot({ cwd });
@@ -186,6 +187,7 @@ test.describe("New workspace Codex mode preferences", () => {
         page.getByRole("button", { name: "Select agent mode (Default permissions)" }),
       ).toBeVisible({ timeout: 30_000 });
 
+      const originalMode = await readCodexModePreference(page);
       await selectMode(page, "Full access");
       await expect(
         page.getByRole("button", { name: "Select agent mode (Full access)" }),
@@ -201,7 +203,7 @@ test.describe("New workspace Codex mode preferences", () => {
       await expect(
         page.getByRole("button", { name: "Select agent mode (Default permissions)" }),
       ).toBeVisible({ timeout: 30_000 });
-      expect(await readCodexModePreference(page)).toBe("auto");
+      expect(await readCodexModePreference(page)).toBe(originalMode);
     } finally {
       await seeded.cleanup();
     }

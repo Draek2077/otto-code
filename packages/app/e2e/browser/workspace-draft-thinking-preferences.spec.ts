@@ -11,7 +11,6 @@ import {
 import { openCommandCenter } from "../support/helpers/command-center";
 import { runWorkspaceActionFromCommandCenter } from "../support/helpers/command-center-workspace-actions";
 import { seedModelProvider } from "../support/helpers/agent-profiles";
-import { selectModel } from "../support/helpers/app";
 
 const DISABLE_DEFAULT_SEED_ONCE_KEY = "@otto:e2e-disable-default-seed-once";
 const SEED_NONCE_KEY = "@otto:e2e-seed-nonce";
@@ -170,11 +169,15 @@ test.describe("Workspace draft thinking preferences", () => {
 
       await openNewAgentTab(page);
       await expectModeSelected(page, "Approval test");
-      await selectModel(page, "Alternate model");
+      await chooseDraftControl(page, "alternate model", "Model › Mode alternate › Alternate model");
 
       await openNewAgentTab(page);
       await reloadWithPersistedPreferences(page);
-      await selectModel(page, "Five minute stream");
+      await chooseDraftControl(
+        page,
+        "five minute stream",
+        "Model › Mock Load Test › Five minute stream",
+      );
 
       await expectModeSelected(page, "Approval test");
     } finally {

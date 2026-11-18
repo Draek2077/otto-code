@@ -85,9 +85,10 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        # Full coverage uses Playwright's own partitioning. Manual single-journey
-        # diagnostics retain one serial job and never cancel a full gate.
-        shard: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.journey != 'all' && '[1]' || '[1,2]') }}
+        # OTTO(acceptance-resources): each Playwright shard starts a fresh Metro.
+        # Four shards bound the bundle state retained during the full suite.
+        # Single-journey diagnostics keep one serial job separate from the full gate.
+        shard: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.journey != 'all' && '[1]' || '[1,2,3,4]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -120,7 +121,7 @@ jobs:
           printf '%s' 'otto-acceptance-fixture' | gnome-keyring-daemon --unlock --components=secrets
           case "$OTTO_ACCEPTANCE_JOURNEY" in
             all)
-              npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1 --shard="$OTTO_ACCEPTANCE_SHARD/2"
+              npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1 --shard="$OTTO_ACCEPTANCE_SHARD/$OTTO_ACCEPTANCE_SHARD_COUNT"
               ;;
             knowledge)
               npm run test:e2e --workspace=@getpaseo/app -- 'e2e/browser/otto-knowledge.*\.spec\.ts$' --workers=1 --retries=0 --max-failures=1
@@ -175,6 +176,7 @@ jobs:
           E2E_WORKERS: "1"
           OTTO_ACCEPTANCE_JOURNEY: ${{ github.event_name == 'workflow_dispatch' && inputs.journey || 'all' }}
           OTTO_ACCEPTANCE_SHARD: ${{ matrix.shard }}
+          OTTO_ACCEPTANCE_SHARD_COUNT: ${{ strategy.job-total }}
       - name: Retain screenshots and traces
         if: always()
         uses: actions/upload-artifact@v4
