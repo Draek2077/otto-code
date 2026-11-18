@@ -62,7 +62,9 @@ export function createStreamPresentation() {
       historyTransform = input.transform;
     }
     const head: StreamItem[] = [];
-    for (const item of projectPluginTimelineItems(input.head, input.transform, "streaming")) {
+    // OTTO(chat-reload): a completed turn can still have hydrated rows in the recent buffer.
+    const assistantPhase = input.isTurnActive ? "streaming" : "complete";
+    for (const item of projectPluginTimelineItems(input.head, input.transform, assistantPhase)) {
       const blocks = presentRows(item);
       head.push(...blocks);
     }

@@ -179,6 +179,26 @@ describe("stream presentation through installed plugins", () => {
     },
   );
 
+  // OTTO(chat-reload): use the same buffered rows before and after becoming idle.
+  it("presents the assistant card as complete when an idle chat reloads its recent rows", () => {
+    const text = "A whole response\n\nwith its original paragraphs.";
+    const head = hydrateStreamState([{ event: assistant(text), timestamp: new Date(1000) }]);
+    const present = createStreamPresentation();
+    const input = {
+      ...presentationOptions,
+      tail: [],
+      head,
+      transform: installedTransform(installProbe("assistant_message")),
+    };
+
+    const live = rows(present(input));
+    const idle = rows(present({ ...input, isTurnActive: false }));
+
+    expect(pluginData(live)).toEqual([{ text, phase: "streaming" }]);
+    expect(pluginData(idle)).toEqual([{ text, phase: "complete" }]);
+    expect(idle.map(getStreamItemMessageId)).toEqual(head.map((item) => item.id));
+  });
+
   it("addresses a prompt a plugin replaced by the prompt's own id", () => {
     const harness = streamHarness(installedTransform(installProbe("user_message")));
     const rendered = rows(
