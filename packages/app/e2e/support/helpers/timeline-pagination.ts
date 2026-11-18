@@ -133,6 +133,10 @@ export async function scrollThroughOlderHistoryPages(
 ): Promise<void> {
   for (let pageNumber = 0; pageNumber < pageCount; pageNumber += 1) {
     await userScrollsTimelineToHistoryStart(page);
+    // OTTO(action-groups): if the oldest loaded row is a group, it owns the history action.
+    if (history.requestCount() === pageNumber) {
+      await page.getByRole("button", { name: "Load older messages", exact: true }).click();
+    }
     await history.expectRequestedPages(pageNumber + 1);
     history.releasePage(pageNumber + 1);
     await history.expectSettledWithRequestedPages(pageNumber + 1);

@@ -1,5 +1,6 @@
 // OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, type Locator, type Page } from "@playwright/test";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { AgentProfile } from "@getpaseo/protocol/messages";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { gotoAppShell, openSettings } from "./app";
@@ -10,7 +11,10 @@ import { openSettingsHost } from "./settings";
 
 // ─── Daemon-side seeding ───────────────────────────────────────────────────
 
-interface AgentProfilesDaemonClient {
+interface AgentProfilesDaemonClient extends Pick<
+  DaemonClient,
+  "getProvidersSnapshot" | "refreshProvidersSnapshot"
+> {
   connect(): Promise<void>;
   close(): Promise<void>;
   getDaemonConfig(): Promise<{ config: { agentProfiles?: AgentProfile[] } }>;
@@ -115,24 +119,41 @@ export async function seedModelProvider(input: {
   command?: string[];
 }): Promise<HostSeed> {
   const client = await connectAgentProfilesClient();
-  await client.patchDaemonConfig({
-    providers: {
-      [input.id]: {
-        extends: input.extends ?? "claude",
-        label: input.label,
-        description: `${input.label} test provider`,
-        enabled: true,
-        command: input.command ?? ["node"],
-        models: input.models,
-      },
-    },
-  });
-  return {
-    async restore() {
-      await client.patchDaemonConfig({ removeProviders: [input.id] }).catch(() => undefined);
-      await client.close().catch(() => undefined);
-    },
+  const restore = async () => {
+    await client.patchDaemonConfig({ removeProviders: [input.id] }).catch(() => undefined);
+    await client.close().catch(() => undefined);
   };
+  try {
+    await client.patchDaemonConfig({
+      providers: {
+        [input.id]: {
+          extends: input.extends ?? "claude",
+          label: input.label,
+          description: `${input.label} test provider`,
+          enabled: true,
+          command: input.command ?? ["node"],
+          models: input.models,
+        },
+      },
+    });
+    await client.refreshProvidersSnapshot({ providers: [input.id] });
+    await expect
+      .poll(
+        async () => {
+          const { entries } = await client.getProvidersSnapshot();
+          const entry = entries.find(({ provider }) => provider === input.id);
+          return entry?.status === "ready" && entry.enabled
+            ? entry.models?.map(({ id }) => id)
+            : undefined;
+        },
+        { timeout: 30_000 },
+      )
+      .toEqual(input.models.map(({ id }) => id));
+    return { restore };
+  } catch (error) {
+    await restore();
+    throw error;
+  }
 }
 
 // ─── Settings: navigation ──────────────────────────────────────────────────

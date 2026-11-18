@@ -429,8 +429,19 @@ for (const compact of [false, true]) {
         .getByRole("button", { name: "Store location: Repository", exact: true })
         .click();
       await page.getByRole("menuitem", { name: "Host", exact: true }).click();
-      page.once("dialog", (dialog) => void dialog.accept());
-      await surface.getByRole("button", { name: "Copy and switch", exact: true }).click();
+      await expect(
+        surface.getByRole("button", { name: "Store location: Host", exact: true }),
+      ).toBeVisible();
+      const confirmMigration = async () => {
+        const dialog = await page.waitForEvent("dialog");
+        const message = dialog.message();
+        await dialog.accept();
+        expect(message).toContain("copy and verify the existing store");
+      };
+      await Promise.all([
+        confirmMigration(),
+        surface.getByRole("button", { name: "Copy and switch", exact: true }).click(),
+      ]);
       await expect
         .poll(async () => {
           const result = readKnowledgeCatalog.output.parse(
@@ -479,6 +490,9 @@ for (const compact of [false, true]) {
       await page.screenshot({ path: testInfo.outputPath("knowledge-format-conversion.png") });
       await proveHostDefaults({ page, client, scope, compact });
       await page.screenshot({ path: testInfo.outputPath("knowledge-host-defaults.png") });
+    } catch (error) {
+      await page.screenshot({ path: testInfo.outputPath("knowledge-before-cleanup.png") });
+      throw error;
     } finally {
       try {
         await client.close();

@@ -71,6 +71,31 @@ async function readEditorSeed(
   };
 }
 
+function KnowledgeCatalogFallback({
+  error,
+  scope,
+  active,
+  refresh,
+}: {
+  error: Error | null;
+  scope: KnowledgeScope;
+  active: boolean;
+  refresh(): void;
+}) {
+  if (!error) return <SettingsRow label="Loading Knowledge..." />;
+  return (
+    <>
+      <Alert variant="error" description={error.message} />
+      <Button variant="outline" onPress={refresh}>
+        Retry
+      </Button>
+      <KnowledgeStorageSetup scope={scope} active={active} />
+      <KnowledgeFormat key="format" scope={scope} active={active} />
+      <KnowledgeLockRecovery scope={scope} active={active} />
+    </>
+  );
+}
+
 function KnowledgeBody({
   scope,
   active,
@@ -196,22 +221,22 @@ function KnowledgeBody({
         />
       </ScrollView>
     );
-  if (catalog.error)
+  if (!catalog.data)
     return (
-      <>
-        <Alert variant="error" description={catalog.error.message} />
-        <Button variant="outline" onPress={refresh}>
-          Retry
-        </Button>
-        <KnowledgeStorageSetup scope={scope} active={active} />
-        <KnowledgeFormat key="format" scope={scope} active={active} />
-        <KnowledgeLockRecovery scope={scope} active={active} />
-      </>
+      <KnowledgeCatalogFallback
+        error={catalog.error}
+        scope={scope}
+        active={active}
+        refresh={refresh}
+      />
     );
-  if (!catalog.data) return <SettingsRow label="Loading Knowledge..." />;
+  const catalogWarning = catalog.error ? (
+    <Alert variant="error" description={catalog.error.message} />
+  ) : null;
   if (settingsOnly)
     return (
       <>
+        {catalogWarning}
         <KnowledgeStorage scope={scope} settings={catalog.data.settings} onChanged={refresh} />
         <KnowledgeFormat key="format" scope={scope} active={active} />
         <KnowledgeLockRecovery scope={scope} active={active} />
@@ -219,6 +244,7 @@ function KnowledgeBody({
     );
   const catalogPane = (
     <>
+      {catalogWarning}
       <KnowledgeCatalogView
         catalog={catalog.data}
         query={query}

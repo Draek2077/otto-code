@@ -6,7 +6,7 @@ import { activeTeam, bindProfile, teamProfiles } from "@getpaseo/protocol/otto/a
 import { captureWorkflowTeam, boundRole } from "../workflows/team-roles.js";
 import { recoverLegacyRoster } from "./legacy.js";
 import { authorProfile } from "./author.js";
-import { resolveHostProfile, selectProfile } from "./selection.js";
+import { applyCreationProfile, resolveHostProfile, selectProfile } from "./selection.js";
 import { utteranceVoice } from "../speech/profile-voice.js";
 import { initialRoster, missingStarters } from "@getpaseo/protocol/otto/starter-roster";
 import { AuthoredCues } from "@getpaseo/protocol/otto/profile-authoring";
@@ -134,6 +134,18 @@ describe("Otto host Profile binding", () => {
       })),
     ).rejects.toThrow("unavailable");
   });
+  it("uses host Profile features on immediate creation before the draft feature catalog resolves", async () => {
+    const profile = { ...writer, featureValues: { fast_mode: true } };
+    const config = { provider: profile.provider, cwd: process.cwd() } satisfies AgentSessionConfig;
+    const selected = await resolveHostProfile({ agentProfiles: [profile] }, profile.id, config);
+    const created = applyCreationProfile(config, selected.profile, selected.binding);
+    expect(created).toMatchObject({
+      model: profile.model,
+      featureValues: { fast_mode: true },
+      ottoProfile: { id: profile.id },
+    });
+  });
+
   it("skips an unusable Team member and captures the next eligible member for its role", () => {
     const unavailable = { ...coder, thinkingOptionId: "unsupported" };
     const alternate = { ...writer, roles: ["coder"] };

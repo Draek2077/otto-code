@@ -180,10 +180,9 @@ test.describe("Agent profiles repair modeless provider preferences", () => {
 
       const createAgentRequest = await createAgentRecorder.waitForRequest();
       expect(createAgentRequest).toMatchObject({
-        config: {
-          provider: featureProviderId,
-          featureValues: { fast_mode: true },
-        },
+        // OTTO(agent-teams): the host applies its Profile at creation, even during catalog hydration.
+        config: { provider: featureProviderId, model: featureModelId },
+        labels: { "otto.selectProfile": "agent_profile_feature_transition" },
       });
     } finally {
       await workspace.cleanup();
