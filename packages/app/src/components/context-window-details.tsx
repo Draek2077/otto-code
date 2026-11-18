@@ -3,6 +3,8 @@ import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { AgentUsage } from "@/usage";
+import { useAgentUsage } from "@/usage/queries";
+import { UsageDetailsPopup } from "@/otto/ui/usage-details-button";
 import { formatTokenCount } from "./context-window-meter.utils";
 
 interface ContextWindowDetailsProps {
@@ -33,8 +35,10 @@ export function ContextWindowDetails({
   refreshable,
 }: ContextWindowDetailsProps) {
   const { t } = useTranslation();
+  // OTTO(usage-popup): measuring the menu can remount its body. Keep one usage read per opening.
+  const usage = useAgentUsage(serverId, agentId);
   return (
-    <>
+    <UsageDetailsPopup>
       <View style={styles.summary}>
         {showTitle ? <Text style={styles.title}>{t("contextWindow.title")}</Text> : null}
         {context ? (
@@ -56,8 +60,8 @@ export function ContextWindowDetails({
           <Text style={styles.detail}>{t("contextWindow.sessionCost", { cost: sessionCost })}</Text>
         ) : null}
       </View>
-      <AgentUsage serverId={serverId} agentId={agentId} refreshable={refreshable} />
-    </>
+      <AgentUsage serverId={serverId} agentId={agentId} refreshable={refreshable} view={usage} />
+    </UsageDetailsPopup>
   );
 }
 

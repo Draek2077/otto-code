@@ -47,23 +47,27 @@ export function UsageDetailsButton({
           <Text style={styles.tooltipText}>{tooltip}</Text>
         </TooltipContent>
       </Tooltip>
-      <DropdownMenuContent
-        side="top"
-        align="center"
-        offset={8}
-        minWidth={220}
-        maxWidth={360}
-        maxHeight={480}
-        scrollable
-        testID="context-window-popup"
-      >
-        {open && active ? (
-          <View style={styles.content} testID="context-window-details">
-            {children}
-          </View>
-        ) : null}
-      </DropdownMenuContent>
+      {open ? children : null}
     </DropdownMenu>
+  );
+}
+
+export function UsageDetailsPopup({ children }: { children: ReactNode }) {
+  return (
+    <DropdownMenuContent
+      side="top"
+      align="center"
+      offset={8}
+      minWidth={220}
+      maxWidth={360}
+      maxHeight={480}
+      scrollable
+      testID="context-window-popup"
+    >
+      <View style={styles.content} testID="context-window-details">
+        {children}
+      </View>
+    </DropdownMenuContent>
   );
 }
 const styles = StyleSheet.create((theme) => ({

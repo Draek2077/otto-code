@@ -365,23 +365,13 @@ export const selectModel = async (page: Page, model: string) => {
   // Type to search/filter models
   await searchInput.fill(normalizedModel);
 
-  const dialog = page.getByRole("dialog");
-  const exactOption = dialog
-    .getByText(new RegExp(`^${escapeRegex(normalizedModel)}$`, "i"))
-    .first();
-  const exactVisible = await exactOption.isVisible().catch(() => false);
-  if (exactVisible) {
-    await exactOption.click({ force: true });
-  } else {
-    // Modern labels include version suffixes (for example "Haiku 4.5"), so
-    // select the first filtered result using keyboard confirm.
-    await searchInput.press("Enter");
-  }
-
-  // Wait for dropdown to close
-  if (await searchInput.isVisible().catch(() => false)) {
-    await page.keyboard.press("Escape").catch(() => undefined);
-  }
+  // OTTO(model-picker): the provider and cross-provider views both accept a model ID or label.
+  const escaped = escapeRegex(normalizedModel);
+  const byId = page.getByTestId(new RegExp(`^model-row-.+-${escaped}$`, "i"));
+  const byLabel = page.getByTestId(/^model-row-/).filter({
+    has: page.getByText(new RegExp(`^${escaped}$`, "i")),
+  });
+  await byId.or(byLabel).filter({ visible: true }).click();
   await expect(searchInput).not.toBeVisible({ timeout: 5000 });
 };
 

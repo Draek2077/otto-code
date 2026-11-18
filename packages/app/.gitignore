@@ -39,6 +39,7 @@ yarn-error.*
 
 # vitest browser failure screenshots
 .vitest-screenshots/
+# OTTO(testing): browser assertion attachments stay local alongside failure screenshots.
 .vitest-attachments/
 
 app-example

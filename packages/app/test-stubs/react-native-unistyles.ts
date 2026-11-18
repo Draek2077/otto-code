@@ -92,6 +92,7 @@ export const StyleSheet = {
     isStyleFactory(styles) ? styles(testTheme) : styles,
 };
 
+// OTTO(chat-identity): resolve per-instance theme colors for activity glyphs under test.
 type ThemeProps = (
   theme: typeof testTheme,
   runtime: { themeName: string },

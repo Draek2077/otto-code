@@ -3,7 +3,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { UsageCard } from "./card";
 import { usageCopy } from "./copy";
 import { useUsageDisplay } from "./display";
-import { useAgentUsage } from "./queries";
+import type { AgentUsageView } from "./model"; // OTTO(usage-popup): the open popup owns the request.
 import type { UsageReportEntry } from "./types";
 
 /**
@@ -15,13 +15,14 @@ export function AgentUsage({
   serverId,
   agentId,
   refreshable,
+  view,
 }: {
   serverId: string;
   agentId: string;
+  view: AgentUsageView;
   /** Whether each card has a Refresh button; a surface that cannot be pressed hides it. */
   refreshable: boolean;
 }) {
-  const view = useAgentUsage(serverId, agentId);
   if (view.kind === "none") return null;
   return (
     <>

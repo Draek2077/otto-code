@@ -61,7 +61,7 @@ vi.mock("@/components/adaptive-modal-sheet", async () => {
 
 vi.mock("react-native-reanimated", () => ({
   default: { View: "div" },
-  FadeIn: { duration: () => undefined },
+  FadeIn: { duration: () => undefined }, // OTTO(settings): opened plugin menus use this entrance.
   Keyframe: class {
     duration() {
       return this;
