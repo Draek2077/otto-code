@@ -11,7 +11,7 @@ import { createAgentTabFromMenu } from "../support/helpers/workspace-tabs";
 import {
   observeVisualizer,
   observedCommands,
-  visualizerMenu,
+  openVisualizer,
   visualizerContent,
   selectWorkspace,
   expectVisualizerReady,
@@ -114,7 +114,7 @@ for (const compact of [false, true]) {
           .filter({ visible: true })
           .first(),
       ).toBeVisible({ timeout: 60000 });
-      await visualizerMenu(page, "Open Visualizer tab", compact);
+      await openVisualizer(page, compact);
       await expectVisualizerReady(page);
       await expect(page.getByTestId("visualizer-toolbar").filter({ visible: true })).toHaveCSS(
         "flex-direction",
@@ -179,7 +179,8 @@ for (const compact of [false, true]) {
       await pip.getByRole("button", { name: "Open Visualizer tab", exact: true }).click();
       await expect(pip).toHaveCount(0);
       await expectVisualizerReady(page);
-      await visualizerMenu(page, "Chat background", compact);
+      await page.getByRole("button", { name: "Visualizer options", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Chat background", exact: true }).click();
       // Native tab controls restore the existing chat; the Visualizer descriptor remains saved.
       if (compact) await selectTabFromSwitcher(page, "Visualizer root");
       else
@@ -276,7 +277,7 @@ test("Visualizer empty workspace demo stops before live data and never opens ano
   const workspace = await seedWorkspace({ repoPrefix: "otto-visualizer-demo-" });
   try {
     await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.workspaceId));
-    await visualizerMenu(page, "Open Visualizer tab");
+    await openVisualizer(page);
     await expectVisualizerReady(page);
     await page.getByRole("button", { name: "Start demo", exact: true }).click();
     await expect(page.getByRole("button", { name: "Stop demo", exact: true })).toBeVisible();

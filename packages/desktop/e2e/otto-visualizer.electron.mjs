@@ -1,14 +1,6 @@
 import path from "node:path";
 import { expect } from "@playwright/test";
 
-async function openVisualizer(page, option) {
-  await page
-    .getByRole("button", { name: "Visualizer", exact: true })
-    .and(page.locator("[aria-expanded]"))
-    .filter({ visible: true })
-    .click();
-  await page.getByRole("menuitem", { name: option, exact: true }).click();
-}
 async function guestIdentity(page) {
   return page.locator('webview[partition="otto-visualizer"]').evaluate(async (guest) => {
     const status = await guest.executeJavaScript(`({
@@ -25,7 +17,8 @@ export async function runVisualizerRegression({ page, setHidden, artifactDir }) 
   // This is an external observer of the actual production webview guest. It
   // shares the existing CI-owned daemon/Metro/Electron runner and browser pane.
   await page.keyboard.press("Escape");
-  await openVisualizer(page, "Picture in picture");
+  await page.getByRole("button", { name: "Open Visualizer", exact: true }).click();
+  await page.getByRole("button", { name: "Picture in picture", exact: true }).click();
   const pip = page.getByTestId("visualizer-window-pip");
   const guest = page.locator('webview[partition="otto-visualizer"]');
   // The first open lazily compiles the production renderer/Surface in Metro.

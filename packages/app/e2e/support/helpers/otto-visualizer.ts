@@ -49,16 +49,13 @@ export async function observedCommands(page: Page) {
       return parsed.success ? [parsed.data] : [];
     });
 }
-export async function visualizerMenu(page: Page, label: string, compact = false) {
-  if (compact)
+export async function openVisualizer(page: Page, compact = false) {
+  if (compact) {
     await page.getByTestId("workspace-header-menu-trigger").filter({ visible: true }).click();
-  else
-    await page
-      .getByRole("button", { name: "Visualizer", exact: true })
-      .and(page.locator("[aria-expanded]"))
-      .filter({ visible: true })
-      .click();
-  await page.getByRole("menuitem", { name: label, exact: true }).click();
+    await page.getByRole("menuitem", { name: "Open Visualizer", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: "Open Visualizer", exact: true }).click();
+  }
 }
 export async function selectWorkspace(page: Page, workspaceId: string, compact: boolean) {
   if (compact) await page.getByRole("button", { name: "Open menu", exact: true }).first().click();

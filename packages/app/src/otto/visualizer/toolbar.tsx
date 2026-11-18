@@ -106,6 +106,15 @@ export function VisualizerToolbar(props: VisualizerToolbarProps) {
       save({ visualizerPipOpen: true, visualizerBackgroundOpen: false, visualizerSurface: "pip" }),
     [save],
   );
+  const useChatBackground = useCallback(
+    () =>
+      save({
+        visualizerPipOpen: false,
+        visualizerBackgroundOpen: true,
+        visualizerSurface: "background",
+      }),
+    [save],
+  );
   return (
     <PaneContentToolbar style={styles.toolbar} testID="visualizer-toolbar">
       {!compact ? (
@@ -166,6 +175,7 @@ export function VisualizerToolbar(props: VisualizerToolbarProps) {
             <MoreIcon size={14} uniProps={iconColor} />
           </ToolbarButton>
           <DropdownMenuContent>
+            <DropdownMenuItem onSelect={useChatBackground}>Chat background</DropdownMenuItem>
             {toggles.map((item) => (
               <ToggleItem
                 key={item.key}
