@@ -108,7 +108,7 @@ function getPayload(message: Record<string, unknown>): Record<string, unknown> |
 interface ObservedTimelineEntry {
   seqStart: number;
   seqEnd: number;
-  item: { type: string };
+  item: { type: string; messageId?: unknown };
 }
 
 function readTimelineEntries(payload: Record<string, unknown>): ObservedTimelineEntry[] {
@@ -144,7 +144,14 @@ function recordOwnedTimelineEntries(
         entry.seqStart >= pageStartSeq &&
         entry.seqStart <= pageEndSeq);
     if (!belongsToPage) continue;
-    ownedEntries.set(`${entry.seqStart}:${entry.seqEnd}`, JSON.stringify(entry.item));
+    // OTTO(legacy-pagination): sequence ranges identify page ownership. Some
+    // older daemons return the same assistant message ID in more than one range.
+    const { type, messageId } = entry.item;
+    const id =
+      type === "assistant_message" && typeof messageId === "string" && messageId
+        ? `assistant:${messageId}`
+        : `sequence:${entry.seqStart}:${entry.seqEnd}`;
+    ownedEntries.set(id, JSON.stringify(entry.item));
   }
 }
 
