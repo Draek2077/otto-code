@@ -163,7 +163,9 @@ test.describe("New workspace Codex mode preferences", () => {
     }
   });
 
-  test("uses the live Codex agent mode as the next New Workspace default", async ({ page }) => {
+  test("keeps a live Codex permission change out of the next New Workspace draft", async ({
+    page,
+  }) => {
     const seeded = await seedWorkspace({ repoPrefix: "codex-live-mode-preferences-" });
     try {
       const model = await seedCodexDefaultPermissionPreferences(page, seeded.repoPath);
@@ -195,9 +197,11 @@ test.describe("New workspace Codex mode preferences", () => {
         projectDisplayName: seeded.projectDisplayName,
       });
 
+      // OTTO(agent-teams): active chat controls do not overwrite future draft preferences.
       await expect(
-        page.getByRole("button", { name: "Select agent mode (Full access)" }),
+        page.getByRole("button", { name: "Select agent mode (Default permissions)" }),
       ).toBeVisible({ timeout: 30_000 });
+      expect(await readCodexModePreference(page)).toBe("auto");
     } finally {
       await seeded.cleanup();
     }

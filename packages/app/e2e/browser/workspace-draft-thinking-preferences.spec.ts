@@ -10,6 +10,7 @@ import {
 } from "../support/helpers/command-center-agent-controls";
 import { openCommandCenter } from "../support/helpers/command-center";
 import { runWorkspaceActionFromCommandCenter } from "../support/helpers/command-center-workspace-actions";
+import { seedModelProvider } from "../support/helpers/agent-profiles";
 import { selectModel } from "../support/helpers/app";
 
 const DISABLE_DEFAULT_SEED_ONCE_KEY = "@otto:e2e-disable-default-seed-once";
@@ -147,6 +148,13 @@ test.describe("Workspace draft thinking preferences", () => {
     page,
   }) => {
     const workspace = await seedWorkspace({ repoPrefix: "draft-mode-preferences-" });
+    const alternate = await seedModelProvider({
+      id: "permission-mode-alternate",
+      label: "Mode alternate",
+      models: [
+        { id: "alternate-model", label: "Alternate model", description: "Preference fixture" },
+      ],
+    });
 
     try {
       await gotoWorkspace(page, workspace.workspaceId);
@@ -162,7 +170,7 @@ test.describe("Workspace draft thinking preferences", () => {
 
       await openNewAgentTab(page);
       await expectModeSelected(page, "Approval test");
-      await selectModel(page, "gpt-5.4-mini");
+      await selectModel(page, "Alternate model");
 
       await openNewAgentTab(page);
       await reloadWithPersistedPreferences(page);
@@ -170,6 +178,7 @@ test.describe("Workspace draft thinking preferences", () => {
 
       await expectModeSelected(page, "Approval test");
     } finally {
+      await alternate.restore();
       await workspace.cleanup();
     }
   });

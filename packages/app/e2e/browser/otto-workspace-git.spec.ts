@@ -5,6 +5,7 @@ import { test, expect } from "../support/fixtures";
 import { gotoAppShell, openSettings } from "../support/helpers/app";
 import { addConnectedHostAndReload } from "../support/helpers/hosts";
 import { selectSettingsHost } from "../support/helpers/settings";
+import { openChangesTreePanel } from "../support/helpers/workspace-tabs";
 import { openCommandCenter } from "../support/helpers/command-center";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import { startIsolatedHostDaemon } from "../support/helpers/isolated-host-daemon";
@@ -133,6 +134,8 @@ for (const compact of [false, true]) {
             await page.getByTestId("workspace-explorer-toggle").first().click();
           await expect(changes).toBeVisible();
           await changes.click();
+        } else {
+          await openChangesTreePanel(page);
         }
         const trigger = page
           .getByTestId("changes-overflow-menu")
