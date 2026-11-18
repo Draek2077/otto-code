@@ -13,10 +13,11 @@ test("Otto acceptance builds fresh declarations and partitions every Otto spec w
   assert.ok(source.indexOf("run: npm run build:server") < source.indexOf(command));
   assert.ok(source.includes("run: npm run build --workspace=@getpaseo/expo-two-way-audio"));
   assert.match(source, /E2E_WORKERS: "1"/);
-  assert.ok(source.includes('--shard="$OTTO_ACCEPTANCE_SHARD/2"'));
+  assert.ok(source.includes('--shard="$OTTO_ACCEPTANCE_SHARD/$OTTO_ACCEPTANCE_SHARD_COUNT"'));
+  assert.ok(source.includes("OTTO_ACCEPTANCE_SHARD_COUNT: ${{ strategy.job-total }}"));
   assert.ok(
     source.includes(
-      "shard: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.journey != 'all' && '[1]' || '[1,2]') }}",
+      "shard: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.journey != 'all' && '[1]' || '[1,2,3,4]') }}",
     ),
   );
   assert.match(source, /max-parallel: 2/);
