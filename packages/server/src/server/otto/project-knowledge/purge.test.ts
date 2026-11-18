@@ -126,7 +126,11 @@ it("preflights corrupt peer records without deleting or repairing files", async 
   await writeFile(f.confirmed.absolutePath, "Malformed preserved record");
   await expect(
     f.service.purge({ ...f.target, expectedRevision: f.page.revision, reason: "Approved" }),
-  ).rejects.toThrow("Unsupported");
+  ).rejects.toMatchObject({
+    message: expect.stringContaining("Its Markdown or timeline is invalid"),
+    cause: expect.objectContaining({ message: expect.stringContaining("Unsupported") }),
+  });
+  expect(await readFile(f.confirmed.absolutePath, "utf8")).toBe("Malformed preserved record");
   expect(await readFile(f.background)).toEqual(original);
   expect((await f.service.read(f.target)).revision).toBe(f.page.revision);
 });

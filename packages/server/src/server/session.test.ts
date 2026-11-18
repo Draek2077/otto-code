@@ -5562,9 +5562,11 @@ describe("agent config setters", () => {
 
   test("set_agent_model_request: success emits accepted response with no notice", async () => {
     const messages: SessionOutboundMessage[] = [];
+    // OTTO(agent-teams): choosing a raw model detaches the Profile through the serialized selector.
+    const selectChatProfile = vi.fn().mockResolvedValue(undefined);
     const session = createSessionForTest({
       messages,
-      agentManager: liveAgentManager({ setAgentModel: vi.fn().mockResolvedValue(undefined) }),
+      agentManager: liveAgentManager({ selectChatProfile }),
     });
 
     await session.handleMessage({
@@ -5574,6 +5576,7 @@ describe("agent config setters", () => {
       requestId: "req-model-ok",
     });
 
+    expect(selectChatProfile).toHaveBeenCalledWith("agent-1", null, "claude-opus-4-8");
     expect(messages).toEqual([
       {
         type: "set_agent_model_response",
@@ -5587,7 +5590,7 @@ describe("agent config setters", () => {
     const session = createSessionForTest({
       messages,
       agentManager: liveAgentManager({
-        setAgentModel: vi.fn().mockRejectedValue(new Error("model boom")),
+        selectChatProfile: vi.fn().mockRejectedValue(new Error("model boom")),
       }),
     });
 

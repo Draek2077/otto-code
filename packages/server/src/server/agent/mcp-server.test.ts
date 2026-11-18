@@ -6493,7 +6493,8 @@ describe("agent profile listing MCP tool", () => {
 
     const response = await tool.handler({});
 
-    expect(response.structuredContent).toEqual({ profiles });
+    // OTTO(agent-teams): existing Profiles with no assigned roles expose an empty role list.
+    expect(response.structuredContent).toEqual({ profiles: [{ ...profiles[0], roles: [] }] });
   });
 
   it("returns an empty array when no profiles are configured", async () => {

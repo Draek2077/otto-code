@@ -27,7 +27,7 @@ it("compiles the actual Architectural Views navigation and workspace bridge", as
   );
   const result = await compilePlugin({ client, server: null });
   expect(result.clientBundle).toContain("@getpaseo/plugin/client/otto-architectural-views");
-  expect(result.clientBundle).toContain("Open Architectural Views");
+  expect(result.clientBundle).toContain("Open Architecture");
   expect(result.serverBundle).toBeNull();
 }); // OTTO(architectural-views)
 it("compiles the real Schedules settings contribution through its client-only bridge", async () => {
