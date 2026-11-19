@@ -91,6 +91,9 @@ export async function runBrowserHistoryRegression({
 }) {
   if (process.platform !== "linux")
     throw Error("Native history dialog acceptance requires the CI-owned Linux/Xvfb lane.");
+  // The Visualizer regression moves tabs between splits. Select the browser
+  // explicitly so the history assertions start from its visible toolbar.
+  await page.getByTestId(`workspace-tab-browser_${browserId}`).filter({ visible: true }).click();
   const display = await ownedDisplay(inspectorPort);
   const visited = new URL(targetUrl);
   visited.searchParams.set("history-proof", "otto-owned-visit");
