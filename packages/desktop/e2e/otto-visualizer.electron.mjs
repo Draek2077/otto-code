@@ -13,7 +13,59 @@ async function guestIdentity(page) {
     return { id: guest.getWebContentsId(), ...status };
   });
 }
-export async function runVisualizerRegression({ page, setHidden, artifactDir }) {
+// OTTO(tab-drag): exercise the normal dnd-kit gesture over real Electron guests.
+async function dragTabOverGuest(page, tab, guest, position) {
+  const source = await tab.boundingBox();
+  const target = await guest.boundingBox();
+  if (!source || !target) throw new Error("The tab and guest must have visible bounds");
+  const start = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+  const drop = {
+    x: position === "right" ? target.x + target.width - 24 : target.x + target.width / 2,
+    y: target.y + target.height / 2,
+  };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 12, start.y, { steps: 3 });
+  const shield = page.getByTestId("workspace-tab-drag-layer");
+  const preview = page.locator("#overlay-root").getByTestId("workspace-tab-drop-preview");
+  await expect(shield).toBeVisible();
+  await page.mouse.move(drop.x, drop.y, { steps: 10 });
+  await expect(preview).toBeVisible();
+  expect(
+    await shield.evaluate((layer, { x, y }) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit === layer || hit?.parentElement === layer.parentElement;
+    }, drop),
+  ).toBe(true);
+  if (position === "cancel") await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(shield).toHaveCount(0);
+  await expect(preview).toHaveCount(0);
+}
+
+async function expectTabDragAcrossGuests(page, browserId, visualizerTab, visualizerGuest) {
+  const browserTab = page
+    .getByTestId(`workspace-tab-browser_${browserId}`)
+    .filter({ visible: true });
+  const browserGuest = page.locator(`webview[data-paseo-browser-id="${browserId}"]`);
+  const browserContentsId = await browserGuest.evaluate((guest) => guest.getWebContentsId());
+  const panes = page.getByTestId(/^workspace-pane-/).filter({ visible: true });
+  const visualizerPane = panes.filter({ has: visualizerTab });
+  await dragTabOverGuest(page, browserTab, visualizerGuest, "right");
+  await expect(visualizerPane.getByTestId(`workspace-tab-browser_${browserId}`)).toHaveCount(0);
+
+  const browserPane = panes.filter({ has: browserTab });
+  await expect(browserPane).toBeVisible();
+  await expect(browserGuest.locator("..")).toHaveAttribute("aria-hidden", "false");
+  await expect(browserGuest).toBeVisible();
+  await dragTabOverGuest(page, visualizerTab, browserGuest, "cancel");
+  await expect(browserPane.filter({ has: visualizerTab })).toHaveCount(0);
+  await dragTabOverGuest(page, visualizerTab, browserGuest, "center");
+  await expect(browserPane.filter({ has: visualizerTab })).toBeVisible();
+  expect(await browserGuest.evaluate((guest) => guest.getWebContentsId())).toBe(browserContentsId);
+}
+
+export async function runVisualizerRegression({ page, setHidden, artifactDir, browserId }) {
   // This is an external observer of the actual production webview guest. It
   // shares the existing CI-owned daemon/Metro/Electron runner and browser pane.
   await page.keyboard.press("Escape");
@@ -67,6 +119,7 @@ export async function runVisualizerRegression({ page, setHidden, artifactDir }) 
     .locator('[data-testid^="workspace-tab-plugin_workspace_15_otto-visualizer"]')
     .filter({ visible: true })
     .first();
+  await expectTabDragAcrossGuests(page, browserId, tab, guest);
   await tab.click({ button: "right" });
   await page
     .getByTestId("workspace-tab-context-plugin_workspace_15_otto-visualizer_10_visualizer-close")
@@ -77,6 +130,7 @@ export async function runVisualizerRegression({ page, setHidden, artifactDir }) 
     offlinePolicy: "passed",
     windowVisibility: "passed",
     handoff: "passed",
+    workspaceTabDragAcrossGuests: "passed",
     retiredWebContents: first.id,
   };
 }

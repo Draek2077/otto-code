@@ -64,6 +64,7 @@ import {
   resolveSplitDropPosition,
   type SplitDropZoneHover,
 } from "@/components/split-drop-zone";
+import { WorkspaceTabDragLayer } from "@/otto/workspace/tab-drag-layer"; // OTTO(tab-drag): foreground gesture ownership.
 import {
   deriveWorkspacePaneState,
   getWorkspacePaneDescriptors,
@@ -738,16 +739,18 @@ export function SplitContainer({
             </>
           ) : null}
         </View>
-        <DragOverlay dropAnimation={null}>
-          {activeDragTabId ? (
-            <DragOverlayTabChip
-              tabId={activeDragTabId}
-              uiTabs={uiTabs}
-              normalizedServerId={normalizedServerId}
-              normalizedWorkspaceId={normalizedWorkspaceId}
-            />
-          ) : null}
-        </DragOverlay>
+        <WorkspaceTabDragLayer active={activeDragTabId !== null}>
+          <DragOverlay dropAnimation={null}>
+            {activeDragTabId ? (
+              <DragOverlayTabChip
+                tabId={activeDragTabId}
+                uiTabs={uiTabs}
+                normalizedServerId={normalizedServerId}
+                normalizedWorkspaceId={normalizedWorkspaceId}
+              />
+            ) : null}
+          </DragOverlay>
+        </WorkspaceTabDragLayer>
       </DndContext>
     </RenderProfile>
   );

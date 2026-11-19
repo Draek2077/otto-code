@@ -72,3 +72,57 @@ for (const compact of [false, true]) {
     }
   });
 }
+
+// OTTO(tab-drag): an interactive, cross-origin Visualizer frame cannot own the
+// pointer during a workspace drag. Hit detection must still split the real pane.
+test("workspace tab drop stays above the interactive Visualizer", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  const agent = await seedMockAgentWorkspace({
+    repoPrefix: "visualizer-tab-drag-",
+    title: "Tab to split",
+  });
+  try {
+    await openAgentRoute(page, agent);
+    const tab = page.getByTestId(`workspace-tab-agent_${agent.agentId}`).filter({ visible: true });
+    await expect(tab).toBeVisible();
+    await page.getByTestId("workspace-visualizer-button").filter({ visible: true }).click();
+    const frame = page.locator('iframe[title="Visualizer"]').filter({ visible: true });
+    await expect(
+      frame
+        .contentFrame()
+        .frameLocator('iframe[title="Visualizer content"]')
+        .locator("canvas")
+        .first(),
+    ).toBeVisible({ timeout: 30_000 });
+    const targetPane = page.getByTestId(/^workspace-pane-/).filter({ has: frame });
+    const source = await tab.boundingBox();
+    const target = await frame.boundingBox();
+    if (!source || !target) throw new Error("The tab and Visualizer must have visible bounds");
+    const start = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+    const drop = { x: target.x + target.width - 24, y: target.y + target.height / 2 };
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 12, start.y, { steps: 3 });
+    const shield = page.getByTestId("workspace-tab-drag-layer");
+    await expect(shield).toBeVisible();
+    await page.mouse.move(drop.x, drop.y, { steps: 10 });
+    const preview = page.getByTestId("workspace-tab-drop-preview");
+    await expect(preview).toBeVisible();
+    await expect(preview).toHaveCSS("pointer-events", "none");
+    expect(
+      await shield.evaluate((layer, { x, y }) => {
+        const hit = document.elementFromPoint(x, y);
+        return hit === layer || hit?.parentElement === layer.parentElement;
+      }, drop),
+    ).toBe(true);
+    await page.mouse.up();
+    await expect(shield).toHaveCount(0);
+    await expect(preview).toHaveCount(0);
+    await expect(targetPane).toBeVisible();
+    await expect(targetPane.getByTestId(`workspace-tab-agent_${agent.agentId}`)).toHaveCount(0);
+    await expect(tab).toBeVisible();
+  } finally {
+    await page.close();
+    await agent.cleanup();
+  }
+});

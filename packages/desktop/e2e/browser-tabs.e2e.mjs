@@ -1263,6 +1263,7 @@ async function main() {
       page,
       setHidden: (hidden) => setWindowHidden(inspectorPort, hidden),
       artifactDir,
+      browserId: report.browserId, // OTTO(tab-drag): verify both real drop destinations.
     });
     const history = await runBrowserHistoryRegression({
       page,

@@ -1,7 +1,8 @@
 import { useMemo, type Ref } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { View } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
+import { WorkspaceTabDropLayer } from "@/otto/workspace/tab-drag-layer"; // OTTO(tab-drag): paint the dock preview above guest surfaces.
 
 export type SplitDropZonePosition = "center" | "left" | "right" | "top" | "bottom";
 
@@ -24,7 +25,6 @@ export function buildSplitDropZoneId(paneId: string): string {
 }
 
 export function SplitDropZone({ paneId, active, preview }: SplitDropZoneProps) {
-  const { theme } = useUnistyles();
   const { setNodeRef } = useDroppable({
     id: buildSplitDropZoneId(paneId),
     disabled: !active,
@@ -39,23 +39,10 @@ export function SplitDropZone({ paneId, active, preview }: SplitDropZoneProps) {
       return null;
     }
     return {
-      overlay: [
-        styles.previewOverlay,
-        getPreviewOverlayStyle(preview.position),
-        {
-          backgroundColor: theme.colors.accent,
-          opacity: 0.6,
-        },
-      ],
-      frame: [
-        styles.previewFrame,
-        getPreviewFrameStyle(preview.position),
-        {
-          borderColor: theme.colors.accent,
-        },
-      ],
+      overlay: [styles.previewOverlay, getPreviewOverlayStyle(preview.position)],
+      frame: [styles.previewFrame, getPreviewFrameStyle(preview.position)],
     };
-  }, [paneId, preview, theme.colors.accent]);
+  }, [paneId, preview]);
 
   if (!active) {
     return null;
@@ -64,10 +51,10 @@ export function SplitDropZone({ paneId, active, preview }: SplitDropZoneProps) {
   return (
     <View ref={setNodeRef as unknown as Ref<View>} style={styles.overlay} pointerEvents="none">
       {previewStyles ? (
-        <>
+        <WorkspaceTabDropLayer>
           <View pointerEvents="none" style={previewStyles.overlay} />
           <View pointerEvents="none" style={previewStyles.frame} />
-        </>
+        </WorkspaceTabDropLayer>
       ) : null}
     </View>
   );
@@ -152,10 +139,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   previewOverlay: {
     position: "absolute",
+    backgroundColor: theme.colors.accent,
+    opacity: 0.6,
     borderRadius: theme.borderRadius.md,
   },
   previewFrame: {
     position: "absolute",
+    borderColor: theme.colors.accent,
     borderRadius: theme.borderRadius.md,
     borderWidth: 2,
   },

@@ -13,6 +13,15 @@ guest lifetime, trusted input and Electron capture remain in their existing owne
 The daemon declares Playwright core at the repository's pinned version; installing
 that library does not download a browser or launch a runtime.
 
+## Workspace tab drags
+
+On desktop, the foreground overlay plane owns the drag chip and pane split
+preview. A pointer shield exists only while a workspace tab is being dragged.
+It keeps movement and release in the app document across Browser webviews and
+Visualizer frames. Paseo still resolves and applies the drop using the pane
+rectangles. On drop or cancellation the shield releases input to the existing
+guests.
+
 ## Host paint transport
 
 Host paint packets use application opcode `0x20` inside the existing encrypted
