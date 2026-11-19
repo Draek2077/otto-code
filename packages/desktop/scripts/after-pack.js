@@ -122,6 +122,8 @@ exports.default = async function afterPack(context) {
       : path.join(context.appOutDir, "resources"),
   );
 
+  // OTTO(zoom-recorder): x64 Windows and Linux must ship a usable native helper.
+  require("./otto/verify-zoom-recorder.js").verifyZoomRecorder(context.appOutDir, platform, arch);
   pruneNativeModules(context.appOutDir, platform, arch);
 
   if (platform === "linux") {

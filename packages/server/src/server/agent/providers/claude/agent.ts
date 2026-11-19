@@ -2195,6 +2195,15 @@ class ClaudeContextUsageState {
 }
 
 class ClaudeAgentSession implements AgentSession {
+  // OTTO(observed-subagents): existing query only, never resume or interrupt the parent.
+  async ottoStopObservedSubagent(subagentId: string): Promise<void> {
+    const query = this.query;
+    const taskId = this.taskProtocolSource.runningTaskId(subagentId);
+    if (this.closed || !query || !taskId || typeof query.stopTask !== "function") {
+      throw new Error("This provider subagent is no longer stoppable.");
+    }
+    await query.stopTask(taskId);
+  }
   readonly provider = "claude" as const;
   readonly capabilities = CLAUDE_CAPABILITIES;
 

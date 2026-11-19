@@ -9,6 +9,8 @@ export const ottoBuiltinPlugins = [
   "otto-artifacts",
   "otto-architectural-views",
   "otto-visualizer",
+  "otto-widgets",
+  "otto-suggested-tasks",
   "otto-speech",
   "otto-terminal",
   "otto-editor",
@@ -17,7 +19,7 @@ export const ottoBuiltinPlugins = [
 ] as const;
 
 /** Essential daemon routes are reserved identities, without a plugin module/worker to load. */
-const ottoHostRpcIds = ["otto-workspace-git"] as const;
+const ottoHostRpcIds = ["otto-workspace-git", "otto-observed-subagents"] as const;
 export function withOttoHostRpcIds(pluginIds: ReadonlySet<string>): ReadonlySet<string> {
   return new Set([...pluginIds, ...ottoHostRpcIds]);
 }

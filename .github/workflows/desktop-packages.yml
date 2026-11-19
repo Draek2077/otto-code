@@ -63,6 +63,7 @@ jobs:
 
       # OTTO(editor): every server/desktop artifact includes the portable solution payload.
       - uses: ./.github/actions/otto-editor-dotnet
+      - uses: ./.github/actions/otto-zoom-recorder # OTTO(zoom-recorder)
       - name: Build Linux desktop artifacts
         # Smoke package contents and installation without spending minutes on xz compression.
         run: |

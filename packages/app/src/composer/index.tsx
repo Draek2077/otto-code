@@ -1,4 +1,5 @@
 import { SpeechChatToggle } from "@/otto/speech/chat-toggle"; // OTTO(speech): per-chat auto-read, independent of composer delivery.
+import { useWidgetComposerDraft } from "@/otto/widgets/composer-draft"; // OTTO(widgets)
 import {
   useComposerEditingSession,
   useComposerFullscreen,
@@ -1401,6 +1402,14 @@ function ComposerContentImpl({
     },
     [onChangeText],
   );
+
+  useWidgetComposerDraft({
+    serverId,
+    agentId,
+    writable: inputMode === "chat" && isConnected && !readOnly && !isComposerLocked,
+    textSource,
+    replaceText: replaceUserInput,
+  }); // OTTO(widgets): normal edit and submit ownership.
 
   const runClientSlashCommand = useCallback(
     (command: ClientSlashCommand): boolean => {

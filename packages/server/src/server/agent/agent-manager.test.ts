@@ -4535,6 +4535,54 @@ test("reloadAgentSession preserves timeline and does not force history replay", 
   expect(afterHydrate).toEqual(beforeReload);
 });
 
+// OTTO(observed-subagents): only a matching, live child from this workspace can stop.
+test("observed child stop cannot target another parent, workspace, or completed child", async () => {
+  const cwd = process.cwd();
+  const stop = vi.fn(async (_childId: string) => {});
+  const session = Object.assign(new TestAgentSession({ provider: "codex", cwd }), {
+    ottoStopObservedSubagent: stop,
+  });
+  const interrupt = vi.spyOn(session, "interrupt");
+  const client = new TestAgentClient();
+  vi.spyOn(client, "createSession").mockResolvedValueOnce(session);
+  const manager = new AgentManager({ clients: { codex: client }, logger });
+  const parent = await manager.createAgent({ provider: "codex", cwd }, undefined, {
+    workspaceId: "workspace-a",
+  });
+  const other = await manager.createAgent({ provider: "codex", cwd }, undefined, {
+    workspaceId: "workspace-a",
+  });
+  try {
+    session.pushEvent({
+      type: "provider_subagent",
+      provider: "codex",
+      event: { type: "upsert", id: "child", status: "running" },
+    });
+    await vi.waitFor(() => expect(manager.listProviderSubagents(parent.id)).toHaveLength(1));
+
+    await expect(manager.stopObservedSubagent(other.id, "child", "workspace-a")).rejects.toThrow();
+    await expect(manager.stopObservedSubagent(parent.id, "child", "workspace-b")).rejects.toThrow();
+    expect(stop).not.toHaveBeenCalled();
+    await manager.stopObservedSubagent(parent.id, "child", "workspace-a");
+    expect(stop).toHaveBeenCalledExactlyOnceWith("child");
+    expect(interrupt).not.toHaveBeenCalled();
+
+    session.pushEvent({
+      type: "provider_subagent",
+      provider: "codex",
+      event: { type: "upsert", id: "child", status: "completed" },
+    });
+    await vi.waitFor(() =>
+      expect(manager.getProviderSubagent(parent.id, "child")?.status).toBe("completed"),
+    );
+    await expect(manager.stopObservedSubagent(parent.id, "child", "workspace-a")).rejects.toThrow();
+    expect(stop).toHaveBeenCalledTimes(1);
+  } finally {
+    await manager.closeAgent(parent.id);
+    await manager.closeAgent(other.id);
+  }
+});
+
 test("reloadAgentSession clears provider children before rehydrating from disk", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-provider-child-reload-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);

@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
 import { ChatSearchService } from "./service.js";
 import { projectSearchMessages } from "./messages.js";
 import type { SearchChat } from "./types.js";
 import type { AgentTimelineRow } from "../../../agent/agent-timeline-store-types.js";
+
+const allProviders = () => true;
 
 const recent: SearchChat = {
   id: "recent",
@@ -33,6 +35,7 @@ function row(text: string): AgentTimelineRow {
 
 async function withSearch(
   run: (input: { home: string; service: ChatSearchService; chats: SearchChat[] }) => Promise<void>,
+  offlineHistory?: import("./backfill.js").OfflineHistoryReader,
 ) {
   const home = await mkdtemp(join(tmpdir(), "otto-chat-search-test-"));
   const chats = [recent, legacy];
@@ -41,6 +44,7 @@ async function withSearch(
     logger: createTestLogger(),
     snapshot: () => null,
     list: async () => chats,
+    offlineHistory,
   });
   try {
     await run({ home, service, chats });
@@ -114,4 +118,53 @@ test("replaces stale keys on rewrite and clears only the intentionally removed s
     expect(deleted.hits).toEqual([]);
     expect(deleted.coverage).toMatchObject({ indexed: 0, unavailable: 2 });
   });
+});
+
+test("the query does not wait for offline files, then finds recovered messages in the same index", async () => {
+  let recover!: (rows: AgentTimelineRow[]) => void;
+  const read = vi.fn(
+    () =>
+      new Promise<AgentTimelineRow[]>((resolve) => {
+        recover = resolve;
+      }),
+  );
+  await withSearch(
+    async ({ service }) => {
+      const initial = await service.search({ query: "river", archive: "archived" }, () => true);
+      expect(initial.hits).toEqual([]);
+      expect(read).toHaveBeenCalledTimes(1);
+      recover([row("river archive fixture")]);
+      await vi.waitFor(
+        async () => {
+          const found = await service.search({ query: "river" }, allProviders);
+          expect(found.hits).toMatchObject([{ id: legacy.id }]);
+        },
+        { timeout: 5000 },
+      );
+      expect(read).toHaveBeenCalledTimes(1);
+    },
+    { supports: (provider) => provider === "codex", read },
+  );
+});
+
+test("forget cancels an in-flight backfill before it can recreate a deleted chat", async () => {
+  let recover!: (rows: AgentTimelineRow[]) => void;
+  const read = vi.fn(
+    (_chat: SearchChat, _signal: AbortSignal) =>
+      new Promise<AgentTimelineRow[]>((resolve) => {
+        recover = resolve;
+      }),
+  );
+  await withSearch(
+    async ({ service, chats }) => {
+      await service.search({ query: "private" }, () => true);
+      const signal = read.mock.calls[0][1];
+      chats.pop();
+      await service.forget(legacy.id);
+      expect(signal.aborted).toBe(true);
+      recover([row("private removed transcript")]);
+      expect((await service.search({ query: "private" }, () => true)).hits).toEqual([]);
+    },
+    { supports: (provider) => provider === "codex", read },
+  );
 });

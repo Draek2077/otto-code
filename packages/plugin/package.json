@@ -183,6 +183,21 @@
       "source": "./src/client/otto-architectural-views.ts",
       "default": "./dist/client/otto-architectural-views.js"
     },
+    "./client/otto-suggested-tasks": {
+      "types": "./dist/client/otto-suggested-tasks.d.ts",
+      "source": "./src/client/otto-suggested-tasks.ts",
+      "default": "./dist/client/otto-suggested-tasks.js"
+    },
+    "./otto/suggested-task": {
+      "types": "./dist/otto/suggested-task.d.ts",
+      "source": "./src/otto/suggested-task.ts",
+      "default": "./dist/otto/suggested-task.js"
+    },
+    "./client/otto-widgets": {
+      "types": "./dist/client/otto-widgets.d.ts",
+      "source": "./src/client/otto-widgets.ts",
+      "default": "./dist/client/otto-widgets.js"
+    },
     "./client/otto-visualizer": {
       "types": "./dist/client/otto-visualizer.d.ts",
       "source": "./src/client/otto-visualizer.ts",

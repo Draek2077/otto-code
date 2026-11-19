@@ -3,6 +3,7 @@ import { getElectronHost } from "@/desktop/electron/host";
 import type { BrowserKeyboardPolicy } from "@/desktop/browser/shortcuts";
 import type { BrowserFaviconLookup } from "@/otto/browser/favicon-cache"; // OTTO(browser-favicon)
 import type { WakeWordBridge } from "@/otto/speech/wake/bridge"; // OTTO(wake-word)
+import type { ZoomRecorderBridge } from "@/otto/zoom-recorder/bridge"; // OTTO(zoom-recorder)
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 type BrowserAutomationExecuteRequest = Extract<
@@ -179,6 +180,7 @@ export interface DesktopInvokeBridge {
 export interface DesktopHostBridge {
   documentExport?: { print(html: string): Promise<string> }; // OTTO(editor): optional only until the desktop shell is updated.
   wakeWord?: WakeWordBridge; // OTTO(wake-word): private device IPC, never relay identity.
+  zoomRecorder?: ZoomRecorderBridge; // OTTO(zoom-recorder): host-local capture and transcript library.
   // OTTO(visualizer): the native owner can hide while Chromium still considers the page visible.
   visualizerWindow?: { getSnapshot(): boolean; subscribe(listener: () => void): () => void };
   platform?: string;

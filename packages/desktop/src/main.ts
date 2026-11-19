@@ -53,6 +53,11 @@ import { showWindowWhenReady } from "./window/show-when-ready.js";
 import { resolveDesktopWindowChromeMode, windowChromeModeArgument } from "./window/chrome.js";
 import { registerDialogHandlers } from "./features/dialogs.js";
 import { registerWakeWordHandlers } from "./otto/speech/wake-word.js"; // OTTO(wake-word)
+import {
+  registerZoomRecorderHandlers,
+  restoreZoomRecorderPreference,
+  shutdownZoomRecorderForQuit,
+} from "./otto/zoom-recorder/zoom-recorder.js"; // OTTO(zoom-recorder)
 import { registerEditorPrint } from "./otto/editor/print.js"; // OTTO(editor)
 import {
   VISUALIZER_PARTITION,
@@ -62,6 +67,13 @@ import {
   hardenVisualizerContents,
 } from "./otto/visualizer/guest.js"; // OTTO(visualizer): isolated offline render guest, never a browser profile.
 import { attachVisualizerWindowVisibility } from "./otto/visualizer/window-visibility.js"; // OTTO(visualizer)
+import {
+  hardenWidgetWebviewPreferences,
+  isWidgetWebviewAttach,
+  lockDownWidgetWebviewContents,
+  registerWidgetWebviewSessionGuards,
+  WIDGET_WEBVIEW_PARTITION,
+} from "./otto/widgets/widget-webview.js"; // OTTO(widgets)
 import {
   registerNotificationHandlers,
   ensureNotificationCenterRegistration,
@@ -788,6 +800,14 @@ async function createWindow(
       hardenVisualizerSession(session.fromPartition(VISUALIZER_PARTITION));
       return;
     }
+    // OTTO(widgets): the fixed, offline guest receives its own sandboxed preload.
+    if (isWidgetWebviewAttach(params)) {
+      delete params.preload;
+      delete (params as { preloadURL?: string }).preloadURL;
+      hardenWidgetWebviewPreferences(webPreferences);
+      registerWidgetWebviewSessionGuards();
+      return;
+    }
     if (!isPaseoBrowserWebviewAttach(params)) {
       event.preventDefault();
       return;
@@ -812,6 +832,11 @@ async function createWindow(
     // OTTO(visualizer): do not register the render guest as an automatable browser.
     if (contents.session === session.fromPartition(VISUALIZER_PARTITION)) {
       hardenVisualizerContents(contents);
+      return;
+    }
+    // OTTO(widgets): private render guests are outside Browser tools.
+    if (contents.session === session.fromPartition(WIDGET_WEBVIEW_PARTITION)) {
+      lockDownWidgetWebviewContents(contents);
       return;
     }
     preparePaseoBrowserWebContents(contents);
@@ -1021,6 +1046,23 @@ async function bootstrap(): Promise<void> {
   registerWindowManager({ mode: DESKTOP_WINDOW_CHROME_MODE });
   registerDialogHandlers();
   registerWakeWordHandlers(); // OTTO(wake-word): device-local opt-in listener.
+  // OTTO(zoom-recorder): only the main frame of an app-owned window may read notes or arm capture.
+  registerZoomRecorderHandlers({
+    isTrustedSender: (event) => {
+      if (
+        event.senderFrame !== event.sender.mainFrame ||
+        !BrowserWindow.fromWebContents(event.sender)
+      ) {
+        return false;
+      }
+      const url = new URL(event.senderFrame.url);
+      return (
+        (url.protocol === `${APP_SCHEME}:` && url.host === "app") ||
+        (!app.isPackaged && url.origin === new URL(DEV_SERVER_URL).origin)
+      );
+    },
+  });
+  restoreZoomRecorderPreference();
   registerEditorPrint(); // OTTO(editor): explicit export, no startup child/window.
   registerNotificationHandlers();
   const openExternalUrl = createExternalUrlOpener({ open: shell.openExternal });
@@ -1091,13 +1133,19 @@ function showDaemonShutdownDialog(): void {
 const quitLifecycle = createQuitLifecycle({
   app,
   closeTransportSessions: closeAllTransportSessions,
-  stopDesktopManagedDaemonIfNeeded: () =>
-    stopDesktopManagedDaemonOnQuitIfNeeded({
-      settingsStore: getDesktopSettingsStore(),
-      isDesktopManagedDaemonRunning: isDesktopManagedDaemonRunningSync,
-      stopDaemon: () => stopDesktopDaemonViaCli("quit"),
-      showShutdownFeedback: showDaemonShutdownDialog,
-    }),
+  stopDesktopManagedDaemonIfNeeded: async () => {
+    // OTTO(zoom-recorder): stop only this app's helper alongside the ordinary daemon quit.
+    const [, daemonStopped] = await Promise.all([
+      shutdownZoomRecorderForQuit(),
+      stopDesktopManagedDaemonOnQuitIfNeeded({
+        settingsStore: getDesktopSettingsStore(),
+        isDesktopManagedDaemonRunning: isDesktopManagedDaemonRunningSync,
+        stopDaemon: () => stopDesktopDaemonViaCli("quit"),
+        showShutdownFeedback: showDaemonShutdownDialog,
+      }),
+    ]);
+    return daemonStopped;
+  },
   installAppUpdateOnQuit: async (signal) => {
     const settings = await getDesktopSettingsStore().get();
     return installAppUpdateOnQuit({

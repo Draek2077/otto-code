@@ -59,6 +59,18 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     audio: (pcm: string) => ipcRenderer.invoke("otto:wake-word:audio", { pcm }),
     stop: () => ipcRenderer.invoke("otto:wake-word:stop"),
   },
+  // OTTO(zoom-recorder): fixed channels in the sandboxed preload.
+  zoomRecorder: {
+    status: () => ipcRenderer.invoke("otto:zoom-recorder:status"),
+    enable: () => ipcRenderer.invoke("otto:zoom-recorder:enable"),
+    disable: () => ipcRenderer.invoke("otto:zoom-recorder:disable"),
+    deleteModel: () => ipcRenderer.invoke("otto:zoom-recorder:delete-model"),
+    listTranscripts: () => ipcRenderer.invoke("otto:meeting-transcripts:local:list"),
+    updateTranscript: (input: { id: string; title?: string; content?: string }) =>
+      ipcRenderer.invoke("otto:meeting-transcripts:local:update", input),
+    deleteTranscript: (id: string) =>
+      ipcRenderer.invoke("otto:meeting-transcripts:local:delete", id),
+  },
   platform: process.platform,
   windowChromeMode: readWindowChromeMode(),
   invoke: (command: string, args?: Record<string, unknown>) =>

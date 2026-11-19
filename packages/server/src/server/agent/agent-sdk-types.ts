@@ -670,6 +670,8 @@ export interface AgentUsageSession {
 }
 
 export interface AgentSession {
+  /** OTTO(observed-subagents): optional, exact live-provider task control. */
+  ottoStopObservedSubagent?(subagentId: string): Promise<void>;
   usageSession?(): AgentUsageSession | null;
   readonly provider: AgentProvider;
   readonly id: string | null;

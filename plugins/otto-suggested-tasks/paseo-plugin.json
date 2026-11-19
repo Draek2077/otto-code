@@ -1,0 +1,5 @@
+{
+  "id": "otto-suggested-tasks",
+  "name": "Suggested Tasks",
+  "requirements": { "paseo": ">=0.12.0" }
+}

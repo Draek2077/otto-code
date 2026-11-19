@@ -247,6 +247,18 @@ export class ClaudeTaskProtocolSource {
     );
   }
 
+  // OTTO(observed-subagents): use only a live task id announced by this query.
+  runningTaskId(subagentId: string): string | null {
+    if (this.lastStatusById.get(subagentId) !== "running") return null;
+    let match: string | null = null;
+    for (const [taskId, id] of this.subagentIdByTaskId) {
+      if (id !== subagentId) continue;
+      if (match !== null) return null;
+      match = taskId;
+    }
+    return match;
+  }
+
   needsSyntheticParentToolCard(subagentId: string): boolean {
     return !this.idsWithExistingParentToolCard.has(subagentId);
   }

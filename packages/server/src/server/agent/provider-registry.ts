@@ -457,6 +457,7 @@ export function wrapSessionProvider(provider: AgentProvider, inner: AgentSession
     run: (prompt, options) => inner.run(prompt, options),
     startTurn: (prompt, options) => inner.startTurn(prompt, options),
     steerActiveTurn: inner.steerActiveTurn?.bind(inner),
+    ottoStopObservedSubagent: inner.ottoStopObservedSubagent?.bind(inner), // OTTO(observed-subagents)
     subscribe: (callback) => inner.subscribe((event) => callback(mapStreamEvent(provider, event))),
     async *streamHistory() {
       for await (const event of inner.streamHistory()) {

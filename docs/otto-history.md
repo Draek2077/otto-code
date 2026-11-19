@@ -11,8 +11,11 @@ the app displays. It batches changes and runs tokenization, source writes, and
 SQLite full-text search on one worker per host. It also reads Otto 0.9's verified
 `chat-search/sources` files. The index is derived; older index and timeline files
 are left in place on upgrade. Indexing does not open chats or start a provider.
-When a closed chat has neither retained search text nor a locally available
-source, the search reports incomplete coverage. Opening a result uses the
+A search can queue bounded recovery from closed Claude, Pi, or Oh My Pi chats
+with locally readable native transcript files. The query returns the current
+index while the daemon checks one file at a time. Backfill reads no active
+session or provider connection, and retained complete sources take precedence.
+Other missing sources are reported as incomplete coverage. Opening a result uses the
 normal chat loader, then resolves a stable message key against the current
 timeline epoch before the viewport moves.
 

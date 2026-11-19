@@ -132,6 +132,8 @@ import type { RetainedToolPolicy } from "../../otto/retained-tool-policy.js"; //
 import { registerWorkflowTools, type WorkflowToolPorts } from "../../otto/workflows/tools.js"; // OTTO(workflows): private execution tools and access ceilings stay feature-owned.
 import { requirePaseoSchedule } from "../../otto/schedules/legacy.js"; // OTTO(schedules): preserve the legacy tool response contract.
 import { registerScheduleTools } from "../../otto/schedules/tools.js"; // OTTO(schedules): progressively discovered, scoped owned operations.
+import { registerWidgetsTools } from "../../otto/widgets/register-tools.js"; // OTTO(widgets)
+import { registerSuggestedTaskTools } from "../../otto/suggested-tasks/host.js"; // OTTO(suggested-tasks)
 import type { ScheduleDaemonService } from "../../otto/schedules/service.js"; // OTTO(schedules)
 
 export interface PaseoToolHostDependencies {
@@ -3428,6 +3430,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     callerAgentId,
     policy: options.paseoToolPolicy,
   });
+  registerWidgetsTools({ registerTool }); // OTTO(widgets): common provider tool catalog.
+  registerSuggestedTaskTools(registerTool, agentManager, callerAgentId); // OTTO(suggested-tasks)
   // OTTO(workflows): normal catalogs only; reserve first, recheck live authority on every invocation.
   registerScheduleTools(
     tools,

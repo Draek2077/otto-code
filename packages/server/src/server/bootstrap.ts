@@ -149,6 +149,9 @@ import { SpeechHost } from "./otto/speech/host.js"; // OTTO(speech)
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { ChatSearchService } from "./otto/history/search/service.js"; // OTTO(chat-search)
+import { createOfflineHistoryReader } from "./otto/history/search/offline-history.js"; // OTTO(chat-search)
+import { stopObservedSubagent } from "./otto/observed-subagents/host.js"; // OTTO(observed-subagents)
+import { dispatchSuggestion } from "./otto/suggested-tasks/host.js"; // OTTO(suggested-tasks)
 import { listSearchChats } from "./otto/history/search/host.js"; // OTTO(chat-search)
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
@@ -707,7 +710,10 @@ export async function createPaseoDaemon(
   ); // OTTO(editor): reuse Paseo PTYs and active workspace identity.
   // OTTO(feature-host): one registry of shared built-in owners; no dispatch growth in Paseo's session path.
   const ottoRoutes: Readonly<Record<string, OttoBuiltinRoute>> = {
+    "otto-observed-subagents": (method, input) => stopObservedSubagent(agentManager, method, input), // OTTO(observed-subagents)
     "otto-workflows": (method, input) => ottoWorkflows?.invoke(method, input), // OTTO(workflows)
+    "otto-suggested-tasks": (method, input) =>
+      dispatchSuggestion({ agentManager, agentStorage, createAgent, logger }, method, input), // OTTO(suggested-tasks)
     "otto-schedules": (method, input) => ottoSchedules?.invoke(method, input), // OTTO(schedules)
     "otto-editor": (method, input, clientId) =>
       ottoTerminalEditor.invoke(method, input) ?? ottoEditor.invoke(method, input, clientId), // OTTO(editor)
@@ -727,6 +733,14 @@ export async function createPaseoDaemon(
     "otto-project-knowledge": (method, input, clientId) =>
       ottoContext?.invoke(method, input) ?? ottoKnowledge?.invoke(method, input, clientId),
   };
+  // OTTO(feature-host): these routes have no optional runtime dependency.
+  const permanentOttoRoutes = new Set([
+    "otto-editor",
+    "otto-terminal",
+    "otto-brain",
+    "otto-observed-subagents",
+    "otto-suggested-tasks",
+  ]);
   const pluginRuntime: PluginService = new PluginService(
     logger,
     daemonConfigStore,
@@ -747,12 +761,10 @@ export async function createPaseoDaemon(
         has: (pluginId) =>
           (pluginId === "otto-workflows" && ottoWorkflows !== null) || // OTTO(workflows)
           (pluginId === "otto-schedules" && ottoSchedules !== null) || // OTTO(schedules)
-          pluginId === "otto-editor" || // OTTO(editor)
-          pluginId === "otto-terminal" || // OTTO(terminal)
+          permanentOttoRoutes.has(pluginId) || // OTTO(feature-host)
           (pluginId === "otto-workspace-git" && ottoWorkspaceGit !== null) || // OTTO(git-fetch)
           (pluginId === "otto-speech" && ottoSpeech !== null) || // OTTO(speech)
           documentBuiltinAvailable(pluginId, ottoArtifacts, ottoViews) || // OTTO(architectural-views): no renderer assets, no capability.
-          pluginId === "otto-brain" ||
           (pluginId === "otto-browser" && ottoBrowserHistory !== null) || // OTTO(browser-history)
           (pluginId === "otto-kanban" && ottoKanban !== null) ||
           (pluginId === "otto-integrations" && ottoIntegrations !== null) ||
@@ -1227,6 +1239,7 @@ export async function createPaseoDaemon(
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
   // OTTO(chat-search): one index per host, started only by a real capture or query.
   const ottoChatSearch = new ChatSearchService({
+    offlineHistory: createOfflineHistoryReader(agentStorage), // OTTO(chat-search): bounded native reads on explicit search.
     home: config.paseoHome,
     logger,
     snapshot: (id): import("./otto/history/search/service.js").SearchTimeline | null =>

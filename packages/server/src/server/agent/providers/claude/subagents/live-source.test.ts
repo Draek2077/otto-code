@@ -751,3 +751,17 @@ describe("ClaudeTaskProtocolSource effort from hooks", () => {
     expect(source.observeHook({ agent_id: 42, effort: { level: 7 } } as never)).toEqual([]);
   });
 });
+
+// OTTO(observed-subagents): a stop identity exists only for the current live query.
+it("resolves only the exact live task in this query and drops the stop target on settle or reset", () => {
+  const source = new ClaudeTaskProtocolSource();
+  const id = "toolu_01DgLoPMW9";
+  expect(source.runningTaskId(id)).toBeNull();
+  source.observe(taskStarted());
+  expect(source.runningTaskId(id)).toBe("a1730a6215e1f5cf6");
+  expect(source.runningTaskId("some-other-child")).toBeNull();
+  source.observe(taskNotification("completed"));
+  expect(source.runningTaskId(id)).toBeNull();
+  source.reset();
+  expect(source.runningTaskId(id)).toBeNull();
+});

@@ -14,6 +14,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
 import { usePaneContext } from "@/panels/pane-context";
 import { PaneSubtitle } from "@/panels/pane-subtitle";
+import { ObservedSubagentControls } from "@/otto/observed-subagents/controls"; // OTTO(observed-subagents)
 import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
 import { type SubagentRow, useSubagentsForParent } from "@/subagents/select";
@@ -253,6 +254,13 @@ function ProviderSubagentPanel() {
   return (
     <View style={styles.container} testID="provider-subagent-panel">
       {subtitle ? <PaneSubtitle text={subtitle} testID="provider-subagent-pane-subtitle" /> : null}
+      <ObservedSubagentControls
+        serverId={serverId}
+        workspaceId={workspaceId}
+        parentId={target.parentAgentId}
+        subagentId={target.subagentId}
+        descriptor={descriptor}
+      />
       <AgentStreamView
         agentId={streamId}
         serverId={serverId}

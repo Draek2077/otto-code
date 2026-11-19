@@ -23,6 +23,9 @@ import * as workflowUi from "./workflows/bridge"; // OTTO(workflows)
 import * as scheduleUi from "./schedules/bridge"; // OTTO(schedules): lazy trusted settings bridge, original navigation retained.
 import * as visualizerUi from "./visualizer/bridge"; // OTTO(visualizer): lazy presentation, canonical Paseo session owner.
 
+import * as widgetUi from "./widgets/plugin-ui"; // OTTO(widgets)
+import * as suggestedTaskUi from "./suggested-tasks/card"; // OTTO(suggested-tasks)
+
 const shared = new Map<string, unknown>([
   ["@getpaseo/plugin/otto/speech", speech],
   ["@getpaseo/plugin/otto/connectors", connectors],
@@ -42,6 +45,11 @@ const shared = new Map<string, unknown>([
 // OTTO(visualizer): explicit plugin/module pairs keep trusted UI bridges private
 // without extending a branch chain whenever another built-in is restored.
 const builtinUi = new Map<string, ReadonlyMap<string, unknown>>([
+  ["otto-widgets", new Map([["@getpaseo/plugin/client/otto-widgets", widgetUi]])],
+  [
+    "otto-suggested-tasks",
+    new Map([["@getpaseo/plugin/client/otto-suggested-tasks", suggestedTaskUi]]),
+  ],
   ["otto-visualizer", new Map([["@getpaseo/plugin/client/otto-visualizer", visualizerUi]])],
   [
     "otto-architectural-views",

@@ -396,7 +396,7 @@ jobs:
       - name: Install JS dependencies
         run: node scripts/npm-retry.mjs ci
 
-      # OTTO(release): Zoom Recorder returns in Phase 1; its build hook is absent here.
+      - uses: ./.github/actions/otto-zoom-recorder # OTTO(zoom-recorder)
       - name: Set desktop package version from tag
         shell: bash
         run: |
@@ -507,7 +507,7 @@ jobs:
       - name: Install JS dependencies
         run: node scripts/npm-retry.mjs ci
 
-      # OTTO(release): Zoom Recorder returns in Phase 1; its build hook is absent here.
+      - uses: ./.github/actions/otto-zoom-recorder # OTTO(zoom-recorder)
       - name: Set desktop package version from tag
         shell: bash
         run: |

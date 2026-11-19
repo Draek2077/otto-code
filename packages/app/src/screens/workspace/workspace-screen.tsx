@@ -210,6 +210,7 @@ import {
 } from "@/screens/workspace/workspace-header-menu";
 import { PluginHeaderButtons } from "@/plugins";
 import { VisualizerWorkspaceButton } from "@/otto/visualizer/workspace-button"; // OTTO(visualizer): existing header and workspace panel, no second navigation system.
+import { MeetingNotesButton } from "@/otto/zoom-recorder/meeting-notes"; // OTTO(zoom-recorder)
 import { DevelopmentTag } from "@/otto/ui/development-tag"; // OTTO(workspace-chrome): build identity follows the workspace title.
 import {
   createWorkspaceFileTabTarget,
@@ -3270,6 +3271,7 @@ function WorkspaceScreenContent({
     () => (
       <View style={styles.headerRight}>
         <PluginHeaderButtons serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
+        <MeetingNotesButton />
         <VisualizerWorkspaceButton
           serverId={normalizedServerId}
           workspaceId={normalizedWorkspaceId}

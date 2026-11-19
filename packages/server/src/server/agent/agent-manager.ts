@@ -38,6 +38,8 @@ import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-confi
 import { z } from "zod";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
 import type { ChatSearchService, SearchTimeline } from "../otto/history/search/service.js"; // OTTO(chat-search)
+import { normalizeWidgetTimelineItem } from "../otto/widgets/widget-timeline.js"; // OTTO(widgets)
+import { redactSuggestionPrompt } from "../otto/suggested-tasks/host.js"; // OTTO(suggested-tasks)
 
 import {
   getAgentStreamEventTurnId,
@@ -1302,6 +1304,28 @@ export class AgentManager {
   listProviderSubagents(parentAgentId: string): ProviderSubagentDescriptor[] {
     this.requirePublicAgent(parentAgentId);
     return this.providerSubagents.list(parentAgentId);
+  }
+
+  // OTTO(observed-subagents): preserve Paseo's descriptors, live feed, and parent lifecycle.
+  async stopObservedSubagent(
+    parentId: string,
+    subagentId: string,
+    workspaceId: string,
+  ): Promise<void> {
+    const parent = this.requirePublicAgent(parentId);
+    const child = this.providerSubagents.list(parentId).find(({ id }) => id === subagentId);
+    const session = parent.session;
+    if (
+      parent.owner ||
+      parent.workspaceId !== workspaceId ||
+      !child ||
+      child.status !== "running" ||
+      child.provider !== parent.provider ||
+      !session?.ottoStopObservedSubagent
+    ) {
+      throw new Error("This provider subagent is no longer stoppable.");
+    }
+    await session.ottoStopObservedSubagent(subagentId);
   }
 
   listProviderSubagentActivity(): ProviderSubagentDescriptor[] {
@@ -5010,10 +5034,11 @@ export class AgentManager {
     turnId?: string,
     options?: { providerMessageId?: string },
   ): AgentStreamEvent {
-    const row = this.recordTimeline(agentId, item, { ...options, turnId });
+    const projectedItem = redactSuggestionPrompt(normalizeWidgetTimelineItem(item)); // OTTO(widgets, suggested-tasks)
+    const row = this.recordTimeline(agentId, projectedItem, { ...options, turnId });
     const event: AgentStreamEvent = {
       type: "timeline",
-      item,
+      item: projectedItem,
       provider,
       ...(turnId !== undefined ? { turnId } : {}),
     };
@@ -5167,6 +5192,10 @@ export class AgentManager {
       turnId?: string;
     },
   ): AgentTimelineRow {
+    // OTTO(widgets, suggested-tasks): hydration can enter here without a live stream event.
+    if (item.type === "tool_call" && item.detail?.type === "unknown") {
+      item = redactSuggestionPrompt(normalizeWidgetTimelineItem(item));
+    }
     item = limitAgentTimelineItemContent(item);
     const row = this.timelineStore.append(agentId, item, options);
     this.enqueueDurableTimelineAppend(agentId, row);

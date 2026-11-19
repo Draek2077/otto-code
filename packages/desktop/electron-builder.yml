@@ -74,6 +74,10 @@ linux:
   maintainer: "Draekz <https://github.com/Draek2077>" # OTTO(identity)
   vendor: "Otto"
   extraResources:
+    # OTTO(zoom-recorder): the native helper is built only on supported architectures.
+    - from: resources/zoom-recorder/bin/${arch}
+      to: zoom-recorder
+      filter: ["otto-zoom-recorder"]
     - from: bin/paseo
       to: bin/otto # OTTO(identity)
     - from: assets/icon.png
@@ -100,6 +104,10 @@ win:
   artifactName: "Otto-Setup-${version}-${arch}.${ext}" # OTTO(identity)
   icon: assets/icon.ico
   extraResources:
+    # OTTO(zoom-recorder): the native helper is built only on supported architectures.
+    - from: resources/zoom-recorder/bin/${arch}
+      to: zoom-recorder
+      filter: ["otto-zoom-recorder.exe"]
     - from: bin/paseo.cmd
       to: bin/otto.cmd # OTTO(identity)
   target:

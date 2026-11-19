@@ -50,6 +50,7 @@ import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { HostPicker as SharedHostPicker } from "@/components/hosts/host-picker";
 import { HostStatusDot } from "@/components/host-status-dot";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
+import { ZoomRecorderSettings } from "@/otto/zoom-recorder/settings"; // OTTO(zoom-recorder)
 import { AppearanceSection } from "@/screens/settings/appearance/appearance-section";
 import { OpenLocationSection } from "@/screens/settings/open-location/open-location-section";
 import { TerminalSection } from "@/screens/settings/terminal/terminal-section";
@@ -357,32 +358,40 @@ function GeneralSection({ settings, handleLanguageChange }: GeneralSectionProps)
       )
     : settings.language;
   return (
-    <SettingsSection title={t("settings.general.title")}>
-      <View style={settingsStyles.card}>
-        <View style={settingsStyles.row}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.general.language.label")}</Text>
-            <Text style={settingsStyles.rowHint}>{t("settings.general.language.description")}</Text>
+    <>
+      <SettingsSection title={t("settings.general.title")}>
+        <View style={settingsStyles.card}>
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>{t("settings.general.language.label")}</Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.general.language.description")}
+              </Text>
+            </View>
+            <DropdownMenu>
+              <DropdownTrigger
+                accessibilityRole="button"
+                accessibilityLabel={selectedLanguageLabel}
+              >
+                {selectedLanguageLabel}
+              </DropdownTrigger>
+              <DropdownMenuContent side="bottom" align="end" width={300}>
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <LanguageMenuItem
+                    key={option.value}
+                    value={option.value}
+                    activeLocale={activeLocale}
+                    selected={settings.language === option.value}
+                    onChange={handleLanguageChange}
+                  />
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </View>
-          <DropdownMenu>
-            <DropdownTrigger accessibilityRole="button" accessibilityLabel={selectedLanguageLabel}>
-              {selectedLanguageLabel}
-            </DropdownTrigger>
-            <DropdownMenuContent side="bottom" align="end" width={300}>
-              {LANGUAGE_OPTIONS.map((option) => (
-                <LanguageMenuItem
-                  key={option.value}
-                  value={option.value}
-                  activeLocale={activeLocale}
-                  selected={settings.language === option.value}
-                  onChange={handleLanguageChange}
-                />
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
         </View>
-      </View>
-    </SettingsSection>
+      </SettingsSection>
+      <ZoomRecorderSettings />
+    </>
   );
 }
 

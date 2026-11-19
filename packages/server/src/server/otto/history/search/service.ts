@@ -6,6 +6,7 @@ import type { Logger } from "pino";
 import type { AgentTimelineRow } from "../../../agent/agent-timeline-store-types.js";
 import type { SearchWorkerRequest } from "./search-worker.js";
 import type { ChatSearchInput, ChatSearchResult, SearchChat } from "./types.js";
+import { SearchBackfill, type OfflineHistoryReader } from "./backfill.js";
 
 export interface SearchTimeline {
   rows: AgentTimelineRow[];
@@ -48,6 +49,7 @@ export class ChatSearchService {
   private worker: Worker | undefined;
   private sequence = 0;
   private closing = false;
+  private readonly backfill?: SearchBackfill;
 
   constructor(
     private readonly options: {
@@ -55,9 +57,25 @@ export class ChatSearchService {
       logger: Pick<Logger, "warn">;
       snapshot(id: string): SearchTimeline | null;
       list(): Promise<SearchChat[]>;
+      offlineHistory?: OfflineHistoryReader;
     },
   ) {
     this.directory = join(options.home, "chat-search");
+    if (options.offlineHistory) {
+      this.backfill = new SearchBackfill(
+        options.offlineHistory,
+        (agentId, rows) =>
+          this.request({
+            type: "capture",
+            agentId,
+            rows,
+            complete: true,
+            verifiedAt: Date.now(),
+            backfill: true,
+          }),
+        (id) => this.dirty.has(id),
+      );
+    }
   }
 
   private getWorker(): Worker {
@@ -101,6 +119,7 @@ export class ChatSearchService {
 
   changed(agentId: string): void {
     if (this.closing) return;
+    this.backfill?.discard(agentId);
     this.dirty.add(agentId);
     if (this.timer) return;
     this.timer = setTimeout(() => {
@@ -139,6 +158,7 @@ export class ChatSearchService {
   }
 
   capture(agentId: string, snapshot: SearchTimeline): Promise<void> {
+    this.backfill?.discard(agentId);
     return this.request({
       type: "capture",
       agentId,
@@ -149,6 +169,7 @@ export class ChatSearchService {
   }
 
   async forget(agentId: string): Promise<void> {
+    this.backfill?.discard(agentId);
     this.dirty.delete(agentId);
     if (this.worker) {
       await this.request({ type: "delete", agentId });
@@ -173,13 +194,22 @@ export class ChatSearchService {
       };
     }
     await this.flush();
-    return this.request<ChatSearchResult>({ type: "search", input, chats });
+    const { result, missing } = await this.request<{ result: ChatSearchResult; missing: string[] }>(
+      {
+        type: "search",
+        input,
+        chats,
+      },
+    );
+    this.backfill?.offer(chats, missing);
+    return result;
   }
 
   async close(): Promise<void> {
     if (this.closing) return;
     this.closing = true;
     clearTimeout(this.timer);
+    await this.backfill?.close();
     try {
       await this.flush();
       if (this.worker) await this.request({ type: "close" });

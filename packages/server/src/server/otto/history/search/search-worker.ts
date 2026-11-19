@@ -199,8 +199,8 @@ async function readSources(chats: readonly SearchChat[]): Promise<void> {
   }
 }
 
-async function saveSource(source: SearchSource): Promise<void> {
-  if (!source.complete) {
+async function saveSource(source: SearchSource, backfill = false): Promise<void> {
+  if (!source.complete || backfill) {
     // A partial hydration cannot displace a complete transcript from either version.
     const existing = await locateSource(source.agentId)
       .then(async ({ path, info }) =>
@@ -242,7 +242,7 @@ async function removeSource(id: string): Promise<void> {
 async function search(
   input: ChatSearchInput,
   chats: readonly SearchChat[],
-): Promise<ChatSearchResult> {
+): Promise<{ result: ChatSearchResult; missing: string[] }> {
   await readSources(chats);
   const db = await ensureDatabase();
   const selected = chats;
@@ -253,7 +253,10 @@ async function search(
       .all()
       .map((row) => String(row.id)),
   );
-  const indexed = selected.filter((chat) => ready.has(chat.id) && !failures.has(chat.id)).length;
+  const missing = selected
+    .filter((chat) => !ready.has(chat.id) || failures.has(chat.id))
+    .map(({ id }) => id);
+  const indexed = selected.length - missing.length;
   const unavailable = selected.filter((chat) => failures.has(chat.id)).length;
   const coverage = {
     total: selected.length,
@@ -262,7 +265,8 @@ async function search(
     pending: selected.length - indexed - unavailable,
   };
   const tokens = input.query.match(/[\p{L}\p{N}_]+/gu)?.slice(0, 32) ?? [];
-  if (!tokens.length || !selected.length) return { hits: [], coverage, hasMore: false };
+  if (!tokens.length || !selected.length)
+    return { result: { hits: [], coverage, hasMore: false }, missing };
   const expression = tokens.map((token) => `"${token.replaceAll('"', '""')}"*`).join(" AND ");
   // Temporary scope table avoids SQL variable limits for hosts with thousands of chats.
   db.exec("CREATE TEMP TABLE IF NOT EXISTS scope(id TEXT PRIMARY KEY); DELETE FROM scope;");
@@ -275,16 +279,19 @@ async function search(
     WHERE search MATCH ? ORDER BY rank,m.timestamp DESC,m.id LIMIT ?`)
     .all(expression, limit + 1);
   return {
-    coverage,
-    hasMore: rows.length > limit,
-    hits: rows.slice(0, limit).map((row) =>
-      Object.assign({}, byId.get(String(row.agentId))!, {
-        messageKey: String(row.messageKey),
-        role: row.role as "user" | "assistant",
-        timestamp: String(row.timestamp),
-        snippet: String(row.snippet),
-      }),
-    ),
+    missing,
+    result: {
+      coverage,
+      hasMore: rows.length > limit,
+      hits: rows.slice(0, limit).map((row) =>
+        Object.assign({}, byId.get(String(row.agentId))!, {
+          messageKey: String(row.messageKey),
+          role: row.role as "user" | "assistant",
+          timestamp: String(row.timestamp),
+          snippet: String(row.snippet),
+        }),
+      ),
+    },
   };
 }
 
@@ -294,6 +301,7 @@ export type SearchWorkerRequest =
       agentId: string;
       rows: AgentTimelineRow[];
       complete: boolean;
+      backfill?: boolean;
       providerRevision?: string;
       verifiedAt: number;
     }
@@ -304,21 +312,25 @@ export type SearchWorkerRequest =
 async function handle(request: SearchWorkerRequest): Promise<unknown> {
   switch (request.type) {
     case "capture":
-      await saveSource({
-        version: 1,
-        agentId: request.agentId,
-        revision: "",
-        complete: request.complete,
-        providerRevision: request.providerRevision,
-        verifiedAt: request.verifiedAt,
-        messages: projectSearchMessages(request.rows),
-      });
+      await saveSource(
+        {
+          version: 1,
+          agentId: request.agentId,
+          revision: "",
+          complete: request.complete,
+          providerRevision: request.providerRevision,
+          verifiedAt: request.verifiedAt,
+          messages: projectSearchMessages(request.rows),
+        },
+        request.backfill,
+      );
       return null;
     case "delete":
       await removeSource(request.agentId);
       return null;
     case "search":
       return search(request.input, request.chats);
+
     case "close":
       database?.close();
       database = undefined;
