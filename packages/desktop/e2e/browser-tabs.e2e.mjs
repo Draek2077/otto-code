@@ -1259,12 +1259,7 @@ async function main() {
       typingAgent,
       artifactDir,
     });
-    const visualizer = await runVisualizerRegression({
-      page,
-      setHidden: (hidden) => setWindowHidden(inspectorPort, hidden),
-      artifactDir,
-      browserId: report.browserId, // OTTO(tab-drag): verify both real drop destinations.
-    });
+    // OTTO(tab-drag): exercise the address bar before drag rearranges the split panes.
     const history = await runBrowserHistoryRegression({
       page,
       execute: (name, args) => callBrowserTool(client, name, args),
@@ -1275,6 +1270,12 @@ async function main() {
       inspectorPort,
       artifactDir,
     }); // OTTO(browser-history)
+    const visualizer = await runVisualizerRegression({
+      page,
+      setHidden: (hidden) => setWindowHidden(inspectorPort, hidden),
+      artifactDir,
+      browserId: report.browserId, // OTTO(tab-drag): verify both real drop destinations.
+    });
     const pluginLinks = await checkPluginLinks();
     writeJson(path.join(artifactDir, "result.json"), {
       ...report,
