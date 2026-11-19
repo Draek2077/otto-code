@@ -6,7 +6,11 @@ import { gitFetchAvailable } from "./capabilities.js";
 test("the Git route is reserved without loading a plugin or adding a startup worker", async () => {
   const loader = new BuiltinPluginLoader("fixture", ["provider"]);
   const registered = withOttoHostRpcIds(loader.ids);
-  expect([...registered]).toEqual(["provider", "otto-workspace-git"]);
+  expect([...registered]).toEqual([
+    "provider",
+    "otto-workspace-git",
+    "otto-observed-subagents", // OTTO(observed-subagents): reserved host route without a plugin worker.
+  ]);
   expect(registered.has("untrusted-plugin")).toBe(false);
   const loaded: string[] = [];
   await loader.load(async ({ id }) => {

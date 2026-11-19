@@ -410,6 +410,11 @@ jobs:
       - name: Build server stack
         run: npm run build:server
 
+      # OTTO(zoom-recorder): validate the real helper on both supported release hosts.
+      - name: Build and smoke-test Zoom Recorder
+        if: ${{ runner.arch == 'X64' }}
+        uses: ./.github/actions/otto-zoom-recorder
+
       - name: Run desktop tests
         run: npm run test --workspace=@getpaseo/desktop
 

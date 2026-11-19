@@ -17,8 +17,6 @@ import { navigateToAgent } from "@/utils/navigate-to-agent";
 
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 
-export { suggestedTaskSchema } from "@getpaseo/plugin/otto/suggested-task";
-
 const PLUGIN_ID = "otto-suggested-tasks";
 const LAUNCH_MODES = {
   new_chat: "New chat",

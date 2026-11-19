@@ -28,6 +28,7 @@ const entries = {
   "./otto/workflows/judge-verdict": "shared", // OTTO(workflows): structured verdict declarations and pure interpretation.
   "./otto/connectors": "shared", // OTTO(connectors): catalog and structural RPC only; no authorization runtime.
   "./otto/speech": "shared", // OTTO(speech): structural selections and bounded RPC only.
+  "./otto/suggested-task": "shared", // OTTO(suggested-tasks): structural timeline card only.
   "./otto/terminal": "shared", // OTTO(terminal): structural host preferences and diagnostics only.
   "./otto/workspace-git": "shared", // OTTO(git-fetch): structural preferences/RPC only, never a Git process or UI import.
   "./otto/editor": "shared", // OTTO(editor): bounded structural editor RPCs.
@@ -57,6 +58,8 @@ const entries = {
   "./client/otto-bitbucket": "client", // OTTO(bitbucket): app-owned settings bridge.
   "./client/otto-connectors": "client", // OTTO(connectors): app-owned Settings presentation.
   "./client/otto-speech": "client", // OTTO(speech): app-owned Settings presentation.
+  "./client/otto-widgets": "client", // OTTO(widgets): app-owned, sandboxed timeline presentation.
+  "./client/otto-suggested-tasks": "client", // OTTO(suggested-tasks): app-owned timeline actions.
 } as const;
 const uiDependency = /^(react(?:-dom|-native)?|use-sync-external-store)(\/|$)/;
 const serverModule = /^server\//;

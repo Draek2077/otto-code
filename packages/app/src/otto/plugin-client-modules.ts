@@ -23,11 +23,13 @@ import * as workflowUi from "./workflows/bridge"; // OTTO(workflows)
 import * as scheduleUi from "./schedules/bridge"; // OTTO(schedules): lazy trusted settings bridge, original navigation retained.
 import * as visualizerUi from "./visualizer/bridge"; // OTTO(visualizer): lazy presentation, canonical Paseo session owner.
 
-import * as widgetUi from "./widgets/plugin-ui"; // OTTO(widgets)
-import * as suggestedTaskUi from "./suggested-tasks/card"; // OTTO(suggested-tasks)
+import * as widgetUi from "./widgets/bridge"; // OTTO(widgets)
+import * as suggestedTaskUi from "./suggested-tasks/bridge"; // OTTO(suggested-tasks)
+import * as suggestedTask from "@getpaseo/plugin/otto/suggested-task"; // OTTO(suggested-tasks)
 
 const shared = new Map<string, unknown>([
   ["@getpaseo/plugin/otto/speech", speech],
+  ["@getpaseo/plugin/otto/suggested-task", suggestedTask], // OTTO(suggested-tasks)
   ["@getpaseo/plugin/otto/connectors", connectors],
   ["@getpaseo/plugin/otto/artifacts", artifacts],
   ["@getpaseo/plugin/otto/architectural-views", views],

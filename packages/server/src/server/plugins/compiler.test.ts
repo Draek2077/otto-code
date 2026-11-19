@@ -240,6 +240,8 @@ describe("plugin runtime entries", () => {
     "@getpaseo/plugin/client/otto-preview", // OTTO(preview): app-only UI bridge.
     "@getpaseo/plugin/client/otto-schedules", // OTTO(schedules): no app presentation in server code.
     "@getpaseo/plugin/client/otto-visualizer", // OTTO(visualizer): no renderer in a server plugin.
+    "@getpaseo/plugin/client/otto-widgets", // OTTO(widgets): the sandboxed renderer belongs to the app.
+    "@getpaseo/plugin/client/otto-suggested-tasks", // OTTO(suggested-tasks): chat actions belong to the app.
   ])("rejects %s from server code", async (specifier) => {
     const entries = await createSplitPlugin();
     await writeFile(

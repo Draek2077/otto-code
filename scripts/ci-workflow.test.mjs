@@ -264,6 +264,7 @@ test("PR routing declares stable behavior ownership", () => {
       "packages/otto-visualizer/**",
       "vendor/agent-flow/**",
       "packages/app/src/otto/visualizer/**",
+      "packages/app/src/otto/widgets/**",
       "packages/desktop/**",
       "packages/app/src/desktop/**",
       "packages/app/src/otto/browser/**",
@@ -351,7 +352,8 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
       (path) =>
         path.startsWith("packages/app/src/desktop/") ||
         path.startsWith("packages/app/src/otto/browser/") ||
-        path.startsWith("packages/app/src/otto/visualizer/"), // OTTO(visualizer): private guest has an explicit desktop owner.
+        path.startsWith("packages/app/src/otto/visualizer/") || // OTTO(visualizer): private guest has an explicit desktop owner.
+        path === "packages/app/src/otto/widgets/widget-frame.electron.tsx", // OTTO(widgets): the isolated widget guest has a desktop owner.
     ),
   );
 
@@ -374,6 +376,7 @@ test("browser and desktop tests have exclusive, directory-owned suites", () => {
     "packages/otto-visualizer/**",
     "vendor/agent-flow/**",
     "packages/app/src/otto/visualizer/**",
+    "packages/app/src/otto/widgets/**",
     "packages/desktop/**",
     "packages/app/src/desktop/**",
     "packages/app/src/otto/browser/**",

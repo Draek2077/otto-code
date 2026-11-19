@@ -45,6 +45,7 @@ desktop:
   - "packages/otto-visualizer/**" # OTTO(visualizer): private Electron guest and resident browser layering.
   - "vendor/agent-flow/**"
   - "packages/app/src/otto/visualizer/**"
+  - "packages/app/src/otto/widgets/**" # OTTO(widgets): check changes to the isolated Electron renderer.
   - "packages/desktop/**"
   - "packages/app/src/desktop/**"
   # OTTO(browser-actions): Electron-owned UI follows desktop acceptance too.

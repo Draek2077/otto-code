@@ -326,6 +326,12 @@ export const PASEO_TOOL_CATALOG = {
     detail: { inputOrder: ["provider", "cwd", "settings"] },
   },
 
+  // OTTO(widgets, suggested-tasks): chat tools share the canonical timeline presentation.
+  widget_contract: { label: "Read widget contract" },
+  show_widget: { label: "Show widget", context: field("title") },
+  suggest_task: { label: "Suggest task", context: field("title") },
+  dismiss_task: { label: "Dismiss suggested task" },
+
   // Browser
   browser_list_tabs: browser("List browser tabs"),
   browser_new_tab: browser("Open browser tab", field("url")),

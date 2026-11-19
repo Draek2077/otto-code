@@ -10,7 +10,3 @@ export function ChatWidget({ agentId, host, item }: PluginTimelineItemProps<Widg
     </WidgetChatProvider>
   );
 }
-export {
-  readWidgetPayload,
-  WidgetPayloadSchema as widgetPayloadSchema,
-} from "@getpaseo/protocol/widgets/types";

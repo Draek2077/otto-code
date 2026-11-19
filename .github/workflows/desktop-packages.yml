@@ -22,6 +22,8 @@ on:
     branches: [main]
     paths:
       - "packages/desktop/**"
+      - ".github/actions/otto-zoom-recorder/**" # OTTO(zoom-recorder): changes to the packaged helper build need a smoke run.
+      - "packages/app/src/otto/widgets/**" # OTTO(widgets): the packaged guest uses the desktop sandbox.
       # OTTO(visualizer): embedded bytes also need real installed-package proof.
       - "packages/otto-visualizer/**"
       - "vendor/agent-flow/**"

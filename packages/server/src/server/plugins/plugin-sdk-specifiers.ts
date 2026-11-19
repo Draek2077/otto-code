@@ -12,6 +12,8 @@ export const PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS = [
   "@getpaseo/plugin/client/otto-workflows", // OTTO(workflows): lazy app-owned authoring and inspection.
   "@getpaseo/plugin/client/otto-schedules", // OTTO(schedules): trusted app-owned Settings presentation.
   "@getpaseo/plugin/client/otto-visualizer", // OTTO(visualizer): trusted app-owned renderer and canonical timeline adapter.
+  "@getpaseo/plugin/client/otto-widgets", // OTTO(widgets): trusted app-owned timeline renderer.
+  "@getpaseo/plugin/client/otto-suggested-tasks", // OTTO(suggested-tasks): trusted chat actions.
   "@getpaseo/plugin/client/otto-bitbucket", // OTTO(bitbucket): trusted built-in presentation and navigation.
   "@getpaseo/plugin/client/otto-connectors", // OTTO(connectors): app-owned Settings presentation.
   "@getpaseo/plugin/client/otto-speech", // OTTO(speech): trusted app-owned speech Settings presentation.
@@ -46,6 +48,7 @@ export const PLUGIN_SDK_SPECIFIERS = [
   "@getpaseo/plugin/otto/connectors", // OTTO(connectors): catalog and sanitized RPC contracts only.
   "@getpaseo/plugin/otto/speech", // OTTO(speech): structural speech settings and bounded audio contracts.
   "@getpaseo/plugin/otto/host-browser", // OTTO(browser-host): scoped structural viewer contracts.
+  "@getpaseo/plugin/otto/suggested-task", // OTTO(suggested-tasks): structural timeline card only.
   ...PLUGIN_SERVER_ONLY_SDK_SPECIFIERS,
   ...PLUGIN_CLIENT_ONLY_SDK_SPECIFIERS,
 ] as const;

@@ -62,6 +62,10 @@ async function launch(
       join(app, "resources", "wake-word"),
       { recursive: true },
     );
+    // OTTO(zoom-recorder): the launcher fixture represents a complete x64 payload.
+    const recorder = join(app, "resources", "zoom-recorder");
+    mkdirSync(recorder, { recursive: true });
+    writeFileSync(join(recorder, "otto-zoom-recorder"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     await afterPack({ appOutDir: app, electronPlatformName: "linux", arch: 1 });
     if (options.rerun) await afterPack({ appOutDir: app, electronPlatformName: "linux", arch: 1 });
     const executablePath = options.symlink ? join(root, "paseo") : join(app, "Otto");
