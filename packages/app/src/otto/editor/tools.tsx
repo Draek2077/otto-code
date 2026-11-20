@@ -13,6 +13,8 @@ import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import type { EditorSurface } from "./surface";
 import { EditorShortcutMenuItem } from "./shortcuts/menu-item";
+import { EditorHistoryItems } from "@/otto/diff/editor-history"; // OTTO(file-history)
+import { useEditorRefine } from "./refine"; // OTTO(refine) // OTTO(file-history)
 import { EditorExportItems } from "./document-tools";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
@@ -87,6 +89,7 @@ export function EditorTools({
     },
     [surface, closeRename],
   );
+  const proseReview = useEditorRefine(surface); // OTTO(refine)
   const busy = !available || snapshot.busy;
   let tooltip = "Code intelligence";
   if (state === "disconnected") tooltip = "Connect the host to use code intelligence";
@@ -118,6 +121,10 @@ export function EditorTools({
               >
                 Add selection to chat
               </DropdownMenuItem>
+              {proseReview.menuItem}
+              {/* OTTO(refine) */}
+              <EditorHistoryItems surface={surface} selection={snapshot.selection.characters > 0} />
+              {/* OTTO(file-history) */}
             </>
           ) : null}
           <EditorShortcutMenuItem onSelect={find} label="Find and replace" helpId="editor-find" />
@@ -173,6 +180,8 @@ export function EditorTools({
         </DropdownMenuContent>
       </DropdownMenu>
       {refactor.dialog}
+      {proseReview.dialog}
+      {/* OTTO(refine) */}
       <AdaptiveRenameModal
         visible={canShowDialog && snapshot.renameRequested > dismissed}
         title="Rename symbol"

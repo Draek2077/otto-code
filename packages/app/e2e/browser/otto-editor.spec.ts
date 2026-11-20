@@ -1,5 +1,6 @@
 import { test, expect } from "../support/fixtures";
 import { openFileExplorer, openFileFromExplorer } from "../support/helpers/file-explorer";
+import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Page } from "@playwright/test";
@@ -28,6 +29,62 @@ async function openEditorExplorer(page: Page, compact: boolean) {
 }
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
+
+test("Document tools opens Refine with its pinned prose and read-only linked context", async ({
+  page,
+  withWorkspace,
+}) => {
+  const workspace = await withWorkspace({ prefix: "otto-editor-refine-" });
+  const file = path.join(workspace.repoPath, "guide.md");
+  const original = "# Review this prose\n\n[Details](details.md)\n";
+  await writeFile(file, original);
+  await writeFile(path.join(workspace.repoPath, "details.md"), "Reference bytes.");
+  await workspace.navigateTo();
+  await openFileExplorer(page);
+  await openFileFromExplorer(page, "guide.md");
+  await page
+    .getByTestId(/^(editor-document-tools|editor-code-menu)$/)
+    .filter({ visible: true })
+    .click();
+  await page.getByTestId("editor-refine").click();
+  const refine = editorDialog(page, "editor-refine-dialog", false);
+  await expect(refine.getByText("guide.md", { exact: true }).first()).toBeVisible();
+  await expect(refine.getByText("Read-only references (1)", { exact: true })).toBeVisible();
+  await expect(
+    refine.getByRole("button", { name: "Apply kept changes", exact: true }),
+  ).toBeDisabled();
+  expect(await readFile(file, "utf8")).toBe(original);
+});
+test("File History follows a revision and switches its real diff to Structural", async ({
+  page,
+  withWorkspace,
+}) => {
+  const workspace = await withWorkspace({ prefix: "otto-file-history-" });
+  const file = path.join(workspace.repoPath, "history.ts");
+  await writeFile(file, "export const total = 1;\n");
+  commitFixture(workspace.repoPath, "Seed history");
+  await writeFile(file, "export const total = 2;\n");
+  commitFixture(workspace.repoPath, "Change the total");
+  await workspace.navigateTo();
+  await openFileExplorer(page);
+  await openFileFromExplorer(page, "history.ts");
+  await page.getByTestId("editor-code-menu").click();
+  await page.getByTestId("editor-file-history").click();
+  const history = page.getByTestId("otto-file-history");
+  await expect(history.getByText("Change the total", { exact: true })).toBeVisible();
+  await expect(history.getByTestId("git-diff-canvas")).toBeVisible();
+  await history.getByTestId("otto-diff-presentation").click();
+  await page.getByText("Structural", { exact: true }).last().click();
+  await expect(history.getByTestId("otto-diff-presentation")).toContainText("Structural");
+  await history.getByRole("button", { name: "Blame lines", exact: true }).click();
+  await expect(history.getByText(/1 · .*Change the total/)).toBeVisible();
+});
+
+function commitFixture(cwd: string, subject: string) {
+  execFileSync("git", ["add", "history.ts"], { cwd });
+  execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", subject], { cwd });
+}
+
 for (const compact of [false, true]) {
   test(`File Editor navigation, reviewed edits, Markdown and retained source (${compact ? "compact" : "wide"})`, async ({
     page,

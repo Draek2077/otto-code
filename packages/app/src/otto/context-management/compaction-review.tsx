@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { SettingsCard, SettingsRow, SettingsSection } from "@/components/settings";
@@ -14,6 +14,8 @@ function Hunk({
   nodeId,
   label,
   hunk,
+  before,
+  after,
   kept,
   disabled,
 }: {
@@ -21,10 +23,16 @@ function Hunk({
   nodeId: string;
   label: string;
   hunk: ReviewHunk;
+  before: string;
+  after: string;
   kept: boolean;
   disabled: boolean;
 }) {
   const toggle = useCallback(() => model.toggle(nodeId, hunk.id), [model, nodeId, hunk.id]);
+  const structuralSource = useMemo(
+    () => ({ filePath: label, beforeSource: before, afterSource: after }),
+    [label, before, after],
+  );
   return (
     <SettingsCard testID={`context-compaction-hunk-${nodeId}-${hunk.id}`}>
       <SettingsRow label={`${label} · change ${hunk.id}`}>
@@ -38,7 +46,7 @@ function Hunk({
           {kept ? "Kept" : "Dropped"}
         </Button>
       </SettingsRow>
-      <DiffViewer diffLines={hunk.lines} />
+      <DiffViewer diffLines={hunk.lines} structuralSource={structuralSource} />
     </SettingsCard>
   );
 }
@@ -48,7 +56,11 @@ export function ContextCompactionReview({ model }: { model: ContextCompactionMod
   return (
     <SettingsSection
       title="Review kept changes"
-      info="Every hunk starts dropped. Keep only the changes you approve; no file changes until Apply kept changes is confirmed."
+      info={
+        model.refine
+          ? "All proposed hunks start kept. Drop any changes you do not want. The file stays as saved until you confirm Apply."
+          : "Every hunk starts dropped. Keep only the changes you approve; no file changes until Apply kept changes is confirmed."
+      }
     >
       {state.documents.map((document) => (
         <View key={document.file.nodeId} style={reviewStyles.document}>
@@ -85,6 +97,8 @@ export function ContextCompactionReview({ model }: { model: ContextCompactionMod
               nodeId={document.file.nodeId}
               label={document.file.label}
               hunk={hunk}
+              before={document.diff?.base ?? document.file.text}
+              after={document.diff?.proposal ?? document.file.text}
               kept={document.kept.has(hunk.id)}
               disabled={state.busy || state.blocked || state.setChanged}
             />

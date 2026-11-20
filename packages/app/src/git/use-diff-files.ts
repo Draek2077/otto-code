@@ -16,6 +16,7 @@ export interface CommitDiffFilesContext {
   cwd: string;
   sha: string;
   enabled?: boolean;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
 }
 
 export interface CommitDiffFilesResult {
@@ -87,6 +88,7 @@ export function useCommitDiffFiles(ctx: CommitDiffFilesContext): CommitDiffFiles
         path: file.path,
         client,
         enabled: fileDiffsEnabled,
+        includeStructuralSource: ctx.includeStructuralSource,
       }),
     ),
   );

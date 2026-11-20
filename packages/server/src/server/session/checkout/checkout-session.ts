@@ -302,7 +302,12 @@ export class CheckoutSession {
       if (path.length === 0 || isAbsolute(path) || path.split(/[\\/]/).includes("..")) {
         throw new Error(`Invalid path: ${path}`);
       }
-      const file = await getCommitFileDiff({ cwd: expandTilde(cwd), sha, path });
+      const file = await getCommitFileDiff({
+        cwd: expandTilde(cwd),
+        sha,
+        path,
+        includeStructuralSource: msg.includeStructuralSource, // OTTO(structural-diff)
+      });
       this.host.emit({
         type: "checkout.commits.file_diff.response",
         payload: { cwd, sha, path, file, error: null, requestId },

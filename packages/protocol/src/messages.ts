@@ -2195,6 +2195,7 @@ const CheckoutDiffCompareSchema = z.object({
   mode: z.enum(["uncommitted", "base"]),
   baseRef: z.string().optional(),
   ignoreWhitespace: z.boolean().optional(),
+  includeStructuralSource: z.literal(true).optional(), // OTTO(structural-diff): explicitly requested by the active reviewer.
 });
 
 export const CheckoutStatusRequestSchema = z.object({
@@ -2339,6 +2340,7 @@ export const CheckoutCommitFileDiffRequestSchema = z.object({
   cwd: z.string(),
   sha: z.string(),
   path: z.string(),
+  includeStructuralSource: z.literal(true).optional(), // OTTO(structural-diff)
   requestId: z.string(),
 });
 
@@ -2728,7 +2730,8 @@ const DiffHunkSchema = z.object({
   lines: z.array(DiffLineSchema),
 });
 
-const ParsedDiffFileSchema = z.object({
+export const ParsedDiffFileSchema = z.object({
+  // OTTO(file-history): share the canonical diff schema.
   path: z.string(),
   // COMPAT(diffOldPath): added in v0.3.0, remove gate after 2027-02-09.
   oldPath: z.string().optional(),
@@ -2738,6 +2741,10 @@ const ParsedDiffFileSchema = z.object({
   deletions: z.number(),
   hunks: z.array(DiffHunkSchema),
   status: z.enum(["ok", "too_large", "binary"]).optional(),
+  // OTTO(structural-diff): optional bounded, complete source pair from the patch snapshot.
+  structuralSource: z
+    .object({ before: z.string().max(16000), after: z.string().max(16000) })
+    .optional(),
 });
 
 const FileExplorerEntrySchema = z.object({
@@ -3598,6 +3605,10 @@ export const ServerInfoStatusPayloadSchema = z
         ottoBitbucket: z.boolean().optional(), // OTTO(bitbucket): named accounts and native REST forge integration.
         ottoConnectors: z.boolean().optional(), // OTTO(connectors): host-owned authorization and shared provider catalog.
         ottoTerminal: z.boolean().optional(), // OTTO(terminal): host-owned preferences and explicit diagnostics.
+        ottoFileHistory: z.boolean().optional(), // OTTO(file-history)
+        ottoStructuralDiff: z.boolean().optional(), // OTTO(structural-diff)
+        ottoWorkspaceRefine: z.boolean().optional(), // OTTO(refine)
+        ottoWorkspaceLifecycle: z.boolean().optional(), // OTTO(workspace-lifecycle)
         ottoGitFetch: z.boolean().optional(), // OTTO(git-fetch): owning-host policy and explicit workspace fetch.
         ottoGitDiffBase: z.boolean().optional(), // OTTO(diff-base): branch-scoped parent selection.
         ottoManualCommit: z.boolean().optional(), // OTTO(manual-commit): per-file commits and bounded console output.

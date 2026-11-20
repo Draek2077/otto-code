@@ -2473,6 +2473,57 @@ export class AgentManager {
     return nextRecord;
   }
 
+  // OTTO(workspace-lifecycle): move only the owning workspace stamp, in the same
+  // lifecycle lane as a persisted resume. The runtime, cwd and transcript stay intact.
+  async moveChatWorkspace(input: {
+    agentId: string;
+    fromWorkspaceId: string | null;
+    workspaceId: string;
+    validateDestination(): Promise<void>;
+    releaseAuthoring(labels: Record<string, string>): Promise<string | null> | undefined;
+  }): Promise<void> {
+    return this.runLifecycleMutation(input.agentId, async () => {
+      const registry = this.requireRegistry();
+      const stored = await registry.get(input.agentId);
+      const live = this.agents.get(input.agentId);
+      if (!stored || stored.internal || stored.archivedAt || stored.owner?.kind === "daemon") {
+        throw new Error("This chat cannot be moved.");
+      }
+      const current = live?.workspaceId ?? stored.workspaceId;
+      if (current === input.workspaceId) return;
+      if ((current ?? null) !== input.fromWorkspaceId) {
+        throw new Error("This chat moved to another workspace. Open it there to move it again.");
+      }
+      await input.validateDestination();
+      const clearedLabel = await input.releaseAuthoring(live?.labels ?? stored.labels);
+      const labels = clearedLabel
+        ? applyLabelPatch(live?.labels ?? stored.labels, { [clearedLabel]: null })
+        : undefined;
+      if (live) {
+        const previousLabels = live.labels;
+        if (labels) live.labels = labels;
+        live.workspaceId = input.workspaceId;
+        try {
+          await this.persistSnapshot(live);
+        } catch (error) {
+          live.workspaceId = current;
+          live.labels = previousLabels;
+          throw error;
+        }
+        this.emitState(live, { persist: false });
+      } else {
+        const next = {
+          ...stored,
+          ...(labels ? { labels } : {}),
+          workspaceId: input.workspaceId,
+          updatedAt: this.nextStoredUpdatedAt(stored),
+        };
+        await registry.upsert(next);
+        this.dispatchStoredAgentState(next);
+      }
+    });
+  }
+
   async unarchiveSnapshot(
     agentId: string,
     updates?: { workspaceId?: string; labels?: AgentLabelPatch },

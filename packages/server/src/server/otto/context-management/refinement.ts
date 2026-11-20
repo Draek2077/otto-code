@@ -1,6 +1,5 @@
 import { lstat } from "node:fs/promises";
 import { z } from "zod";
-import { instructionDigest } from "@getpaseo/plugin/server/otto-openai";
 import {
   type ContextRefinementSet,
   type proposeContextRefinement,
@@ -187,7 +186,7 @@ export async function proposeRefinement(
     ].join("\n\n"),
     schema: Result,
     schemaName: "ContextRefinementDocuments",
-    agentTitle: "Context compaction",
+    agentTitle: input.workspaceFiles ? "Refine prose" : "Context compaction",
   });
   const byId = new Map(documents.map((file) => [file.id, file.content]));
   const seen = new Set<string>();
@@ -231,12 +230,16 @@ export async function applyRefinement(
     const { value, file } = await reviewedDocument(targets, item);
     rewritable(value);
     if (!file.writable) throw new Error("A selected document is read-only.");
+    value.assertWritable?.(); // OTTO(refine)
     if (file.scope === "host" && !input.userApprovedGlobal)
       throw new Error(
         "Explicitly approve the host-wide effect on other projects before applying these changes.",
       );
   }
   const files: Outcome[] = [];
+  const saved = input.workspaceFiles
+    ? "Kept changes saved."
+    : "Kept changes saved for future instruction reads.";
   for (const item of input.documents) {
     const value = target(targets, item.nodeId);
     try {
@@ -249,10 +252,8 @@ export async function applyRefinement(
         nodeId: item.nodeId,
         label: value.node.label,
         status: result.changed ? "changed" : "unchanged",
-        revision: instructionDigest(item.text),
-        message: result.changed
-          ? "Kept changes saved for future instruction reads."
-          : "No content changed.",
+        revision: result.revision,
+        message: result.changed ? saved : "No content changed.",
       });
     } catch (error) {
       files.push({

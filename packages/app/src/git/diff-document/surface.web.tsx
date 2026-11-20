@@ -172,6 +172,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       files: props.files,
       collapsedFilePaths: props.collapsedFilePaths,
       layout: props.displayPreferences.layout,
+      structural: props.displayPreferences.structural, // OTTO(structural-diff)
       wrapLines: props.displayPreferences.wrapLines,
       viewportWidth: viewport.width,
       typography: loadedTypography,
@@ -190,6 +191,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     measurement,
     props.collapsedFilePaths,
     props.displayPreferences.layout,
+    props.displayPreferences.structural, // OTTO(structural-diff)
     props.displayPreferences.wrapLines,
     props.files,
     props.palette,

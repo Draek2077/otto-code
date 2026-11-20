@@ -1,5 +1,6 @@
 import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import type { DiffLine } from "@/git/use-diff-query";
+import { structuralPatchPlan } from "@/otto/diff/patch"; // OTTO(structural-diff)
 
 type ReviewSide = "old" | "new";
 type ReviewableLineType = "add" | "remove" | "context";
@@ -246,6 +247,47 @@ export function buildUnifiedDiffLines(file: ParsedDiffFile): UnifiedDiffDisplayL
       reviewTarget: numberedLine.unifiedCell ? toReviewTarget(numberedLine.unifiedCell) : null,
     })),
   );
+}
+
+// OTTO(structural-diff): preserve canonical cell coordinates, including review anchors.
+const structuralRows = new WeakMap<
+  ParsedDiffFile,
+  { rows: SplitDiffRow[]; notice: string | null }
+>();
+
+export function buildStructuralSplitRows(file: ParsedDiffFile) {
+  const cached = structuralRows.get(file);
+  if (cached) return cached;
+  const rows: SplitDiffRow[] = [];
+  let formattingOnly = false;
+  for (const hunk of buildNumberedDiffHunks(file)) {
+    const result = structuralPatchPlan(file, hunk.lines);
+    if (!result.pairs) {
+      const fallback = { rows: buildSplitDiffRows(file), notice: result.reason };
+      structuralRows.set(file, fallback);
+      return fallback;
+    }
+    rows.push({
+      kind: "header",
+      content: hunk.hunkHeader,
+      hunkIndex: hunk.hunkIndex,
+      lineIndex: hunk.lines.find((line) => line.line.type === "header")?.lineIndex ?? 0,
+    });
+    formattingOnly ||= result.formattingOnly;
+    for (const { left, right } of result.pairs) {
+      rows.push({
+        kind: "pair",
+        left: toSplitDisplayLine(left?.oldCell ?? null),
+        right: toSplitDisplayLine(right?.newCell ?? null),
+      });
+    }
+  }
+  const result = {
+    rows,
+    notice: formattingOnly ? "Formatting only. All changed source lines are visible." : null,
+  };
+  structuralRows.set(file, result);
+  return result;
 }
 
 export function buildSplitDiffRows(file: ParsedDiffFile): SplitDiffRow[] {

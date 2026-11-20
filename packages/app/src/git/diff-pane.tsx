@@ -34,6 +34,7 @@ import { type ParsedDiffFile } from "@/git/use-diff-query";
 import type { ChangesState } from "@/panels/changes/state";
 import { defaultChangesState } from "@/panels/changes/state";
 import { ReviewCommentSheet, ReviewFeedbackAction } from "@/review";
+import { useHostDiffReview } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 import { DiffDocument, type WorkingDiffMode } from "@/git/diff-document";
 import { ChangedFilesTree } from "@/git/changed-files-tree";
 import { JUMP_TO_FILE_CLEARANCE, JumpToFile } from "@/git/jump-to-file";
@@ -1527,6 +1528,7 @@ export function ChangesSurface({
   const fsEntryDuplicateEnabled = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.fsEntryDuplicate === true,
   );
+  const { reviewPresentation, includeStructuralSource } = useHostDiffReview(serverId, presentation);
   const runRefresh = useCheckoutGitActionsStore((s) => s.refresh);
   const isRefreshing =
     useCheckoutGitActionsStore((s) => s.getStatus({ serverId, cwd, actionId: "refresh" })) ===
@@ -1565,6 +1567,7 @@ export function ChangesSurface({
     workspaceId: workspaceId ?? undefined,
     cwd,
     ignoreWhitespace: preferences.hideWhitespace,
+    includeStructuralSource, // OTTO(structural-diff): the Line path requests no full source.
     enabled: enabled !== false,
   });
   usePublishWorkingDiffAttachment({
@@ -1808,6 +1811,7 @@ export function ChangesSurface({
       >
         <DiffDocument
           files={files}
+          reviewPresentation={reviewPresentation}
           contentInsetBottom={floatingActionsClearance(
             [jumpToFileInset, reviewFeedback.clearance],
             bottomInset,

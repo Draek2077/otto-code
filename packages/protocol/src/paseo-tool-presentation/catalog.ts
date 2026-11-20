@@ -196,6 +196,7 @@ export const PASEO_TOOL_CATALOG = {
     detail: { inputOrder: WORKSPACE_FIELDS, outputFields: ["workspaceId", "projectId"] },
   },
   list_workspaces: { label: "List workspaces" },
+  move_chat_to_workspace: { label: "Move chat to workspace" }, // OTTO(workspace-lifecycle)
   rename_workspace: {
     label: "Rename workspace",
     context: field("title"),

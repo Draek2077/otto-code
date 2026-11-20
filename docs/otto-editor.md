@@ -104,6 +104,20 @@ and expire. Regex execution occurs in a serial worker with a per-file time
 limit, so a pathological pattern cannot stall the daemon event loop. Reviewed
 replacement uses the same dirty-file checks, writer and undo as rename.
 
+## Refine prose
+
+**Document tools → Refine with AI** opens a reviewed working set for prose in an active workspace.
+The editor file starts in the working set. Add other documents by their workspace-relative paths,
+or assign a linked document the Rewritable role. Linked Markdown arrives as read-only context.
+The owning host limits generation to twelve rewritable documents and at most twelve references
+within a 60 KiB reference budget. Code changes use the editor's symbol-aware tools.
+
+Generation uses the host's read-only context generation path. Every proposal compares against the
+original loaded file, including after a regeneration from kept text. Drop unwanted hunks, use
+**Start over** to clear the proposal, or confirm **Apply kept changes** to save. The host rechecks
+the original content digest and modification time and protects open editor drafts across clients.
+A conflict requires loading and reviewing the currently saved files.
+
 ## Editor views and Markdown
 
 Source/Split/Preview uses the previous `file-view-prefs` persistence identity.

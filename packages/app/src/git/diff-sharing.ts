@@ -57,7 +57,8 @@ function equalFile(left: ParsedDiffFile, right: ParsedDiffFile): boolean {
     left.isDeleted !== right.isDeleted ||
     left.additions !== right.additions ||
     left.deletions !== right.deletions ||
-    left.hunks.length !== right.hunks.length
+    left.hunks.length !== right.hunks.length ||
+    !equalStructuralSources(left.structuralSource, right.structuralSource) // OTTO(structural-diff)
   )
     return false;
   for (let h = 0; h < left.hunks.length; h++) {
@@ -75,6 +76,15 @@ function equalFile(left: ParsedDiffFile, right: ParsedDiffFile): boolean {
     if (!equalLines(a.lines, b.lines)) return false;
   }
   return true;
+}
+
+// OTTO(structural-diff): unchanged hunks can still refer to new syntax evidence.
+function equalStructuralSources(
+  left: ParsedDiffFile["structuralSource"],
+  right: ParsedDiffFile["structuralSource"],
+) {
+  if (left === right) return true;
+  return !!left && !!right && left.before === right.before && left.after === right.after;
 }
 
 function equalLines(

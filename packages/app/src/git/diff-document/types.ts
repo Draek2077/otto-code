@@ -1,13 +1,16 @@
 import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import type { InlineReviewActions } from "@/review";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
+import type { useDiffPresentation } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 
 interface DiffDocumentBaseProps {
   files: ParsedDiffFile[];
+  reviewPresentation?: ReturnType<typeof useDiffPresentation>; // OTTO(structural-diff)
   /** Scrollable space kept below the last line so a floating control never traps content. */
   contentInsetBottom?: number;
   displayPreferences: {
     layout: "unified" | "split";
+    structural?: boolean; // OTTO(structural-diff)
     wrapLines: boolean;
     codeFontSize: number;
     monoFontFamily: string;
@@ -177,6 +180,8 @@ export interface BuildDiffDocumentModelInput {
   files: readonly ParsedDiffFile[];
   collapsedFilePaths: ReadonlySet<string>;
   layout: "unified" | "split";
+  /** OTTO(structural-diff): semantic alignment is opt-in on the split renderer. */
+  structural?: boolean;
   wrapLines: boolean;
   viewportWidth: number;
   typography: DiffTypography;

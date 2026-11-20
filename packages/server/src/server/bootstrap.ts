@@ -177,6 +177,9 @@ import { resolvePaseoToolPolicy } from "./agent/paseo-tool-policy.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
+import { fileHistoryHost } from "./otto/workspace-git/file-history-host.js"; // OTTO(file-history)
+import { releaseMovedViewAuthor } from "./otto/workspace-git/view-authoring.js"; // OTTO(workspace-lifecycle)
+import { createOttoWorkspaceLifecycle } from "./otto/workspace-git/lifecycle.js"; // OTTO(workspace-lifecycle)
 import { WorkspaceGitHost, initialGitFetchPolicy } from "./otto/workspace-git/host.js"; // OTTO(git-fetch)
 import { GitFetchSettingsStore } from "./otto/workspace-git/settings.js"; // OTTO(git-fetch)
 import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
@@ -684,6 +687,8 @@ export async function createPaseoDaemon(
   // the Paseo base release instead of Otto's version.
   const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until demand/action or saved startup intent.
   let ottoKanban: KanbanDaemonService | null = null; // OTTO(kanban): bound after registry/server identity creation, before plugins start.
+  let ottoFileHistory: ReturnType<typeof fileHistoryHost> | null = null; // OTTO(file-history)
+  let ottoWorkspaceLifecycle: ReturnType<typeof createOttoWorkspaceLifecycle> | null = null; // OTTO(workspace-lifecycle)
   let ottoWorkspaceGit: WorkspaceGitHost | null = null; // OTTO(git-fetch): same canonical workspace/Git owners.
   let ottoIntegrations: ReturnType<typeof createHostIntegrations> | null = null; // OTTO(integration)
   let ottoContext: ContextManagementService | null = null; // OTTO(context-management): composed after AgentManager.
@@ -718,7 +723,10 @@ export async function createPaseoDaemon(
     "otto-editor": (method, input, clientId) =>
       ottoTerminalEditor.invoke(method, input) ?? ottoEditor.invoke(method, input, clientId), // OTTO(editor)
     "otto-terminal": (method, input) => ottoTerminal.invoke(method, input),
-    "otto-workspace-git": (method, input) => ottoWorkspaceGit?.invoke(method, input), // OTTO(git-fetch)
+    "otto-workspace-git": (method, input) =>
+      ottoFileHistory?.(method, input) ??
+      ottoWorkspaceLifecycle?.invoke(method, input) ??
+      ottoWorkspaceGit?.invoke(method, input), // OTTO(workspace-lifecycle, git-fetch)
     "otto-speech": (method, input, clientId) => ottoSpeech?.invoke(method, input, clientId),
     "otto-artifacts": (method, input) => ottoArtifacts?.invoke(method, input),
     "otto-architectural-views": (method, input, clientId) =>
@@ -1291,6 +1299,7 @@ export async function createPaseoDaemon(
     }),
   ); // OTTO(architectural-views): caller-selected normal provider and permissions.
   ottoContext = new ContextManagementService({
+    hasDirtyFile: (file) => ottoEditor.hasDirtyFile(file), // OTTO(refine)
     profileBrief: (id, cwd) => profileMemory.previewBrief(id, cwd), // OTTO(profile-memory)
     hostId: serverId,
     home: config.paseoHome,
@@ -1467,6 +1476,33 @@ export async function createPaseoDaemon(
       ),
     );
   };
+  // OTTO(workspace-lifecycle): reuse the canonical registries, checkout ownership and broadcasts.
+  ottoFileHistory = fileHistoryHost({ serverId: () => serverId, workspaces: workspaceRegistry }); // OTTO(file-history)
+  ottoWorkspaceLifecycle = createOttoWorkspaceLifecycle({
+    serverId: () => serverId,
+    paseoHome: config.paseoHome,
+    worktreesRoot: config.worktreesRoot,
+    workspaceRegistry,
+    projectRegistry,
+    workspaceGitService,
+    workspaceProvisioning,
+    agentManager,
+    publish: emitWorkspaceUpdatesExternal,
+    recovered: async (workspace) => {
+      await Promise.all(
+        (wsServer?.listSessions() ?? []).map((session) =>
+          session.refreshRecoveredWorkspaceForExternalMutation(workspace),
+        ),
+      );
+    },
+    releaseAuthoring: (input) =>
+      releaseMovedViewAuthor({
+        ...input,
+        hostId: serverId,
+        views: ottoViews,
+        workspaces: workspaceRegistry,
+      }),
+  });
   const ensureWorkspaceForCreateAndBroadcastExternal = async (
     cwd: string,
     firstAgentContext?: FirstAgentContext,
@@ -1834,6 +1870,10 @@ export async function createPaseoDaemon(
     artifactToolPolicy: createRetainedToolPolicy("artifacts", config.paseoHome, () =>
       daemonConfigStore.get(),
     ), // OTTO(artifacts)
+    ottoMoveChat: ottoWorkspaceLifecycle?.move, // OTTO(workspace-lifecycle)
+    workspaceMovePolicy: createRetainedToolPolicy("workspaces", config.paseoHome, () =>
+      daemonConfigStore.get(),
+    ),
     ottoKanban: ottoKanban ?? undefined, // OTTO(kanban): one host boundary for app and agent tools.
     kanbanToolPolicy: createRetainedKanbanToolPolicy(config.paseoHome, () =>
       daemonConfigStore.get(),

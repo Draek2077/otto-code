@@ -1,3 +1,4 @@
+import type { SubscribeCheckoutDiffRequest } from "@getpaseo/protocol/messages"; // OTTO(structural-diff)
 import { messageTooLargeError } from "./daemon-client-transport-utils.js";
 import { BrowserPaintSubscriptions, type BrowserPaintObserver } from "./otto/browser-paints.js"; // OTTO(browser-frames): source-local binary demand, never another connection.
 import { legacyUsageIcon } from "./legacy-usage-icons.js";
@@ -4255,30 +4256,21 @@ export class DaemonClient {
     return responsePromise;
   }
 
-  private normalizeCheckoutDiffCompare(compare: {
-    mode: "uncommitted" | "base";
-    baseRef?: string;
-    ignoreWhitespace?: boolean;
-  }): { mode: "uncommitted" | "base"; baseRef?: string; ignoreWhitespace?: boolean } {
-    if (compare.mode === "uncommitted") {
-      return compare.ignoreWhitespace === true
-        ? { mode: "uncommitted", ignoreWhitespace: true }
-        : { mode: "uncommitted" };
-    }
-    const trimmedBaseRef = compare.baseRef?.trim();
-    if (!trimmedBaseRef) {
-      return compare.ignoreWhitespace === true
-        ? { mode: "base", ignoreWhitespace: true }
-        : { mode: "base" };
-    }
-    return compare.ignoreWhitespace === true
-      ? { mode: "base", baseRef: trimmedBaseRef, ignoreWhitespace: true }
-      : { mode: "base", baseRef: trimmedBaseRef };
+  private normalizeCheckoutDiffCompare(
+    compare: SubscribeCheckoutDiffRequest["compare"],
+  ): SubscribeCheckoutDiffRequest["compare"] {
+    const baseRef = compare.mode === "base" ? compare.baseRef?.trim() : undefined;
+    return {
+      mode: compare.mode,
+      ...(baseRef ? { baseRef } : {}),
+      ...(compare.ignoreWhitespace === true ? { ignoreWhitespace: true } : {}),
+      ...(compare.includeStructuralSource ? { includeStructuralSource: true } : {}), // OTTO(structural-diff)
+    };
   }
 
   async getCheckoutDiff(
     cwd: string,
-    compare: { mode: "uncommitted" | "base"; baseRef?: string; ignoreWhitespace?: boolean },
+    compare: SubscribeCheckoutDiffRequest["compare"],
     requestId?: string,
   ): Promise<CheckoutDiffPayload> {
     return this.sendCorrelatedSessionRequest({
@@ -4294,7 +4286,7 @@ export class DaemonClient {
 
   observeCheckoutDiff(
     cwd: string,
-    compare: { mode: "uncommitted" | "base"; baseRef?: string; ignoreWhitespace?: boolean },
+    compare: SubscribeCheckoutDiffRequest["compare"],
     options?: { requestId?: string; signal?: AbortSignal },
   ): OwnedSubscription<SubscribeCheckoutDiffPayload> {
     return this.observe(
@@ -4418,6 +4410,7 @@ export class DaemonClient {
     sha: string,
     path: string,
     requestId?: string,
+    includeStructuralSource?: true, // OTTO(structural-diff)
   ): Promise<{ file: ParsedDiffFile | null }> {
     const payload =
       await this.sendNamespacedCorrelatedSessionRequest<"checkout.commits.file_diff.response">({
@@ -4427,6 +4420,7 @@ export class DaemonClient {
           cwd,
           sha,
           path,
+          ...(includeStructuralSource ? { includeStructuralSource } : {}), // OTTO(structural-diff)
         },
         timeout: 60000,
       });

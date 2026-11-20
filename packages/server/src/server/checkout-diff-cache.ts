@@ -38,6 +38,7 @@ export class CheckoutDiffCache {
       compare.mode === "base" ? (compare.baseRef ?? null) : null,
       compare.ignoreWhitespace === true,
       compare.includeStructured === true,
+      compare.includeStructuralSource === true, // OTTO(structural-diff)
     ]);
     const cached = this.values.get(key);
     const now = this.now();

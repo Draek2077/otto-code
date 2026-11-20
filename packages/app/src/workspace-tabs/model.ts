@@ -47,7 +47,8 @@ export type WorkspaceTabTarget =
   | WorkspaceWorkingDiffTabTarget
   | PluginWorkspaceTabTarget
   | { kind: "setup"; workspaceId: string }
-  | { kind: "commit_diff"; sha: string };
+  | { kind: "commit_diff"; sha: string }
+  | { kind: "file_history"; path: string; range?: { startLine: number; endLine: number } }; // OTTO(file-history)
 
 export interface WorkspaceTab {
   tabId: string;

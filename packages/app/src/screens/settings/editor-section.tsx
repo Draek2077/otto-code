@@ -1,3 +1,4 @@
+import { DiffPresentationSettings } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 import { OttoEditorPreferences } from "@/otto/editor/settings/device";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
@@ -35,6 +36,8 @@ export function EditorSection() {
         </View>
       </SettingsSection>
       <OttoEditorPreferences />
+      <DiffPresentationSettings />
+      {/* OTTO(structural-diff) */}
     </>
   );
 }

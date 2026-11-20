@@ -1,3 +1,5 @@
+import { useHostFeature } from "@/runtime/host-features"; // OTTO(workspace-lifecycle)
+import { useMoveChatMenuAction } from "@/otto/workspace-git/lifecycle-picker"; // OTTO(workspace-lifecycle)
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, {
   useCallback,
@@ -1290,6 +1292,7 @@ function ResolvedWorkspaceDesktopTabsRow({
         <ResolvedDesktopTabChip
           key={`${item.tab.key}:${item.tab.kind}`}
           serverId={normalizedServerId}
+          workspaceId={normalizedWorkspaceId /* OTTO(workspace-lifecycle) */}
           item={item}
           isFocused={isFocused}
           isDragging={isActive}
@@ -1323,6 +1326,7 @@ function ResolvedWorkspaceDesktopTabsRow({
       layout.closeButtonPolicy,
       layout.items,
       normalizedServerId,
+      normalizedWorkspaceId,
       onCloseOtherTabs,
       onCloseTab,
       onCloseTabsToLeft,
@@ -1452,6 +1456,7 @@ function ResolvedWorkspaceDesktopTabsRow({
 }
 function ResolvedDesktopTabChip({
   serverId,
+  workspaceId,
   item,
   isFocused,
   isDragging,
@@ -1478,6 +1483,7 @@ function ResolvedDesktopTabChip({
   showDropIndicatorAfter,
 }: {
   serverId: string;
+  workspaceId: string;
   item: ResolvedWorkspaceDesktopTabRowItem;
   isFocused: boolean;
   isDragging: boolean;
@@ -1505,9 +1511,19 @@ function ResolvedDesktopTabChip({
 }) {
   const { t } = useTranslation();
   const presentation = item.presentation;
+  // COMPAT(ottoWorkspaceLifecycle): added v0.10.0; remove after 2027-05-20.
+  const canMoveChat = useHostFeature(serverId, "ottoWorkspaceLifecycle");
+  const target = item.tab.target;
+  const moveChat = useMoveChatMenuAction(
+    serverId,
+    workspaceId,
+    item.tab.tabId,
+    target.kind === "agent" ? target.agentId : null,
+  );
   const resolvedTab = useMemo(
     () =>
       buildWorkspaceDesktopTabActions({
+        onMoveChat: canMoveChat ? moveChat : undefined, // OTTO(workspace-lifecycle)
         tab: item.tab,
         index,
         tabCount,
@@ -1524,6 +1540,8 @@ function ResolvedDesktopTabChip({
         labels,
       }),
     [
+      canMoveChat,
+      moveChat,
       index,
       item.tab,
       onCloseOtherTabs,

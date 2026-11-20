@@ -1,3 +1,4 @@
+import { useHostDiffReview } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 import { useCallback, useMemo, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -154,11 +155,13 @@ function CommitDiffPanel() {
   const { serverId, workspaceId, target } = usePaneContext();
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
   const panelPreferences = useDiffPanelPreferences();
+  const { reviewPresentation, includeStructuralSource } = useHostDiffReview(serverId);
   invariant(target.kind === "commit_diff", "CommitDiffPanel requires commit_diff target");
   const { files, isLoading, error, capabilityMissing } = useCommitDiffFiles({
     serverId,
     cwd: cwd ?? "",
     sha: target.sha,
+    includeStructuralSource,
     enabled: Boolean(cwd),
   });
   const mode = useMemo(() => ({ kind: "commit" as const }), []);
@@ -185,6 +188,7 @@ function CommitDiffPanel() {
     body = (
       <DiffDocument
         files={files}
+        reviewPresentation={reviewPresentation}
         displayPreferences={panelPreferences.displayPreferences}
         mode={mode}
       />

@@ -6,6 +6,7 @@ import {
   workingDiffPanelRegistration,
 } from "@/panels/diff-panel";
 import { draftPanelRegistration } from "@/panels/draft-panel";
+import { fileHistoryPanelRegistration } from "@/otto/diff/file-history-panel"; // OTTO(file-history)
 import { filePanelRegistration } from "@/panels/file-panel";
 import { filesPanelRegistration } from "@/panels/files-panel";
 import { registerPanel } from "@/panels/panel-registry";
@@ -33,6 +34,7 @@ export function ensurePanelsRegistered(): void {
   registerPanel(filesPanelRegistration);
   registerPanel(pullRequestPanelRegistration);
   registerPanel(commitDiffPanelRegistration);
+  registerPanel(fileHistoryPanelRegistration); // OTTO(file-history)
   registerPanel(workingDiffPanelRegistration);
   registerPanel(changesTreePanelRegistration);
   registerPanel(pluginPanelRegistration);

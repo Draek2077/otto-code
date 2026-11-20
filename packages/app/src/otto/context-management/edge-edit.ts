@@ -31,6 +31,11 @@ export class ContextEdgeEdit {
       if (this.activation === activation) this.activation = null;
     };
   }
+  // OTTO(refine): reloading reviewed sources replaces the write authority.
+  reset() {
+    if (!this.inFlight)
+      this.publish({ blocked: false, saved: false, error: "", operationId: null });
+  }
   private publish(patch: Partial<ContextEdgeEditState>) {
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();

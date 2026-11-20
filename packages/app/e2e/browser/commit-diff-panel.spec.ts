@@ -67,6 +67,14 @@ test("commit history shows dates and shares diff layout preferences", async ({
   await expect(layoutToggle).toHaveAccessibleName("Switch to side-by-side diff");
   await expect(panel.getByTestId("git-diff-canvas")).toBeVisible({ timeout: 30_000 });
   await expectCommitDiffHeaderGeometry(panel);
+  const presentation = panel.getByTestId("otto-diff-presentation");
+  await presentation.click();
+  await page.getByText("Structural", { exact: true }).last().click();
+  await expect(presentation).toContainText("Structural");
+  await expect(panel.getByTestId("git-diff-canvas")).toBeVisible();
+  await presentation.click();
+  await page.getByText("Line", { exact: true }).last().click();
+  await expect(presentation).toContainText("Line");
 
   await layoutToggle.click();
   await expect(layoutToggle).toHaveAccessibleName("Switch to unified diff");

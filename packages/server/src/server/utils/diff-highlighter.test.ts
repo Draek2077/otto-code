@@ -819,3 +819,19 @@ index 1111111..2222222 100644
     }
   });
 });
+
+it("attaches complete syntax evidence only when requested and equal to the patch coordinates", async () => {
+  const file = parseDiff(SIMPLE_DIFF.replace("\n\n export", "\n \n export"))[0]!;
+  const before =
+    "const foo = 1;\nconst bar = 2;\nconst baz = foo + bar;\n\nexport { foo, bar, baz };\n";
+  const after = before.replace("bar = 2", "bar = 3");
+  const read = (newFileContent: string, includeStructuralSource?: boolean) =>
+    highlightDiffWithFileContent(file, ".", {
+      oldFileContent: before,
+      newFileContent,
+      includeStructuralSource,
+    });
+  expect((await read(after)).structuralSource).toBeUndefined();
+  expect((await read(after, true)).structuralSource).toEqual({ before, after });
+  expect((await read(before, true)).structuralSource).toBeUndefined();
+});

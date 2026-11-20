@@ -27,16 +27,20 @@ export interface ParsedDiffFile {
   deletions: number;
   hunks: DiffHunk[];
   status?: "ok" | "too_large" | "binary";
+  // OTTO(structural-diff)
+  structuralSource?: { before: string; after: string };
 }
 
 interface HighlightDiffWithFileContentOptions {
   oldFileContent?: string | null;
   newFileContent?: string | null;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
 }
 
 interface ParseAndHighlightDiffOptions {
   getOldFileContent?: (file: ParsedDiffFile) => Promise<string | null>;
   getNewFileContent?: (file: ParsedDiffFile) => Promise<string | null>;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
 }
 
 /**
@@ -332,6 +336,8 @@ export async function highlightDiffWithFileContent(
     return file;
   }
 
+  // OTTO(structural-diff): reuse the full texts already read for syntax highlighting.
+  let newContent = options.newFileContent;
   let newTokensByLine: Map<number, HighlightToken[]> | null = null;
   const oldTokensByLine =
     typeof options.oldFileContent === "string"
@@ -342,10 +348,17 @@ export async function highlightDiffWithFileContent(
   } else {
     try {
       const fileContent = await readFile(resolve(cwd, file.path), "utf-8");
+      // OTTO(structural-diff): undefined means a working-tree comparison.
+      // An unavailable immutable blob is null and cannot be replaced with the current checkout.
+      if (options.newFileContent === undefined) newContent = fileContent;
       newTokensByLine = buildFullFileTokenLookup(fileContent, file.path);
     } catch {
       // Deleted or unavailable files use reconstructed tokens below.
     }
+  }
+
+  if (options.includeStructuralSource) {
+    file = withStructuralSource(file, options.oldFileContent, newContent);
   }
 
   if (newTokensByLine && oldTokensByLine)
@@ -356,6 +369,45 @@ export async function highlightDiffWithFileContent(
     newTokensByLine ?? reconstructedTokens.newTokensByLine,
     oldTokensByLine ?? reconstructedTokens.oldTokensByLine,
   );
+}
+
+function withStructuralSource(
+  file: ParsedDiffFile,
+  oldContent: string | null | undefined,
+  newContent: string | null | undefined,
+) {
+  // OTTO(structural-diff): empty source is only authoritative for a new or deleted file.
+  // A subsequent working-tree read can race a new save. Verify all original
+  // hunk coordinates before attaching its snapshots as syntax evidence.
+  const before = file.isNew ? "" : oldContent;
+  const after = file.isDeleted ? "" : newContent;
+  if (
+    typeof before === "string" &&
+    typeof after === "string" &&
+    before.length <= 16000 &&
+    after.length <= 16000 &&
+    file.hunks.length > 0 &&
+    matchesStructuralSource(file, before, after)
+  ) {
+    file = { ...file, structuralSource: { before, after } };
+  }
+
+  return file;
+}
+
+function matchesStructuralSource(file: ParsedDiffFile, before: string, after: string) {
+  if (before.includes("\0") || after.includes("\0")) return false;
+  const oldLines = before.split("\n");
+  const newLines = after.split("\n");
+  return file.hunks.every((hunk) => {
+    let oldIndex = hunk.oldStart - 1;
+    let newIndex = hunk.newStart - 1;
+    return hunk.lines.every((line) => {
+      if (line.type === "header") return true;
+      if (line.type !== "add" && oldLines[oldIndex++] !== line.content) return false;
+      return line.type === "remove" || newLines[newIndex++] === line.content;
+    });
+  });
 }
 
 function applyTokensToHunks(
@@ -415,7 +467,8 @@ export async function parseAndHighlightDiff(
 
       return highlightDiffWithFileContent(file, cwd, {
         oldFileContent: oldFileContent ?? undefined,
-        newFileContent: newFileContent ?? undefined,
+        newFileContent: options.getNewFileContent ? (newFileContent ?? null) : undefined,
+        includeStructuralSource: options.includeStructuralSource, // OTTO(structural-diff)
       });
     }),
   );

@@ -93,3 +93,15 @@ invalid choices, rapid reselection and writes during an in-flight read.
 `app/e2e/browser/otto-comparison-base.spec.ts` covers the real sidebar
 picker, changed file list, reload persistence, a deleted-branch failure and recovery on
 wide and compact browsers.
+
+## Move a chat or reopen a worktree
+
+**Move chat to workspace** in the chat tab menu lists active workspaces on the same host. The
+host changes the owning workspace and publishes both workspace updates. The chat keeps its ID,
+working directory, provider session and transcript. An Architecture draft binding is released
+before moving its authoring chat. The MCP tool `move_chat_to_workspace` uses the same operation.
+
+**Reopen worktree** in the project menu shows archived worktree records that still have a usable
+directory or branch, and Otto-managed Git worktrees without a registered workspace. Reopening an
+archived worktree uses Paseo's recovery path and preserves its workspace ID. Adopting an existing
+directory uses the selected project's placement and does not rerun workspace setup.

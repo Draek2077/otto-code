@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { withUnistyles } from "react-native-unistyles";
+import { DiffPresentationControl } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 import { RenderProfile } from "@/utils/render-profiler";
 import { createDiffPalette, retainDiffPalette } from "./palette";
 import { DiffSurface } from "./surface";
@@ -54,9 +55,23 @@ const StyledDiffDocument = withUnistyles(ThemedDiffDocument, (theme) => ({
 }));
 
 export function DiffDocument(props: DiffDocumentProps) {
+  // OTTO(structural-diff): both presentations share the same review surface.
+  const review = props.reviewPresentation;
+  const structural = review?.presentation === "structural";
+  const displayPreferences = useMemo(
+    () => ({
+      ...props.displayPreferences,
+      layout: structural ? ("split" as const) : props.displayPreferences.layout,
+      structural,
+    }),
+    [props.displayPreferences, structural],
+  );
   return (
     <RenderProfile id="DiffDocument">
-      <StyledDiffDocument {...props} />
+      {props.files.length > 0 && review ? (
+        <DiffPresentationControl value={review.presentation} onChange={review.select} />
+      ) : null}
+      <StyledDiffDocument {...props} displayPreferences={displayPreferences} />
     </RenderProfile>
   );
 }

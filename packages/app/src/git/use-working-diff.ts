@@ -18,6 +18,7 @@ interface UseWorkingDiffOptions {
   workspaceId?: string;
   cwd: string;
   ignoreWhitespace: boolean;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
   enabled: boolean;
   queryScope?: string;
   presentation?: string;
@@ -28,6 +29,7 @@ export function useWorkingDiff({
   workspaceId,
   cwd,
   ignoreWhitespace,
+  includeStructuralSource,
   enabled,
   queryScope,
   presentation,
@@ -69,6 +71,7 @@ export function useWorkingDiff({
     mode: diffMode,
     baseRef,
     ignoreWhitespace,
+    includeStructuralSource,
     enabled: enabled && isGit,
     queryScope,
   });

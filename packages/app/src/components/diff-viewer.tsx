@@ -10,6 +10,12 @@ import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { getCodeInsets } from "./code-insets";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { isWeb } from "@/constants/platform";
+import { DiffPresentationControl, useDiffPresentation } from "@/otto/diff/preferences"; // OTTO(structural-diff)
+import {
+  buildStructuralDiffRows,
+  getStructuralDiffUnavailableReason,
+  type StructuralDiffInput,
+} from "@/otto/diff/structural";
 
 const ScrollView = isWeb ? RNScrollView : GHScrollView;
 
@@ -18,6 +24,7 @@ interface DiffViewerProps {
   maxHeight?: number;
   emptyLabel?: string;
   fillAvailableHeight?: boolean;
+  structuralSource?: Omit<StructuralDiffInput, "lines">; // OTTO(structural-diff)
 }
 
 function DiffLineRow({ line }: { line: DiffLine }) {
@@ -122,10 +129,28 @@ export function DiffViewer({
   maxHeight,
   emptyLabel,
   fillAvailableHeight = false,
+  structuralSource,
 }: DiffViewerProps) {
   const { t } = useTranslation();
   const [scrollViewWidth, setScrollViewWidth] = React.useState(0);
   const resolvedEmptyLabel = emptyLabel ?? t("diffViewer.empty");
+  // OTTO(structural-diff): compact review surfaces keep their established line renderer.
+  const { presentation, select } = useDiffPresentation();
+  const structural = React.useMemo(() => {
+    if (!structuralSource || presentation !== "structural") return null;
+    const input = { ...structuralSource, lines: diffLines };
+    const reason = getStructuralDiffUnavailableReason(input);
+    const rows = reason
+      ? null
+      : buildStructuralDiffRows(input).map((row, index) => ({
+          row,
+          key:
+            row.kind === "header"
+              ? `header:${row.content}:${index}`
+              : `pair:${row.left?.content}:${row.right?.content}:${index}`,
+        }));
+    return { reason, rows };
+  }, [diffLines, presentation, structuralSource]);
   const handleInnerLayout = React.useCallback(
     (e: { nativeEvent: { layout: { width: number } } }) =>
       setScrollViewWidth(e.nativeEvent.layout.width),
@@ -166,9 +191,24 @@ export function DiffViewer({
 
   const lines = (
     <View style={linesContainerStyle} dataSet={CODE_SURFACE_DATASET}>
-      {keyedDiffLines.map(({ key, line }) => (
-        <DiffLineRow key={key} line={line} />
-      ))}
+      {structural?.rows
+        ? structural.rows.map(({ row, key }) =>
+            row.kind === "header" ? (
+              <Text key={key} style={styles.headerText}>
+                {row.content}
+              </Text>
+            ) : (
+              <View style={styles.structuralRow} key={key}>
+                <View style={styles.structuralCell}>
+                  {row.left ? <DiffLineRow line={row.left} /> : null}
+                </View>
+                <View style={styles.structuralCell}>
+                  {row.right ? <DiffLineRow line={row.right} /> : null}
+                </View>
+              </View>
+            ),
+          )
+        : keyedDiffLines.map(({ key, line }) => <DiffLineRow key={key} line={line} />)}
     </View>
   );
 
@@ -195,13 +235,23 @@ export function DiffViewer({
     </ScrollView>
   );
 
-  return content;
+  if (!structuralSource) return content;
+  return (
+    <View style={fillAvailableHeight ? styles.fillHeight : undefined}>
+      <DiffPresentationControl value={presentation} onChange={select} />
+      {structural?.reason ? <Text style={styles.structuralNotice}>{structural.reason}</Text> : null}
+      {content}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create((theme) => {
   const insets = getCodeInsets(theme);
 
   return {
+    structuralRow: { flexDirection: "row" },
+    structuralCell: { flex: 1, minWidth: 180 },
+    structuralNotice: { color: theme.colors.foregroundMuted, paddingHorizontal: theme.spacing[2] },
     verticalScroll: {},
     fillHeight: {
       flex: 1,

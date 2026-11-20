@@ -2,6 +2,7 @@ import { lineNumberGutterWidth } from "@/components/code-insets";
 import { findClusterBreak } from "@marijn/find-cluster-break";
 import {
   buildSplitDiffRows,
+  buildStructuralSplitRows, // OTTO(structural-diff)
   buildUnifiedDiffLines,
   type ReviewableDiffTarget,
   type SplitDiffDisplayLine,
@@ -238,7 +239,7 @@ function appendNewFileRows(candidate: {
   }
 
   const lines = geometryLines(
-    lineSources(candidate.file, candidate.input.layout, false),
+    lineSources(candidate.file, candidate.input.layout, false, candidate.input.structural), // OTTO(structural-diff)
     candidate.input,
   );
   const fileBottom =
@@ -304,11 +305,11 @@ function materializeCells(
   return cells.map((cell) => {
     if (!cell || cell.fragments.length > 0) return cell;
     const sourceLine =
-      file.hunks[cell.sourceIdentity.hunkIndex]!.lines[cell.sourceIdentity.lineIndex]!;
+      file.hunks[cell.sourceIdentity.hunkIndex]?.lines[cell.sourceIdentity.lineIndex]; // OTTO(structural-diff): synthetic fallback headers carry no source.
     return measureCell({
       source: {
         ...cell,
-        tokenText: cell.type === "header" ? [] : compactHighlightTokens(sourceLine.tokens ?? []),
+        tokenText: cell.type === "header" ? [] : compactHighlightTokens(sourceLine?.tokens ?? []),
       },
       availableWidth,
       input,
@@ -360,14 +361,20 @@ function lineSources(
   file: BuildDiffDocumentModelInput["files"][number],
   layout: "unified" | "split",
   includeTokens: boolean,
+  structural?: boolean,
 ): Array<[CellSource] | [CellSource | null, CellSource | null]> {
   if (layout === "split") {
-    return buildSplitDiffRows(file).map((row) => {
+    // OTTO(structural-diff)
+    const plan = structural ? buildStructuralSplitRows(file) : null;
+    const rows = plan?.rows ?? buildSplitDiffRows(file);
+    const sources = rows.map((row): [CellSource] | [CellSource | null, CellSource | null] => {
       if (row.kind === "header") {
         return [headerSource(row.content, row.hunkIndex, row.lineIndex)];
       }
       return [cellSource(row.left, includeTokens), cellSource(row.right, includeTokens)];
     });
+    if (plan?.notice && rows.length > 0) sources.unshift([headerSource(plan.notice, -1, -1)]);
+    return sources;
   }
   return buildUnifiedDiffLines(file).map((entry) => [
     {

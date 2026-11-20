@@ -8,9 +8,11 @@ import {
   DropdownMenuItem,
   DropdownMenuHint,
 } from "@/components/ui/dropdown-menu";
+import { EditorHistoryItems } from "@/otto/diff/editor-history"; // OTTO(file-history)
 import { getDesktopHost } from "@/desktop/host";
 import type { Theme } from "@/styles/theme";
 import type { EditorSurface } from "./surface";
+import { useEditorRefine, isRefinableDocument } from "./refine"; // OTTO(refine)
 import { isMarkdownPath } from "./markdown/markdown-path";
 const Icon = withUnistyles(FileOutput);
 const color = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -31,15 +33,23 @@ export function EditorExportItems({ surface }: { surface: EditorSurface }) {
   );
 }
 export function EditorDocumentTools({ surface }: { surface: EditorSurface }) {
-  if (!isMarkdownPath(surface.file)) return null;
+  const refine = useEditorRefine(surface); // OTTO(refine)
+  if (!isMarkdownPath(surface.file) && !isRefinableDocument(surface.file)) return null;
   return (
-    <DropdownMenu>
-      <ToolbarButton kind="menu" label="Document tools" testID="editor-document-tools">
-        <Icon size={14} uniProps={color} />
-      </ToolbarButton>
-      <DropdownMenuContent side="bottom" align="end" width={280} sheetTitle="Document tools">
-        <EditorExportItems surface={surface} />
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <ToolbarButton kind="menu" label="Document tools" testID="editor-document-tools">
+          <Icon size={14} uniProps={color} />
+        </ToolbarButton>
+        <DropdownMenuContent side="bottom" align="end" width={280} sheetTitle="Document tools">
+          {refine.menuItem}
+          {/* OTTO(refine) */}
+          <EditorHistoryItems surface={surface} />
+          {/* OTTO(file-history) */}
+          <EditorExportItems surface={surface} />
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {refine.dialog}
+    </>
   );
 }

@@ -150,6 +150,16 @@ const manifests = {
     compactSheet: null,
     resourceKey: (target) => target.workspaceId,
   },
+  file_history: {
+    // OTTO(file-history)
+    kind: "file_history",
+    supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: null,
+    resourceKey: (target) =>
+      JSON.stringify([target.path, target.range?.startLine, target.range?.endLine]),
+  },
   commit_diff: {
     kind: "commit_diff",
     supportedHosts: ["main", "explorer"],

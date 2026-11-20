@@ -1,3 +1,5 @@
+import { useHostFeature } from "@/runtime/host-features"; // OTTO(workspace-lifecycle)
+import { openWorkspaceLifecyclePicker } from "@/otto/workspace-git/lifecycle-picker"; // OTTO(workspace-lifecycle)
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   View,
@@ -548,6 +550,11 @@ function ProjectMenuItems({
     if (!settingsTarget) return;
     router.navigate(buildProjectSettingsRoute(settingsTarget.serverId, settingsTarget.projectId));
   }, [settingsTarget]);
+  // COMPAT(ottoWorkspaceLifecycle): added v0.10.0; remove after 2027-05-20.
+  const canReopen = useHostFeature(settingsTarget?.serverId, "ottoWorkspaceLifecycle");
+  const reopen = useCallback(() => {
+    if (settingsTarget) openWorkspaceLifecyclePicker({ kind: "reopen", ...settingsTarget });
+  }, [settingsTarget]);
   const canOpenInNewWindow = getIsElectron() && projectPath.trim().length > 0;
   const handleOpenInNewWindow = useCallback(() => {
     const trimmedPath = projectPath.trim();
@@ -572,6 +579,16 @@ function ProjectMenuItems({
           {t("sidebar.project.actions.openSettings")}
         </ProjectMenuItem>
       ) : null}
+      {canReopen ? (
+        <ProjectMenuItem
+          surface={surface}
+          testID={`sidebar-project-menu-reopen-${projectViewKey}`}
+          onSelect={reopen}
+        >
+          Reopen worktree…
+        </ProjectMenuItem>
+      ) : null}
+      {/* OTTO(workspace-lifecycle) */}
       {canOpenInNewWindow ? (
         <ProjectMenuItem
           surface={surface}

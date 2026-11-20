@@ -1833,6 +1833,7 @@ export class VoiceAssistantWebSocketServer {
         ottoConnectors: ottoBitbucketAvailable(this.pluginRuntime), // OTTO(connectors): same inert built-in owner, independent feature gate.
         ottoTerminal: terminalAvailable(this.pluginRuntime), // OTTO(terminal)
         ottoGitFetch: gitFetchAvailable(this.pluginRuntime), // OTTO(git-fetch)
+        ottoWorkspaceLifecycle: gitFetchAvailable(this.pluginRuntime), // OTTO(workspace-lifecycle)
         ottoGitDiffBase: gitFetchAvailable(this.pluginRuntime), // OTTO(diff-base)
         ottoManualCommit: true, // OTTO(manual-commit): selected-file operation is implemented by this daemon.
         ottoEditor: editorAvailable(this.pluginRuntime), // OTTO(editor)
@@ -1842,6 +1843,9 @@ export class VoiceAssistantWebSocketServer {
         ottoArchitecturalViews: architecturalViewsAvailable(this.pluginRuntime), // OTTO(architectural-views): composed owner includes renderer assets.
         ottoWorkflows: ottoWorkflowsAvailable(this.pluginRuntime), // OTTO(workflows)
         scheduleTargets: scheduleTargetsAvailable(this.pluginRuntime), // OTTO(schedules): one target, history and storage API shared by app/CLI/MCP.
+        ottoFileHistory: gitFetchAvailable(this.pluginRuntime), // OTTO(file-history)
+        ottoStructuralDiff: true, // OTTO(structural-diff)
+        ottoWorkspaceRefine: knowledgeAvailable, // OTTO(refine)
         ottoContextManagement: knowledgeAvailable, // OTTO(context-management): daemon-owned inspection and conditional edits.
         ottoContextStarter: knowledgeAvailable, // OTTO(context-starter): reviewed root-file creation.
         ...ottoBrowserCapabilities(this.pluginRuntime), // OTTO(browser-history)

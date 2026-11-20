@@ -64,6 +64,7 @@ import { isNative, isWeb } from "@/constants/platform";
 import { HorizontalScrollProvider } from "@/contexts/horizontal-scroll-context";
 import { SessionProvider } from "@/contexts/session-context";
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
+import { WorkspaceLifecyclePicker } from "@/otto/workspace-git/lifecycle-picker"; // OTTO(workspace-lifecycle)
 import { ToastProvider } from "@/contexts/toast-context";
 import { VoiceProvider } from "@/contexts/voice-context";
 import {
@@ -933,6 +934,8 @@ function AppShell() {
         <AppWithSidebar>
           <WorkspaceRouteNavigationBridge />
           <RootStack />
+          <WorkspaceLifecyclePicker />
+          {/* OTTO(workspace-lifecycle) */}
         </AppWithSidebar>
       </HorizontalScrollProvider>
     </MobilePanelsProvider>

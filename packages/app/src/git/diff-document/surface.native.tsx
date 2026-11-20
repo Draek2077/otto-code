@@ -111,6 +111,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const model = useMemo(() => {
     const dependencies = [
       props.displayPreferences.layout,
+      props.displayPreferences.structural, // OTTO(structural-diff)
       props.displayPreferences.wrapLines,
       viewport.width,
       typography,
@@ -127,6 +128,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       files: viewport.width > 0 ? props.files : [],
       collapsedFilePaths: props.collapsedFilePaths,
       layout: props.displayPreferences.layout,
+      structural: props.displayPreferences.structural, // OTTO(structural-diff)
       wrapLines: props.displayPreferences.wrapLines,
       viewportWidth: viewport.width,
       typography,
@@ -150,6 +152,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     fileWindowTop,
     props.collapsedFilePaths,
     props.displayPreferences.layout,
+    props.displayPreferences.structural, // OTTO(structural-diff)
     props.displayPreferences.wrapLines,
     props.files,
     props.palette,

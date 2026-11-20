@@ -95,10 +95,27 @@ export class EditorSurface {
       workspaceId: this.options.workspaceId,
     };
   }
+  // OTTO(refine): do not overwrite an unsaved local draft through the source writer.
+  hasUnsavedDocument() {
+    const snapshot = this.options.model.getSnapshot();
+    return snapshot.modified || snapshot.status === "saving" || snapshot.status === "conflict";
+  }
   get workspaceOwned() {
     return this.options.workspaceOwned !== false;
   }
   private selectedRange: { start: Position; end: Position } | null = null;
+  // OTTO(file-history): Git line ranges are 1-based and include only selected lines.
+  historyRange() {
+    const range = this.selectedRange;
+    if (
+      !range ||
+      (range.start.line === range.end.line && range.start.character === range.end.character)
+    )
+      return null;
+    const startLine = range.start.line + 1;
+    const endLine = range.end.line + (range.end.character > 0 ? 1 : 0);
+    return { startLine, endLine: Math.max(startLine, endLine) };
+  }
   refactorScope(): RefactorScope | null {
     if (!this.workspaceOwned) return null;
     const range = this.selectedRange;

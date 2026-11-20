@@ -15,6 +15,7 @@ const roles = [
   { value: "reference", label: "Read-only reference" },
   { value: "excluded", label: "Excluded" },
 ];
+const readOnlyRoles = roles.filter((role) => role.value !== "rewrite");
 function RoleRow({
   model,
   node,
@@ -47,7 +48,7 @@ function RoleRow({
       label={node.label}
       hint={node.scope}
       value={role}
-      options={roles}
+      options={node.editable ? roles : readOnlyRoles}
       onValueChange={select}
       disabled={busy}
       testID={`context-compaction-role-${node.id}`}

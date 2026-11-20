@@ -69,18 +69,23 @@ export class ContextCompactionModel {
     readonly nodes: ContextReport["nodes"],
     selectedId: string,
     private readonly port: ContextCompactionPort,
+    readonly refine = false,
+    additionalRewriteIds: readonly string[] = [],
   ) {
     const selected = nodes.find((node) => node.id === selectedId);
     if (!selected) throw new Error("Select a context source first.");
+    const rewriteIds = new Set([selectedId, ...additionalRewriteIds]);
     this.state = {
       documents: [],
       references: [],
       omittedReferences: 0,
       roles: new Map(
-        nodes.map((node) => [node.id, node.id === selectedId ? "rewrite" : "reference"]),
+        nodes.map((node) => [node.id, rewriteIds.has(node.id) ? "rewrite" : "reference"]),
       ),
       setChanged: false,
-      instruction: contextCompactionInstruction(selected.label),
+      instruction: refine
+        ? "Improve the clarity of this prose without changing its meaning."
+        : contextCompactionInstruction(selected.label),
       instructionVersion: 0,
       selection: null,
       busy: false,
@@ -182,7 +187,7 @@ export class ContextCompactionModel {
   }
   async generate(): Promise<void> {
     const activation = this.activation;
-    if (this.state.documents.some((item) => item.diff?.hunks.length)) return;
+    if (!this.refine && this.state.documents.some((item) => item.diff?.hunks.length)) return;
     if (
       !activation ||
       !this.state.loaded ||
@@ -193,13 +198,14 @@ export class ContextCompactionModel {
     )
       return;
     const documents = this.state.documents;
+    const working = documents.map((item) => (this.refine ? keptContextText(item) : item.working));
     this.publish({ busy: true, error: "" });
     try {
       const response = await this.port.propose({
-        documents: documents.map((item) => ({
+        documents: documents.map((item, index) => ({
           nodeId: item.file.nodeId,
           expectedRevision: item.file.revision,
-          text: item.working,
+          text: working[index]!,
         })),
         references: this.state.references.map((item) => ({
           nodeId: item.nodeId,
@@ -214,15 +220,17 @@ export class ContextCompactionModel {
       const proposals = new Map(response.files.map((file) => [file.nodeId, file]));
       if (proposals.size !== documents.length || response.files.length !== documents.length)
         throw new Error("The proposal does not match the reviewed document set.");
-      const reviewed = documents.map((item) => {
+      const reviewed = documents.map((item, index) => {
         const file = proposals.get(item.file.nodeId);
-        if (!file || file.base !== item.working)
+        if (!file || file.base !== working[index])
           throw new Error("The proposal's base differs from the reviewed working text.");
+        const base = this.refine ? item.file.text : item.working;
+        const diff = buildReviewDiff(base, file.proposal);
         return {
           file: item.file,
-          working: item.working,
-          diff: buildReviewDiff(item.working, file.proposal),
-          kept: new Set<string>(),
+          working: base,
+          diff,
+          kept: new Set(this.refine ? diff.hunks.map((hunk) => hunk.id) : []),
         };
       });
       this.publish({ documents: reviewed, inputCharacters: response.inputCharacters });
@@ -249,6 +257,27 @@ export class ContextCompactionModel {
       return { file: item.file, working: item.working, diff: item.diff, kept };
     });
     this.publish({ documents });
+  }
+  async startOver(confirm: () => Promise<boolean>) {
+    const activation = this.activation;
+    if (!activation || this.state.busy || this.state.blocked) return;
+    if (
+      !(await confirm()) ||
+      activation !== this.activation ||
+      this.state.busy ||
+      this.state.blocked
+    )
+      return;
+    this.publish({
+      documents: this.state.documents.map(({ file }) => ({
+        file,
+        working: file.text,
+        diff: null,
+        kept: new Set(),
+      })),
+      inputCharacters: null,
+      error: "",
+    });
   }
   reviewKeptResult() {
     if (this.state.busy || this.state.blocked || this.state.setChanged) return;

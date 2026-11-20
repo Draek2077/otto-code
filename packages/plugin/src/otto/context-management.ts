@@ -238,12 +238,25 @@ export const ContextRefinementSetSchema = z.object({
   references: z.array(refinementReference).max(12),
   omittedReferences: z.number().int().nonnegative(),
 });
+// OTTO(refine): file tools nominate an owning-workspace path instead of a context graph node.
+const refinementScope = ContextSelectionSchema.extend({
+  workspaceFiles: z.literal(true).optional(),
+});
+export const discoverWorkspaceRefineFiles = defineRpc({
+  name: "context.refinement.discover_files.request",
+  input: scope.extend({ files: z.array(z.string().min(1).max(4096)).min(1).max(12) }),
+  output: contextResult(
+    z.object({ nodes: z.array(ContextNodeSchema).max(36), selectedId: z.string() }),
+  ),
+});
 export const readContextRefinementSet = defineRpc({
   name: "context.refinement.read.request",
-  input: ContextSelectionSchema.extend({
-    nodeIds: refinementIds,
-    referenceNodeIds: z.array(z.string().min(1)).max(256),
-  }).strict(),
+  input: refinementScope
+    .extend({
+      nodeIds: refinementIds,
+      referenceNodeIds: z.array(z.string().min(1)).max(256),
+    })
+    .strict(),
   output: contextResult(ContextRefinementSetSchema),
 });
 const refinementDocument = z
@@ -255,17 +268,21 @@ const refinementDocument = z
   .strict();
 export const proposeContextRefinement = defineRpc({
   name: "context.refinement.propose.request",
-  input: ContextSelectionSchema.extend({
-    documents: z.array(refinementDocument).min(1).max(12),
-    references: z
-      .array(z.object({ nodeId: z.string().min(1), expectedRevision: z.string().min(1) }).strict())
-      .max(12),
-    instruction: z.string().min(1).max(8000),
-    selection: z
-      .object({ provider: z.string().min(1).max(512), model: z.string().min(1).max(2048) })
-      .strict()
-      .optional(),
-  }).strict(),
+  input: refinementScope
+    .extend({
+      documents: z.array(refinementDocument).min(1).max(12),
+      references: z
+        .array(
+          z.object({ nodeId: z.string().min(1), expectedRevision: z.string().min(1) }).strict(),
+        )
+        .max(12),
+      instruction: z.string().min(1).max(8000),
+      selection: z
+        .object({ provider: z.string().min(1).max(512), model: z.string().min(1).max(2048) })
+        .strict()
+        .optional(),
+    })
+    .strict(),
   output: contextResult(
     z.object({
       files: z
@@ -277,11 +294,13 @@ export const proposeContextRefinement = defineRpc({
 });
 export const applyContextRefinement = defineRpc({
   name: "context.refinement.apply.request",
-  input: ContextSelectionSchema.extend({
-    documents: z.array(refinementDocument).min(1).max(12),
-    userApprovedSave: z.boolean(),
-    userApprovedGlobal: z.boolean(),
-  }).strict(),
+  input: refinementScope
+    .extend({
+      documents: z.array(refinementDocument).min(1).max(12),
+      userApprovedSave: z.boolean(),
+      userApprovedGlobal: z.boolean(),
+    })
+    .strict(),
   output: contextResult(
     z.object({
       files: z
@@ -299,3 +318,23 @@ export const applyContextRefinement = defineRpc({
   ),
 });
 export type ContextRefinementSet = z.infer<typeof ContextRefinementSetSchema>;
+
+// OTTO(context-compaction): preserved prose-only gate from Refine. Content sniffing must never admit code rewrites.
+const proseExtensions = new Set([
+  "md",
+  "markdown",
+  "mdx",
+  "txt",
+  "text",
+  "rst",
+  "adoc",
+  "asciidoc",
+  "org",
+]);
+export function isRefinableDocument(file: string): boolean {
+  const normalized = file.trim().toLowerCase().replaceAll("\\", "/");
+  const name = normalized.slice(normalized.lastIndexOf("/") + 1);
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return dot === -1;
+  return proseExtensions.has(name.slice(dot + 1));
+}

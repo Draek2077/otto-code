@@ -9,11 +9,15 @@ export function commitFileDiffQueryOptions(input: {
   path: string;
   client: Pick<DaemonClient, "getCommitFileDiff"> | null;
   enabled: boolean;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
 }) {
+  const baseKey = checkoutCommitFileDiffQueryKey(input.serverId, input.cwd, input.sha, input.path);
   return {
-    queryKey: checkoutCommitFileDiffQueryKey(input.serverId, input.cwd, input.sha, input.path),
+    queryKey: input.includeStructuralSource ? [...baseKey, "structural-source"] : baseKey,
     queryFn: () => {
       if (!input.client) throw new Error("Host disconnected");
+      if (input.includeStructuralSource)
+        return input.client.getCommitFileDiff(input.cwd, input.sha, input.path, undefined, true);
       return input.client.getCommitFileDiff(input.cwd, input.sha, input.path);
     },
     enabled: input.enabled,

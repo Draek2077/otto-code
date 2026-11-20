@@ -31,6 +31,11 @@ export class EditorDraftGuards {
         pathKey(guard.file) === pathKey(file),
     );
   }
+  // OTTO(refine): the same absolute file can be displayed under different workspace roots.
+  blockedFile(file: string) {
+    const key = pathKey(file);
+    return [...this.guards.values()].some((guard) => guard.modified && pathKey(guard.file) === key);
+  }
   releaseClient(clientId: string) {
     for (const [key, value] of this.guards)
       if (value.clientId === clientId) this.guards.delete(key);

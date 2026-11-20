@@ -41,6 +41,9 @@ const fileChanges = {
   status: (value) => {
     value.status = "binary";
   },
+  structuralSource: (value) => {
+    value.structuralSource = { before: "const a = 1;", after: "const a = 2;" };
+  },
   isNew: (value) => {
     value.isNew = true;
   },

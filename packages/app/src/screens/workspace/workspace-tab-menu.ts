@@ -78,6 +78,7 @@ interface BuildWorkspaceTabMenuEntriesInput {
   onCloseTabsBefore: (tabId: string) => Promise<void> | void;
   onCloseTabsAfter: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+  onMoveChat?: () => void; // OTTO(workspace-lifecycle)
   labels?: WorkspaceTabMenuLabels;
 }
 
@@ -95,6 +96,7 @@ interface BuildWorkspaceDesktopTabActionsInput {
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+  onMoveChat?: () => void; // OTTO(workspace-lifecycle)
   labels?: WorkspaceTabMenuLabels;
 }
 
@@ -191,6 +193,15 @@ export function buildWorkspaceTabMenuEntries(
 
   if (tab.target.kind === "agent") {
     const { agentId } = tab.target;
+    // OTTO(workspace-lifecycle)
+    if (input.onMoveChat)
+      entries.push({
+        kind: "item",
+        key: "move-chat",
+        label: "Move chat to workspace…",
+        testID: `${menuTestIDBase}-move-chat`,
+        onSelect: input.onMoveChat,
+      });
     entries.push({
       kind: "item",
       key: "copy-resume-command",
@@ -344,6 +355,7 @@ export function buildWorkspaceDesktopTabActions(
       onCloseTabsAfter: input.onCloseTabsToRight,
       onCloseOtherTabs: input.onCloseOtherTabs,
       labels: input.labels,
+      onMoveChat: input.onMoveChat, // OTTO(workspace-lifecycle)
     }),
     closeButtonTestId: getCloseButtonTestId(input.tab),
   };

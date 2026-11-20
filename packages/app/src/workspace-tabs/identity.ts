@@ -8,6 +8,9 @@ export function normalizeWorkspaceTabTarget(
   if (!value || typeof value !== "object" || typeof value.kind !== "string") {
     return null;
   }
+  // COMPAT(otto09FileHistoryTab): accept the original persisted fileHistory target through 2027-05-20.
+  const persistedKind: string = value.kind;
+  if (persistedKind === "fileHistory" && isPlainRecord(value)) return normalizeFileHistory(value);
   if (value.kind === "draft") {
     const draftId = trimNonEmpty(value.draftId);
     if (!draftId) {
@@ -42,6 +45,25 @@ export function normalizeWorkspaceTabTarget(
   return normalizeSimpleWorkspaceTabTarget(value);
 }
 
+// OTTO(file-history): selection bounds are part of the persisted target identity.
+function normalizeFileHistory(value: Record<string, unknown>): WorkspaceTabTarget | null {
+  const path = typeof value.path === "string" ? trimNonEmpty(value.path) : null;
+  if (!path) return null;
+  const range = isPlainRecord(value.range) ? value.range : value;
+  const { startLine, endLine } = range;
+  if (
+    typeof startLine === "number" &&
+    typeof endLine === "number" &&
+    Number.isSafeInteger(startLine) &&
+    Number.isSafeInteger(endLine) &&
+    startLine > 0 &&
+    endLine >= startLine
+  ) {
+    return { kind: "file_history", path, range: { startLine, endLine } };
+  }
+  return { kind: "file_history", path };
+}
+
 function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): WorkspaceTabTarget | null {
   switch (value.kind) {
     case "agent": {
@@ -64,6 +86,8 @@ function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): Workspace
       const workspaceId = trimNonEmpty(value.workspaceId);
       return workspaceId ? { kind: "setup", workspaceId } : null;
     }
+    case "file_history":
+      return normalizeFileHistory(value); // OTTO(file-history)
     case "commit_diff": {
       const sha = trimNonEmpty(value.sha);
       return sha ? { kind: "commit_diff", sha } : null;
@@ -119,15 +143,28 @@ export function workspaceTabTargetsEqual(
     return left.terminalId === right.terminalId;
   }
   if (left.kind === "plugin" && right.kind === "plugin") {
-    return (
-      left.pluginId === right.pluginId &&
-      left.panelId === right.panelId &&
-      left.context === right.context &&
-      (left.context === "workspace" ||
-        (right.context === "agent" && left.agentId === right.agentId))
-    );
+    return pluginTargetsEqual(left, right);
   }
+  if (left.kind === "file_history" && right.kind === "file_history") {
+    return historyIdentity(left) === historyIdentity(right);
+  } // OTTO(file-history)
   return secondaryWorkspaceTabTargetsEqual(left, right);
+}
+
+function pluginTargetsEqual(
+  left: Extract<WorkspaceTabTarget, { kind: "plugin" }>,
+  right: Extract<WorkspaceTabTarget, { kind: "plugin" }>,
+) {
+  return (
+    left.pluginId === right.pluginId &&
+    left.panelId === right.panelId &&
+    left.context === right.context &&
+    (left.context === "workspace" || (right.context === "agent" && left.agentId === right.agentId))
+  );
+}
+
+function historyIdentity(target: Extract<WorkspaceTabTarget, { kind: "file_history" }>) {
+  return JSON.stringify([target.path, target.range?.startLine, target.range?.endLine]);
 }
 
 function secondaryWorkspaceTabTargetsEqual(
@@ -216,6 +253,10 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   if (target.kind === "setup") {
     return `setup_${target.workspaceId}`;
   }
+  if (target.kind === "file_history") {
+    const range = target.range ? `_${target.range.startLine}_${target.range.endLine}` : "";
+    return `file_history_${encodeURIComponent(target.path)}${range}`;
+  } // OTTO(file-history)
   if (target.kind === "commit_diff") {
     return `commit_diff_${target.sha}`;
   }

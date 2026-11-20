@@ -41,7 +41,7 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-async function fixture(value = set) {
+async function fixture(value = set, refine = false) {
   const read = vi.fn(async () => value);
   const propose = vi.fn<ContextCompactionPort["propose"]>(async (input) => ({
     files: input.documents.map((file) => ({
@@ -63,7 +63,7 @@ async function fixture(value = set) {
       },
     ],
   }));
-  const model = new ContextCompactionModel(nodes, "root", { read, propose, apply });
+  const model = new ContextCompactionModel(nodes, "root", { read, propose, apply }, refine);
   const release = model.activate();
   await Promise.resolve();
   const lane = new ContextEdgeEdit();
@@ -260,4 +260,23 @@ test("base mismatches and failed applies retain review text and cannot retry or 
     documents: [{ file: { revision: "root-origin" } }],
   });
   expect(f.model.changedFiles()[0]!.text).toBe("COMPACTED");
+});
+
+test("Refine regenerates from the kept result while review stays against the pinned original", async () => {
+  const f = await fixture(set, true);
+  await f.model.generate();
+  expect(keptContextText(f.model.getSnapshot().documents[0]!)).toBe("COMPACTED");
+  await f.model.generate();
+  expect(f.propose).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      documents: [{ nodeId: "root", expectedRevision: "root-origin", text: "COMPACTED" }],
+    }),
+  );
+  expect(f.model.getSnapshot().documents[0]?.diff?.base).toBe("ORIGINAL");
+  expect(f.apply).not.toHaveBeenCalled();
+  await f.model.startOver(async () => false);
+  expect(keptContextText(f.model.getSnapshot().documents[0]!)).toBe("COMPACTED");
+  await f.model.startOver(async () => true);
+  expect(keptContextText(f.model.getSnapshot().documents[0]!)).toBe("ORIGINAL");
+  expect(f.model.changedFiles()).toEqual([]);
 });

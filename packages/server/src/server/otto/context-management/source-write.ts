@@ -39,6 +39,8 @@ export async function rewriteContextFile(input: {
   file: string;
   expectedRevision: string;
   rewrite(before: string): string;
+  readRevision?(file: string, text: string): Promise<string>;
+  beforeReplace?(): void;
 }): Promise<boolean> {
   const file = await realpath(input.file);
   if (file !== input.file || !within(input.root, file))
@@ -62,7 +64,9 @@ export async function rewriteContextFile(input: {
       if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || info.size > 131072)
         throw new Error("Context edits require one ordinary source file.");
       const before = await readContextSource(file);
-      if (instructionDigest(before) !== input.expectedRevision)
+      const revision = async (text: string) =>
+        input.readRevision ? input.readRevision(file, text) : instructionDigest(text);
+      if ((await revision(before)) !== input.expectedRevision)
         throw new ContextConflict("The source changed. Refresh and review it before trying again.");
       const after = input.rewrite(before);
       if (after === before) return false;
@@ -83,11 +87,12 @@ export async function rewriteContextFile(input: {
       );
       if (
         (await realpath(input.file)) !== file ||
-        instructionDigest(await readContextSource(file)) !== input.expectedRevision
+        (await revision(await readContextSource(file))) !== input.expectedRevision
       )
         throw new ContextConflict(
           "The source changed during this edit. Its current content was preserved.",
         );
+      input.beforeReplace?.();
       await rename(temporary, file);
       return true;
     },

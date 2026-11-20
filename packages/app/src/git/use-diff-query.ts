@@ -13,6 +13,7 @@ interface UseCheckoutDiffQueryOptions {
   mode: "uncommitted" | "base";
   baseRef?: string;
   ignoreWhitespace?: boolean;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
   enabled?: boolean;
   queryScope?: string;
 }
@@ -46,6 +47,7 @@ export function useCheckoutDiffQuery({
   mode,
   baseRef,
   ignoreWhitespace,
+  includeStructuralSource,
   enabled = true,
   queryScope,
 }: UseCheckoutDiffQueryOptions) {
@@ -68,8 +70,19 @@ export function useCheckoutDiffQuery({
       compareIgnoreWhitespace,
     );
     const normalizedScope = queryScope?.trim();
-    return normalizedScope ? [...comparisonKey, "scope", normalizedScope] : comparisonKey;
-  }, [serverId, cwd, compareMode, compareBaseRef, compareIgnoreWhitespace, queryScope]);
+    const evidenceKey = includeStructuralSource
+      ? [...comparisonKey, "structural-source"]
+      : comparisonKey;
+    return normalizedScope ? [...evidenceKey, "scope", normalizedScope] : evidenceKey;
+  }, [
+    serverId,
+    cwd,
+    compareMode,
+    compareBaseRef,
+    compareIgnoreWhitespace,
+    queryScope,
+    includeStructuralSource,
+  ]);
   const subscriptionId = useMemo(() => `checkoutDiff:${JSON.stringify(queryKey)}`, [queryKey]);
   const routeEnabled = Boolean(queryEnabled && isConnected && cwd);
 
@@ -87,6 +100,7 @@ export function useCheckoutDiffQuery({
         mode: compareMode,
         ...(compareBaseRef ? { baseRef: compareBaseRef } : {}),
         ignoreWhitespace: compareIgnoreWhitespace,
+        ...(includeStructuralSource ? { includeStructuralSource: true } : {}),
       },
     }),
   });

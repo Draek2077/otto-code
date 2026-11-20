@@ -11,6 +11,15 @@ export interface ContextFileTarget {
   home: string;
   source: GraphSource;
   node: ContextReport["nodes"][number];
+  refine?: true;
+  assertWritable?(): void;
+}
+
+export async function contextFileRevision(file: string, text: string, refine?: true) {
+  const hash = instructionDigest(text);
+  if (!refine) return hash;
+  const info = await lstat(file, { bigint: true });
+  return `${info.mtimeNs}:${hash}`;
 }
 /** Only a fresh daemon-owned graph may nominate a source. No caller-supplied filesystem path. */
 function boundary(target: ContextFileTarget): void {
@@ -33,7 +42,7 @@ export async function currentContextFile(target: ContextFileTarget): Promise<Con
     nodeId: target.node.id,
     label: target.node.label,
     text,
-    revision: instructionDigest(text),
+    revision: await contextFileRevision(target.source.file, text, target.refine),
     scope: target.node.scope,
     writable,
     readOnlyReason: writable ? null : "Source edits require one ordinary file without links.",
@@ -57,14 +66,17 @@ export async function saveCurrentContextFile(
     throw new Error(
       "This host-wide source can affect other projects. Explicitly approve that scope before saving.",
     );
+  const changed = await rewriteContextFile({
+    // A native/global catalog entry was nominated by the daemon, not by a client path.
+    root: target.node.scope === "host" ? path.dirname(target.source.file) : target.root,
+    file: target.source.file,
+    expectedRevision: input.expectedRevision,
+    rewrite: () => input.text,
+    readRevision: (file, text) => contextFileRevision(file, text, target.refine),
+    beforeReplace: target.assertWritable,
+  });
   return {
-    revision: instructionDigest(input.text),
-    changed: await rewriteContextFile({
-      // A native/global catalog entry was nominated by the daemon, not by a client path.
-      root: target.node.scope === "host" ? path.dirname(target.source.file) : target.root,
-      file: target.source.file,
-      expectedRevision: input.expectedRevision,
-      rewrite: () => input.text,
-    }),
+    changed,
+    revision: await contextFileRevision(target.source.file, input.text, target.refine),
   };
 }

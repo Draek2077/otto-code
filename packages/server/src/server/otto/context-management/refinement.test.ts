@@ -1,8 +1,9 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir, mkdtemp, realpath, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, writeFile, readFile, rm, utimes } from "node:fs/promises";
 import { afterEach, expect, test } from "vitest";
 import {
+  discoverWorkspaceRefineFiles,
   readContextRefinementSet,
   proposeContextRefinement,
   applyContextRefinement,
@@ -36,6 +37,7 @@ async function fixture() {
   await writeFile(code, "export const code = 1;");
   let response: unknown = { files: [] };
   let failure: Error | null = null;
+  let dirty = false;
   const calls: string[] = [];
   const generation: StructuredTextGeneration = {
     async generate(request) {
@@ -54,6 +56,7 @@ async function fixture() {
       throw Error("No provider inspection permitted");
     },
     generation: () => generation,
+    hasDirtyFile: (candidate) => dirty && candidate === file,
   });
   const scope = { hostId: "host", workspaceId: "workspace", agentId: null, windowTokens: 200000 };
   const id = (value: string) => instructionDigest(value);
@@ -101,6 +104,11 @@ async function fixture() {
     root,
     home,
     file,
+    host,
+    scope,
+    setDirty: (value: boolean) => {
+      dirty = value;
+    },
     second,
     reference,
     code,
@@ -294,4 +302,51 @@ test("stale multi-file preflight changes nothing, including earlier valid docume
   expect(await f.apply(set, "STALE")).toMatchObject({ ok: false, error: { code: "conflict" } });
   expect(await readFile(f.file, "utf8")).toBe(f.original);
   expect(await readFile(f.second, "utf8")).toBe("PEER");
+});
+
+test("workspace Refine discovers read-only links, pins mtime and refuses unsaved editor drafts", async () => {
+  const f = await fixture();
+  const scope = { ...f.scope, workspaceFiles: true };
+  const discovery = discoverWorkspaceRefineFiles.output.parse(
+    await f.host.invoke(discoverWorkspaceRefineFiles.name, {
+      hostId: scope.hostId,
+      workspaceId: scope.workspaceId,
+      files: [f.file],
+    }),
+  );
+  expect(discovery).toMatchObject({
+    ok: true,
+    value: {
+      selectedId: f.file,
+      nodes: expect.arrayContaining([expect.objectContaining({ id: f.reference, editable: true })]),
+    },
+  });
+  const load = async () => {
+    const result = readContextRefinementSet.output.parse(
+      await f.host.invoke(readContextRefinementSet.name, {
+        ...scope,
+        nodeIds: [f.file],
+        referenceNodeIds: [f.code],
+      }),
+    );
+    if (!result.ok) throw new Error(result.error.message);
+    return result.value;
+  };
+  const first = await load();
+  expect(first.references).toEqual([expect.objectContaining({ nodeId: f.code })]);
+  const mtime = new Date("2020-02-14T00:00:00Z");
+  await utimes(f.file, mtime, mtime);
+  const apply = (origin: ContextRefinementSet) => f.apply(origin, "REVIEWED", scope);
+  expect(await apply(first)).toMatchObject({ ok: false, error: { code: "conflict" } });
+  const second = await load();
+  f.setDirty(true);
+  expect(await apply(second)).toMatchObject({ ok: false, error: { code: "conflict" } });
+  expect(await readFile(f.file, "utf8")).toBe(f.original);
+  f.setDirty(false);
+  expect(await apply(second)).toMatchObject({
+    ok: true,
+    value: { files: [{ status: "changed" }] },
+  });
+  expect(await readFile(f.file, "utf8")).toBe("REVIEWED");
+  expect(await readFile(f.code, "utf8")).toBe("export const code = 1;");
 });

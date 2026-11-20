@@ -103,6 +103,10 @@ export class EditorHost {
       (root, file) => this.guards.blocked(root, file),
     );
   }
+  // OTTO(refine): editor write guards outlive the visible tab and cover peers on the owning host.
+  hasDirtyFile(file: string) {
+    return this.guards.blockedFile(file);
+  }
   invoke(method: string, input: unknown, clientId: string): Promise<unknown> | undefined {
     if (this.closed) throw new EditorError("closed", "The editor host is shutting down.");
     const solution = this.solutions.invoke(method, input);

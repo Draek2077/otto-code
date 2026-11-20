@@ -1,3 +1,5 @@
+import { useHostFeature } from "@/runtime/host-features"; // OTTO(workspace-lifecycle)
+import { useMoveChatMenuAction } from "@/otto/workspace-git/lifecycle-picker"; // OTTO(workspace-lifecycle)
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { Keyboard, Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -201,7 +203,16 @@ function MobileWorkspaceTabOption({
     [t],
   );
   const menuTestIDBase = `workspace-tab-menu-${tab.tabId}`;
+  // COMPAT(ottoWorkspaceLifecycle): added v0.10.0; remove after 2027-05-20.
+  const canMoveChat = useHostFeature(normalizedServerId, "ottoWorkspaceLifecycle");
+  const moveChat = useMoveChatMenuAction(
+    normalizedServerId,
+    normalizedWorkspaceId,
+    tab.tabId,
+    tab.target.kind === "agent" ? tab.target.agentId : null,
+  );
   const menuEntries = buildWorkspaceTabMenuEntries({
+    onMoveChat: canMoveChat ? moveChat : undefined, // OTTO(workspace-lifecycle)
     surface: "mobile",
     tab,
     index: tabIndex,

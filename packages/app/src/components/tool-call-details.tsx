@@ -407,17 +407,29 @@ function SubAgentDetailSection({
 }
 
 interface EditDetailProps {
+  detail: Extract<ToolCallDetail, { type: "edit" }>; // OTTO(structural-diff)
   diffLines: DiffLine[] | undefined;
   ds: DetailStyles;
 }
 
-function EditDetailSection({ diffLines, ds }: EditDetailProps) {
+function EditDetailSection({ detail, diffLines, ds }: EditDetailProps) {
+  // A tool edit may be a patch or exact replacement snippets. Only the supplied
+  // before/after pair can provide parser evidence.
+  const structuralSource = useMemo(
+    () => ({
+      filePath: detail.filePath,
+      beforeSource: detail.unifiedDiff ? undefined : detail.oldString,
+      afterSource: detail.unifiedDiff ? undefined : detail.newString,
+    }),
+    [detail.filePath, detail.unifiedDiff, detail.oldString, detail.newString],
+  );
   return (
     <View style={ds.sectionFillStyle}>
       {diffLines ? (
         <View style={ds.codeBlockFillStyle}>
           <DiffViewer
             diffLines={diffLines}
+            structuralSource={structuralSource}
             maxHeight={ds.resolvedMaxHeight}
             fillAvailableHeight={ds.shouldFill}
           />
@@ -702,7 +714,7 @@ function buildDetailSections(
     ];
   }
   if (detail.type === "edit") {
-    return [<EditDetailSection key="edit" diffLines={diffLines} ds={ds} />];
+    return [<EditDetailSection key="edit" detail={detail} diffLines={diffLines} ds={ds} />];
   }
   if (detail.type === "write") {
     return [

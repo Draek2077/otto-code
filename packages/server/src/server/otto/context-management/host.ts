@@ -9,6 +9,7 @@ import {
   readContextReport,
   readContextSourceFile,
   saveContextSourceFile,
+  discoverWorkspaceRefineFiles, // OTTO(refine)
   readContextRefinementSet,
   proposeContextRefinement,
   applyContextRefinement,
@@ -29,6 +30,7 @@ import type { NativeContextInventory } from "./native-inventory.js";
 import { nativeContextGraph } from "./native-graph.js";
 import { applyContextFindingFixes } from "./fixes.js";
 import { currentContextFile, saveCurrentContextFile } from "./source-file.js";
+import { discoverRefineFiles, workspaceRefineTargets } from "./workspace-refine.js"; // OTTO(refine)
 import { readRefinementSet, proposeRefinement, applyRefinement } from "./refinement.js";
 import type { ContextFileTarget } from "./source-file.js";
 import type { StructuredTextGeneration } from "../../session/checkout/git-metadata-generator.js";
@@ -54,6 +56,7 @@ export class ContextManagementService {
       providerOwner(providerId: string): string | undefined;
       invoke(pluginId: string, method: string, input: unknown): Promise<unknown>;
       generation?(selection?: { provider: string; model: string }): StructuredTextGeneration;
+      hasDirtyFile?(file: string): boolean; // OTTO(refine)
       nativeInspection?(
         agent: ContextAgent,
         location: { root: string; cwd: string },
@@ -165,7 +168,32 @@ export class ContextManagementService {
     return { targets, root: current.root };
   }
 
+  // OTTO(refine): an explicit workspace file set shares the existing reviewed generation and CAS writer.
+  private async refinementTargets(
+    input: ContextSelection & { workspaceFiles?: true },
+    ids: string[],
+  ) {
+    if (!input.workspaceFiles) return this.fileTargets(input);
+    const selection = await workspaceRefineTargets((await this.workspace(input)).cwd, ids);
+    for (const target of selection.targets.values()) {
+      target.assertWritable = () => {
+        if (this.ports.hasDirtyFile?.(target.source.file)) {
+          throw new ContextConflict(
+            "Save or discard the open editor draft before applying Refine changes.",
+          );
+        }
+      };
+    }
+    return selection;
+  }
+
   invoke(method: string, value: unknown): Promise<unknown> | undefined {
+    if (method === discoverWorkspaceRefineFiles.name) {
+      return this.guard(async () => {
+        const input = discoverWorkspaceRefineFiles.input.parse(value);
+        return discoverRefineFiles((await this.workspace(input)).cwd, input.files);
+      });
+    }
     switch (method) {
       case readContextStarter.name:
         return this.guard(async () => {
@@ -214,13 +242,19 @@ export class ContextManagementService {
       case readContextRefinementSet.name:
         return this.guard(async () => {
           const input = readContextRefinementSet.input.parse(value);
-          const current = await this.fileTargets(input);
+          const current = await this.refinementTargets(input, [
+            ...input.nodeIds,
+            ...input.referenceNodeIds,
+          ]);
           return readRefinementSet(current.targets, input.nodeIds, input.referenceNodeIds);
         });
       case proposeContextRefinement.name:
         return this.guard(async () => {
           const input = proposeContextRefinement.input.parse(value);
-          const current = await this.fileTargets(input);
+          const current = await this.refinementTargets(
+            input,
+            [...input.documents, ...input.references].map((item) => item.nodeId),
+          );
           return proposeRefinement(
             current.targets,
             input,
@@ -231,7 +265,10 @@ export class ContextManagementService {
       case applyContextRefinement.name:
         return this.guard(async () => {
           const input = applyContextRefinement.input.parse(value);
-          const current = await this.fileTargets(input);
+          const current = await this.refinementTargets(
+            input,
+            input.documents.map((item) => item.nodeId),
+          );
           return applyRefinement(current.targets, input);
         });
       case readContextPreview.name:

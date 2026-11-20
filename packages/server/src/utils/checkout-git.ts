@@ -910,6 +910,7 @@ export interface CheckoutDiffCompare {
   baseRef?: string;
   ignoreWhitespace?: boolean;
   includeStructured?: boolean;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
 }
 
 export interface MergeToBaseOptions {
@@ -2173,10 +2174,11 @@ export const CHECKOUT_DIFF_MAX_STRUCTURED_BYTES =
 interface StructuredDiffAccumulator {
   files: ParsedDiffFile[];
   serializedBytes: number;
+  structuralBytes: number; // OTTO(structural-diff)
 }
 
 function createStructuredDiffAccumulator(): StructuredDiffAccumulator {
-  return { files: [], serializedBytes: Buffer.byteLength("[]", "utf8") };
+  return { files: [], serializedBytes: Buffer.byteLength("[]", "utf8"), structuralBytes: 0 };
 }
 
 function appendStructuredFile(
@@ -2184,12 +2186,22 @@ function appendStructuredFile(
   file: ParsedDiffFile,
 ): boolean {
   const separatorBytes = structured.files.length > 0 ? 1 : 0;
-  const fileBytes = Buffer.byteLength(JSON.stringify(file), "utf8");
+  // OTTO(structural-diff): optional evidence must never turn a valid Line diff into too-large.
+  const { structuralSource, ...lineFile } = file;
+  const fileBytes = Buffer.byteLength(JSON.stringify(lineFile), "utf8");
   const nextBytes = structured.serializedBytes + separatorBytes + fileBytes;
   if (nextBytes > CHECKOUT_DIFF_MAX_STRUCTURED_BYTES) {
     return false;
   }
-  structured.files.push(file);
+  const extraBytes = structuralSource
+    ? Buffer.byteLength(JSON.stringify({ structuralSource }), "utf8") - 1
+    : 0;
+  if (extraBytes > 0 && structured.structuralBytes + extraBytes <= 128000) {
+    structured.structuralBytes += extraBytes;
+    structured.files.push(file);
+  } else {
+    structured.files.push(lineFile);
+  }
   structured.serializedBytes = nextBytes;
   return true;
 }
@@ -2725,10 +2737,12 @@ export async function getCommitFileDiff({
   cwd,
   sha,
   path,
+  includeStructuralSource, // OTTO(structural-diff)
 }: {
   cwd: string;
   sha: string;
   path: string;
+  includeStructuralSource?: boolean;
 }): Promise<ParsedDiffFile | null> {
   const worktreeRoot = await requireGitWorktreeRoot(cwd);
   const renames = await getCommitRenames(worktreeRoot, sha);
@@ -2756,7 +2770,9 @@ export async function getCommitFileDiff({
   }
 
   const parsedFiles = await parseAndHighlightDiff(stdout, worktreeRoot, {
-    getOldFileContent: (file) => readGitFileContentAtRef(worktreeRoot, `${sha}^`, file.path),
+    includeStructuralSource, // OTTO(structural-diff)
+    getOldFileContent: (file) =>
+      readGitFileContentAtRef(worktreeRoot, `${sha}^`, oldPath ?? file.path), // OTTO(structural-diff): compare the correct source on rename.
     getNewFileContent: (file) => readGitFileContentAtRef(worktreeRoot, sha, file.path),
   });
 
@@ -3138,6 +3154,7 @@ export function warmCheckoutShortstatInBackground(
 }
 
 interface AppendStructuredTrackedDiffsInput {
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
   cwd: string;
   trackedChanges: CheckoutFileChange[];
   trackedNumstatByPath: Map<string, FileStat>;
@@ -3158,6 +3175,7 @@ async function buildHighlightedTrackedDiffFile(input: {
   parsedFile: ParsedDiffFile;
   refsForDiff: CheckoutDiffRefs;
   contents?: Map<string, string | null>;
+  includeStructuralSource?: boolean;
 }): Promise<ParsedDiffFile> {
   const { cwd, change, parsedFile, refsForDiff } = input;
   const refPath = change.oldPath ?? change.path;
@@ -3176,7 +3194,8 @@ async function buildHighlightedTrackedDiffFile(input: {
       ]);
   const highlightedFile = await highlightDiffWithFileContent(parsedFile, cwd, {
     oldFileContent,
-    newFileContent,
+    newFileContent: refsForDiff.targetRef ? (newFileContent ?? null) : undefined,
+    includeStructuralSource: input.includeStructuralSource, // OTTO(structural-diff)
   });
   return {
     ...highlightedFile,
@@ -3265,6 +3284,7 @@ async function appendStructuredTrackedDiffs(
           parsedFile,
           refsForDiff,
           contents: contents ?? undefined,
+          includeStructuralSource: input.includeStructuralSource, // OTTO(structural-diff)
         });
         if (!appendStructuredFile(structured, file)) {
           return false;
@@ -3305,6 +3325,7 @@ interface ProcessUntrackedChangeInput {
   change: CheckoutFileChange;
   ignoreWhitespace: boolean;
   includeStructured: boolean;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
   structured: StructuredDiffAccumulator;
   appendDiff: (text: string) => void;
 }
@@ -3351,7 +3372,9 @@ async function processUntrackedChange(input: ProcessUntrackedChangeInput): Promi
   }
 
   appendDiff(text);
-  const parsed = await parseAndHighlightDiff(text, cwd);
+  const parsed = await parseAndHighlightDiff(text, cwd, {
+    includeStructuralSource: input.includeStructuralSource,
+  }); // OTTO(structural-diff)
   const parsedFile =
     parsed[0] ??
     ({
@@ -3572,6 +3595,7 @@ export async function getCheckoutDiff(
       trackedNumstatByPath: trackedDiff.trackedNumstatByPath,
       trackedPlaceholderByPath: trackedDiff.trackedPlaceholderByPath,
       trackedDiffText: trackedDiff.trackedDiffText,
+      includeStructuralSource: compare.includeStructuralSource, // OTTO(structural-diff)
       refsForDiff: effectiveRefsForDiff,
       ignoreWhitespace,
       structured,
@@ -3598,6 +3622,7 @@ export async function getCheckoutDiff(
       change,
       ignoreWhitespace,
       includeStructured: compare.includeStructured === true,
+      includeStructuralSource: compare.includeStructuralSource, // OTTO(structural-diff)
       structured,
       appendDiff,
     });
@@ -3607,7 +3632,14 @@ export async function getCheckoutDiff(
   }
 
   if (compare.includeStructured) {
-    return { diff: diffText, structured: structured.files };
+    const files = structured.files;
+    if (
+      structured.serializedBytes + structured.structuralBytes >
+      CHECKOUT_DIFF_MAX_STRUCTURED_BYTES
+    ) {
+      for (const file of files) delete file.structuralSource; // OTTO(structural-diff)
+    }
+    return { diff: diffText, structured: files };
   }
   return { diff: diffText };
 }

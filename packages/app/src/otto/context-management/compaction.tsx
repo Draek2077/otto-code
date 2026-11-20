@@ -23,7 +23,11 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ReviewModelPicker } from "@/otto/knowledge/review-model-picker";
 import type { ContextEdgeEdit, ContextEdgeEditState } from "./edge-edit";
-import { ContextCompactionModel, keptContextText } from "./compaction-model";
+import {
+  ContextCompactionModel,
+  keptContextText,
+  type ContextCompactionState,
+} from "./compaction-model";
 import { ContextCompactionFiles } from "./compaction-files";
 import { ContextCompactionReview } from "./compaction-review";
 import { contextCompactionPresets } from "./compaction-presets";
@@ -31,7 +35,7 @@ import { useContextEditOrigin } from "./use-edit-origin";
 import { styles } from "./styles";
 
 interface CompactionProps {
-  scope: ContextSelection;
+  scope: ContextSelection & { workspaceFiles?: true };
   selectedId: string;
   nodes: ContextReport["nodes"];
   active: boolean;
@@ -40,6 +44,9 @@ interface CompactionProps {
   onClose(): void;
   onChanged(): void;
   onReviewed(): Promise<void>;
+  beforeWrite?(): Promise<void>; // OTTO(refine)
+  additionalRewriteIds?: readonly string[];
+  onReviewState?(draft: boolean, busy: boolean): void;
 }
 function Instruction({ model }: { model: ContextCompactionModel }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
@@ -74,29 +81,65 @@ function Preset({
     </Button>
   );
 }
-function ContextCompaction(props: CompactionProps) {
+function proposalActions(
+  state: ContextCompactionState,
+  options: { disabled: boolean; writeBlocked: boolean; refine: boolean },
+) {
+  const hasProposal = state.documents.some((item) => item.diff !== null);
+  const unavailable = options.disabled || state.blocked || state.setChanged;
+  return {
+    generate:
+      !unavailable &&
+      state.loaded &&
+      !!state.instruction.trim() &&
+      (options.refine || !state.documents.some((item) => item.diff?.hunks.length)),
+    reset: !unavailable && hasProposal,
+    save:
+      !unavailable &&
+      !options.writeBlocked &&
+      state.documents.some((item) => keptContextText(item) !== item.file.text),
+    generationLabel: options.refine && hasProposal ? "Regenerate" : "Generate proposal",
+  };
+}
+
+export function ContextCompaction(props: CompactionProps) {
   const read = useRpc(readContextRefinementSet),
     propose = useRpc(proposeContextRefinement),
     apply = useRpc(applyContextRefinement);
   const [model] = useState(
     () =>
-      new ContextCompactionModel(props.nodes, props.selectedId, {
-        async read(nodeIds, referenceNodeIds) {
-          const result = await read({ ...props.scope, nodeIds, referenceNodeIds });
-          if (!result.ok) throw new Error(result.error.message);
-          return result.value;
+      new ContextCompactionModel(
+        props.nodes,
+        props.selectedId,
+        {
+          async read(nodeIds, referenceNodeIds) {
+            const result = await read({ ...props.scope, nodeIds, referenceNodeIds });
+            if (!result.ok) throw new Error(result.error.message);
+            return result.value;
+          },
+          async propose(input) {
+            const result = await propose({ ...props.scope, ...input });
+            if (!result.ok) throw new Error(result.error.message);
+            return result.value;
+          },
+          async apply(input) {
+            try {
+              await props.beforeWrite?.();
+            } catch (error) {
+              return {
+                ok: false,
+                message:
+                  error instanceof Error ? error.message : "Save the open editor drafts first.",
+              };
+            }
+            const result = await apply({ ...props.scope, ...input, userApprovedSave: true });
+            if (!result.ok) return { ok: false, message: result.error.message };
+            return { ok: true, files: result.value.files };
+          },
         },
-        async propose(input) {
-          const result = await propose({ ...props.scope, ...input });
-          if (!result.ok) throw new Error(result.error.message);
-          return result.value;
-        },
-        async apply(input) {
-          const result = await apply({ ...props.scope, ...input, userApprovedSave: true });
-          if (!result.ok) return { ok: false, message: result.error.message };
-          return { ok: true, files: result.value.files };
-        },
-      }),
+        props.scope.workspaceFiles === true,
+        props.additionalRewriteIds,
+      ),
   );
   useLayoutEffect(() => (props.active ? model.activate() : undefined), [props.active, model]);
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
@@ -115,6 +158,17 @@ function ContextCompaction(props: CompactionProps) {
   }, [model, onReviewed]);
   const generate = useCallback(() => model.generate(), [model]);
   const kept = useCallback(() => model.reviewKeptResult(), [model]);
+  const startOver = useCallback(
+    () =>
+      model.startOver(() =>
+        confirmDialog({
+          title: "Start over from the original documents?",
+          message: "This clears the proposal and hunk choices. Saved files stay as they are.",
+          confirmLabel: "Start over",
+        }),
+      ),
+    [model],
+  );
   const save = useCallback(
     () =>
       model.apply(
@@ -147,25 +201,32 @@ function ContextCompaction(props: CompactionProps) {
       return;
     if (current()) onClose();
   }, [captureOrigin, model, onClose]);
-  const hasProposal = state.documents.some((item) => item.diff !== null);
-  const pendingHunks = state.documents.some((item) => item.diff?.hunks.length);
-  // Derive rendering from the subscribed snapshot. A no-argument controller read
-  // can be memoized against the stable model identity by React Compiler.
-  const hasKeptChanges = state.documents.some((item) => keptContextText(item) !== item.file.text);
+  const hasDraft = state.documents.some((item) => item.diff || item.working !== item.file.text);
+  const { onReviewState } = props;
+  useLayoutEffect(
+    () => onReviewState?.(hasDraft && !state.blocked, state.busy),
+    [hasDraft, onReviewState, state.blocked, state.busy],
+  );
   const disabled = !props.active || state.busy || props.writeState.busy;
+  const actions = proposalActions(state, {
+    disabled,
+    writeBlocked: props.writeState.blocked,
+    refine: model.refine,
+  });
   return (
     <ScrollView
+      nestedScrollEnabled
       style={styles.page}
       contentContainerStyle={styles.content}
       testID="context-compaction"
     >
       <SettingsSection
-        title="Compact with AI"
+        title={props.scope.workspaceFiles ? "Refine with AI" : "Compact with AI"}
         info="Review a bounded prose working set. Generating and keeping a hunk do not write files; applying requires explicit confirmation."
       >
         <View style={styles.actions}>
           <Button variant="outline" size="sm" onPress={close} disabled={disabled}>
-            Back to context
+            {props.scope.workspaceFiles ? "Close Refine" : "Back to context"}
           </Button>
         </View>
         {state.error ? <Alert variant="error" description={state.error} /> : null}
@@ -201,41 +262,18 @@ function ContextCompaction(props: CompactionProps) {
         <Instruction model={model} />
         <ReviewModelPicker model={model} hostId={props.scope.hostId} active={props.active} />
         <View style={styles.actions}>
-          <Button
-            leftIcon={Bot}
-            size="sm"
-            onPress={generate}
-            disabled={
-              disabled ||
-              !state.loaded ||
-              state.blocked ||
-              state.setChanged ||
-              pendingHunks ||
-              !state.instruction.trim()
-            }
-          >
-            Generate proposal
+          <Button leftIcon={Bot} size="sm" onPress={generate} disabled={!actions.generate}>
+            {actions.generationLabel}
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onPress={kept}
-            disabled={disabled || !hasProposal || state.blocked || state.setChanged}
+            onPress={model.refine ? startOver : kept}
+            disabled={!actions.reset}
           >
-            Review kept result
+            {model.refine ? "Start over" : "Review kept result"}
           </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onPress={save}
-            disabled={
-              disabled ||
-              props.writeState.blocked ||
-              state.blocked ||
-              state.setChanged ||
-              !hasKeptChanges
-            }
-          >
+          <Button variant="default" size="sm" onPress={save} disabled={!actions.save}>
             Apply kept changes
           </Button>
         </View>
