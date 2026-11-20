@@ -5,6 +5,7 @@ import { buildStructuralSplitRows, buildSplitDiffRows } from "@/utils/diff-layou
 import {
   buildStructuralDiffBlocks,
   buildStructuralDiffRows,
+  buildStructuralSourceIndex,
   getStructuralDiffAvailability,
   isSyntaxFormattingOnly,
 } from "./structural";
@@ -20,6 +21,53 @@ describe("structural review", () => {
       });
     expect(check("const x = { key: 1 };", "const x = {\n  key: 1\n};")).toBe(true);
     expect(check('const x = "a b";', 'const x = "ab";')).toBe(false);
+  });
+
+  it("preserves layout-sensitive JavaScript syntax changes", () => {
+    const beforeSource = "function example() { return 1; }";
+    const afterSource = "function example() { return\n1; }";
+    expect(
+      isSyntaxFormattingOnly({
+        filePath: "return.ts",
+        beforeSource,
+        afterSource,
+        lines: buildLineDiff(beforeSource, afterSource),
+      }),
+    ).toBe(false);
+  });
+
+  it("reuses projected snapshots while retaining at most four source indexes", () => {
+    const source = "const cached = 7;";
+    const first = buildStructuralSourceIndex(source, "cached.ts");
+    expect(first).not.toBeNull();
+    expect(buildStructuralSourceIndex(source, "cached.ts")).toBe(first);
+    for (let index = 0; index < 4; index += 1) {
+      buildStructuralSourceIndex(`const next = ${index};`, "other.ts");
+    }
+    expect(buildStructuralSourceIndex(source, "cached.ts")).not.toBe(first);
+  });
+
+  it("bounds the comparison cost of long lines even inside the candidate and source caps", () => {
+    const oldLine = `// ${"a".repeat(300)}`;
+    const newLine = `// ${"b".repeat(300)}`;
+    const beforeSource = Array.from({ length: 50 }, () => oldLine).join("\n");
+    const afterSource = Array.from({ length: 50 }, () => newLine).join("\n");
+    const lines = [
+      ...Array.from({ length: 50 }, () => ({ type: "remove" as const, content: `-${oldLine}` })),
+      ...Array.from({ length: 50 }, () => ({ type: "add" as const, content: `+${newLine}` })),
+    ];
+    // 2,500 candidate cells are within the matrix cap. At 610 input
+    // characters per candidate the text-work limit still admits this file.
+    const input = { filePath: "long-lines.ts", beforeSource, afterSource, lines };
+    expect(getStructuralDiffAvailability(input)).toEqual({ available: true });
+    // A second hunk shares the same source budget, but comparison work is
+    // cumulative. No second alignment matrix is allocated for this file.
+    expect(
+      getStructuralDiffAvailability({
+        ...input,
+        lines: [...lines, { type: "header", content: "@@" }, ...lines],
+      }),
+    ).toMatchObject({ available: false, code: "large-diff" });
   });
 
   it("limits alignment work before parsing or allocating a large candidate matrix", () => {

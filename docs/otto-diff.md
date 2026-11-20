@@ -19,9 +19,11 @@ cannot make an otherwise displayable Line diff exceed its frame limit.
 The parser assigns a syntax tier to languages with explicit structural comparison and a context tier
 to languages that need conservative pairing, including indentation-sensitive and markup formats.
 Structural labels formatting-only changes when complete syntax fingerprints match. Those lines
-remain visible. The alignment step admits at most 2,000 lines and 8,192 candidate pairs before
-falling back. The renderer uses the same viewport and review model as Line in checkout and commit
-review.
+remain visible. Per file, alignment admits at most 2,000 patch lines, 8,192 candidate pairs, and
+2,000,000 candidate text characters before falling back. Each source index is bounded by 16,384
+syntax nodes and 8,192 significant leaves. Up to four snapshot indexes are shared by eligibility
+checks and rendering. The renderer uses the same viewport and review model as Line in checkout
+and commit review.
 
 **File History** is available from the editor's Document tools. It pages local Git revisions,
 follows a file through renames, compares consecutive file revisions and offers paged blame and

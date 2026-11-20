@@ -41,6 +41,7 @@ test.describe("Workspace lifecycle", () => {
     });
   });
 
+  // OTTO(workspace-lifecycle): a move preserves the agent session and its checkout.
   test("moves a chat from its tab without moving its transcript or working directory", async ({
     page,
     withWorkspace,

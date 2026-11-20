@@ -26,6 +26,7 @@ test("commit history explains when the workspace has no commits ahead of its bas
   );
 });
 
+// OTTO(structural-diff): a local presentation switch must preserve commit review.
 test("commit history shows dates and shares diff layout preferences", async ({
   page,
   withWorkspace,

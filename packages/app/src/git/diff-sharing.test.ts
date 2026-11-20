@@ -42,6 +42,7 @@ const fileChanges = {
     value.status = "binary";
   },
   structuralSource: (value) => {
+    // OTTO(structural-diff): evidence participates in sharing.
     value.structuralSource = { before: "const a = 1;", after: "const a = 2;" };
   },
   isNew: (value) => {

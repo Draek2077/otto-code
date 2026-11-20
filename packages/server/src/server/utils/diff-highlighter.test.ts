@@ -820,6 +820,7 @@ index 1111111..2222222 100644
   });
 });
 
+// OTTO(structural-diff): evidence belongs to the exact patch source revisions.
 it("attaches complete syntax evidence only when requested and equal to the patch coordinates", async () => {
   const file = parseDiff(SIMPLE_DIFF.replace("\n\n export", "\n \n export"))[0]!;
   const before =

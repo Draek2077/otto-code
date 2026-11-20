@@ -258,33 +258,32 @@ const structuralRows = new WeakMap<
 export function buildStructuralSplitRows(file: ParsedDiffFile) {
   const cached = structuralRows.get(file);
   if (cached) return cached;
-  const rows: SplitDiffRow[] = [];
-  let formattingOnly = false;
-  for (const hunk of buildNumberedDiffHunks(file)) {
-    const result = structuralPatchPlan(file, hunk.lines);
-    if (!result.pairs) {
-      const fallback = { rows: buildSplitDiffRows(file), notice: result.reason };
-      structuralRows.set(file, fallback);
-      return fallback;
+  const hunks = buildNumberedDiffHunks(file);
+  const plan = structuralPatchPlan(file, hunks);
+  if (!plan.rows) {
+    const fallback = { rows: buildSplitDiffRows(file), notice: plan.reason };
+    structuralRows.set(file, fallback);
+    return fallback;
+  }
+  const rows = plan.rows.map((row): SplitDiffRow => {
+    if (row.kind === "pair") {
+      return {
+        kind: "pair",
+        left: toSplitDisplayLine(row.left?.oldCell ?? null),
+        right: toSplitDisplayLine(row.right?.newCell ?? null),
+      };
     }
-    rows.push({
+    const hunk = hunks[row.hunkIndex]!;
+    return {
       kind: "header",
       content: hunk.hunkHeader,
       hunkIndex: hunk.hunkIndex,
       lineIndex: hunk.lines.find((line) => line.line.type === "header")?.lineIndex ?? 0,
-    });
-    formattingOnly ||= result.formattingOnly;
-    for (const { left, right } of result.pairs) {
-      rows.push({
-        kind: "pair",
-        left: toSplitDisplayLine(left?.oldCell ?? null),
-        right: toSplitDisplayLine(right?.newCell ?? null),
-      });
-    }
-  }
+    };
+  });
   const result = {
     rows,
-    notice: formattingOnly ? "Formatting only. All changed source lines are visible." : null,
+    notice: plan.formattingOnly ? "Formatting only. All changed source lines are visible." : null,
   };
   structuralRows.set(file, result);
   return result;

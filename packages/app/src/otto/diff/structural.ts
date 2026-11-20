@@ -40,6 +40,7 @@ export interface StructuralSourceIndex {
   readonly contexts: ReadonlyMap<number, readonly string[]>;
   readonly atomsByLine: ReadonlyMap<number, readonly string[]>;
   readonly atoms: readonly string[];
+  readonly shape: readonly number[];
 }
 
 const fullStructure = new Set([
@@ -107,43 +108,52 @@ export type StructuralDiffBlock =
 
 const MAX_STRUCTURAL_LINES = 2_000;
 const MAX_ALIGNMENT_CELLS = 8_192;
+const MAX_ALIGNMENT_TEXT_WORK = 2_000_000;
+const MAX_SOURCE_LENGTH = 16_000;
 const MAX_SOURCE_ATOMS = 8_192;
+const MAX_SOURCE_NODES = 16_384;
 
-function alignmentWork(lines: readonly StructuralDiffLine[]) {
-  let work = 0;
-  let before = 0;
-  let after = 0;
+// Scores inspect text, tokens, and syntax evidence for each candidate. Bound
+// their cost as well as the number of matrix cells, across the entire file.
+function boundAlignment(lines: readonly StructuralDiffLine[]) {
+  let pairs = 0;
+  let textWork = 0;
+  let removals = 0;
+  let additions = 0;
+  let removedCharacters = 0;
+  let addedCharacters = 0;
+  const flush = () => {
+    pairs += removals * additions;
+    textWork += removals * addedCharacters + additions * removedCharacters;
+    removals = 0;
+    additions = 0;
+    removedCharacters = 0;
+    addedCharacters = 0;
+  };
   for (const line of lines) {
-    if (line.type === "remove") before += 1;
-    else if (line.type === "add") after += 1;
-    else {
-      work += before * after;
-      before = 0;
-      after = 0;
+    if (line.type === "remove") {
+      removals += 1;
+      removedCharacters += line.content.length;
+    } else if (line.type === "add") {
+      additions += 1;
+      addedCharacters += line.content.length;
+    } else {
+      flush();
     }
   }
-  return work + before * after;
+  flush();
+  return pairs <= MAX_ALIGNMENT_CELLS && textWork <= MAX_ALIGNMENT_TEXT_WORK;
 }
-const WHITESPACE_SIGNIFICANT_EXTENSIONS = new Set([
-  "py",
-  "yaml",
-  "yml",
-  "md",
-  "mdx",
-  "sh",
-  "bash",
-  "zsh",
-  "shell",
-]);
-
 /** The parse tree for a snapshot, or null when the language or source is unusable. */
 function parseWithoutError(source: string, filePath: string): Tree | null {
   const parser = getParserForFile(filePath);
   if (!parser) return null;
   const tree = parser.parse(source);
   const cursor = tree.cursor();
+  let nodes = 0;
   do {
-    if (cursor.type.isError) return null;
+    nodes += 1;
+    if (cursor.type.isError || nodes > MAX_SOURCE_NODES) return null;
   } while (cursor.next());
   return tree;
 }
@@ -190,9 +200,11 @@ function computeStructuralSourceIndex(
   // value in the fingerprint so literal and comment edits cannot become whitespace.
   const atoms: string[] = [];
   const atomsByLine = new Map<number, string[]>();
+  const shape: number[] = [];
   let line = 1;
   tree.iterate({
     enter(node) {
+      shape.push(node.type.id);
       if (atoms.length > MAX_SOURCE_ATOMS) return false;
       if (node.node.firstChild || node.from === node.to) return;
       const text = source.slice(node.from, node.to);
@@ -204,9 +216,12 @@ function computeStructuralSourceIndex(
       entries.push(key);
       atomsByLine.set(line, entries);
     },
+    leave() {
+      shape.push(-1);
+    },
   });
   if (atoms.length > MAX_SOURCE_ATOMS) return null;
-  return { contexts, atomsByLine, atoms };
+  return { contexts, atomsByLine, atoms, shape };
 }
 
 interface StructuralSourceIndexEntry {
@@ -234,7 +249,7 @@ export function buildStructuralSourceIndex(
   source: string | null | undefined,
   filePath: string | null | undefined,
 ): StructuralSourceIndex | null {
-  if (!source || !filePath) return null;
+  if (!source || !filePath || source.length > MAX_SOURCE_LENGTH) return null;
   const cached = structuralSourceIndexCache.find(
     (entry) => entry.filePath === filePath && entry.source === source,
   );
@@ -253,9 +268,9 @@ export function getStructuralDiffAvailability(
 ): StructuralAvailability {
   if (
     document.lines.length > MAX_STRUCTURAL_LINES ||
-    alignmentWork(document.lines) > MAX_ALIGNMENT_CELLS ||
-    (document.beforeSource?.length ?? 0) > 16000 ||
-    (document.afterSource?.length ?? 0) > 16000
+    (document.beforeSource?.length ?? 0) > MAX_SOURCE_LENGTH ||
+    (document.afterSource?.length ?? 0) > MAX_SOURCE_LENGTH ||
+    !boundAlignment(document.lines)
   ) {
     return {
       available: false,
@@ -323,7 +338,9 @@ export function isSyntaxFormattingOnly(document: StructuralDiffInput): boolean {
     !!after &&
     before.atoms.length > 0 &&
     before.atoms.length === after.atoms.length &&
-    before.atoms.every((atom, index) => atom === after.atoms[index])
+    before.shape.length === after.shape.length &&
+    before.atoms.every((atom, index) => atom === after.atoms[index]) &&
+    before.shape.every((node, index) => node === after.shape[index])
   );
 }
 
@@ -553,22 +570,21 @@ function alignChangeBlock(
   return rows;
 }
 
-function withoutWhitespace(lines: readonly DiffLine[]): string {
-  return lines.map(diffCode).join("\n").replace(/\s/g, "");
-}
-
-function canCollapseWhitespaceOnlyChanges(filePath: string | null | undefined): boolean {
-  const extension = filePath?.split(".").at(-1)?.toLowerCase();
-  return extension !== undefined && !WHITESPACE_SIGNIFICANT_EXTENSIONS.has(extension);
+function hasFormattingOnlyPair(
+  before: readonly StructuralDiffLine[],
+  after: readonly StructuralDiffLine[],
+): boolean {
+  const text = (lines: readonly DiffLine[]) => lines.map(diffCode).join("\n").replace(/\s/g, "");
+  return text(before) === text(after);
 }
 
 /**
- * A move's removed side is hidden from the reviewer, so claiming one has to be
- * unambiguous. Two guards keep that honest:
+ * Both sides of a move remain visible. Two guards keep the association
+ * unambiguous:
  *
  * - the line must be distinctive. Structural punctuation like `}` or `);` is
  *   removed and added all over an ordinary diff, and treating those as moves
- *   silently erased real deletions from the review;
+ *   incorrectly marked independent additions and removals;
  * - it must appear exactly once on each side. With repeats there is no single
  *   destination to send the reviewer to, so both sides stay visible.
  */
@@ -639,7 +655,7 @@ function appendChangeBlock(
     removals.length > 0 &&
     additions.length > 0 &&
     canCollapseWhitespace &&
-    withoutWhitespace(removals) === withoutWhitespace(additions)
+    hasFormattingOnlyPair(removals, additions)
   ) {
     blocks.push({ kind: "formatting", before: removals, after: additions });
     return;
@@ -670,13 +686,13 @@ function appendChangeBlock(
 /**
  * Builds a compact semantic plan from a complete source-pair diff. This is
  * deliberately conservative: a move is emitted only for exactly identical
- * removed and added lines, and formatting means the non-whitespace source is
- * byte-for-byte identical. Everything else remains visible as a replacement,
- * addition, or removal until a language parser can prove more.
+ * removed and added lines. Formatting requires matching whole-source syntax
+ * fingerprints. All source stays visible regardless of classification.
  */
 export function buildStructuralDiffBlocks(document: StructuralDiffInput): StructuralDiffBlock[] {
   const blocks: StructuralDiffBlock[] = [];
   const remainingMoves = movedLineCounts(document.lines);
+  const formattingOnly = isSyntaxFormattingOnly(document);
   const evidence: StructuralPairingEvidence = {
     before: buildStructuralSourceIndex(document.beforeSource, document.filePath),
     after: buildStructuralSourceIndex(document.afterSource, document.filePath),
@@ -684,14 +700,7 @@ export function buildStructuralDiffBlocks(document: StructuralDiffInput): Struct
   let removals: StructuralDiffLine[] = [];
   let additions: StructuralDiffLine[] = [];
   const flush = () => {
-    appendChangeBlock(
-      blocks,
-      removals,
-      additions,
-      remainingMoves,
-      canCollapseWhitespaceOnlyChanges(document.filePath),
-      evidence,
-    );
+    appendChangeBlock(blocks, removals, additions, remainingMoves, formattingOnly, evidence);
     removals = [];
     additions = [];
   };
