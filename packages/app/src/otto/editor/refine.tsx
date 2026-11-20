@@ -18,6 +18,7 @@ import { useHostFeature } from "@/runtime/host-features";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useAppVisible } from "@/hooks/use-app-visible";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import { useToast } from "@/contexts/toast-context";
 import { ContextCompaction } from "@/otto/context-management/compaction";
 import { ContextEdgeEdit } from "@/otto/context-management/edge-edit";
 import { flushEditorDraftGuards } from "./draft-guard";
@@ -39,6 +40,7 @@ export function useEditorRefine(surface: EditorSurface) {
   const visible = useAppVisible();
   const active = retained && visible;
   const client = useHostRuntimeClient(hostId);
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<Discovery | null>(null);
   const [error, setError] = useState("");
@@ -89,13 +91,17 @@ export function useEditorRefine(surface: EditorSurface) {
     [client, confirmDiscard, files, hostId, workspaceId],
   );
   const show = useCallback(() => {
+    if (surface.hasUnsavedDocument()) {
+      toast.error("Save or revert the editor draft before opening Refine.");
+      return;
+    }
     opening.current += 1;
     setError("");
     setResult(null);
     setFiles([surface.file]);
     review.current = { draft: false, busy: false };
     setOpen(true);
-  }, [surface.file]);
+  }, [surface, toast]);
   useEffect(() => {
     if (!active || !open || !client || !workspaceId) return;
     let current = true;

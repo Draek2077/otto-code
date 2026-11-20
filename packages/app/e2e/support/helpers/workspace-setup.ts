@@ -74,7 +74,8 @@ export async function seedProjectForWorkspaceSetup(
 }
 
 export function projectNameFromPath(repoPath: string): string {
-  return repoPath.replace(/\/+$/, "").split("/").findLast(Boolean) ?? repoPath;
+  // OTTO(workspace-lifecycle): fixture paths use the operating system separator.
+  return repoPath.split(/[\\/]/).findLast(Boolean) ?? repoPath;
 }
 
 export async function openHomeWithProject(page: Page, repoPath: string): Promise<void> {

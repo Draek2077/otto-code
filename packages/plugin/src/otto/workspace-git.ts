@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ParsedDiffFileSchema } from "@getpaseo/protocol/messages"; // OTTO(file-history)
+import { ParsedDiffFileSchema } from "@getpaseo/protocol/otto/checkout-diff"; // OTTO(file-history)
 import { defineRpc } from "../rpc.js";
 
 export const GIT_FETCH_INTERVALS = [60, 180, 300, 600, 900, 1800, 3600] as const;

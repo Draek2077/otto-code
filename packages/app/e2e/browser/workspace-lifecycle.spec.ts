@@ -1,5 +1,6 @@
 import { test, expect } from "../support/fixtures";
 import { connectSeedClient } from "../support/helpers/seed-client";
+import { expectWorkspaceAbsentFromSidebar } from "../support/helpers/sidebar"; // OTTO(workspace-lifecycle)
 import {
   createAgentChatFromLauncher,
   createStandaloneTerminalFromLauncher,
@@ -60,7 +61,7 @@ test.describe("Workspace lifecycle", () => {
       const agentId = entry.agent.id;
       const tab = page.getByTestId(`workspace-tab-agent_${agentId}`).first();
       await tab.click({ button: "right" });
-      await page.getByTestId(`workspace-tab-context-agent_${agentId}-move-chat`).click();
+      await page.getByTestId(/^workspace-tab-context-.*-move-chat$/).click();
       const picker = page.getByTestId("otto-workspace-move");
       await picker.getByTestId(`otto-workspace-choice-${destination.workspaceId}`).click();
       await expect
@@ -68,6 +69,34 @@ test.describe("Workspace lifecycle", () => {
         .toEqual({ workspaceId: destination.workspaceId, cwd: source.repoPath });
       await expect(picker).toHaveCount(0);
       await expect(page.getByText("cwd draft create", { exact: true }).first()).toBeVisible();
+    } finally {
+      await client.close();
+    }
+  });
+
+  // OTTO(workspace-lifecycle): exercise the archived record through the real Git checkout.
+  test("reopens an archived worktree with the original workspace ID", async ({
+    page,
+    withWorkspace,
+  }) => {
+    test.setTimeout(90_000);
+    const workspace = await withWorkspace({ worktree: true, prefix: "reopen-worktree-" });
+    await workspace.navigateTo();
+    const client = await connectSeedClient();
+    try {
+      expect((await client.archiveWorkspace(workspace.workspaceId)).error).toBeNull();
+      await expectWorkspaceAbsentFromSidebar(page, workspace.workspaceId);
+      await page
+        .getByTestId(/^sidebar-project-row-/)
+        .first()
+        .click({ button: "right" });
+      await page.getByTestId(/^sidebar-project-menu-reopen-/).click();
+      const picker = page.getByTestId("otto-workspace-reopen");
+      await picker.getByTestId(`otto-workspace-choice-${workspace.workspaceId}`).click();
+      await expect(picker).toHaveCount(0);
+      await expect(
+        page.getByTestId(new RegExp(`^sidebar-workspace-row-.*:${workspace.workspaceId}$`)),
+      ).toBeVisible();
     } finally {
       await client.close();
     }

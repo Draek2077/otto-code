@@ -53,7 +53,7 @@ function Instruction({ model }: { model: ContextCompactionModel }) {
   const compact = useIsCompactFormFactor();
   const edit = useCallback((text: string) => model.setInstruction(text), [model]);
   return (
-    <Field label="Compaction instruction">
+    <Field label={model.refine ? "Refine instruction" : "Compaction instruction"}>
       <FormTextInput
         key={state.instructionVersion}
         initialValue={state.instruction}
@@ -221,14 +221,20 @@ export function ContextCompaction(props: CompactionProps) {
       testID="context-compaction"
     >
       <SettingsSection
-        title={props.scope.workspaceFiles ? "Refine with AI" : "Compact with AI"}
-        info="Review a bounded prose working set. Generating and keeping a hunk do not write files; applying requires explicit confirmation."
+        title={model.refine ? "Refine with AI" : "Compact with AI"}
+        info={
+          model.refine
+            ? undefined
+            : "Review a bounded prose working set. Generating and keeping a hunk do not write files; applying requires explicit confirmation."
+        }
       >
-        <View style={styles.actions}>
-          <Button variant="outline" size="sm" onPress={close} disabled={disabled}>
-            {props.scope.workspaceFiles ? "Close Refine" : "Back to context"}
-          </Button>
-        </View>
+        {model.refine ? null : (
+          <View style={styles.actions}>
+            <Button variant="outline" size="sm" onPress={close} disabled={disabled}>
+              Back to context
+            </Button>
+          </View>
+        )}
         {state.error ? <Alert variant="error" description={state.error} /> : null}
         {state.blocked ? (
           <Alert

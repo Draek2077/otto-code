@@ -1,4 +1,5 @@
-import { test, expect } from "../support/fixtures";
+import { test, expect } from "../support/helpers/otto-provider-settings"; // OTTO(refine)
+import { z } from "zod";
 import { openFileExplorer, openFileFromExplorer } from "../support/helpers/file-explorer";
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
@@ -30,15 +31,40 @@ async function openEditorExplorer(page: Page, compact: boolean) {
 
 test.use({ e2eDaemonConfig: { pluginsEnabled: true } });
 
-test("Document tools opens Refine with its pinned prose and read-only linked context", async ({
+const RefineCompletion = z.object({
+  messages: z.array(z.object({ role: z.literal("user"), content: z.string() })).length(1),
+});
+const RefineRequest = z.object({
+  rewritableDocuments: z.array(z.object({ id: z.string(), content: z.string() })).length(1),
+  readOnlyReferences: z.array(z.object({ content: z.string() })),
+});
+
+test("Document tools opens Refine and applies the reviewed changes only", async ({
   page,
   withWorkspace,
+  ottoProvider,
 }) => {
+  test.setTimeout(120_000);
   const workspace = await withWorkspace({ prefix: "otto-editor-refine-" });
   const file = path.join(workspace.repoPath, "guide.md");
-  const original = "# Review this prose\n\n[Details](details.md)\n";
+  const original =
+    "# Review this prose\n\nPreserve one.\nPreserve two.\nPreserve three.\n\nThe last rule is too long.\n[Details](details.md)\n";
+  const accepted = original.replace("Review this prose", "Concise prose");
+  const proposal = accepted.replace("The last rule is too long.", "The last rule is short.");
+  const reference = path.join(workspace.repoPath, "details.md");
   await writeFile(file, original);
-  await writeFile(path.join(workspace.repoPath, "details.md"), "Reference bytes.");
+  await writeFile(reference, "Reference bytes.");
+  ottoProvider.replyWith((body) => {
+    const prompt = RefineCompletion.parse(body).messages[0]!.content;
+    const start = prompt.indexOf('\n\n{"instruction":');
+    const end = prompt.indexOf("\n\nYou must respond with JSON only", start);
+    const input = RefineRequest.parse(JSON.parse(prompt.slice(start + 2, end)));
+    expect(body).not.toHaveProperty("tools");
+    expect(input.rewritableDocuments[0]!.content).toBe(original);
+    expect(input.readOnlyReferences.map(({ content }) => content)).toContain("Reference bytes.");
+    return JSON.stringify({ files: [{ id: input.rewritableDocuments[0]!.id, content: proposal }] });
+  });
+  await ottoProvider.refreshCatalog();
   await workspace.navigateTo();
   await openFileExplorer(page);
   await openFileFromExplorer(page, "guide.md");
@@ -50,10 +76,29 @@ test("Document tools opens Refine with its pinned prose and read-only linked con
   const refine = editorDialog(page, "editor-refine-dialog", false);
   await expect(refine.getByText("guide.md", { exact: true }).first()).toBeVisible();
   await expect(refine.getByText("Read-only references (1)", { exact: true })).toBeVisible();
+  const apply = refine.getByRole("button", { name: "Apply kept changes", exact: true });
+  await expect(apply).toBeDisabled();
+  await refine.getByTestId("combined-model-selector").click();
+  await page
+    .getByTestId("model-search-all-input")
+    .or(page.getByTestId("model-search-input"))
+    .filter({ visible: true })
+    .fill("fixture");
+  await page.getByTestId("model-row-openai-compatible-fixture").click();
+  await refine
+    .getByTestId("context-compaction-instruction")
+    .fill("Tighten the opening and final rule.");
+  await refine.getByRole("button", { name: "Generate proposal", exact: true }).click();
   await expect(
-    refine.getByRole("button", { name: "Apply kept changes", exact: true }),
-  ).toBeDisabled();
+    refine.getByRole("button", { name: "Drop guide.md change h0", exact: true }),
+  ).toBeVisible();
+  await refine.getByRole("button", { name: "Drop guide.md change h1", exact: true }).click();
   expect(await readFile(file, "utf8")).toBe(original);
+  page.once("dialog", (dialog) => void dialog.accept());
+  await apply.click();
+  await expect.poll(() => readFile(file, "utf8")).toBe(accepted);
+  expect(await readFile(reference, "utf8")).toBe("Reference bytes.");
+  expect(ottoProvider.requests).toHaveLength(1);
 });
 test("File History follows a revision and switches its real diff to Structural", async ({
   page,
@@ -77,7 +122,7 @@ test("File History follows a revision and switches its real diff to Structural",
   await page.getByText("Structural", { exact: true }).last().click();
   await expect(history.getByTestId("otto-diff-presentation")).toContainText("Structural");
   await history.getByRole("button", { name: "Blame lines", exact: true }).click();
-  await expect(history.getByText(/1 · .*Change the total/)).toBeVisible();
+  await expect(history.getByTestId("otto-file-blame-line-1")).toContainText("Change the total");
 });
 
 function commitFixture(cwd: string, subject: string) {

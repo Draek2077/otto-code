@@ -64,6 +64,14 @@ const entries = {
 const uiDependency = /^(react(?:-dom|-native)?|use-sync-external-store)(\/|$)/;
 const serverModule = /^server\//;
 const clientModule = /^client\//;
+const sharedDependencies = new Set([
+  "zod",
+  "@getpaseo/protocol/agent-types",
+  "@getpaseo/protocol/otto/profile-binding", // OTTO(agent-profiles): structural Workflow snapshots.
+  "@getpaseo/protocol/otto/checkout-diff", // OTTO(file-history): shared structural diff data.
+  "@getpaseo/protocol/schedule/types", // OTTO(schedules): pure DTOs and provider manifest types.
+  "@getpaseo/protocol/browser-automation/rpc-schemas",
+]);
 
 function resolveLocal(importer: string, specifier: string): string {
   const base = path.resolve(path.dirname(importer), specifier.replace(/\.js$/, ""));
@@ -94,14 +102,7 @@ function boundaryViolations(entry: string, runtime: "shared" | "server" | "clien
         if (runtime !== "server" && serverModule.test(module)) violations.push(label);
         pending.push(local);
       } else if (runtime === "shared") {
-        if (
-          specifier !== "zod" &&
-          specifier !== "@getpaseo/protocol/agent-types" &&
-          specifier !== "@getpaseo/protocol/otto/profile-binding" && // OTTO(agent-profiles): shared Workflow snapshots use only the structural Zod schema.
-          specifier !== "@getpaseo/protocol/schedule/types" && // OTTO(schedules): reviewed pure Zod DTOs and provider manifest types.
-          specifier !== "@getpaseo/protocol/browser-automation/rpc-schemas"
-        )
-          violations.push(label);
+        if (!sharedDependencies.has(specifier)) violations.push(label);
       } else if (runtime === "server") {
         if (uiDependency.test(specifier) || /^@getpaseo\/plugin\/client(\/|$)/.test(specifier))
           violations.push(label);

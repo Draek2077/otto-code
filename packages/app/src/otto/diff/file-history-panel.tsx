@@ -277,7 +277,12 @@ function Blame({
         {query.data.lines.map((line) => {
           const commit = commits.get(line.sha);
           return (
-            <Text key={line.line} style={styles.meta} selectable>
+            <Text
+              key={line.line}
+              style={styles.meta}
+              selectable
+              testID={`otto-file-blame-line-${line.line}`}
+            >
               {line.line} · {commit?.authorName ?? "Unknown"} · {commit?.shortSha} ·{" "}
               {commit?.summary}
             </Text>
