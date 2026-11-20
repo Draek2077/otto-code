@@ -27,6 +27,7 @@ describe("loadChangesPreferencesFromStorage", () => {
     const result = await loadChangesPreferencesFromStorage(storage);
 
     expect(result).toEqual({
+      ...DEFAULT_CHANGES_PREFERENCES,
       layout: "unified",
       desktopTreeVisible: false,
       wrapLines: true,
@@ -51,6 +52,7 @@ describe("loadChangesPreferencesFromStorage", () => {
     const result = await loadChangesPreferencesFromStorage(storage);
 
     expect(result).toEqual({
+      ...DEFAULT_CHANGES_PREFERENCES,
       layout: "split",
       desktopTreeVisible: true,
       hideWhitespace: true,
@@ -106,6 +108,28 @@ describe("changes preferences inlineDiff", () => {
 });
 
 describe("saveChangesPreferences", () => {
+  // OTTO(structural-diff): preserve a 0.9.35 saved default and the other Changes settings.
+  it("round-trips legacy Structural and keeps unrelated preferences when switching to Line", async () => {
+    const legacy = {
+      presentation: "structural",
+      layout: "split",
+      wrapLines: true,
+      pinnedToolbarItems: ["push"],
+      commitType: "fix",
+    };
+    const storage = createInMemoryKeyValueStorage({
+      [CHANGES_PREFERENCES_STORAGE_KEY]: JSON.stringify(legacy),
+    });
+    const loaded = await loadChangesPreferencesFromStorage(storage);
+    expect(loaded).toMatchObject(legacy);
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(CHANGES_PREFERENCES_QUERY_KEY, loaded);
+    await saveChangesPreferences({ queryClient, storage, updates: { presentation: "line" } });
+    expect(JSON.parse(storage.entries.get(CHANGES_PREFERENCES_STORAGE_KEY)!)).toMatchObject({
+      ...legacy,
+      presentation: "line",
+    });
+  });
   it("merges updates onto cached preferences and persists the result", async () => {
     const storage = createInMemoryKeyValueStorage();
     const queryClient = new QueryClient();

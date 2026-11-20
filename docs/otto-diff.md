@@ -1,6 +1,7 @@
 # Diff presentation
 
-Settings → Editor → Diffs stores the default presentation on this device. Reviewers can select
+Settings → Editor → Diffs stores the default presentation on this device. Existing Otto 0.9
+choices carry over with the Changes preferences. Reviewers can select
 **Line** or **Structural** for the current Changes, commit review, or File History. Refine and edit cards offer the
 same presentation control when they have a diff.
 

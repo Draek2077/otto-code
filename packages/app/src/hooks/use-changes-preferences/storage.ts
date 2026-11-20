@@ -7,6 +7,11 @@ export const LEGACY_WRAP_LINES_STORAGE_KEY = "diff-wrap-lines";
 export const CHANGES_PREFERENCES_QUERY_KEY = ["changes-preferences"];
 
 const changesPreferencesSchema = z.strictObject({
+  // OTTO(structural-diff): accept the Otto 0.9 presentation in its original settings record.
+  presentation: z.enum(["line", "structural"]).optional(),
+  // Preserve these legacy controls while the current UI owns their presentation separately.
+  pinnedToolbarItems: z.unknown().optional(),
+  commitType: z.unknown().optional(),
   layout: z.enum(["unified", "split"]).optional(),
   desktopTreeVisible: z.boolean().optional(),
   // Read the former overloaded preference once so existing installations keep their desktop tree.
@@ -18,6 +23,7 @@ const changesPreferencesSchema = z.strictObject({
 });
 
 export interface ChangesPreferences {
+  presentation: "line" | "structural"; // OTTO(structural-diff)
   layout: "unified" | "split";
   desktopTreeVisible: boolean;
   wrapLines: boolean;
@@ -27,6 +33,7 @@ export interface ChangesPreferences {
 }
 
 export const DEFAULT_CHANGES_PREFERENCES: ChangesPreferences = {
+  presentation: "line", // OTTO(structural-diff)
   layout: "unified",
   desktopTreeVisible: false,
   wrapLines: false,

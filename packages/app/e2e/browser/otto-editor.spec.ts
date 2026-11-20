@@ -123,6 +123,8 @@ test("File History follows a revision and switches its real diff to Structural",
   await expect(history.getByTestId("otto-diff-presentation")).toContainText("Structural");
   await history.getByRole("button", { name: "Blame lines", exact: true }).click();
   await expect(history.getByTestId("otto-file-blame-line-1")).toContainText("Change the total");
+  // Release the editor and checkout subscriptions before Windows removes the fixture checkout.
+  await page.close();
 });
 
 function commitFixture(cwd: string, subject: string) {
