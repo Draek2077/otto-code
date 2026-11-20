@@ -1,4 +1,4 @@
-import { useHostDiffReview } from "@/otto/diff/preferences"; // OTTO(structural-diff)
+import { DiffPresentationControl, useHostDiffReview } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 import { useCallback, useMemo, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -197,15 +197,25 @@ function CommitDiffPanel() {
 
   return (
     <View style={styles.container} testID="commit-diff-panel">
-      {panelPreferences.canUseSplitLayout ? (
+      {/* OTTO(structural-diff): keep the picker available in the existing review toolbar. */}
+      {panelPreferences.canUseSplitLayout || files.length > 0 ? (
         <PaneContentToolbar style={styles.toolbar} testID="commit-diff-header">
           <View style={styles.toolbarActions} testID="commit-diff-toolbar">
-            <DiffLayoutToggle
-              layout={panelPreferences.preferences.layout}
-              isMobile={panelPreferences.isCompact}
-              testID="commit-diff-toggle-layout"
-              onToggle={panelPreferences.toggleLayout}
-            />
+            {files.length > 0 ? (
+              <DiffPresentationControl
+                inline
+                value={reviewPresentation.presentation}
+                onChange={reviewPresentation.select}
+              />
+            ) : null}
+            {panelPreferences.canUseSplitLayout ? (
+              <DiffLayoutToggle
+                layout={panelPreferences.preferences.layout}
+                isMobile={panelPreferences.isCompact}
+                testID="commit-diff-toggle-layout"
+                onToggle={panelPreferences.toggleLayout}
+              />
+            ) : null}
           </View>
         </PaneContentToolbar>
       ) : null}

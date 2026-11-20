@@ -22,7 +22,7 @@ import {
   readFileBlame,
   type FileHistoryCommit,
 } from "@getpaseo/plugin/otto/workspace-git";
-import { useHostDiffReview } from "./preferences";
+import { DiffPresentationControl, useHostDiffReview } from "./preferences";
 
 const icon = withUnistyles(History);
 const mode = { kind: "commit" as const };
@@ -212,6 +212,9 @@ function Revision({
           {entry.authorName} · {new Date(entry.authoredAt * 1000).toLocaleDateString()} ·{" "}
           {entry.path}
         </Text>
+        {!showBlame && files.length > 0 ? (
+          <DiffPresentationControl inline value={review.presentation} onChange={review.select} />
+        ) : null}
         <Button variant="outline" size="sm" onPress={toggle}>
           {showBlame ? "Show diff" : "Blame lines"}
         </Button>

@@ -64,15 +64,14 @@ function PresentationSelect({
 export function DiffPresentationControl({
   value,
   onChange,
+  inline,
 }: {
   value: DiffPresentation;
   onChange(value: DiffPresentation): void;
+  inline?: boolean;
 }) {
-  return (
-    <View style={styles.control}>
-      <PresentationSelect value={value} onChange={onChange} />
-    </View>
-  );
+  const select = <PresentationSelect value={value} onChange={onChange} />;
+  return inline ? select : <View style={styles.control}>{select}</View>;
 }
 
 export function DiffPresentationSettings() {

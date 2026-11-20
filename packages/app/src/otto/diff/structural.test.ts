@@ -159,33 +159,46 @@ describe("structural review", () => {
   );
 
   it.each([
-    ["simple", "js"],
-    ["json", "json"],
-    ["comma_and_comment", "js"],
-    ["contiguous", "js"],
-    ["javascript_simple", "js"],
-    ["html_simple", "html"],
-    ["if", "py"],
-    ["hyphen_subwords", "json"],
-  ])("preserves both source sequences in the pinned %s.%s pair", (stem, extension) => {
-    const load = (side: number) =>
-      readFileSync(
-        new URL(`./fixtures/difftastic/${stem}_${side}.${extension}.fixture`, import.meta.url),
-        "utf8",
+    // Paired edits, shared nonblank lines, additions, removals, replayed from v0.9.35.
+    ["simple", "js", [0, 1, 1, 1]],
+    ["json", "json", [2, 2, 1, 0]],
+    ["comma_and_comment", "js", [1, 0, 0, 0]],
+    ["contiguous", "js", [1, 0, 2, 0]],
+    ["javascript_simple", "js", [4, 1, 2, 0]],
+    ["html_simple", "html", [4, 5, 0, 0]],
+    ["if", "py", [1, 2, 0, 0]],
+    ["hyphen_subwords", "json", [1, 2, 0, 0]],
+  ] as const)(
+    "preserves alignment and source order in the pinned %s.%s pair",
+    (stem, extension, counts) => {
+      const load = (side: number) =>
+        readFileSync(
+          new URL(`./fixtures/difftastic/${stem}_${side}.${extension}.fixture`, import.meta.url),
+          "utf8",
+        );
+      const beforeSource = load(1);
+      const afterSource = load(2);
+      const lines = buildLineDiff(beforeSource, afterSource);
+      const source = { filePath: `${stem}.${extension}`, beforeSource, afterSource, lines };
+      expect(getStructuralDiffAvailability(source)).toEqual({ available: true });
+      const rows = buildStructuralDiffRows(source);
+      const paired = rows.flatMap((row) => (row.kind === "pair" ? [row] : []));
+      expect([
+        paired.filter(({ left, right }) => left?.type === "remove" && right?.type === "add").length,
+        paired.filter(
+          ({ left, right }) =>
+            left?.type === "context" && right?.type === "context" && left.content.trim(),
+        ).length,
+        paired.filter(({ left, right }) => !left && right).length,
+        paired.filter(({ left, right }) => left && !right).length,
+      ]).toEqual(counts);
+      expect(paired.flatMap((row) => (row.left ? [row.left.content] : []))).toEqual(
+        lines.filter((line) => line.type !== "add").map((line) => line.content),
       );
-    const beforeSource = load(1);
-    const afterSource = load(2);
-    const lines = buildLineDiff(beforeSource, afterSource);
-    const source = { filePath: `${stem}.${extension}`, beforeSource, afterSource, lines };
-    expect(getStructuralDiffAvailability(source)).toEqual({ available: true });
-    const rows = buildStructuralDiffRows(source);
-    const paired = rows.flatMap((row) => (row.kind === "pair" ? [row] : []));
-    expect(paired.flatMap((row) => (row.left ? [row.left.content] : []))).toEqual(
-      lines.filter((line) => line.type !== "add").map((line) => line.content),
-    );
-    expect(paired.flatMap((row) => (row.right ? [row.right.content] : []))).toEqual(
-      lines.filter((line) => line.type !== "remove").map((line) => line.content),
-    );
-    expect(buildStructuralDiffBlocks(source).length).toBeGreaterThan(0);
-  });
+      expect(paired.flatMap((row) => (row.right ? [row.right.content] : []))).toEqual(
+        lines.filter((line) => line.type !== "remove").map((line) => line.content),
+      );
+      expect(buildStructuralDiffBlocks(source).length).toBeGreaterThan(0);
+    },
+  );
 });

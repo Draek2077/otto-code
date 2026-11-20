@@ -92,6 +92,11 @@ test("Document tools opens Refine and applies the reviewed changes only", async 
   await expect(
     refine.getByRole("button", { name: "Drop guide.md change h0", exact: true }),
   ).toBeVisible();
+  const presentation = refine.getByTestId("otto-diff-presentation").first(); // OTTO(structural-diff)
+  await presentation.click();
+  await page.getByText("Structural", { exact: true }).last().click();
+  await expect(presentation).toContainText("Structural");
+  await expect(refine.getByText(/Structural view is unavailable/)).toHaveCount(0);
   await refine.getByRole("button", { name: "Drop guide.md change h1", exact: true }).click();
   expect(await readFile(file, "utf8")).toBe(original);
   page.once("dialog", (dialog) => void dialog.accept());
@@ -105,14 +110,15 @@ test("File History follows a revision and switches its real diff to Structural",
   withWorkspace,
 }) => {
   const workspace = await withWorkspace({ prefix: "otto-file-history-" });
-  const file = path.join(workspace.repoPath, "history.ts");
-  await writeFile(file, "export const total = 1;\n");
+  // JSON exercises a structural parser without starting the TypeScript language server.
+  const file = path.join(workspace.repoPath, "history.json");
+  await writeFile(file, '{"total": 1}\n');
   commitFixture(workspace.repoPath, "Seed history");
-  await writeFile(file, "export const total = 2;\n");
+  await writeFile(file, '{"total": 2}\n');
   commitFixture(workspace.repoPath, "Change the total");
   await workspace.navigateTo();
   await openFileExplorer(page);
-  await openFileFromExplorer(page, "history.ts");
+  await openFileFromExplorer(page, "history.json");
   await page.getByTestId("editor-code-menu").click();
   await page.getByTestId("editor-file-history").click();
   const history = page.getByTestId("otto-file-history");
@@ -123,12 +129,11 @@ test("File History follows a revision and switches its real diff to Structural",
   await expect(history.getByTestId("otto-diff-presentation")).toContainText("Structural");
   await history.getByRole("button", { name: "Blame lines", exact: true }).click();
   await expect(history.getByTestId("otto-file-blame-line-1")).toContainText("Change the total");
-  // Release the editor and checkout subscriptions before Windows removes the fixture checkout.
   await page.close();
 });
 
 function commitFixture(cwd: string, subject: string) {
-  execFileSync("git", ["add", "history.ts"], { cwd });
+  execFileSync("git", ["add", "history.json"], { cwd });
   execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", subject], { cwd });
 }
 

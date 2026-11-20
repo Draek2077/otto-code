@@ -34,7 +34,7 @@ import { type ParsedDiffFile } from "@/git/use-diff-query";
 import type { ChangesState } from "@/panels/changes/state";
 import { defaultChangesState } from "@/panels/changes/state";
 import { ReviewCommentSheet, ReviewFeedbackAction } from "@/review";
-import { useHostDiffReview } from "@/otto/diff/preferences"; // OTTO(structural-diff)
+import { DiffPresentationControl, useHostDiffReview } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 import { DiffDocument, type WorkingDiffMode } from "@/git/diff-document";
 import { ChangedFilesTree } from "@/git/changed-files-tree";
 import { JUMP_TO_FILE_CLEARANCE, JumpToFile } from "@/git/jump-to-file";
@@ -482,6 +482,7 @@ interface ChangesComparisonToolbarModel {
 }
 
 interface ChangesHeaderProps {
+  reviewControl?: ReactNode; // OTTO(structural-diff)
   compact: boolean;
   repository: ChangesRepositoryToolbarModel;
   comparison: ChangesComparisonToolbarModel;
@@ -535,12 +536,19 @@ function buildChangesHeaderModel(input: BuildChangesHeaderModelInput): {
 
 // Presentation resolves into these two capability models before rendering. The rows
 // never infer which host or Changes presentation produced them.
-function ChangesHeader({ compact, repository, comparison, sidebarSurface }: ChangesHeaderProps) {
+function ChangesHeader({
+  compact,
+  repository,
+  comparison,
+  sidebarSurface,
+  reviewControl, // OTTO(structural-diff)
+}: ChangesHeaderProps) {
   if (comparison.mode.kind === "diff") {
     return (
       <ChangesDiffOnlyToolbar
         compact={compact}
         mode={comparison.mode}
+        reviewControl={reviewControl} // OTTO(structural-diff)
         sidebarSurface={sidebarSurface}
       />
     );
@@ -555,6 +563,7 @@ function ChangesHeader({ compact, repository, comparison, sidebarSurface }: Chan
       <ChangesComparisonToolbar
         compact={compact}
         model={comparison}
+        reviewControl={reviewControl} // OTTO(structural-diff)
         sidebarSurface={sidebarSurface}
       />
     </View>
@@ -565,10 +574,12 @@ function ChangesDiffOnlyToolbar({
   compact,
   mode,
   sidebarSurface,
+  reviewControl, // OTTO(structural-diff)
 }: {
   compact: boolean;
   mode: Extract<ChangesToolbarMode, { kind: "diff" }>;
   sidebarSurface: boolean;
+  reviewControl?: ReactNode; // OTTO(structural-diff)
 }) {
   return (
     <ChangesToolbarRow
@@ -579,6 +590,7 @@ function ChangesDiffOnlyToolbar({
     >
       <ChangesToolbarLeading />
       <ChangesToolbarTrailing>
+        {reviewControl /* OTTO(structural-diff) */}
         <ChangesToolbarActions mode={mode} compact={compact} />
       </ChangesToolbarTrailing>
     </ChangesToolbarRow>
@@ -726,10 +738,12 @@ function ChangesComparisonToolbar({
   compact,
   model,
   sidebarSurface,
+  reviewControl, // OTTO(structural-diff)
 }: {
   compact: boolean;
   model: ChangesComparisonToolbarModel;
   sidebarSurface: boolean;
+  reviewControl?: ReactNode; // OTTO(structural-diff)
 }) {
   return (
     <ChangesToolbarRow
@@ -755,6 +769,7 @@ function ChangesComparisonToolbar({
         ) : null}
       </ChangesToolbarLeading>
       <ChangesToolbarTrailing>
+        {reviewControl /* OTTO(structural-diff) */}
         <ChangesToolbarActions mode={model.mode} compact={compact} />
       </ChangesToolbarTrailing>
     </ChangesToolbarRow>
@@ -1529,6 +1544,7 @@ export function ChangesSurface({
     (state) => state.sessions[serverId]?.serverInfo?.features?.fsEntryDuplicate === true,
   );
   const { reviewPresentation, includeStructuralSource } = useHostDiffReview(serverId, presentation);
+  const { presentation: reviewMode, select: selectReviewMode } = reviewPresentation;
   const runRefresh = useCheckoutGitActionsStore((s) => s.refresh);
   const isRefreshing =
     useCheckoutGitActionsStore((s) => s.getStatus({ serverId, cwd, actionId: "refresh" })) ===
@@ -1947,6 +1963,15 @@ export function ChangesSurface({
     ],
   );
 
+  // OTTO(structural-diff): use the existing toolbar without taking space from the diff.
+  const reviewControl = useMemo(
+    () =>
+      presentation !== "tree" && files.length > 0 ? (
+        <DiffPresentationControl inline value={reviewMode} onChange={selectReviewMode} />
+      ) : null,
+    [presentation, files.length, reviewMode, selectReviewMode],
+  );
+
   return (
     <ManualCommitScope
       serverId={serverId}
@@ -1968,6 +1993,7 @@ export function ChangesSurface({
             compact={isMobile}
             repository={changesHeaderModel.repository}
             comparison={changesHeaderModel.comparison}
+            reviewControl={reviewControl} // OTTO(structural-diff)
             sidebarSurface={presentation === "tree"}
           />
         ) : null}

@@ -7,9 +7,8 @@ import { DEFAULT_LLAMA_BUILD } from "./default-build.js";
  * loader path built by `args.buildEnv` already covers that directory, which is
  * what the DLL-stub trap requires).
  *
- * Extraction uses only OS built-ins - PowerShell's Expand-Archive for .zip on
- * Windows, the bundled `tar` for tarballs everywhere else - to keep the
- * "nothing else to install" promise.
+ * Extraction uses the system tar. On Windows, the same bundled bsdtar
+ * inspects and extracts ZIPs, without depending on PowerShell module resolution.
  *
  * ## The upstream asset matrix (verified against release b10265)
  *
@@ -190,8 +189,8 @@ const WINDOWS_CUDA = "12.4";
 const MANAGED_RUNTIME_METADATA_FILE = ".otto-runtime.json";
 
 /** Git's GNU tar treats C: as a remote host; Windows owns a compatible bsdtar. */
-function archiveTool(): string {
-  return process.platform === "win32"
+function archiveTool(platform: NodeJS.Platform): string {
+  return platform === "win32"
     ? path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
     : "tar";
 }
@@ -703,45 +702,21 @@ export async function extractArchive(
   platform: NodeJS.Platform = process.platform,
   signal?: AbortSignal,
 ): Promise<void> {
-  await validateArchive(archivePath, signal);
+  const tar = archiveTool(platform);
+  await validateArchive(tar, archivePath, signal);
   fs.mkdirSync(destDir, { recursive: true });
-  if (/\.zip$/i.test(archivePath)) {
-    if (platform === "win32") {
-      // PowerShell ships with Windows; -Force overwrites an interrupted extract.
-      // Paths are rooted at $OTTO_HOME (under the user profile), so a username with
-      // an apostrophe would break - or inject into - a raw single-quoted string.
-      // Escape single quotes for PowerShell (a literal ' is written as '').
-      const psQuote = (value: string): string => `'${value.replace(/'/g, "''")}'`;
-      await run(
-        "powershell",
-        [
-          "-NoProfile",
-          "-Command",
-          `Expand-Archive -LiteralPath ${psQuote(archivePath)} -DestinationPath ${psQuote(destDir)} -Force`,
-        ],
-        signal,
-      );
-      return;
-    }
-    // macOS and Linux both ship a tar that reads zip (bsdtar on macOS, and on
-    // Linux the current assets are tarballs anyway - this branch only matters
-    // for a hand-passed zip). `unzip` is not assumed: it is not installed by
-    // default on every distro.
-    await run(archiveTool(), ["-xf", archivePath, "-C", destDir], signal);
-    return;
-  }
-  // `.tar.xz` is here for the .deb payload the Linux libgomp repair unpacks; tar
-  // picks the decompressor itself, so this stays within the OS built-ins rule.
-  if (/\.(tar\.gz|tgz|tar\.xz|tar)$/i.test(archivePath)) {
-    await run(archiveTool(), ["-xf", archivePath, "-C", destDir], signal);
+  // ZIPs use the same Windows bsdtar as archive inspection. Tar selects the
+  // decompressor for the Linux libgomp repair's .tar.xz payload as well.
+  if (/\.(zip|tar\.gz|tgz|tar\.xz|tar)$/i.test(archivePath)) {
+    await run(tar, ["-xf", archivePath, "-C", destDir], signal);
     return;
   }
   throw new Error(`unknown archive type: ${archivePath}`);
 }
 
 /** List before extraction: only regular files/directories within the stage are accepted. */
-async function validateArchive(archive: string, signal?: AbortSignal): Promise<void> {
-  const listing = await runCapture(archiveTool(), ["-tf", archive], process.env, signal);
+async function validateArchive(tar: string, archive: string, signal?: AbortSignal): Promise<void> {
+  const listing = await runCapture(tar, ["-tf", archive], process.env, signal);
   if (listing.code !== 0) throw new Error(`cannot inspect runtime archive: ${listing.stderr}`);
   for (const name of listing.stdout.split(/\r?\n/u).filter(Boolean)) {
     if (
@@ -752,7 +727,7 @@ async function validateArchive(archive: string, signal?: AbortSignal): Promise<v
     )
       throw new Error("unsafe runtime archive path");
   }
-  const details = await runCapture(archiveTool(), ["-tvf", archive], process.env, signal);
+  const details = await runCapture(tar, ["-tvf", archive], process.env, signal);
   if (details.code !== 0)
     throw new Error(`cannot inspect runtime archive entries: ${details.stderr}`);
   // Runtime releases carry library symlinks. Allow relative links only after

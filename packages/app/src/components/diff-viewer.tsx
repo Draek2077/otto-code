@@ -14,6 +14,7 @@ import { DiffPresentationControl, useDiffPresentation } from "@/otto/diff/prefer
 import {
   buildStructuralDiffRows,
   getStructuralDiffUnavailableReason,
+  type DiffPresentation,
   type StructuralDiffInput,
 } from "@/otto/diff/structural";
 
@@ -25,6 +26,7 @@ interface DiffViewerProps {
   emptyLabel?: string;
   fillAvailableHeight?: boolean;
   structuralSource?: Omit<StructuralDiffInput, "lines">; // OTTO(structural-diff)
+  previewPresentation?: DiffPresentation; // OTTO(structural-diff)
 }
 
 function DiffLineRow({ line }: { line: DiffLine }) {
@@ -130,12 +132,14 @@ export function DiffViewer({
   emptyLabel,
   fillAvailableHeight = false,
   structuralSource,
+  previewPresentation, // OTTO(structural-diff)
 }: DiffViewerProps) {
   const { t } = useTranslation();
   const [scrollViewWidth, setScrollViewWidth] = React.useState(0);
   const resolvedEmptyLabel = emptyLabel ?? t("diffViewer.empty");
   // OTTO(structural-diff): compact review surfaces keep their established line renderer.
-  const { presentation, select } = useDiffPresentation();
+  const { presentation: selectedPresentation, select } = useDiffPresentation();
+  const presentation = previewPresentation ?? selectedPresentation;
   const structural = React.useMemo(() => {
     if (!structuralSource || presentation !== "structural") return null;
     const input = { ...structuralSource, lines: diffLines };
@@ -238,7 +242,9 @@ export function DiffViewer({
   if (!structuralSource) return content;
   return (
     <View style={fillAvailableHeight ? styles.fillHeight : undefined}>
-      <DiffPresentationControl value={presentation} onChange={select} />
+      {previewPresentation === undefined ? (
+        <DiffPresentationControl value={presentation} onChange={select} />
+      ) : null}
       {structural?.reason ? <Text style={styles.structuralNotice}>{structural.reason}</Text> : null}
       {content}
     </View>

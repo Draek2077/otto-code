@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { withUnistyles } from "react-native-unistyles";
-import { DiffPresentationControl } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 import { RenderProfile } from "@/utils/render-profiler";
 import { createDiffPalette, retainDiffPalette } from "./palette";
 import { DiffSurface } from "./surface";
@@ -68,9 +67,6 @@ export function DiffDocument(props: DiffDocumentProps) {
   );
   return (
     <RenderProfile id="DiffDocument">
-      {props.files.length > 0 && review ? (
-        <DiffPresentationControl value={review.presentation} onChange={review.select} />
-      ) : null}
       <StyledDiffDocument {...props} displayPreferences={displayPreferences} />
     </RenderProfile>
   );

@@ -92,7 +92,9 @@ test("commit history shows dates and shares diff layout preferences", async ({
   );
 
   await page.setViewportSize({ width: 480, height: 900 });
-  await expect(panel.getByTestId("commit-diff-toolbar")).toHaveCount(0);
+  // OTTO(structural-diff): compact review still offers Line/Structural.
+  await expect(panel.getByTestId("commit-diff-toggle-layout")).toHaveCount(0);
+  await expect(presentation).toBeVisible();
   await expect(panel.getByTestId("git-diff-canvas")).toBeVisible();
 });
 

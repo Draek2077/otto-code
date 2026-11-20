@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { gzipSync } from "node:zlib";
+import { crc32, gzipSync } from "node:zlib";
 import type { SpawnOptions } from "node:child_process";
 import { afterEach, expect, it, vi } from "vitest";
 import { fixtureRoot } from "../../test-fixtures.js";
@@ -74,23 +74,31 @@ it.skipIf(process.platform !== "win32")(
   async () => {
     const { root, spec } = fixture();
     const name = Buffer.from(`build/bin/${serverExeName()}`);
-    // Stored, empty ZIP entry: no native binary or extra archive dependency.
+    // The stubbed probe exercises a regular extracted file without running a native binary.
+    const contents = Buffer.from("synthetic runtime executable\n");
+    const checksum = crc32(contents);
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50);
     local.writeUInt16LE(20, 4);
+    local.writeUInt32LE(checksum, 14);
+    local.writeUInt32LE(contents.length, 18);
+    local.writeUInt32LE(contents.length, 22);
     local.writeUInt16LE(name.length, 26);
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50);
     central.writeUInt16LE(20, 4);
     central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(checksum, 16);
+    central.writeUInt32LE(contents.length, 20);
+    central.writeUInt32LE(contents.length, 24);
     central.writeUInt16LE(name.length, 28);
     const end = Buffer.alloc(22);
     end.writeUInt32LE(0x06054b50);
     end.writeUInt16LE(1, 8);
     end.writeUInt16LE(1, 10);
     end.writeUInt32LE(central.length + name.length, 12);
-    end.writeUInt32LE(local.length + name.length, 16);
-    const zip = Buffer.concat([local, name, central, name, end]);
+    end.writeUInt32LE(local.length + name.length + contents.length, 16);
+    const zip = Buffer.concat([local, name, contents, central, name, end]);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(zip)),
@@ -99,7 +107,7 @@ it.skipIf(process.platform !== "win32")(
       { ...spec, assets: ["https://fixture.invalid/runtime.zip"] },
       root,
     );
-    expect(fs.existsSync(runtime.exe)).toBe(true);
+    expect(fs.readFileSync(runtime.exe)).toEqual(contents);
     expect(native.calls).toEqual([["--version"]]);
   },
   15000,
