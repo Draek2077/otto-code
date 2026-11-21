@@ -122,12 +122,20 @@ test("Structural tool edits display captured before and after source", async ({ 
     await openAgentRoute(page, workspace);
     await workspace.client.sendAgentMessage(workspace.agentId, "Show this edit review.");
     await expect.poll(() => seen.size, { timeout: 30_000 }).toBeGreaterThanOrEqual(4);
-    await page
-      .getByRole("button", { name: /^Edited 2 files/ })
-      .first()
-      .click();
-    const edits = page.getByRole("button", { name: "Edit source.ts", exact: true });
-    await edits.first().click();
+    await expect(page.getByRole("button", { name: /^Worked for / })).toBeVisible({
+      timeout: 30_000,
+    });
+    const group = page
+      .getByTestId("action-group-badge")
+      .filter({ hasText: /^Edited 2 files/ })
+      .first();
+    const header = group.getByRole("button", { name: /^Edited 2 files/ }).first();
+    await expect(group.getByTestId("action-group-members")).toHaveCount(0);
+    // Use the same keyboard path as the grouped transcript journeys.
+    await header.focus();
+    await page.keyboard.press("Enter");
+    await expect(group.getByTestId("action-group-members")).toBeVisible();
+    await group.getByRole("button", { name: "Edit source.ts", exact: true }).first().click();
     const picker = page.getByTestId("otto-diff-presentation").filter({ visible: true }).last();
     await selectStructural(page, picker);
     await expect(page.getByText("const total = 17;", { exact: false }).last()).toBeVisible();
