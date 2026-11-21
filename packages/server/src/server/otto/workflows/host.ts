@@ -339,6 +339,7 @@ export class WorkflowHost {
           conductorAgentId,
           `${review.launch.definition.prompt}\n\nThis is an AI Workflow in Planning. Discuss and clarify the task, then call start_workflow with a bounded typed plan. Do not start independent agents. The daemon owns phases and caps; the user will review the plan before workers start unless autopilot was explicitly selected.`,
         );
+      this.ports.onStarted?.();
       return structuredClone(state.entry);
     } catch (error) {
       await this.requestCancel(id, "Workflow initialization failed.", false);

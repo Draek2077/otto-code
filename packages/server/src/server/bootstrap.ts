@@ -1,4 +1,6 @@
 import { initialRoster } from "@getpaseo/protocol/otto/starter-roster"; // OTTO(agent-teams)
+import { activityPluginId } from "@getpaseo/protocol/otto/activity"; // OTTO(activity)
+import { ActivityStore } from "./otto/activity/store.js"; // OTTO(activity)
 import { metadataRoster } from "./otto/agent-profiles/author.js"; // OTTO(agent-teams)
 import {
   OTTO_APP_BASE_URL,
@@ -685,6 +687,7 @@ export async function createPaseoDaemon(
   }); // OTTO(browser-admission)
   // OTTO(paseo-version): plugins target the Paseo API, so the plugin host reports
   // the Paseo base release instead of Otto's version.
+  const ottoActivity = new ActivityStore(config.paseoHome, logger); // OTTO(activity): load only on an event or explicit view.
   const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until demand/action or saved startup intent.
   let ottoKanban: KanbanDaemonService | null = null; // OTTO(kanban): bound after registry/server identity creation, before plugins start.
   let ottoFileHistory: ReturnType<typeof fileHistoryHost> | null = null; // OTTO(file-history)
@@ -715,6 +718,7 @@ export async function createPaseoDaemon(
   ); // OTTO(editor): reuse Paseo PTYs and active workspace identity.
   // OTTO(feature-host): one registry of shared built-in owners; no dispatch growth in Paseo's session path.
   const ottoRoutes: Readonly<Record<string, OttoBuiltinRoute>> = {
+    [activityPluginId]: (method, input) => ottoActivity.invoke(method, input), // OTTO(activity)
     "otto-observed-subagents": (method, input) => stopObservedSubagent(agentManager, method, input), // OTTO(observed-subagents)
     "otto-workflows": (method, input) => ottoWorkflows?.invoke(method, input), // OTTO(workflows)
     "otto-suggested-tasks": (method, input) =>
@@ -743,6 +747,7 @@ export async function createPaseoDaemon(
   };
   // OTTO(feature-host): these routes have no optional runtime dependency.
   const permanentOttoRoutes = new Set([
+    activityPluginId, // OTTO(activity)
     "otto-editor",
     "otto-terminal",
     "otto-brain",
@@ -1138,6 +1143,7 @@ export async function createPaseoDaemon(
       }),
   });
   ottoArtifacts = new ArtifactDaemonService({
+    onCreated: () => ottoActivity.increment("artifactsCreated"),
     hostId: serverId,
     home: config.paseoHome,
     metadata: projectRegistry.ottoMetadata,
@@ -1271,6 +1277,7 @@ export async function createPaseoDaemon(
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
     ottoChatSearch, // OTTO(chat-search)
+    ottoActivity, // OTTO(activity)
     readProfileCatalog: (provider, cwd) =>
       providerSnapshotManager.getProvider({ provider, cwd, wait: true }), // OTTO(agent-teams)
     profileMemory, // OTTO(profile-memory)
@@ -1362,6 +1369,7 @@ export async function createPaseoDaemon(
   logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
   // OTTO(workflows): no ordinary chat subscriptions, provider launches or history scans.
   ottoWorkflows = createWorkflowComposition({
+    onStarted: () => ottoActivity.increment("runsOrchestrated"),
     home: config.paseoHome,
     hostId: serverId,
     hostLabel: serverId,
@@ -1807,6 +1815,7 @@ export async function createPaseoDaemon(
     },
   }); // OTTO(schedules): owners are ready before the original clock starts.
   const scheduleService = new ScheduleService({
+    onRunStarted: () => ottoActivity.increment("schedulesExecuted"), // OTTO(activity)
     resolveRole, // OTTO(schedule-profiles)
     paseoHome: config.paseoHome,
     logger,
@@ -1852,6 +1861,7 @@ export async function createPaseoDaemon(
   const createAgentToolHostDependencies = (
     runtime: PaseoToolRuntimeContext,
   ): PaseoToolHostDependencies => ({
+    onBackgroundTaskStarted: () => ottoActivity.increment("backgroundTasksInvoked"), // OTTO(activity)
     ottoWorkflows: ottoWorkflows?.tools(runtime.callerAgentId), // OTTO(workflows): caller-bound authority, shared app/CLI/MCP owner.
     ottoSchedules: ottoSchedules ?? undefined, // OTTO(schedules): same owner as UI and CLI, never a parallel scheduler.
     scheduleToolPolicy: createRetainedToolPolicy("schedules", config.paseoHome, () =>
@@ -2373,6 +2383,9 @@ export async function createPaseoDaemon(
       label: "drain plugin lifecycle events",
     }).catch((error) => logger.warn({ err: error }, "Plugin lifecycle events did not finish"));
     await agentManager.flushForShutdown().catch(() => undefined);
+    await ottoActivity.flush().catch(
+      (error: unknown) => logger.warn({ err: error }, "Failed to flush Otto activity"), // OTTO(activity)
+    );
     await ottoChatSearch.close().catch((error: unknown) => {
       // OTTO(chat-search)
       logger.warn({ err: error }, "Chat search shutdown did not finish");

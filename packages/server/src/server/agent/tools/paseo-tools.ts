@@ -139,6 +139,7 @@ import { registerSuggestedTaskTools } from "../../otto/suggested-tasks/host.js";
 import type { ScheduleDaemonService } from "../../otto/schedules/service.js"; // OTTO(schedules)
 
 export interface PaseoToolHostDependencies {
+  onBackgroundTaskStarted?: () => void; // OTTO(activity)
   ottoWorkflows?: WorkflowToolPorts; // OTTO(workflows): canonical host binding; absent leaves Paseo catalogs unchanged.
   ottoConnectorTools?: readonly PaseoToolDefinition[]; // OTTO(connectors): daemon-prepared, bound interactive catalog only.
   ottoPreview?: PreviewHost; // OTTO(preview): shared app/provider process and browser ownership.
@@ -1669,6 +1670,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         },
       );
 
+      if (callerAgentId && initialPromptStarted) options.onBackgroundTaskStarted?.(); // OTTO(activity)
       // Return immediately for async creation.
       const currentSnapshot = agentManager.getAgent(snapshot.id) ?? snapshot;
       const guidance =
@@ -2120,6 +2122,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           throw error;
         });
       }
+      if (callerAgentId) options.onBackgroundTaskStarted?.(); // OTTO(activity): dispatch was accepted.
       const currentSnapshot = agentManager.getAgent(agentId);
 
       const responseData = {

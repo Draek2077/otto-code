@@ -10,6 +10,7 @@ import {
 import { isNative } from "@/constants/platform";
 import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
 import { ActionGroupingSetting } from "@/otto/chat/settings"; // OTTO(action-groups)
+import { PromptSuggestionSetting } from "@/otto/chat/prompt-suggestion-controls"; // OTTO(prompt-suggestions)
 
 const TOOL_CALL_DETAIL_LEVELS: readonly AppSettings["toolCallDetailLevel"][] = [
   "detailed",
@@ -62,6 +63,7 @@ export function ChatSection() {
           />
           {/* OTTO(action-groups): retained preference, using the shared settings control. */}
           <ActionGroupingSetting />
+          <PromptSuggestionSetting /> {/* OTTO(prompt-suggestions) */}
           {isNative ? null : (
             <SettingsSwitch
               label={t("settings.appearance.chatOutline.title")}

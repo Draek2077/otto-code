@@ -1327,6 +1327,18 @@ export class Session {
     return source ? this.supportsForSource(capability, source) : this.supports(capability);
   }
 
+  // OTTO(prompt-suggestions): transient predictions require explicit client support.
+  private supportsAgentStreamEvent(
+    event: Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"]["event"],
+    source: object,
+  ): boolean {
+    if (event.type === "prompt_suggestion") {
+      return this.supportsForSource(CLIENT_CAPS.promptSuggestions, source);
+    }
+    if (event.type === "timeline") return this.supportsTimelineItem(event.item, source);
+    return true;
+  }
+
   private forwardAgentStream(
     event: Extract<AgentManagerEvent, { type: "agent_stream" }>,
     serializedEvent: Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"]["event"],
@@ -1357,22 +1369,15 @@ export class Session {
           this.supportsForSource(CLIENT_CAPS.selectiveAgentTimeline, source))
       )
         continue;
-      if (
-        serializedEvent.type === "timeline" &&
-        !this.supportsTimelineItem(serializedEvent.item, source)
-      )
-        continue;
+      if (!this.supportsAgentStreamEvent(serializedEvent, source)) continue;
       subscription.owner.emit(message);
     }
+    if (serializedEvent.type === "prompt_suggestion") return; // OTTO(prompt-suggestions): never broadcast a prediction.
     // COMPAT(ownedSubscriptions): added in v0.8.0, remove implicit timeline delivery after 2027-03-09.
     for (const [source, { capabilities }] of this.clientSources) {
       if (this.delivery.isModern(source) || capabilities.has(CLIENT_CAPS.selectiveAgentTimeline))
         continue;
-      if (
-        serializedEvent.type === "timeline" &&
-        !this.supportsTimelineItem(serializedEvent.item, source)
-      )
-        continue;
+      if (!this.supportsAgentStreamEvent(serializedEvent, source)) continue;
       const alreadyDelivered = [...this.timelineSubscriptions.values()].some(
         (subscription) =>
           subscription.owner.source === source && subscription.agentIds.has(event.agentId),

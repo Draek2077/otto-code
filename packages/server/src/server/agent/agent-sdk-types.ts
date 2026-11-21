@@ -217,6 +217,7 @@ export interface SteerActiveTurnOptions extends AgentSteerOptions {
 export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
+  cacheCreationInputTokens?: number; // OTTO(activity): providers may report cache writes separately.
   outputTokens?: number;
   totalCostUsd?: number;
   contextWindowMaxTokens?: number;
@@ -408,8 +409,15 @@ export type AgentTimelineItem =
 export type AgentStreamEvent =
   | { type: "thread_started"; sessionId: string; provider: AgentProvider }
   | { type: "turn_started"; provider: AgentProvider; turnId?: string }
-  | { type: "turn_completed"; provider: AgentProvider; usage?: AgentUsage; turnId?: string }
+  | {
+      type: "turn_completed";
+      provider: AgentProvider;
+      usage?: AgentUsage;
+      activityUsage?: AgentUsage; // OTTO(activity): an interval measurement when usage is cumulative.
+      turnId?: string;
+    }
   | { type: "usage_updated"; provider: AgentProvider; usage: AgentUsage; turnId?: string }
+  | { type: "prompt_suggestion"; provider: AgentProvider; suggestion: string } // OTTO(prompt-suggestions)
   | {
       type: "mode_changed";
       provider: AgentProvider;
@@ -588,6 +596,7 @@ export interface ImportedProviderSession {
 }
 
 export interface AgentSessionConfig {
+  ottoActivityGeneration?: string; // OTTO(activity): only set by hidden structured generation.
   ottoProfile?: import("@getpaseo/protocol/otto/agent-teams").ProfileBinding; // OTTO(agent-teams): daemon-resolved snapshot, absent from inbound config.
   provider: AgentProvider;
   cwd: string;

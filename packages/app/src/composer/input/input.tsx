@@ -115,6 +115,7 @@ export interface ComposerInputSnapshot {
 
 export interface ComposerKeyPressEvent {
   key: string;
+  isPlainTab?: boolean; // OTTO(prompt-suggestions): preserve Shift+Tab focus traversal.
   preventDefault: () => void;
   input: ComposerInputSnapshot;
 }
@@ -212,6 +213,7 @@ type WebTextInputKeyPressEvent = NativeSyntheticEvent<
     metaKey?: boolean;
     ctrlKey?: boolean;
     shiftKey?: boolean;
+    altKey?: boolean; // OTTO(prompt-suggestions)
     // Web-only: present on DOM KeyboardEvent during IME composition (CJK input).
     isComposing?: boolean;
     keyCode?: number;
@@ -407,6 +409,13 @@ interface DesktopKeyPressContext {
   handleDefaultSendAction: () => void;
 }
 
+// OTTO(prompt-suggestions): native gesture flags must not be consumed by suggestion acceptance.
+function isUnmodifiedTab(event: WebTextInputKeyPressEvent["nativeEvent"]): boolean {
+  return (
+    event.key === "Tab" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey
+  );
+}
+
 function handleDesktopKeyPressImpl(
   event: WebTextInputKeyPressEvent,
   ctx: DesktopKeyPressContext,
@@ -416,6 +425,8 @@ function handleDesktopKeyPressImpl(
   if (ctx.onKeyPressCallback) {
     const handled = ctx.onKeyPressCallback({
       key: event.nativeEvent.key,
+      // OTTO(prompt-suggestions): let ordinary focus navigation keep modified Tab.
+      isPlainTab: isUnmodifiedTab(event.nativeEvent),
       preventDefault: () => event.preventDefault(),
       input: ctx.input,
     });

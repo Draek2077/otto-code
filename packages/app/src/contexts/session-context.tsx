@@ -13,6 +13,7 @@ import {
 } from "@/hooks/use-agent-initialization";
 import type { StreamItem } from "@/types/stream";
 import { deriveAgentStreamTurnLiveness } from "@/timeline/session-stream-reducers";
+import { clearHostPromptSuggestions, storePromptSuggestion } from "@/otto/chat/prompt-suggestions"; // OTTO(prompt-suggestions)
 import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import { requestTimelineReplacement } from "@/timeline/timeline-replacement";
 import { type ViewedTimelineOwner } from "@/timeline/viewed-timeline-sync";
@@ -360,6 +361,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   // If the client drops mid-initialization, clear pending flags
   useEffect(() => {
     if (!isConnected) {
+      clearHostPromptSuggestions(serverId); // OTTO(prompt-suggestions)
       flushAgentLastActivity();
       setInitializingAgents(serverId, new Map());
     }
@@ -377,6 +379,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     const onStream = (message: SessionOutboundMessage) => {
       if (message.type !== "agent_stream") return;
       const { agentId, event, timestamp, seq, epoch } = message.payload;
+      if (event.type === "prompt_suggestion") {
+        // OTTO(prompt-suggestions): predictions never enter timeline sync.
+        storePromptSuggestion(serverId, agentId, event.suggestion);
+        return;
+      }
+      if (event.type === "turn_started") storePromptSuggestion(serverId, agentId, null);
       const parsedTimestamp = new Date(timestamp);
       const streamEvent = event;
       if (
@@ -406,6 +414,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     };
     const onReplacement = (message: SessionOutboundMessage) => {
       if (message.type !== "agent.timeline.replacement") return;
+      storePromptSuggestion(serverId, message.payload.agentId, null); // OTTO(prompt-suggestions)
       void requestTimelineReplacement(
         {
           fetchAgentTimeline: (agentId, request) =>

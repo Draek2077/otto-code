@@ -157,6 +157,8 @@ import { useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
 import { getForgePresentation } from "@/git/forge";
 import { ForgeBrandIcon } from "@/git/forge-icon";
 import { useComposerForgeAutoAttach } from "./forge-auto-attach";
+import { PromptSuggestionAction } from "@/otto/chat/prompt-suggestion-controls"; // OTTO(prompt-suggestions)
+import { takePromptSuggestion, usePromptSuggestions } from "@/otto/chat/prompt-suggestions"; // OTTO(prompt-suggestions)
 import { readClipboardImage } from "./clipboard-image";
 import { normalizeNativePastedImages, type NativePastedFile } from "./native-pasted-image";
 import { PluginResourceAttachmentPill, usePluginAttachmentPicker } from "@/plugins";
@@ -1987,10 +1989,43 @@ function ComposerContentImpl({
 
   const hasSendableContent = hasText || selectedAttachments.length > 0;
 
-  // Handle keyboard navigation for command autocomplete.
+  // OTTO(prompt-suggestions): predictions become ordinary editable drafts on acceptance.
+  const prediction = usePromptSuggestions((state) => state.hosts.get(serverId)?.get(agentId));
+  const promptSuggestion =
+    appSettings.promptSuggestionsEnabled &&
+    inputMode === "chat" &&
+    hasAgent &&
+    isConnected &&
+    !readOnly &&
+    !isComposerLocked &&
+    !isAgentRunning &&
+    !isCancellingAgent &&
+    !hasSendableContent
+      ? prediction
+      : undefined;
+  const acceptSuggestion = useCallback(() => {
+    if (
+      !promptSuggestion ||
+      textSource.getSnapshot() !== "" ||
+      !takePromptSuggestion(serverId, agentId, promptSuggestion)
+    )
+      return false;
+    replaceUserInput(promptSuggestion);
+    messageInputRef.current?.focus();
+    return true;
+  }, [agentId, promptSuggestion, replaceUserInput, serverId, textSource]);
+  const useSuggestion = useCallback(() => {
+    acceptSuggestion();
+  }, [acceptSuggestion]);
+
   const handleCommandKeyPress = useCallback(
-    (event: ComposerKeyPressEvent) => autocompleteRef.current?.onKeyPress(event) ?? false,
-    [],
+    (event: ComposerKeyPressEvent) => {
+      if (autocompleteRef.current?.onKeyPress(event)) return true;
+      if (!event.isPlainTab || event.input.text !== "" || !acceptSuggestion()) return false;
+      event.preventDefault();
+      return true;
+    },
+    [acceptSuggestion],
   );
 
   const cancelButtonStyle = useMemo(
@@ -2092,10 +2127,15 @@ function ComposerContentImpl({
   const beforeVoiceContent = useMemo(
     () =>
       hasAgent ? (
-        <SpeechChatToggle serverId={serverId} agentId={agentId} enabled={mode.showVoice} />
+        <>
+          {promptSuggestion ? (
+            <PromptSuggestionAction suggestion={promptSuggestion} accept={useSuggestion} />
+          ) : null}
+          <SpeechChatToggle serverId={serverId} agentId={agentId} enabled={mode.showVoice} />
+        </>
       ) : null,
-    [hasAgent, serverId, agentId, mode.showVoice],
-  ); // OTTO(speech)
+    [hasAgent, serverId, agentId, mode.showVoice, promptSuggestion, useSuggestion],
+  ); // OTTO(speech) OTTO(prompt-suggestions)
 
   const hasGithubAttachment = useMemo(
     () =>
@@ -2484,7 +2524,7 @@ function ComposerContentImpl({
                   onPasteImages={handleNativePasteImages}
                   client={client}
                   isReadyForDictation={isDictationReady}
-                  placeholder={messagePlaceholder}
+                  placeholder={promptSuggestion ?? messagePlaceholder} // OTTO(prompt-suggestions)
                   autoFocus={messageInputAutoFocus}
                   autoFocusKey={`${serverId}:${agentId}:${autoFocusKey ?? ""}`}
                   disabled={isSubmitLoading}

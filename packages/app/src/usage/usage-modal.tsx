@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { View } from "react-native";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
 import { builtinSidebarNavLabelKey } from "@/sidebar-nav/model";
+import { ActivityUsageTabs } from "@/otto/activity/panel"; // OTTO(activity)
 import { useHostUsageWithControls } from "./controls";
 import { usageCopy } from "./copy";
 import { useUsagePreferences } from "./display";
@@ -61,7 +62,9 @@ function HostUsageModal({
   return (
     <UsageModalFrame {...props} actions={controls}>
       <View testID={`usage-host-${serverId}`}>
-        <UsageBody serverId={serverId} view={view} display={display} onRefresh={refresh} />
+        <ActivityUsageTabs serverId={serverId} visible={props.visible}>
+          <UsageBody serverId={serverId} view={view} display={display} onRefresh={refresh} />
+        </ActivityUsageTabs>
       </View>
     </UsageModalFrame>
   );

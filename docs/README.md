@@ -8,7 +8,8 @@ decisions, and measured findings live in Otto Knowledge.
 | [otto-architectural-views.md](otto-architectural-views.md) | Architectural View storage, authoring, offline rendering, UI and CLI                                                             |
 | [otto-visualizer.md](otto-visualizer.md)                   | Canonical session graph, offline renderer, PIP, chat background and guest lifetime                                               |
 | [otto-history.md](otto-history.md)                         | Paginated History, cross-chat content search, and reviewed archive cleanup                                                       |
-| [otto-chat-tools.md](otto-chat-tools.md)                   | Inline widgets, Suggested Tasks, and live provider-subagent Stop                                                                 |
+| [otto-chat-tools.md](otto-chat-tools.md)                   | Inline widgets, Suggested Tasks, prompt suggestions, and live provider-subagent Stop                                             |
+| [otto-activity.md](otto-activity.md)                       | Host activity totals, itemized usage, retention and reset                                                                        |
 | [otto-zoom-recorder.md](otto-zoom-recorder.md)             | Desktop-local Zoom capture, transcription, and packaging                                                                         |
 | [agent-stream-performance.md](agent-stream-performance.md) | Streaming cost, cached transcript presentation and expandable Otto action groups                                                 |
 | [otto-agents.md](otto-agents.md)                           | Working rules for Otto additions to the Paseo base                                                                               |

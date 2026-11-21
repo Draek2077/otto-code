@@ -296,6 +296,7 @@ export interface ScheduleServiceOptions {
   now?: () => Date;
   runner?: (schedule: PaseoSchedule, runId: string) => Promise<PaseoExecutionResult>;
   store?: ScheduleStorePort; // OTTO(schedules): trusted internal storage adapter.
+  onRunStarted?: () => void; // OTTO(activity)
   otto?: ScheduleRuntimeHooks; // OTTO(schedules): target adapters share this scheduler's lifecycle.
 }
 
@@ -321,11 +322,13 @@ export class ScheduleService {
   private readonly runningScheduleIds = new Set<string>();
   private tickTimer: ReturnType<typeof setInterval> | null = null;
 
+  private readonly onRunStarted?: () => void; // OTTO(activity)
   private readonly resolveRole?: ResolveRole; // OTTO(schedule-profiles)
   constructor(options: ScheduleServiceOptions) {
     this.logger = options.logger.child({ module: "schedule-service" });
     this.store =
       options.store ?? new ScheduleStore(join(options.paseoHome, "schedules"), this.logger); // OTTO(schedules)
+    this.onRunStarted = options.onRunStarted; // OTTO(activity)
     this.resolveRole = options.resolveRole; // OTTO(schedule-profiles)
     this.otto = options.otto; // OTTO(schedules)
     this.agentManager = options.agentManager;
@@ -840,6 +843,7 @@ export class ScheduleService {
 
       try {
         options?.admitted?.(scheduleWithRun, runId); // OTTO(schedules): durable run exists; no target effect has started.
+        this.onRunStarted?.(); // OTTO(activity): both manual and due attempts have a durable claim.
         const result = await this.runner(scheduleWithRun, runId);
         await this.finishRun({
           scheduleId: schedule.id,

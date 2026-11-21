@@ -731,6 +731,12 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
 ]);
 
 export const AgentStreamEventPayloadSchema = z.discriminatedUnion("type", [
+  // OTTO(prompt-suggestions): transient, opt-in client delivery.
+  z.object({
+    type: z.literal("prompt_suggestion"),
+    provider: AgentProviderSchema,
+    suggestion: z.string().max(4096),
+  }),
   z.object({
     type: z.literal("thread_started"),
     sessionId: z.string(),
@@ -3571,6 +3577,7 @@ export const ServerInfoStatusPayloadSchema = z
         ottoTerminal: z.boolean().optional(), // OTTO(terminal): host-owned preferences and explicit diagnostics.
         ottoFileHistory: z.boolean().optional(), // OTTO(file-history)
         ottoStructuralDiff: z.boolean().optional(), // OTTO(structural-diff)
+        ottoActivity: z.boolean().optional(), // OTTO(activity) COMPAT(activity): Otto 0.10, remove gate after 2027-05-21.
         ottoWorkspaceRefine: z.boolean().optional(), // OTTO(refine)
         ottoWorkspaceLifecycle: z.boolean().optional(), // OTTO(workspace-lifecycle)
         ottoGitFetch: z.boolean().optional(), // OTTO(git-fetch): owning-host policy and explicit workspace fetch.

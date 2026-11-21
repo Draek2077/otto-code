@@ -18,6 +18,7 @@ import {
   type Query,
   type SDKMessage,
   type SDKPartialAssistantMessage,
+  type SDKPromptSuggestionMessage, // OTTO(prompt-suggestions)
   type SDKResultMessage,
   type SDKSystemMessage,
   type SDKUserMessage,
@@ -82,6 +83,10 @@ import {
 import { renderPromptAttachmentAsText } from "../../prompt-attachments.js";
 import { discoverClaudeModels } from "./model-discovery.js";
 import { claudeQuery, type ClaudeOptions, type ClaudeQueryFactory } from "./query.js";
+import {
+  claudePromptSuggestionsEnabled,
+  toClaudePromptSuggestion,
+} from "../../../otto/prompt-suggestions.js"; // OTTO(prompt-suggestions)
 import { readOnlyClaudeOptions } from "../../../otto/context-management/native-generation-policy.js"; // OTTO(context-generation)
 import {
   realClaudeRewindSdk,
@@ -2122,6 +2127,7 @@ class ClaudeContextUsageState {
       const usage: AgentUsage = {
         inputTokens: message.usage.input_tokens,
         cachedInputTokens: message.usage.cache_read_input_tokens,
+        cacheCreationInputTokens: message.usage.cache_creation_input_tokens, // OTTO(activity)
         outputTokens: message.usage.output_tokens,
         totalCostUsd: message.total_cost_usd,
       };
@@ -3513,9 +3519,19 @@ class ClaudeAgentSession implements AgentSession {
       overlays: [
         this.launchEnv,
         // Makes the CLI announce session_state_changed, whose "idle" is the safety net that closes
-        // an autonomous turn (see consumeSessionStateChange).
+        // an autonomous turn (see consumeSessionSideband).
         { CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
       ],
+    });
+  }
+
+  // OTTO(prompt-suggestions)
+  private shouldRequestPromptSuggestions(configured?: boolean): boolean {
+    return claudePromptSuggestionsEnabled({
+      configured,
+      environment: this.harnessEnvironment["CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"],
+      ordinaryChat:
+        !this.ottoReadOnlyGeneration && !this.ottoWorkflowPolicy && this.persistSession !== false,
     });
   }
 
@@ -3580,6 +3596,8 @@ class ClaudeAgentSession implements AgentSession {
       ...(effort ? { effort } : {}),
       ...providerOptions,
       ...settingsOptions,
+      // OTTO(prompt-suggestions): keep the 0.9 default for ordinary chats.
+      promptSuggestions: this.shouldRequestPromptSuggestions(providerOptions.promptSuggestions),
       // Provider subagent panes render the child's nested transcript.
       forwardSubagentText: true,
       // Stop and replace abort only the main turn, like Esc in Claude Code, and background
@@ -4130,7 +4148,12 @@ class ClaudeAgentSession implements AgentSession {
    * Returns true when the frame was a state change, which is bookkeeping and never reaches the
    * timeline.
    */
-  private consumeSessionStateChange(message: SDKMessage): boolean {
+  private consumeSessionSideband(message: SDKMessage): boolean {
+    // OTTO(prompt-suggestions): the SDK emits this after the result.
+    if (message.type === "prompt_suggestion") {
+      this.consumePromptSuggestion(message);
+      return true;
+    }
     if (message.type !== "system" || message.subtype !== "session_state_changed") {
       return false;
     }
@@ -4139,6 +4162,15 @@ class ClaudeAgentSession implements AgentSession {
       this.completeAutonomousTurn();
     }
     return true;
+  }
+
+  // OTTO(prompt-suggestions): discard predictions once a new turn owns the session.
+  private consumePromptSuggestion(message: SDKPromptSuggestionMessage): void {
+    if (this.activeForegroundTurnId || this.autonomousTurn || this.mainTurnInFlight) return;
+    if (!this.shouldRequestPromptSuggestions(this.config.providerOptions?.promptSuggestions))
+      return;
+    const event = toClaudePromptSuggestion(message.suggestion);
+    if (event) this.notifySubscribers(event);
   }
 
   /** Tracks mainTurnInFlight from Claude's own turn brackets (isClaudeTurnInit). */
@@ -4169,7 +4201,7 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private async routeSdkMessageFromPump(message: SDKMessage): Promise<void> {
-    if (this.consumeSessionStateChange(message)) {
+    if (this.consumeSessionSideband(message)) {
       return;
     }
     this.observeMainTurnBracket(message);

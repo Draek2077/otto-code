@@ -87,6 +87,7 @@ export class OpenCodeV2Session implements AgentSession {
       client: () => this.client,
       id: info.id,
       cwd: config.cwd,
+      activitySnapshot: () => this.info, // OTTO(activity): use the latest reconciled provider counters.
       signal: this.abort.signal,
       emit: (event) => this.emit(event),
       reconcile: async () => {

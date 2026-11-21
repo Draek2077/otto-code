@@ -80,6 +80,7 @@ export interface ArtifactPorts {
   schedules?: ArtifactSchedulePort;
   workflows?: ArtifactWorkflowPort;
   reportGenerationError?(error: unknown): void;
+  onCreated?(): void;
   projects(): Promise<readonly { projectId: string; archivedAt: string | null }[]>;
   now?: () => Date;
 }
@@ -456,7 +457,9 @@ export class ArtifactDaemonService {
       );
     this.admissions++;
     try {
-      return await this.createAccepted(input, source);
+      const artifact = await this.createAccepted(input, source);
+      this.ports.onCreated?.();
+      return artifact;
     } finally {
       this.admissions--;
     }

@@ -16,6 +16,10 @@ import { toDiagnosticErrorMessage } from "../../diagnostic-utils.js";
 import { renderPromptAttachmentAsText } from "../../../prompt-attachments.js";
 
 import { usageFromV2 } from "./mapping.js";
+import {
+  openCodeActivityUsage,
+  type OpenCodeUsageSnapshot,
+} from "../../../../otto/activity/opencode-usage.js"; // OTTO(activity)
 
 import { commands } from "./commands.js";
 
@@ -50,6 +54,7 @@ interface TurnOptions {
   signal: AbortSignal;
   emit(event: AgentStreamEvent): void;
   reconcile(): Promise<TurnSnapshot>;
+  activitySnapshot(): OpenCodeUsageSnapshot; // OTTO(activity)
   clearPermissions(): Promise<void>;
   reportReconciliationError(error: unknown): void;
 }
@@ -61,6 +66,7 @@ interface Turn {
   settle(): void;
   accepted: boolean;
   requestDenied: boolean;
+  activityBaseline?: OpenCodeUsageSnapshot; // OTTO(activity)
 }
 
 export class SessionTurns {
@@ -134,6 +140,7 @@ export class SessionTurns {
     const output =
       options?.outputSchema === undefined ? undefined : structuredOutput(options.outputSchema);
     const turn = this.createTurn(submitted, false, output);
+    turn.activityBaseline = this.options.activitySnapshot(); // OTTO(activity): before invoking the prompt.
     void this.submit(turn, input, accept, options);
     return { turnId: turn.id };
   }
@@ -304,6 +311,9 @@ export class SessionTurns {
         provider: "opencode",
         turnId: turn.id,
         usage: usageFromV2(info),
+        activityUsage: turn.activityBaseline
+          ? openCodeActivityUsage(turn.activityBaseline, info)
+          : undefined, // OTTO(activity)
       });
   }
   private async readExecution(): Promise<ExecutionEvent | null> {

@@ -57,6 +57,7 @@ export interface WorkflowRuntimePorts {
   now(): string;
   logger: OrchestrationLogger;
   changed?(entry: WorkflowEntry): void;
+  onStarted?(): void;
 }
 export interface WorkflowAgentBinding {
   ref: WorkflowRef;

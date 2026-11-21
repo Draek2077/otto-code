@@ -29,6 +29,12 @@ passes the confirmed launch text to the existing composer queue. It preserves
 typed input and leaves dispatch to Paseo. A launch whose outcome is unknown
 must be inspected before another task is started.
 
+## Inline prompt suggestions
+
+Claude can send a predicted next prompt after an ordinary chat turn. Otto forwards it only to compatible clients viewing that chat. The composer shows it while the draft is empty. Tap **Use suggestion** or press Tab to insert editable text. Sending remains a separate action. Predictions are transient and never become transcript entries.
+
+The **AI prompt suggestions** setting controls display. Claude defaults to enabled for ordinary chats. Host operators can disable generation with the Claude provider option `promptSuggestions: false` or `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false`. Workflows and isolated generation sessions do not request predictions.
+
 ## Observed subagents
 
 Paseo's provider-subagent descriptors and read-only transcript own the view,

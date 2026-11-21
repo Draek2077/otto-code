@@ -1,3 +1,4 @@
+import type { ActivityStore } from "../otto/activity/store.js"; // OTTO(activity)
 import {
   applyCreationProfile,
   reloadLabels,
@@ -378,6 +379,7 @@ export interface AgentManagerOptions {
   readProfileRoster?: () => Parameters<typeof bindProfile>[0]; // OTTO(agent-teams)
   ottoKnowledgePrompt?: KnowledgeSessionPrompt; // OTTO(knowledge): canonical workspace-bound metadata only.
   ottoChatSearch?: ChatSearchService; // OTTO(chat-search): observes canonical rows; never runs agents.
+  ottoActivity?: ActivityStore; // OTTO(activity)
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
   beforeSteerUnavailableFallback?: (input: {
@@ -818,6 +820,7 @@ export class AgentManager {
   private appendSystemPrompt: string;
   private readonly ottoKnowledgePrompt?: KnowledgeSessionPrompt; // OTTO(knowledge)
   readonly ottoChatSearch?: ChatSearchService; // OTTO(chat-search)
+  private readonly ottoActivity: AgentManagerOptions["ottoActivity"]; // OTTO(activity)
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
@@ -828,6 +831,7 @@ export class AgentManager {
 
   constructor(options: AgentManagerOptions) {
     this.profileMemory = options.profileMemory; // OTTO(profile-memory)
+    this.ottoActivity = options.ottoActivity; // OTTO(activity)
     this.readProfileCatalog = options.readProfileCatalog; // OTTO(agent-teams)
     this.readProfileRoster = rosterReader(options.readProfileRoster); // OTTO(agent-teams)
     this.pluginLifecycle = options.pluginLifecycle;
@@ -1431,6 +1435,8 @@ export class AgentManager {
       historyPrimed: true,
     });
     if (!agent.internal) {
+      this.ottoActivity?.increment("agentsCreated"); // OTTO(activity)
+      if (agent.labels?.[PARENT_AGENT_ID_LABEL]) this.ottoActivity?.increment("subagentsInvoked");
       this.pluginLifecycle?.emit("agent.created", {
         agent: describeHookAgent({ ...agent, title: agent.config.title }),
       });
@@ -4258,7 +4264,22 @@ export class AgentManager {
     agent: ActiveManagedAgent,
     event: AgentStreamEvent,
   ): Promise<void> {
+    // OTTO(prompt-suggestions): this is composer metadata, outside logs, hooks and turn waiters.
+    if (event.type === "prompt_suggestion") {
+      this.dispatch({ type: "agent_stream", agentId: agent.id, event });
+      return;
+    }
     if (event.type === "provider_subagent") {
+      // OTTO(activity): an already restored descriptor is not a new invocation.
+      if (
+        this.ottoActivity &&
+        !agent.internal &&
+        event.event.type === "upsert" &&
+        event.event.status === "running" &&
+        !this.providerSubagents.get(agent.id, event.event.id)
+      ) {
+        this.ottoActivity.incrementOnce("subagentsInvoked", agent.id, event.event.id);
+      }
       const update = this.providerSubagents.apply(agent.id, event.provider, event.event);
       this.dispatch({ type: "provider_subagent", event: update });
       return;
@@ -4877,6 +4898,29 @@ export class AgentManager {
     flags.shouldNotifyWaiters = true;
   }
 
+  // OTTO(activity)
+  private recordActivityUsage(
+    agent: ActiveManagedAgent,
+    event: Extract<AgentStreamEvent, { type: "turn_completed" }>,
+  ): void {
+    if (!this.ottoActivity) return;
+    const usage = event.provider === "opencode" ? event.activityUsage : event.usage;
+    if (!usage) return;
+    const generation = agent.internal ? agent.config.ottoActivityGeneration : undefined;
+    if (agent.internal && !generation) return;
+    let kind: "generation" | "subagent" | "chat" = "chat";
+    if (generation) kind = "generation";
+    else if (agent.labels?.[PARENT_AGENT_ID_LABEL]) kind = "subagent";
+    this.ottoActivity.record({
+      agentId: agent.internal ? undefined : agent.id,
+      provider: event.provider,
+      model: agent.runtimeInfo?.model ?? agent.config.model,
+      kind,
+      subtype: generation,
+      usage,
+    });
+  }
+
   private onStreamTurnCompleted(params: {
     agent: ActiveManagedAgent;
     event: Extract<AgentStreamEvent, { type: "turn_completed" }>;
@@ -4899,6 +4943,7 @@ export class AgentManager {
     if (terminalDisposition === "stale") return;
     if (event.usage) {
       agent.lastUsage = { ...agent.lastUsage, ...event.usage };
+      this.recordActivityUsage(agent, event); // OTTO(activity): settled live events only.
     }
     // If no usage on turn_completed, keep lastUsage as-is so context window
     // data accumulated during streaming isn't lost when the provider omits
@@ -5087,6 +5132,10 @@ export class AgentManager {
   ): AgentStreamEvent {
     const projectedItem = redactSuggestionPrompt(normalizeWidgetTimelineItem(item)); // OTTO(widgets, suggested-tasks)
     const row = this.recordTimeline(agentId, projectedItem, { ...options, turnId });
+    const activityAgent = this.agents.get(agentId);
+    if (activityAgent && !activityAgent.internal) {
+      this.ottoActivity?.recordTimeline(agentId, projectedItem, turnId); // OTTO(activity)
+    }
     const event: AgentStreamEvent = {
       type: "timeline",
       item: projectedItem,

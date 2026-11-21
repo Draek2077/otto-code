@@ -30,6 +30,7 @@ interface CompositionOptions {
   storage: AgentStorage;
   providers: ProviderSnapshotManager;
   readConfig(): Pick<MutableDaemonConfig, "mcp" | "providers" | "agentTeams" | "agentProfiles">;
+  onStarted?(): void;
 }
 /** Compose existing owners once. No constructor starts a session, model, timer, watcher or filesystem scan. */
 export function createWorkflowComposition(options: CompositionOptions) {
@@ -78,6 +79,7 @@ export function createWorkflowComposition(options: CompositionOptions) {
       );
     },
     changed: (entry) => changes.publish(entry.ref.scope),
+    onStarted: options.onStarted,
   });
   const service = new WorkflowDaemonService(library, host, changes);
   return {

@@ -1,5 +1,6 @@
 import { terminalAvailable } from "./otto/terminal/capabilities.js"; // OTTO(terminal)
 import { gitFetchAvailable } from "./otto/workspace-git/capabilities.js"; // OTTO(git-fetch)
+import { activityAvailable } from "./otto/activity/capability.js"; // OTTO(activity)
 import { editorAvailable } from "./otto/editor/capabilities.js"; // OTTO(editor)
 import { stat } from "node:fs/promises";
 import { speechAvailable } from "./otto/speech/capabilities.js"; // OTTO(speech)
@@ -1845,6 +1846,7 @@ export class VoiceAssistantWebSocketServer {
         scheduleTargets: scheduleTargetsAvailable(this.pluginRuntime), // OTTO(schedules): one target, history and storage API shared by app/CLI/MCP.
         ottoFileHistory: gitFetchAvailable(this.pluginRuntime), // OTTO(file-history)
         ottoStructuralDiff: true, // OTTO(structural-diff)
+        ottoActivity: activityAvailable(this.pluginRuntime), // OTTO(activity)
         ottoWorkspaceRefine: knowledgeAvailable, // OTTO(refine)
         ottoContextManagement: knowledgeAvailable, // OTTO(context-management): daemon-owned inspection and conditional edits.
         ottoContextStarter: knowledgeAvailable, // OTTO(context-starter): reviewed root-file creation.

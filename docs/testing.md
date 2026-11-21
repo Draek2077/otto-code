@@ -329,6 +329,8 @@ Screenshots and traces are
 retained on both success and failure. The full CI and product build matrix remain
 separate required gates.
 
+`otto-activity.spec.ts` opens host Activity and Log through the real daemon and tests that a provider prediction can fill an empty composer by Tab or click without sending. The prediction is a synthetic frame on a real chat connection. The ActivityStore fixtures also cover legacy file continuity, measured token accounts, pagination, reset and damaged-file handling.
+
 Repository instruction coverage in `plugins/otto-openai-compatible-provider/server/instructions.test.ts`
 uses real files and an HTTP endpoint to verify fixed/scoped rules, imports, budgets and
 write deferral when current rules have not reached the model. `server/usage.test.ts` in

@@ -202,6 +202,7 @@ export function createAgentStructuredTextGeneration(deps: {
         agentConfigOverrides: {
           title: agentTitle,
           internal: true,
+          ottoActivityGeneration: schemaName, // OTTO(activity): identify non-chat generation without storing text.
         },
       });
     },

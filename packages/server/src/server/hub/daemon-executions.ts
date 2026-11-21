@@ -308,6 +308,7 @@ export class DaemonExecutions implements HubExecutionAgents {
     if (!this.isOwned(agent)) {
       return null;
     }
+    if (event.event.type === "prompt_suggestion") return null; // OTTO(prompt-suggestions): composer-only sideband.
     const serialized = serializeAgentStreamEvent(event.event);
     if (!serialized) {
       return null;
