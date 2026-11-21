@@ -1,0 +1,21 @@
+# OTTO(security): include the runtime packages, built-in plugins and automation.
+name: Otto CodeQL config
+
+paths:
+  - packages/**
+  - plugins/**
+  - vendor/**
+  - scripts/**
+  - .github/actions/**
+  - .github/workflows/**
+
+paths-ignore:
+  - test-documents/**
+  - "**/*.test.*"
+  - "**/*.spec.*"
+  - packages/app/demo/**
+  - packages/app/e2e/**
+  - packages/desktop/capture-harness/**
+  - packages/server/src/server/daemon-e2e/**
+  # Otto embeds Agent Flow's web renderer.
+  - vendor/agent-flow/extension/**

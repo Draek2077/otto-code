@@ -1,0 +1,31 @@
+# OTTO(security): report source findings on a separate schedule and on demand.
+name: CodeQL
+
+on:
+  schedule:
+    - cron: "23 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze-javascript-typescript:
+    name: Analyze JavaScript and TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          config-file: ./.github/codeql-config.yml
+
+      - name: Analyze and upload findings
+        uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4
+        with:
+          category: /language:javascript-typescript
