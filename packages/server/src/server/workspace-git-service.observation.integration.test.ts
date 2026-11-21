@@ -96,6 +96,8 @@ test("recursive observation updates tracked state and prunes ignored storms", as
   const remainingIgnoredDir = path.join(repoDir, "cache");
   const newlyTrackedPath = path.join(ignoredDir, "tracked.txt");
   mkdirSync(path.join(repoDir, ".git"), { recursive: true });
+  // OTTO(test): a checkout already has metadata when its watcher starts.
+  writeFileSync(path.join(repoDir, ".git", "HEAD"), "ref: refs/heads/main\n");
   mkdirSync(path.dirname(trackedPath), { recursive: true });
   mkdirSync(ignoredDir, { recursive: true });
   mkdirSync(remainingIgnoredDir, { recursive: true });
