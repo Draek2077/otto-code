@@ -267,12 +267,21 @@ test("recursive observation updates tracked state and prunes ignored storms", as
     },
   );
 
-  writeFileSync(trackedPath, "base\n");
+  // OTTO(test): require a real edit before asserting Git work on a native event.
+  writeFileSync(trackedPath, "warmup\n");
   await vi.waitFor(
     () => {
       const events = deliveredEvents.flatMap((batch) => batch.events);
       expect(events.map((event) => event.path)).toContain(trackedPath);
       expect(getCheckoutWorktreeState).toHaveBeenCalled();
+      expect(summaryListener).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          git: expect.objectContaining({
+            isDirty: true,
+            diffStat: { additions: 1, deletions: 0 },
+          }),
+        }),
+      );
       expect(service.getMetrics()).toMatchObject({
         workspaceRefreshInFlightCount: 0,
         workspaceRefreshQueuedCount: 0,
