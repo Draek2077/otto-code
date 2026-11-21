@@ -1,8 +1,8 @@
 import { test, expect } from "../support/fixtures";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
-import { seedSidebarFooterPreferences } from "../support/helpers/sidebar-nav-settings";
-import { openUsageFromItem } from "../support/helpers/usage-sidebar-item";
+import { installUsageReportsFixture } from "../support/helpers/usage-reports";
+import { openUsageFromIcon } from "../support/helpers/usage-sidebar-item";
 
 test("a provider prompt prediction fills an editable draft without sending it", async ({
   page,
@@ -71,7 +71,7 @@ test("a provider prompt prediction fills an editable draft without sending it", 
 });
 
 test("Usage shows live host activity and opens the itemized log", async ({ page }) => {
-  await seedSidebarFooterPreferences(page, [{ key: "usage", visible: true }]);
+  await installUsageReportsFixture(page, { lists: [[]] });
   const workspace = await seedMockAgentWorkspace({
     repoPrefix: "otto-activity-",
     title: "Activity receipt",
@@ -83,7 +83,7 @@ test("Usage shows live host activity and opens the itemized log", async ({ page 
       page.getByRole("textbox", { name: "Message agent..." }).filter({ visible: true }),
     ).toBeVisible();
     await workspace.client.sendAgentMessage(workspace.agentId, "Record this message.");
-    await openUsageFromItem(page);
+    await openUsageFromIcon(page);
     const modal = page.getByTestId("usage-modal");
     await modal.getByRole("button", { name: "Activity", exact: true }).click();
     await expect(modal.getByText("Messages sent", { exact: true })).toBeVisible();
