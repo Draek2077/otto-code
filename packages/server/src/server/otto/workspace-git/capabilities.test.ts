@@ -10,6 +10,7 @@ test("the Git route is reserved without loading a plugin or adding a startup wor
     "provider",
     "otto-workspace-git",
     "otto-observed-subagents", // OTTO(observed-subagents): reserved host route without a plugin worker.
+    "otto-activity", // OTTO(activity): reserved host route without a plugin worker.
   ]);
   expect(registered.has("untrusted-plugin")).toBe(false);
   const loaded: string[] = [];
